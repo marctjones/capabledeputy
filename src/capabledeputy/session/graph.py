@@ -12,6 +12,7 @@ from uuid import UUID
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.session.model import Session, SessionStatus
+from capabledeputy.session.store import SessionStore
 
 
 class SessionNotFoundError(KeyError):
@@ -25,9 +26,21 @@ class SessionStateError(RuntimeError):
 
 
 class SessionGraph:
-    def __init__(self, audit: AuditWriter | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        audit: AuditWriter | None = None,
+        store: SessionStore | None = None,
+    ) -> None:
         self._sessions: dict[UUID, Session] = {}
         self._audit = audit
+        self._store = store
+
+    async def load(self) -> None:
+        if self._store is None:
+            return
+        for s in await self._store.all():
+            self._sessions[s.id] = s
 
     def __len__(self) -> int:
         return len(self._sessions)
@@ -56,6 +69,7 @@ class SessionGraph:
         intent: str | None = None,
     ) -> Session:
         session = Session.new(owner=owner, intent=intent)
+        await self._save(session)
         self._sessions[session.id] = session
         await self._emit(
             EventType.SESSION_CREATED,
@@ -85,6 +99,7 @@ class SessionGraph:
             history=parent.history,
             declassification_log=parent.declassification_log,
         )
+        await self._save(child)
         self._sessions[child.id] = child
         await self._emit(
             EventType.SESSION_FORKED,
@@ -95,26 +110,20 @@ class SessionGraph:
         return child
 
     async def pause(self, session_id: UUID) -> Session:
-        session = self.get(session_id)
-        if session.status != SessionStatus.ACTIVE:
-            raise SessionStateError(
-                f"cannot pause session in status {session.status}",
-            )
-        updated = session.with_status(SessionStatus.PAUSED)
-        self._sessions[session_id] = updated
-        await self._emit(EventType.SESSION_PAUSED, updated)
-        return updated
+        return await self._transition(
+            session_id,
+            from_=SessionStatus.ACTIVE,
+            to=SessionStatus.PAUSED,
+            event=EventType.SESSION_PAUSED,
+        )
 
     async def resume(self, session_id: UUID) -> Session:
-        session = self.get(session_id)
-        if session.status != SessionStatus.PAUSED:
-            raise SessionStateError(
-                f"cannot resume session in status {session.status}",
-            )
-        updated = session.with_status(SessionStatus.ACTIVE)
-        self._sessions[session_id] = updated
-        await self._emit(EventType.SESSION_RESUMED, updated)
-        return updated
+        return await self._transition(
+            session_id,
+            from_=SessionStatus.PAUSED,
+            to=SessionStatus.ACTIVE,
+            event=EventType.SESSION_RESUMED,
+        )
 
     async def abort(self, session_id: UUID) -> Session:
         session = self.get(session_id)
@@ -123,9 +132,34 @@ class SessionGraph:
                 f"session {session_id} already terminal (status={session.status})",
             )
         updated = session.with_status(SessionStatus.ABORTED)
+        await self._save(updated)
         self._sessions[session_id] = updated
         await self._emit(EventType.SESSION_ABORTED, updated)
         return updated
+
+    async def _transition(
+        self,
+        session_id: UUID,
+        *,
+        from_: SessionStatus,
+        to: SessionStatus,
+        event: EventType,
+    ) -> Session:
+        session = self.get(session_id)
+        if session.status != from_:
+            verb = event.value.split(".")[1]
+            raise SessionStateError(
+                f"cannot {verb} session in status {session.status}",
+            )
+        updated = session.with_status(to)
+        await self._save(updated)
+        self._sessions[session_id] = updated
+        await self._emit(event, updated)
+        return updated
+
+    async def _save(self, session: Session) -> None:
+        if self._store is not None:
+            await self._store.upsert(session)
 
     def insert(self, session: Session) -> None:
         self._sessions[session.id] = session
