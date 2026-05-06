@@ -431,6 +431,7 @@ Each scenario must produce a clean trace inspectable via `capdep trace`.
 - **Backup strategy**: `state.db` and `audit.jsonl` are the persistence; both are file-level backupable.
 - **Recovery**: daemon crash recovery from SQLite state; partial sessions resume from last persisted turn.
 - **Remote operation**: SSH to the host, run terminal clients there. No web UI, no mobile app, no remote daemon listener.
+- **Container-deployable.** All paths are env-overridable (`CAPDEP_SOCKET`, `CAPDEP_STATE_DB`, `CAPDEP_AUDIT_LOG`, `CAPDEP_DATA_DIR`) so container deployment is a configuration change, not a refactor. v0.2 ships the Containerfile and quadlet (ROADMAP.md); v0.1 keeps the architecture ready.
 
 ## 15. Open Questions / Future Work
 
@@ -440,6 +441,7 @@ Each scenario must produce a clean trace inspectable via `capdep trace`.
 - **Formal verification** — property-based tests get us most of the way; full TLA+ specification of the session graph and policy semantics is desirable but post-v0.1.
 - **Engagement with OpenClaw RFC #39160** — once v0.1 demos cleanly, propose CapableDeputy as the answer to the open RFC. Not a dependency, but strategic.
 - **Skill format adapter** — a `SKILL.md` → MCP-tool ingest path so OpenClaw skills can be hosted under CapableDeputy with default-restrictive labels. Useful ecosystem play; v0.2.
+- **Per-tool container isolation** — beyond v0.2's all-in-one container, run each MCP server in its own container with policy-driven network and filesystem views. Strongest blast-radius containment; significant operational complexity. Deferred to v0.3+.
 
 ## 16. Naming and Identity
 

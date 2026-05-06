@@ -83,8 +83,8 @@ async def test_full_lifecycle_through_daemon(paths: dict[str, Path]) -> None:
 
 async def test_sessions_persist_across_daemon_restarts(paths: dict[str, Path]) -> None:
     daemon1, _ = await _build_daemon(paths)
-    s1: dict | None = None
-    s2: dict | None = None
+    s1_id = ""
+    s2_id = ""
 
     async with anyio.create_task_group() as tg:
         tg.start_soon(daemon1.serve)
@@ -93,10 +93,12 @@ async def test_sessions_persist_across_daemon_restarts(paths: dict[str, Path]) -
         client = DaemonClient(paths["socket"])
         s1 = await client.call("session.new", {"intent": "first"})
         s2 = await client.call("session.new", {"intent": "second"})
-        await client.call("session.pause", {"session_id": s2["id"]})
+        s1_id = s1["id"]
+        s2_id = s2["id"]
+        await client.call("session.pause", {"session_id": s2_id})
         await client.call("shutdown")
 
-    assert s1 is not None and s2 is not None
+    assert s1_id and s2_id
 
     daemon2, app2 = await _build_daemon(paths)
 
@@ -107,8 +109,8 @@ async def test_sessions_persist_across_daemon_restarts(paths: dict[str, Path]) -
         client = DaemonClient(paths["socket"])
         listed = await client.call("session.list", {})
         ids_to_status = {s["id"]: s["status"] for s in listed["sessions"]}
-        assert ids_to_status[s1["id"]] == "active"
-        assert ids_to_status[s2["id"]] == "paused"
+        assert ids_to_status[s1_id] == "active"
+        assert ids_to_status[s2_id] == "paused"
 
         await client.call("shutdown")
 

@@ -97,7 +97,8 @@ Sequential, single-developer estimate. Faster with a collaborator on TUI + tool 
 
 ## Beyond v0.1
 
-### v0.2 — Ecosystem and Privacy
+### v0.2 — Container Deployment, Ecosystem, Privacy
+- **Container deployment**: Containerfile + Podman quadlet/systemd unit for the v0.1 daemon. Documented volume layout for state.db, audit.jsonl, and configurable user-data mounts. Default-deny network egress with allowlists for configured LLM API endpoints. CI lane runs the test suite inside the container. Defense-in-depth that complements — does not replace — the IFC/capability work.
 - **`SKILL.md` adapter** for ingesting OpenClaw skills as labeled MCP tools.
 - **Local-model planner option** — keep the privileged LLM local (Ollama, llama.cpp), only send non-labeled handles to a frontier model.
 - **Approval pattern library** — shareable, version-controlled approval pattern rules for common workflows.
