@@ -77,10 +77,7 @@ def _format_outcome(outcome: ToolCallOutcome) -> str:
     if outcome.decision == Decision.DENY:
         return f"policy denied: {outcome.rule or 'no_rule'}: {outcome.reason or ''}"
     if outcome.decision == Decision.REQUIRE_APPROVAL:
-        return (
-            f"approval required by rule {outcome.rule}: "
-            f"{outcome.reason or 'queued'}"
-        )
+        return f"approval required by rule {outcome.rule}: {outcome.reason or 'queued'}"
     output = outcome.output if outcome.output is not None else {}
     return str(output)
 

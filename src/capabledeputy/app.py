@@ -1,16 +1,11 @@
-"""Top-level App: composes audit, store, graph, tool registry, and dispatcher.
-
-The App is what the daemon serves. Tests can construct it with custom
-paths; production paths come from `paths.default_*`. Startup wires the
-SQLite schema, loads persisted sessions, and registers the native
-tools that ship with the daemon.
-"""
+"""Top-level App: composes audit, store, graph, tool registry, dispatcher, LLM."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from capabledeputy.audit.writer import AuditWriter
+from capabledeputy.llm.client import LLMClient
 from capabledeputy.paths import default_audit_log_path, default_state_db_path
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.store import SessionStore
@@ -25,6 +20,7 @@ class App:
         self,
         state_db_path: Path | None = None,
         audit_log_path: Path | None = None,
+        llm_client: LLMClient | None = None,
     ) -> None:
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(state_db_path or default_state_db_path())
@@ -33,6 +29,7 @@ class App:
         self.purchase_queue = PurchaseQueue()
         self.registry = ToolRegistry()
         self.tool_client = LabeledToolClient(self.registry, self.graph, self.audit)
+        self.llm_client: LLMClient | None = llm_client
         self._register_native_tools()
 
     def _register_native_tools(self) -> None:

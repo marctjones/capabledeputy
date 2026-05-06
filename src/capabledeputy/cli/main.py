@@ -46,6 +46,38 @@ def version() -> None:
         console.print(f"capdep {__version__} (daemon not running)")
 
 
+@app.command("send")
+def send_message(
+    session_id: str = typer.Argument(..., help="Session id"),
+    message: str = typer.Argument(..., help="User message to send"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON instead of rendered output"),
+) -> None:
+    """Send a user message to a session and run one agent turn."""
+    import json as _json
+
+    client = DaemonClient(default_socket_path())
+    result = anyio.run(client.call, "session.send", {"session_id": session_id, "message": message})
+
+    if json_output:
+        console.print(_json.dumps(result, indent=2))
+        return
+
+    console.print(f"[bold]agent:[/bold] {result['content']}")
+    console.print(
+        f"[dim](iterations={result['iterations']}, finish={result['finish_reason']})[/dim]",
+    )
+    for outcome in result["tool_outcomes"]:
+        color = {"allow": "green", "deny": "red", "require_approval": "yellow"}.get(
+            outcome["decision"],
+            "white",
+        )
+        console.print(
+            f"  [dim]tool:[/dim] [{color}]{outcome['decision']}[/{color}]"
+            + (f" rule={outcome['rule']}" if outcome["rule"] else "")
+            + (f" labels+={','.join(outcome['labels_added'])}" if outcome["labels_added"] else ""),
+        )
+
+
 @daemon_app.command("start")
 def daemon_start() -> None:
     """Start the daemon in the foreground. Blocks until shutdown."""

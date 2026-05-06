@@ -180,9 +180,7 @@ async def test_label_accumulation_blocks_subsequent_egress(writer: AuditWriter) 
         [
             LLMResponse(
                 content="",
-                tool_calls=(
-                    ToolCall(id="c1", name="memory.read", args={"key": "labs"}),
-                ),
+                tool_calls=(ToolCall(id="c1", name="memory.read", args={"key": "labs"}),),
                 finish_reason=FinishReason.TOOL_CALLS,
             ),
             LLMResponse(
