@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.labels import Label
 from capabledeputy.session.model import DeclassEvent, Session, SessionStatus, Turn
 
 
@@ -21,16 +23,17 @@ def test_new_session_label_and_capability_sets_are_empty_by_default() -> None:
 
 
 def test_new_session_inherits_supplied_fields() -> None:
+    cap = Capability(kind=CapabilityKind.WEB_FETCH, pattern="*")
     s = Session.new(
         owner="marc",
         intent="research",
-        label_set=frozenset({"untrusted.external"}),
-        capability_set=frozenset({"WEB_FETCH"}),
+        label_set=frozenset({Label.UNTRUSTED_EXTERNAL}),
+        capability_set=frozenset({cap}),
     )
     assert s.owner == "marc"
     assert s.intent == "research"
-    assert s.label_set == frozenset({"untrusted.external"})
-    assert s.capability_set == frozenset({"WEB_FETCH"})
+    assert s.label_set == frozenset({Label.UNTRUSTED_EXTERNAL})
+    assert s.capability_set == frozenset({cap})
 
 
 def test_with_status_returns_new_session_with_updated_timestamp() -> None:
@@ -53,23 +56,43 @@ def test_is_terminal_true_for_done_and_aborted() -> None:
 
 def test_session_round_trip_through_dict() -> None:
     parent_id = uuid4()
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="/home/*")
     s = Session.new(
         parent=parent_id,
         owner="marc",
         intent="test",
-        label_set=frozenset({"a", "b"}),
-        capability_set=frozenset({"X"}),
+        label_set=frozenset({Label.CONFIDENTIAL_HEALTH, Label.CONFIDENTIAL_PERSONAL}),
+        capability_set=frozenset({cap}),
         history=(Turn(turn_id=0, role="user", content="hello", timestamp=datetime.now(UTC)),),
     )
-    d = s.to_dict()
-    decoded = Session.from_dict(d)
+    decoded = Session.from_dict(s.to_dict())
     assert decoded == s
 
 
 def test_session_dict_serializes_label_set_sorted() -> None:
-    s = Session.new(label_set=frozenset({"z", "a", "m"}))
+    s = Session.new(
+        label_set=frozenset(
+            {
+                Label.UNTRUSTED_EXTERNAL,
+                Label.CONFIDENTIAL_HEALTH,
+                Label.EGRESS_EMAIL,
+            },
+        ),
+    )
     d = s.to_dict()
-    assert d["label_set"] == ["a", "m", "z"]
+    assert d["label_set"] == [
+        "confidential.health",
+        "egress.email",
+        "untrusted.external",
+    ]
+
+
+def test_session_dict_serializes_capability_set_as_list_of_dicts() -> None:
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="/home/marc/*")
+    s = Session.new(capability_set=frozenset({cap}))
+    d = s.to_dict()
+    assert isinstance(d["capability_set"], list)
+    assert d["capability_set"][0]["kind"] == "READ_FS"
 
 
 def test_turn_round_trip() -> None:
@@ -81,9 +104,22 @@ def test_turn_round_trip() -> None:
 def test_declass_event_round_trip() -> None:
     d = DeclassEvent(
         audit_id=uuid4(),
-        from_labels=frozenset({"confidential.health"}),
+        from_labels=frozenset({Label.CONFIDENTIAL_HEALTH}),
         to_labels=frozenset(),
         reason="user-approved declassification",
     )
     decoded = DeclassEvent.from_dict(d.to_dict())
     assert decoded == d
+
+
+def test_declass_event_serializes_labels_sorted() -> None:
+    d = DeclassEvent(
+        audit_id=uuid4(),
+        from_labels=frozenset(
+            {Label.UNTRUSTED_EXTERNAL, Label.CONFIDENTIAL_HEALTH},
+        ),
+        to_labels=frozenset(),
+        reason="x",
+    )
+    out = d.to_dict()
+    assert out["from_labels"] == ["confidential.health", "untrusted.external"]
