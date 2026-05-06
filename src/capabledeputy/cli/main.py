@@ -88,6 +88,31 @@ def daemon_start() -> None:
         console.print("\n[yellow]capdep daemon stopped (SIGINT)[/yellow]")
 
 
+@app.command("mcp-server")
+def mcp_server_command(
+    session_id: str = typer.Option(..., "--session-id", "-s", help="Bound session id"),
+    socket: str | None = typer.Option(
+        None,
+        "--socket",
+        help="Override daemon socket path",
+    ),
+) -> None:
+    """Run a stdio MCP server bound to a CapableDeputy session.
+
+    Configure your MCP host (Claude Code, etc.) to launch this command.
+    All tool calls from the host go through CapableDeputy's policy engine
+    and audit log.
+    """
+    from pathlib import Path
+    from uuid import UUID
+
+    from capabledeputy.mcp_server.server import serve
+
+    sid = UUID(session_id)
+    sock = Path(socket) if socket else None
+    anyio.run(serve, sid, sock)
+
+
 @daemon_app.command("stop")
 def daemon_stop() -> None:
     """Stop a running daemon by sending a shutdown RPC."""
