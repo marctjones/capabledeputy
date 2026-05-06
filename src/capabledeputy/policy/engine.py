@@ -67,7 +67,10 @@ def decide(
             return PolicyDecision(
                 decision=rule.decision,
                 rule=rule.name,
-                reason=f"rule {rule.name} fired on labels {sorted(effective_labels)}",
+                reason=(
+                    f"rule {rule.name} fired on labels "
+                    f"{sorted(label.value for label in effective_labels)}"
+                ),
                 matched_capability=cap,
                 effective_labels=effective_labels,
             )

@@ -7,6 +7,7 @@ import typer
 from rich.console import Console
 
 from capabledeputy.cli.audit import audit_app, watch_command
+from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.session import session_app
 from capabledeputy.daemon.lifecycle import (
     daemon_status,
@@ -25,6 +26,7 @@ daemon_app = typer.Typer(help="Manage the CapableDeputy daemon.", no_args_is_hel
 app.add_typer(daemon_app, name="daemon")
 app.add_typer(session_app, name="session")
 app.add_typer(audit_app, name="audit")
+app.add_typer(policy_app, name="policy")
 app.command("watch")(watch_command)
 
 console = Console()
