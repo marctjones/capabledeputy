@@ -38,7 +38,7 @@ async def run_daemon(
     handlers.update(make_session_handlers(app.graph))
     handlers.update(make_audit_handlers(app.audit))
     handlers.update(make_policy_handlers())
-    handlers.update(make_tool_handlers(app.registry, app.graph))
+    handlers.update(make_tool_handlers(app.registry, app.graph, app.tool_client))
     handlers.update(make_agent_handlers(app))
 
     daemon = Daemon(socket_path or default_socket_path(), handlers=handlers)

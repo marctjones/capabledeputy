@@ -1,4 +1,4 @@
-"""RPC handlers for tool inspection and simulated dispatch."""
+"""RPC handlers for tool inspection, simulated dispatch, and real dispatch."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from capabledeputy.daemon.handlers import Handler
 from capabledeputy.policy.actions import Action
 from capabledeputy.policy.engine import decide
 from capabledeputy.session.graph import SessionGraph
+from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.registry import ToolDefinition, ToolRegistry
 
 
@@ -26,6 +27,7 @@ def _tool_to_dict(tool: ToolDefinition) -> dict[str, Any]:
 def make_tool_handlers(
     registry: ToolRegistry,
     graph: SessionGraph,
+    tool_client: LabeledToolClient | None = None,
 ) -> dict[str, Handler]:
     async def tool_list(params: dict[str, Any]) -> dict[str, Any]:
         return {"tools": [_tool_to_dict(t) for t in registry.list()]}
@@ -60,8 +62,29 @@ def make_tool_handlers(
             },
         }
 
-    return {
+    handlers: dict[str, Handler] = {
         "tool.list": tool_list,
         "tool.show": tool_show,
         "tool.test": tool_test,
     }
+
+    if tool_client is not None:
+
+        async def tool_call(params: dict[str, Any]) -> dict[str, Any]:
+            outcome = await tool_client.call_tool(
+                session_id=UUID(params["session_id"]),
+                tool_name=params["tool"],
+                args=params.get("args", {}),
+            )
+            return {
+                "decision": outcome.decision.value,
+                "output": outcome.output,
+                "rule": outcome.rule,
+                "reason": outcome.reason,
+                "labels_added": sorted(label.value for label in outcome.labels_added),
+                "error": outcome.error,
+            }
+
+        handlers["tool.call"] = tool_call
+
+    return handlers

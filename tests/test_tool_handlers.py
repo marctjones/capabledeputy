@@ -89,3 +89,69 @@ async def test_tool_test_decision_allow(writer: AuditWriter) -> None:
         },
     )
     assert result["decision"] == "allow"
+
+
+async def test_tool_call_dispatches_when_allowed(writer: AuditWriter) -> None:
+    from dataclasses import replace
+
+    from capabledeputy.policy.capabilities import Capability
+    from capabledeputy.tools.client import LabeledToolClient
+
+    registry = _registry_with_natives()
+    graph = SessionGraph(audit=writer)
+    client = LabeledToolClient(registry, graph, writer)
+    handlers = make_tool_handlers(registry, graph, client)
+
+    assert "tool.call" in handlers
+
+    s = await graph.new()
+    cap_w = Capability(kind=CapabilityKind.WRITE_FS, pattern="*")
+    cap_r = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    graph._sessions[s.id] = replace(s, capability_set=frozenset({cap_w, cap_r}))
+
+    write_result = await handlers["tool.call"](
+        {
+            "session_id": str(s.id),
+            "tool": "memory.write",
+            "args": {"key": "k", "value": "v"},
+        },
+    )
+    assert write_result["decision"] == "allow"
+    assert write_result["output"] == {"ok": True, "key": "k"}
+
+    read_result = await handlers["tool.call"](
+        {
+            "session_id": str(s.id),
+            "tool": "memory.read",
+            "args": {"key": "k"},
+        },
+    )
+    assert read_result["decision"] == "allow"
+    assert read_result["output"] == {"found": True, "value": "v"}
+
+
+async def test_tool_call_denied_returns_decision(writer: AuditWriter) -> None:
+    from capabledeputy.tools.client import LabeledToolClient
+
+    registry = _registry_with_natives()
+    graph = SessionGraph(audit=writer)
+    client = LabeledToolClient(registry, graph, writer)
+    handlers = make_tool_handlers(registry, graph, client)
+
+    s = await graph.new()
+    result = await handlers["tool.call"](
+        {
+            "session_id": str(s.id),
+            "tool": "memory.read",
+            "args": {"key": "k"},
+        },
+    )
+    assert result["decision"] == "deny"
+    assert "no matching capability" in (result["reason"] or "")
+
+
+async def test_tool_call_absent_when_no_client_supplied() -> None:
+    registry = _registry_with_natives()
+    graph = SessionGraph()
+    handlers = make_tool_handlers(registry, graph)
+    assert "tool.call" not in handlers
