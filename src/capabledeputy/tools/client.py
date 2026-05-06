@@ -148,9 +148,7 @@ class LabeledToolClient:
                     "decision": decision.decision.value,
                     "rule": decision.rule,
                     "reason": decision.reason,
-                    "effective_labels": sorted(
-                        label.value for label in decision.effective_labels
-                    ),
+                    "effective_labels": sorted(label.value for label in decision.effective_labels),
                 },
             ),
         )
