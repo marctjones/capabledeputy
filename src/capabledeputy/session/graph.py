@@ -13,8 +13,9 @@ from uuid import UUID
 
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
+from capabledeputy.policy.capabilities import Capability
 from capabledeputy.policy.labels import Label
-from capabledeputy.session.model import Session, SessionStatus
+from capabledeputy.session.model import Session, SessionStatus, Turn
 from capabledeputy.session.store import SessionStore
 
 
@@ -138,6 +139,28 @@ class SessionGraph:
             return session
         new_set = session.label_set | labels
         updated = replace(session, label_set=new_set, updated_at=datetime.now(UTC))
+        await self._save(updated)
+        self._sessions[session_id] = updated
+        return updated
+
+    async def add_turn(self, session_id: UUID, turn: Turn) -> Session:
+        session = self.get(session_id)
+        new_history = (*session.history, turn)
+        updated = replace(session, history=new_history, updated_at=datetime.now(UTC))
+        await self._save(updated)
+        self._sessions[session_id] = updated
+        return updated
+
+    async def grant_capability(
+        self,
+        session_id: UUID,
+        capability: Capability,
+    ) -> Session:
+        session = self.get(session_id)
+        if capability in session.capability_set:
+            return session
+        new_caps = session.capability_set | {capability}
+        updated = replace(session, capability_set=new_caps, updated_at=datetime.now(UTC))
         await self._save(updated)
         self._sessions[session_id] = updated
         return updated
