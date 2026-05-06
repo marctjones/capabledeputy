@@ -1,4 +1,5 @@
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
@@ -6,18 +7,20 @@ from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import (
     DuplicateToolError,
+    ToolContext,
     ToolDefinition,
     ToolNotFoundError,
     ToolRegistry,
+    ToolResult,
 )
 
 
-async def _noop_handler(args: dict[str, Any]) -> dict[str, Any]:
-    return {}
+async def _noop_handler(args: dict[str, Any], context: ToolContext) -> ToolResult:
+    return ToolResult(output={})
 
 
 def _make_tool(name: str = "fs.read", **kwargs: Any) -> ToolDefinition:
-    defaults = {
+    defaults: dict[str, Any] = {
         "name": name,
         "description": "test tool",
         "capability_kind": CapabilityKind.READ_FS,
@@ -100,3 +103,23 @@ def test_inherent_labels_default_empty() -> None:
 def test_inherent_labels_can_be_supplied() -> None:
     tool = _make_tool(inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}))
     assert Label.UNTRUSTED_EXTERNAL in tool.inherent_labels
+
+
+def test_tool_context_carries_session_state() -> None:
+    sid = uuid4()
+    ctx = ToolContext(session_id=sid, label_set=frozenset({Label.CONFIDENTIAL_HEALTH}))
+    assert ctx.session_id == sid
+    assert Label.CONFIDENTIAL_HEALTH in ctx.label_set
+
+
+def test_tool_result_default_no_additional_labels() -> None:
+    result = ToolResult(output={"ok": True})
+    assert result.additional_labels == frozenset()
+
+
+def test_tool_result_with_additional_labels() -> None:
+    result = ToolResult(
+        output={"value": "x"},
+        additional_labels=frozenset({Label.CONFIDENTIAL_HEALTH}),
+    )
+    assert Label.CONFIDENTIAL_HEALTH in result.additional_labels

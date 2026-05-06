@@ -5,9 +5,10 @@ needs (capability kind, inherent labels, how to extract target/amount
 from call args) plus an async handler that does the actual work. The
 registry holds these so the dispatcher can look them up by name.
 
-In Phase 3a all tools are in-process. Phase 3+ will introduce an
-mcp-SDK-backed handler that lets upstream MCP servers register through
-the same protocol (DESIGN.md §10.7).
+Handlers receive a ToolContext with the calling session's id and label
+set, and return a ToolResult whose `additional_labels` are unioned into
+the session's label set after the call (in addition to the tool's
+declared `inherent_labels`).
 """
 
 from __future__ import annotations
@@ -15,11 +16,25 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import UUID
 
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import Label
 
-ToolHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+
+@dataclass(frozen=True)
+class ToolContext:
+    session_id: UUID
+    label_set: frozenset[Label]
+
+
+@dataclass(frozen=True)
+class ToolResult:
+    output: dict[str, Any]
+    additional_labels: frozenset[Label] = field(default_factory=frozenset)
+
+
+ToolHandler = Callable[[dict[str, Any], ToolContext], Awaitable[ToolResult]]
 
 
 @dataclass(frozen=True)

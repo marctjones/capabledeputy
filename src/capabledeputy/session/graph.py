@@ -7,10 +7,13 @@ to keep the graph itself unit-testable without I/O.
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import UTC, datetime
 from uuid import UUID
 
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
+from capabledeputy.policy.labels import Label
 from capabledeputy.session.model import Session, SessionStatus
 from capabledeputy.session.store import SessionStore
 
@@ -124,6 +127,20 @@ class SessionGraph:
             to=SessionStatus.ACTIVE,
             event=EventType.SESSION_RESUMED,
         )
+
+    async def add_labels(
+        self,
+        session_id: UUID,
+        labels: frozenset[Label],
+    ) -> Session:
+        session = self.get(session_id)
+        if not labels or labels.issubset(session.label_set):
+            return session
+        new_set = session.label_set | labels
+        updated = replace(session, label_set=new_set, updated_at=datetime.now(UTC))
+        await self._save(updated)
+        self._sessions[session_id] = updated
+        return updated
 
     async def abort(self, session_id: UUID) -> Session:
         session = self.get(session_id)
