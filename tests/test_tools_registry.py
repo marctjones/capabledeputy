@@ -1,0 +1,102 @@
+from typing import Any
+
+import pytest
+
+from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.labels import Label
+from capabledeputy.tools.registry import (
+    DuplicateToolError,
+    ToolDefinition,
+    ToolNotFoundError,
+    ToolRegistry,
+)
+
+
+async def _noop_handler(args: dict[str, Any]) -> dict[str, Any]:
+    return {}
+
+
+def _make_tool(name: str = "fs.read", **kwargs: Any) -> ToolDefinition:
+    defaults = {
+        "name": name,
+        "description": "test tool",
+        "capability_kind": CapabilityKind.READ_FS,
+        "handler": _noop_handler,
+        "target_arg": "path",
+    }
+    defaults.update(kwargs)
+    return ToolDefinition(**defaults)
+
+
+def test_register_and_get_round_trip() -> None:
+    registry = ToolRegistry()
+    tool = _make_tool()
+    registry.register(tool)
+    assert registry.get("fs.read") is tool
+
+
+def test_duplicate_register_raises() -> None:
+    registry = ToolRegistry()
+    registry.register(_make_tool())
+    with pytest.raises(DuplicateToolError):
+        registry.register(_make_tool())
+
+
+def test_get_unknown_raises() -> None:
+    registry = ToolRegistry()
+    with pytest.raises(ToolNotFoundError):
+        registry.get("nope")
+
+
+def test_list_returns_all_registered() -> None:
+    registry = ToolRegistry()
+    a = _make_tool("a")
+    b = _make_tool("b")
+    registry.register(a)
+    registry.register(b)
+    listed = registry.list()
+    assert {t.name for t in listed} == {"a", "b"}
+
+
+def test_contains_and_len() -> None:
+    registry = ToolRegistry()
+    assert len(registry) == 0
+    assert "fs.read" not in registry
+    registry.register(_make_tool())
+    assert "fs.read" in registry
+    assert len(registry) == 1
+
+
+def test_extract_target_pulls_from_named_arg() -> None:
+    tool = _make_tool(target_arg="path")
+    assert tool.extract_target({"path": "/home/marc/notes.md"}) == "/home/marc/notes.md"
+
+
+def test_extract_target_returns_empty_string_when_missing() -> None:
+    tool = _make_tool(target_arg="path")
+    assert tool.extract_target({}) == ""
+
+
+def test_extract_amount_returns_none_when_arg_unset() -> None:
+    tool = _make_tool(amount_arg=None)
+    assert tool.extract_amount({"amount": 50}) is None
+
+
+def test_extract_amount_returns_int_when_present() -> None:
+    tool = _make_tool(amount_arg="amount")
+    assert tool.extract_amount({"amount": 50}) == 50
+
+
+def test_extract_amount_returns_none_when_missing() -> None:
+    tool = _make_tool(amount_arg="amount")
+    assert tool.extract_amount({}) is None
+
+
+def test_inherent_labels_default_empty() -> None:
+    tool = _make_tool()
+    assert tool.inherent_labels == frozenset()
+
+
+def test_inherent_labels_can_be_supplied() -> None:
+    tool = _make_tool(inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}))
+    assert Label.UNTRUSTED_EXTERNAL in tool.inherent_labels
