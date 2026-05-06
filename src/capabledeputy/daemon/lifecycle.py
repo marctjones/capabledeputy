@@ -11,6 +11,7 @@ from capabledeputy.daemon.handlers import default_handlers
 from capabledeputy.daemon.policy_handlers import make_policy_handlers
 from capabledeputy.daemon.server import Daemon
 from capabledeputy.daemon.session_handlers import make_session_handlers
+from capabledeputy.daemon.tool_handlers import make_tool_handlers
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
 
@@ -27,6 +28,7 @@ async def run_daemon(
     handlers.update(make_session_handlers(app.graph))
     handlers.update(make_audit_handlers(app.audit))
     handlers.update(make_policy_handlers())
+    handlers.update(make_tool_handlers(app.registry, app.graph))
 
     daemon = Daemon(socket_path or default_socket_path(), handlers=handlers)
     await daemon.serve()

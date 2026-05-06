@@ -9,6 +9,7 @@ from rich.console import Console
 from capabledeputy.cli.audit import audit_app, watch_command
 from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.session import session_app
+from capabledeputy.cli.tool import tool_app
 from capabledeputy.daemon.lifecycle import (
     daemon_status,
     run_daemon,
@@ -27,6 +28,7 @@ app.add_typer(daemon_app, name="daemon")
 app.add_typer(session_app, name="session")
 app.add_typer(audit_app, name="audit")
 app.add_typer(policy_app, name="policy")
+app.add_typer(tool_app, name="tool")
 app.command("watch")(watch_command)
 
 console = Console()

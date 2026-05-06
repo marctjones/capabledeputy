@@ -1,7 +1,9 @@
-"""Top-level App: composes audit log, session store, and session graph.
+"""Top-level App: composes audit, store, graph, tool registry, and dispatcher.
 
-The App is what the daemon actually serves. Tests can construct it
-with custom paths; production paths come from `paths.default_*`.
+The App is what the daemon serves. Tests can construct it with custom
+paths; production paths come from `paths.default_*`. Startup wires the
+SQLite schema, loads persisted sessions, and registers the native
+tools that ship with the daemon.
 """
 
 from __future__ import annotations
@@ -12,6 +14,10 @@ from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.paths import default_audit_log_path, default_state_db_path
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.store import SessionStore
+from capabledeputy.tools.client import LabeledToolClient
+from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
+from capabledeputy.tools.native.purchase import PurchaseQueue, make_purchase_tools
+from capabledeputy.tools.registry import ToolRegistry
 
 
 class App:
@@ -23,6 +29,17 @@ class App:
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(state_db_path or default_state_db_path())
         self.graph = SessionGraph(audit=self.audit, store=self.store)
+        self.memory = LabeledMemoryStore()
+        self.purchase_queue = PurchaseQueue()
+        self.registry = ToolRegistry()
+        self.tool_client = LabeledToolClient(self.registry, self.graph, self.audit)
+        self._register_native_tools()
+
+    def _register_native_tools(self) -> None:
+        for tool in make_memory_tools(self.memory):
+            self.registry.register(tool)
+        for tool in make_purchase_tools(self.purchase_queue):
+            self.registry.register(tool)
 
     async def startup(self) -> None:
         await self.store.initialize()
