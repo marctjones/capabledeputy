@@ -5,13 +5,28 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from capabledeputy.app import App
+from capabledeputy.daemon.audit_handlers import make_audit_handlers
+from capabledeputy.daemon.handlers import default_handlers
 from capabledeputy.daemon.server import Daemon
+from capabledeputy.daemon.session_handlers import make_session_handlers
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
 
 
-async def run_daemon(socket_path: Path | None = None) -> None:
-    daemon = Daemon(socket_path or default_socket_path())
+async def run_daemon(
+    socket_path: Path | None = None,
+    state_db_path: Path | None = None,
+    audit_log_path: Path | None = None,
+) -> None:
+    app = App(state_db_path=state_db_path, audit_log_path=audit_log_path)
+    await app.startup()
+
+    handlers = default_handlers()
+    handlers.update(make_session_handlers(app.graph))
+    handlers.update(make_audit_handlers(app.audit))
+
+    daemon = Daemon(socket_path or default_socket_path(), handlers=handlers)
     await daemon.serve()
 
 

@@ -1,0 +1,61 @@
+"""RPC handlers for session lifecycle (DESIGN.md §6)."""
+
+from __future__ import annotations
+
+from typing import Any
+from uuid import UUID
+
+from capabledeputy.daemon.handlers import Handler
+from capabledeputy.session.graph import SessionGraph
+from capabledeputy.session.model import SessionStatus
+
+
+def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
+    async def session_list(params: dict[str, Any]) -> dict[str, Any]:
+        status_str = params.get("status")
+        status = SessionStatus(status_str) if status_str else None
+        sessions = graph.list(status=status)
+        return {"sessions": [s.to_dict() for s in sessions]}
+
+    async def session_new(params: dict[str, Any]) -> dict[str, Any]:
+        s = await graph.new(
+            owner=params.get("owner"),
+            intent=params.get("intent"),
+        )
+        return s.to_dict()
+
+    async def session_fork(params: dict[str, Any]) -> dict[str, Any]:
+        parent_id = UUID(params["parent_id"])
+        s = await graph.fork(parent_id, intent=params.get("intent"))
+        return s.to_dict()
+
+    async def session_pause(params: dict[str, Any]) -> dict[str, Any]:
+        s = await graph.pause(UUID(params["session_id"]))
+        return s.to_dict()
+
+    async def session_resume(params: dict[str, Any]) -> dict[str, Any]:
+        s = await graph.resume(UUID(params["session_id"]))
+        return s.to_dict()
+
+    async def session_abort(params: dict[str, Any]) -> dict[str, Any]:
+        s = await graph.abort(UUID(params["session_id"]))
+        return s.to_dict()
+
+    async def session_get(params: dict[str, Any]) -> dict[str, Any]:
+        s = graph.get(UUID(params["session_id"]))
+        return s.to_dict()
+
+    async def session_children(params: dict[str, Any]) -> dict[str, Any]:
+        children = graph.children(UUID(params["session_id"]))
+        return {"sessions": [s.to_dict() for s in children]}
+
+    return {
+        "session.list": session_list,
+        "session.new": session_new,
+        "session.fork": session_fork,
+        "session.pause": session_pause,
+        "session.resume": session_resume,
+        "session.abort": session_abort,
+        "session.get": session_get,
+        "session.children": session_children,
+    }

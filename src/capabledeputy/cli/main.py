@@ -6,6 +6,8 @@ import anyio
 import typer
 from rich.console import Console
 
+from capabledeputy.cli.audit import audit_app, watch_command
+from capabledeputy.cli.session import session_app
 from capabledeputy.daemon.lifecycle import (
     daemon_status,
     run_daemon,
@@ -21,6 +23,9 @@ app = typer.Typer(
 )
 daemon_app = typer.Typer(help="Manage the CapableDeputy daemon.", no_args_is_help=True)
 app.add_typer(daemon_app, name="daemon")
+app.add_typer(session_app, name="session")
+app.add_typer(audit_app, name="audit")
+app.command("watch")(watch_command)
 
 console = Console()
 err_console = Console(stderr=True)
