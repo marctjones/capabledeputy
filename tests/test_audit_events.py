@@ -1,0 +1,88 @@
+from uuid import uuid4
+
+from capabledeputy.audit.events import Event, EventType
+
+
+def test_event_round_trip() -> None:
+    sid = uuid4()
+    event = Event(
+        event_type=EventType.SESSION_CREATED,
+        session_id=sid,
+        payload={"intent": "test"},
+    )
+    decoded = Event.from_dict(event.to_dict())
+    assert decoded.event_type == EventType.SESSION_CREATED
+    assert decoded.session_id == sid
+    assert decoded.payload == {"intent": "test"}
+    assert decoded.audit_id == event.audit_id
+    assert decoded.timestamp == event.timestamp
+
+
+def test_event_to_dict_serializes_session_id() -> None:
+    sid = uuid4()
+    event = Event(event_type=EventType.SESSION_CREATED, session_id=sid)
+    d = event.to_dict()
+    assert d["session_id"] == str(sid)
+
+
+def test_event_to_dict_serializes_none_session_id() -> None:
+    event = Event(event_type=EventType.LLM_REQUEST_SENT)
+    d = event.to_dict()
+    assert d["session_id"] is None
+
+
+def test_event_type_values_are_dotted_namespaces() -> None:
+    valid_namespaces = {
+        "session",
+        "llm",
+        "mode",
+        "policy",
+        "label",
+        "capability",
+        "tool",
+        "approval",
+    }
+    for et in EventType:
+        head, sep, _ = et.value.partition(".")
+        assert sep == "."
+        assert head in valid_namespaces, f"{et.value} has unexpected namespace {head}"
+
+
+def test_event_type_taxonomy_matches_design() -> None:
+    expected = {
+        "session.created",
+        "session.forked",
+        "session.paused",
+        "session.resumed",
+        "session.merged",
+        "session.aborted",
+        "session.done",
+        "llm.context_assembled",
+        "llm.request_sent",
+        "llm.response_received",
+        "llm.response_parsed",
+        "mode.selected",
+        "policy.decided",
+        "label.propagated",
+        "capability.checked",
+        "tool.dispatched",
+        "tool.returned",
+        "approval.requested",
+        "approval.approved",
+        "approval.denied",
+        "approval.deferred",
+        "approval.expired",
+    }
+    actual = {et.value for et in EventType}
+    assert actual == expected, f"missing: {expected - actual}, extra: {actual - expected}"
+
+
+def test_event_audit_ids_are_unique() -> None:
+    a = Event(event_type=EventType.SESSION_CREATED)
+    b = Event(event_type=EventType.SESSION_CREATED)
+    assert a.audit_id != b.audit_id
+
+
+def test_event_payload_default_is_empty_dict() -> None:
+    event = Event(event_type=EventType.SESSION_CREATED)
+    assert event.payload == {}
