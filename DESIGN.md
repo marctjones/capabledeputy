@@ -308,14 +308,22 @@ capdep watch [filters]     # live event stream
 capdep config              show|edit|validate
 ```
 
-### 10.3 TUI (`capdep tui`, default when launched bare)
+### 10.3 TUI (`capdep tui`)
 - **Textual** framework.
-- Five panes: Sessions / Conversation / Approvals / Trace / Events.
-- Modal: Approval request, with verbatim payload.
-- Keybindings: vim-like navigation (`j/k`), explicit actions (`a/d/m/f`); `t` toggles trace pane focus; `g` toggles session-list / session-graph view.
-- Multi-pane status updates via reactive bindings to daemon events.
+- Full design is the five-pane layout below; v0.1 ships a minimum-
+  viable three-pane subset (Sessions / Approvals / Events) with the
+  approval modal. Conversation, Trace, and the session-graph toggle
+  are v0.2 (ROADMAP.md).
+- Modal: Approval request, with **verbatim payload** rendered byte-
+  for-byte (DESIGN.md §8.2 hard rule). Single-key approve (`a`),
+  deny (`d`), defer/cancel.
+- Keybindings: vim-like navigation (`j/k`), explicit actions
+  (`a/d/m/f`); `t` toggles trace pane focus; `g` toggles session-list
+  / session-graph view.
+- Multi-pane status updates via reactive bindings to daemon events
+  (v0.1 polls every 1.5s; v0.2 adds streaming push).
 
-Layout:
+Full target layout (v0.2):
 ```
 ┌─ Sessions ────────────┬─ Conversation: <selected session> ──────────┐
 │ list OR fork tree     │ turns, labels per turn, input box           │
@@ -329,13 +337,19 @@ Layout:
 ```
 
 ### 10.4 Policy Engine
-- **Open Policy Agent (OPA)** embedded via Python SDK, or evaluated in-process via `opa-py`.
-- Policy bundle is human-readable Rego, version-controlled.
-- Decision input: `(session_state, action, args)`. Decision output: `allow | deny | require_approval`.
-- Decisions are pure functions — exhaustively testable.
-- Every decision is recorded as a `policy.decided` trace event (see §9.2).
+- v0.1 ships a **pure-Python policy engine** with rules pinned in
+  `policy/rules.py`; OPA/Rego integration is reserved as a future
+  alternative if external rule authoring becomes important.
+- Decision input: `(label_set, capability_set, action)`. Decision
+  output: `Decision.{ALLOW, DENY, REQUIRE_APPROVAL}` plus the matched
+  capability, fired rule name, effective labels, and human-readable
+  reason.
+- Decisions are pure functions over their inputs — exhaustively tested
+  via parametrized test matrix.
+- Every decision is recorded as a `policy.decided` trace event (§9.2).
 
-### 10.5 Starlark Interpreter
+### 10.5 Starlark Interpreter (v0.3)
+- **Not yet built.** Reserved for the programmatic execution mode (§5.3).
 - Fork of `starlark-py` (pure Python implementation).
 - **Value type extended with `labels: frozenset[Label]`.**
 - Every binary operator, function call, and attribute access propagates labels via set union.
@@ -349,13 +363,33 @@ Layout:
 - Per-call provider override (e.g., quarantined LLM uses Haiku for speed; planner uses Opus).
 - Emits `llm.context_assembled`, `llm.request_sent`, `llm.response_received`, `llm.response_parsed` for every call.
 
-### 10.7 Labeled MCP Client
-- Wraps the official Python `mcp` SDK.
-- For each connected MCP server: declared inherent labels, per-tool argument rules, per-tool result rules.
-- Inbound: applies inherent + content-pattern labels to results before they enter context.
-- Outbound: gates calls against current label union, redacts/transforms args per policy, queues for approval where required.
-- Emits `tool.dispatched`, `tool.returned`, `label.propagated`, `capability.checked` events.
-- ~500–1000 LOC.
+### 10.7 Labeled Tool Client and MCP layer
+The Tool layer has two complementary surfaces:
+
+**`LabeledToolClient` (v0.1, internal)**: the single chokepoint for
+every tool dispatch initiated by CapableDeputy's own agent loop.
+Wraps the in-process tool registry. For each tool call: builds an
+`Action` from the tool's args, calls `policy.decide()`, audits the
+decision, dispatches the handler if allowed, propagates labels into
+the session, emits the full §9.2 event sequence. Used by both the
+agent loop (`run_turn`) and the MCP server's `tool.call` RPC.
+
+**MCP server (`capdep mcp-server`, v0.1)**: stdio MCP server that
+exposes the same tool registry to external MCP hosts (Claude Code,
+etc.). Tool calls forwarded through `tool.call` so policy + audit
+apply identically whether the agent loop is internal or external.
+Spec compliance audited in `docs/mcp-spec-review.md`. Surfaces
+`isError`, `structuredContent`, `ToolAnnotations`, and `_meta`
+(capability_kind, inherent_labels, decision, rule, labels_added)
+per the 2025-11-25 spec. Capability-driven tool visibility from
+§10 means the LLM sees only tools its session can use.
+
+**`LabeledMcpClient` (v0.2, planned)**: client-side wrapper that
+hosts subprocess MCP servers (Filesystem, Fetch, Gmail, etc.) and
+applies labels + policy on inbound tool results. The mirror image
+of `LabeledToolClient` — same security guarantees, applied to
+external MCP servers as if they were native tools. Per-server label
+declaration in YAML config; per-tool argument and result rules.
 
 ### 10.8 Memory Spaces
 - Implemented as a **CapableDeputy-native MCP server** (`memory.read` / `memory.write`).
@@ -365,11 +399,60 @@ Layout:
 - Memory spaces are named, persistent across sessions, and can themselves carry inherent labels (e.g., a `health-notes` space defaults to `confidential.health`).
 
 ### 10.9 Audit Log
-- **Append-only JSONL** at `$XDG_DATA_HOME/capdep/audit.jsonl`.
+- **Append-only JSONL** at `$XDG_DATA_HOME/capabledeputy/audit.jsonl`.
 - Records all events from the taxonomy in §9.2, plus session and approval lifecycle events.
 - Queryable via `capdep audit` with filters; raw file is `jq`-compatible.
-- File integrity: nightly hash of prior contents written into the next day's first record (tamper-evident).
+- File integrity: nightly hash of prior contents written into the next day's first record (tamper-evident; planned).
 - Not LLM-writable: events are written by daemon components, never by content the LLM produces.
+
+### 10.10 Mode Dispatcher (v0.1)
+`select_mode(label_set, registry)` is called at the start of each
+agent turn and returns one of `{TURN_LEVEL, DUAL_LLM, PROGRAMMATIC}`
+with a human-readable reason. Default is `TURN_LEVEL`; auto-escalates
+to `DUAL_LLM` when the session carries any `confidential.*` label and
+the registry has at least one tool in the `quarantined.*` namespace.
+`PROGRAMMATIC` is reserved for v0.3.
+
+When `DUAL_LLM` is active, `build_tool_descriptions` filters the
+LLM-visible tool set: raw labeled-data readers (memory.read, fs.read,
+web.fetch) are hidden so the planner LLM physically cannot ask for
+raw labeled bytes — only the schema-validated extractors.
+
+The choice is logged as a `mode.selected` audit event so the trace
+explains why each turn ran in the mode it did.
+
+### 10.11 Approval System (v0.1)
+Three-layer composition (DESIGN.md §8):
+
+- **`ApprovalRequest`** — frozen dataclass with verbatim payload, in/out
+  labels, action, recipient, justification, monotonic id, audit_id.
+- **`ApprovalQueue`** — submit / approve / deny / defer with full
+  audit emission. Cross-session declassification path: approving
+  SEND_EMAIL spawns a fresh purpose-limited session, grants a one-
+  shot capability scoped exactly to the approved payload + recipient,
+  dispatches the email through `LabeledToolClient`, and aborts the
+  session. The originating session never gains the egress capability.
+- **`ApprovalPatternRule`** — auto-approves matching future requests
+  with strict pattern validation (rejects bare `*`, requires domain
+  anchors for globs, caps TTL at 30 days). Every match still emits
+  `approval.requested` + `approval.approved` events. Revocable.
+
+### 10.12 Quarantined LLM Extractor (v0.1)
+DESIGN.md §5.2's data plane. `quarantined/extractor.extract(llm,
+schema_name, labeled_text)`:
+
+- Builds a system+user prompt with the Pydantic schema definition.
+- Calls the LLM with **no tools**.
+- Rejects `tool_calls` in the response (defensive — the LLM shouldn't
+  have any anyway).
+- Strips markdown fences from output.
+- Validates via Pydantic; raises `ExtractionError` on any deviation.
+
+Schemas live in `quarantined/schemas.py` with bounded free-text fields
+to limit smuggling. Starter set: `DoseSummary`, `FinancialSummary`,
+`ContactInfo`. Surfaces through the `quarantined.extract` tool which
+returns NO additional_labels — schema validation IS the
+declassification gate.
 
 ## 11. Tech Stack Summary
 
@@ -435,14 +518,86 @@ Each scenario must produce a clean trace inspectable via `capdep trace`.
 
 ## 15. Open Questions / Future Work
 
-- **Multi-tenant labels** — CapableDeputy as a household tool with per-person label spaces. Out of scope for v0.1.
-- **Inter-host federation** — running CapableDeputy on a phone and a laptop with shared state. Significant design work; deferred.
-- **Privacy-preserving LLM inference** — running a local model for the planner, only sending non-labeled handles to a frontier model. Useful escalation; deferred to v0.2.
-- **Formal verification** — property-based tests get us most of the way; full TLA+ specification of the session graph and policy semantics is desirable but post-v0.1.
-- **Engagement with OpenClaw RFC #39160** — once v0.1 demos cleanly, propose CapableDeputy as the answer to the open RFC. Not a dependency, but strategic.
-- **Skill format adapter** — a `SKILL.md` → MCP-tool ingest path so OpenClaw skills can be hosted under CapableDeputy with default-restrictive labels. Useful ecosystem play; v0.2.
-- **Per-tool container isolation** — beyond v0.2's all-in-one container, run each MCP server in its own container with policy-driven network and filesystem views. Strongest blast-radius containment; significant operational complexity. Deferred to v0.3+.
-- **Per-session unforgeable tool tokens** — strict object-capability semantics for tool names. Each session sees capabilities under fresh random tokens; the LLM cannot reference tools outside its compartment because it doesn't know their session-specific names. Phase 7b's capability-driven visibility filter covers ~95% of the architectural benefit; the token aliasing is defense-in-depth for hypothetical dispatcher bugs and earns provable separation properties in formal verification. Deferred to v0.3+.
+### Planned for v0.2 (MCP surface expansion)
+
+- **MCP Resources for memory entries** — expose `capdep://memory/{key}`
+  as resources with labels in `_meta`. Capability-aware listing (a
+  session sees only resources it has READ_FS for); resource reads
+  dispatch through `LabeledToolClient` so policy + label propagation
+  is identical to `memory.read` tool. Surfaces label inventory
+  discoverably without invocation.
+- **MCP Prompts for canonical workflows** — starter set of
+  parameterized prompts (`prescription-review`, `daily-briefing`,
+  `safe-share`, `untrusted-research`). Each prompt is a workflow
+  template the agent executes step by step; every step still goes
+  through the policy engine. Lets MCP hosts surface user-facing menus
+  of policy-controlled workflows.
+- **MCP Elicitation for in-flow approvals** — when SEND_EMAIL is
+  queued for approval, fire `elicitation/create` to the MCP host so
+  the user decides inside the host's chat UI rather than switching to
+  a separate terminal.
+- **MCP Logging notifications** — mirror policy decisions and label
+  propagations to the host as `notifications/message` so host UIs
+  surface them in real time.
+- **MCP `tools/list_changed` notifications** — when session
+  capabilities change at runtime, the visible tool set changes; push
+  the notification.
+- **`LabeledMcpClient` for upstream MCP servers** — wrap subprocess
+  MCP servers (Filesystem, Fetch, Gmail, etc.) and apply labels +
+  policy on inbound results.
+- **TUI completion** — five-pane layout, trace pane drill-down,
+  session-graph view, real-time event push.
+- **`SKILL.md` adapter** for ingesting OpenClaw skills as labeled MCP
+  tools.
+- **Local-model planner option** — keep the privileged LLM local
+  (Ollama, llama.cpp), only send non-labeled handles to a frontier
+  model.
+- **Container deployment** — Containerfile + Podman quadlet for the
+  v0.1 daemon; default-deny network egress with allowlists for
+  configured LLM API endpoints; CI lane runs the test suite inside
+  the container.
+
+### Planned for v0.3+
+
+- **Programmatic mode** — Starlark interpreter with label-aware values
+  (DESIGN.md §5.3 / §10.5).
+- **Per-session unforgeable tool tokens** — strict object-capability
+  semantics for tool names. Each session sees capabilities under
+  fresh random tokens; the LLM cannot reference tools outside its
+  compartment because it doesn't know their session-specific names.
+  Phase 7b's capability-driven visibility filter covers ~95% of the
+  architectural benefit; the token aliasing is defense-in-depth for
+  hypothetical dispatcher bugs and earns provable separation
+  properties in formal verification.
+- **Per-tool container isolation** — beyond v0.2's all-in-one
+  container, run each MCP server in its own container with
+  policy-driven network and filesystem views. Strongest blast-radius
+  containment; significant operational complexity.
+- **Multi-tenant labels** — CapableDeputy as a household tool with
+  per-person label spaces.
+- **Inter-host federation** — running CapableDeputy on a phone and a
+  laptop with shared state. Significant design work.
+
+### Planned for v0.4+
+
+- **Formal verification** — property-based tests get us most of the
+  way; full TLA+ specification of the session graph and policy
+  semantics is desirable but post-v0.1.
+- **Mechanized proofs** of key safety properties (label monotonicity,
+  capability unforgeability).
+- **Independent security audit.**
+
+### Strategic / opportunistic
+
+- **Engagement with OpenClaw RFC #39160** — once v0.1 demos cleanly,
+  propose CapableDeputy as the answer to the open RFC. Not a
+  dependency, but strategic.
+- **MCP RFC for capability-aware tool exposure** — a per-tool
+  `requiredCapability` annotation in the MCP spec would let
+  capability-aware hosts (CapableDeputy and others) filter at
+  `tools/list` time. Reference implementation exists in our MCP
+  server's `_meta` (under `io.capabledeputy/capability_kind`); could
+  be promoted to a standardized namespace. See `docs/mcp-spec-review.md`.
 
 ## 16. Naming and Identity
 
@@ -452,6 +607,29 @@ Each scenario must produce a clean trace inspectable via `capdep trace`.
 - **License:** Apache 2.0.
 - **Repository:** to be created.
 
+## 17. Implementation Status (v0.1)
+
+Phases 0–7 of ROADMAP.md are complete and verified end-to-end:
+
+| Built and verified | Where |
+|---|---|
+| Daemon, JSON-RPC over Unix socket, CLI shell | §10.1, §10.2 |
+| Session graph with fork/pause/resume/abort + SQLite persistence | §6, §10.8 |
+| Label + Capability + Action types; pure-Python policy engine | §7, §10.4 |
+| LabeledToolClient + native tools (memory, purchase, email) | §10.7 |
+| Turn-level agent loop + LiteLLMClient + ClaudeCodeLLMClient + FakeLLMClient | §5.1, §10.6 |
+| Approval queue, cross-session declassification, pattern rules | §8, §10.11 |
+| Quarantined LLM extractor (dual-LLM mode) + schemas | §5.2, §10.12 |
+| Mode dispatcher with auto-escalation + capability-driven tool visibility | §5.4, §10.10 |
+| Trace event taxonomy + audit log + `capdep trace` / `capdep audit` | §9 |
+| MCP server (`capdep mcp-server`) with full §2025-11-25 spec compliance | §10.7 |
+| TUI (minimum-viable three-pane) | §10.3 |
+| 317 unit tests + 2 real-LLM integration tests | §12 |
+
+See ROADMAP.md for v0.2 / v0.3 / v0.4 plans, including the MCP
+Resources / Prompts / Elicitation expansion, programmatic mode,
+upstream MCP server wrapping, and container deployment.
+
 ---
 
-See ROADMAP.md for the phased implementation plan.
+See ROADMAP.md for the phased implementation plan and current status.
