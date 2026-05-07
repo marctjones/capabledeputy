@@ -23,11 +23,19 @@ Spec leverage (per modelcontextprotocol.io/specification/2025-11-25):
     appropriate UI confirmations per spec security guidance.
   - _meta carries CapableDeputy-specific capability metadata so
     capability-aware hosts can do further filtering.
+  - Resources for memory entries with labels in _meta.
+  - Prompts for canonical workflows.
+  - Elicitation for in-flow approvals when policy denies a
+    declassifiable action — the host's user confirms inline rather
+    than running a separate `capdep approval approve` command.
+  - Log notifications mirror policy decisions so host UIs surface
+    them in real time.
 """
 
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -51,6 +59,14 @@ _ANNOTATIONS_BY_KIND: dict[str, dict[str, bool]] = {
     "CALENDAR_WRITE": {"readOnlyHint": False, "destructiveHint": True},
     "QUEUE_PURCHASE": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
 }
+
+
+# Rules that we know how to declassify via the approval workflow
+# (currently SEND_EMAIL is the only action with a built-in
+# purpose-limited execution path).
+_ELICITABLE_RULES: frozenset[str] = frozenset(
+    {"health-meets-egress", "financial-meets-email", "untrusted-meets-egress"},
+)
 
 
 def _annotations_for(tool: dict[str, Any]) -> mcp_types.ToolAnnotations | None:
@@ -89,11 +105,148 @@ async def discover_tools(client: DaemonClient) -> list[mcp_types.Tool]:
     return tools
 
 
+def _is_elicitable_email_denial(tool_name: str, result: dict[str, Any]) -> bool:
+    """Whether we should offer in-flow approval via elicitation."""
+    if tool_name != "email.send":
+        return False
+    if result.get("decision") != "deny":
+        return False
+    rule = result.get("rule")
+    return bool(rule) and rule in _ELICITABLE_RULES
+
+
+def _build_elicit_schema(tool_name: str, args: dict[str, Any], rule: str) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "title": f"Approval needed for {tool_name}",
+        "description": (
+            f"This action was blocked by the policy rule '{rule}'. "
+            "If you confirm, capdep will spawn a one-shot purpose-limited "
+            "session to execute it; the originating session will not gain "
+            "egress capability."
+        ),
+        "properties": {
+            "approve": {
+                "type": "boolean",
+                "title": "Approve a one-shot send?",
+                "description": (
+                    f"To: {args.get('to', '?')}. "
+                    f"Subject: {args.get('subject', '(none)')}. "
+                    f"Body length: {len(str(args.get('body', '')))} chars."
+                ),
+            },
+        },
+        "required": ["approve"],
+    }
+
+
+async def _try_elicit_and_approve(
+    client: DaemonClient,
+    server: Server,
+    session_id: UUID,
+    tool_name: str,
+    args: dict[str, Any],
+    deny_result: dict[str, Any],
+) -> mcp_types.CallToolResult | None:
+    rule = deny_result.get("rule") or ""
+    schema = _build_elicit_schema(tool_name, args, rule)
+    try:
+        elicit_result = await server.request_context.session.elicit(
+            message=(f"Approve this {tool_name} despite policy rule '{rule}'? to={args.get('to')}"),
+            requested_schema=mcp_types.ElicitRequestedSchema(
+                type="object",
+                properties=schema["properties"],
+                required=schema["required"],
+            ),
+        )
+    except Exception:
+        return None
+
+    if elicit_result.action != "accept":
+        return mcp_types.CallToolResult(
+            content=[
+                mcp_types.TextContent(
+                    type="text",
+                    text=(
+                        f"User declined elicitation for {tool_name} "
+                        f"(action={elicit_result.action})."
+                    ),
+                ),
+            ],
+            isError=True,
+        )
+
+    content = elicit_result.content or {}
+    if not content.get("approve"):
+        return mcp_types.CallToolResult(
+            content=[
+                mcp_types.TextContent(
+                    type="text",
+                    text="User did not approve via elicitation.",
+                ),
+            ],
+            isError=True,
+        )
+
+    submitted = await client.call(
+        "approval.submit",
+        {
+            "from_session": str(session_id),
+            "action": "SEND_EMAIL",
+            "payload": str(args.get("body", "")),
+            "target": str(args.get("to", "")),
+            "labels_in": deny_result.get("effective_labels", []),
+            "justification": "user-approved via MCP elicitation",
+        },
+    )
+    approved = await client.call(
+        "approval.approve",
+        {"id": submitted["id"], "decided_by": "mcp-elicitation"},
+    )
+    dispatch = approved.get("dispatch") or {}
+    if dispatch.get("decision") == "allow":
+        return mcp_types.CallToolResult(
+            content=[
+                mcp_types.TextContent(
+                    type="text",
+                    text=(
+                        "Approved via elicitation; executed in purpose-limited "
+                        f"session {approved.get('executed_in_session')}.\n\n"
+                        f"{json.dumps(dispatch.get('output') or {}, indent=2)}"
+                    ),
+                ),
+            ],
+            isError=False,
+        )
+    return mcp_types.CallToolResult(
+        content=[
+            mcp_types.TextContent(
+                type="text",
+                text=(
+                    "Elicitation accepted but execution failed: "
+                    f"{dispatch.get('reason') or dispatch.get('error') or 'unknown'}"
+                ),
+            ),
+        ],
+        isError=True,
+    )
+
+
+async def _send_log(server: Server, level: str, message: str) -> None:
+    with suppress(Exception):
+        await server.request_context.session.send_log_message(
+            level=level,  # type: ignore[arg-type]
+            data=message,
+            logger="capdep",
+        )
+
+
 async def dispatch_tool(
     client: DaemonClient,
     session_id: UUID,
     name: str,
     arguments: dict[str, Any],
+    server: Server | None = None,
 ) -> mcp_types.CallToolResult:
     result = await client.call(
         "tool.call",
@@ -112,6 +265,23 @@ async def dispatch_tool(
         )
 
     if result["decision"] != "allow":
+        if server is not None and _is_elicitable_email_denial(name, result):
+            await _send_log(
+                server,
+                "warning",
+                f"policy denied {name} (rule={result.get('rule')}); offering elicitation",
+            )
+            elicit_result = await _try_elicit_and_approve(
+                client,
+                server,
+                session_id,
+                name,
+                arguments,
+                result,
+            )
+            if elicit_result is not None:
+                return elicit_result
+
         rule = result.get("rule") or "no_rule"
         reason = result.get("reason") or ""
         text = f"policy denied (decision={result['decision']}, rule={rule}): {reason}"
@@ -120,6 +290,12 @@ async def dispatch_tool(
             "io.capabledeputy/rule": rule,
             "io.capabledeputy/effective_labels": result.get("effective_labels", []),
         }
+        if server is not None:
+            await _send_log(
+                server,
+                "warning",
+                f"policy denied {name}: rule={rule}",
+            )
         return mcp_types.CallToolResult(
             content=[mcp_types.TextContent(type="text", text=text)],
             isError=True,
@@ -138,16 +314,19 @@ async def dispatch_tool(
         "io.capabledeputy/labels_added": result.get("labels_added", []),
     }
 
+    if server is not None and result.get("labels_added"):
+        await _send_log(
+            server,
+            "info",
+            f"tool {name} succeeded; labels expanded with " + ", ".join(result["labels_added"]),
+        )
+
     return mcp_types.CallToolResult(
         content=[mcp_types.TextContent(type="text", text=text_payload)],
         structuredContent=structured,
         isError=False,
         **{"_meta": call_meta},
     )
-
-
-def _to_content(result: mcp_types.CallToolResult) -> list[mcp_types.ContentBlock]:
-    return list(result.content)
 
 
 async def build_server(client: DaemonClient, session_id: UUID) -> Server:
@@ -162,7 +341,29 @@ async def build_server(client: DaemonClient, session_id: UUID) -> Server:
         name: str,
         arguments: dict[str, Any] | None,
     ) -> mcp_types.CallToolResult:
-        return await dispatch_tool(client, session_id, name, arguments or {})
+        return await dispatch_tool(client, session_id, name, arguments or {}, server)
+
+    from capabledeputy.mcp_server import prompts as _prompts
+    from capabledeputy.mcp_server import resources as _resources
+
+    @server.list_resources()
+    async def _list_resources() -> list[mcp_types.Resource]:
+        return await _resources.list_resources(client)
+
+    @server.read_resource()
+    async def _read_resource(uri: Any) -> str:
+        return await _resources.read_resource(client, session_id, str(uri))
+
+    @server.list_prompts()
+    async def _list_prompts() -> list[mcp_types.Prompt]:
+        return _prompts.list_prompts()
+
+    @server.get_prompt()
+    async def _get_prompt(
+        name: str,
+        arguments: dict[str, str] | None,
+    ) -> mcp_types.GetPromptResult:
+        return _prompts.get_prompt(name, arguments)
 
     return server
 
