@@ -163,6 +163,20 @@ class SessionGraph:
         updated = replace(session, capability_set=new_caps, updated_at=datetime.now(UTC))
         await self._save(updated)
         self._sessions[session_id] = updated
+        if self._audit is not None:
+            await self._audit.write(
+                Event(
+                    event_type=EventType.CAPABILITY_GRANTED,
+                    session_id=session_id,
+                    payload={
+                        "kind": capability.kind.value,
+                        "pattern": capability.pattern,
+                        "expiry": capability.expiry.value,
+                        "origin": capability.origin.value,
+                        "audit_id": str(capability.audit_id),
+                    },
+                ),
+            )
         return updated
 
     async def abort(self, session_id: UUID) -> Session:

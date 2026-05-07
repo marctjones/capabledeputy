@@ -48,6 +48,12 @@ async def run_daemon(
     handlers.update(make_memory_handlers(app))
 
     daemon = Daemon(socket_path or default_socket_path(), handlers=handlers)
+
+    async def _relay_audit(event) -> None:
+        await daemon.publish("audit", event.to_dict())
+
+    app.audit.subscribe(_relay_audit)
+
     await daemon.serve()
 
 

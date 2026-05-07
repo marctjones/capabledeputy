@@ -34,6 +34,7 @@ class EventType(StrEnum):
 
     LABEL_PROPAGATED = "label.propagated"
     CAPABILITY_CHECKED = "capability.checked"
+    CAPABILITY_GRANTED = "capability.granted"
 
     TOOL_DISPATCHED = "tool.dispatched"
     TOOL_RETURNED = "tool.returned"

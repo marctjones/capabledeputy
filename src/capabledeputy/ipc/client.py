@@ -1,7 +1,16 @@
-"""Client side of the daemon JSON-RPC protocol over a Unix socket."""
+"""Client side of the daemon JSON-RPC protocol over a Unix socket.
+
+Two patterns:
+  - call(method, params) — request/response, one shot. Each call opens
+    a fresh connection, sends, reads the response, closes.
+  - subscribe(streams) — long-lived connection that yields server-pushed
+    `event` notifications. Closing the iterator closes the connection
+    and unsubscribes everything implicitly.
+"""
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,6 +21,7 @@ from anyio.abc import SocketStream
 
 from capabledeputy.ipc.rpc import (
     INTERNAL_ERROR,
+    JSONRPC_VERSION,
     RpcRequest,
     parse_response,
 )
@@ -58,3 +68,59 @@ class DaemonClient:
                         raise DaemonError(f"{msg} (code {code})")
                     return response.result
             raise DaemonError("connection closed without response")
+
+    async def subscribe(
+        self,
+        streams: list[str],
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Open a long-lived connection and yield event notifications.
+
+        Yields one dict per event with keys {stream, data}. Caller must
+        consume the iterator (or close the underlying generator) to
+        unsubscribe; closing the connection on the daemon side also
+        ends iteration.
+        """
+        return _subscribe_iter(self._socket_path, streams)
+
+
+async def _subscribe_iter(
+    socket_path: Path,
+    streams: list[str],
+) -> AsyncIterator[dict[str, Any]]:
+    try:
+        stream = await anyio.connect_unix(str(socket_path))
+    except (FileNotFoundError, ConnectionRefusedError) as e:
+        raise DaemonNotRunningError(f"daemon not running at {socket_path}") from e
+
+    try:
+        sub = (
+            json.dumps(
+                {
+                    "jsonrpc": JSONRPC_VERSION,
+                    "method": "subscribe",
+                    "id": 1,
+                    "params": {"streams": streams},
+                },
+                separators=(",", ":"),
+            )
+            + "\n"
+        )
+        await stream.send(sub.encode("utf-8"))
+
+        buf = b""
+        async for chunk in stream:
+            buf += chunk
+            while b"\n" in buf:
+                line, _, buf = buf.partition(b"\n")
+                if not line.strip():
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("method") == "event":
+                    yield obj.get("params") or {}
+                # subscribe response and other request/response messages
+                # are ignored here; consumers want event notifications.
+    finally:
+        await stream.aclose()

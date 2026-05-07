@@ -65,6 +65,7 @@ def test_event_type_taxonomy_matches_design() -> None:
         "policy.decided",
         "label.propagated",
         "capability.checked",
+        "capability.granted",
         "tool.dispatched",
         "tool.returned",
         "approval.requested",

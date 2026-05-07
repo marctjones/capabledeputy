@@ -1,4 +1,10 @@
-"""Async Unix-socket JSON-RPC server."""
+"""Async Unix-socket JSON-RPC server with subscription support.
+
+Handlers can register (request/response) the usual way. Connections
+can additionally subscribe to named event streams; the daemon pushes
+JSON-RPC notifications (no `id`) to subscribed connections as events
+are emitted via `Daemon.publish(stream, payload)`.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +19,7 @@ from anyio.abc import SocketStream
 from capabledeputy.daemon.handlers import Handler, default_handlers
 from capabledeputy.ipc.rpc import (
     INTERNAL_ERROR,
+    JSONRPC_VERSION,
     METHOD_NOT_FOUND,
     PARSE_ERROR,
     RpcResponse,
@@ -30,12 +37,58 @@ class Daemon:
         self._socket_path = socket_path
         self._handlers = handlers or default_handlers()
         self._shutdown_event = anyio.Event()
+        self._subscribers: dict[str, set[SocketStream]] = {}
+        self._connection_streams: dict[int, set[str]] = {}
+        self._sub_lock = anyio.Lock()
 
     def register(self, method: str, handler: Handler) -> None:
         self._handlers[method] = handler
 
     def request_shutdown(self) -> None:
         self._shutdown_event.set()
+
+    async def publish(self, stream_name: str, payload: dict) -> None:
+        """Push a JSON-RPC notification to all subscribers of the given stream."""
+        async with self._sub_lock:
+            streams = list(self._subscribers.get(stream_name, ()))
+        if not streams:
+            return
+        line = (
+            json.dumps(
+                {
+                    "jsonrpc": JSONRPC_VERSION,
+                    "method": "event",
+                    "params": {"stream": stream_name, "data": payload},
+                },
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode("utf-8")
+        for s in streams:
+            try:
+                await s.send(line)
+            except (anyio.ClosedResourceError, anyio.BrokenResourceError, OSError):
+                await self._unsubscribe_stream(s)
+
+    async def _subscribe_stream(self, stream: SocketStream, name: str) -> None:
+        async with self._sub_lock:
+            self._subscribers.setdefault(name, set()).add(stream)
+            self._connection_streams.setdefault(id(stream), set()).add(name)
+
+    async def _unsubscribe_stream(
+        self,
+        stream: SocketStream,
+        name: str | None = None,
+    ) -> None:
+        async with self._sub_lock:
+            sub_names = self._connection_streams.get(id(stream), set())
+            if name is not None:
+                sub_names = {name} if name in sub_names else set()
+            for s_name in list(sub_names):
+                self._subscribers.get(s_name, set()).discard(stream)
+                self._connection_streams.get(id(stream), set()).discard(s_name)
+            if not self._connection_streams.get(id(stream)):
+                self._connection_streams.pop(id(stream), None)
 
     async def serve(self) -> None:
         with suppress(FileNotFoundError):
@@ -68,6 +121,7 @@ class Daemon:
                     if line.strip():
                         await self._handle_line(stream, line)
         finally:
+            await self._unsubscribe_stream(stream)
             await stream.aclose()
 
     async def _handle_line(self, stream: SocketStream, line: bytes) -> None:
@@ -85,6 +139,24 @@ class Daemon:
             response = RpcResponse(id=request.id, result={"ok": True})
             await stream.send(response.encode())
             self.request_shutdown()
+            return
+
+        if request.method == "subscribe":
+            streams_to_join = request.params.get("streams") or []
+            for s in streams_to_join:
+                await self._subscribe_stream(stream, str(s))
+            response = RpcResponse(
+                id=request.id,
+                result={"subscribed": list(streams_to_join)},
+            )
+            await stream.send(response.encode())
+            return
+
+        if request.method == "unsubscribe":
+            stream_name = request.params.get("stream")
+            await self._unsubscribe_stream(stream, stream_name)
+            response = RpcResponse(id=request.id, result={"ok": True})
+            await stream.send(response.encode())
             return
 
         handler = self._handlers.get(request.method)
