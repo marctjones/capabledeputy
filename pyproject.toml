@@ -28,6 +28,7 @@ dependencies = [
     "rich>=13.7",
     "litellm>=1.50",
     "mcp>=1.0",
+    "textual>=0.85",
 ]
 
 [project.scripts]

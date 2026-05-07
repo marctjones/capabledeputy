@@ -87,6 +87,14 @@ def version() -> None:
         console.print(f"capdep {__version__} (daemon not running)")
 
 
+@app.command("tui")
+def tui_command() -> None:
+    """Launch the Textual TUI for live monitoring and approvals."""
+    from capabledeputy.tui.app import run
+
+    run()
+
+
 @app.command("send")
 def send_message(
     session_id: str = typer.Argument(..., help="Session id"),
