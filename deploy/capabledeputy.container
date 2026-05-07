@@ -1,0 +1,36 @@
+# systemd-quadlet unit for CapableDeputy.
+# Drop into ~/.config/containers/systemd/ and run:
+#   systemctl --user daemon-reload
+#   systemctl --user start capabledeputy.service
+#
+# Provides a rootless, auto-restarting daemon with the right volume
+# mounts and env vars. See Containerfile for the build target.
+
+[Unit]
+Description=CapableDeputy security runtime for personal AI agents
+After=default.target
+
+[Container]
+Image=localhost/capabledeputy:0.1
+ContainerName=capdep
+
+# State + IPC volumes
+Volume=%h/.local/share/capabledeputy:/var/lib/capabledeputy:Z
+Volume=%h/.run/capdep:/run/capdep:Z
+
+# Environment
+Environment=CAPDEP_DATA_DIR=/var/lib/capabledeputy
+Environment=CAPDEP_SOCKET=/run/capdep/capdep.sock
+Environment=CAPDEP_LLM_MODEL=claude-haiku-4-5
+# ANTHROPIC_API_KEY is read from the host environment file (below)
+EnvironmentFile=%h/.config/capabledeputy/env
+
+# Default-deny network: only allow Anthropic API egress
+# (uncomment when capabledeputy.network is defined separately)
+# Network=capabledeputy.network
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
