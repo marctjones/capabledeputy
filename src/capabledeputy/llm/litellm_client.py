@@ -72,7 +72,7 @@ def _response_from_openai(raw: Any, name_map: dict[str, str]) -> LLMResponse:
         tool_calls = tuple(
             ToolCall(
                 id=tc.id,
-                name=name_map.get(tc.function.name, tc.function.name),
+                name=name_map.get(tc.function.name, tc.function.name) or tc.function.name,
                 args=json.loads(tc.function.arguments or "{}"),
             )
             for tc in msg.tool_calls
