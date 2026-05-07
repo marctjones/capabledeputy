@@ -95,6 +95,108 @@ def tui_command() -> None:
     run()
 
 
+@app.command("dry-run")
+def dry_run_command(
+    program: str = typer.Argument(..., help="Path to a programmatic-mode .py source file"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON instead of rendered output"),
+) -> None:
+    """Statically analyze a programmatic-mode source against the policy.
+
+    Parses + symbolically executes the program; reports every predicted
+    tool call with its predicted policy decision. No tool handlers run
+    and no session state mutates.
+    """
+    import json as _json
+    from pathlib import Path
+
+    source = Path(program).read_text(encoding="utf-8")
+    client = DaemonClient(default_socket_path())
+    result = anyio.run(client.call, "programmatic.dry_run", {"source": source})
+
+    if json_output:
+        console.print(_json.dumps(result, indent=2))
+        raise typer.Exit(code=0 if result["ok"] else 1)
+
+    if result.get("parse_error"):
+        err_console.print(f"[red]parse error:[/red] {result['parse_error']}")
+        raise typer.Exit(code=2)
+
+    for call in result["tool_calls"]:
+        decision = call["decision"]
+        color = {"allow": "green", "deny": "red", "require_approval": "yellow"}.get(
+            decision,
+            "white",
+        )
+        line = f"line {call['line']}" if call["line"] is not None else "?"
+        labels = (
+            f" labels={','.join(call['arg_labels'])}" if call["arg_labels"] else ""
+        )
+        rule = f" rule={call['rule']}" if call["rule"] else ""
+        console.print(
+            f"  [{color}]{decision}[/{color}] {call['tool']}({line}){labels}{rule}",
+        )
+
+    if result["violations"]:
+        n = len(result["violations"])
+        err_console.print(f"[red]{n} violation(s) — program would not execute[/red]")
+        raise typer.Exit(code=1)
+    if result.get("runtime_error"):
+        err_console.print(f"[red]runtime error:[/red] {result['runtime_error']}")
+        raise typer.Exit(code=3)
+    console.print(f"[green]ok[/green] — {len(result['tool_calls'])} call(s) predicted")
+
+
+@app.command("run")
+def run_command(
+    session_id: str = typer.Argument(..., help="Session id to run inside"),
+    program: str = typer.Argument(..., help="Path to a programmatic-mode .py source file"),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON instead of rendered output"),
+) -> None:
+    """Execute a programmatic-mode source against a session.
+
+    Each `call(tool_name, **kwargs)` dispatches through LabeledToolClient
+    so policy + audit + label propagation are identical to turn-level
+    mode. A non-ALLOW decision halts the program with the rule recorded.
+    """
+    import json as _json
+    from pathlib import Path
+
+    source = Path(program).read_text(encoding="utf-8")
+    client = DaemonClient(default_socket_path())
+    result = anyio.run(
+        client.call,
+        "programmatic.run",
+        {"source": source, "session_id": session_id},
+    )
+
+    if json_output:
+        console.print(_json.dumps(result, indent=2))
+        raise typer.Exit(code=0 if result["ok"] else 1)
+
+    if result.get("parse_error"):
+        err_console.print(f"[red]parse error:[/red] {result['parse_error']}")
+        raise typer.Exit(code=2)
+
+    for call in result["tool_calls"]:
+        decision = call["decision"]
+        color = {"allow": "green", "deny": "red", "require_approval": "yellow"}.get(
+            decision,
+            "white",
+        )
+        rule = f" rule={call['rule']}" if call["rule"] else ""
+        console.print(f"  [{color}]{decision}[/{color}] {call['tool']}{rule}")
+
+    if result.get("error"):
+        err_console.print(f"[red]halted:[/red] {result['error']}")
+        raise typer.Exit(code=1)
+
+    if result.get("return_value"):
+        rv = result["return_value"]
+        labels = ",".join(rv["labels"]) or "-"
+        console.print(f"[bold]return:[/bold] {rv['raw']!r} [dim](labels={labels})[/dim]")
+    console.print(f"[green]ok[/green] — {len(result['tool_calls'])} call(s) executed")
+
+
 @app.command("send")
 def send_message(
     session_id: str = typer.Argument(..., help="Session id"),

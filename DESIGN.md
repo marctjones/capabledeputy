@@ -639,7 +639,7 @@ Phases 0–7 of ROADMAP.md are complete and verified end-to-end:
 | TUI five-pane layout with real-time event push + session-graph toggle | §10.3 |
 | Container deployment (Containerfile + quadlet + docs) | §14 |
 | Programmatic mode interpreter + static analyzer + `capdep run` / `capdep dry-run` | §5.3, §10.5 |
-| 336+ unit tests + 2 real-LLM integration tests | §12 |
+| 382 unit tests + 2 real-LLM integration tests | §12 |
 
 See ROADMAP.md for v0.2 / v0.3 / v0.4 plans, including the MCP
 Resources / Prompts / Elicitation expansion, programmatic mode,
