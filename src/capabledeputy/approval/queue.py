@@ -8,6 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from capabledeputy.approval.model import ApprovalAction, ApprovalRequest, ApprovalStatus
+from capabledeputy.approval.pattern import ApprovalPatternRegistry
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.capabilities import Capability
@@ -23,10 +24,15 @@ class ApprovalStateError(RuntimeError):
 
 
 class ApprovalQueue:
-    def __init__(self, audit: AuditWriter | None = None) -> None:
+    def __init__(
+        self,
+        audit: AuditWriter | None = None,
+        pattern_registry: ApprovalPatternRegistry | None = None,
+    ) -> None:
         self._next_id = 1
         self._requests: dict[int, ApprovalRequest] = {}
         self._audit = audit
+        self.patterns = pattern_registry or ApprovalPatternRegistry()
 
     def __len__(self) -> int:
         return len(self._requests)
@@ -86,6 +92,15 @@ class ApprovalQueue:
                     },
                 ),
             )
+        rule = self.patterns.find_match(request)
+        if rule is not None:
+            self.patterns.increment_use(rule.id)
+            await self.approve(
+                request.id,
+                decided_by=f"pattern:{rule.id}",
+                decision_scope={"matched_rule": str(rule.id)},
+            )
+            return self._requests[request.id]
         return request
 
     async def approve(

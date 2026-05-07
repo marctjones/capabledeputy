@@ -442,6 +442,7 @@ Each scenario must produce a clean trace inspectable via `capdep trace`.
 - **Engagement with OpenClaw RFC #39160** — once v0.1 demos cleanly, propose CapableDeputy as the answer to the open RFC. Not a dependency, but strategic.
 - **Skill format adapter** — a `SKILL.md` → MCP-tool ingest path so OpenClaw skills can be hosted under CapableDeputy with default-restrictive labels. Useful ecosystem play; v0.2.
 - **Per-tool container isolation** — beyond v0.2's all-in-one container, run each MCP server in its own container with policy-driven network and filesystem views. Strongest blast-radius containment; significant operational complexity. Deferred to v0.3+.
+- **Per-session unforgeable tool tokens** — strict object-capability semantics for tool names. Each session sees capabilities under fresh random tokens; the LLM cannot reference tools outside its compartment because it doesn't know their session-specific names. Phase 7b's capability-driven visibility filter covers ~95% of the architectural benefit; the token aliasing is defense-in-depth for hypothetical dispatcher bugs and earns provable separation properties in formal verification. Deferred to v0.3+.
 
 ## 16. Naming and Identity
 
