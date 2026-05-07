@@ -37,9 +37,7 @@ async def app(tmp_path: Path) -> App:
             [
                 LLMResponse(
                     content="reading prescription details",
-                    tool_calls=(
-                        ToolCall(id="r1", name="memory.read", args={"key": "rx"}),
-                    ),
+                    tool_calls=(ToolCall(id="r1", name="memory.read", args={"key": "rx"}),),
                     finish_reason=FinishReason.TOOL_CALLS,
                 ),
                 LLMResponse(

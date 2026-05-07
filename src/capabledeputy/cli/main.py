@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 import anyio
 import typer
 from rich.console import Console
 
+from capabledeputy.cli.approval import approval_app
 from capabledeputy.cli.audit import audit_app, watch_command
 from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.session import session_app
@@ -29,7 +32,45 @@ app.add_typer(session_app, name="session")
 app.add_typer(audit_app, name="audit")
 app.add_typer(policy_app, name="policy")
 app.add_typer(tool_app, name="tool")
+app.add_typer(approval_app, name="approval")
 app.command("watch")(watch_command)
+
+
+@app.command("trace")
+def trace_command(
+    session_id: Annotated[str, typer.Argument()],
+    turn: Annotated[int | None, typer.Option(help="Filter by turn id")] = None,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Print the trace events for a session, optionally filtered to one turn."""
+    import json as _json
+
+    client = DaemonClient(default_socket_path())
+    params: dict[str, object] = {"session_id": session_id, "limit": 1000}
+    result = anyio.run(client.call, "audit.list", params)
+    events = result["events"]
+    if turn is not None:
+        events = [e for e in events if e.get("turn_id") == turn]
+
+    if json_output:
+        console.print(_json.dumps(events, indent=2))
+        return
+
+    for ev in events:
+        marker = ""
+        if ev["event_type"] == "policy.decided":
+            decision = ev.get("payload", {}).get("decision", "?")
+            color = {"allow": "green", "deny": "red", "require_approval": "yellow"}.get(
+                decision,
+                "white",
+            )
+            marker = f" [{color}]{decision}[/{color}]"
+        console.print(
+            f"[dim]{ev['timestamp']}[/dim] "
+            f"[bold]{ev['event_type']}[/bold]{marker}"
+            f" turn={ev.get('turn_id')} step={ev.get('step_id')}",
+        )
+
 
 console = Console()
 err_console = Console(stderr=True)
