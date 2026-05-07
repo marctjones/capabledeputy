@@ -1,0 +1,58 @@
+# Starter pattern library — copy and edit for your own use.
+#
+# Each pattern auto-approves matching future requests, but every
+# auto-approval still emits an APPROVAL_REQUESTED + APPROVAL_APPROVED
+# audit pair. Patterns are revocable; revocation propagates to in-flight
+# approvals.
+#
+# Validation rules (in src/capabledeputy/approval/pattern.py):
+#   - target_pattern cannot be a bare `*`. Recipient/vendor globs must
+#     be domain-anchored (e.g. `*@example.com`) or concrete.
+#   - ttl_hours <= 720 (30 days). Re-approve longer-lived workflows
+#     deliberately.
+#   - payload_pattern is optional and uses fnmatch glob semantics.
+#
+# Apply with:
+#   capdep approval pattern import configs/approval-patterns.yaml
+# (or programmatically via capabledeputy.approval.library.apply_library)
+
+patterns:
+  # Recurring single-recipient prescription emails. Tighten the
+  # recipient pattern before using; auto-approving outbound mail to a
+  # specific domain (`*@example.com`) still requires the user has
+  # vetted who lives at that domain.
+  - name: spouse-prescription-emails
+    action: SEND_EMAIL
+    target_pattern: "spouse@example.com"
+    payload_pattern: "*prescription*"
+    ttl_hours: 168          # 7 days
+    created_by: "library:family-prescription"
+
+  # Daily-briefing summary back to the user's own address. Lower-stakes
+  # because the recipient is the user themselves; payload pattern is
+  # the canonical briefing prefix.
+  - name: self-daily-briefing
+    action: SEND_EMAIL
+    target_pattern: "me@example.com"
+    payload_pattern: "Daily briefing*"
+    ttl_hours: 720          # 30 days, the cap
+    created_by: "library:daily-briefing"
+
+  # Recurring grocery purchases at a specific vendor. The amount
+  # check lives on the QUEUE_PURCHASE Capability; this pattern only
+  # auto-approves the workflow class.
+  - name: groceries-amazon-fresh
+    action: QUEUE_PURCHASE
+    target_pattern: "amazon-fresh"
+    ttl_hours: 168
+    created_by: "library:groceries"
+
+  # Cross-session declassification approvals for the standard
+  # health → spouse summary workflow. Pairs with prescription-review
+  # MCP prompt.
+  - name: prescription-review-declassify
+    action: DECLASSIFY
+    target_pattern: "prescription-review"
+    payload_pattern: "DoseSummary*"
+    ttl_hours: 24
+    created_by: "library:prescription-review"

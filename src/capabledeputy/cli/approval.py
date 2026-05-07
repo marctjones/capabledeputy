@@ -216,3 +216,26 @@ def pattern_revoke(
         err_console.print(f"[red]{result['error']}[/red]")
         raise typer.Exit(code=1)
     console.print(f"[yellow]pattern {pattern_id[:8]} revoked[/yellow]")
+
+
+@pattern_app.command("import")
+def pattern_import(
+    path: Annotated[str, typer.Argument(help="Path to a YAML pattern library")],
+) -> None:
+    """Import a YAML pattern library into the active registry.
+
+    Each entry is validated through the same checks as `pattern create`
+    (no bare `*`, TTL ≤ 30 days, domain-anchored globs); a single bad
+    entry rejects the whole file rather than partially loading.
+    """
+    result = _call("approval_pattern.import", {"path": path})
+    if "error" in result:
+        err_console.print(f"[red]library rejected: {result['error']}[/red]")
+        raise typer.Exit(code=1)
+    n = len(result["patterns"])
+    console.print(f"[green]imported {n} pattern(s)[/green] from {path}")
+    for p in result["patterns"]:
+        console.print(
+            f"  {p['id'][:8]}  {p['action']:16}  {p['target_pattern']}  "
+            f"expires {p['expires_at']}",
+        )

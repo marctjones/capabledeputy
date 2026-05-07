@@ -239,9 +239,9 @@ high-leverage in v0.1.
 | Programmatic planner loop (LLM emits a program per turn) | DONE | `ca38d3e` — `agent/programmatic_loop.py`; auto-dispatch via session flag; `--mode programmatic` CLI override |
 | PROGRAMMATIC selection in mode dispatcher | DONE | `ca38d3e` — prefer + force overrides |
 | Per-session unforgeable tool tokens (strict ocap, opt-in) | DONE | `ca38d3e` — deterministic per-session aliases; real-LLM comparison test shows no model-perf delta on the prescription scenario |
-| `SKILL.md` adapter for OpenClaw skills | PLANNED | Ecosystem |
-| Local-model planner option | PARTIALLY DONE | LiteLLM already supports Ollama; needs a doc note + sample config |
-| Approval pattern library | PARTIALLY DONE | Pattern infrastructure shipped in 7c; pre-baked patterns are content not code |
+| `SKILL.md` adapter for OpenClaw skills | DONE | YAML frontmatter + Markdown body; runs through quarantined LLM; optional schema for structured extraction |
+| Local-model planner option | DONE | `docs/local-model-planner.md` + `configs/local-planner.env`; daemon honours `CAPDEP_QUARANTINED_LLM_MODEL` and `CAPDEP_SKILLS_DIR` |
+| Approval pattern library | DONE | `configs/approval-patterns.yaml` starter pack + `capdep approval pattern import <path>` CLI |
 
 ## v0.4+ — Federation and formal methods
 

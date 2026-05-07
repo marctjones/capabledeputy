@@ -25,6 +25,7 @@ class App:
         audit_log_path: Path | None = None,
         llm_client: LLMClient | None = None,
         quarantined_llm: LLMClient | None = None,
+        skills_dir: Path | None = None,
     ) -> None:
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(state_db_path or default_state_db_path())
@@ -37,7 +38,9 @@ class App:
         self.tool_client = LabeledToolClient(self.registry, self.graph, self.audit)
         self.llm_client: LLMClient | None = llm_client
         self.quarantined_llm: LLMClient | None = quarantined_llm or llm_client
+        self._skills_dir = skills_dir
         self._register_native_tools()
+        self._maybe_load_skills()
 
     def _register_native_tools(self) -> None:
         for tool in make_memory_tools(self.memory):
@@ -49,6 +52,21 @@ class App:
         if self.quarantined_llm is not None:
             for tool in make_extract_tools(self.memory, self.quarantined_llm):
                 self.registry.register(tool)
+
+    def _maybe_load_skills(self) -> None:
+        if self._skills_dir is None or self.quarantined_llm is None:
+            return
+        if not self._skills_dir.is_dir():
+            return
+        # Local import keeps PyYAML optional for users who don't use skills.
+        from capabledeputy.skills.loader import load_skill_directory
+
+        load_skill_directory(
+            self._skills_dir,
+            self.registry,
+            self.quarantined_llm,
+            skip_on_duplicate=True,
+        )
 
     async def startup(self) -> None:
         await self.store.initialize()

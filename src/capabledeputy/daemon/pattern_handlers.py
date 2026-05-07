@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from capabledeputy.app import App
+from capabledeputy.approval.library import (
+    PatternLibraryError,
+    apply_library,
+    load_library_file,
+)
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.approval.pattern import (
     ApprovalPatternRule,
@@ -39,8 +45,20 @@ def make_pattern_handlers(app: App) -> dict[str, Handler]:
             return {"error": "pattern not found"}
         return revoked.to_dict()
 
+    async def pattern_import(params: dict[str, Any]) -> dict[str, Any]:
+        path = Path(str(params["path"]))
+        if not path.is_file():
+            return {"error": f"library file not found: {path}"}
+        try:
+            entries = load_library_file(path)
+            rules = apply_library(entries, app.approval_queue.patterns)
+        except PatternLibraryError as e:
+            return {"error": str(e)}
+        return {"patterns": [r.to_dict() for r in rules]}
+
     return {
         "approval_pattern.list": pattern_list,
         "approval_pattern.create": pattern_create,
         "approval_pattern.revoke": pattern_revoke,
+        "approval_pattern.import": pattern_import,
     }

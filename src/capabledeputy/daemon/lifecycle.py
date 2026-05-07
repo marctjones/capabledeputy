@@ -31,10 +31,20 @@ async def run_daemon(
     import os
 
     chosen_model = model or os.environ.get("CAPDEP_LLM_MODEL", "claude-haiku-4-5")
+    quarantined_model = os.environ.get("CAPDEP_QUARANTINED_LLM_MODEL")
+    quarantined_client = None
+    if quarantined_model:
+        quarantined_client = LiteLLMClient(model=quarantined_model)
+
+    skills_env = os.environ.get("CAPDEP_SKILLS_DIR")
+    skills_dir = Path(skills_env) if skills_env else None
+
     app = App(
         state_db_path=state_db_path,
         audit_log_path=audit_log_path,
         llm_client=LiteLLMClient(model=chosen_model),
+        quarantined_llm=quarantined_client,
+        skills_dir=skills_dir,
     )
     await app.startup()
 

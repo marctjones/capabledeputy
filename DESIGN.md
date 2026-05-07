@@ -639,7 +639,10 @@ Phases 0–7 of ROADMAP.md are complete and verified end-to-end:
 | TUI five-pane layout with real-time event push + session-graph toggle | §10.3 |
 | Container deployment (Containerfile + quadlet + docs) | §14 |
 | Programmatic mode interpreter + static analyzer + `capdep run` / `capdep dry-run` | §5.3, §10.5 |
-| 382 unit tests + 2 real-LLM integration tests | §12 |
+| SKILL.md adapter (`src/capabledeputy/skills/`) | §10.7 |
+| Approval pattern library loader (`src/capabledeputy/approval/library.py`) | §10.11 |
+| Local-model planner config + docs (`docs/local-model-planner.md`) | §11 |
+| 424 unit tests + 3 real-LLM integration tests | §12 |
 
 See ROADMAP.md for v0.2 / v0.3 / v0.4 plans, including the MCP
 Resources / Prompts / Elicitation expansion, programmatic mode,
