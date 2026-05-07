@@ -65,7 +65,7 @@ def build_tool_descriptions(registry: ToolRegistry) -> list[ToolDescription]:
         ToolDescription(
             name=t.name,
             description=t.description,
-            parameters_schema={"type": "object"},
+            parameters_schema=t.parameters_schema,
         )
         for t in registry.list()
     ]

@@ -24,6 +24,14 @@ from capabledeputy.llm.types import (
 )
 
 
+def _sanitize_tool_name(name: str) -> str:
+    """Anthropic's tool-name regex is ^[a-zA-Z0-9_-]{1,128}$, which excludes
+    dots. CapableDeputy tool names use dots (memory.read, etc.) for clarity,
+    so we substitute dots with underscores at the API boundary and reverse
+    the mapping when parsing tool calls back."""
+    return name.replace(".", "_")
+
+
 def _message_to_openai(msg: Message) -> dict[str, Any]:
     out: dict[str, Any] = {"role": msg.role.value, "content": msg.content}
     if msg.tool_calls:
@@ -31,14 +39,17 @@ def _message_to_openai(msg: Message) -> dict[str, Any]:
             {
                 "id": tc.id,
                 "type": "function",
-                "function": {"name": tc.name, "arguments": json.dumps(tc.args)},
+                "function": {
+                    "name": _sanitize_tool_name(tc.name),
+                    "arguments": json.dumps(tc.args),
+                },
             }
             for tc in msg.tool_calls
         ]
     if msg.tool_call_id:
         out["tool_call_id"] = msg.tool_call_id
     if msg.name:
-        out["name"] = msg.name
+        out["name"] = _sanitize_tool_name(msg.name)
     return out
 
 
@@ -46,14 +57,14 @@ def _tool_to_openai(tool: ToolDescription) -> dict[str, Any]:
     return {
         "type": "function",
         "function": {
-            "name": tool.name,
+            "name": _sanitize_tool_name(tool.name),
             "description": tool.description,
             "parameters": tool.parameters_schema or {"type": "object"},
         },
     }
 
 
-def _response_from_openai(raw: Any) -> LLMResponse:
+def _response_from_openai(raw: Any, name_map: dict[str, str]) -> LLMResponse:
     choice = raw.choices[0]
     msg = choice.message
     tool_calls: tuple[ToolCall, ...] = ()
@@ -61,7 +72,7 @@ def _response_from_openai(raw: Any) -> LLMResponse:
         tool_calls = tuple(
             ToolCall(
                 id=tc.id,
-                name=tc.function.name,
+                name=name_map.get(tc.function.name, tc.function.name),
                 args=json.loads(tc.function.arguments or "{}"),
             )
             for tc in msg.tool_calls
@@ -110,5 +121,6 @@ class LiteLLMClient:
         if payload_tools:
             kwargs["tools"] = payload_tools
 
+        name_map = {_sanitize_tool_name(t.name): t.name for t in tools}
         raw = await litellm.acompletion(**kwargs)
-        return _response_from_openai(raw)
+        return _response_from_openai(raw, name_map)

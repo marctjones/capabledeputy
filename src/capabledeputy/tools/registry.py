@@ -46,6 +46,9 @@ class ToolDefinition:
     target_arg: str = "target"
     amount_arg: str | None = None
     inherent_labels: frozenset[Label] = field(default_factory=frozenset)
+    parameters_schema: dict[str, Any] = field(
+        default_factory=lambda: {"type": "object", "properties": {}, "required": []},
+    )
 
     def extract_target(self, args: dict[str, Any]) -> str:
         return str(args.get(self.target_arg, ""))

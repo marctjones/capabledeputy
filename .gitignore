@@ -41,3 +41,11 @@ Thumbs.db
 state.db
 audit.jsonl
 *.sock
+
+# Secrets
+*.key
+*.KEY
+*.pem
+.env
+.env.*
+CLAUDEAPI.*

@@ -60,16 +60,38 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="memory.write",
-            description="Write a labeled value to the memory store",
+            description=(
+                "Write a value to a key in the memory store. Required args: "
+                "key (string), value (string)."
+            ),
             capability_kind=CapabilityKind.WRITE_FS,
             handler=memory_write,
             target_arg="key",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Memory key to write."},
+                    "value": {"type": "string", "description": "Value to store."},
+                },
+                "required": ["key", "value"],
+            },
         ),
         ToolDefinition(
             name="memory.read",
-            description="Read a labeled value (and its labels) from the memory store",
+            description=(
+                "Read the value at a key in the memory store. Returns "
+                "{found, value} and propagates the value's labels into "
+                "the calling session. Required args: key (string)."
+            ),
             capability_kind=CapabilityKind.READ_FS,
             handler=memory_read,
             target_arg="key",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Memory key to read."},
+                },
+                "required": ["key"],
+            },
         ),
     ]

@@ -68,10 +68,27 @@ def make_purchase_tools(queue: PurchaseQueue) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="purchase.queue",
-            description="Queue a purchase for human approval (Clark-Wilson gate)",
+            description=(
+                "Queue a purchase for human approval. Does not actually buy "
+                "anything; the request is recorded for the user to review. "
+                "Required args: vendor (string), item (string), amount "
+                "(integer, dollars)."
+            ),
             capability_kind=CapabilityKind.QUEUE_PURCHASE,
             handler=purchase_queue_handler,
             target_arg="vendor",
             amount_arg="amount",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "vendor": {"type": "string", "description": "Vendor name."},
+                    "item": {"type": "string", "description": "What to buy."},
+                    "amount": {
+                        "type": "integer",
+                        "description": "Amount in whole dollars.",
+                    },
+                },
+                "required": ["vendor", "item", "amount"],
+            },
         ),
     ]
