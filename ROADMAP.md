@@ -235,7 +235,7 @@ high-leverage in v0.1.
 | Daemon subscription primitive (publish/subscribe over JSON-RPC) | DONE | `4919fc4` |
 | MCP `tools/list_changed` on capability changes | DONE | `29d0b64` |
 | Real-time TUI event push via subscription | DONE | `29d0b64` |
-| Programmatic execution mode (DESIGN.md §5.3, §10.5) | NEXT | Python-AST-subset interpreter; label-aware values; static policy analyzer; `capdep run` / `capdep dry-run` |
+| Programmatic execution mode (DESIGN.md §5.3, §10.5) | DONE | `be1f43e` — Python-AST-subset interpreter; label-aware values; static policy analyzer; `capdep run` / `capdep dry-run`; 47 new tests |
 | Per-session unforgeable tool tokens (strict ocap) | PLANNED | DESIGN.md §15 — defense-in-depth on top of 7b visibility filter |
 | `SKILL.md` adapter for OpenClaw skills | PLANNED | Ecosystem |
 | Local-model planner option | PARTIALLY DONE | LiteLLM already supports Ollama; needs a doc note + sample config |
