@@ -21,6 +21,7 @@ def _tool_to_dict(tool: ToolDefinition) -> dict[str, Any]:
         "target_arg": tool.target_arg,
         "amount_arg": tool.amount_arg,
         "inherent_labels": sorted(label.value for label in tool.inherent_labels),
+        "parameters_schema": tool.parameters_schema,
     }
 
 

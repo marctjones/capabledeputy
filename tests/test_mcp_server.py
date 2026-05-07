@@ -76,6 +76,17 @@ async def test_discover_tools_finds_native_tools(paths: dict[str, Path]) -> None
         assert "memory.write" in names
         assert "purchase.queue" in names
 
+        memory_read = next(t for t in tools if t.name == "memory.read")
+        assert memory_read.inputSchema.get("properties", {}).get("key") is not None
+        assert memory_read.annotations is not None
+        assert memory_read.annotations.readOnlyHint is True
+        assert memory_read.meta is not None
+        assert memory_read.meta.get("io.capabledeputy/capability_kind") == "READ_FS"
+
+        purchase = next(t for t in tools if t.name == "purchase.queue")
+        assert purchase.annotations is not None
+        assert purchase.annotations.destructiveHint is True
+
         await client.call("shutdown")
 
 
@@ -96,9 +107,12 @@ async def test_dispatch_tool_allow_returns_output(paths: dict[str, Path]) -> Non
             "memory.write",
             {"key": "k", "value": "v"},
         )
-        assert len(result) == 1
-        text = result[0].text
+        assert result.isError is False
+        assert len(result.content) == 1
+        text = result.content[0].text
         assert "ok" in text.lower()
+        assert result.structuredContent is not None
+        assert result.structuredContent.get("ok") is True
 
         await client.call("shutdown")
 
@@ -118,10 +132,12 @@ async def test_dispatch_tool_deny_returns_policy_message(paths: dict[str, Path])
             "memory.read",
             {"key": "k"},
         )
-        assert len(result) == 1
-        text = result[0].text
+        assert result.isError is True
+        text = result.content[0].text
         assert "policy denied" in text.lower()
         assert "decision=deny" in text.lower()
+        assert result.meta is not None
+        assert result.meta.get("io.capabledeputy/decision") == "deny"
 
         await client.call("shutdown")
 
@@ -144,9 +160,14 @@ async def test_dispatch_tool_includes_labels_added_in_response(paths: dict[str, 
             "memory.read",
             {"key": "labs"},
         )
-        text = result[0].text
+        text = result.content[0].text
         assert "session labels expanded" in text
         assert "confidential.health" in text
+        assert result.meta is not None
+        assert "confidential.health" in result.meta.get(
+            "io.capabledeputy/labels_added",
+            [],
+        )
 
         await client.call("shutdown")
 
@@ -178,8 +199,8 @@ async def test_full_mcp_scenario_blocks_egress_after_health_read(
         client = DaemonClient(paths["socket"])
 
         read_result = await dispatch_tool(client, s.id, "memory.read", {"key": "rx"})
-        assert "policy denied" not in read_result[0].text.lower()
-        assert "confidential.health" in read_result[0].text
+        assert read_result.isError is False
+        assert "confidential.health" in read_result.content[0].text
 
         purchase_result = await dispatch_tool(
             client,
@@ -187,8 +208,8 @@ async def test_full_mcp_scenario_blocks_egress_after_health_read(
             "purchase.queue",
             {"vendor": "pharmacy", "item": "rx", "amount": 50},
         )
-        assert "policy denied" in purchase_result[0].text.lower()
-        assert "health-meets-egress" in purchase_result[0].text
+        assert purchase_result.isError is True
+        assert "health-meets-egress" in purchase_result.content[0].text
 
         await client.call("shutdown")
 
