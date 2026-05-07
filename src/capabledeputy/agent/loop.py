@@ -24,6 +24,11 @@ from capabledeputy.llm.types import (
     Role,
     ToolDescription,
 )
+from capabledeputy.mode.dispatcher import (
+    ExecutionMode,
+    filter_tools_for_mode,
+    select_mode,
+)
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph, SessionStateError
 from capabledeputy.session.model import Turn
@@ -60,14 +65,18 @@ def _turn_to_message(turn: Turn) -> Message | None:
     return None
 
 
-def build_tool_descriptions(registry: ToolRegistry) -> list[ToolDescription]:
+def build_tool_descriptions(
+    registry: ToolRegistry,
+    mode: ExecutionMode = ExecutionMode.TURN_LEVEL,
+) -> list[ToolDescription]:
+    tools = filter_tools_for_mode(registry.list(), mode)
     return [
         ToolDescription(
             name=t.name,
             description=t.description,
             parameters_schema=t.parameters_schema,
         )
-        for t in registry.list()
+        for t in tools
     ]
 
 
@@ -107,13 +116,23 @@ async def run_turn(
     )
     session = await graph.add_turn(session_id, user_turn)
 
+    mode, mode_reason = select_mode(session.label_set, registry)
+    await audit.write(
+        Event(
+            event_type=EventType.MODE_SELECTED,
+            session_id=session_id,
+            turn_id=len(session.history),
+            payload={"mode": mode.value, "reason": mode_reason},
+        ),
+    )
+
     messages: list[Message] = [Message(role=Role.SYSTEM, content=system_prompt)]
     for turn in session.history:
         message = _turn_to_message(turn)
         if message is not None:
             messages.append(message)
 
-    tool_descriptions = build_tool_descriptions(registry)
+    tool_descriptions = build_tool_descriptions(registry, mode)
     tool_outcomes: list[ToolCallOutcome] = []
 
     iteration = 0
