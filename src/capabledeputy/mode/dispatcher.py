@@ -1,22 +1,19 @@
-"""Execution mode selection (DESIGN.md §5.4).
+"""Execution mode selection and capability-aware tool visibility
+(DESIGN.md §5.4 + Phase 7b).
 
-Per-turn decision: which of the three execution modes (turn-level
-inheritance, dual-LLM, programmatic) should this turn run in? The
-dispatcher is a pure function over (label_set, available_tools);
-its decision is logged as a `mode.selected` audit event so the
-choice is replayable and inspectable in the trace.
+Two related filtering decisions per turn:
 
-In v0.1 we have turn-level and dual-LLM. Programmatic mode is Phase 7.
-The dispatcher escalates to dual-LLM when a session carries any
-confidential.* labels AND the registry has at least one tool that
-declares it can extract via a quarantined LLM (anything in the
-`quarantined.*` namespace).
+1. select_mode picks turn-level or dual-LLM based on whether the
+   session carries any confidential.* labels and whether a quarantined
+   extractor exists. Logged as mode.selected.
 
-When dual-LLM mode is active, build_tool_descriptions in agent/loop
-filters the LLM-visible tool set to hide direct labeled-data readers
-(memory.read, fs.read, web.fetch) and surface only the extraction
-tools. This forces the planner to go through the schema-validated
-gate rather than reading raw labeled bytes.
+2. visible_tools filters by the session's capability set: a tool is
+   visible to the LLM only when the session holds at least one
+   capability whose kind matches the tool's capability_kind. This
+   means the LLM cannot even propose calling a tool the session has
+   no business invoking — the call would be denied at dispatch
+   anyway, but visibility filtering both saves a wasted turn and
+   stops leaking 'tools that exist elsewhere' to this LLM.
 """
 
 from __future__ import annotations
@@ -24,6 +21,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 from capabledeputy.policy.labels import Label
+from capabledeputy.session.model import Session
 from capabledeputy.tools.registry import ToolDefinition, ToolRegistry
 
 
@@ -79,3 +77,20 @@ def filter_tools_for_mode(
     if mode != ExecutionMode.DUAL_LLM:
         return tools
     return [t for t in tools if t.name not in _RAW_LABELED_DATA_TOOLS]
+
+
+def visible_tools(
+    registry: ToolRegistry,
+    session: Session,
+    mode: ExecutionMode,
+) -> list[ToolDefinition]:
+    """Tools the LLM should see for this turn.
+
+    A tool is visible iff:
+      1. It survives the mode filter (raw readers hidden in dual-LLM).
+      2. The session holds at least one capability whose kind matches
+         the tool's capability_kind.
+    """
+    mode_filtered = filter_tools_for_mode(registry.list(), mode)
+    held_kinds = {cap.kind for cap in session.capability_set}
+    return [t for t in mode_filtered if t.capability_kind in held_kinds]

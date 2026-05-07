@@ -28,10 +28,11 @@ from capabledeputy.mode.dispatcher import (
     ExecutionMode,
     filter_tools_for_mode,
     select_mode,
+    visible_tools,
 )
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph, SessionStateError
-from capabledeputy.session.model import Turn
+from capabledeputy.session.model import Session, Turn
 from capabledeputy.tools.client import LabeledToolClient, ToolCallOutcome
 from capabledeputy.tools.registry import ToolNotFoundError, ToolRegistry
 
@@ -68,8 +69,12 @@ def _turn_to_message(turn: Turn) -> Message | None:
 def build_tool_descriptions(
     registry: ToolRegistry,
     mode: ExecutionMode = ExecutionMode.TURN_LEVEL,
+    session: Session | None = None,
 ) -> list[ToolDescription]:
-    tools = filter_tools_for_mode(registry.list(), mode)
+    if session is not None:
+        tools = visible_tools(registry, session, mode)
+    else:
+        tools = filter_tools_for_mode(registry.list(), mode)
     return [
         ToolDescription(
             name=t.name,
@@ -132,7 +137,7 @@ async def run_turn(
         if message is not None:
             messages.append(message)
 
-    tool_descriptions = build_tool_descriptions(registry, mode)
+    tool_descriptions = build_tool_descriptions(registry, mode, session)
     tool_outcomes: list[ToolCallOutcome] = []
 
     iteration = 0
