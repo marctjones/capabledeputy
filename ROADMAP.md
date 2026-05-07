@@ -174,19 +174,12 @@ high-leverage in v0.1.
   `_meta` (capability_kind, inherent_labels, decision, rule, labels);
   documented full coverage map in `docs/mcp-spec-review.md`.
 
-### Phase 8 (originally Programmatic Mode / Starlark)  ·  **PLANNED**
-- Fork `starlark-py`; extend Value with `labels`.
-- Implement label propagation through binary ops, function calls,
-  attribute access.
-- Tool call resolution and gating in the interpreter.
-- Static policy analyzer (rejects unconditional violations).
-- `capdep run <prog.star>` and `capdep dry-run <prog.star>`.
-- E2E: multi-step labeled-data pipeline executed and audited.
-
-**Status**: not started. Requires substantial Starlark interpreter
-work; promotes the third execution mode (DESIGN.md §5.3) from
-"reserved" to "implemented". Reasonable as a focused phase after
-v0.1 ships.
+### Phase 8 (Programmatic Mode)  ·  **IN v0.3** (see below)
+- Originally specified as a forked `starlark-py`; revised to a
+  Python-AST-subset interpreter (LLMs already write Python natively;
+  the AST subset is statically analyzable; ~10× less code than a
+  full Starlark fork while preserving security properties). See
+  v0.3 entry below for shipped commit.
 
 ### Phase 9 (originally Polish)  ·  **PARTIALLY DONE**
 
@@ -223,89 +216,39 @@ v0.1 ships.
 - Mode is auto-selected per turn and logged.
 - All decisions are inspectable and replayable from the audit log.
 
-## Beyond v0.1
+## v0.2 — MCP surface expansion, container, upstream MCP  ·  **DONE**
 
-### v0.2 — MCP surface expansion, container deployment, ecosystem
+| Item | Status | Commit |
+|---|---|---|
+| MCP Resources for memory | DONE | `3368557` |
+| MCP Prompts (4 canonical workflows) | DONE | `3368557` |
+| MCP Elicitation for in-flow approvals | DONE | `d6df6ee` |
+| MCP Logging notifications | DONE | `d6df6ee` |
+| Container deployment (Containerfile + quadlet + docs) | DONE | `1155d81` |
+| TUI five-pane layout (Sessions/Approvals/Conversation/Trace/Events) | DONE | `8bad123` |
+| Upstream MCP wrapping foundation (`LabeledMcpAdapter`, `UpstreamManager`) | DONE | `e70e7f9` |
 
-These are the items that turned out to be the right scope for a
-focused follow-up phase, mostly informed by what was built in v0.1.
+## v0.3 — Programmatic mode + observability primitives
 
-**MCP surface expansion** (per `docs/mcp-spec-review.md`):
+| Item | Status | Notes |
+|---|---|---|
+| Daemon subscription primitive (publish/subscribe over JSON-RPC) | DONE | `4919fc4` |
+| MCP `tools/list_changed` on capability changes | DONE | `29d0b64` |
+| Real-time TUI event push via subscription | DONE | `29d0b64` |
+| Programmatic execution mode (DESIGN.md §5.3, §10.5) | NEXT | Python-AST-subset interpreter; label-aware values; static policy analyzer; `capdep run` / `capdep dry-run` |
+| Per-session unforgeable tool tokens (strict ocap) | PLANNED | DESIGN.md §15 — defense-in-depth on top of 7b visibility filter |
+| `SKILL.md` adapter for OpenClaw skills | PLANNED | Ecosystem |
+| Local-model planner option | PARTIALLY DONE | LiteLLM already supports Ollama; needs a doc note + sample config |
+| Approval pattern library | PARTIALLY DONE | Pattern infrastructure shipped in 7c; pre-baked patterns are content not code |
 
-- **Resources for memory entries**: expose `capdep://memory/{key}` as
-  resources with labels in `_meta`. Capability-aware listing (a
-  session sees only resources it has READ_FS for); resource reads
-  dispatch through `LabeledToolClient` so policy + label propagation
-  is identical to `memory.read` tool. Surfaces label inventory
-  discoverably without invocation.
-- **Prompts for canonical workflows**: starter set of parameterized
-  prompts (`prescription-review`, `daily-briefing`, `safe-share`,
-  `untrusted-research`). Each prompt is a workflow template the
-  agent executes step by step; every step still goes through the
-  policy engine. Lets MCP hosts surface user-facing menus of policy-
-  controlled workflows.
-- **Elicitation for in-flow approvals**: when SEND_EMAIL is queued
-  for approval, fire `elicitation/create` to the MCP host so the
-  user decides inside the host's chat UI rather than switching to a
-  separate terminal.
-- **Logging notifications**: mirror policy decisions and label
-  propagations to the host as `notifications/message` so host UIs
-  surface them in real time.
-- **`tools/list_changed` notifications**: when session capabilities
-  change at runtime, the visible tool set changes; push the
-  notification.
+## v0.4+ — Federation and formal methods
 
-**Container deployment**:
-- Containerfile + Podman quadlet/systemd unit. Documented volume
-  layout for `state.db`, `audit.jsonl`, configurable user-data
-  mounts. Default-deny network egress with allowlists for configured
-  LLM API endpoints. CI lane runs the test suite inside the
-  container.
-
-**Real upstream MCP server integration** (deferred from Phase 3):
-- `LabeledMcpClient` that wraps subprocess MCP servers (Filesystem,
-  Fetch, Gmail, Google Calendar, Obsidian, GitHub) using the
-  upstream `mcp` Python SDK on the *client* side. Vanilla servers,
-  no forks — labels and policy live in the wrapper.
-- Per-server label declaration in YAML config.
-- YAML-driven fakes for upstream servers used in CI to avoid hitting
-  real APIs in tests.
-
-**TUI completion**:
-- Five-pane layout (Sessions, Conversation, Approvals, Trace,
-  Events) per DESIGN.md §10.3.
-- Trace pane drill-down per §9.4.
-- Session-graph view (parent/child tree).
-- Pattern-rule editor.
-- Real-time event push (instead of 1.5s polling) — needs a streaming
-  RPC variant.
-
-**Ecosystem and privacy**:
-- `SKILL.md` adapter for ingesting OpenClaw skills as labeled MCP
-  tools.
-- Local-model planner option — keep the privileged LLM local
-  (Ollama, llama.cpp), only send non-labeled handles to a frontier
-  model.
-- Approval pattern library — shareable, version-controlled approval
-  pattern rules for common workflows.
-- Engagement with OpenClaw RFC #39160 — propose CapableDeputy as the
-  answer.
-
-### v0.3 — Programmatic Mode, Multi-tenancy, Federation
-- **Programmatic mode** (DESIGN.md §5.3): Starlark interpreter with
-  label-aware values and static policy analysis.
 - Per-tool container isolation: each MCP server in its own container
   with policy-driven network and FS views.
-- **Per-session unforgeable tool tokens** (strict ocap): each session
-  sees capabilities under fresh random tokens; the LLM cannot
-  reference tools outside its compartment because it doesn't know
-  their session-specific names.
 - Per-user label spaces for household deployments.
 - Inter-host federation: phone + laptop with shared session state
   and remote approvals.
 - Hardware token integration for high-stakes approvals.
-
-### v0.4+ — Formal Methods
 - TLA+ specification of session graph and policy semantics.
 - Mechanized proofs of key safety properties (label monotonicity,
   capability unforgeability).

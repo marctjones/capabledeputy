@@ -348,13 +348,32 @@ Full target layout (v0.2):
   via parametrized test matrix.
 - Every decision is recorded as a `policy.decided` trace event (§9.2).
 
-### 10.5 Starlark Interpreter (v0.3)
-- **Not yet built.** Reserved for the programmatic execution mode (§5.3).
-- Fork of `starlark-py` (pure Python implementation).
-- **Value type extended with `labels: frozenset[Label]`.**
-- Every binary operator, function call, and attribute access propagates labels via set union.
-- Tool calls in Starlark resolve to gated MCP calls; gate evaluated against the value's labels at the call site.
-- Static analyzer rejects programs that would unconditionally violate policy at any reachable point — caught before execution.
+### 10.5 Programmatic Mode (Starlark-style interpreter)
+- v0.3 ships a Python-AST-subset interpreter (Starlark-shaped, not a
+  full Starlark fork). LLMs already write Python natively; the AST
+  subset is statically analyzable; labels propagate through every
+  operation. The choice trades a syntax-purity goal for ~10× less
+  interpreter code while preserving the security properties.
+- **Allowed forms:** literals (int, str, bytes, bool, None, list,
+  dict, tuple), name references, attribute access (read-only),
+  arithmetic / comparison / boolean operators, `if/else` (statement
+  and expression), `for` over a finite iterable, function calls,
+  assignments, `return` from the top level.
+- **Forbidden forms:** `import`, `class`, `def`, `lambda`, `try/except`,
+  `with`, `while`, `global/nonlocal`, decorators, `del`, augmented
+  assignments to attributes, set/dict comprehensions with side
+  effects. Static parser rejects forbidden forms before any value
+  is touched.
+- **Value type wraps any Python value with `labels: frozenset[Label]`.**
+- Every binary operator, function call, and attribute access
+  propagates labels via set union over operands.
+- Tool calls in the interpreter resolve to gated dispatches via
+  the same `LabeledToolClient` used by turn-level mode; gate
+  evaluated against the value's labels at the call site.
+- Static analyzer (`programmatic.analyzer`) rejects programs that
+  would unconditionally violate policy on a known label/capability
+  state at any reachable point — caught before execution.
+- Surfaced as `capdep run <prog.py>` and `capdep dry-run <prog.py>`.
 
 ### 10.6 LLM Adapter Layer
 - **LiteLLM** for provider abstraction.
@@ -518,57 +537,49 @@ Each scenario must produce a clean trace inspectable via `capdep trace`.
 
 ## 15. Open Questions / Future Work
 
-### Planned for v0.2 (MCP surface expansion)
+### Shipped in v0.2 (DONE)
 
-- **MCP Resources for memory entries** — expose `capdep://memory/{key}`
-  as resources with labels in `_meta`. Capability-aware listing (a
-  session sees only resources it has READ_FS for); resource reads
-  dispatch through `LabeledToolClient` so policy + label propagation
-  is identical to `memory.read` tool. Surfaces label inventory
-  discoverably without invocation.
-- **MCP Prompts for canonical workflows** — starter set of
-  parameterized prompts (`prescription-review`, `daily-briefing`,
-  `safe-share`, `untrusted-research`). Each prompt is a workflow
-  template the agent executes step by step; every step still goes
-  through the policy engine. Lets MCP hosts surface user-facing menus
-  of policy-controlled workflows.
-- **MCP Elicitation for in-flow approvals** — when SEND_EMAIL is
-  queued for approval, fire `elicitation/create` to the MCP host so
-  the user decides inside the host's chat UI rather than switching to
-  a separate terminal.
-- **MCP Logging notifications** — mirror policy decisions and label
-  propagations to the host as `notifications/message` so host UIs
-  surface them in real time.
-- **MCP `tools/list_changed` notifications** — when session
-  capabilities change at runtime, the visible tool set changes; push
-  the notification.
-- **`LabeledMcpClient` for upstream MCP servers** — wrap subprocess
-  MCP servers (Filesystem, Fetch, Gmail, etc.) and apply labels +
-  policy on inbound results.
-- **TUI completion** — five-pane layout, trace pane drill-down,
-  session-graph view, real-time event push.
-- **`SKILL.md` adapter** for ingesting OpenClaw skills as labeled MCP
-  tools.
-- **Local-model planner option** — keep the privileged LLM local
-  (Ollama, llama.cpp), only send non-labeled handles to a frontier
-  model.
-- **Container deployment** — Containerfile + Podman quadlet for the
-  v0.1 daemon; default-deny network egress with allowlists for
-  configured LLM API endpoints; CI lane runs the test suite inside
-  the container.
+- **MCP Resources for memory entries** — `capdep://memory/{key}` with
+  labels in `_meta`; reads dispatch through `LabeledToolClient`.
+- **MCP Prompts for canonical workflows** — starter set:
+  prescription-review, daily-briefing, safe-share, untrusted-research.
+- **MCP Elicitation for in-flow approvals** — host shows confirmation
+  modal; approval submitted + executed in a one-shot session inline.
+- **MCP Logging notifications** — policy decisions and label
+  propagations mirrored as `notifications/message`.
+- **MCP `tools/list_changed` notifications** — daemon-side
+  capability.granted audit event triggers MCP push.
+- **`LabeledMcpAdapter` + `UpstreamManager`** — wrap subprocess MCP
+  servers (Filesystem, Fetch, Gmail, etc.); foundation in
+  `src/capabledeputy/upstream/`.
+- **TUI five-pane layout** — Sessions / Approvals / Conversation /
+  Trace / Events; real-time event subscription replaces polling.
+- **Container deployment** — Containerfile, systemd quadlet,
+  documented volume layout; rootless uid 1500.
+- **Daemon subscription primitive** — `subscribe`/`unsubscribe`
+  JSON-RPC methods + `Daemon.publish(stream, payload)` server-push.
 
-### Planned for v0.3+
+### Shipped or in progress for v0.3
 
-- **Programmatic mode** — Starlark interpreter with label-aware values
-  (DESIGN.md §5.3 / §10.5).
+- **Programmatic execution mode (§5.3, §10.5)** — Python-AST-subset
+  interpreter with label-aware values and static policy analyzer.
+  Surfaced as `capdep run` / `capdep dry-run`.
 - **Per-session unforgeable tool tokens** — strict object-capability
   semantics for tool names. Each session sees capabilities under
   fresh random tokens; the LLM cannot reference tools outside its
   compartment because it doesn't know their session-specific names.
   Phase 7b's capability-driven visibility filter covers ~95% of the
-  architectural benefit; the token aliasing is defense-in-depth for
-  hypothetical dispatcher bugs and earns provable separation
-  properties in formal verification.
+  architectural benefit; the token aliasing is defense-in-depth and
+  earns provable separation properties in formal verification. PLANNED.
+- **`SKILL.md` adapter** for ingesting OpenClaw skills as labeled MCP
+  tools. PLANNED.
+- **Local-model planner option** — keep the privileged LLM local
+  (Ollama, llama.cpp), only send non-labeled handles to a frontier
+  model. LiteLLM already supports the underlying providers; this
+  reduces to a documentation + sample-config piece.
+
+### Planned for v0.4+
+
 - **Per-tool container isolation** — beyond v0.2's all-in-one
   container, run each MCP server in its own container with
   policy-driven network and filesystem views. Strongest blast-radius
@@ -578,7 +589,7 @@ Each scenario must produce a clean trace inspectable via `capdep trace`.
 - **Inter-host federation** — running CapableDeputy on a phone and a
   laptop with shared state. Significant design work.
 
-### Planned for v0.4+
+### Planned for v0.5+
 
 - **Formal verification** — property-based tests get us most of the
   way; full TLA+ specification of the session graph and policy
@@ -614,17 +625,21 @@ Phases 0–7 of ROADMAP.md are complete and verified end-to-end:
 | Built and verified | Where |
 |---|---|
 | Daemon, JSON-RPC over Unix socket, CLI shell | §10.1, §10.2 |
+| Daemon subscription primitive (publish/subscribe over JSON-RPC) | §10.1 |
 | Session graph with fork/pause/resume/abort + SQLite persistence | §6, §10.8 |
 | Label + Capability + Action types; pure-Python policy engine | §7, §10.4 |
-| LabeledToolClient + native tools (memory, purchase, email) | §10.7 |
+| LabeledToolClient + native tools (memory, purchase, email, extract) | §10.7 |
 | Turn-level agent loop + LiteLLMClient + ClaudeCodeLLMClient + FakeLLMClient | §5.1, §10.6 |
 | Approval queue, cross-session declassification, pattern rules | §8, §10.11 |
 | Quarantined LLM extractor (dual-LLM mode) + schemas | §5.2, §10.12 |
 | Mode dispatcher with auto-escalation + capability-driven tool visibility | §5.4, §10.10 |
 | Trace event taxonomy + audit log + `capdep trace` / `capdep audit` | §9 |
-| MCP server (`capdep mcp-server`) with full §2025-11-25 spec compliance | §10.7 |
-| TUI (minimum-viable three-pane) | §10.3 |
-| 317 unit tests + 2 real-LLM integration tests | §12 |
+| MCP server — tools, resources, prompts, elicitation, logging, list_changed | §10.7 |
+| Upstream MCP wrapping foundation (`LabeledMcpAdapter`, `UpstreamManager`) | §10.7 |
+| TUI five-pane layout with real-time event push + session-graph toggle | §10.3 |
+| Container deployment (Containerfile + quadlet + docs) | §14 |
+| Programmatic mode interpreter + static analyzer + `capdep run` / `capdep dry-run` | §5.3, §10.5 |
+| 336+ unit tests + 2 real-LLM integration tests | §12 |
 
 See ROADMAP.md for v0.2 / v0.3 / v0.4 plans, including the MCP
 Resources / Prompts / Elicitation expansion, programmatic mode,
