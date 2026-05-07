@@ -368,12 +368,42 @@ async def build_server(client: DaemonClient, session_id: UUID) -> Server:
     return server
 
 
+async def _watch_capability_changes(
+    socket_path: Path,
+    session_id: UUID,
+    server: Server,
+) -> None:
+    """Subscribe to the daemon's audit stream and emit MCP
+    tools/list_changed when our bound session's capabilities change."""
+    client = DaemonClient(socket_path)
+    target = str(session_id)
+    with suppress(Exception):
+        async for event in await client.subscribe(["audit"]):
+            data = event.get("data") or {}
+            if data.get("event_type") != "capability.granted":
+                continue
+            if (data.get("session_id") or "") != target:
+                continue
+            with suppress(Exception):
+                await server.request_context.session.send_tool_list_changed()
+
+
 async def serve(session_id: UUID, socket_path: Path | None = None) -> None:
-    client = DaemonClient(socket_path or default_socket_path())
+    import anyio as _anyio
+
+    socket = socket_path or default_socket_path()
+    client = DaemonClient(socket)
     server = await build_server(client, session_id)
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options(),
-        )
+    async with (
+        stdio_server() as (read_stream, write_stream),
+        _anyio.create_task_group() as tg,
+    ):
+        tg.start_soon(_watch_capability_changes, socket, session_id, server)
+        try:
+            await server.run(
+                read_stream,
+                write_stream,
+                server.create_initialization_options(),
+            )
+        finally:
+            tg.cancel_scope.cancel()

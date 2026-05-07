@@ -1,24 +1,27 @@
 """capdep tui: live monitoring and approval interface (DESIGN.md §10.3).
 
-Connects to a running daemon via the existing JSON-RPC client. Polls
-every poll_interval seconds for sessions, approvals, and recent
-audit events. Approvals can be approved or denied directly from the
-TUI; the verbatim payload is rendered byte-for-byte (§8.2 requirement)
-so the user always sees exactly what would be sent.
+Connects to a running daemon via the existing JSON-RPC client. Subscribes
+to the daemon's audit stream and pushes events into the Events pane in
+real time; approvals + sessions refresh on a 5-second backstop poll.
+Approvals can be approved or denied directly from the TUI; the verbatim
+payload is rendered byte-for-byte (§8.2 requirement) so the user always
+sees exactly what would be sent.
 
-v0.2 upgrades on the v0.1 minimum-viable three-pane app:
+Layout (DESIGN.md §10.3 target reached):
 
-  - Five logical panes in the layout: Sessions, Approvals (left
-    column), Conversation, Trace (right column), Events (bottom).
+  - Five logical panes: Sessions, Approvals (left column),
+    Conversation, Trace (right column), Events (bottom ticker).
   - Selecting a session in the Sessions pane populates the
     Conversation pane (its turn history) and the Trace pane (recent
     audit events scoped to that session).
-  - Selecting an approval still opens the verbatim-payload modal.
+  - Selecting an approval opens the verbatim-payload modal.
   - 'g' toggles a session-graph (indented tree by parent) view in
     the Sessions pane.
 
-Real-time event push (instead of 1.5s polling) is deferred to v0.3 —
-needs a streaming JSON-RPC variant on the daemon side.
+The 5s backstop poll catches state we don't push (the in-memory
+session graph snapshot, the approvals queue), while the audit
+subscription handles the high-frequency event ticker. Push and poll
+together cover the full state model without doubling load.
 """
 
 from __future__ import annotations
@@ -118,7 +121,7 @@ class CapDepTUI(App[None]):
     }
     """
 
-    def __init__(self, poll_interval: float = 1.5) -> None:
+    def __init__(self, poll_interval: float = 5.0) -> None:
         super().__init__()
         self._client = DaemonClient(default_socket_path())
         self._poll_interval = poll_interval
@@ -126,6 +129,7 @@ class CapDepTUI(App[None]):
         self._sessions: list[dict[str, Any]] = []
         self._selected_session_id: str | None = None
         self._graph_view: bool = False
+        self._live_events: list[dict[str, Any]] = []
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -158,6 +162,7 @@ class CapDepTUI(App[None]):
 
         self.set_interval(self._poll_interval, self._refresh)
         self.refresh_now()
+        self._start_event_stream()
 
     def action_refresh(self) -> None:
         self.refresh_now()
@@ -171,6 +176,55 @@ class CapDepTUI(App[None]):
 
     def refresh_now(self) -> None:
         self._refresh()
+
+    @work(exclusive=False)
+    async def _start_event_stream(self) -> None:
+        try:
+            async for event in await self._client.subscribe(["audit"]):
+                data = event.get("data") or {}
+                self._live_events.append(data)
+                if len(self._live_events) > 200:
+                    self._live_events = self._live_events[-200:]
+                self._update_events_table()
+                triggers = {
+                    "session.created",
+                    "session.forked",
+                    "session.aborted",
+                    "session.paused",
+                    "session.resumed",
+                    "approval.requested",
+                    "approval.approved",
+                    "approval.denied",
+                    "capability.granted",
+                }
+                if data.get("event_type") in triggers:
+                    self.refresh_now()
+        except Exception as e:
+            self.notify(f"event stream error: {e}", severity="error")
+
+    def _update_events_table(self) -> None:
+        try:
+            events_table = self.query_one("#events", DataTable)
+        except Exception:
+            return
+        events_table.clear()
+        for ev in reversed(self._live_events[-40:]):
+            decision_or_labels = ""
+            payload = ev.get("payload") or {}
+            if ev.get("event_type") == "policy.decided":
+                decision_or_labels = payload.get("decision", "")
+            elif ev.get("event_type") == "label.propagated":
+                decision_or_labels = "+" + ",".join(payload.get("labels_added", []))
+            elif ev.get("event_type") == "approval.requested":
+                decision_or_labels = f"approval #{payload.get('approval_id', '')}"
+            elif ev.get("event_type") == "capability.granted":
+                decision_or_labels = f"+{payload.get('kind', '')}"
+            events_table.add_row(
+                ev.get("timestamp", "")[11:19],
+                ev.get("event_type", ""),
+                (ev.get("session_id") or "")[:8],
+                decision_or_labels,
+            )
 
     @work(exclusive=True)
     async def _refresh(self) -> None:
@@ -191,23 +245,9 @@ class CapDepTUI(App[None]):
         self._sessions = sessions_resp["sessions"]
         self._render_sessions()
 
-        events_table = self.query_one("#events", DataTable)
-        events_table.clear()
-        for ev in reversed(audit_resp["events"][-40:]):
-            decision_or_labels = ""
-            payload = ev.get("payload") or {}
-            if ev["event_type"] == "policy.decided":
-                decision_or_labels = payload.get("decision", "")
-            elif ev["event_type"] == "label.propagated":
-                decision_or_labels = "+" + ",".join(payload.get("labels_added", []))
-            elif ev["event_type"] == "approval.requested":
-                decision_or_labels = f"approval #{payload.get('approval_id', '')}"
-            events_table.add_row(
-                ev["timestamp"][11:19],
-                ev["event_type"],
-                (ev.get("session_id") or "")[:8],
-                decision_or_labels,
-            )
+        if not self._live_events:
+            self._live_events = list(audit_resp["events"][-40:])
+            self._update_events_table()
 
         approvals_table = self.query_one("#approvals", DataTable)
         approvals_table.clear()
