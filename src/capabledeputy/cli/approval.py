@@ -150,3 +150,69 @@ def approval_defer(request_id: Annotated[int, typer.Argument()]) -> None:
     """Defer an approval request."""
     _call("approval.defer", {"id": request_id})
     console.print(f"[yellow]approval #{request_id} deferred[/yellow]")
+
+
+pattern_app = typer.Typer(
+    help="Manage approval pattern rules (auto-approve matching requests).",
+    no_args_is_help=True,
+)
+approval_app.add_typer(pattern_app, name="pattern")
+
+
+@pattern_app.command("list")
+def pattern_list(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """List active approval pattern rules."""
+    result = _call("approval_pattern.list")
+    patterns = result["patterns"]
+    if json_output:
+        console.print_json(data=patterns)
+        return
+    table = Table(title=f"Approval pattern rules ({len(patterns)})")
+    table.add_column("ID")
+    table.add_column("Action")
+    table.add_column("Target pattern")
+    table.add_column("Expires")
+    table.add_column("Uses")
+    table.add_column("Revoked")
+    for p in patterns:
+        table.add_row(
+            p["id"][:8],
+            p["action"],
+            p["target_pattern"],
+            p["expires_at"],
+            str(p["auto_approval_count"]),
+            "yes" if p["revoked"] else "no",
+        )
+    console.print(table)
+
+
+@pattern_app.command("create")
+def pattern_create(
+    action: Annotated[str, typer.Option("--action")],
+    target: Annotated[str, typer.Option("--target", help="Target pattern (specific or *@domain)")],
+    ttl_hours: Annotated[float, typer.Option("--ttl-hours")] = 24.0,
+) -> None:
+    """Create a new pattern rule."""
+    result = _call(
+        "approval_pattern.create",
+        {"action": action, "target_pattern": target, "ttl_hours": ttl_hours},
+    )
+    if "error" in result:
+        err_console.print(f"[red]invalid pattern: {result['error']}[/red]")
+        raise typer.Exit(code=1)
+    console.print(f"[green]created pattern rule {result['id']}[/green]")
+    console.print(f"  expires:        {result['expires_at']}")
+
+
+@pattern_app.command("revoke")
+def pattern_revoke(
+    pattern_id: Annotated[str, typer.Argument()],
+) -> None:
+    """Revoke a pattern rule."""
+    result = _call("approval_pattern.revoke", {"id": pattern_id})
+    if "error" in result:
+        err_console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(code=1)
+    console.print(f"[yellow]pattern {pattern_id[:8]} revoked[/yellow]")
