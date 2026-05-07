@@ -19,7 +19,7 @@ from anyio.to_thread import run_sync as run_in_thread
 
 from capabledeputy.session.model import Session
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     owner TEXT,
+    tool_aliasing INTEGER NOT NULL DEFAULT 0,
+    prefer_programmatic INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (parent_id) REFERENCES sessions(id)
 );
 
@@ -76,10 +78,29 @@ class SessionStore:
                     "INSERT INTO schema_version (version) VALUES (?)",
                     (SCHEMA_VERSION,),
                 )
-            elif row["version"] != SCHEMA_VERSION:
-                raise SchemaVersionError(
-                    f"unsupported schema version {row['version']}; expected {SCHEMA_VERSION}",
-                )
+                return
+            current = row["version"]
+            if current == SCHEMA_VERSION:
+                return
+            if current == 1:
+                # v1 → v2: add tool_aliasing and prefer_programmatic columns.
+                # New tables created above already have them; existing tables need
+                # ALTER. SQLite's IF NOT EXISTS in CREATE doesn't apply to columns,
+                # so we add and ignore "duplicate column" errors that would happen
+                # if both code paths ran (they shouldn't, but be defensive).
+                col_def = "INTEGER NOT NULL DEFAULT 0"
+                for col in ("tool_aliasing", "prefer_programmatic"):
+                    ddl = f"ALTER TABLE sessions ADD COLUMN {col} {col_def}"
+                    try:
+                        conn.execute(ddl)
+                    except sqlite3.OperationalError as e:
+                        if "duplicate column" not in str(e).lower():
+                            raise
+                conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
+                return
+            raise SchemaVersionError(
+                f"unsupported schema version {current}; expected {SCHEMA_VERSION}",
+            )
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -104,8 +125,9 @@ class SessionStore:
                 INSERT INTO sessions (
                     id, parent_id, status, intent,
                     label_set, capability_set, history, declassification_log,
-                    created_at, updated_at, owner
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    created_at, updated_at, owner,
+                    tool_aliasing, prefer_programmatic
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status = excluded.status,
                     intent = excluded.intent,
@@ -114,7 +136,9 @@ class SessionStore:
                     history = excluded.history,
                     declassification_log = excluded.declassification_log,
                     updated_at = excluded.updated_at,
-                    owner = excluded.owner
+                    owner = excluded.owner,
+                    tool_aliasing = excluded.tool_aliasing,
+                    prefer_programmatic = excluded.prefer_programmatic
                 """,
                 (
                     d["id"],
@@ -128,6 +152,8 @@ class SessionStore:
                     d["created_at"],
                     d["updated_at"],
                     d["owner"],
+                    1 if d["tool_aliasing"] else 0,
+                    1 if d["prefer_programmatic"] else 0,
                 ),
             )
 
@@ -169,5 +195,7 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
             "owner": row["owner"],
+            "tool_aliasing": bool(row["tool_aliasing"]),
+            "prefer_programmatic": bool(row["prefer_programmatic"]),
         },
     )

@@ -47,6 +47,10 @@ def _render_session(s: dict[str, Any]) -> None:
         console.print(f"  labels:  {', '.join(s['label_set'])}")
     if s["capability_set"]:
         console.print(f"  caps:    {', '.join(s['capability_set'])}")
+    if s.get("tool_aliasing"):
+        console.print("  flags:   tool_aliasing")
+    if s.get("prefer_programmatic"):
+        console.print("  flags:   prefer_programmatic")
 
 
 @session_app.command("list")
@@ -92,6 +96,26 @@ def session_list(
 def session_new(
     intent: Annotated[str | None, typer.Option(help="Why this session exists")] = None,
     owner: Annotated[str | None, typer.Option(help="Owner identifier")] = None,
+    tool_tokens: Annotated[
+        bool,
+        typer.Option(
+            "--tool-tokens",
+            help=(
+                "Show the LLM session-specific aliases instead of canonical "
+                "tool names (strict ocap)."
+            ),
+        ),
+    ] = False,
+    prefer_programmatic: Annotated[
+        bool,
+        typer.Option(
+            "--prefer-programmatic",
+            help=(
+                "Run agent turns in programmatic mode "
+                "(LLM emits a Python program, not tool calls)."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Create a new top-level session."""
     params: dict[str, Any] = {}
@@ -99,6 +123,10 @@ def session_new(
         params["intent"] = intent
     if owner:
         params["owner"] = owner
+    if tool_tokens:
+        params["tool_aliasing"] = True
+    if prefer_programmatic:
+        params["prefer_programmatic"] = True
     s = _call("session.new", params)
     _render_session(s)
 

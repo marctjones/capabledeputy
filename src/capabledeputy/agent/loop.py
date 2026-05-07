@@ -33,6 +33,7 @@ from capabledeputy.mode.dispatcher import (
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph, SessionStateError
 from capabledeputy.session.model import Session, Turn
+from capabledeputy.tools.aliasing import build_alias_map, build_reverse_map
 from capabledeputy.tools.client import LabeledToolClient, ToolCallOutcome
 from capabledeputy.tools.registry import ToolNotFoundError, ToolRegistry
 
@@ -71,13 +72,26 @@ def build_tool_descriptions(
     mode: ExecutionMode = ExecutionMode.TURN_LEVEL,
     session: Session | None = None,
 ) -> list[ToolDescription]:
+    """Build the tool list shown to the LLM.
+
+    If the session has `tool_aliasing` enabled, every visible tool's
+    canonical name is replaced with a session-specific token. The
+    reverse map is recomputed at dispatch time (also from the session id),
+    so we don't have to thread state — the alias function is pure.
+    """
     if session is not None:
         tools = visible_tools(registry, session, mode)
     else:
         tools = filter_tools_for_mode(registry.list(), mode)
+
+    aliasing = session is not None and session.tool_aliasing
+    alias_map: dict[str, str] = {}
+    if aliasing and session is not None:
+        alias_map = build_alias_map(session.id, [t.name for t in tools])
+
     return [
         ToolDescription(
-            name=t.name,
+            name=alias_map.get(t.name, t.name),
             description=t.description,
             parameters_schema=t.parameters_schema,
         )
@@ -107,11 +121,44 @@ async def run_turn(
     audit: AuditWriter,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     max_iterations: int = 10,
+    force_mode: ExecutionMode | None = None,
 ) -> AgentTurnResult:
     session = graph.get(session_id)
     if session.is_terminal:
         raise SessionStateError(
             f"cannot send to terminal session {session_id} (status={session.status})",
+        )
+
+    # Mode selection happens BEFORE history is mutated so the
+    # programmatic loop can take over cleanly when selected.
+    mode, mode_reason = select_mode(
+        session.label_set,
+        registry,
+        prefer_programmatic=session.prefer_programmatic,
+        force_mode=force_mode,
+    )
+
+    if mode == ExecutionMode.PROGRAMMATIC:
+        # Local import to avoid a circular: programmatic_loop imports from
+        # this module for AgentTurnResult.
+        from capabledeputy.agent.programmatic_loop import run_programmatic_turn
+
+        await audit.write(
+            Event(
+                event_type=EventType.MODE_SELECTED,
+                session_id=session_id,
+                turn_id=len(session.history),
+                payload={"mode": mode.value, "reason": mode_reason},
+            ),
+        )
+        return await run_programmatic_turn(
+            session_id=session_id,
+            user_message=user_message,
+            llm=llm,
+            tool_client=tool_client,
+            registry=registry,
+            graph=graph,
+            audit=audit,
         )
 
     user_turn = Turn(
@@ -121,7 +168,6 @@ async def run_turn(
     )
     session = await graph.add_turn(session_id, user_turn)
 
-    mode, mode_reason = select_mode(session.label_set, registry)
     await audit.write(
         Event(
             event_type=EventType.MODE_SELECTED,
@@ -138,6 +184,10 @@ async def run_turn(
             messages.append(message)
 
     tool_descriptions = build_tool_descriptions(registry, mode, session)
+    reverse_map: dict[str, str] = {}
+    if session.tool_aliasing:
+        visible = visible_tools(registry, session, mode)
+        reverse_map = build_reverse_map(session.id, [t.name for t in visible])
     tool_outcomes: list[ToolCallOutcome] = []
 
     iteration = 0
@@ -198,10 +248,15 @@ async def run_turn(
         )
 
         for tool_call in response.tool_calls:
+            # Reverse-map alias → canonical name. If the LLM produces a
+            # token that doesn't match any visible tool's alias, the
+            # name passes through untouched and ToolNotFoundError fires
+            # below with the unmatched string in the message.
+            real_name = reverse_map.get(tool_call.name, tool_call.name)
             try:
                 outcome = await tool_client.call_tool(
                     session_id,
-                    tool_call.name,
+                    real_name,
                     tool_call.args,
                 )
             except ToolNotFoundError:

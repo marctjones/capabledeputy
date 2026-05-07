@@ -99,6 +99,8 @@ class Session:
     updated_at: datetime
     owner: str | None = None
     intent: str | None = None
+    tool_aliasing: bool = False
+    prefer_programmatic: bool = False
 
     @classmethod
     def new(
@@ -111,6 +113,8 @@ class Session:
         capability_set: frozenset[Capability] = frozenset(),
         history: tuple[Turn, ...] = (),
         declassification_log: tuple[DeclassEvent, ...] = (),
+        tool_aliasing: bool = False,
+        prefer_programmatic: bool = False,
     ) -> Self:
         now = _utcnow()
         return cls(
@@ -125,6 +129,8 @@ class Session:
             updated_at=now,
             owner=owner,
             intent=intent,
+            tool_aliasing=tool_aliasing,
+            prefer_programmatic=prefer_programmatic,
         )
 
     @property
@@ -150,6 +156,8 @@ class Session:
             "updated_at": self.updated_at.isoformat(),
             "owner": self.owner,
             "intent": self.intent,
+            "tool_aliasing": self.tool_aliasing,
+            "prefer_programmatic": self.prefer_programmatic,
         }
 
     @classmethod
@@ -168,4 +176,6 @@ class Session:
             updated_at=datetime.fromisoformat(d["updated_at"]),
             owner=d.get("owner"),
             intent=d.get("intent"),
+            tool_aliasing=bool(d.get("tool_aliasing", False)),
+            prefer_programmatic=bool(d.get("prefer_programmatic", False)),
         )

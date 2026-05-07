@@ -90,3 +90,29 @@ def test_each_confidential_label_triggers_dual_llm() -> None:
     ):
         mode, _ = select_mode(frozenset({label}), registry)
         assert mode == ExecutionMode.DUAL_LLM
+
+
+def test_prefer_programmatic_overrides_default_heuristic() -> None:
+    registry = _make_registry("memory.read")
+    mode, reason = select_mode(
+        frozenset(),
+        registry,
+        prefer_programmatic=True,
+    )
+    assert mode == ExecutionMode.PROGRAMMATIC
+    assert "prefers programmatic" in reason
+
+
+def test_force_mode_overrides_prefer_and_heuristic() -> None:
+    registry = _make_registry("quarantined.extract")
+    # Confidential label + quarantined extractor would normally pick
+    # dual_llm; prefer_programmatic would pick programmatic; force
+    # beats both.
+    mode, reason = select_mode(
+        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        registry,
+        prefer_programmatic=True,
+        force_mode=ExecutionMode.TURN_LEVEL,
+    )
+    assert mode == ExecutionMode.TURN_LEVEL
+    assert "forced" in reason

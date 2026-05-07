@@ -28,6 +28,12 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
             raise RuntimeError(
                 "no LLM client configured; daemon cannot drive the agent loop",
             )
+        force_mode_str = params.get("mode")
+        force_mode = None
+        if force_mode_str:
+            from capabledeputy.mode.dispatcher import ExecutionMode
+
+            force_mode = ExecutionMode(force_mode_str)
         result = await run_turn(
             session_id=UUID(params["session_id"]),
             user_message=str(params["message"]),
@@ -37,6 +43,7 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
             graph=app.graph,
             audit=app.audit,
             max_iterations=int(params.get("max_iterations", 10)),
+            force_mode=force_mode,
         )
         return {
             "content": result.content,

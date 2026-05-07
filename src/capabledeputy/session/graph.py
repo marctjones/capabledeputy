@@ -71,8 +71,15 @@ class SessionGraph:
         *,
         owner: str | None = None,
         intent: str | None = None,
+        tool_aliasing: bool = False,
+        prefer_programmatic: bool = False,
     ) -> Session:
-        session = Session.new(owner=owner, intent=intent)
+        session = Session.new(
+            owner=owner,
+            intent=intent,
+            tool_aliasing=tool_aliasing,
+            prefer_programmatic=prefer_programmatic,
+        )
         await self._save(session)
         self._sessions[session.id] = session
         await self._emit(
@@ -80,6 +87,8 @@ class SessionGraph:
             session,
             owner=owner,
             intent=intent,
+            tool_aliasing=tool_aliasing or None,
+            prefer_programmatic=prefer_programmatic or None,
         )
         return session
 

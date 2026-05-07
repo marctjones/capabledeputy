@@ -47,11 +47,33 @@ _RAW_LABELED_DATA_TOOLS: frozenset[str] = frozenset(
 def select_mode(
     label_set: frozenset[Label],
     registry: ToolRegistry,
+    *,
+    prefer_programmatic: bool = False,
+    force_mode: ExecutionMode | None = None,
 ) -> tuple[ExecutionMode, str]:
     """Pick the execution mode for an upcoming turn.
 
+    Three layers of override, in order of decreasing strength:
+
+      1. `force_mode` — caller (CLI `--mode`) explicitly demands a mode
+         for this turn only.
+      2. `prefer_programmatic` — session-level flag set at session.new
+         time; takes precedence over the auto-escalation heuristic so
+         users can opt into programmatic for a whole session.
+      3. Auto-heuristic — confidential labels present + a quarantined
+         extractor registered → DUAL_LLM. Otherwise TURN_LEVEL.
+
     Returns (mode, reason) so the audit record explains the choice.
     """
+    if force_mode is not None:
+        return force_mode, f"forced by caller: {force_mode.value}"
+
+    if prefer_programmatic:
+        return (
+            ExecutionMode.PROGRAMMATIC,
+            "session prefers programmatic mode; planner will emit a program",
+        )
+
     if not label_set & _CONFIDENTIAL_LABELS:
         return ExecutionMode.TURN_LEVEL, "no confidential labels in session"
 
