@@ -1,0 +1,62 @@
+site_name: CapableDeputy
+site_description: A structurally secure runtime for personal AI agents.
+site_url: https://example.invalid/capabledeputy
+repo_url: https://github.com/example/capabledeputy
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.snippets
+
+# The repo top-level docs (DESIGN.md, ROADMAP.md, README.md) are
+# included by snippet so the site stays in lock-step with what lives at
+# the repo root — no stale duplicates.
+docs_dir: docs
+
+nav:
+  - Home: index.md
+  - Design: design.md
+  - Roadmap: roadmap.md
+  - Operations:
+      - Container deployment: deployment/container.md
+      - Local-model planner: local-model-planner.md
+      - MCP spec review: mcp-spec-review.md
+  - Demos:
+      - Overview: demos/README.md
+      - Prescription to wife: demos/01-prescription-to-wife.md
+      - Real Claude blocked, then approved: demos/02-real-claude-blocked-then-approved.md
+      - Claude Code adversarial: demos/03-claude-code-adversarial.md
+  - Spec:
+      - TLA+ spec: spec.md

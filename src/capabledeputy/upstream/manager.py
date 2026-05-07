@@ -58,9 +58,13 @@ class UpstreamManager:
     ) -> None:
         if self._stack is None:
             raise RuntimeError("UpstreamManager not entered")
+        # `effective_command` returns the bare command if no isolation
+        # is configured, or the podman/docker-wrapped argv if it is.
+        # MCP transport stays stdio either way.
+        cmd = config.effective_command()
         params = StdioServerParameters(
-            command=config.command[0],
-            args=list(config.command[1:]),
+            command=cmd[0],
+            args=list(cmd[1:]),
         )
         read, write = await self._stack.enter_async_context(stdio_client(params))
         session = await self._stack.enter_async_context(ClientSession(read, write))

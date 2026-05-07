@@ -9,6 +9,12 @@ from uuid import uuid4
 
 from capabledeputy.approval.model import ApprovalAction, ApprovalRequest, ApprovalStatus
 from capabledeputy.approval.pattern import ApprovalPatternRegistry
+from capabledeputy.approval.signer import (
+    ApprovalSigner,
+    Signature,
+    SignerError,
+    canonical_payload,
+)
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.capabilities import Capability
@@ -20,6 +26,10 @@ class ApprovalNotFoundError(KeyError):
 
 
 class ApprovalStateError(RuntimeError):
+    pass
+
+
+class ApprovalSignatureRequiredError(ApprovalStateError):
     pass
 
 
@@ -109,18 +119,57 @@ class ApprovalQueue:
         *,
         decided_by: str = "user",
         decision_scope: dict[str, Any] | None = None,
+        signature: Signature | None = None,
+        signer_for_verify: ApprovalSigner | None = None,
+        require_signature: bool = False,
     ) -> ApprovalRequest:
+        """Approve a pending request.
+
+        When `require_signature=True`, the caller must pass both a
+        `signature` over the canonical payload and a `signer_for_verify`
+        that can validate it. A missing or invalid signature blocks the
+        approval and surfaces a clear error; the request stays PENDING
+        so it can be retried with a valid signature.
+        """
         request = self.get(request_id)
         if request.status != ApprovalStatus.PENDING:
             raise ApprovalStateError(
                 f"approval {request_id} not pending (status={request.status})",
             )
+
+        if require_signature:
+            if signature is None or signer_for_verify is None:
+                raise ApprovalSignatureRequiredError(
+                    f"approval {request_id} requires a signature",
+                )
+            message = canonical_payload(
+                approval_id=request.id,
+                action=request.action.value,
+                target=request.target,
+                payload=request.payload,
+                labels_in=frozenset(label.value for label in request.labels_in),
+            )
+            try:
+                ok = signer_for_verify.verify(message, signature)
+            except SignerError as e:
+                raise ApprovalSignatureRequiredError(
+                    f"signature verification failed for approval {request_id}: {e}",
+                ) from e
+            if not ok:
+                raise ApprovalSignatureRequiredError(
+                    f"signature did not validate for approval {request_id}",
+                )
+
+        scope = dict(decision_scope or {})
+        if signature is not None:
+            scope["signature"] = signature.to_dict()
+
         updated = replace(
             request,
             status=ApprovalStatus.APPROVED,
             decision_at=datetime.now(UTC),
             decided_by=decided_by,
-            decision_scope=decision_scope or {},
+            decision_scope=scope,
         )
         self._requests[request_id] = updated
         if self._audit:
@@ -131,7 +180,7 @@ class ApprovalQueue:
                     payload={
                         "approval_id": request_id,
                         "decided_by": decided_by,
-                        "decision_scope": decision_scope or {},
+                        "decision_scope": scope,
                     },
                 ),
             )

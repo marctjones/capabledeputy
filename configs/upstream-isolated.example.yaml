@@ -1,0 +1,50 @@
+# Example upstream MCP server config with per-tool isolation.
+# See docs/per-tool-isolation.md for the full rationale and the
+# strict defaults the runtime applies.
+
+upstream_servers:
+  # Read-only access to a notes vault. No network.
+  - name: filesystem
+    command: ["uvx", "mcp-server-filesystem", "/data"]
+    inherent_labels:
+      - confidential.personal
+    isolation:
+      image: docker.io/library/python:3.12-slim
+      network: none
+      volumes:
+        - host: /home/me/Documents
+          container: /data
+          ro: true
+      memory: "256m"
+      cpus: "0.5"
+
+  # HTTP fetch with a host allowlist. Defaults to outbound-deny except
+  # for the explicit allowed_hosts entries.
+  - name: fetch
+    command: ["uvx", "mcp-server-fetch"]
+    inherent_labels:
+      - untrusted.external
+    tool_overrides:
+      fetch:
+        capability_kind: WEB_FETCH
+    isolation:
+      image: docker.io/library/python:3.12-slim
+      network: bridge
+      allowed_hosts:
+        - "api.example.com:127.0.0.1"
+      memory: "128m"
+
+  # Read-write home directory access. Note ro:false is a deliberate
+  # flag in the YAML so it's caught in code review.
+  - name: workspace
+    command: ["uvx", "mcp-server-filesystem", "/work"]
+    inherent_labels:
+      - confidential.personal
+    isolation:
+      image: docker.io/library/python:3.12-slim
+      network: none
+      volumes:
+        - host: /home/me/projects/scratch
+          container: /work
+          ro: false
+      memory: "512m"

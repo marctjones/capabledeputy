@@ -642,7 +642,12 @@ Phases 0–7 of ROADMAP.md are complete and verified end-to-end:
 | SKILL.md adapter (`src/capabledeputy/skills/`) | §10.7 |
 | Approval pattern library loader (`src/capabledeputy/approval/library.py`) | §10.11 |
 | Local-model planner config + docs (`docs/local-model-planner.md`) | §11 |
-| 424 unit tests + 3 real-LLM integration tests | §12 |
+| Multi-tenant labels (`policy.tenancy`, `policy.multi_tenant_engine`) | v0.4 |
+| Federation primitives (`federation/`) — HostId, signed export/import, remote approvals | v0.4 |
+| Hardware-token approval signing (`approval.signer`) — software key + YubiKey stub | v0.4 |
+| Per-tool container isolation (`upstream.isolation`) — podman wrapping + quadlet | v0.4 |
+| TLA+ spec (`spec/CapableDeputy.tla`) — model of session graph + policy | v0.4 |
+| 463 unit tests + 3 real-LLM integration tests | §12 |
 
 See ROADMAP.md for v0.2 / v0.3 / v0.4 plans, including the MCP
 Resources / Prompts / Elicitation expansion, programmatic mode,

@@ -243,15 +243,24 @@ high-leverage in v0.1.
 | Local-model planner option | DONE | `docs/local-model-planner.md` + `configs/local-planner.env`; daemon honours `CAPDEP_QUARANTINED_LLM_MODEL` and `CAPDEP_SKILLS_DIR` |
 | Approval pattern library | DONE | `configs/approval-patterns.yaml` starter pack + `capdep approval pattern import <path>` CLI |
 
-## v0.4+ — Federation and formal methods
+## v0.4 — Federation, isolation, formal model  ·  **DONE**
 
-- Per-tool container isolation: each MCP server in its own container
-  with policy-driven network and FS views.
-- Per-user label spaces for household deployments.
-- Inter-host federation: phone + laptop with shared session state
-  and remote approvals.
-- Hardware token integration for high-stakes approvals.
-- TLA+ specification of session graph and policy semantics.
-- Mechanized proofs of key safety properties (label monotonicity,
-  capability unforgeability).
-- Independent security audit.
+| Item | Status | Notes |
+|---|---|---|
+| Per-tool container isolation | DONE | Strict-default podman wrapping in `capabledeputy.upstream.isolation`; YAML `isolation:` block; quadlet generator; `docs/per-tool-isolation.md` |
+| Per-user label spaces (multi-tenant labels, additive) | DONE | `policy.tenancy.Tenant` + `TenantLabel`; `policy.multi_tenant_engine.decide_multi_tenant`; existing single-user code paths unchanged |
+| Inter-host federation primitive | DONE | `federation.HostId`, signed session export/import, remote-approval envelopes; full sync still v0.5+ |
+| Hardware-token approval signing | DONE (software) / STUB (YubiKey) | `approval.signer` with HMAC software key + canonical payload + queue-level `require_signature`; YubiKey class shape ships, body raises NotImplementedError |
+| TLA+ specification | DONE | `spec/CapableDeputy.tla` + `.cfg` covering session lifecycle, policy decision, label monotonicity, no-silent-egress-on-PHI |
+| Mechanized proofs (Coq/Lean/Isabelle) | DEFERRED to v0.5+ | TLA+ model-checking covers the same property space; full mechanization is a multi-month research project |
+| Independent security audit | OUT OF SCOPE for code work | Process item; engage a firm |
+
+## v0.5+ — Long tail
+
+- Continuous bidirectional federation sync (currently a primitive).
+- Asymmetric crypto for cross-host identity (currently HMAC over
+  shared keys; fine for a single household, not for a public
+  directory).
+- YubiKey PIV / FIDO2 backend body.
+- Mechanized proofs of label monotonicity and capability
+  unforgeability in Coq/Lean.
