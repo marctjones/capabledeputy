@@ -184,10 +184,13 @@ high-leverage in v0.1.
 ### Phase 9 (originally Polish)  ·  **PARTIALLY DONE**
 
 - **DONE**: README with canonical use cases (`README.md`),
-  CONTRIBUTING.md, CODE_OF_CONDUCT.md, demo walkthroughs in
-  `docs/demos/`, MCP spec review in `docs/mcp-spec-review.md`.
-- **PARTIAL**: docs site (have `docs/` markdowns; no published site).
-- **NOT DONE**: asciicasts / demo videos; v0.1 release tag.
+  CONTRIBUTING.md, CODE_OF_CONDUCT.md, MCP spec review
+  (`docs/mcp-spec-review.md`), nine end-to-end demo walkthroughs
+  spanning security and assistant workflows
+  (`docs/demos/01-prescription-to-wife.md` through
+  `docs/demos/09-accountant.md`), mkdocs site scaffold, v0.1.0 + v0.4.0
+  release tags.
+- **NOT DONE**: asciicasts / demo videos (require terminal recording).
 
 ## v0.1 status summary
 

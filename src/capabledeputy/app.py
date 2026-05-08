@@ -11,10 +11,13 @@ from capabledeputy.paths import default_audit_log_path, default_state_db_path
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.store import SessionStore
 from capabledeputy.tools.client import LabeledToolClient
+from capabledeputy.tools.native.calendar import CalendarStore, make_calendar_tools
 from capabledeputy.tools.native.email import EmailOutbox, make_email_tools
 from capabledeputy.tools.native.extract import make_extract_tools
+from capabledeputy.tools.native.inbox import Inbox, make_inbox_tools
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
 from capabledeputy.tools.native.purchase import PurchaseQueue, make_purchase_tools
+from capabledeputy.tools.native.web import WebMock, make_web_tools
 from capabledeputy.tools.registry import ToolRegistry
 
 
@@ -33,6 +36,9 @@ class App:
         self.memory = LabeledMemoryStore()
         self.purchase_queue = PurchaseQueue()
         self.email_outbox = EmailOutbox()
+        self.calendar = CalendarStore()
+        self.inbox = Inbox()
+        self.web = WebMock()
         self.approval_queue = ApprovalQueue(audit=self.audit)
         self.registry = ToolRegistry()
         self.tool_client = LabeledToolClient(self.registry, self.graph, self.audit)
@@ -48,6 +54,12 @@ class App:
         for tool in make_purchase_tools(self.purchase_queue):
             self.registry.register(tool)
         for tool in make_email_tools(self.email_outbox):
+            self.registry.register(tool)
+        for tool in make_calendar_tools(self.calendar):
+            self.registry.register(tool)
+        for tool in make_inbox_tools(self.inbox):
+            self.registry.register(tool)
+        for tool in make_web_tools(self.web):
             self.registry.register(tool)
         if self.quarantined_llm is not None:
             for tool in make_extract_tools(self.memory, self.quarantined_llm):

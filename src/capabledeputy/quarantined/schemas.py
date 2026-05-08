@@ -37,10 +37,59 @@ class ContactInfo(BaseModel):
     relationship: str = Field(max_length=40)
 
 
+class DailyBriefing(BaseModel):
+    """Coarse summary of a user's day. Field counts and lengths are
+    bounded so a misbehaving quarantined LLM can't smuggle large
+    amounts of source data through the schema (DESIGN.md §5.2)."""
+
+    date: str = Field(max_length=10)
+    n_calendar_events: int = Field(ge=0, le=50)
+    n_unread_emails: int = Field(ge=0, le=200)
+    top_priority: str = Field(max_length=120)
+    suggested_focus: str = Field(max_length=160)
+
+
+class EmailTriageItem(BaseModel):
+    """One row of an inbox triage view. Sender + subject are length-
+    bounded; urgency is enum-like via max_length on a string field."""
+
+    sender: str = Field(max_length=120)
+    subject: str = Field(max_length=200)
+    urgency: str = Field(max_length=10, description="low | medium | high")
+    one_line_summary: str = Field(max_length=160)
+
+
+class WebPageSummary(BaseModel):
+    """Bounded summary of a fetched untrusted web page."""
+
+    title: str = Field(max_length=200)
+    key_facts: list[str] = Field(max_length=5)
+    relevant_to_query: bool
+
+
+class FinancialSummaryForAccountant(BaseModel):
+    """Summary suitable for sending to an external accountant. Keeps
+    individual numbers in coarse buckets so the schema itself acts as
+    a privacy filter, not just a structuring step."""
+
+    period: str = Field(max_length=20, description="e.g. 'Q1 2026'")
+    total_income_bucket: str = Field(
+        max_length=40,
+        description="Bucket like 'under-50k', '50k-100k', etc. Never an exact number.",
+    )
+    total_expenses_bucket: str = Field(max_length=40)
+    n_transactions: int = Field(ge=0, le=100_000)
+    notable_categories: list[str] = Field(max_length=5)
+
+
 _SCHEMA_REGISTRY: dict[str, type[BaseModel]] = {
     "DoseSummary": DoseSummary,
     "FinancialSummary": FinancialSummary,
     "ContactInfo": ContactInfo,
+    "DailyBriefing": DailyBriefing,
+    "EmailTriageItem": EmailTriageItem,
+    "WebPageSummary": WebPageSummary,
+    "FinancialSummaryForAccountant": FinancialSummaryForAccountant,
 }
 
 
