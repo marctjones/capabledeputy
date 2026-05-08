@@ -57,12 +57,53 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             additional_labels=entry.labels,
         )
 
+    async def memory_create(args: dict[str, Any], context: ToolContext) -> ToolResult:
+        """Create-only write. Fails if the key already exists. Tagged
+        CREATE_FS so the policy engine's destructive-op gate doesn't
+        fire — creating a new key is non-destructive by definition."""
+        key = str(args["key"])
+        value = args["value"]
+        if store.read(key) is not None:
+            return ToolResult(
+                output={"ok": False, "error": f"key already exists: {key}"},
+            )
+        store.write(key, value, context.label_set)
+        return ToolResult(output={"ok": True, "key": key, "created": True})
+
+    async def memory_update(args: dict[str, Any], context: ToolContext) -> ToolResult:
+        """Modify-existing write. Fails if the key doesn't exist.
+        Tagged MODIFY_FS — the destructive-op gate fires unless the
+        capability has allows_destructive=True or the user approves."""
+        key = str(args["key"])
+        value = args["value"]
+        if store.read(key) is None:
+            return ToolResult(
+                output={"ok": False, "error": f"key does not exist: {key}"},
+            )
+        store.write(key, value, context.label_set)
+        return ToolResult(output={"ok": True, "key": key, "modified": True})
+
+    async def memory_delete(args: dict[str, Any], context: ToolContext) -> ToolResult:
+        """Remove a key from the store. Tagged DELETE_FS — the
+        destructive-op gate fires unless explicitly authorized."""
+        key = str(args["key"])
+        if store.read(key) is None:
+            return ToolResult(
+                output={"ok": False, "error": f"key does not exist: {key}"},
+            )
+        # The store doesn't currently expose a delete primitive; we
+        # emulate it by overwriting with a tombstone marker. A future
+        # store implementation should add a real delete that removes
+        # the entry. For now this surfaces the right policy semantics.
+        store._data.pop(key, None)  # type: ignore[attr-defined]
+        return ToolResult(output={"ok": True, "key": key, "deleted": True})
+
     return [
         ToolDefinition(
             name="memory.write",
             description=(
-                "Write a value to a key in the memory store. Required args: "
-                "key (string), value (string)."
+                "Write a value to a key in the memory store (create or "
+                "overwrite). Required args: key (string), value (string)."
             ),
             capability_kind=CapabilityKind.WRITE_FS,
             handler=memory_write,
@@ -91,6 +132,60 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
                 "properties": {
                     "key": {"type": "string", "description": "Memory key to read."},
                 },
+                "required": ["key"],
+            },
+        ),
+        ToolDefinition(
+            name="memory.create",
+            description=(
+                "Create a new key. Fails if the key already exists. "
+                "Non-destructive: bypasses the destructive-op gate. "
+                "Required args: key (string), value (string)."
+            ),
+            capability_kind=CapabilityKind.CREATE_FS,
+            handler=memory_create,
+            target_arg="key",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"},
+                    "value": {"type": "string"},
+                },
+                "required": ["key", "value"],
+            },
+        ),
+        ToolDefinition(
+            name="memory.update",
+            description=(
+                "Update an existing key. Fails if the key doesn't exist. "
+                "Destructive: requires approval unless the capability has "
+                "allows_destructive=True. Required args: key, value."
+            ),
+            capability_kind=CapabilityKind.MODIFY_FS,
+            handler=memory_update,
+            target_arg="key",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"},
+                    "value": {"type": "string"},
+                },
+                "required": ["key", "value"],
+            },
+        ),
+        ToolDefinition(
+            name="memory.delete",
+            description=(
+                "Remove a key from the memory store. Destructive: "
+                "requires approval unless the capability has "
+                "allows_destructive=True. Required args: key."
+            ),
+            capability_kind=CapabilityKind.DELETE_FS,
+            handler=memory_delete,
+            target_arg="key",
+            parameters_schema={
+                "type": "object",
+                "properties": {"key": {"type": "string"}},
                 "required": ["key"],
             },
         ),

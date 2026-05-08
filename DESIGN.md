@@ -157,6 +157,36 @@ Each capability holds: target pattern, expiry (one-shot / session / persistent),
 - `CALENDAR(read | write)`
 - `QUEUE_PURCHASE(vendor_pattern, max_amount)`
 
+### 7.5 Destructive-Operation Gate (Clark-Wilson + CRUD)
+
+In addition to the conflict rules above, the policy engine enforces a
+**destructive-operation gate**:
+
+- Reads and **creates** flow through unchallenged. Creating new state
+  doesn't destroy any existing state, so the security floor for these
+  operations is just "do you hold a matching capability?"
+- **Modifies** and **deletes** require either a capability with
+  `allows_destructive=True` (compartment-wide pre-authorization) OR an
+  explicit per-action approval. The gate fires structurally on the
+  action's kind — `MODIFY_FS` / `DELETE_FS` / `MODIFY_CAL` /
+  `DELETE_CAL` — independently of label conflicts.
+
+The model behind this is the Clark-Wilson well-formed-transaction
+principle: modifications must be deliberate, audited transactions, not
+the implicit byproduct of a flow. CRUD-decomposed RBAC ships the same
+shape; append-only ledger systems and `chattr +a` filesystems
+generalize it.
+
+The destructive gate sits BELOW the conflict-rule loop in the engine,
+so a non-negotiable DENY (e.g., health-meets-egress) still
+short-circuits before the gate is consulted.
+
+Backward-compat: legacy `WRITE_FS` and `CALENDAR_WRITE` capabilities
+match the granular create/modify/delete kinds. With
+`allows_destructive=True` they cover all of them; without it, only
+creates pass freely. New tools should use the granular kinds for
+per-pattern control over which operations are pre-authorized.
+
 ### 7.4 Tools
 
 **Principle:** prefer upstream MCP servers wherever they exist. CapableDeputy provides labels and policy enforcement, not reimplementation. The MVP tool slate below is chosen for ecosystem reach (mapping to the most-used OpenClaw skills and the official MCP reference servers) and for coverage of the four canonical scenarios in §13.
@@ -651,7 +681,9 @@ Phases 0–7 of ROADMAP.md are complete and verified end-to-end:
 | Quarantined workflow schemas (`DailyBriefing`, `EmailTriageItem`, `WebPageSummary`, `FinancialSummaryForAccountant`) | §5.2, §10.12 |
 | Nine e2e demos (security + workflow + adversarial) | §13, `docs/demos/` |
 | Approval bundles (`approval/bundle.py`, `programmatic/bundle_runner.py`) — N gates → 1 decision | §8, §10.11 |
-| 486 unit tests + 3 real-LLM integration tests | §12 |
+| Destructive-op gate (`policy.engine` DESTRUCTIVE_OP_RULE) + granular kinds + `allows_destructive` | §7.5 |
+| Granular memory + calendar tools (create / update / delete) | §10.7 |
+| 497 unit tests + 3 real-LLM integration tests | §12 |
 
 See ROADMAP.md for v0.2 / v0.3 / v0.4 plans, including the MCP
 Resources / Prompts / Elicitation expansion, programmatic mode,

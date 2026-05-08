@@ -20,11 +20,18 @@ from capabledeputy.policy.rules import Decision
 _GLOB_CAPABILITIES: frozenset[Capability] = frozenset(
     {
         Capability(kind=CapabilityKind.READ_FS, pattern="*"),
-        Capability(kind=CapabilityKind.WRITE_FS, pattern="*"),
+        # WRITE_FS with allows_destructive=True so the matcher's union
+        # over MODIFY_FS / DELETE_FS doesn't trigger the destructive-op
+        # gate. Tests of the gate itself live in test_destructive_ops.py.
+        Capability(kind=CapabilityKind.WRITE_FS, pattern="*", allows_destructive=True),
         Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*"),
         Capability(kind=CapabilityKind.WEB_FETCH, pattern="*"),
         Capability(kind=CapabilityKind.CALENDAR_READ, pattern="*"),
-        Capability(kind=CapabilityKind.CALENDAR_WRITE, pattern="*"),
+        Capability(
+            kind=CapabilityKind.CALENDAR_WRITE,
+            pattern="*",
+            allows_destructive=True,
+        ),
         Capability(
             kind=CapabilityKind.QUEUE_PURCHASE,
             pattern="*",

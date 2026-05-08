@@ -17,6 +17,7 @@ demos** that flip the architecture and use external agents.
 | 08 | [Note-Taking](08-note-taking.md) | workflow | compartment hygiene | nothing | ~2 min |
 | 09 | [Accountant Summary](09-accountant.md) | workflow + security | cross-compartment send | nothing | ~3 min |
 | 10 | [Bundled Approvals](10-bundled-approvals.md) | workflow + UX | approval-fatigue answer | nothing | ~3 min |
+| 11 | [Destructive-Op Gate](11-destructive-ops.md) | security + UX | Clark-Wilson / CRUD decomposition | nothing | ~3 min |
 
 ## How they fit together
 

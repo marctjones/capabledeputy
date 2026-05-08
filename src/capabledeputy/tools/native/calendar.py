@@ -43,6 +43,18 @@ class CalendarStore:
     def add(self, event: CalendarEvent) -> None:
         self._events[event.id] = event
 
+    def get(self, event_id: UUID) -> CalendarEvent | None:
+        return self._events.get(event_id)
+
+    def update(self, event: CalendarEvent) -> bool:
+        if event.id not in self._events:
+            return False
+        self._events[event.id] = event
+        return True
+
+    def remove(self, event_id: UUID) -> bool:
+        return self._events.pop(event_id, None) is not None
+
     def all(self) -> list[CalendarEvent]:
         return list(self._events.values())
 
@@ -97,6 +109,49 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
         store.add(event)
         return ToolResult(output={"created": True, "id": str(event.id)})
 
+    async def update_event(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
+        """Modify an existing event. Tagged MODIFY_CAL — the
+        destructive-op gate fires unless the capability has
+        allows_destructive=True or the user approves."""
+        event_id = UUID(str(args["id"]))
+        existing = store.get(event_id)
+        if existing is None:
+            return ToolResult(output={"ok": False, "error": "event not found"})
+        title = str(args.get("title", existing.title))
+        notes = str(args.get("notes", existing.notes))
+        starts = (
+            datetime.fromisoformat(str(args["starts_at"]))
+            if "starts_at" in args
+            else existing.starts_at
+        )
+        ends = (
+            datetime.fromisoformat(str(args["ends_at"]))
+            if "ends_at" in args
+            else existing.ends_at
+        )
+        if starts.tzinfo is None:
+            starts = starts.replace(tzinfo=UTC)
+        if ends.tzinfo is None:
+            ends = ends.replace(tzinfo=UTC)
+        new = CalendarEvent(
+            id=event_id,
+            title=title,
+            starts_at=starts,
+            ends_at=ends,
+            notes=notes,
+            labels=existing.labels | ctx.label_set,
+        )
+        store.update(new)
+        return ToolResult(output={"ok": True, "id": str(event_id), "modified": True})
+
+    async def delete_event(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
+        """Remove an event. Tagged DELETE_CAL — destructive-op gate
+        fires by default."""
+        event_id = UUID(str(args["id"]))
+        if not store.remove(event_id):
+            return ToolResult(output={"ok": False, "error": "event not found"})
+        return ToolResult(output={"ok": True, "id": str(event_id), "deleted": True})
+
     return [
         ToolDefinition(
             name="calendar.events_today",
@@ -122,11 +177,12 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
         ToolDefinition(
             name="calendar.create_event",
             description=(
-                "Create a new calendar event. The session's label set "
-                "propagates onto the stored event. Required args: title, "
-                "starts_at (ISO datetime), ends_at (ISO datetime)."
+                "Create a new calendar event. Non-destructive (bypasses "
+                "destructive-op gate). The session's label set propagates "
+                "onto the stored event. Required args: title, starts_at, "
+                "ends_at."
             ),
-            capability_kind=CapabilityKind.CALENDAR_WRITE,
+            capability_kind=CapabilityKind.CREATE_CAL,
             handler=create_event,
             target_arg="title",
             parameters_schema={
@@ -138,6 +194,43 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
                     "notes": {"type": "string"},
                 },
                 "required": ["title", "starts_at", "ends_at"],
+            },
+        ),
+        ToolDefinition(
+            name="calendar.update_event",
+            description=(
+                "Update fields on an existing event. Destructive: gated by "
+                "the destructive-op rule. Required args: id (event uuid). "
+                "Optional: title, starts_at, ends_at, notes."
+            ),
+            capability_kind=CapabilityKind.MODIFY_CAL,
+            handler=update_event,
+            target_arg="id",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "title": {"type": "string"},
+                    "starts_at": {"type": "string"},
+                    "ends_at": {"type": "string"},
+                    "notes": {"type": "string"},
+                },
+                "required": ["id"],
+            },
+        ),
+        ToolDefinition(
+            name="calendar.delete_event",
+            description=(
+                "Remove an event by id. Destructive: gated by the "
+                "destructive-op rule. Required args: id (event uuid)."
+            ),
+            capability_kind=CapabilityKind.DELETE_CAL,
+            handler=delete_event,
+            target_arg="id",
+            parameters_schema={
+                "type": "object",
+                "properties": {"id": {"type": "string"}},
+                "required": ["id"],
             },
         ),
     ]

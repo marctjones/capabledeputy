@@ -41,7 +41,8 @@ async def test_calendar_events_today_returns_personal_label() -> None:
             ends_at=now + timedelta(minutes=30),
         ),
     )
-    [list_tool, _create_tool] = make_calendar_tools(store)
+    tools = {t.name: t for t in make_calendar_tools(store)}
+    list_tool = tools["calendar.events_today"]
     result = await list_tool.handler({}, _ctx())
     assert len(result.output["events"]) == 1
     assert Label.CONFIDENTIAL_PERSONAL in list_tool.inherent_labels
@@ -49,7 +50,8 @@ async def test_calendar_events_today_returns_personal_label() -> None:
 
 async def test_calendar_create_event_persists() -> None:
     store = CalendarStore()
-    [_, create_tool] = make_calendar_tools(store)
+    tools = {t.name: t for t in make_calendar_tools(store)}
+    create_tool = tools["calendar.create_event"]
     now = datetime.now(UTC)
     out = await create_tool.handler(
         {

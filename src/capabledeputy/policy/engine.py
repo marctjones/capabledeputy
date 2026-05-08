@@ -10,7 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from capabledeputy.policy.actions import Action
-from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.capabilities import (
+    DESTRUCTIVE_KINDS,
+    Capability,
+    CapabilityKind,
+)
 from capabledeputy.policy.labels import Label
 from capabledeputy.policy.rules import CONFLICT_RULES, ConflictRule, Decision
 
@@ -18,6 +22,8 @@ _EGRESS_LABEL_FOR_KIND: dict[CapabilityKind, Label] = {
     CapabilityKind.SEND_EMAIL: Label.EGRESS_EMAIL,
     CapabilityKind.QUEUE_PURCHASE: Label.EGRESS_PURCHASE,
 }
+
+DESTRUCTIVE_OP_RULE = "destructive-op-needs-approval"
 
 
 @dataclass(frozen=True)
@@ -74,6 +80,25 @@ def decide(
                 matched_capability=cap,
                 effective_labels=effective_labels,
             )
+
+    # Destructive-op gate (DESIGN.md §7.5): MODIFY_* / DELETE_* actions
+    # require a capability with `allows_destructive=True` OR an approval.
+    # The default (`allows_destructive=False`) routes the action through
+    # REQUIRE_APPROVAL so a human authorises it. This codifies the
+    # Clark-Wilson well-formed-transaction principle: modifications are
+    # deliberate, audited acts; never the implicit byproduct of a flow.
+    if action.kind in DESTRUCTIVE_KINDS and not cap.allows_destructive:
+        return PolicyDecision(
+            decision=Decision.REQUIRE_APPROVAL,
+            rule=DESTRUCTIVE_OP_RULE,
+            reason=(
+                f"{action.kind.value} on '{action.target}' is a destructive "
+                "operation and the matched capability does not have "
+                "allows_destructive=True"
+            ),
+            matched_capability=cap,
+            effective_labels=effective_labels,
+        )
 
     return PolicyDecision(
         decision=Decision.ALLOW,

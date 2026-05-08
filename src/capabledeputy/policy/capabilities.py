@@ -24,6 +24,46 @@ class CapabilityKind(StrEnum):
     CALENDAR_WRITE = "CALENDAR_WRITE"
     QUEUE_PURCHASE = "QUEUE_PURCHASE"
 
+    # Granular destructive-op kinds (DESIGN.md §7.5 — Clark-Wilson + CRUD
+    # decomposition). New tools that distinguish create / modify / delete
+    # use these explicitly. Legacy WRITE_FS / CALENDAR_WRITE capabilities
+    # remain valid: their matches() implementation accepts the granular
+    # kinds as a backward-compat union.
+    CREATE_FS = "CREATE_FS"
+    MODIFY_FS = "MODIFY_FS"
+    DELETE_FS = "DELETE_FS"
+    CREATE_CAL = "CREATE_CAL"
+    MODIFY_CAL = "MODIFY_CAL"
+    DELETE_CAL = "DELETE_CAL"
+
+
+# Action kinds the policy engine treats as "destructive" — modifying or
+# deleting existing state. New tools opt into stricter gating by setting
+# their capability_kind to one of these; the policy engine then requires
+# either a `allows_destructive=True` capability or an explicit human
+# approval gate before the action can fire.
+DESTRUCTIVE_KINDS: frozenset[CapabilityKind] = frozenset(
+    {
+        CapabilityKind.MODIFY_FS,
+        CapabilityKind.DELETE_FS,
+        CapabilityKind.MODIFY_CAL,
+        CapabilityKind.DELETE_CAL,
+    },
+)
+
+
+# Backward-compat: a legacy capability of `WRITE_FS` / `CALENDAR_WRITE`
+# matches actions whose kind is the granular create/modify/delete
+# variant. New capabilities should be granular.
+_WRITE_UNION_MATCHES: dict[CapabilityKind, frozenset[CapabilityKind]] = {
+    CapabilityKind.WRITE_FS: frozenset(
+        {CapabilityKind.CREATE_FS, CapabilityKind.MODIFY_FS, CapabilityKind.DELETE_FS},
+    ),
+    CapabilityKind.CALENDAR_WRITE: frozenset(
+        {CapabilityKind.CREATE_CAL, CapabilityKind.MODIFY_CAL, CapabilityKind.DELETE_CAL},
+    ),
+}
+
 
 class CapabilityExpiry(StrEnum):
     ONE_SHOT = "one_shot"
@@ -45,6 +85,12 @@ class Capability:
     origin: CapabilityOrigin = CapabilityOrigin.SYSTEM_DEFAULT
     audit_id: UUID = field(default_factory=uuid4)
     max_amount: int | None = None
+    # When True, this capability authorises modify/delete operations
+    # (the granular MODIFY_* / DELETE_* kinds) without needing a per-
+    # action approval. Default OFF: destructive operations are gated by
+    # default, matching the Clark-Wilson principle that modifications
+    # must be deliberate, audited transactions.
+    allows_destructive: bool = False
 
     def matches(
         self,
@@ -53,7 +99,11 @@ class Capability:
         amount: int | None = None,
     ) -> bool:
         if self.kind != kind:
-            return False
+            # Backward-compat: WRITE_FS / CALENDAR_WRITE capabilities
+            # match the granular create/modify/delete variants.
+            covered = _WRITE_UNION_MATCHES.get(self.kind, frozenset())
+            if kind not in covered:
+                return False
         if not fnmatch.fnmatchcase(target, self.pattern):
             return False
         if self.max_amount is None:
@@ -68,6 +118,7 @@ class Capability:
             "origin": self.origin.value,
             "audit_id": str(self.audit_id),
             "max_amount": self.max_amount,
+            "allows_destructive": self.allows_destructive,
         }
 
     @classmethod
@@ -79,4 +130,5 @@ class Capability:
             origin=CapabilityOrigin(d["origin"]),
             audit_id=UUID(d["audit_id"]),
             max_amount=d.get("max_amount"),
+            allows_destructive=bool(d.get("allows_destructive", False)),
         )
