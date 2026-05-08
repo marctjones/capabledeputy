@@ -16,6 +16,7 @@ demos** that flip the architecture and use external agents.
 | 07 | [Untrusted Web Research](07-untrusted-research.md) | workflow + security | indirect injection | nothing | ~3 min |
 | 08 | [Note-Taking](08-note-taking.md) | workflow | compartment hygiene | nothing | ~2 min |
 | 09 | [Accountant Summary](09-accountant.md) | workflow + security | cross-compartment send | nothing | ~3 min |
+| 10 | [Bundled Approvals](10-bundled-approvals.md) | workflow + UX | approval-fatigue answer | nothing | ~3 min |
 
 ## How they fit together
 
@@ -32,19 +33,22 @@ demos** that flip the architecture and use external agents.
 
 ## What's verified by each
 
-| Property | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 |
-|---|---|---|---|---|---|---|---|---|---|
-| Health → email egress structurally denied | ✓ | ✓ | ✓ | | | | | ✓ | |
-| Untrusted → email egress structurally denied | | | | ✓ | | | ✓ | | |
-| Financial → email egress structurally denied | | | | | | | | | ✓ |
-| Approval workflow spawns purpose session | ✓ | ✓ | ~ | | ✓ | | | | ✓ |
-| Schema extraction declassifies | ~ | | | ✓ | ✓ | | ✓ | | ✓ |
-| Pattern rules auto-approve recurring | | | | | ~ | ✓ | | | |
-| Audit log captures every step | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Real LLM correctly identifies fired rule | — | ✓ | ~ | — | — | — | — | — | — |
-| External MCP host can drive policy | — | — | ✓ | — | — | — | — | — | — |
-| Compartments stay separate across sessions | ~ | | | | | | | ✓ | |
-| Schema as privacy filter (bucketing) | | | | | | | ~ | | ✓ |
+| Property | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Health → email egress structurally denied | ✓ | ✓ | ✓ | | | | | ✓ | | |
+| Untrusted → email egress structurally denied | | | | ✓ | | | ✓ | | | |
+| Financial → email egress structurally denied | | | | | | | | | ✓ | |
+| Financial → purchase requires approval | | | | | | | | | | ✓ |
+| Approval workflow spawns purpose session | ✓ | ✓ | ~ | | ✓ | | | | ✓ | ✓ |
+| Schema extraction declassifies | ~ | | | ✓ | ✓ | | ✓ | | ✓ | |
+| Pattern rules auto-approve recurring | | | | | ~ | ✓ | | | | |
+| Bundled approvals (N gates → 1 decision) | | | | | | | | | | ✓ |
+| Source-hash mismatch detection | | | | | | | | | | ✓ |
+| Audit log captures every step | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Real LLM correctly identifies fired rule | — | ✓ | ~ | — | — | — | — | — | — | — |
+| External MCP host can drive policy | — | — | ✓ | — | — | — | — | — | — | — |
+| Compartments stay separate across sessions | ~ | | | | | | | ✓ | | |
+| Schema as privacy filter (bucketing) | | | | | | | ~ | | ✓ | |
 
 `✓` shown directly · `~` shown indirectly · `—` not applicable
 

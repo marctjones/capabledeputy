@@ -9,6 +9,7 @@ from capabledeputy.app import App
 from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.daemon.audit_handlers import make_audit_handlers
+from capabledeputy.daemon.bundle_handlers import make_bundle_handlers
 from capabledeputy.daemon.handlers import default_handlers
 from capabledeputy.daemon.memory_handlers import make_memory_handlers
 from capabledeputy.daemon.pattern_handlers import make_pattern_handlers
@@ -58,6 +59,7 @@ async def run_daemon(
     handlers.update(make_pattern_handlers(app))
     handlers.update(make_memory_handlers(app))
     handlers.update(make_programmatic_handlers(app))
+    handlers.update(make_bundle_handlers(app))
 
     daemon = Daemon(socket_path or default_socket_path(), handlers=handlers)
 

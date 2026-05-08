@@ -13,6 +13,11 @@ caller dispatches for real or returns synthetic results.
 
 from __future__ import annotations
 
+from capabledeputy.programmatic.bundle_runner import (
+    BundleMismatchError,
+    dry_run_for_bundle,
+    execute_with_approved_bundle,
+)
 from capabledeputy.programmatic.errors import (
     ProgramPolicyError,
     ProgramRuntimeError,
@@ -32,6 +37,7 @@ from capabledeputy.programmatic.runner import (
 from capabledeputy.programmatic.value import LabeledValue, labels_of, unwrap
 
 __all__ = [
+    "BundleMismatchError",
     "DryRunReport",
     "ExecutionResult",
     "LabeledValue",
@@ -39,7 +45,9 @@ __all__ = [
     "ProgramRuntimeError",
     "ProgramSyntaxError",
     "ToolCallRecord",
+    "dry_run_for_bundle",
     "dry_run_program",
+    "execute_with_approved_bundle",
     "labels_of",
     "parse_program",
     "run_program",

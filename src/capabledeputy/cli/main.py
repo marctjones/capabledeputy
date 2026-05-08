@@ -151,13 +151,33 @@ def run_command(
     session_id: str = typer.Argument(..., help="Session id to run inside"),
     program: str = typer.Argument(..., help="Path to a programmatic-mode .py source file"),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON instead of rendered output"),
+    bundle: bool = typer.Option(
+        False,
+        "--bundle",
+        help=(
+            "Bundled-approval mode: dry-run the program; show the impact tree; "
+            "prompt for one approval; then execute with each gate pre-applied "
+            "via a purpose-limited session."
+        ),
+    ),
+    auto_approve: bool = typer.Option(
+        False,
+        "--auto-approve",
+        help="(With --bundle) skip the prompt; approve every gate. CI-friendly.",
+    ),
 ) -> None:
     """Execute a programmatic-mode source against a session.
 
-    Each `call(tool_name, **kwargs)` dispatches through LabeledToolClient
-    so policy + audit + label propagation are identical to turn-level
-    mode. A non-ALLOW decision halts the program with the rule recorded.
+    Default mode: each `call(...)` dispatches through `LabeledToolClient`;
+    a non-ALLOW decision halts the program with the rule recorded.
+
+    Bundle mode (`--bundle`): one human decision authorises every
+    approval gate in the workflow. Useful when a workflow needs many
+    related approvals — review the whole plan once, approve, execute.
     """
+    if bundle:
+        _run_bundled(session_id, program, json_output=json_output, auto_approve=auto_approve)
+        return
     import json as _json
     from pathlib import Path
 
@@ -195,6 +215,64 @@ def run_command(
         labels = ",".join(rv["labels"]) or "-"
         console.print(f"[bold]return:[/bold] {rv['raw']!r} [dim](labels={labels})[/dim]")
     console.print(f"[green]ok[/green] — {len(result['tool_calls'])} call(s) executed")
+
+
+def _run_bundled(
+    session_id: str,
+    program: str,
+    *,
+    json_output: bool,
+    auto_approve: bool,
+) -> None:
+    """Bundled-approval execution path: dry-run → preview → approve → execute."""
+    import json as _json
+    from pathlib import Path
+
+    source = Path(program).read_text(encoding="utf-8")
+    client = DaemonClient(default_socket_path())
+
+    preview = anyio.run(client.call, "programmatic.bundle_dry_run", {"source": source})
+
+    if json_output and not auto_approve:
+        # Dry-run only when --json without --auto-approve.
+        console.print(_json.dumps(preview, indent=2))
+        raise typer.Exit(code=0 if preview["is_approvable"] else 1)
+
+    console.print(preview["rendered"])
+
+    if not preview["is_approvable"]:
+        err_console.print(
+            "[red]bundle has non-negotiable DENY(s); execution refused.[/red]",
+        )
+        raise typer.Exit(code=1)
+
+    if not auto_approve:
+        try:
+            answer = typer.prompt("Approve and execute the bundle? [y/N]", default="N")
+        except typer.Abort:
+            answer = "N"
+        if answer.strip().lower() not in ("y", "yes"):
+            console.print("[yellow]bundle declined; nothing executed.[/yellow]")
+            raise typer.Exit(code=2)
+
+    # Mark every PENDING gate APPROVED before submitting for execution.
+    impact = preview["impact"]
+    impact["gates"] = [
+        {**g, "state": "approved" if g["state"] == "pending" else g["state"]}
+        for g in impact["gates"]
+    ]
+    result = anyio.run(
+        client.call,
+        "programmatic.bundle_execute",
+        {"source": source, "session_id": session_id, "impact": impact},
+    )
+    if json_output:
+        console.print(_json.dumps(result, indent=2))
+        raise typer.Exit(code=0 if result["ok"] else 1)
+    if not result["ok"]:
+        err_console.print(f"[red]halted:[/red] {result['error']}")
+        raise typer.Exit(code=1)
+    console.print(f"[green]ok[/green] — {result['n_steps']} step(s) executed via bundle")
 
 
 @app.command("send")

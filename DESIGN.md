@@ -650,7 +650,8 @@ Phases 0–7 of ROADMAP.md are complete and verified end-to-end:
 | Workflow tool stubs (calendar, inbox, web fetch) — `tools/native/{calendar,inbox,web}.py` | §10.7 |
 | Quarantined workflow schemas (`DailyBriefing`, `EmailTriageItem`, `WebPageSummary`, `FinancialSummaryForAccountant`) | §5.2, §10.12 |
 | Nine e2e demos (security + workflow + adversarial) | §13, `docs/demos/` |
-| 478 unit tests + 3 real-LLM integration tests | §12 |
+| Approval bundles (`approval/bundle.py`, `programmatic/bundle_runner.py`) — N gates → 1 decision | §8, §10.11 |
+| 486 unit tests + 3 real-LLM integration tests | §12 |
 
 See ROADMAP.md for v0.2 / v0.3 / v0.4 plans, including the MCP
 Resources / Prompts / Elicitation expansion, programmatic mode,
