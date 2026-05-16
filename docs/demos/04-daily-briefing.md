@@ -88,6 +88,115 @@ vector we structurally prevent.
   doesn't fail silently — it fails with a clear policy decision the
   user can read.
 
+## Interactive REPL walkthrough
+
+The pytest above proves the architecture. The interactive REPL lets
+you live the same flow: ask the agent in natural language, see the
+policy enforce, and step through the recovery hatches.
+
+```bash
+# Terminal 1
+export ANTHROPIC_API_KEY=$(cat CLAUDEAPI.KEY | tr -d '[:space:]')
+uv run capdep daemon start
+
+# Terminal 2
+uv run capdep demo start daily-briefing
+```
+
+The scenario seeds three inbox messages (one friend, one work, one
+newsletter), two calendar events, and two memory contacts. Try:
+
+### Step 1 — agent reads inbox + calendar (works)
+
+```
+daily briefing> summarise my unread email and what's on my calendar
+agent: <a useful summary>
+  allow inbox.list labels+=untrusted.external
+  allow inbox.read
+  allow calendar.events_today labels+=confidential.personal
+```
+
+The session has now accumulated `untrusted.external` and
+`confidential.personal`. Run `/status` to see them:
+
+```
+daily briefing> /status
+labels (2): confidential.personal, untrusted.external
+used kinds: CALENDAR_READ, READ_FS
+capabilities (4):
+  - READ_FS pattern=*
+  - CALENDAR_READ pattern=*
+  - CREATE_CAL pattern=*
+  - SEND_EMAIL pattern=*
+```
+
+### Step 2 — naive forward fails (correctly)
+
+```
+daily briefing> forward the dinner email to my wife
+agent: I'll first check policy preview before attempting…
+  [agent calls policy.preview → decision=deny rule=untrusted-meets-egress]
+agent: I checked — sending email from this session is blocked because we've
+       read untrusted content. You can recover via /spawn or /extract.
+```
+
+The new system prompt nudges the agent to dry-run via `policy.preview`
+rather than just attempting and failing. If you DO ask it to send,
+the real call denies with the same rule.
+
+### Step 3a — recovery via `/extract` + `/spawn` (the clean path)
+
+```
+daily briefing> /schemas
+available declassification schemas:
+  - ContactInfo
+  - DailyBriefing
+  - …
+daily briefing> /extract m3 ContactInfo
+╭─ declassified: ContactInfo from message m3 ────────────────╮
+│ { "name": "Alex", "relationship": "friend" }                │
+╰─────────────────────────────────────────────────────────────╯
+this result carries no labels — paste into a /spawn-ed clean session.
+
+daily briefing> /spawn email-julie-about-dinner
+✓ spawned email-julie-about-dinner (a3f2b1c0, parent=2092fcfe, labels=trusted.user_direct)
+
+email-julie-about-dinner> /grant SEND_EMAIL julie@example.com --one-shot
+✓ granted SEND_EMAIL pattern=julie@example.com (one-shot)
+
+email-julie-about-dinner> email julie@example.com that Alex (a friend) wants to grab
+  dinner Friday 7pm. Ask if she's in.
+agent: Sent.
+  allow email.send
+```
+
+Three things to notice:
+
+1. `/extract` returned a label-stripped fact (the quarantined LLM
+   validated the message body against the `ContactInfo` schema).
+2. `/spawn` created a child session with `parent` set to the original,
+   labeled only `trusted.user_direct`. No `untrusted.external`.
+3. `/grant ... --one-shot` made the SEND_EMAIL capability single-use
+   and scoped to exactly one recipient. The cap expires after this
+   send, so the agent can't drift into other actions.
+
+### Step 3b — adding the dinner event to your calendar
+
+`CREATE_CAL` is already granted in the daily-briefing scenario. From
+either session:
+
+```
+daily briefing> add a calendar event "dinner with Alex" friday 7pm to 9pm
+agent: Added.
+  allow calendar.create_event
+```
+
+Adding an event is non-destructive (it's a CREATE) so it bypasses the
+destructive-op gate. Modifying or deleting an existing event would
+need either `allows_destructive=True` on the capability, or trigger
+`destructive-op-needs-approval` → user approves via `/approve` →
+purpose session dispatches.
+
 ## Files involved
 
 - `tests/test_e2e_daily_briefing.py` — both tests
@@ -95,3 +204,5 @@ vector we structurally prevent.
 - `src/capabledeputy/tools/native/calendar.py` — calendar tool stub
 - `src/capabledeputy/tools/native/inbox.py` — inbox tool stub
 - `src/capabledeputy/tools/native/extract.py` — `quarantined.extract` tool
+- `src/capabledeputy/cli/chat.py` — REPL slash commands
+- `src/capabledeputy/demo/scenarios.py` — daily-briefing seed

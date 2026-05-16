@@ -36,7 +36,10 @@ def make_policy_handlers() -> dict[str, Handler]:
             target=params["target"],
             amount=params.get("amount"),
         )
-        result = decide(labels, capabilities, action)
+        used_kinds = frozenset(
+            CapabilityKind(k) for k in params.get("used_kinds", [])
+        )
+        result = decide(labels, capabilities, action, used_kinds=used_kinds)
         return {
             "decision": result.decision.value,
             "rule": result.rule,

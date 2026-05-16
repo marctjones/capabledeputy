@@ -21,9 +21,17 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
+from capabledeputy.approval.model import ApprovalAction
+from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
+
+_CAL_DESTRUCTIVE_ROUTE = ApprovalRoute(
+    action=ApprovalAction.EXECUTE_DESTRUCTIVE,
+    target_arg="id",
+    payload_kind=ApprovalPayloadKind.TOOL_ENVELOPE,
+)
 
 
 @dataclass(frozen=True)
@@ -206,6 +214,7 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.MODIFY_CAL,
             handler=update_event,
             target_arg="id",
+            approval_route=_CAL_DESTRUCTIVE_ROUTE,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -227,6 +236,7 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.DELETE_CAL,
             handler=delete_event,
             target_arg="id",
+            approval_route=_CAL_DESTRUCTIVE_ROUTE,
             parameters_schema={
                 "type": "object",
                 "properties": {"id": {"type": "string"}},

@@ -320,3 +320,67 @@ def test_build_tool_descriptions_lists_registered_tools() -> None:
     assert "memory.read" in names
     assert "memory.write" in names
     assert "purchase.queue" in names
+
+
+async def test_no_tools_notice_injected_when_session_has_no_caps(
+    writer: AuditWriter,
+) -> None:
+    """A session with zero capabilities sees an empty tool list. The
+    LLM gets an explicit notice telling it not to hallucinate calls
+    and to instruct the user to /grant capabilities. This guards
+    against the failure mode observed in the test drive transcript
+    where the LLM made up `inbox.search`, `email.forward`, etc."""
+    graph, registry, client, _, _ = await _setup(writer)
+    s = await graph.new()  # no caps granted
+    llm = FakeLLMClient([LLMResponse(content="I have no tools.")])
+
+    await run_turn(
+        session_id=s.id,
+        user_message="forward the dinner email to my wife",
+        llm=llm,
+        tool_client=client,
+        registry=registry,
+        graph=graph,
+        audit=writer,
+    )
+
+    [(messages, tools)] = llm.calls
+    assert tools == []
+    # First message is the default system prompt; the notice is a
+    # second system message appended for this turn only.
+    system_messages = [m for m in messages if m.role.value == "system"]
+    notice = next(
+        (m for m in system_messages if "NOTICE" in m.content),
+        None,
+    )
+    assert notice is not None, "expected no-tools NOTICE in system messages"
+    assert "tool list is empty" in notice.content
+    assert "/grant" in notice.content
+
+
+async def test_no_tools_notice_absent_when_caps_present(
+    writer: AuditWriter,
+) -> None:
+    """Sanity check: when the session DOES have caps, the notice is
+    not injected (would otherwise clutter every turn)."""
+    graph, registry, client, _, _ = await _setup(writer)
+    s = await graph.new()
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
+    llm = FakeLLMClient([LLMResponse(content="hi")])
+
+    await run_turn(
+        session_id=s.id,
+        user_message="hi",
+        llm=llm,
+        tool_client=client,
+        registry=registry,
+        graph=graph,
+        audit=writer,
+    )
+
+    [(messages, tools)] = llm.calls
+    assert len(tools) > 0
+    system_messages = [m for m in messages if m.role.value == "system"]
+    for m in system_messages:
+        assert "NOTICE" not in m.content

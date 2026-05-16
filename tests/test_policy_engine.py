@@ -13,7 +13,12 @@ import pytest
 
 from capabledeputy.policy.actions import Action
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.engine import decide, egress_label_for, find_capability
+from capabledeputy.policy.engine import (
+    REVOKED_BY_PRIOR_USE_RULE,
+    decide,
+    egress_label_for,
+    find_capability,
+)
 from capabledeputy.policy.labels import Label
 from capabledeputy.policy.rules import Decision
 
@@ -286,3 +291,114 @@ def test_combined_triggers_still_block_egress(
         assert result.decision in {Decision.DENY, Decision.REQUIRE_APPROVAL}, (
             f"{trigger_pair} + {kind} → {result.decision} (expected non-ALLOW)"
         )
+
+
+# Tool-identity revocation primitive: a Capability declares
+# revoked_by={K1, K2, ...}; if any of those kinds appears in the
+# session's used_kinds, the capability is treated as revoked.
+
+
+def test_revoked_by_empty_used_kinds_allows() -> None:
+    cap = Capability(
+        kind=CapabilityKind.WRITE_FS,
+        pattern="*",
+        allows_destructive=True,
+        revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
+    )
+    result = decide(
+        label_set=frozenset(),
+        capabilities=frozenset({cap}),
+        action=Action(kind=CapabilityKind.WRITE_FS, target="/notes/x"),
+        used_kinds=frozenset(),
+    )
+    assert result.decision == Decision.ALLOW
+
+
+def test_revoked_by_prior_use_denies() -> None:
+    cap = Capability(
+        kind=CapabilityKind.WRITE_FS,
+        pattern="*",
+        allows_destructive=True,
+        revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
+    )
+    result = decide(
+        label_set=frozenset(),
+        capabilities=frozenset({cap}),
+        action=Action(kind=CapabilityKind.WRITE_FS, target="/notes/x"),
+        used_kinds=frozenset({CapabilityKind.WEB_FETCH}),
+    )
+    assert result.decision == Decision.DENY
+    assert result.rule == REVOKED_BY_PRIOR_USE_RULE
+    assert "WEB_FETCH" in (result.reason or "")
+    assert result.matched_capability is cap
+
+
+def test_revoked_by_unrelated_prior_use_allows() -> None:
+    cap = Capability(
+        kind=CapabilityKind.WRITE_FS,
+        pattern="*",
+        allows_destructive=True,
+        revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
+    )
+    result = decide(
+        label_set=frozenset(),
+        capabilities=frozenset({cap}),
+        action=Action(kind=CapabilityKind.WRITE_FS, target="/notes/x"),
+        used_kinds=frozenset({CapabilityKind.READ_FS, CapabilityKind.CALENDAR_READ}),
+    )
+    assert result.decision == Decision.ALLOW
+
+
+def test_revoked_by_any_member_of_set_denies() -> None:
+    cap = Capability(
+        kind=CapabilityKind.SEND_EMAIL,
+        pattern="*",
+        revoked_by=frozenset(
+            {CapabilityKind.WEB_FETCH, CapabilityKind.READ_FS},
+        ),
+    )
+    result = decide(
+        label_set=frozenset(),
+        capabilities=frozenset({cap}),
+        action=Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
+        used_kinds=frozenset({CapabilityKind.READ_FS}),
+    )
+    assert result.decision == Decision.DENY
+    assert result.rule == REVOKED_BY_PRIOR_USE_RULE
+
+
+def test_revoked_by_runs_before_conflict_rules() -> None:
+    """If both revocation and a conflict rule would fire, revocation
+    wins — the matched capability is gone, so there is no flow to
+    even consider."""
+    cap = Capability(
+        kind=CapabilityKind.SEND_EMAIL,
+        pattern="*",
+        revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
+    )
+    result = decide(
+        # untrusted.external would normally fire untrusted-meets-egress
+        label_set=frozenset({Label.UNTRUSTED_EXTERNAL}),
+        capabilities=frozenset({cap}),
+        action=Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
+        used_kinds=frozenset({CapabilityKind.WEB_FETCH}),
+    )
+    assert result.decision == Decision.DENY
+    assert result.rule == REVOKED_BY_PRIOR_USE_RULE
+
+
+def test_revoked_by_serializes_round_trip() -> None:
+    cap = Capability(
+        kind=CapabilityKind.WRITE_FS,
+        pattern="/notes/*",
+        revoked_by=frozenset(
+            {CapabilityKind.WEB_FETCH, CapabilityKind.READ_FS},
+        ),
+    )
+    restored = Capability.from_dict(cap.to_dict())
+    assert restored.revoked_by == cap.revoked_by
+
+
+def test_default_revoked_by_is_empty() -> None:
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    assert cap.revoked_by == frozenset()

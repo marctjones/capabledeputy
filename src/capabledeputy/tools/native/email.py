@@ -11,6 +11,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from capabledeputy.approval.model import ApprovalAction
+from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
@@ -68,6 +70,12 @@ def make_email_tools(outbox: EmailOutbox) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.SEND_EMAIL,
             handler=email_send,
             target_arg="to",
+            approval_route=ApprovalRoute(
+                action=ApprovalAction.SEND_EMAIL,
+                target_arg="to",
+                payload_kind=ApprovalPayloadKind.BODY_ARG,
+                payload_arg="body",
+            ),
             parameters_schema={
                 "type": "object",
                 "properties": {

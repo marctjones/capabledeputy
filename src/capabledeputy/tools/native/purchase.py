@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from capabledeputy.approval.model import ApprovalAction
+from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
@@ -78,6 +80,11 @@ def make_purchase_tools(queue: PurchaseQueue) -> list[ToolDefinition]:
             handler=purchase_queue_handler,
             target_arg="vendor",
             amount_arg="amount",
+            approval_route=ApprovalRoute(
+                action=ApprovalAction.QUEUE_PURCHASE,
+                target_arg="vendor",
+                payload_kind=ApprovalPayloadKind.JSON_ARGS,
+            ),
             parameters_schema={
                 "type": "object",
                 "properties": {

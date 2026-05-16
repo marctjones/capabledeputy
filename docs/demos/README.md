@@ -1,9 +1,8 @@
 # CapableDeputy Demos
 
-Nine end-to-end walkthroughs across three buckets: **security
-demonstrations** that show what the architecture prevents, **user
-workflow demos** that show what it's *for*, and **adversarial
-demos** that flip the architecture and use external agents.
+Sixteen end-to-end walkthroughs across four buckets: **security
+demonstrations**, **user workflow demos**, **adversarial demos**, and
+**feature spotlights**.
 
 | # | Demo | Bucket | Audience | Requires | Time |
 |---|---|---|---|---|---|
@@ -18,6 +17,11 @@ demos** that flip the architecture and use external agents.
 | 09 | [Accountant Summary](09-accountant.md) | workflow + security | cross-compartment send | nothing | ~3 min |
 | 10 | [Bundled Approvals](10-bundled-approvals.md) | workflow + UX | approval-fatigue answer | nothing | ~3 min |
 | 11 | [Destructive-Op Gate](11-destructive-ops.md) | security + UX | Clark-Wilson / CRUD decomposition | nothing | ~3 min |
+| 12 | [Programmatic Mode](12-programmatic-mode.md) | feature | LLM emits Python; static analysis | nothing | ~3 min |
+| 13 | [Tool-Token Aliasing](13-tool-aliasing.md) | feature | strict ocap | nothing | ~2 min |
+| 14 | [Multi-Tenant Household](14-multi-tenant.md) | feature | per-principal compartments | nothing | ~2 min |
+| 15 | [Federation](15-federation.md) | feature | phone-to-laptop approval handoff | nothing | ~3 min |
+| 16 | [Per-Tool Isolation](16-per-tool-isolation.md) | feature + ops | container hardening | nothing | ~2 min |
 
 ## How they fit together
 
@@ -74,17 +78,15 @@ All deterministic demos run in <10s combined.
 
 ## What's still missing
 
-These would round out the picture but aren't shipped as demos yet:
+The original "what's still missing" punch list is now closed; demos
+12–16 cover the v0.3/v0.4 features that previously lacked
+walkthroughs.
 
-- **Programmatic mode demo** — show the planner emitting a Python
-  program; `capdep dry-run` flagging a hidden violation; user
-  reviews; `capdep run` executes.
-- **Tool-token aliasing demo** — `capdep session new --tool-tokens`
-  then show that the LLM-visible names are random.
-- **Multi-tenant household demo** — Alice and Bob as `Tenant`s with
-  per-compartment policies.
-- **Federation demo** — phone-to-laptop signed approval handoff.
-- **Per-tool isolation demo** — fetch server fails to read /etc/shadow
-  because its container has `network=none` and an empty volume bind.
+Open items beyond shipped code:
 
-These are recorded in the project's open issues for future demos.
+- **Asciicasts / demo videos** — recording requires a terminal
+  session.
+- **Real-LLM walkthroughs of demos 4–11** — the existing real-LLM
+  test (`integration/test_real_llm.py`) covers Demo 1 against
+  `claude-haiku-4-5`; extending to other workflows is incremental
+  cost.

@@ -46,7 +46,12 @@ def make_tool_handlers(
             target=tool.extract_target(args),
             amount=tool.extract_amount(args),
         )
-        decision = decide(session.label_set, session.capability_set, action)
+        decision = decide(
+            session.label_set,
+            session.capability_set,
+            action,
+            used_kinds=session.used_kinds,
+        )
         return {
             "decision": decision.decision.value,
             "rule": decision.rule,

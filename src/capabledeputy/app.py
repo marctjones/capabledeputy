@@ -16,6 +16,7 @@ from capabledeputy.tools.native.email import EmailOutbox, make_email_tools
 from capabledeputy.tools.native.extract import make_extract_tools
 from capabledeputy.tools.native.inbox import Inbox, make_inbox_tools
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
+from capabledeputy.tools.native.policy_preview import make_policy_preview_tools
 from capabledeputy.tools.native.purchase import PurchaseQueue, make_purchase_tools
 from capabledeputy.tools.native.web import WebMock, make_web_tools
 from capabledeputy.tools.registry import ToolRegistry
@@ -29,6 +30,7 @@ class App:
         llm_client: LLMClient | None = None,
         quarantined_llm: LLMClient | None = None,
         skills_dir: Path | None = None,
+        enable_policy_preview: bool = True,
     ) -> None:
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(state_db_path or default_state_db_path())
@@ -41,10 +43,16 @@ class App:
         self.web = WebMock()
         self.approval_queue = ApprovalQueue(audit=self.audit)
         self.registry = ToolRegistry()
-        self.tool_client = LabeledToolClient(self.registry, self.graph, self.audit)
+        self.tool_client = LabeledToolClient(
+            self.registry,
+            self.graph,
+            self.audit,
+            approval_queue=self.approval_queue,
+        )
         self.llm_client: LLMClient | None = llm_client
         self.quarantined_llm: LLMClient | None = quarantined_llm or llm_client
         self._skills_dir = skills_dir
+        self._enable_policy_preview = enable_policy_preview
         self._register_native_tools()
         self._maybe_load_skills()
 
@@ -61,6 +69,16 @@ class App:
             self.registry.register(tool)
         for tool in make_web_tools(self.web):
             self.registry.register(tool)
+        # policy.preview lets the agent dry-run a policy decision so it
+        # can plan around gates. It is read-only and OFF the enforcement
+        # path (decide() runs unconditionally at dispatch regardless).
+        # Disabling it does not strengthen enforcement; it (a) makes
+        # agent policy-probing show up as loud audited denied calls
+        # instead of silent queries, and (b) keeps the agent's
+        # capability surface strictly minimal. Default on.
+        if self._enable_policy_preview:
+            for tool in make_policy_preview_tools(self.graph):
+                self.registry.register(tool)
         if self.quarantined_llm is not None:
             for tool in make_extract_tools(self.memory, self.quarantined_llm):
                 self.registry.register(tool)

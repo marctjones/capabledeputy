@@ -86,6 +86,45 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
                 },
             }
 
+        if approved.action == ApprovalAction.QUEUE_PURCHASE:
+            new_session, dispatch_outcome = await _execute_declassified_purchase(
+                app,
+                approved.payload,
+                approved.target,
+                origin_session=approved.from_session,
+            )
+            updated = replace(approved, to_session=new_session)
+            app.approval_queue._requests[approved.id] = updated
+            return {
+                "approval": updated.to_dict(),
+                "executed_in_session": str(new_session),
+                "dispatch": {
+                    "decision": dispatch_outcome.decision.value,
+                    "output": dispatch_outcome.output,
+                    "error": dispatch_outcome.error,
+                },
+            }
+
+        if approved.action == ApprovalAction.EXECUTE_DESTRUCTIVE:
+            new_session, dispatch_outcome = await _execute_declassified_destructive(
+                app,
+                approved.payload,
+                approved.target,
+                origin_session=approved.from_session,
+            )
+            updated = replace(approved, to_session=new_session)
+            app.approval_queue._requests[approved.id] = updated
+            return {
+                "approval": updated.to_dict(),
+                "executed_in_session": str(new_session),
+                "dispatch": {
+                    "decision": dispatch_outcome.decision.value,
+                    "output": dispatch_outcome.output,
+                    "error": dispatch_outcome.error,
+                    "reason": dispatch_outcome.reason,
+                },
+            }
+
         return {"approval": approved.to_dict()}
 
     return {
@@ -96,6 +135,103 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         "approval.deny": approval_deny,
         "approval.defer": approval_defer,
     }
+
+
+async def _execute_declassified_destructive(
+    app: App,
+    payload: str,
+    target: str,
+    origin_session: UUID,
+) -> tuple[UUID, Any]:
+    """Execute an approved destructive-op (MODIFY_* or DELETE_* of an
+    existing resource) via a TRUSTED_USER_DIRECT purpose session with
+    a one-shot `allows_destructive=True` capability scoped exactly to
+    the action's kind and target.
+
+    Payload is a JSON dict: {"tool": "memory.update", "args": {...}}.
+    The CapabilityKind to grant is derived from the tool definition
+    in the registry — no kind tunneling through the payload.
+    """
+    import json as _json
+
+    try:
+        decoded = _json.loads(payload)
+        tool_name = str(decoded["tool"])
+        tool_args = dict(decoded.get("args", {}))
+    except (_json.JSONDecodeError, KeyError, ValueError) as e:
+        from capabledeputy.policy.rules import Decision
+        from capabledeputy.tools.client import ToolCallOutcome
+
+        return UUID(int=0), ToolCallOutcome(
+            decision=Decision.DENY,
+            reason=f"malformed destructive-op payload: {e}",
+        )
+
+    tool = app.registry.get(tool_name)
+    cap = Capability(
+        kind=tool.capability_kind,
+        pattern=target,
+        expiry=CapabilityExpiry.ONE_SHOT,
+        origin=CapabilityOrigin.USER_APPROVED,
+        allows_destructive=True,
+    )
+    purpose_session = await app.graph.new(
+        intent=(
+            f"declassified destructive {tool_name} on {target} "
+            f"(approved from {origin_session})"
+        ),
+    )
+    granted = await app.graph.grant_capability(purpose_session.id, cap)
+    granted = replace(
+        granted,
+        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
+    )
+    app.graph._sessions[granted.id] = granted
+
+    outcome = await app.tool_client.call_tool(granted.id, tool_name, tool_args)
+    await app.graph.abort(granted.id)
+    return granted.id, outcome
+
+
+async def _execute_declassified_purchase(
+    app: App,
+    payload: str,
+    target: str,
+    origin_session: UUID,
+) -> tuple[UUID, Any]:
+    """Approval payload for QUEUE_PURCHASE is a JSON dict of the original
+    args (item, amount, etc.). We spawn a TRUSTED_USER_DIRECT purpose
+    session with a one-shot QUEUE_PURCHASE cap scoped to the vendor and
+    dispatch via the standard tool client."""
+    import json as _json
+
+    try:
+        args = _json.loads(payload)
+    except _json.JSONDecodeError:
+        args = {"item": payload}
+    amount = args.get("amount")
+
+    cap = Capability(
+        kind=CapabilityKind.QUEUE_PURCHASE,
+        pattern=target,
+        expiry=CapabilityExpiry.ONE_SHOT,
+        origin=CapabilityOrigin.USER_APPROVED,
+        max_amount=int(amount) if isinstance(amount, int) else None,
+    )
+    purpose_session = await app.graph.new(
+        intent=f"declassified purchase at {target} (approved from {origin_session})",
+    )
+    granted = await app.graph.grant_capability(purpose_session.id, cap)
+    granted = replace(
+        granted,
+        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
+    )
+    app.graph._sessions[granted.id] = granted
+
+    call_args = {"vendor": target, **{k: v for k, v in args.items() if k != "vendor"}}
+    outcome = await app.tool_client.call_tool(granted.id, "purchase.queue", call_args)
+    await app.graph.abort(granted.id)
+    return granted.id, outcome
 
 
 async def _execute_declassified_email(

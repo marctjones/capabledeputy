@@ -11,9 +11,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from capabledeputy.approval.model import ApprovalAction
+from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
+
+_DESTRUCTIVE_ROUTE = ApprovalRoute(
+    action=ApprovalAction.EXECUTE_DESTRUCTIVE,
+    target_arg="key",
+    payload_kind=ApprovalPayloadKind.TOOL_ENVELOPE,
+)
 
 
 @dataclass
@@ -164,6 +172,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.MODIFY_FS,
             handler=memory_update,
             target_arg="key",
+            approval_route=_DESTRUCTIVE_ROUTE,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -183,6 +192,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.DELETE_FS,
             handler=memory_delete,
             target_arg="key",
+            approval_route=_DESTRUCTIVE_ROUTE,
             parameters_schema={
                 "type": "object",
                 "properties": {"key": {"type": "string"}},

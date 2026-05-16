@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from capabledeputy.daemon.handlers import Handler
+from capabledeputy.policy.labels import Label
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import SessionStatus
 
@@ -18,11 +19,14 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
         return {"sessions": [s.to_dict() for s in sessions]}
 
     async def session_new(params: dict[str, Any]) -> dict[str, Any]:
+        parent_str = params.get("parent")
+        parent = UUID(parent_str) if parent_str else None
         s = await graph.new(
             owner=params.get("owner"),
             intent=params.get("intent"),
             tool_aliasing=bool(params.get("tool_aliasing", False)),
             prefer_programmatic=bool(params.get("prefer_programmatic", False)),
+            parent=parent,
         )
         return s.to_dict()
 
@@ -51,6 +55,11 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
         children = graph.children(UUID(params["session_id"]))
         return {"sessions": [s.to_dict() for s in children]}
 
+    async def session_add_labels(params: dict[str, Any]) -> dict[str, Any]:
+        labels = frozenset(Label(s) for s in params.get("labels", []))
+        s = await graph.add_labels(UUID(params["session_id"]), labels)
+        return s.to_dict()
+
     return {
         "session.list": session_list,
         "session.new": session_new,
@@ -60,4 +69,5 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
         "session.abort": session_abort,
         "session.get": session_get,
         "session.children": session_children,
+        "session.add_labels": session_add_labels,
     }

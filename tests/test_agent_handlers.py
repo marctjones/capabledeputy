@@ -111,3 +111,34 @@ async def test_session_send_label_propagation_visible_in_outcome(app: App) -> No
         {"session_id": str(s.id), "message": "x"},
     )
     assert "confidential.health" in result["tool_outcomes"][0]["labels_added"]
+
+
+async def test_session_send_outcome_includes_tool_name_and_args(app: App) -> None:
+    """The REPL and CLI need tool_name + tool_args on each outcome to
+    auto-submit approvals and to render `allow inbox.read` instead of
+    just `allow`."""
+    await app.startup()
+    app.memory.write("labs", "x", frozenset({Label.CONFIDENTIAL_HEALTH}))
+
+    fake = FakeLLMClient(
+        [
+            LLMResponse(
+                content="",
+                tool_calls=(ToolCall(id="c", name="memory.read", args={"key": "labs"}),),
+                finish_reason=FinishReason.TOOL_CALLS,
+            ),
+            LLMResponse(content="read", finish_reason=FinishReason.STOP),
+        ],
+    )
+    app.llm_client = fake
+    s = await app.graph.new()
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
+
+    handlers = make_agent_handlers(app)
+    result = await handlers["session.send"](
+        {"session_id": str(s.id), "message": "x"},
+    )
+    [outcome] = result["tool_outcomes"]
+    assert outcome["tool_name"] == "memory.read"
+    assert outcome["tool_args"] == {"key": "labs"}

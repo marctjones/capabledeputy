@@ -12,7 +12,7 @@ from enum import StrEnum
 from typing import Any, Self
 from uuid import UUID, uuid4
 
-from capabledeputy.policy.capabilities import Capability
+from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import Label
 
 
@@ -101,6 +101,7 @@ class Session:
     intent: str | None = None
     tool_aliasing: bool = False
     prefer_programmatic: bool = False
+    used_kinds: frozenset[CapabilityKind] = field(default_factory=frozenset)
 
     @classmethod
     def new(
@@ -115,6 +116,7 @@ class Session:
         declassification_log: tuple[DeclassEvent, ...] = (),
         tool_aliasing: bool = False,
         prefer_programmatic: bool = False,
+        used_kinds: frozenset[CapabilityKind] = frozenset(),
     ) -> Self:
         now = _utcnow()
         return cls(
@@ -131,6 +133,7 @@ class Session:
             intent=intent,
             tool_aliasing=tool_aliasing,
             prefer_programmatic=prefer_programmatic,
+            used_kinds=used_kinds,
         )
 
     @property
@@ -158,6 +161,7 @@ class Session:
             "intent": self.intent,
             "tool_aliasing": self.tool_aliasing,
             "prefer_programmatic": self.prefer_programmatic,
+            "used_kinds": sorted(k.value for k in self.used_kinds),
         }
 
     @classmethod
@@ -178,4 +182,7 @@ class Session:
             intent=d.get("intent"),
             tool_aliasing=bool(d.get("tool_aliasing", False)),
             prefer_programmatic=bool(d.get("prefer_programmatic", False)),
+            used_kinds=frozenset(
+                CapabilityKind(k) for k in d.get("used_kinds", ())
+            ),
         )

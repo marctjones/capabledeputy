@@ -19,7 +19,7 @@ from anyio.to_thread import run_sync as run_in_thread
 
 from capabledeputy.session.model import Session
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     owner TEXT,
     tool_aliasing INTEGER NOT NULL DEFAULT 0,
     prefer_programmatic INTEGER NOT NULL DEFAULT 0,
+    used_kinds TEXT NOT NULL DEFAULT '[]',
     FOREIGN KEY (parent_id) REFERENCES sessions(id)
 );
 
@@ -82,20 +83,28 @@ class SessionStore:
             current = row["version"]
             if current == SCHEMA_VERSION:
                 return
-            if current == 1:
-                # v1 → v2: add tool_aliasing and prefer_programmatic columns.
-                # New tables created above already have them; existing tables need
-                # ALTER. SQLite's IF NOT EXISTS in CREATE doesn't apply to columns,
-                # so we add and ignore "duplicate column" errors that would happen
-                # if both code paths ran (they shouldn't, but be defensive).
-                col_def = "INTEGER NOT NULL DEFAULT 0"
-                for col in ("tool_aliasing", "prefer_programmatic"):
-                    ddl = f"ALTER TABLE sessions ADD COLUMN {col} {col_def}"
-                    try:
-                        conn.execute(ddl)
-                    except sqlite3.OperationalError as e:
-                        if "duplicate column" not in str(e).lower():
-                            raise
+            if current in (1, 2):
+                if current == 1:
+                    # v1 → v2: add tool_aliasing and prefer_programmatic columns.
+                    col_def = "INTEGER NOT NULL DEFAULT 0"
+                    for col in ("tool_aliasing", "prefer_programmatic"):
+                        ddl = f"ALTER TABLE sessions ADD COLUMN {col} {col_def}"
+                        try:
+                            conn.execute(ddl)
+                        except sqlite3.OperationalError as e:
+                            if "duplicate column" not in str(e).lower():
+                                raise
+                # v2 → v3: add used_kinds column (JSON array of CapabilityKind
+                # values) so tool-identity revocation survives daemon restarts.
+                ddl = (
+                    "ALTER TABLE sessions ADD COLUMN used_kinds "
+                    "TEXT NOT NULL DEFAULT '[]'"
+                )
+                try:
+                    conn.execute(ddl)
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e).lower():
+                        raise
                 conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
                 return
             raise SchemaVersionError(
@@ -126,8 +135,8 @@ class SessionStore:
                     id, parent_id, status, intent,
                     label_set, capability_set, history, declassification_log,
                     created_at, updated_at, owner,
-                    tool_aliasing, prefer_programmatic
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    tool_aliasing, prefer_programmatic, used_kinds
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status = excluded.status,
                     intent = excluded.intent,
@@ -138,7 +147,8 @@ class SessionStore:
                     updated_at = excluded.updated_at,
                     owner = excluded.owner,
                     tool_aliasing = excluded.tool_aliasing,
-                    prefer_programmatic = excluded.prefer_programmatic
+                    prefer_programmatic = excluded.prefer_programmatic,
+                    used_kinds = excluded.used_kinds
                 """,
                 (
                     d["id"],
@@ -154,6 +164,7 @@ class SessionStore:
                     d["owner"],
                     1 if d["tool_aliasing"] else 0,
                     1 if d["prefer_programmatic"] else 0,
+                    json.dumps(d["used_kinds"]),
                 ),
             )
 
@@ -197,5 +208,6 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "owner": row["owner"],
             "tool_aliasing": bool(row["tool_aliasing"]),
             "prefer_programmatic": bool(row["prefer_programmatic"]),
+            "used_kinds": json.loads(row["used_kinds"]),
         },
     )

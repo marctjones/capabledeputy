@@ -99,3 +99,25 @@ async def test_session_children_returns_forks(graph: SessionGraph) -> None:
     result = await handlers["session.children"]({"session_id": parent["id"]})
     ids = {s["id"] for s in result["sessions"]}
     assert ids == {c1["id"], c2["id"]}
+
+
+async def test_session_add_labels_persists(graph: SessionGraph) -> None:
+    handlers = make_session_handlers(graph)
+    s = await handlers["session.new"]({})
+    updated = await handlers["session.add_labels"](
+        {"session_id": s["id"], "labels": ["trusted.user_direct"]},
+    )
+    assert "trusted.user_direct" in updated["label_set"]
+
+
+async def test_session_add_labels_is_additive(graph: SessionGraph) -> None:
+    handlers = make_session_handlers(graph)
+    s = await handlers["session.new"]({})
+    await handlers["session.add_labels"](
+        {"session_id": s["id"], "labels": ["trusted.user_direct"]},
+    )
+    updated = await handlers["session.add_labels"](
+        {"session_id": s["id"], "labels": ["confidential.personal"]},
+    )
+    assert "trusted.user_direct" in updated["label_set"]
+    assert "confidential.personal" in updated["label_set"]

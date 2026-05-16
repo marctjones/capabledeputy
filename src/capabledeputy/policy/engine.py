@@ -24,6 +24,7 @@ _EGRESS_LABEL_FOR_KIND: dict[CapabilityKind, Label] = {
 }
 
 DESTRUCTIVE_OP_RULE = "destructive-op-needs-approval"
+REVOKED_BY_PRIOR_USE_RULE = "capability-revoked-by-prior-use"
 
 
 @dataclass(frozen=True)
@@ -54,12 +55,30 @@ def decide(
     capabilities: frozenset[Capability],
     action: Action,
     rules: tuple[ConflictRule, ...] = CONFLICT_RULES,
+    used_kinds: frozenset[CapabilityKind] = frozenset(),
 ) -> PolicyDecision:
     cap = find_capability(capabilities, action)
     if cap is None:
         return PolicyDecision(
             decision=Decision.DENY,
             reason=f"no matching capability for {action.kind.value}({action.target})",
+            effective_labels=label_set,
+        )
+
+    # Tool-identity revocation: if the matched capability declares
+    # revoked_by={K1, K2, ...} and any of those kinds has already been
+    # dispatched in this session, deny. This is the tool-identity
+    # counterpart to the label-based conflict rules.
+    revoking = cap.revoked_by & used_kinds
+    if revoking:
+        return PolicyDecision(
+            decision=Decision.DENY,
+            rule=REVOKED_BY_PRIOR_USE_RULE,
+            reason=(
+                f"capability for {action.kind.value} was revoked by prior use of "
+                f"{sorted(k.value for k in revoking)}"
+            ),
+            matched_capability=cap,
             effective_labels=label_set,
         )
 

@@ -34,6 +34,19 @@ class ToolCallOutcome:
     reason: str | None = None
     labels_added: frozenset[Label] = field(default_factory=frozenset)
     error: str | None = None
+    tool_name: str | None = None
+    tool_args: dict[str, Any] | None = None
+    # Populated only on REQUIRE_APPROVAL when the tool declares an
+    # approval_route. A resolved dict (action, target, payload,
+    # justification) describing the request. Kept on the outcome for
+    # observability; clients no longer need to submit it themselves.
+    approval_submission: dict[str, Any] | None = None
+    # The id of the approval request the runtime registered in the
+    # queue for this REQUIRE_APPROVAL outcome. Clients observe this
+    # and route the user to `/approve <id>` — they do NOT register
+    # the approval themselves. None if no queue is wired (unit tests)
+    # or the tool declares no approval_route.
+    approval_id: int | None = None
 
 
 class LabeledToolClient:
@@ -42,10 +55,16 @@ class LabeledToolClient:
         registry: ToolRegistry,
         graph: SessionGraph,
         audit: AuditWriter,
+        approval_queue: Any = None,
     ) -> None:
         self._registry = registry
         self._graph = graph
         self._audit = audit
+        # Optional so unit tests can construct the client without the
+        # full App. When present, REQUIRE_APPROVAL outcomes are
+        # registered in the queue here, at the policy chokepoint —
+        # not by whichever client happens to be driving the session.
+        self._approval_queue = approval_queue
 
     async def call_tool(
         self,
@@ -61,16 +80,46 @@ class LabeledToolClient:
             target=tool.extract_target(args),
             amount=tool.extract_amount(args),
         )
-        policy_decision = decide(session.label_set, session.capability_set, action)
+        policy_decision = decide(
+            session.label_set,
+            session.capability_set,
+            action,
+            used_kinds=session.used_kinds,
+        )
 
         await self._emit_policy_decision(session_id, tool_name, args, policy_decision)
         await self._emit_capability_checked(session_id, action, policy_decision)
 
         if policy_decision.decision != Decision.ALLOW:
+            approval_submission: dict[str, Any] | None = None
+            approval_id: int | None = None
+            if (
+                policy_decision.decision == Decision.REQUIRE_APPROVAL
+                and tool.approval_route is not None
+            ):
+                approval_submission = tool.approval_route.resolve(
+                    tool_name,
+                    args,
+                    policy_decision.reason or "",
+                )
+                # Register the approval here — at the policy chokepoint —
+                # not in whichever client drives the session. This is
+                # the only place that observes every REQUIRE_APPROVAL,
+                # so capdep send / MCP / REPL all get queueing for free.
+                if self._approval_queue is not None:
+                    approval_id = await self._register_approval(
+                        session_id,
+                        session.label_set,
+                        approval_submission,
+                    )
             return ToolCallOutcome(
                 decision=policy_decision.decision,
                 rule=policy_decision.rule,
                 reason=policy_decision.reason,
+                tool_name=tool_name,
+                tool_args=args,
+                approval_submission=approval_submission,
+                approval_id=approval_id,
             )
 
         await self._audit.write(
@@ -89,6 +138,12 @@ class LabeledToolClient:
             ),
         )
 
+        # Record the kind as "used" so future capabilities with
+        # revoked_by={this_kind} are denied. Done before the handler
+        # runs: a side-effecting handler that raises still counts as
+        # a use for the purposes of revocation.
+        await self._graph.record_used_kind(session_id, action.kind)
+
         context = ToolContext(session_id=session_id, label_set=session.label_set)
         try:
             result = await tool.handler(args, context)
@@ -97,6 +152,8 @@ class LabeledToolClient:
                 decision=Decision.ALLOW,
                 error=f"{type(e).__name__}: {e}",
                 rule=None,
+                tool_name=tool_name,
+                tool_args=args,
             )
 
         await self._audit.write(
@@ -129,7 +186,47 @@ class LabeledToolClient:
             decision=Decision.ALLOW,
             output=result.output,
             labels_added=labels_added,
+            tool_name=tool_name,
+            tool_args=args,
         )
+
+    async def _register_approval(
+        self,
+        session_id: UUID,
+        labels_in: frozenset[Label],
+        submission: dict[str, Any],
+    ) -> int:
+        """Submit the resolved approval to the queue and return its id.
+
+        Dedups: if an identical pending request already exists for this
+        session (same action + target + payload), return that id rather
+        than spawning a duplicate — the agent loop can re-attempt the
+        same gated call within a turn.
+        """
+        from capabledeputy.approval.model import ApprovalAction, ApprovalStatus
+
+        action = ApprovalAction(submission["action"])
+        target = submission["target"]
+        payload = submission["payload"]
+
+        for existing in self._approval_queue.list(status=ApprovalStatus.PENDING):
+            if (
+                existing.from_session == session_id
+                and existing.action == action
+                and existing.target == target
+                and existing.payload == payload
+            ):
+                return existing.id
+
+        request = await self._approval_queue.submit(
+            from_session=session_id,
+            action=action,
+            payload=payload,
+            target=target,
+            labels_in=labels_in,
+            justification=submission.get("justification", ""),
+        )
+        return request.id
 
     async def _emit_policy_decision(
         self,

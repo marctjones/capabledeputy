@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from capabledeputy.approval.route import ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import Label
 
@@ -49,6 +50,10 @@ class ToolDefinition:
     parameters_schema: dict[str, Any] = field(
         default_factory=lambda: {"type": "object", "properties": {}, "required": []},
     )
+    # How to authorize a REQUIRE_APPROVAL of this tool. None means the
+    # tool is never expected to gate (or has no auto-submit path; the
+    # user falls back to /submit).
+    approval_route: ApprovalRoute | None = None
 
     def extract_target(self, args: dict[str, Any]) -> str:
         return str(args.get(self.target_arg, ""))

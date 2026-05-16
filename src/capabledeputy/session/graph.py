@@ -13,7 +13,7 @@ from uuid import UUID
 
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
-from capabledeputy.policy.capabilities import Capability
+from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import Label
 from capabledeputy.session.model import Session, SessionStatus, Turn
 from capabledeputy.session.store import SessionStore
@@ -73,12 +73,14 @@ class SessionGraph:
         intent: str | None = None,
         tool_aliasing: bool = False,
         prefer_programmatic: bool = False,
+        parent: UUID | None = None,
     ) -> Session:
         session = Session.new(
             owner=owner,
             intent=intent,
             tool_aliasing=tool_aliasing,
             prefer_programmatic=prefer_programmatic,
+            parent=parent,
         )
         await self._save(session)
         self._sessions[session.id] = session
@@ -148,6 +150,20 @@ class SessionGraph:
             return session
         new_set = session.label_set | labels
         updated = replace(session, label_set=new_set, updated_at=datetime.now(UTC))
+        await self._save(updated)
+        self._sessions[session_id] = updated
+        return updated
+
+    async def record_used_kind(
+        self,
+        session_id: UUID,
+        kind: CapabilityKind,
+    ) -> Session:
+        session = self.get(session_id)
+        if kind in session.used_kinds:
+            return session
+        new_used = session.used_kinds | {kind}
+        updated = replace(session, used_kinds=new_used, updated_at=datetime.now(UTC))
         await self._save(updated)
         self._sessions[session_id] = updated
         return updated

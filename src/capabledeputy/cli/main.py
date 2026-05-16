@@ -10,6 +10,7 @@ from rich.console import Console
 
 from capabledeputy.cli.approval import approval_app
 from capabledeputy.cli.audit import audit_app, watch_command
+from capabledeputy.cli.chat import chat_command, demo_app
 from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.session import session_app
 from capabledeputy.cli.tool import tool_app
@@ -33,6 +34,8 @@ app.add_typer(audit_app, name="audit")
 app.add_typer(policy_app, name="policy")
 app.add_typer(tool_app, name="tool")
 app.add_typer(approval_app, name="approval")
+app.add_typer(demo_app, name="demo")
+app.command("chat")(chat_command)
 app.command("watch")(watch_command)
 
 
@@ -316,11 +319,50 @@ def send_message(
 
 
 @daemon_app.command("start")
-def daemon_start() -> None:
+def daemon_start(
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help=(
+                "Log every RPC request to stderr with timing and a "
+                "short summary. Cache-y methods are dimmed; slow calls "
+                "(>500ms) are highlighted."
+            ),
+        ),
+    ] = False,
+    no_policy_preview: Annotated[
+        bool,
+        typer.Option(
+            "--no-policy-preview",
+            help=(
+                "Do not register the read-only policy.preview tool. "
+                "Enforcement is unaffected (decide() runs at dispatch "
+                "regardless). Disabling it makes the agent's "
+                "policy-probing show up as loud audited denied calls "
+                "instead of silent queries, and keeps the agent's "
+                "capability surface strictly minimal. Default: enabled "
+                "(better agent planning). Overrides CAPDEP_POLICY_PREVIEW."
+            ),
+        ),
+    ] = False,
+) -> None:
     """Start the daemon in the foreground. Blocks until shutdown."""
     console.print("[green]capdep daemon starting[/green]")
+    if verbose:
+        console.print("[dim]verbose RPC logging enabled[/dim]")
+    if no_policy_preview:
+        console.print("[dim]policy.preview tool disabled[/dim]")
     try:
-        anyio.run(run_daemon)
+        # None → run_daemon falls through to CAPDEP_POLICY_PREVIEW / default.
+        # False → hard-disable (CLI flag wins over env).
+        anyio.run(
+            lambda: run_daemon(
+                verbose=verbose,
+                policy_preview=False if no_policy_preview else None,
+            ),
+        )
     except KeyboardInterrupt:
         console.print("\n[yellow]capdep daemon stopped (SIGINT)[/yellow]")
 

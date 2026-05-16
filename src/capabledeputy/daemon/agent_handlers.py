@@ -19,6 +19,10 @@ def _outcome_to_dict(outcome: ToolCallOutcome) -> dict[str, Any]:
         "labels_added": sorted(label.value for label in outcome.labels_added),
         "error": outcome.error,
         "output": outcome.output,
+        "tool_name": outcome.tool_name,
+        "tool_args": outcome.tool_args,
+        "approval_submission": outcome.approval_submission,
+        "approval_id": outcome.approval_id,
     }
 
 

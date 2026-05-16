@@ -10,6 +10,8 @@ from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.daemon.audit_handlers import make_audit_handlers
 from capabledeputy.daemon.bundle_handlers import make_bundle_handlers
+from capabledeputy.daemon.demo_handlers import make_demo_handlers
+from capabledeputy.daemon.extract_handlers import make_extract_handlers
 from capabledeputy.daemon.handlers import default_handlers
 from capabledeputy.daemon.memory_handlers import make_memory_handlers
 from capabledeputy.daemon.pattern_handlers import make_pattern_handlers
@@ -21,6 +23,7 @@ from capabledeputy.daemon.tool_handlers import make_tool_handlers
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
 from capabledeputy.llm.litellm_client import LiteLLMClient
+from capabledeputy.secrets import load_anthropic_api_key
 
 
 async def run_daemon(
@@ -28,8 +31,24 @@ async def run_daemon(
     state_db_path: Path | None = None,
     audit_log_path: Path | None = None,
     model: str | None = None,
+    verbose: bool = False,
+    policy_preview: bool | None = None,
 ) -> None:
     import os
+
+    # Populate ANTHROPIC_API_KEY from CLAUDEAPI.KEY in the cwd if it isn't
+    # already set, so users don't need to re-export the env var each shell.
+    load_anthropic_api_key()
+
+    # Precedence: explicit arg (CLI flag) > CAPDEP_POLICY_PREVIEW env >
+    # default on. The env var is off only for explicit falsey values.
+    if policy_preview is None:
+        env = os.environ.get("CAPDEP_POLICY_PREVIEW")
+        enable_policy_preview = True
+        if env is not None and env.strip().lower() in ("0", "false", "no", "off"):
+            enable_policy_preview = False
+    else:
+        enable_policy_preview = policy_preview
 
     chosen_model = model or os.environ.get("CAPDEP_LLM_MODEL", "claude-haiku-4-5")
     quarantined_model = os.environ.get("CAPDEP_QUARANTINED_LLM_MODEL")
@@ -46,6 +65,7 @@ async def run_daemon(
         llm_client=LiteLLMClient(model=chosen_model),
         quarantined_llm=quarantined_client,
         skills_dir=skills_dir,
+        enable_policy_preview=enable_policy_preview,
     )
     await app.startup()
 
@@ -60,8 +80,14 @@ async def run_daemon(
     handlers.update(make_memory_handlers(app))
     handlers.update(make_programmatic_handlers(app))
     handlers.update(make_bundle_handlers(app))
+    handlers.update(make_demo_handlers(app))
+    handlers.update(make_extract_handlers(app))
 
-    daemon = Daemon(socket_path or default_socket_path(), handlers=handlers)
+    daemon = Daemon(
+        socket_path or default_socket_path(),
+        handlers=handlers,
+        verbose=verbose,
+    )
 
     async def _relay_audit(event) -> None:
         await daemon.publish("audit", event.to_dict())

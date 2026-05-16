@@ -281,6 +281,63 @@ async def test_audit_events_are_emitted(writer: AuditWriter) -> None:
     assert EventType.TOOL_RETURNED in types
 
 
+async def test_revoked_by_prior_use_blocks_second_dispatch(
+    writer: AuditWriter,
+) -> None:
+    """End-to-end runtime check: dispatching web.fetch records the kind
+    into the session's used_kinds, after which a notes.write whose
+    capability declares revoked_by={WEB_FETCH} is denied with the
+    capability-revoked-by-prior-use rule."""
+    registry, graph, client = await _make_setup(writer)
+    registry.register(
+        ToolDefinition(
+            name="web.fetch",
+            description="t",
+            capability_kind=CapabilityKind.WEB_FETCH,
+            handler=_ok_handler,
+            target_arg="url",
+        ),
+    )
+    registry.register(
+        ToolDefinition(
+            name="notes.write",
+            description="t",
+            capability_kind=CapabilityKind.WRITE_FS,
+            handler=_ok_handler,
+            target_arg="path",
+        ),
+    )
+
+    s = await graph.new()
+    await graph.grant_capability(
+        s.id,
+        Capability(kind=CapabilityKind.WEB_FETCH, pattern="*"),
+    )
+    await graph.grant_capability(
+        s.id,
+        Capability(
+            kind=CapabilityKind.WRITE_FS,
+            pattern="*",
+            allows_destructive=True,
+            revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
+        ),
+    )
+
+    first = await client.call_tool(
+        s.id, "web.fetch", {"url": "https://example.com"},
+    )
+    assert first.decision == Decision.ALLOW
+
+    assert CapabilityKind.WEB_FETCH in graph.get(s.id).used_kinds
+
+    second = await client.call_tool(
+        s.id, "notes.write", {"path": "/notes/x.md"},
+    )
+    assert second.decision == Decision.DENY
+    assert second.rule == "capability-revoked-by-prior-use"
+    assert "WEB_FETCH" in (second.reason or "")
+
+
 async def test_context_carries_session_state(writer: AuditWriter) -> None:
     registry, graph, client = await _make_setup(writer)
     registry.register(

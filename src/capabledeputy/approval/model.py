@@ -18,6 +18,10 @@ class ApprovalAction(StrEnum):
     MERGE = "MERGE"
     GRANT = "GRANT"
     QUEUE_PURCHASE = "QUEUE_PURCHASE"
+    # Generic gate for destructive-op-needs-approval. Payload encodes
+    # the tool + args as JSON so a single executor can dispatch any
+    # MODIFY_* or DELETE_* tool through a purpose-limited session.
+    EXECUTE_DESTRUCTIVE = "EXECUTE_DESTRUCTIVE"
 
 
 class ApprovalStatus(StrEnum):

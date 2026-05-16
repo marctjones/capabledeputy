@@ -91,6 +91,13 @@ class Capability:
     # default, matching the Clark-Wilson principle that modifications
     # must be deliberate, audited transactions.
     allows_destructive: bool = False
+    # If any of these CapabilityKinds has already been dispatched in the
+    # session, this capability is treated as revoked: the policy engine
+    # returns DENY with rule "capability-revoked-by-prior-use". This is
+    # the tool-identity counterpart to the label-based conflict rules —
+    # use it when the prior-use signal is the tool itself rather than an
+    # information-flow label (e.g. "after web.fetch, no memory.write").
+    revoked_by: frozenset[CapabilityKind] = field(default_factory=frozenset)
 
     def matches(
         self,
@@ -119,6 +126,7 @@ class Capability:
             "audit_id": str(self.audit_id),
             "max_amount": self.max_amount,
             "allows_destructive": self.allows_destructive,
+            "revoked_by": sorted(k.value for k in self.revoked_by),
         }
 
     @classmethod
@@ -131,4 +139,7 @@ class Capability:
             audit_id=UUID(d["audit_id"]),
             max_amount=d.get("max_amount"),
             allows_destructive=bool(d.get("allows_destructive", False)),
+            revoked_by=frozenset(
+                CapabilityKind(k) for k in d.get("revoked_by", ())
+            ),
         )

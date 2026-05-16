@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from contextlib import suppress
 from pathlib import Path
 
@@ -17,6 +18,7 @@ import anyio
 from anyio.abc import SocketStream
 
 from capabledeputy.daemon.handlers import Handler, default_handlers
+from capabledeputy.daemon.verbose_log import VerboseLogger
 from capabledeputy.ipc.rpc import (
     INTERNAL_ERROR,
     JSONRPC_VERSION,
@@ -33,6 +35,7 @@ class Daemon:
         self,
         socket_path: Path,
         handlers: dict[str, Handler] | None = None,
+        verbose: bool = False,
     ) -> None:
         self._socket_path = socket_path
         self._handlers = handlers or default_handlers()
@@ -40,6 +43,7 @@ class Daemon:
         self._subscribers: dict[str, set[SocketStream]] = {}
         self._connection_streams: dict[int, set[str]] = {}
         self._sub_lock = anyio.Lock()
+        self._verbose = VerboseLogger() if verbose else None
 
     def register(self, method: str, handler: Handler) -> None:
         self._handlers[method] = handler
@@ -168,15 +172,23 @@ class Daemon:
             await stream.send(response.encode())
             return
 
+        start = time.monotonic()
         try:
             result = await handler(request.params)
         except Exception as e:
+            elapsed_ms = (time.monotonic() - start) * 1000
+            if self._verbose is not None:
+                self._verbose.log_error(request.method, request.params, e, elapsed_ms)
             response = RpcResponse(
                 id=request.id,
                 error=error(INTERNAL_ERROR, f"handler error: {e}"),
             )
             await stream.send(response.encode())
             return
+
+        elapsed_ms = (time.monotonic() - start) * 1000
+        if self._verbose is not None:
+            self._verbose.log_ok(request.method, request.params, result, elapsed_ms)
 
         if request.id is not None:
             response = RpcResponse(id=request.id, result=result)

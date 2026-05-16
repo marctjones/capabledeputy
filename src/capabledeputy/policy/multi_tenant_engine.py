@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from capabledeputy.policy.actions import Action
-from capabledeputy.policy.capabilities import Capability
+from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.engine import PolicyDecision, decide
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tenancy import (
@@ -43,6 +43,7 @@ def decide_multi_tenant(
     action: Action,
     *,
     target_tenant: Tenant | None = None,
+    used_kinds: frozenset[CapabilityKind] = frozenset(),
 ) -> MultiTenantDecision:
     """Run the policy engine per tenant and combine the results.
 
@@ -59,7 +60,9 @@ def decide_multi_tenant(
     per_tenant: dict[Tenant, PolicyDecision] = {}
     for tenant in tenants:
         scoped_labels = labels_for_tenant(tenant_label_set, tenant)
-        per_tenant[tenant] = decide(scoped_labels, capabilities, action)
+        per_tenant[tenant] = decide(
+            scoped_labels, capabilities, action, used_kinds=used_kinds,
+        )
 
     if any(d.decision == Decision.DENY for d in per_tenant.values()):
         denying = next(
