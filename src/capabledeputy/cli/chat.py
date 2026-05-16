@@ -45,6 +45,7 @@ message — the only path through the LLM is the non-slash one.
 from __future__ import annotations
 
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -364,7 +365,9 @@ def _handle_session_show(target_id: str) -> None:
     if caps:
         console.print(f"  caps:    {len(caps)} granted")
         for c in caps:
-            console.print(f"    - {c['kind']} pattern={c['pattern']}")
+            console.print(
+                f"    - {c['kind']} pattern={c['pattern']}{_expiry_marker(c)}",
+            )
 
 
 def _resolve_session_id(prefix: str) -> str | None:
@@ -511,16 +514,19 @@ def _handle_spawn(arg: str, focus: dict[str, str]) -> None:
 
 
 def _handle_grant(arg: str, session_id: str) -> None:
-    """/grant <KIND> <pattern> [--one-shot --destructive --max-amount N]
+    """/grant <KIND> <pattern> [--one-shot --destructive --max-amount N --ttl S]
 
     Builds a Capability and ships it to session.grant_capability. The
     cap's audit_id is generated daemon-side from the serialized payload.
+    `--ttl S` sets an absolute expiry S seconds from now; the policy
+    engine then denies the capability deterministically once that
+    deadline passes (rule capability-expired).
     """
     parts = arg.split()
     if len(parts) < 2:
         err_console.print(
             "[red]usage:[/red] /grant <KIND> <pattern> "
-            "[--one-shot] [--destructive] [--max-amount N]",
+            "[--one-shot] [--destructive] [--max-amount N] [--ttl SECONDS]",
         )
         return
     kind, pattern = parts[0].upper(), parts[1]
@@ -536,6 +542,19 @@ def _handle_grant(arg: str, session_id: str) -> None:
             err_console.print("[red]--max-amount needs a number[/red]")
             return
 
+    expires_at: str | None = None
+    ttl_secs: int | None = None
+    if "--ttl" in rest:
+        i = rest.index("--ttl")
+        try:
+            ttl_secs = int(rest[i + 1])
+        except (IndexError, ValueError):
+            err_console.print("[red]--ttl needs a number of seconds[/red]")
+            return
+        expires_at = (
+            datetime.now(UTC) + timedelta(seconds=ttl_secs)
+        ).isoformat()
+
     from uuid import uuid4
 
     cap = {
@@ -547,6 +566,7 @@ def _handle_grant(arg: str, session_id: str) -> None:
         "max_amount": max_amount,
         "allows_destructive": allows_destructive,
         "revoked_by": [],
+        "expires_at": expires_at,
     }
     try:
         _call(
@@ -559,8 +579,25 @@ def _handle_grant(arg: str, session_id: str) -> None:
     console.print(
         f"[green]✓ granted[/green] {kind} pattern={pattern}"
         + (" [yellow](one-shot)[/yellow]" if one_shot else "")
-        + (" [yellow](destructive)[/yellow]" if allows_destructive else ""),
+        + (" [yellow](destructive)[/yellow]" if allows_destructive else "")
+        + (f" [yellow](expires in {ttl_secs}s)[/yellow]" if ttl_secs is not None else ""),
     )
+
+
+def _expiry_marker(cap: dict[str, Any], *, now: datetime | None = None) -> str:
+    """Rich-markup suffix for a capability dict: empty if non-expiring,
+    a remaining-time hint if still valid, or '(expired)' once the
+    half-open deadline has passed. Shared by /status, /caps, and
+    /session so every inspection view annotates consistently."""
+    raw = cap.get("expires_at")
+    if not raw:
+        return ""
+    deadline = datetime.fromisoformat(raw)
+    ref = now or datetime.now(UTC)
+    if ref >= deadline:
+        return " [red](expired)[/red]"
+    secs = int((deadline - ref).total_seconds())
+    return f" [yellow](expires in {secs}s)[/yellow]"
 
 
 def _handle_status(session_id: str, *, only: str | None = None) -> None:
@@ -591,7 +628,8 @@ def _handle_status(session_id: str, *, only: str | None = None) -> None:
                     extras.append("one-shot")
                 tail = f" [{', '.join(extras)}]" if extras else ""
                 console.print(
-                    f"  - {c['kind']} pattern={c['pattern']}{tail}",
+                    f"  - {c['kind']} pattern={c['pattern']}{tail}"
+                    f"{_expiry_marker(c)}",
                 )
 
 
@@ -831,7 +869,24 @@ def _make_bottom_toolbar(cache: CompletionCache, focus: dict[str, str]):
         if sess is None:
             return HTML(f" session <b>{short}</b> · <ansicyan>(syncing…)</ansicyan> ")
         labels = sess.get("label_set", [])
-        ncaps = len(sess.get("capability_set", []))
+        caps_list = sess.get("capability_set", [])
+        ncaps = len(caps_list)
+        now = datetime.now(UTC)
+        n_bounded = n_expired = 0
+        for c in caps_list:
+            raw = c.get("expires_at") if isinstance(c, dict) else None
+            if not raw:
+                continue
+            if now >= datetime.fromisoformat(raw):
+                n_expired += 1
+            else:
+                n_bounded += 1
+        if n_expired:
+            ttl_seg = f" <ansired>ttl {n_bounded}+{n_expired}✗</ansired>"
+        elif n_bounded:
+            ttl_seg = f" <ansiyellow>ttl {n_bounded}</ansiyellow>"
+        else:
+            ttl_seg = ""
         npending = len(cache.approval_ids)
         word, _ = _compartment_summary(labels)
         word_tag = {
@@ -851,7 +906,7 @@ def _make_bottom_toolbar(cache: CompletionCache, focus: dict[str, str]):
         return HTML(
             f" session <b>{short}</b> "
             f"│ compartment {word_tag}: {comp} "
-            f"│ caps {ncaps}{pending_seg} ",
+            f"│ caps {ncaps}{ttl_seg}{pending_seg} ",
         )
 
     return render

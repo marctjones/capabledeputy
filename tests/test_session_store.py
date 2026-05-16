@@ -131,3 +131,47 @@ async def test_persisted_sessions_survive_full_state_change(store_path: Path) ->
     g2 = SessionGraph(store=store)
     await g2.load()
     assert g2.get(s.id).status == SessionStatus.ABORTED
+
+
+# --- Time-bounded capabilities (feature 001, T009 / FR-008 / SC-004) -----
+
+async def test_time_bounded_capability_survives_store_reload(
+    store_path: Path,
+) -> None:
+    """A persisted absolute deadline is unchanged after a simulated
+    runtime restart (a fresh SessionStore over the same DB), and a
+    post-deadline decision still denies with capability-expired."""
+    from datetime import UTC, datetime, timedelta
+
+    from capabledeputy.policy.actions import Action
+    from capabledeputy.policy.engine import (
+        CAPABILITY_EXPIRED_RULE,
+        decide,
+    )
+    from capabledeputy.policy.rules import Decision
+
+    deadline = datetime(2026, 3, 1, 9, 0, 0, tzinfo=UTC)
+    cap = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*", expires_at=deadline,
+    )
+    s = Session.new(intent="ttl", capability_set=frozenset({cap}))
+
+    store = SessionStore(store_path)
+    await store.upsert(s)
+
+    # Simulate restart: brand-new store instance over the same file.
+    reloaded_store = SessionStore(store_path)
+    loaded = await reloaded_store.get(s.id)
+    assert loaded is not None
+    [loaded_cap] = list(loaded.capability_set)
+    assert loaded_cap.expires_at == deadline  # absolute, unchanged
+
+    # Past the original deadline → still denies, attributed to expiry.
+    result = decide(
+        frozenset(),
+        loaded.capability_set,
+        Action(kind=CapabilityKind.READ_FS, target="/x"),
+        now=deadline + timedelta(hours=1),
+    )
+    assert result.decision == Decision.DENY
+    assert result.rule == CAPABILITY_EXPIRED_RULE

@@ -13,6 +13,7 @@ and any tool. Every dispatch goes through it, which guarantees that:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -80,11 +81,15 @@ class LabeledToolClient:
             target=tool.extract_target(args),
             amount=tool.extract_amount(args),
         )
+        # One authoritative decision clock per dispatch — resolved here
+        # at the chokepoint and threaded into decide(), never read
+        # inline inside the comparison. Deterministic + injectable.
         policy_decision = decide(
             session.label_set,
             session.capability_set,
             action,
             used_kinds=session.used_kinds,
+            now=datetime.now(UTC),
         )
 
         await self._emit_policy_decision(session_id, tool_name, args, policy_decision)

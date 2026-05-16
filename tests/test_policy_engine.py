@@ -402,3 +402,113 @@ def test_revoked_by_serializes_round_trip() -> None:
 def test_default_revoked_by_is_empty() -> None:
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     assert cap.revoked_by == frozenset()
+
+
+# --- Time-bounded capabilities (feature 001, US1) ------------------------
+
+from datetime import UTC, datetime, timedelta  # noqa: E402
+
+from capabledeputy.policy.engine import CAPABILITY_EXPIRED_RULE  # noqa: E402
+
+_T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+
+def _read_action() -> Action:
+    return Action(kind=CapabilityKind.READ_FS, target="/x")
+
+
+def test_future_deadline_is_transparent() -> None:
+    """C2: a not-yet-expired cap decides identically to a non-expiring
+    one."""
+    future = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*", expires_at=_T0 + timedelta(hours=1),
+    )
+    plain = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    r_future = decide(frozenset(), frozenset({future}), _read_action(), now=_T0)
+    r_plain = decide(frozenset(), frozenset({plain}), _read_action(), now=_T0)
+    assert r_future.decision == r_plain.decision == Decision.ALLOW
+
+
+def test_expired_capability_treated_as_absent() -> None:
+    """C3: a past-deadline cap is skipped; with no other cap the
+    denial is attributed to expiry, not generic no-capability."""
+    expired = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*", expires_at=_T0,
+    )
+    r = decide(
+        frozenset(), frozenset({expired}), _read_action(),
+        now=_T0 + timedelta(seconds=1),
+    )
+    assert r.decision == Decision.DENY
+    assert r.rule == CAPABILITY_EXPIRED_RULE
+    assert "expired at" in (r.reason or "")
+
+
+def test_half_open_boundary_instant() -> None:
+    """At exactly now == expires_at the capability is expired."""
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*", expires_at=_T0)
+    before = decide(
+        frozenset(), frozenset({cap}), _read_action(),
+        now=_T0 - timedelta(microseconds=1),
+    )
+    at = decide(frozenset(), frozenset({cap}), _read_action(), now=_T0)
+    assert before.decision == Decision.ALLOW
+    assert at.decision == Decision.DENY
+    assert at.rule == CAPABILITY_EXPIRED_RULE
+
+
+def test_non_expired_sibling_still_satisfies() -> None:
+    """C5: an expired cap is inert, not poisonous — a non-expired
+    sibling matching the same action still allows."""
+    expired = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*", expires_at=_T0,
+    )
+    live = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    r = decide(
+        frozenset(), frozenset({expired, live}), _read_action(),
+        now=_T0 + timedelta(hours=1),
+    )
+    assert r.decision == Decision.ALLOW
+
+
+def test_expiry_distinct_from_no_capability() -> None:
+    """C4: expired-only denial says capability-expired; truly-absent
+    says the generic no-capability reason."""
+    expired = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*", expires_at=_T0,
+    )
+    r_expired = decide(
+        frozenset(), frozenset({expired}), _read_action(),
+        now=_T0 + timedelta(seconds=1),
+    )
+    r_absent = decide(frozenset(), frozenset(), _read_action(), now=_T0)
+    assert r_expired.rule == CAPABILITY_EXPIRED_RULE
+    assert r_absent.rule is None
+    assert "no matching capability" in (r_absent.reason or "")
+
+
+def test_expiry_composes_with_revoked_by() -> None:
+    """C7: any single disqualifier makes a cap unusable. An expired
+    cap is skipped before revoked_by is even consulted; result is
+    still a deterministic deny."""
+    cap = Capability(
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
+        expires_at=_T0,
+        revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
+    )
+    r = decide(
+        frozenset(), frozenset({cap}), _read_action(),
+        used_kinds=frozenset({CapabilityKind.WEB_FETCH}),
+        now=_T0 + timedelta(seconds=1),
+    )
+    assert r.decision == Decision.DENY
+    assert r.rule == CAPABILITY_EXPIRED_RULE  # expiry wins (skipped first)
+
+
+def test_decide_without_now_uses_wall_clock_and_stays_backcompat() -> None:
+    """Omitting `now` resolves to current UTC; a non-expiring cap is
+    unaffected (existing callers unchanged)."""
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    r = decide(frozenset(), frozenset({cap}), _read_action())
+    assert r.decision == Decision.ALLOW

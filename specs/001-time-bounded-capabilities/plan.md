@@ -1,6 +1,6 @@
 # Implementation Plan: Time-Bounded Capabilities
 
-**Branch**: `001-time-bounded-capabilities` | **Date**: 2026-05-15 | **Spec**: [spec.md](./spec.md)
+**Branch**: `001-time-bounded-capabilities` | **Date**: 2026-05-15 | **Status**: Implemented | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `specs/001-time-bounded-capabilities/spec.md`
 
 ## Summary

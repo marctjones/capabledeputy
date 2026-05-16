@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-time-bounded-capabilities`
 **Created**: 2026-05-15
-**Status**: Draft
+**Status**: Implemented
 **Input**: User description: "time-bounded capabilities — a Capability may carry an expiry; the policy engine deterministically denies an expired capability; a helper sets expiry from a duration; expiry is enforced at the policy chokepoint, not by the LLM"
 
 ## User Scenarios & Testing *(mandatory)*

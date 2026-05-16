@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import fnmatch
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Self
 from uuid import UUID, uuid4
@@ -98,6 +99,37 @@ class Capability:
     # use it when the prior-use signal is the tool itself rather than an
     # information-flow label (e.g. "after web.fetch, no memory.write").
     revoked_by: frozenset[CapabilityKind] = field(default_factory=frozenset)
+    # Optional absolute expiry deadline (timezone-aware UTC). None ⇒
+    # never expires (today's behavior). Evaluated deterministically at
+    # the policy decision point against an injected clock — never by
+    # the LLM. Half-open: valid while `now < expires_at`, expired at
+    # `now >= expires_at`. Independent of the `expiry` lifetime enum
+    # above (one-shot/session/persistent) — a session capability may
+    # also carry an absolute `expires_at`.
+    expires_at: datetime | None = None
+
+    def is_expired(self, now: datetime) -> bool:
+        """True iff this capability carries a deadline that has been
+        reached. Half-open window: expired when `now >= expires_at`."""
+        return self.expires_at is not None and now >= self.expires_at
+
+    @classmethod
+    def expiring_in(
+        cls,
+        kind: CapabilityKind,
+        pattern: str,
+        ttl: timedelta,
+        *,
+        now: datetime | None = None,
+        **rest: Any,
+    ) -> Self:
+        """Construct a capability whose absolute deadline is `ttl`
+        after `now` (default: current UTC time). A non-positive `ttl`
+        yields `expires_at <= now`, so the capability is already
+        expired at first use (half-open rule). The absolute deadline
+        is the unit of truth; the duration is sugar resolved here."""
+        base = now if now is not None else datetime.now(UTC)
+        return cls(kind=kind, pattern=pattern, expires_at=base + ttl, **rest)
 
     def matches(
         self,
@@ -127,6 +159,9 @@ class Capability:
             "max_amount": self.max_amount,
             "allows_destructive": self.allows_destructive,
             "revoked_by": sorted(k.value for k in self.revoked_by),
+            "expires_at": (
+                self.expires_at.isoformat() if self.expires_at is not None else None
+            ),
         }
 
     @classmethod
@@ -141,5 +176,10 @@ class Capability:
             allows_destructive=bool(d.get("allows_destructive", False)),
             revoked_by=frozenset(
                 CapabilityKind(k) for k in d.get("revoked_by", ())
+            ),
+            expires_at=(
+                datetime.fromisoformat(d["expires_at"])
+                if d.get("expires_at")
+                else None
             ),
         )

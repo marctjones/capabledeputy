@@ -169,3 +169,100 @@ def test_preview_allow_shows_no_hint() -> None:
     )
     assert "recover" not in out
     assert "would DENY" not in out
+
+
+# --- Time-bounded capability rendering (feature 001, US3) ----------------
+
+from datetime import UTC, datetime, timedelta  # noqa: E402
+
+from capabledeputy.cli.chat import _expiry_marker  # noqa: E402
+
+
+def _cap(expires_at: str | None) -> dict[str, Any]:
+    return {"kind": "READ_FS", "pattern": "*", "expires_at": expires_at}
+
+
+def test_expiry_marker_none_is_empty() -> None:
+    assert _expiry_marker(_cap(None)) == ""
+
+
+def test_expiry_marker_future_shows_remaining() -> None:
+    now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    deadline = (now + timedelta(seconds=90)).isoformat()
+    out = _expiry_marker(_cap(deadline), now=now)
+    assert "expires in" in out
+    assert "90s" in out
+
+
+def test_expiry_marker_past_shows_expired() -> None:
+    now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    deadline = (now - timedelta(seconds=1)).isoformat()
+    out = _expiry_marker(_cap(deadline), now=now)
+    assert "expired" in out
+
+
+def test_status_render_annotates_time_bounded_cap(
+    monkeypatch: Any,
+) -> None:
+    from capabledeputy.cli import chat
+
+    future = (datetime.now(UTC) + timedelta(seconds=120)).isoformat()
+    monkeypatch.setattr(
+        chat,
+        "_call",
+        lambda m, p=None: {
+            "label_set": [],
+            "used_kinds": [],
+            "capability_set": [
+                {"kind": "READ_FS", "pattern": "*", "expires_at": future},
+                {"kind": "SEND_EMAIL", "pattern": "*", "expires_at": None},
+            ],
+        },
+    )
+    with chat.console.capture() as cap:
+        chat._handle_status("sid", only="caps")
+    out = cap.get()
+    assert "expires in" in out  # the time-bounded one annotated
+    # the non-expiring one has no marker on its line
+    assert "SEND_EMAIL pattern=*" in out
+
+
+def test_session_show_annotates_time_bounded_cap(monkeypatch: Any) -> None:
+    from capabledeputy.cli import chat
+
+    past = (datetime.now(UTC) - timedelta(seconds=5)).isoformat()
+    monkeypatch.setattr(
+        chat,
+        "_call",
+        lambda m, p=None: {
+            "id": "abcd1234-...",
+            "status": "active",
+            "capability_set": [
+                {"kind": "READ_FS", "pattern": "*", "expires_at": past},
+            ],
+        },
+    )
+    with chat.console.capture() as cap:
+        chat._handle_session_show("abcd1234")
+    assert "expired" in cap.get()
+
+
+def test_toolbar_shows_time_bound_marker() -> None:
+    sid = "abcd1234-0000-0000-0000-000000000099"
+    future = (datetime.now(UTC) + timedelta(seconds=300)).isoformat()
+    cache = _FakeCache(
+        [
+            {
+                "id": sid,
+                "label_set": [],
+                "capability_set": [
+                    {"kind": "READ_FS", "pattern": "*", "expires_at": future},
+                    {"kind": "SEND_EMAIL", "pattern": "*", "expires_at": None},
+                ],
+            },
+        ],
+        [],
+    )
+    txt = _toolbar_text(cache, sid)
+    # one of two caps is time-bounded → toolbar surfaces it
+    assert "ttl" in txt or "⏳" in txt

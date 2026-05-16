@@ -86,3 +86,87 @@ def test_capability_is_hashable() -> None:
     cap2 = Capability(kind=CapabilityKind.READ_FS, pattern="/a")
     assert hash(cap1) != hash(cap2)
     assert cap1 != cap2
+
+
+# --- Time-bounded capabilities (feature 001) -----------------------------
+
+from datetime import UTC, datetime, timedelta  # noqa: E402
+
+
+def test_expires_at_defaults_to_none() -> None:
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    assert cap.expires_at is None
+    # None ⇒ never expires, regardless of now.
+    assert cap.is_expired(datetime.now(UTC)) is False
+
+
+def test_is_expired_half_open_window() -> None:
+    t0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*", expires_at=t0)
+    assert cap.is_expired(t0 - timedelta(seconds=1)) is False  # before
+    assert cap.is_expired(t0) is True  # exactly at deadline ⇒ expired
+    assert cap.is_expired(t0 + timedelta(seconds=1)) is True  # after
+
+
+def test_expires_at_serialization_round_trip() -> None:
+    t0 = datetime(2026, 6, 1, 9, 30, tzinfo=UTC)
+    cap = Capability(
+        kind=CapabilityKind.QUEUE_PURCHASE, pattern="amazon", expires_at=t0,
+    )
+    decoded = Capability.from_dict(cap.to_dict())
+    assert decoded == cap
+    assert decoded.expires_at == t0
+
+
+def test_from_dict_without_expires_at_is_backward_tolerant() -> None:
+    # A capability persisted before this feature has no expires_at key.
+    legacy = {
+        "kind": "READ_FS",
+        "pattern": "*",
+        "expiry": "session",
+        "origin": "system_default",
+        "audit_id": "00000000-0000-0000-0000-000000000000",
+        "max_amount": None,
+        "allows_destructive": False,
+        "revoked_by": [],
+    }
+    cap = Capability.from_dict(legacy)
+    assert cap.expires_at is None
+
+
+def test_expiring_in_sets_deadline_now_plus_ttl() -> None:
+    base = datetime(2026, 5, 1, 8, 0, 0, tzinfo=UTC)
+    cap = Capability.expiring_in(
+        CapabilityKind.QUEUE_PURCHASE, "amazon", timedelta(minutes=10), now=base,
+    )
+    assert cap.expires_at == base + timedelta(minutes=10)
+    assert cap.kind == CapabilityKind.QUEUE_PURCHASE
+    assert cap.pattern == "amazon"
+    assert cap.is_expired(base + timedelta(minutes=9, seconds=59)) is False
+    assert cap.is_expired(base + timedelta(minutes=10)) is True
+
+
+def test_expiring_in_non_positive_ttl_is_already_expired() -> None:
+    base = datetime(2026, 5, 1, 8, 0, 0, tzinfo=UTC)
+    zero = Capability.expiring_in(
+        CapabilityKind.READ_FS, "*", timedelta(0), now=base,
+    )
+    negative = Capability.expiring_in(
+        CapabilityKind.READ_FS, "*", timedelta(seconds=-5), now=base,
+    )
+    # Half-open: expires_at <= now ⇒ already expired at first use.
+    assert zero.is_expired(base) is True
+    assert negative.is_expired(base) is True
+
+
+def test_expiring_in_passes_through_other_attrs() -> None:
+    cap = Capability.expiring_in(
+        CapabilityKind.SEND_EMAIL,
+        "*@x.com",
+        timedelta(hours=1),
+        now=datetime(2026, 1, 1, tzinfo=UTC),
+        max_amount=None,
+        allows_destructive=False,
+    )
+    assert cap.kind == CapabilityKind.SEND_EMAIL
+    assert cap.expires_at is not None

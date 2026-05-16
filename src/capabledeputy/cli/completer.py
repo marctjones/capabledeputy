@@ -74,7 +74,12 @@ _APPROVAL_ACTIONS: tuple[str, ...] = (
     "GRANT",
     "MERGE",
 )
-_GRANT_FLAGS: tuple[str, ...] = ("--one-shot", "--destructive", "--max-amount")
+_GRANT_FLAGS: tuple[str, ...] = (
+    "--one-shot",
+    "--destructive",
+    "--max-amount",
+    "--ttl",
+)
 
 
 class CompletionCache:

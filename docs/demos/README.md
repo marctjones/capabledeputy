@@ -22,6 +22,9 @@ demonstrations**, **user workflow demos**, **adversarial demos**, and
 | 14 | [Multi-Tenant Household](14-multi-tenant.md) | feature | per-principal compartments | nothing | ~2 min |
 | 15 | [Federation](15-federation.md) | feature | phone-to-laptop approval handoff | nothing | ~3 min |
 | 16 | [Per-Tool Isolation](16-per-tool-isolation.md) | feature + ops | container hardening | nothing | ~2 min |
+| 17 | [Interactive REPL](17-interactive-repl.md) | feature + UX | talk to the agent live | API key | ~5 min |
+| 18 | [Recoverable Blocks](18-recoverable-blocks.md) | security + UX | DENY vs approval vs declassify | nothing | ~5 min |
+| 19 | [Time-Bounded Capabilities](19-time-bounded-capabilities.md) | feature + security | self-expiring authority | nothing | ~3 min |
 
 ## How they fit together
 
