@@ -154,9 +154,7 @@ def dry_run_command(
             "white",
         )
         line = f"line {call['line']}" if call["line"] is not None else "?"
-        labels = (
-            f" labels={','.join(call['arg_labels'])}" if call["arg_labels"] else ""
-        )
+        labels = f" labels={','.join(call['arg_labels'])}" if call["arg_labels"] else ""
         rule = f" rule={call['rule']}" if call["rule"] else ""
         console.print(
             f"  [{color}]{decision}[/{color}] {call['tool']}({line}){labels}{rule}",

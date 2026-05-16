@@ -62,14 +62,17 @@ async def test_rate_limit_survives_store_reload(tmp_path: Path) -> None:
 
     aid = UUID("22222222-2222-2222-2222-222222222222")
     cap = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*", audit_id=aid,
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
+        audit_id=aid,
         rate_limit=RateLimit(max_uses=1, window_seconds=3600),
     )
     from datetime import UTC, datetime
 
     s = Session.new(intent="rl", capability_set=frozenset({cap}))
     s = replace(
-        s, cap_uses={str(aid): (datetime.now(UTC),)},
+        s,
+        cap_uses={str(aid): (datetime.now(UTC),)},
     )
     store = SessionStore(tmp_path / "s.db")
     await store.upsert(s)
@@ -84,7 +87,8 @@ async def test_invariant_identical_with_preview_disabled(tmp_path: Path) -> None
     """SC-006-style: rate-limit enforcement is byte-identical whether
     or not policy.preview exists; no LLM on the path."""
     cap = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*",
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
         rate_limit=RateLimit(max_uses=1, window_seconds=3600),
     )
     results = {}

@@ -124,7 +124,8 @@ class CapDepConsole(App[None]):
     async def _refresh_status(self) -> None:
         try:
             full = await self._client.call(
-                "session.get", {"session_id": self._session_id},
+                "session.get",
+                {"session_id": self._session_id},
             )
         except Exception:
             return
@@ -152,11 +153,11 @@ class CapDepConsole(App[None]):
     async def _open_approval(self, approval_id: int) -> None:
         try:
             full = await self._client.call(
-                "approval.show", {"id": approval_id},
+                "approval.show",
+                {"id": approval_id},
             )
         except Exception as e:
-            self.notify(f"could not load approval #{approval_id}: {e}",
-                        severity="error")
+            self.notify(f"could not load approval #{approval_id}: {e}", severity="error")
             return
         self.push_screen(
             ApprovalDetailScreen(full),
@@ -172,7 +173,8 @@ class CapDepConsole(App[None]):
             try:
                 if decision == "approve":
                     res = await self._client.call(
-                        "approval.approve", {"id": approval_id},
+                        "approval.approve",
+                        {"id": approval_id},
                     )
                     log.write(f"[green]✓ approved #{approval_id}[/green]")
                     if res.get("executed_in_session"):
@@ -184,7 +186,8 @@ class CapDepConsole(App[None]):
                         )
                 else:
                     await self._client.call(
-                        "approval.deny", {"id": approval_id},
+                        "approval.deny",
+                        {"id": approval_id},
                     )
                     log.write(f"[yellow]denied #{approval_id}[/yellow]")
             except Exception as e:

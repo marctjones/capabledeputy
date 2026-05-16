@@ -76,9 +76,12 @@ async def test_spectator_tui_boots_without_daemon_crash(fake_daemon) -> None:
         assert any(m == "session.list" for m, _ in app._client.calls)
 
 
-@pytest.mark.parametrize("app_factory", [
-    lambda: CapDepConsole("x-session"),
-])
+@pytest.mark.parametrize(
+    "app_factory",
+    [
+        lambda: CapDepConsole("x-session"),
+    ],
+)
 async def test_console_quit_binding_exits(app_factory, fake_daemon) -> None:
     app = app_factory()
     app._client = fake_daemon({"session.get": _SESSION})

@@ -104,10 +104,7 @@ class SessionStore:
                     ("used_kinds", "'[]'"),
                     ("cap_uses", "'{}'"),
                 ):
-                    ddl = (
-                        f"ALTER TABLE sessions ADD COLUMN {col} "
-                        f"TEXT NOT NULL DEFAULT {default}"
-                    )
+                    ddl = f"ALTER TABLE sessions ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}"
                     try:
                         conn.execute(ddl)
                     except sqlite3.OperationalError as e:

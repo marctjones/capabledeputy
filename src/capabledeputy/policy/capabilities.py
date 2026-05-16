@@ -200,12 +200,8 @@ class Capability:
             "max_amount": self.max_amount,
             "allows_destructive": self.allows_destructive,
             "revoked_by": sorted(k.value for k in self.revoked_by),
-            "expires_at": (
-                self.expires_at.isoformat() if self.expires_at is not None else None
-            ),
-            "rate_limit": (
-                self.rate_limit.to_dict() if self.rate_limit is not None else None
-            ),
+            "expires_at": (self.expires_at.isoformat() if self.expires_at is not None else None),
+            "rate_limit": (self.rate_limit.to_dict() if self.rate_limit is not None else None),
         }
 
     @classmethod
@@ -218,17 +214,7 @@ class Capability:
             audit_id=UUID(d["audit_id"]),
             max_amount=d.get("max_amount"),
             allows_destructive=bool(d.get("allows_destructive", False)),
-            revoked_by=frozenset(
-                CapabilityKind(k) for k in d.get("revoked_by", ())
-            ),
-            expires_at=(
-                datetime.fromisoformat(d["expires_at"])
-                if d.get("expires_at")
-                else None
-            ),
-            rate_limit=(
-                RateLimit.from_dict(d["rate_limit"])
-                if d.get("rate_limit")
-                else None
-            ),
+            revoked_by=frozenset(CapabilityKind(k) for k in d.get("revoked_by", ())),
+            expires_at=(datetime.fromisoformat(d["expires_at"]) if d.get("expires_at") else None),
+            rate_limit=(RateLimit.from_dict(d["rate_limit"]) if d.get("rate_limit") else None),
         )

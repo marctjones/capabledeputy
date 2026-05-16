@@ -146,7 +146,8 @@ b = call("purchase.queue", vendor="vendor-b", item="y", amount=20)
     # Audit log has approval.approved events for each pre-applied gate.
     events = await app.audit.read_all()
     bundled_approvals = [
-        e for e in events
+        e
+        for e in events
         if e.event_type.value == "approval.approved"
         and e.payload.get("decision_scope", {}).get("bundle_id") is not None
     ]

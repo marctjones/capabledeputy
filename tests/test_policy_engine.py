@@ -421,7 +421,9 @@ def test_future_deadline_is_transparent() -> None:
     """C2: a not-yet-expired cap decides identically to a non-expiring
     one."""
     future = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*", expires_at=_T0 + timedelta(hours=1),
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
+        expires_at=_T0 + timedelta(hours=1),
     )
     plain = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     r_future = decide(frozenset(), frozenset({future}), _read_action(), now=_T0)
@@ -433,10 +435,14 @@ def test_expired_capability_treated_as_absent() -> None:
     """C3: a past-deadline cap is skipped; with no other cap the
     denial is attributed to expiry, not generic no-capability."""
     expired = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*", expires_at=_T0,
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
+        expires_at=_T0,
     )
     r = decide(
-        frozenset(), frozenset({expired}), _read_action(),
+        frozenset(),
+        frozenset({expired}),
+        _read_action(),
         now=_T0 + timedelta(seconds=1),
     )
     assert r.decision == Decision.DENY
@@ -448,7 +454,9 @@ def test_half_open_boundary_instant() -> None:
     """At exactly now == expires_at the capability is expired."""
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*", expires_at=_T0)
     before = decide(
-        frozenset(), frozenset({cap}), _read_action(),
+        frozenset(),
+        frozenset({cap}),
+        _read_action(),
         now=_T0 - timedelta(microseconds=1),
     )
     at = decide(frozenset(), frozenset({cap}), _read_action(), now=_T0)
@@ -461,11 +469,15 @@ def test_non_expired_sibling_still_satisfies() -> None:
     """C5: an expired cap is inert, not poisonous — a non-expired
     sibling matching the same action still allows."""
     expired = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*", expires_at=_T0,
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
+        expires_at=_T0,
     )
     live = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     r = decide(
-        frozenset(), frozenset({expired, live}), _read_action(),
+        frozenset(),
+        frozenset({expired, live}),
+        _read_action(),
         now=_T0 + timedelta(hours=1),
     )
     assert r.decision == Decision.ALLOW
@@ -475,10 +487,14 @@ def test_expiry_distinct_from_no_capability() -> None:
     """C4: expired-only denial says capability-expired; truly-absent
     says the generic no-capability reason."""
     expired = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*", expires_at=_T0,
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
+        expires_at=_T0,
     )
     r_expired = decide(
-        frozenset(), frozenset({expired}), _read_action(),
+        frozenset(),
+        frozenset({expired}),
+        _read_action(),
         now=_T0 + timedelta(seconds=1),
     )
     r_absent = decide(frozenset(), frozenset(), _read_action(), now=_T0)
@@ -498,7 +514,9 @@ def test_expiry_composes_with_revoked_by() -> None:
         revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
     )
     r = decide(
-        frozenset(), frozenset({cap}), _read_action(),
+        frozenset(),
+        frozenset({cap}),
+        _read_action(),
         used_kinds=frozenset({CapabilityKind.WEB_FETCH}),
         now=_T0 + timedelta(seconds=1),
     )
@@ -524,6 +542,7 @@ _RL_AID = "11111111-1111-1111-1111-111111111111"
 
 def _rl_cap(max_uses: int, window: int) -> Capability:
     from uuid import UUID
+
     return Capability(
         kind=CapabilityKind.READ_FS,
         pattern="*",
@@ -536,8 +555,11 @@ def test_rate_limit_under_limit_allows() -> None:
     cap = _rl_cap(3, 60)
     uses = {_RL_AID: (_T0 - timedelta(seconds=10),)}  # 1 use < 3
     r = decide(
-        frozenset(), frozenset({cap}), _read_action(),
-        now=_T0, cap_uses=uses,
+        frozenset(),
+        frozenset({cap}),
+        _read_action(),
+        now=_T0,
+        cap_uses=uses,
     )
     assert r.decision == Decision.ALLOW
 
@@ -546,8 +568,11 @@ def test_rate_limit_at_limit_denies_with_rule() -> None:
     cap = _rl_cap(2, 60)
     uses = {_RL_AID: (_T0 - timedelta(seconds=30), _T0 - timedelta(seconds=5))}
     r = decide(
-        frozenset(), frozenset({cap}), _read_action(),
-        now=_T0, cap_uses=uses,
+        frozenset(),
+        frozenset({cap}),
+        _read_action(),
+        now=_T0,
+        cap_uses=uses,
     )
     assert r.decision == Decision.DENY
     assert r.rule == RATE_LIMIT_EXCEEDED_RULE
@@ -559,8 +584,11 @@ def test_rate_limit_window_slides_and_frees() -> None:
     # one use 90s ago → outside 60s window → allowed again
     uses = {_RL_AID: (_T0 - timedelta(seconds=90),)}
     r = decide(
-        frozenset(), frozenset({cap}), _read_action(),
-        now=_T0, cap_uses=uses,
+        frozenset(),
+        frozenset({cap}),
+        _read_action(),
+        now=_T0,
+        cap_uses=uses,
     )
     assert r.decision == Decision.ALLOW
 
@@ -569,8 +597,11 @@ def test_rate_exceeded_distinct_from_expired_and_no_cap() -> None:
     cap = _rl_cap(1, 60)
     uses = {_RL_AID: (_T0 - timedelta(seconds=1),)}
     r_rate = decide(
-        frozenset(), frozenset({cap}), _read_action(),
-        now=_T0, cap_uses=uses,
+        frozenset(),
+        frozenset({cap}),
+        _read_action(),
+        now=_T0,
+        cap_uses=uses,
     )
     r_absent = decide(frozenset(), frozenset(), _read_action(), now=_T0)
     assert r_rate.rule == RATE_LIMIT_EXCEEDED_RULE
@@ -582,8 +613,11 @@ def test_rate_exceeded_non_expired_sibling_survives() -> None:
     uses = {_RL_AID: (_T0 - timedelta(seconds=1),)}
     plain = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     r = decide(
-        frozenset(), frozenset({limited, plain}), _read_action(),
-        now=_T0, cap_uses=uses,
+        frozenset(),
+        frozenset({limited, plain}),
+        _read_action(),
+        now=_T0,
+        cap_uses=uses,
     )
     assert r.decision == Decision.ALLOW  # sibling without a limit
 
@@ -593,15 +627,20 @@ def test_expiry_takes_precedence_over_rate_in_attribution() -> None:
     (it's gone entirely); rate-limit attribution only when the cap is
     live but throttled."""
     from uuid import UUID
+
     cap = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*",
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
         audit_id=UUID(_RL_AID),
         expires_at=_T0,
         rate_limit=RateLimit(max_uses=1, window_seconds=60),
     )
     uses = {_RL_AID: (_T0 - timedelta(seconds=1),)}
     r = decide(
-        frozenset(), frozenset({cap}), _read_action(),
-        now=_T0 + timedelta(seconds=1), cap_uses=uses,
+        frozenset(),
+        frozenset({cap}),
+        _read_action(),
+        now=_T0 + timedelta(seconds=1),
+        cap_uses=uses,
     )
     assert r.rule == CAPABILITY_EXPIRED_RULE

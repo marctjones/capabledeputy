@@ -79,9 +79,7 @@ def decide_multi_tenant(
         )
 
     if any(d.decision == Decision.DENY for d in per_tenant.values()):
-        denying = next(
-            (t, d) for t, d in per_tenant.items() if d.decision == Decision.DENY
-        )
+        denying = next((t, d) for t, d in per_tenant.items() if d.decision == Decision.DENY)
         return MultiTenantDecision(
             decision=Decision.DENY,
             rule=denying[1].rule,

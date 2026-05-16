@@ -111,8 +111,7 @@ def session_new(
         typer.Option(
             "--prefer-programmatic",
             help=(
-                "Run agent turns in programmatic mode "
-                "(LLM emits a Python program, not tool calls)."
+                "Run agent turns in programmatic mode (LLM emits a Python program, not tool calls)."
             ),
         ),
     ] = False,

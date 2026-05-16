@@ -158,8 +158,7 @@ async def test_skill_to_tool_with_schema_uses_extractor() -> None:
         [
             LLMResponse(
                 content=(
-                    '{"medication_name": "lisinopril", '
-                    '"dosage_mg": 10.0, "frequency": "daily"}'
+                    '{"medication_name": "lisinopril", "dosage_mg": 10.0, "frequency": "daily"}'
                 ),
                 finish_reason=FinishReason.STOP,
             ),

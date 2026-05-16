@@ -44,7 +44,8 @@ async def test_destructive_approval_actually_executes_memory_update(
         allows_destructive=False,
     )
     app.graph._sessions[origin.id] = replace(
-        origin, capability_set=frozenset({cap}),
+        origin,
+        capability_set=frozenset({cap}),
     )
 
     handlers = make_approval_handlers(app)
@@ -104,7 +105,8 @@ async def test_destructive_approval_calendar_delete_executes(app: App) -> None:
         allows_destructive=False,
     )
     app.graph._sessions[origin.id] = replace(
-        origin, capability_set=frozenset({cap}),
+        origin,
+        capability_set=frozenset({cap}),
     )
 
     handlers = make_approval_handlers(app)

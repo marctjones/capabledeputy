@@ -111,7 +111,9 @@ def test_is_expired_half_open_window() -> None:
 def test_expires_at_serialization_round_trip() -> None:
     t0 = datetime(2026, 6, 1, 9, 30, tzinfo=UTC)
     cap = Capability(
-        kind=CapabilityKind.QUEUE_PURCHASE, pattern="amazon", expires_at=t0,
+        kind=CapabilityKind.QUEUE_PURCHASE,
+        pattern="amazon",
+        expires_at=t0,
     )
     decoded = Capability.from_dict(cap.to_dict())
     assert decoded == cap
@@ -137,7 +139,10 @@ def test_from_dict_without_expires_at_is_backward_tolerant() -> None:
 def test_expiring_in_sets_deadline_now_plus_ttl() -> None:
     base = datetime(2026, 5, 1, 8, 0, 0, tzinfo=UTC)
     cap = Capability.expiring_in(
-        CapabilityKind.QUEUE_PURCHASE, "amazon", timedelta(minutes=10), now=base,
+        CapabilityKind.QUEUE_PURCHASE,
+        "amazon",
+        timedelta(minutes=10),
+        now=base,
     )
     assert cap.expires_at == base + timedelta(minutes=10)
     assert cap.kind == CapabilityKind.QUEUE_PURCHASE
@@ -149,10 +154,16 @@ def test_expiring_in_sets_deadline_now_plus_ttl() -> None:
 def test_expiring_in_non_positive_ttl_is_already_expired() -> None:
     base = datetime(2026, 5, 1, 8, 0, 0, tzinfo=UTC)
     zero = Capability.expiring_in(
-        CapabilityKind.READ_FS, "*", timedelta(0), now=base,
+        CapabilityKind.READ_FS,
+        "*",
+        timedelta(0),
+        now=base,
     )
     negative = Capability.expiring_in(
-        CapabilityKind.READ_FS, "*", timedelta(seconds=-5), now=base,
+        CapabilityKind.READ_FS,
+        "*",
+        timedelta(seconds=-5),
+        now=base,
     )
     # Half-open: expires_at <= now ⇒ already expired at first use.
     assert zero.is_expired(base) is True
@@ -190,10 +201,14 @@ def test_rate_limit_serialization_round_trip() -> None:
 
 def test_from_dict_without_rate_limit_is_backward_tolerant() -> None:
     legacy = {
-        "kind": "READ_FS", "pattern": "*", "expiry": "session",
+        "kind": "READ_FS",
+        "pattern": "*",
+        "expiry": "session",
         "origin": "system_default",
         "audit_id": "00000000-0000-0000-0000-000000000000",
-        "max_amount": None, "allows_destructive": False, "revoked_by": [],
+        "max_amount": None,
+        "allows_destructive": False,
+        "revoked_by": [],
     }
     assert Capability.from_dict(legacy).rate_limit is None
 
@@ -201,7 +216,8 @@ def test_from_dict_without_rate_limit_is_backward_tolerant() -> None:
 def test_is_rate_exceeded_counts_only_in_window() -> None:
     t0 = datetime(2026, 2, 1, 12, 0, 0, tzinfo=UTC)
     cap = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*",
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
         rate_limit=RateLimit(max_uses=2, window_seconds=60),
     )
     # two uses 90s and 80s ago → outside the 60s window → not exceeded

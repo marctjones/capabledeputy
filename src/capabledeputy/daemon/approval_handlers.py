@@ -177,8 +177,7 @@ async def _execute_declassified_destructive(
     )
     purpose_session = await app.graph.new(
         intent=(
-            f"declassified destructive {tool_name} on {target} "
-            f"(approved from {origin_session})"
+            f"declassified destructive {tool_name} on {target} (approved from {origin_session})"
         ),
     )
     granted = await app.graph.grant_capability(purpose_session.id, cap)

@@ -162,11 +162,7 @@ async def dry_run_for_bundle(
                 reason=str(e),
             )
 
-        effective = (
-            state["accumulated_labels"]
-            | arg_labels
-            | tool.inherent_labels
-        )
+        effective = state["accumulated_labels"] | arg_labels | tool.inherent_labels
         decision, rule, reason = _hypothetical_decide(effective, tool.capability_kind)
 
         impact.steps.append(
@@ -273,11 +269,7 @@ async def execute_with_approved_bundle(
 
     # Counter-keyed lookup of the bundle's gates so we can match them
     # to the live tool calls in order.
-    gates_by_index = {
-        g.step_index: g
-        for g in impact.gates
-        if g.state == GateState.APPROVED
-    }
+    gates_by_index = {g.step_index: g for g in impact.gates if g.state == GateState.APPROVED}
     state = {"step_counter": 0}
 
     async def caller(

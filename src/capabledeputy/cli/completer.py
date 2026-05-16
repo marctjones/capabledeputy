@@ -105,7 +105,9 @@ class CompletionCache:
         # Sync prefetch so the very first TAB has data.
         self._refresh_once()
         self._thread = threading.Thread(
-            target=self._refresh_loop, daemon=True, name="capdep-repl-cache",
+            target=self._refresh_loop,
+            daemon=True,
+            name="capdep-repl-cache",
         )
         self._thread.start()
 
@@ -119,7 +121,8 @@ class CompletionCache:
     def _refresh_once(self) -> None:
         sessions = self._safe_call("session.list", {}).get("sessions", [])
         approvals = self._safe_call(
-            "approval.list", {"status": "pending"},
+            "approval.list",
+            {"status": "pending"},
         ).get("approvals", [])
         schemas = self._safe_call("extract.schemas", {}).get("schemas", [])
         inbox = self._safe_call("extract.inbox_ids", {}).get("messages", [])
@@ -245,7 +248,9 @@ class CapDepCompleter(Completer):
                     if sender:
                         display = f"{display} ({sender})"
                     yield Completion(
-                        mid, start_position=-len(current), display=display,
+                        mid,
+                        start_position=-len(current),
+                        display=display,
                     )
             return
 

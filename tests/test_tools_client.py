@@ -324,14 +324,18 @@ async def test_revoked_by_prior_use_blocks_second_dispatch(
     )
 
     first = await client.call_tool(
-        s.id, "web.fetch", {"url": "https://example.com"},
+        s.id,
+        "web.fetch",
+        {"url": "https://example.com"},
     )
     assert first.decision == Decision.ALLOW
 
     assert CapabilityKind.WEB_FETCH in graph.get(s.id).used_kinds
 
     second = await client.call_tool(
-        s.id, "notes.write", {"path": "/notes/x.md"},
+        s.id,
+        "notes.write",
+        {"path": "/notes/x.md"},
     )
     assert second.decision == Decision.DENY
     assert second.rule == "capability-revoked-by-prior-use"

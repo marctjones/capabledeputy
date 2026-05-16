@@ -57,9 +57,7 @@ def test_grant_ttl_non_numeric_rejected_no_capability_granted(
 ) -> None:
     chat._handle_grant("READ_FS * --ttl abc", "sess-1")
     # Bad --ttl ⇒ early return, nothing sent to the daemon.
-    assert not any(
-        c["method"] == "session.grant_capability" for c in captured
-    )
+    assert not any(c["method"] == "session.grant_capability" for c in captured)
 
 
 def test_grant_ttl_zero_is_immediately_expired_when_decided(
@@ -97,16 +95,12 @@ def test_grant_rate_builds_rate_limit_dict(
 
 def test_grant_rate_bad_spec_rejected(captured: list[dict[str, Any]]) -> None:
     chat._handle_grant("READ_FS * --rate notaspec", "sess-1")
-    assert not any(
-        c["method"] == "session.grant_capability" for c in captured
-    )
+    assert not any(c["method"] == "session.grant_capability" for c in captured)
 
 
 def test_grant_rate_zero_rejected(captured: list[dict[str, Any]]) -> None:
     chat._handle_grant("READ_FS * --rate 0/60", "sess-1")
-    assert not any(
-        c["method"] == "session.grant_capability" for c in captured
-    )
+    assert not any(c["method"] == "session.grant_capability" for c in captured)
 
 
 def test_grant_without_rate_has_none(captured: list[dict[str, Any]]) -> None:

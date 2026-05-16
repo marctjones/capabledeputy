@@ -75,7 +75,8 @@ async def test_pattern_library_auto_approves_matching_submission(
     assert "approval.requested" in types
     assert "approval.approved" in types
     matched_approvals = [
-        e for e in events
+        e
+        for e in events
         if e.event_type.value == "approval.approved"
         and e.payload.get("decision_scope", {}).get("matched_rule")
     ]

@@ -60,7 +60,9 @@ async def test_enforcement_unchanged_when_preview_disabled(_started) -> None:
         label_set=frozenset({Label.UNTRUSTED_EXTERNAL}),
     )
     outcome = await app.tool_client.call_tool(
-        s.id, "email.send", {"to": "x@y.com", "subject": "s", "body": "b"},
+        s.id,
+        "email.send",
+        {"to": "x@y.com", "subject": "s", "body": "b"},
     )
     assert outcome.decision.value == "deny"
     assert outcome.rule == "untrusted-meets-egress"

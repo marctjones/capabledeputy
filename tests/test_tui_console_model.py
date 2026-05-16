@@ -19,18 +19,24 @@ def _plain(lines: list[str]) -> str:
 
 
 def test_outcome_line_allow_and_deny() -> None:
-    allow = Text.from_markup(outcome_line(
-        {"decision": "allow", "tool_name": "inbox.list",
-         "labels_added": ["untrusted.external"]},
-    )).plain
+    allow = Text.from_markup(
+        outcome_line(
+            {
+                "decision": "allow",
+                "tool_name": "inbox.list",
+                "labels_added": ["untrusted.external"],
+            },
+        )
+    ).plain
     assert "✓ allow" in allow
     assert "inbox.list" in allow
     assert "+untrusted.external" in allow
 
-    deny = Text.from_markup(outcome_line(
-        {"decision": "deny", "tool_name": "email.send",
-         "rule": "untrusted-meets-egress"},
-    )).plain
+    deny = Text.from_markup(
+        outcome_line(
+            {"decision": "deny", "tool_name": "email.send", "rule": "untrusted-meets-egress"},
+        )
+    ).plain
     assert "✗ deny" in deny
     assert "rule=untrusted-meets-egress" in deny
 
@@ -61,8 +67,7 @@ def test_pending_approvals_extracts_ids() -> None:
     result = {
         "tool_outcomes": [
             {"decision": "allow", "tool_name": "memory.read"},
-            {"decision": "require_approval", "tool_name": "purchase.queue",
-             "approval_id": 7},
+            {"decision": "require_approval", "tool_name": "purchase.queue", "approval_id": 7},
             {"decision": "require_approval", "tool_name": "x", "approval_id": None},
         ],
     }

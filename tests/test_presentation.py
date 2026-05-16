@@ -72,11 +72,13 @@ def test_capability_markers_full_family_stable_order() -> None:
 
 def test_capability_markers_expired_vs_future() -> None:
     past = {
-        "kind": "READ_FS", "pattern": "*",
+        "kind": "READ_FS",
+        "pattern": "*",
         "expires_at": (_NOW - timedelta(seconds=1)).isoformat(),
     }
     future = {
-        "kind": "READ_FS", "pattern": "*",
+        "kind": "READ_FS",
+        "pattern": "*",
         "expires_at": (_NOW + timedelta(seconds=90)).isoformat(),
     }
     assert capability_markers(past, now=_NOW) == ["expired"]
@@ -85,7 +87,8 @@ def test_capability_markers_expired_vs_future() -> None:
 
 def test_capability_summary_rich_colours_unusable_red() -> None:
     cap = {
-        "kind": "READ_FS", "pattern": "*",
+        "kind": "READ_FS",
+        "pattern": "*",
         "expires_at": (_NOW - timedelta(seconds=1)).isoformat(),
     }
     out = capability_summary_rich(cap, now=_NOW)
@@ -94,7 +97,8 @@ def test_capability_summary_rich_colours_unusable_red() -> None:
 
 def test_capability_line_shape() -> None:
     line = capability_line(
-        {"kind": "SEND_EMAIL", "pattern": "*@x.com"}, now=_NOW,
+        {"kind": "SEND_EMAIL", "pattern": "*@x.com"},
+        now=_NOW,
     )
     assert "[bold]SEND_EMAIL[/bold]" in line
     assert "pattern=*@x.com" in line

@@ -13,13 +13,19 @@ from capabledeputy.tui.console import CapDepConsole
 
 _SID = "abcd1234-0000-0000-0000-000000000000"
 _SESSION = {
-    "id": _SID, "status": "active",
-    "label_set": ["untrusted.external"], "used_kinds": [],
-    "capability_set": [], "history": [],
+    "id": _SID,
+    "status": "active",
+    "label_set": ["untrusted.external"],
+    "used_kinds": [],
+    "capability_set": [],
+    "history": [],
 }
 _APPROVAL = {
-    "id": 5, "action": "SEND_EMAIL", "status": "pending",
-    "target": "alice@example.com", "from_session": _SID,
+    "id": 5,
+    "action": "SEND_EMAIL",
+    "status": "pending",
+    "target": "alice@example.com",
+    "from_session": _SID,
     "labels_in": ["confidential.financial"],
     "justification": "agent-initiated email.send",
     "payload": "Q3 numbers attached.",
@@ -37,8 +43,10 @@ async def test_console_submit_reaches_daemon_and_renders(fake_daemon) -> None:
         {
             "session.get": _SESSION,
             "session.send": {
-                "content": "done", "iterations": 1,
-                "finish_reason": "stop", "tool_outcomes": [],
+                "content": "done",
+                "iterations": 1,
+                "finish_reason": "stop",
+                "tool_outcomes": [],
             },
         },
     )
@@ -59,7 +67,8 @@ async def test_console_require_approval_opens_modal_then_approves(fake_daemon) -
         {
             "session.get": _SESSION,
             "session.send": {
-                "content": "needs approval", "iterations": 1,
+                "content": "needs approval",
+                "iterations": 1,
                 "finish_reason": "stop",
                 "tool_outcomes": [
                     {
@@ -98,7 +107,8 @@ async def test_console_deny_renders_recovery_hint(fake_daemon) -> None:
         {
             "session.get": _SESSION,
             "session.send": {
-                "content": "blocked", "iterations": 1,
+                "content": "blocked",
+                "iterations": 1,
                 "finish_reason": "stop",
                 "tool_outcomes": [
                     {

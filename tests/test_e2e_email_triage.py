@@ -46,9 +46,7 @@ async def test_triage_via_schema_then_approval_gated_reply(tmp_path: Path) -> No
                         "sender": "alice@example.com",
                         "subject": "Q2 proposal review",
                         "urgency": "high",
-                        "one_line_summary": (
-                            "Asks for review by Friday on attached proposal"
-                        ),
+                        "one_line_summary": ("Asks for review by Friday on attached proposal"),
                     },
                 ),
                 finish_reason=FinishReason.STOP,

@@ -38,10 +38,7 @@ def outcome_line(o: dict[str, Any]) -> str:
     if o.get("labels_added"):
         bits.append("+" + ",".join(o["labels_added"]))
     tail = ("  " + " ".join(bits)) if bits else ""
-    return (
-        f"  [{color}]{glyph} {decision}[/{color}] "
-        f"[bold]{tool}[/bold]{tail}"
-    )
+    return f"  [{color}]{glyph} {decision}[/{color}] [bold]{tool}[/bold]{tail}"
 
 
 def format_turn(result: dict[str, Any]) -> list[str]:
@@ -50,8 +47,7 @@ def format_turn(result: dict[str, Any]) -> list[str]:
     (same one the REPL and monitor TUI show)."""
     lines: list[str] = [
         f"[bold cyan]agent[/bold cyan] {result.get('content', '')}",
-        f"[dim](iterations={result.get('iterations')}, "
-        f"finish={result.get('finish_reason')})[/dim]",
+        f"[dim](iterations={result.get('iterations')}, finish={result.get('finish_reason')})[/dim]",
     ]
     for o in result.get("tool_outcomes", []):
         lines.append(outcome_line(o))

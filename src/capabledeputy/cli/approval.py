@@ -236,6 +236,5 @@ def pattern_import(
     console.print(f"[green]imported {n} pattern(s)[/green] from {path}")
     for p in result["patterns"]:
         console.print(
-            f"  {p['id'][:8]}  {p['action']:16}  {p['target_pattern']}  "
-            f"expires {p['expires_at']}",
+            f"  {p['id'][:8]}  {p['action']:16}  {p['target_pattern']}  expires {p['expires_at']}",
         )

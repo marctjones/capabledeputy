@@ -132,7 +132,8 @@ def _render_outcomes_table(outcomes: list[dict[str, Any]]) -> None:
         decision = o["decision"]
         color = _DECISION_COLOR.get(decision, "white")
         glyph = {"allow": "✓", "deny": "✗", "require_approval": "⚠"}.get(
-            decision, "·",
+            decision,
+            "·",
         )
         detail = ""
         if o.get("rule"):
@@ -231,8 +232,7 @@ def _handle_approve(arg: str) -> None:
             # block, not a gate. Explain the distinction and point at
             # the actual recovery path.
             console.print(
-                "[yellow]nothing to approve[/yellow] — the approval "
-                "queue is empty.",
+                "[yellow]nothing to approve[/yellow] — the approval queue is empty.",
             )
             console.print(
                 "[dim]If the agent was just blocked: a [bold]DENY[/bold] "
@@ -272,8 +272,7 @@ def _handle_approve(arg: str) -> None:
     console.print(f"[green]✓ approved[/green] approval #{approval_id}")
     if result.get("executed_in_session"):
         console.print(
-            f"  dispatched in purpose session "
-            f"[bold]{result['executed_in_session'][:8]}[/bold]",
+            f"  dispatched in purpose session [bold]{result['executed_in_session'][:8]}[/bold]",
         )
         dispatch = result.get("dispatch", {})
         if dispatch.get("error"):
@@ -461,11 +460,7 @@ def _handle_spawn(arg: str, focus: dict[str, str]) -> None:
 
     focus["id"] = new_id
     focus["label"] = _short_label(new_id)
-    cap_note = (
-        f"inherited={inherited} caps (non-destructive)"
-        if not bare
-        else "no caps (bare)"
-    )
+    cap_note = f"inherited={inherited} caps (non-destructive)" if not bare else "no caps (bare)"
     console.print(
         f"[green]✓ spawned[/green] [cyan]{focus['label']}[/cyan] "
         f"[dim]({new_id[:8]}, parent={new.get('parent', '?')[:8]}, "
@@ -516,9 +511,7 @@ def _handle_grant(arg: str, session_id: str) -> None:
         except (IndexError, ValueError):
             err_console.print("[red]--ttl needs a number of seconds[/red]")
             return
-        expires_at = (
-            datetime.now(UTC) + timedelta(seconds=ttl_secs)
-        ).isoformat()
+        expires_at = (datetime.now(UTC) + timedelta(seconds=ttl_secs)).isoformat()
 
     rate_limit: dict[str, int] | None = None
     rate_desc: str | None = None
@@ -532,8 +525,7 @@ def _handle_grant(arg: str, session_id: str) -> None:
                 raise ValueError
         except (IndexError, ValueError):
             err_console.print(
-                "[red]--rate needs MAX/WINDOW_SECONDS, both > 0 "
-                "(e.g. --rate 5/60)[/red]",
+                "[red]--rate needs MAX/WINDOW_SECONDS, both > 0 (e.g. --rate 5/60)[/red]",
             )
             return
         rate_limit = {"max_uses": mx, "window_seconds": win}
@@ -628,8 +620,7 @@ def _handle_status(session_id: str, *, only: str | None = None) -> None:
                     extras.append("one-shot")
                 tail = f" [{', '.join(extras)}]" if extras else ""
                 console.print(
-                    f"  - {c['kind']} pattern={c['pattern']}{tail}"
-                    f"{_constraint_markers(c)}",
+                    f"  - {c['kind']} pattern={c['pattern']}{tail}{_constraint_markers(c)}",
                 )
 
 
@@ -679,8 +670,7 @@ def _handle_remember(arg: str) -> None:
         return
     pattern = result.get("pattern") or result
     console.print(
-        f"[green]✓ pattern[/green] {action} {target_pattern} → "
-        f"id={pattern.get('id', '?')}",
+        f"[green]✓ pattern[/green] {action} {target_pattern} → id={pattern.get('id', '?')}",
     )
 
 
@@ -707,8 +697,7 @@ def _handle_extract(arg: str) -> None:
     parts = arg.split()
     if len(parts) < 2:
         err_console.print(
-            "[red]usage:[/red] /extract <message_id> <schema> "
-            "(see /schemas for the list)",
+            "[red]usage:[/red] /extract <message_id> <schema> (see /schemas for the list)",
         )
         return
     message_id, schema = parts[0], parts[1]
@@ -722,10 +711,7 @@ def _handle_extract(arg: str) -> None:
     console.print(
         Panel(
             _json.dumps(result["data"], indent=2),
-            title=(
-                f"declassified: {result['schema']} "
-                f"from message {result['message_id']}"
-            ),
+            title=(f"declassified: {result['schema']} from message {result['message_id']}"),
             border_style="green",
         ),
     )
@@ -753,7 +739,8 @@ def _handle_abort(arg: str, focus: dict[str, str]) -> None:
     if resolved == focus["id"]:
         try:
             sessions = _call("session.list", {"status": "active"}).get(
-                "sessions", [],
+                "sessions",
+                [],
             )
         except Exception:
             sessions = []
@@ -769,8 +756,7 @@ def _handle_abort(arg: str, focus: dict[str, str]) -> None:
         focus["id"] = new_id
         focus["label"] = _short_label(new_id)
         console.print(
-            f"[green]→[/green] switched to [cyan]{focus['label']}[/cyan] "
-            f"[dim]({new_id[:8]})[/dim]",
+            f"[green]→[/green] switched to [cyan]{focus['label']}[/cyan] [dim]({new_id[:8]})[/dim]",
         )
 
 
@@ -898,11 +884,7 @@ def _make_bottom_toolbar(cache: CompletionCache, focus: dict[str, str]):
             comp = " ".join(_toolbar_label_ansi(lbl) for lbl in sorted(labels))
         else:
             comp = "<ansigreen>—</ansigreen>"
-        pending_seg = (
-            f" │ <ansiyellow><b>⚠ {npending} pending</b></ansiyellow>"
-            if npending
-            else ""
-        )
+        pending_seg = f" │ <ansiyellow><b>⚠ {npending} pending</b></ansiyellow>" if npending else ""
         return HTML(
             f" session <b>{short}</b> "
             f"│ compartment {word_tag}: {comp} "
@@ -926,9 +908,7 @@ def _inline_approval_review(approval_ids: list[int]) -> None:
         console.print(
             Panel(
                 show["payload"],
-                title=(
-                    f"approval #{aid} · {show['action']} → {show['target']}"
-                ),
+                title=(f"approval #{aid} · {show['action']} → {show['target']}"),
                 subtitle="[dim]verbatim — this is exactly what will happen[/dim]",
                 border_style="yellow",
             ),

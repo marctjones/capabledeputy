@@ -66,11 +66,7 @@ saved = call("memory.write", key="copy", value=note["value"])
     assert entry is not None and entry.value == "hello world"
 
     events = await app.audit.read_all()
-    modes = [
-        e.payload.get("mode")
-        for e in events
-        if e.event_type.value == "mode.selected"
-    ]
+    modes = [e.payload.get("mode") for e in events if e.event_type.value == "mode.selected"]
     assert ExecutionMode.PROGRAMMATIC.value in modes
 
 

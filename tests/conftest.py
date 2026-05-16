@@ -50,7 +50,9 @@ class ScriptedClient:
         return self
 
     def raises(
-        self, method: str, exc: BaseException | type[BaseException],
+        self,
+        method: str,
+        exc: BaseException | type[BaseException],
     ) -> ScriptedClient:
         self._raise[method] = exc
         return self
@@ -64,7 +66,9 @@ class ScriptedClient:
         return self
 
     async def call(
-        self, method: str, params: dict[str, Any] | None = None,
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
     ) -> Any:
         self.calls.append((method, params))
         if method in self._raise:

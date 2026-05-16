@@ -22,10 +22,7 @@ from capabledeputy.demo.seed import apply_scenario
 def make_demo_handlers(app: App) -> dict[str, Handler]:
     async def list_scenarios(params: dict[str, Any]) -> dict[str, Any]:
         return {
-            "scenarios": [
-                {"name": s.name, "one_line": s.one_line}
-                for s in SCENARIOS.values()
-            ],
+            "scenarios": [{"name": s.name, "one_line": s.one_line} for s in SCENARIOS.values()],
         }
 
     async def start(params: dict[str, Any]) -> dict[str, Any]:

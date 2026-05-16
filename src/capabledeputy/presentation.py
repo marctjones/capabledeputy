@@ -37,10 +37,7 @@ def render_labels(labels: list[str]) -> str:
     """Color-coded ` · `-joined label set, or a green 'clean'."""
     if not labels:
         return "[green]clean[/green]"
-    return " · ".join(
-        f"[{label_style(lbl)}]{lbl}[/{label_style(lbl)}]"
-        for lbl in sorted(labels)
-    )
+    return " · ".join(f"[{label_style(lbl)}]{lbl}[/{label_style(lbl)}]" for lbl in sorted(labels))
 
 
 def compartment_summary(labels: list[str]) -> tuple[str, str]:
@@ -103,9 +100,7 @@ def capability_summary_rich(
     markers = capability_markers(cap, now=now)
     if not markers:
         return ""
-    body = ", ".join(
-        f"[{_marker_style(m)}]{m}[/{_marker_style(m)}]" for m in markers
-    )
+    body = ", ".join(f"[{_marker_style(m)}]{m}[/{_marker_style(m)}]" for m in markers)
     return f" ({body})"
 
 
@@ -130,22 +125,16 @@ DENY_RECOVERY: dict[str, str] = {
         "clean session and /grant a one-shot cap"
     ),
     "health-meets-egress": (
-        "/spawn a clean session — health data cannot egress from a "
-        "tainted session at all"
+        "/spawn a clean session — health data cannot egress from a tainted session at all"
     ),
-    "financial-meets-email": (
-        "/spawn a clean session, or /extract a declassified summary first"
-    ),
+    "financial-meets-email": ("/spawn a clean session, or /extract a declassified summary first"),
     "capability-revoked-by-prior-use": (
-        "/spawn a fresh session — this capability was revoked by a "
-        "prior tool use in this one"
+        "/spawn a fresh session — this capability was revoked by a prior tool use in this one"
     ),
     "capability-expired": (
-        "/grant a fresh capability (optionally with a longer --ttl) — "
-        "the deadline has passed"
+        "/grant a fresh capability (optionally with a longer --ttl) — the deadline has passed"
     ),
     "rate-limit-exceeded": (
-        "wait for the rate window to slide, or /grant a capability "
-        "with a higher --rate"
+        "wait for the rate window to slide, or /grant a capability with a higher --rate"
     ),
 }

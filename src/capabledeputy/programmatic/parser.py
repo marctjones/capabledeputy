@@ -131,8 +131,7 @@ def _validate(module: ast.Module) -> None:
 def _validate_node(node: ast.AST) -> None:
     if isinstance(node, _FORBIDDEN_NODE_TYPES):
         raise ProgramSyntaxError(
-            f"forbidden construct {type(node).__name__} "
-            f"at line {getattr(node, 'lineno', '?')}",
+            f"forbidden construct {type(node).__name__} at line {getattr(node, 'lineno', '?')}",
             node,
         )
     if isinstance(node, ast.Attribute):
@@ -162,8 +161,7 @@ def _validate_node(node: ast.AST) -> None:
                     )
         return
     raise ProgramSyntaxError(
-        f"unsupported AST node {type(node).__name__} "
-        f"at line {getattr(node, 'lineno', '?')}",
+        f"unsupported AST node {type(node).__name__} at line {getattr(node, 'lineno', '?')}",
         node,
     )
 

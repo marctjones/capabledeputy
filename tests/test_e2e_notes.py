@@ -64,9 +64,7 @@ async def test_notes_compartments_stay_separate(tmp_path: Path) -> None:
         [
             LLMResponse(
                 content="Looking up grocery list.",
-                tool_calls=(
-                    ToolCall(id="r1", name="memory.read", args={"key": "notes.grocery"}),
-                ),
+                tool_calls=(ToolCall(id="r1", name="memory.read", args={"key": "notes.grocery"}),),
                 finish_reason=FinishReason.TOOL_CALLS,
             ),
             LLMResponse(content="milk, eggs, bread.", finish_reason=FinishReason.STOP),
@@ -150,9 +148,7 @@ async def test_notes_personal_egress_works_health_egress_blocks(
         [
             LLMResponse(
                 content="Reading the recommendation.",
-                tool_calls=(
-                    ToolCall(id="r1", name="memory.read", args={"key": "notes.book-rec"}),
-                ),
+                tool_calls=(ToolCall(id="r1", name="memory.read", args={"key": "notes.book-rec"}),),
                 finish_reason=FinishReason.TOOL_CALLS,
             ),
             LLMResponse(
@@ -190,9 +186,7 @@ async def test_notes_personal_egress_works_health_egress_blocks(
         [
             LLMResponse(
                 content="Reading med list.",
-                tool_calls=(
-                    ToolCall(id="r1", name="memory.read", args={"key": "notes.med-list"}),
-                ),
+                tool_calls=(ToolCall(id="r1", name="memory.read", args={"key": "notes.med-list"}),),
                 finish_reason=FinishReason.TOOL_CALLS,
             ),
             LLMResponse(

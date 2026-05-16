@@ -30,8 +30,7 @@ def make_extract_handlers(app: App) -> dict[str, Handler]:
         not a session-tainted read."""
         return {
             "messages": [
-                {"id": m.id, "sender": m.sender, "subject": m.subject}
-                for m in app.inbox.all()
+                {"id": m.id, "sender": m.sender, "subject": m.subject} for m in app.inbox.all()
             ],
         }
 
@@ -49,10 +48,7 @@ def make_extract_handlers(app: App) -> dict[str, Handler]:
             return {"error": f"no inbox message with id: {message_id}"}
         if schema_name not in list_schemas():
             return {
-                "error": (
-                    f"unknown schema: {schema_name}. "
-                    f"available: {', '.join(list_schemas())}"
-                ),
+                "error": (f"unknown schema: {schema_name}. available: {', '.join(list_schemas())}"),
             }
 
         try:

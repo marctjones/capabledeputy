@@ -102,7 +102,9 @@ async def test_require_approval_outcome_carries_resolved_submission(
     approval_submission resolved from the tool's declared route."""
     s = await app.graph.new()
     cap = Capability(
-        kind=CapabilityKind.QUEUE_PURCHASE, pattern="*", max_amount=10_000,
+        kind=CapabilityKind.QUEUE_PURCHASE,
+        pattern="*",
+        max_amount=10_000,
     )
     app.graph._sessions[s.id] = replace(
         s,
@@ -130,13 +132,17 @@ async def test_destructive_outcome_carries_tool_envelope_submission(
     app.memory.write("k", "v", frozenset())
     s = await app.graph.new()
     cap = Capability(
-        kind=CapabilityKind.WRITE_FS, pattern="*", allows_destructive=False,
+        kind=CapabilityKind.WRITE_FS,
+        pattern="*",
+        allows_destructive=False,
     )
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
     client = LabeledToolClient(app.registry, app.graph, app.audit)
 
     outcome = await client.call_tool(
-        s.id, "memory.delete", {"key": "k"},
+        s.id,
+        "memory.delete",
+        {"key": "k"},
     )
     assert outcome.decision.value == "require_approval"
     sub = outcome.approval_submission

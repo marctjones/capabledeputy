@@ -189,7 +189,9 @@ class SessionGraph:
             stamps = tuple(ts for ts in stamps if ts >= cutoff)
         new_uses = {**session.cap_uses, audit_id: stamps}
         updated = replace(
-            session, cap_uses=new_uses, updated_at=datetime.now(UTC),
+            session,
+            cap_uses=new_uses,
+            updated_at=datetime.now(UTC),
         )
         await self._save(updated)
         self._sessions[session_id] = updated

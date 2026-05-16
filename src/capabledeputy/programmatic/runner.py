@@ -56,11 +56,7 @@ class DryRunReport:
 
     @property
     def ok(self) -> bool:
-        return (
-            self.parse_error is None
-            and self.runtime_error is None
-            and not self.violations
-        )
+        return self.parse_error is None and self.runtime_error is None and not self.violations
 
 
 def _starting_label_set(initial_scope: dict[str, LabeledValue] | None) -> frozenset[Label]:
@@ -148,11 +144,7 @@ def _make_dry_run_caller(
                 inherent_labels=frozenset(),
                 output=None,
             )
-        effective = (
-            accumulated_labels["value"]
-            | arg_labels
-            | tool.inherent_labels
-        )
+        effective = accumulated_labels["value"] | arg_labels | tool.inherent_labels
         decision, rule, reason = _hypothetical_decide(effective, tool.capability_kind)
         if decision == Decision.ALLOW:
             accumulated_labels["value"] = effective

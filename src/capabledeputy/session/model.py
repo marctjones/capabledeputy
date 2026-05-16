@@ -169,8 +169,7 @@ class Session:
             "prefer_programmatic": self.prefer_programmatic,
             "used_kinds": sorted(k.value for k in self.used_kinds),
             "cap_uses": {
-                aid: [ts.isoformat() for ts in stamps]
-                for aid, stamps in self.cap_uses.items()
+                aid: [ts.isoformat() for ts in stamps] for aid, stamps in self.cap_uses.items()
             },
         }
 
@@ -192,9 +191,7 @@ class Session:
             intent=d.get("intent"),
             tool_aliasing=bool(d.get("tool_aliasing", False)),
             prefer_programmatic=bool(d.get("prefer_programmatic", False)),
-            used_kinds=frozenset(
-                CapabilityKind(k) for k in d.get("used_kinds", ())
-            ),
+            used_kinds=frozenset(CapabilityKind(k) for k in d.get("used_kinds", ())),
             cap_uses={
                 aid: tuple(datetime.fromisoformat(ts) for ts in stamps)
                 for aid, stamps in d.get("cap_uses", {}).items()

@@ -47,9 +47,7 @@ def make_policy_preview_tools(graph: SessionGraph) -> list[ToolDefinition]:
                 "rule": decision.rule,
                 "reason": decision.reason,
                 "would_match_capability": decision.matched_capability is not None,
-                "effective_labels": sorted(
-                    label.value for label in decision.effective_labels
-                ),
+                "effective_labels": sorted(label.value for label in decision.effective_labels),
             },
         )
 

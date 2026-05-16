@@ -372,8 +372,7 @@ class CapDepTUI(App[None]):
         labels = full.get("label_set", [])
         word, style = compartment_summary(labels)
         header = [
-            f"[bold]compartment[/bold] [{style}]{word}[/{style}]  "
-            f"{render_labels(labels)}",
+            f"[bold]compartment[/bold] [{style}]{word}[/{style}]  {render_labels(labels)}",
         ]
         caps = full.get("capability_set", [])
         if caps:

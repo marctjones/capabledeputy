@@ -68,10 +68,7 @@ def find_capability(
         if cap.matches(action.kind, action.target, action.amount):
             if now is not None and cap.is_expired(now):
                 continue
-            if (
-                now is not None
-                and cap.is_rate_exceeded(now, _cap_uses_for(cap, cap_uses))
-            ):
+            if now is not None and cap.is_rate_exceeded(now, _cap_uses_for(cap, cap_uses)):
                 continue
             return cap
     return None
@@ -92,7 +89,10 @@ def decide(
     eff_now = now if now is not None else datetime.now(UTC)
 
     cap = find_capability(
-        capabilities, action, now=eff_now, cap_uses=cap_uses,
+        capabilities,
+        action,
+        now=eff_now,
+        cap_uses=cap_uses,
     )
     if cap is None:
         # Distinguish "the only matching capabilities are expired"
@@ -102,8 +102,7 @@ def decide(
             (
                 c
                 for c in capabilities
-                if c.matches(action.kind, action.target, action.amount)
-                and c.is_expired(eff_now)
+                if c.matches(action.kind, action.target, action.amount) and c.is_expired(eff_now)
             ),
             None,
         )
@@ -135,7 +134,8 @@ def decide(
                 for c in capabilities
                 if c.matches(action.kind, action.target, action.amount)
                 and c.is_rate_exceeded(
-                    eff_now, _cap_uses_for(c, cap_uses),
+                    eff_now,
+                    _cap_uses_for(c, cap_uses),
                 )
             ),
             None,

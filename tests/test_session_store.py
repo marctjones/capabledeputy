@@ -135,6 +135,7 @@ async def test_persisted_sessions_survive_full_state_change(store_path: Path) ->
 
 # --- Time-bounded capabilities (feature 001, T009 / FR-008 / SC-004) -----
 
+
 async def test_time_bounded_capability_survives_store_reload(
     store_path: Path,
 ) -> None:
@@ -152,7 +153,9 @@ async def test_time_bounded_capability_survives_store_reload(
 
     deadline = datetime(2026, 3, 1, 9, 0, 0, tzinfo=UTC)
     cap = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*", expires_at=deadline,
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
+        expires_at=deadline,
     )
     s = Session.new(intent="ttl", capability_set=frozenset({cap}))
 

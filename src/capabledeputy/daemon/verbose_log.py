@@ -139,9 +139,7 @@ def _summarize_result(method: str, result: Any) -> str:
         outcomes = result.get("tool_outcomes", [])
         n = len(outcomes)
         denies = sum(1 for o in outcomes if o.get("decision") == "deny")
-        approvals = sum(
-            1 for o in outcomes if o.get("decision") == "require_approval"
-        )
+        approvals = sum(1 for o in outcomes if o.get("decision") == "require_approval")
         bits = [f"iters={result.get('iterations')}", f"outcomes={n}"]
         if denies:
             bits.append(f"[red]deny={denies}[/red]")

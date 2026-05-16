@@ -34,27 +34,43 @@ def _status(app: CapDepConsole) -> str:
 
 # ---- live security sidebar evolves clean → TAINTED ---------------------
 
+
 async def test_sidebar_flips_clean_to_tainted_across_a_turn(
     fake_daemon,
 ) -> None:
-    clean = {"id": _SID, "status": "active", "label_set": [],
-             "used_kinds": [], "capability_set": [], "history": []}
+    clean = {
+        "id": _SID,
+        "status": "active",
+        "label_set": [],
+        "used_kinds": [],
+        "capability_set": [],
+        "history": [],
+    }
     tainted = {
-        "id": _SID, "status": "active",
+        "id": _SID,
+        "status": "active",
         "label_set": ["untrusted.external"],
         "used_kinds": ["READ_FS"],
         "capability_set": [
-            {"kind": "QUEUE_PURCHASE", "pattern": "amazon",
-             "expires_at": None,
-             "rate_limit": {"max_uses": 2, "window_seconds": 60}},
+            {
+                "kind": "QUEUE_PURCHASE",
+                "pattern": "amazon",
+                "expires_at": None,
+                "rate_limit": {"max_uses": 2, "window_seconds": 60},
+            },
         ],
         "history": [],
     }
     client = fake_daemon().sequence("session.get", [clean, tainted])
-    client.set("session.send", {
-        "content": "read inbox", "iterations": 1,
-        "finish_reason": "stop", "tool_outcomes": [],
-    })
+    client.set(
+        "session.send",
+        {
+            "content": "read inbox",
+            "iterations": 1,
+            "finish_reason": "stop",
+            "tool_outcomes": [],
+        },
+    )
     app = CapDepConsole(_SID)
     app._client = client
     async with app.run_test() as pilot:
@@ -70,11 +86,14 @@ async def test_sidebar_flips_clean_to_tainted_across_a_turn(
 
 # ---- spectator session-detail wiring -----------------------------------
 
+
 async def test_spectator_session_detail_renders_caps_and_recovery(
     fake_daemon,
 ) -> None:
     full = {
-        "id": _SID, "status": "active", "intent": "spectator demo",
+        "id": _SID,
+        "status": "active",
+        "intent": "spectator demo",
         "parent": None,
         "label_set": ["untrusted.external"],
         "capability_set": [
@@ -97,12 +116,14 @@ async def test_spectator_session_detail_renders_caps_and_recovery(
             },
         },
     ]
-    client = fake_daemon({
-        "session.get": full,
-        "session.list": {"sessions": [full]},
-        "approval.list": {"approvals": []},
-        "audit.tail": {"events": events},
-    })
+    client = fake_daemon(
+        {
+            "session.get": full,
+            "session.list": {"sessions": [full]},
+            "approval.list": {"approvals": []},
+            "audit.tail": {"events": events},
+        }
+    )
     app = CapDepTUI(poll_interval=999.0)
     app._client = client
     async with app.run_test() as pilot:
@@ -112,16 +133,18 @@ async def test_spectator_session_detail_renders_caps_and_recovery(
         convo = _text(app, "#conversation")
         trace = _text(app, "#trace")
         assert "hello" in convo and "hi" in convo
-        assert "TAINTED" in trace          # compartment block
-        assert "SEND_EMAIL" in trace       # capability block
-        assert "recover:" in trace         # deny recovery hint surfaced
+        assert "TAINTED" in trace  # compartment block
+        assert "SEND_EMAIL" in trace  # capability block
+        assert "recover:" in trace  # deny recovery hint surfaced
 
 
 # ---- drive-loop resilience ---------------------------------------------
 
+
 async def test_console_daemon_down_is_handled(fake_daemon) -> None:
-    client = fake_daemon({"session.get": {"id": _SID, "label_set": [],
-                          "capability_set": [], "history": []}})
+    client = fake_daemon(
+        {"session.get": {"id": _SID, "label_set": [], "capability_set": [], "history": []}}
+    )
     client.raises("session.send", DaemonNotRunningError)
     app = CapDepConsole(_SID)
     app._client = client
@@ -136,8 +159,9 @@ async def test_console_daemon_down_is_handled(fake_daemon) -> None:
 
 
 async def test_console_rpc_error_is_handled(fake_daemon) -> None:
-    client = fake_daemon({"session.get": {"id": _SID, "label_set": [],
-                          "capability_set": [], "history": []}})
+    client = fake_daemon(
+        {"session.get": {"id": _SID, "label_set": [], "capability_set": [], "history": []}}
+    )
     client.raises("session.send", RuntimeError)
     app = CapDepConsole(_SID)
     app._client = client
@@ -152,8 +176,9 @@ async def test_console_rpc_error_is_handled(fake_daemon) -> None:
 
 
 async def test_console_empty_input_does_not_send(fake_daemon) -> None:
-    client = fake_daemon({"session.get": {"id": _SID, "label_set": [],
-                          "capability_set": [], "history": []}})
+    client = fake_daemon(
+        {"session.get": {"id": _SID, "label_set": [], "capability_set": [], "history": []}}
+    )
     app = CapDepConsole(_SID)
     app._client = client
     async with app.run_test() as pilot:
@@ -166,12 +191,14 @@ async def test_console_empty_input_does_not_send(fake_daemon) -> None:
 async def test_console_audit_event_triggers_status_refresh(
     fake_daemon,
 ) -> None:
-    client = fake_daemon({"session.get": {"id": _SID, "label_set": [],
-                          "capability_set": [], "history": []}})
-    client.events([
-        {"stream": "audit",
-         "data": {"session_id": _SID, "event_type": "label.propagated"}},
-    ])
+    client = fake_daemon(
+        {"session.get": {"id": _SID, "label_set": [], "capability_set": [], "history": []}}
+    )
+    client.events(
+        [
+            {"stream": "audit", "data": {"session_id": _SID, "event_type": "label.propagated"}},
+        ]
+    )
     app = CapDepConsole(_SID)
     app._client = client
     async with app.run_test() as pilot:

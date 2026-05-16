@@ -66,9 +66,7 @@ async def test_tool_call_inherent_labels_propagate() -> None:
 
 async def test_binary_op_unions_operand_labels() -> None:
     module = parse_program(
-        'a = call("read.health", key="x")\n'
-        'b = call("read.fin", key="y")\n'
-        "combined = a + b\n",
+        'a = call("read.health", key="x")\nb = call("read.fin", key="y")\ncombined = a + b\n',
     )
     caller = _scripted_caller(
         {
@@ -110,10 +108,7 @@ async def test_subscript_propagates_container_labels() -> None:
 
 async def test_for_loop_propagates_iterable_labels() -> None:
     module = parse_program(
-        'data = call("read", key="x")\n'
-        "total = 0\n"
-        "for v in data:\n"
-        "    total = total + v\n",
+        'data = call("read", key="x")\ntotal = 0\nfor v in data:\n    total = total + v\n',
     )
     caller = _scripted_caller(
         {
@@ -220,11 +215,7 @@ async def test_attribute_call_pattern_was_already_blocked_at_parse() -> None:
 
 async def test_if_else_branch_selection() -> None:
     module = parse_program(
-        "x = 5\n"
-        "if x > 3:\n"
-        "    y = 'big'\n"
-        "else:\n"
-        "    y = 'small'\n",
+        "x = 5\nif x > 3:\n    y = 'big'\nelse:\n    y = 'small'\n",
     )
     result = await run_program(module, _scripted_caller({}))
     assert result.final_scope["y"].raw == "big"
@@ -232,8 +223,7 @@ async def test_if_else_branch_selection() -> None:
 
 async def test_builtin_len_propagates_labels_of_argument() -> None:
     module = parse_program(
-        'data = call("read", key="x")\n'
-        "n = len(data)\n",
+        'data = call("read", key="x")\nn = len(data)\n',
     )
     caller = _scripted_caller(
         {
@@ -252,9 +242,7 @@ async def test_builtin_len_propagates_labels_of_argument() -> None:
 
 async def test_aug_assign_unions_labels() -> None:
     module = parse_program(
-        'a = call("read", key="x")\n'
-        "total = 0\n"
-        "total += a\n",
+        'a = call("read", key="x")\ntotal = 0\ntotal += a\n',
     )
     caller = _scripted_caller(
         {

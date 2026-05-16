@@ -104,9 +104,7 @@ class WorkflowImpact:
     @property
     def is_approvable(self) -> bool:
         return (
-            self.parse_error is None
-            and self.runtime_error is None
-            and not self.has_blocking_deny
+            self.parse_error is None and self.runtime_error is None and not self.has_blocking_deny
         )
 
     def approve_all(self) -> WorkflowImpact:
@@ -115,9 +113,7 @@ class WorkflowImpact:
         spirit; we keep gates as a fresh list so audits keep the
         before/after state intact)."""
         new_gates = [
-            g.with_state(GateState.APPROVED)
-            if g.state == GateState.PENDING
-            else g
+            g.with_state(GateState.APPROVED) if g.state == GateState.PENDING else g
             for g in self.gates
         ]
         return WorkflowImpact(
@@ -130,9 +126,7 @@ class WorkflowImpact:
 
     def deny_all(self) -> WorkflowImpact:
         new_gates = [
-            g.with_state(GateState.DENIED)
-            if g.state == GateState.PENDING
-            else g
+            g.with_state(GateState.DENIED) if g.state == GateState.PENDING else g
             for g in self.gates
         ]
         return WorkflowImpact(
@@ -205,19 +199,13 @@ def render_impact_tree(impact: WorkflowImpact) -> str:
         labels = ",".join(sorted(s.arg_labels)) or "-"
         rule = f" rule={s.rule}" if s.rule else ""
         lines.append(
-            f"  {symbol} [{s.step_index:>2}] {s.tool_name}"
-            f" labels={labels}{rule}",
+            f"  {symbol} [{s.step_index:>2}] {s.tool_name} labels={labels}{rule}",
         )
     if impact.gates:
-        approval_count = sum(
-            1 for g in impact.gates if g.state == GateState.PENDING
-        )
-        deny_count = sum(
-            1 for g in impact.gates if g.state == GateState.WOULD_DENY
-        )
+        approval_count = sum(1 for g in impact.gates if g.state == GateState.PENDING)
+        deny_count = sum(1 for g in impact.gates if g.state == GateState.WOULD_DENY)
         lines.append("")
         lines.append(
-            f"  {approval_count} approval gate(s) pending, "
-            f"{deny_count} non-negotiable deny(s).",
+            f"  {approval_count} approval gate(s) pending, {deny_count} non-negotiable deny(s).",
         )
     return "\n".join(lines)

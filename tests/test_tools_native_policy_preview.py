@@ -67,7 +67,9 @@ async def test_preview_does_not_mutate_session(app: App) -> None:
 
     client = LabeledToolClient(app.registry, app.graph, app.audit)
     await client.call_tool(
-        s.id, "policy.preview", {"kind": "SEND_EMAIL", "target": "x@y"},
+        s.id,
+        "policy.preview",
+        {"kind": "SEND_EMAIL", "target": "x@y"},
     )
     after = app.graph.get(s.id)
     assert after.label_set == frozenset()

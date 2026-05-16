@@ -48,7 +48,9 @@ async def test_future_deadline_allows_then_past_deadline_denies(app: App) -> Non
         ),
     )
     before = await app.tool_client.call_tool(
-        s1.id, "memory.read", {"key": "anything"},
+        s1.id,
+        "memory.read",
+        {"key": "anything"},
     )
     assert before.decision.value == "allow"
 
@@ -62,7 +64,9 @@ async def test_future_deadline_allows_then_past_deadline_denies(app: App) -> Non
         ),
     )
     after = await app.tool_client.call_tool(
-        s2.id, "memory.read", {"key": "anything"},
+        s2.id,
+        "memory.read",
+        {"key": "anything"},
     )
     assert after.decision.value == "deny"
     assert after.rule == "capability-expired"
@@ -73,15 +77,19 @@ async def test_non_expired_sibling_survives_e2e(app: App) -> None:
     now = datetime.now(UTC)
     s = await app.graph.new()
     expired = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*",
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
         expires_at=now - timedelta(seconds=1),
     )
     live = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     app.graph._sessions[s.id] = replace(
-        s, capability_set=frozenset({expired, live}),
+        s,
+        capability_set=frozenset({expired, live}),
     )
     outcome = await app.tool_client.call_tool(
-        s.id, "memory.read", {"key": "k"},
+        s.id,
+        "memory.read",
+        {"key": "k"},
     )
     assert outcome.decision.value == "allow"
 
@@ -104,9 +112,7 @@ async def test_expiry_denial_recorded_in_audit_trail(app: App) -> None:
 
     events = await app.audit.read_all()
     decided = [
-        e for e in events
-        if e.event_type == EventType.POLICY_DECIDED
-        and e.session_id == s.id
+        e for e in events if e.event_type == EventType.POLICY_DECIDED and e.session_id == s.id
     ]
     assert decided, "expected a POLICY_DECIDED audit event"
     payload = decided[-1].payload
@@ -122,7 +128,8 @@ async def test_sc006_invariant_identical_with_preview_disabled(
     policy.preview tool exists, and no LLM client is on the path."""
     now = datetime.now(UTC)
     cap = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*",
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
         expires_at=now - timedelta(seconds=1),
     )
 

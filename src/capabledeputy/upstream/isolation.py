@@ -75,7 +75,7 @@ class ContainerIsolation:
             self.runtime,
             "run",
             "--rm",
-            "-i",                       # stdin attached for stdio MCP
+            "-i",  # stdin attached for stdio MCP
             "--read-only",
             "--cap-drop=ALL",
             "--security-opt=no-new-privileges",

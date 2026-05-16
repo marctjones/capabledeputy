@@ -135,12 +135,17 @@ def test_expired_capability_denies_under_multi_tenant() -> None:
     alice = Tenant(id="alice")
     tls = frozenset({TenantLabel(Label.TRUSTED_USER_DIRECT, alice)})
     cap = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*", expires_at=_MT_NOW,
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
+        expires_at=_MT_NOW,
     )
     action = Action(kind=CapabilityKind.READ_FS, target="/x")
     d = decide_multi_tenant(
-        tls, frozenset({cap}), action,
-        target_tenant=alice, now=_MT_NOW + timedelta(seconds=1),
+        tls,
+        frozenset({cap}),
+        action,
+        target_tenant=alice,
+        now=_MT_NOW + timedelta(seconds=1),
     )
     assert d.decision == Decision.DENY
     assert d.per_tenant[alice].rule == "capability-expired"
@@ -150,12 +155,17 @@ def test_future_deadline_allows_under_multi_tenant() -> None:
     alice = Tenant(id="alice")
     tls = frozenset({TenantLabel(Label.TRUSTED_USER_DIRECT, alice)})
     cap = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*",
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
         expires_at=_MT_NOW + timedelta(hours=1),
     )
     action = Action(kind=CapabilityKind.READ_FS, target="/x")
     d = decide_multi_tenant(
-        tls, frozenset({cap}), action, target_tenant=alice, now=_MT_NOW,
+        tls,
+        frozenset({cap}),
+        action,
+        target_tenant=alice,
+        now=_MT_NOW,
     )
     assert d.decision == Decision.ALLOW
 
@@ -164,15 +174,20 @@ def test_rate_limit_enforced_under_multi_tenant() -> None:
     alice = Tenant(id="alice")
     tls = frozenset({TenantLabel(Label.TRUSTED_USER_DIRECT, alice)})
     cap = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*",
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
         audit_id=UUID(_MT_AID),
         rate_limit=RateLimit(max_uses=1, window_seconds=3600),
     )
     action = Action(kind=CapabilityKind.READ_FS, target="/x")
     uses = {_MT_AID: (_MT_NOW - timedelta(seconds=1),)}
     d = decide_multi_tenant(
-        tls, frozenset({cap}), action,
-        target_tenant=alice, now=_MT_NOW, cap_uses=uses,
+        tls,
+        frozenset({cap}),
+        action,
+        target_tenant=alice,
+        now=_MT_NOW,
+        cap_uses=uses,
     )
     assert d.decision == Decision.DENY
     assert d.per_tenant[alice].rule == "rate-limit-exceeded"

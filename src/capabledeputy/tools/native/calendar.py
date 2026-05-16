@@ -133,9 +133,7 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
             else existing.starts_at
         )
         ends = (
-            datetime.fromisoformat(str(args["ends_at"]))
-            if "ends_at" in args
-            else existing.ends_at
+            datetime.fromisoformat(str(args["ends_at"])) if "ends_at" in args else existing.ends_at
         )
         if starts.tzinfo is None:
             starts = starts.replace(tzinfo=UTC)

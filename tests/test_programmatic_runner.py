@@ -210,7 +210,8 @@ async def test_dry_run_ignores_capability_constraints_boundary() -> None:
     """
     app = App()
     report = await dry_run_program(
-        'note = call("memory.read", key="x")\n', app.registry,
+        'note = call("memory.read", key="x")\n',
+        app.registry,
     )
     assert report.parse_error is None
     assert [c.decision for c in report.tool_calls] == [Decision.ALLOW]
@@ -230,33 +231,44 @@ def test_dry_run_boundary_is_safe_runtime_fails_closed() -> None:
     now = datetime(2026, 5, 1, tzinfo=UTC)
 
     expired = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*", expires_at=now,
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
+        expires_at=now,
     )
     r1 = decide(
-        frozenset(), frozenset({expired}), action,
+        frozenset(),
+        frozenset({expired}),
+        action,
         now=now + timedelta(seconds=1),
     )
     assert r1.decision == Decision.DENY
     assert r1.rule == CAPABILITY_EXPIRED_RULE
 
     rate = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*",
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
         audit_id=UUID(_AID),
         rate_limit=RateLimit(max_uses=1, window_seconds=3600),
     )
     r2 = decide(
-        frozenset(), frozenset({rate}), action, now=now,
+        frozenset(),
+        frozenset({rate}),
+        action,
+        now=now,
         cap_uses={_AID: (now - timedelta(seconds=1),)},
     )
     assert r2.decision == Decision.DENY
     assert r2.rule == RATE_LIMIT_EXCEEDED_RULE
 
     revoked = Capability(
-        kind=CapabilityKind.READ_FS, pattern="*",
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
         revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
     )
     r3 = decide(
-        frozenset(), frozenset({revoked}), action,
+        frozenset(),
+        frozenset({revoked}),
+        action,
         used_kinds=frozenset({CapabilityKind.WEB_FETCH}),
     )
     assert r3.decision == Decision.DENY

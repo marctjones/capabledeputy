@@ -265,10 +265,14 @@ class _StrictSession:
         self.elicit_kwargs: dict[str, object] | None = None
 
     async def elicit(
-        self, message: str, requestedSchema: dict, related_request_id=None,  # noqa: N803
+        self,
+        message: str,
+        requestedSchema: dict,  # noqa: N803
+        related_request_id=None,
     ):
         self.elicit_kwargs = {
-            "message": message, "requestedSchema": requestedSchema,
+            "message": message,
+            "requestedSchema": requestedSchema,
         }
         return SimpleNamespace(action="accept", content={"approve": True})
 

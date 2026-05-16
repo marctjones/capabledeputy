@@ -116,6 +116,5 @@ async def test_real_llm_aliasing_on_vs_off(tmp_path: Path) -> None:
     for label_run in (off, on):
         if "confidential.health" in label_run["session_labels"]:
             assert label_run["purchases_queued"] == 0, (
-                "PHI-tainted egress slipped through: "
-                f"{label_run!r}"
+                f"PHI-tainted egress slipped through: {label_run!r}"
             )

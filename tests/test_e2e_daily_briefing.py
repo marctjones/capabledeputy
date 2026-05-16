@@ -147,9 +147,7 @@ async def test_daily_briefing_naive_path_blocks_egress(tmp_path: Path) -> None:
         [
             LLMResponse(
                 content="Reading inbox.",
-                tool_calls=(
-                    ToolCall(id="i1", name="inbox.list", args={}),
-                ),
+                tool_calls=(ToolCall(id="i1", name="inbox.list", args={}),),
                 finish_reason=FinishReason.TOOL_CALLS,
             ),
             LLMResponse(
