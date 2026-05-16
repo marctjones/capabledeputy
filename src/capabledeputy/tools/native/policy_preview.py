@@ -39,6 +39,7 @@ def make_policy_preview_tools(graph: SessionGraph) -> list[ToolDefinition]:
             session.capability_set,
             action,
             used_kinds=session.used_kinds,
+            cap_uses=session.cap_uses,
         )
         return ToolResult(
             output={

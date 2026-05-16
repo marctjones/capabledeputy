@@ -79,6 +79,27 @@ class CapabilityOrigin(StrEnum):
 
 
 @dataclass(frozen=True)
+class RateLimit:
+    """A sliding-window use cap: at most `max_uses` dispatches of the
+    owning capability within any trailing `window_seconds`. Evaluated
+    deterministically at the policy chokepoint against the session's
+    recorded use timestamps — never by the LLM."""
+
+    max_uses: int
+    window_seconds: int
+
+    def to_dict(self) -> dict[str, int]:
+        return {"max_uses": self.max_uses, "window_seconds": self.window_seconds}
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> RateLimit:
+        return cls(
+            max_uses=int(d["max_uses"]),
+            window_seconds=int(d["window_seconds"]),
+        )
+
+
+@dataclass(frozen=True)
 class Capability:
     kind: CapabilityKind
     pattern: str
@@ -107,11 +128,31 @@ class Capability:
     # above (one-shot/session/persistent) — a session capability may
     # also carry an absolute `expires_at`.
     expires_at: datetime | None = None
+    # Optional sliding-window use limit. None ⇒ unlimited (today's
+    # behavior). Counted per-session-per-capability (keyed by
+    # audit_id) at the policy chokepoint; independent of and composed
+    # with expiry / revocation — any single disqualifier makes the
+    # capability unusable.
+    rate_limit: RateLimit | None = None
 
     def is_expired(self, now: datetime) -> bool:
         """True iff this capability carries a deadline that has been
         reached. Half-open window: expired when `now >= expires_at`."""
         return self.expires_at is not None and now >= self.expires_at
+
+    def is_rate_exceeded(
+        self,
+        now: datetime,
+        use_timestamps: tuple[datetime, ...],
+    ) -> bool:
+        """True iff using this capability now would exceed its rate
+        limit: at least `max_uses` prior uses fall within the trailing
+        `window_seconds` (a use counts while `now - ts < window`)."""
+        if self.rate_limit is None:
+            return False
+        window = timedelta(seconds=self.rate_limit.window_seconds)
+        in_window = sum(1 for ts in use_timestamps if now - ts < window)
+        return in_window >= self.rate_limit.max_uses
 
     @classmethod
     def expiring_in(
@@ -162,6 +203,9 @@ class Capability:
             "expires_at": (
                 self.expires_at.isoformat() if self.expires_at is not None else None
             ),
+            "rate_limit": (
+                self.rate_limit.to_dict() if self.rate_limit is not None else None
+            ),
         }
 
     @classmethod
@@ -180,6 +224,11 @@ class Capability:
             expires_at=(
                 datetime.fromisoformat(d["expires_at"])
                 if d.get("expires_at")
+                else None
+            ),
+            rate_limit=(
+                RateLimit.from_dict(d["rate_limit"])
+                if d.get("rate_limit")
                 else None
             ),
         )

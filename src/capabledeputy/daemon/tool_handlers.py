@@ -51,6 +51,7 @@ def make_tool_handlers(
             session.capability_set,
             action,
             used_kinds=session.used_kinds,
+            cap_uses=session.cap_uses,
         )
         return {
             "decision": decision.decision.value,

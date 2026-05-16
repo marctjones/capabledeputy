@@ -366,7 +366,7 @@ def _handle_session_show(target_id: str) -> None:
         console.print(f"  caps:    {len(caps)} granted")
         for c in caps:
             console.print(
-                f"    - {c['kind']} pattern={c['pattern']}{_expiry_marker(c)}",
+                f"    - {c['kind']} pattern={c['pattern']}{_constraint_markers(c)}",
             )
 
 
@@ -555,6 +555,25 @@ def _handle_grant(arg: str, session_id: str) -> None:
             datetime.now(UTC) + timedelta(seconds=ttl_secs)
         ).isoformat()
 
+    rate_limit: dict[str, int] | None = None
+    rate_desc: str | None = None
+    if "--rate" in rest:
+        i = rest.index("--rate")
+        try:
+            spec = rest[i + 1]
+            n_str, w_str = spec.split("/")
+            mx, win = int(n_str), int(w_str)
+            if mx <= 0 or win <= 0:
+                raise ValueError
+        except (IndexError, ValueError):
+            err_console.print(
+                "[red]--rate needs MAX/WINDOW_SECONDS, both > 0 "
+                "(e.g. --rate 5/60)[/red]",
+            )
+            return
+        rate_limit = {"max_uses": mx, "window_seconds": win}
+        rate_desc = f"{mx}/{win}s"
+
     from uuid import uuid4
 
     cap = {
@@ -567,6 +586,7 @@ def _handle_grant(arg: str, session_id: str) -> None:
         "allows_destructive": allows_destructive,
         "revoked_by": [],
         "expires_at": expires_at,
+        "rate_limit": rate_limit,
     }
     try:
         _call(
@@ -580,7 +600,8 @@ def _handle_grant(arg: str, session_id: str) -> None:
         f"[green]✓ granted[/green] {kind} pattern={pattern}"
         + (" [yellow](one-shot)[/yellow]" if one_shot else "")
         + (" [yellow](destructive)[/yellow]" if allows_destructive else "")
-        + (f" [yellow](expires in {ttl_secs}s)[/yellow]" if ttl_secs is not None else ""),
+        + (f" [yellow](expires in {ttl_secs}s)[/yellow]" if ttl_secs is not None else "")
+        + (f" [yellow](rate {rate_desc})[/yellow]" if rate_desc else ""),
     )
 
 
@@ -598,6 +619,20 @@ def _expiry_marker(cap: dict[str, Any], *, now: datetime | None = None) -> str:
         return " [red](expired)[/red]"
     secs = int((deadline - ref).total_seconds())
     return f" [yellow](expires in {secs}s)[/yellow]"
+
+
+def _rate_marker(cap: dict[str, Any]) -> str:
+    """Rich-markup suffix describing a capability's sliding-window
+    rate limit, or empty if unlimited. Shared by every inspection
+    view alongside _expiry_marker."""
+    rl = cap.get("rate_limit")
+    if not rl:
+        return ""
+    return f" [yellow](rate {rl['max_uses']}/{rl['window_seconds']}s)[/yellow]"
+
+
+def _constraint_markers(cap: dict[str, Any]) -> str:
+    return f"{_expiry_marker(cap)}{_rate_marker(cap)}"
 
 
 def _handle_status(session_id: str, *, only: str | None = None) -> None:
@@ -629,7 +664,7 @@ def _handle_status(session_id: str, *, only: str | None = None) -> None:
                 tail = f" [{', '.join(extras)}]" if extras else ""
                 console.print(
                     f"  - {c['kind']} pattern={c['pattern']}{tail}"
-                    f"{_expiry_marker(c)}",
+                    f"{_constraint_markers(c)}",
                 )
 
 

@@ -79,6 +79,7 @@ _GRANT_FLAGS: tuple[str, ...] = (
     "--destructive",
     "--max-amount",
     "--ttl",
+    "--rate",
 )
 
 

@@ -512,3 +512,96 @@ def test_decide_without_now_uses_wall_clock_and_stays_backcompat() -> None:
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     r = decide(frozenset(), frozenset({cap}), _read_action())
     assert r.decision == Decision.ALLOW
+
+
+# --- Rate-limited capabilities (feature #52) -----------------------------
+
+from capabledeputy.policy.capabilities import RateLimit  # noqa: E402
+from capabledeputy.policy.engine import RATE_LIMIT_EXCEEDED_RULE  # noqa: E402
+
+_RL_AID = "11111111-1111-1111-1111-111111111111"
+
+
+def _rl_cap(max_uses: int, window: int) -> Capability:
+    from uuid import UUID
+    return Capability(
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
+        audit_id=UUID(_RL_AID),
+        rate_limit=RateLimit(max_uses=max_uses, window_seconds=window),
+    )
+
+
+def test_rate_limit_under_limit_allows() -> None:
+    cap = _rl_cap(3, 60)
+    uses = {_RL_AID: (_T0 - timedelta(seconds=10),)}  # 1 use < 3
+    r = decide(
+        frozenset(), frozenset({cap}), _read_action(),
+        now=_T0, cap_uses=uses,
+    )
+    assert r.decision == Decision.ALLOW
+
+
+def test_rate_limit_at_limit_denies_with_rule() -> None:
+    cap = _rl_cap(2, 60)
+    uses = {_RL_AID: (_T0 - timedelta(seconds=30), _T0 - timedelta(seconds=5))}
+    r = decide(
+        frozenset(), frozenset({cap}), _read_action(),
+        now=_T0, cap_uses=uses,
+    )
+    assert r.decision == Decision.DENY
+    assert r.rule == RATE_LIMIT_EXCEEDED_RULE
+    assert "rate limit exceeded" in (r.reason or "")
+
+
+def test_rate_limit_window_slides_and_frees() -> None:
+    cap = _rl_cap(1, 60)
+    # one use 90s ago → outside 60s window → allowed again
+    uses = {_RL_AID: (_T0 - timedelta(seconds=90),)}
+    r = decide(
+        frozenset(), frozenset({cap}), _read_action(),
+        now=_T0, cap_uses=uses,
+    )
+    assert r.decision == Decision.ALLOW
+
+
+def test_rate_exceeded_distinct_from_expired_and_no_cap() -> None:
+    cap = _rl_cap(1, 60)
+    uses = {_RL_AID: (_T0 - timedelta(seconds=1),)}
+    r_rate = decide(
+        frozenset(), frozenset({cap}), _read_action(),
+        now=_T0, cap_uses=uses,
+    )
+    r_absent = decide(frozenset(), frozenset(), _read_action(), now=_T0)
+    assert r_rate.rule == RATE_LIMIT_EXCEEDED_RULE
+    assert r_absent.rule is None
+
+
+def test_rate_exceeded_non_expired_sibling_survives() -> None:
+    limited = _rl_cap(1, 60)
+    uses = {_RL_AID: (_T0 - timedelta(seconds=1),)}
+    plain = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    r = decide(
+        frozenset(), frozenset({limited, plain}), _read_action(),
+        now=_T0, cap_uses=uses,
+    )
+    assert r.decision == Decision.ALLOW  # sibling without a limit
+
+
+def test_expiry_takes_precedence_over_rate_in_attribution() -> None:
+    """A cap both expired and rate-exceeded is reported as expired
+    (it's gone entirely); rate-limit attribution only when the cap is
+    live but throttled."""
+    from uuid import UUID
+    cap = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*",
+        audit_id=UUID(_RL_AID),
+        expires_at=_T0,
+        rate_limit=RateLimit(max_uses=1, window_seconds=60),
+    )
+    uses = {_RL_AID: (_T0 - timedelta(seconds=1),)}
+    r = decide(
+        frozenset(), frozenset({cap}), _read_action(),
+        now=_T0 + timedelta(seconds=1), cap_uses=uses,
+    )
+    assert r.rule == CAPABILITY_EXPIRED_RULE

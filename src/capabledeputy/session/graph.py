@@ -8,7 +8,7 @@ to keep the graph itself unit-testable without I/O.
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from capabledeputy.audit.events import Event, EventType
@@ -164,6 +164,33 @@ class SessionGraph:
             return session
         new_used = session.used_kinds | {kind}
         updated = replace(session, used_kinds=new_used, updated_at=datetime.now(UTC))
+        await self._save(updated)
+        self._sessions[session_id] = updated
+        return updated
+
+    async def record_cap_use(
+        self,
+        session_id: UUID,
+        audit_id: str,
+        when: datetime,
+        *,
+        prune_older_than: timedelta | None = None,
+    ) -> Session:
+        """Append a use timestamp for a capability (keyed by audit_id)
+        so the policy engine can enforce its sliding-window rate limit
+        on the next decision. Optionally prune timestamps older than
+        `prune_older_than` to bound growth (the caller passes the
+        capability's window)."""
+        session = self.get(session_id)
+        prior = session.cap_uses.get(audit_id, ())
+        stamps = (*prior, when)
+        if prune_older_than is not None:
+            cutoff = when - prune_older_than
+            stamps = tuple(ts for ts in stamps if ts >= cutoff)
+        new_uses = {**session.cap_uses, audit_id: stamps}
+        updated = replace(
+            session, cap_uses=new_uses, updated_at=datetime.now(UTC),
+        )
         await self._save(updated)
         self._sessions[session_id] = updated
         return updated

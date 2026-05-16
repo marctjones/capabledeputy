@@ -27,6 +27,7 @@ _EGRESS_LABEL_FOR_KIND: dict[CapabilityKind, Label] = {
 DESTRUCTIVE_OP_RULE = "destructive-op-needs-approval"
 REVOKED_BY_PRIOR_USE_RULE = "capability-revoked-by-prior-use"
 CAPABILITY_EXPIRED_RULE = "capability-expired"
+RATE_LIMIT_EXCEEDED_RULE = "rate-limit-exceeded"
 
 
 @dataclass(frozen=True)
@@ -42,19 +43,35 @@ def egress_label_for(kind: CapabilityKind) -> Label | None:
     return _EGRESS_LABEL_FOR_KIND.get(kind)
 
 
+def _cap_uses_for(
+    cap: Capability,
+    cap_uses: dict[str, tuple[datetime, ...]] | None,
+) -> tuple[datetime, ...]:
+    if cap_uses is None:
+        return ()
+    return cap_uses.get(str(cap.audit_id), ())
+
+
 def find_capability(
     capabilities: frozenset[Capability],
     action: Action,
     now: datetime | None = None,
+    cap_uses: dict[str, tuple[datetime, ...]] | None = None,
 ) -> Capability | None:
-    """First scope/amount-matching capability. When `now` is provided,
-    a matching-but-expired capability is skipped (treated as absent),
-    so a non-expired sibling can still satisfy the action. Backward
-    compatible: callers that pass no `now` get expiry-agnostic
-    behavior (existing tests/paths unchanged)."""
+    """First scope/amount-matching capability that is also usable. When
+    `now` is provided a matching-but-expired capability is skipped; when
+    `cap_uses` is provided a matching-but-rate-exceeded one is skipped —
+    in both cases treated as absent so a still-usable sibling can
+    satisfy the action. Backward compatible: callers that pass neither
+    get the original expiry/rate-agnostic behavior."""
     for cap in capabilities:
         if cap.matches(action.kind, action.target, action.amount):
             if now is not None and cap.is_expired(now):
+                continue
+            if (
+                now is not None
+                and cap.is_rate_exceeded(now, _cap_uses_for(cap, cap_uses))
+            ):
                 continue
             return cap
     return None
@@ -67,13 +84,16 @@ def decide(
     rules: tuple[ConflictRule, ...] = CONFLICT_RULES,
     used_kinds: frozenset[CapabilityKind] = frozenset(),
     now: datetime | None = None,
+    cap_uses: dict[str, tuple[datetime, ...]] | None = None,
 ) -> PolicyDecision:
     # Single decision clock: resolve once so every time-sensitive
     # check in this decision agrees. Deterministic and injectable —
     # never read inline, never influenced by the LLM (Principle I).
     eff_now = now if now is not None else datetime.now(UTC)
 
-    cap = find_capability(capabilities, action, now=eff_now)
+    cap = find_capability(
+        capabilities, action, now=eff_now, cap_uses=cap_uses,
+    )
     if cap is None:
         # Distinguish "the only matching capabilities are expired"
         # from "never had a matching capability" so audits (and the
@@ -97,6 +117,35 @@ def decide(
                     f"(decision time {eff_now.isoformat()})"
                 ),
                 matched_capability=expired_match,
+                effective_labels=label_set,
+            )
+        # Next: a scope-matching capability that is only disqualified
+        # because its sliding-window rate limit is exhausted. Distinct
+        # rule so audits separate "too many uses" from "expired" and
+        # "never had it".
+        rate_match = next(
+            (
+                c
+                for c in capabilities
+                if c.matches(action.kind, action.target, action.amount)
+                and c.is_rate_exceeded(
+                    eff_now, _cap_uses_for(c, cap_uses),
+                )
+            ),
+            None,
+        )
+        if rate_match is not None and rate_match.rate_limit is not None:
+            rl = rate_match.rate_limit
+            return PolicyDecision(
+                decision=Decision.DENY,
+                rule=RATE_LIMIT_EXCEEDED_RULE,
+                reason=(
+                    f"capability for {action.kind.value}({action.target}) "
+                    f"rate limit exceeded: {rl.max_uses} uses per "
+                    f"{rl.window_seconds}s (decision time "
+                    f"{eff_now.isoformat()})"
+                ),
+                matched_capability=rate_match,
                 effective_labels=label_set,
             )
         return PolicyDecision(

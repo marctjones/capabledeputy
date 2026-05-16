@@ -82,14 +82,16 @@ class LabeledToolClient:
             amount=tool.extract_amount(args),
         )
         # One authoritative decision clock per dispatch — resolved here
-        # at the chokepoint and threaded into decide(), never read
-        # inline inside the comparison. Deterministic + injectable.
+        # at the chokepoint, threaded into decide() AND reused as the
+        # recorded use timestamp so the rate-limit window is consistent.
+        dispatch_now = datetime.now(UTC)
         policy_decision = decide(
             session.label_set,
             session.capability_set,
             action,
             used_kinds=session.used_kinds,
-            now=datetime.now(UTC),
+            now=dispatch_now,
+            cap_uses=session.cap_uses,
         )
 
         await self._emit_policy_decision(session_id, tool_name, args, policy_decision)
@@ -148,6 +150,23 @@ class LabeledToolClient:
         # runs: a side-effecting handler that raises still counts as
         # a use for the purposes of revocation.
         await self._graph.record_used_kind(session_id, action.kind)
+
+        # Record this dispatch against the matched capability's
+        # sliding-window rate-limit log (keyed by audit_id). Same
+        # timestamp as the decision clock. Pruned to the capability's
+        # window so the log stays bounded.
+        matched = policy_decision.matched_capability
+        if matched is not None and matched.rate_limit is not None:
+            from datetime import timedelta
+
+            await self._graph.record_cap_use(
+                session_id,
+                str(matched.audit_id),
+                dispatch_now,
+                prune_older_than=timedelta(
+                    seconds=matched.rate_limit.window_seconds,
+                ),
+            )
 
         context = ToolContext(session_id=session_id, label_set=session.label_set)
         try:

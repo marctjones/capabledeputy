@@ -102,6 +102,10 @@ class Session:
     tool_aliasing: bool = False
     prefer_programmatic: bool = False
     used_kinds: frozenset[CapabilityKind] = field(default_factory=frozenset)
+    # Per-capability use timestamps for sliding-window rate limiting,
+    # keyed by capability audit_id. Treated immutably (replace()), like
+    # used_kinds. Empty ⇒ nothing rate-limited yet.
+    cap_uses: dict[str, tuple[datetime, ...]] = field(default_factory=dict)
 
     @classmethod
     def new(
@@ -117,6 +121,7 @@ class Session:
         tool_aliasing: bool = False,
         prefer_programmatic: bool = False,
         used_kinds: frozenset[CapabilityKind] = frozenset(),
+        cap_uses: dict[str, tuple[datetime, ...]] | None = None,
     ) -> Self:
         now = _utcnow()
         return cls(
@@ -134,6 +139,7 @@ class Session:
             tool_aliasing=tool_aliasing,
             prefer_programmatic=prefer_programmatic,
             used_kinds=used_kinds,
+            cap_uses=cap_uses if cap_uses is not None else {},
         )
 
     @property
@@ -162,6 +168,10 @@ class Session:
             "tool_aliasing": self.tool_aliasing,
             "prefer_programmatic": self.prefer_programmatic,
             "used_kinds": sorted(k.value for k in self.used_kinds),
+            "cap_uses": {
+                aid: [ts.isoformat() for ts in stamps]
+                for aid, stamps in self.cap_uses.items()
+            },
         }
 
     @classmethod
@@ -185,4 +195,8 @@ class Session:
             used_kinds=frozenset(
                 CapabilityKind(k) for k in d.get("used_kinds", ())
             ),
+            cap_uses={
+                aid: tuple(datetime.fromisoformat(ts) for ts in stamps)
+                for aid, stamps in d.get("cap_uses", {}).items()
+            },
         )

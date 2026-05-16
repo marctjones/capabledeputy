@@ -84,3 +84,32 @@ def test_grant_ttl_zero_is_immediately_expired_when_decided(
     )
     assert r.decision == Decision.DENY
     assert r.rule == CAPABILITY_EXPIRED_RULE
+
+
+def test_grant_rate_builds_rate_limit_dict(
+    captured: list[dict[str, Any]],
+) -> None:
+    chat._handle_grant("QUEUE_PURCHASE amazon --rate 5/60", "sess-1")
+    grant = next(c for c in captured if c["method"] == "session.grant_capability")
+    rl = grant["params"]["capability"]["rate_limit"]
+    assert rl == {"max_uses": 5, "window_seconds": 60}
+
+
+def test_grant_rate_bad_spec_rejected(captured: list[dict[str, Any]]) -> None:
+    chat._handle_grant("READ_FS * --rate notaspec", "sess-1")
+    assert not any(
+        c["method"] == "session.grant_capability" for c in captured
+    )
+
+
+def test_grant_rate_zero_rejected(captured: list[dict[str, Any]]) -> None:
+    chat._handle_grant("READ_FS * --rate 0/60", "sess-1")
+    assert not any(
+        c["method"] == "session.grant_capability" for c in captured
+    )
+
+
+def test_grant_without_rate_has_none(captured: list[dict[str, Any]]) -> None:
+    chat._handle_grant("READ_FS *", "sess-1")
+    grant = next(c for c in captured if c["method"] == "session.grant_capability")
+    assert grant["params"]["capability"]["rate_limit"] is None

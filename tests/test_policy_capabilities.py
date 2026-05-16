@@ -170,3 +170,52 @@ def test_expiring_in_passes_through_other_attrs() -> None:
     )
     assert cap.kind == CapabilityKind.SEND_EMAIL
     assert cap.expires_at is not None
+
+
+# --- Rate-limited capabilities (feature #52) -----------------------------
+
+from capabledeputy.policy.capabilities import RateLimit  # noqa: E402
+
+
+def test_rate_limit_serialization_round_trip() -> None:
+    cap = Capability(
+        kind=CapabilityKind.QUEUE_PURCHASE,
+        pattern="amazon",
+        rate_limit=RateLimit(max_uses=5, window_seconds=60),
+    )
+    decoded = Capability.from_dict(cap.to_dict())
+    assert decoded == cap
+    assert decoded.rate_limit == RateLimit(5, 60)
+
+
+def test_from_dict_without_rate_limit_is_backward_tolerant() -> None:
+    legacy = {
+        "kind": "READ_FS", "pattern": "*", "expiry": "session",
+        "origin": "system_default",
+        "audit_id": "00000000-0000-0000-0000-000000000000",
+        "max_amount": None, "allows_destructive": False, "revoked_by": [],
+    }
+    assert Capability.from_dict(legacy).rate_limit is None
+
+
+def test_is_rate_exceeded_counts_only_in_window() -> None:
+    t0 = datetime(2026, 2, 1, 12, 0, 0, tzinfo=UTC)
+    cap = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*",
+        rate_limit=RateLimit(max_uses=2, window_seconds=60),
+    )
+    # two uses 90s and 80s ago → outside the 60s window → not exceeded
+    old = (t0 - timedelta(seconds=90), t0 - timedelta(seconds=80))
+    assert cap.is_rate_exceeded(t0, old) is False
+    # two uses 30s and 10s ago → inside window, count == max → exceeded
+    recent = (t0 - timedelta(seconds=30), t0 - timedelta(seconds=10))
+    assert cap.is_rate_exceeded(t0, recent) is True
+    # one in, one out → count 1 < 2 → not exceeded
+    mixed = (t0 - timedelta(seconds=90), t0 - timedelta(seconds=10))
+    assert cap.is_rate_exceeded(t0, mixed) is False
+
+
+def test_no_rate_limit_never_exceeded() -> None:
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    many = tuple(datetime(2026, 1, 1, tzinfo=UTC) for _ in range(100))
+    assert cap.is_rate_exceeded(datetime(2026, 1, 1, tzinfo=UTC), many) is False
