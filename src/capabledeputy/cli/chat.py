@@ -62,6 +62,12 @@ from rich.table import Table
 from capabledeputy.cli.completer import CapDepCompleter, CompletionCache
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
+from capabledeputy.presentation import (
+    DENY_RECOVERY,
+    compartment_summary,
+    label_style,
+    render_labels,
+)
 
 console = Console()
 err_console = Console(stderr=True)
@@ -75,59 +81,18 @@ _DECISION_COLOR = {
 
 
 # ---- label palette ------------------------------------------------------
-# One convention, reused in the prompt, bottom toolbar, trace, and
-# /status: the compartment state should read the same everywhere.
+# Single source of truth lives in capabledeputy.presentation so the
+# REPL and the TUI render the security model identically. These module
+# names are kept (aliases) for the REPL's internal call sites and tests.
 
-
-def _label_rich_style(label: str) -> str:
-    if label.startswith("untrusted."):
-        return "bold red"
-    if label.startswith("confidential."):
-        return "yellow"
-    if label.startswith("trusted."):
-        return "green"
-    if label.startswith("egress."):
-        return "magenta"
-    return "white"
-
-
-def _render_labels_rich(labels: list[str]) -> str:
-    if not labels:
-        return "[green]clean[/green]"
-    return " · ".join(
-        f"[{_label_rich_style(lbl)}]{lbl}[/{_label_rich_style(lbl)}]"
-        for lbl in sorted(labels)
-    )
-
-
-def _compartment_summary(labels: list[str]) -> tuple[str, str]:
-    """(text, rich_style) one-word health of the session's compartment."""
-    if any(lbl.startswith("untrusted.") for lbl in labels):
-        return "TAINTED", "bold red"
-    if any(lbl.startswith("confidential.") for lbl in labels):
-        return "confidential", "yellow"
-    return "clean", "green"
-
-
-# Rule → how the user recovers. Printed as a dim actionable hint after
-# a DENY so the recovery move is shown, not just described in docs.
-_DENY_RECOVERY: dict[str, str] = {
-    "untrusted-meets-egress": (
-        "/extract <msg> <schema> to declassify a fact, then /spawn a clean "
-        "session and /grant a one-shot cap"
-    ),
-    "health-meets-egress": (
-        "/spawn a clean session — health data cannot egress from a tainted "
-        "session at all"
-    ),
-    "financial-meets-email": (
-        "/spawn a clean session, or /extract a declassified summary first"
-    ),
-    "capability-revoked-by-prior-use": (
-        "/spawn a fresh session — this capability was revoked by a prior "
-        "tool use in this one"
-    ),
-}
+_label_rich_style = label_style
+_render_labels_rich = render_labels
+_compartment_summary = compartment_summary
+# Superset of the prior REPL map — also covers capability-expired and
+# rate-limit-exceeded. Existing callers/tests only assert presence of
+# the hard-deny rules, so the superset is compatible and strictly
+# better (more recoveries surfaced).
+_DENY_RECOVERY = DENY_RECOVERY
 
 
 def _client() -> DaemonClient:
