@@ -108,12 +108,18 @@ def decide(
             None,
         )
         if expired_match is not None:
+            # is_expired() is True only when expires_at is set, so the
+            # deadline is non-None here; assert the invariant so the
+            # type is narrowed (and a future is_expired change can't
+            # silently produce a None deref).
+            deadline = expired_match.expires_at
+            assert deadline is not None
             return PolicyDecision(
                 decision=Decision.DENY,
                 rule=CAPABILITY_EXPIRED_RULE,
                 reason=(
                     f"capability for {action.kind.value}({action.target}) "
-                    f"expired at {expired_match.expires_at.isoformat()} "
+                    f"expired at {deadline.isoformat()} "
                     f"(decision time {eff_now.isoformat()})"
                 ),
                 matched_capability=expired_match,
