@@ -76,11 +76,34 @@ def _hypothetical_decide(
     label_set: frozenset[Label],
     kind: CapabilityKind,
 ) -> tuple[Decision, str | None, str | None]:
-    """Predict the policy outcome for a tool call given an effective label
-    set, ignoring capability matching. Capability matching depends on
-    runtime grants which dry-run doesn't have; the conflict rules are the
-    interesting part for static analysis since they encode the
-    information-flow constraints.
+    """Predict the *information-flow* outcome of a tool call from the
+    effective label set. This is a deliberately scoped second decision
+    surface — read this before assuming it mirrors `policy.engine.decide`.
+
+    IN SCOPE (what this models): the Brewer-Nash CONFLICT_RULES over
+    labels + the egress label for the tool's kind. That is the part a
+    static, pre-execution plan analysis can reason about without any
+    runtime state.
+
+    OUT OF SCOPE (deliberately NOT modelled here): every
+    capability-level denial — no matching capability,
+    `capability-expired`, `rate-limit-exceeded`,
+    `capability-revoked-by-prior-use`, and the
+    `destructive-op-needs-approval` gate. Those depend on the live
+    session's granted capabilities, clock, and per-capability use log,
+    none of which a dry-run has.
+
+    WHY THIS IS SAFE (the boundary, not a bug): the dry-run is an
+    advisory planning aid, NEVER the enforcement surface. Enforcement
+    is `decide()`, which runs unconditionally at every real dispatch
+    (`LabeledToolClient`). So a dry-run that reports ALLOW for a call
+    the runtime would actually deny (expired/rate-limited/revoked/
+    ungranted) still *fails closed* at execution. The dry-run can only
+    be optimistic, never permissive — it cannot grant anything. The
+    single enforcement chokepoint is preserved (constitution
+    Principle I); this surface is scoped and tested
+    (`tests/test_programmatic_runner.py::test_dry_run_*boundary*`),
+    not silently divergent.
     """
     egress = egress_label_for(kind)
     effective = label_set | ({egress} if egress else frozenset())

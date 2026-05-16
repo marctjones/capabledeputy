@@ -179,3 +179,89 @@ purchase = call("purchase.queue", vendor="pharmacy", item=labs, amount=50)
     assert len(app.purchase_queue.all()) == 0
     final = app.graph.get(s.id)
     assert Label.CONFIDENTIAL_HEALTH in final.label_set
+
+
+# --- Dry-run capability-constraint boundary (documented + tested) --------
+#
+# The programmatic dry-run is information-flow-only. It deliberately
+# does NOT model capability-level denials (no-cap / expired /
+# rate-limited / revoked / destructive-op gate). These tests codify
+# that boundary so the drift from `decide()` is intentional and known,
+# not silent — and prove it is SAFE (runtime fails closed).
+
+from datetime import UTC, datetime, timedelta  # noqa: E402
+
+from capabledeputy.policy.actions import Action  # noqa: E402
+from capabledeputy.policy.capabilities import RateLimit  # noqa: E402
+from capabledeputy.policy.engine import (  # noqa: E402
+    CAPABILITY_EXPIRED_RULE,
+    RATE_LIMIT_EXCEEDED_RULE,
+    REVOKED_BY_PRIOR_USE_RULE,
+    decide,
+)
+
+_AID = "44444444-4444-4444-4444-444444444444"
+
+
+async def test_dry_run_ignores_capability_constraints_boundary() -> None:
+    """A plain read program dry-runs ALLOW with NO capability model at
+    all — the dry-run never consults grants, expiry, rate, or
+    revocation. (Label conflict rules are the only thing it predicts.)
+    """
+    app = App()
+    report = await dry_run_program(
+        'note = call("memory.read", key="x")\n', app.registry,
+    )
+    assert report.parse_error is None
+    assert [c.decision for c in report.tool_calls] == [Decision.ALLOW]
+    # The report carries no notion of capabilities/expiry/rate — it is
+    # purely an information-flow prediction.
+
+
+def test_dry_run_boundary_is_safe_runtime_fails_closed() -> None:
+    """The safety invariant behind the boundary: for the SAME call the
+    dry-run optimistically ALLOWs, the real chokepoint (`decide()`)
+    still DENYs when the capability is expired / rate-limited / revoked.
+    The dry-run can only be optimistic, never permissive — enforcement
+    is unaffected."""
+    from uuid import UUID
+
+    action = Action(kind=CapabilityKind.READ_FS, target="/x")
+    now = datetime(2026, 5, 1, tzinfo=UTC)
+
+    expired = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*", expires_at=now,
+    )
+    r1 = decide(
+        frozenset(), frozenset({expired}), action,
+        now=now + timedelta(seconds=1),
+    )
+    assert r1.decision == Decision.DENY
+    assert r1.rule == CAPABILITY_EXPIRED_RULE
+
+    rate = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*",
+        audit_id=UUID(_AID),
+        rate_limit=RateLimit(max_uses=1, window_seconds=3600),
+    )
+    r2 = decide(
+        frozenset(), frozenset({rate}), action, now=now,
+        cap_uses={_AID: (now - timedelta(seconds=1),)},
+    )
+    assert r2.decision == Decision.DENY
+    assert r2.rule == RATE_LIMIT_EXCEEDED_RULE
+
+    revoked = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*",
+        revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
+    )
+    r3 = decide(
+        frozenset(), frozenset({revoked}), action,
+        used_kinds=frozenset({CapabilityKind.WEB_FETCH}),
+    )
+    assert r3.decision == Decision.DENY
+    assert r3.rule == REVOKED_BY_PRIOR_USE_RULE
+
+    # Conclusion: dry-run ALLOW + runtime DENY for the same action is
+    # the documented, intentional boundary — not a bug. Enforcement is
+    # the single chokepoint; the dry-run is advisory.

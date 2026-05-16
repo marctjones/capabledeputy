@@ -64,6 +64,13 @@ def _hypothetical_decide(
     label_set: frozenset[Label],
     kind: CapabilityKind,
 ) -> tuple[Decision, str | None, str | None]:
+    """Information-flow-only bundle prediction. Same scoped boundary as
+    `runner._hypothetical_decide`: models the label CONFLICT_RULES, NOT
+    capability-level denials (no-cap / expired / rate-limited / revoked
+    / destructive-op gate). Safe because real enforcement is `decide()`
+    at dispatch — this can only be optimistic, never permissive. See
+    that docstring for the full rationale and the boundary test.
+    """
     egress = egress_label_for(kind)
     effective = label_set | ({egress} if egress else frozenset())
     for rule in CONFLICT_RULES:
