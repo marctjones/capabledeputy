@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -37,6 +38,12 @@ from textual.widgets import DataTable, Footer, Header, Static
 
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
+from capabledeputy.presentation import (
+    DENY_RECOVERY,
+    capability_line,
+    compartment_summary,
+    render_labels,
+)
 
 
 class ApprovalDetailScreen(ModalScreen[str]):
@@ -150,7 +157,7 @@ class CapDepTUI(App[None]):
 
     def on_mount(self) -> None:
         sessions = self.query_one("#sessions", DataTable)
-        sessions.add_columns("id", "status", "intent", "labels")
+        sessions.add_columns("id", "status", "compartment", "intent", "labels")
         sessions.cursor_type = "row"
 
         events = self.query_one("#events", DataTable)
@@ -267,6 +274,17 @@ class CapDepTUI(App[None]):
         sessions_table = self.query_one("#sessions", DataTable)
         sessions_table.clear()
 
+        def _cells(s: dict[str, Any], id_text: str) -> tuple[Any, ...]:
+            labels = s.get("label_set", [])
+            word, style = compartment_summary(labels)
+            return (
+                id_text,
+                s["status"],
+                Text(word, style=style),
+                s["intent"] or "",
+                Text.from_markup(render_labels(labels)),
+            )
+
         if self._graph_view:
             by_parent: dict[str | None, list[dict[str, Any]]] = {}
             for s in self._sessions:
@@ -275,23 +293,13 @@ class CapDepTUI(App[None]):
             def emit(parent_id: str | None, depth: int) -> None:
                 for s in by_parent.get(parent_id, []):
                     indent = "  " * depth + ("└─ " if depth > 0 else "")
-                    sessions_table.add_row(
-                        indent + s["id"][:8],
-                        s["status"],
-                        s["intent"] or "",
-                        ", ".join(s["label_set"]),
-                    )
+                    sessions_table.add_row(*_cells(s, indent + s["id"][:8]))
                     emit(s["id"], depth + 1)
 
             emit(None, 0)
         else:
             for s in self._sessions:
-                sessions_table.add_row(
-                    s["id"][:8],
-                    s["status"],
-                    s["intent"] or "",
-                    ", ".join(s["label_set"]),
-                )
+                sessions_table.add_row(*_cells(s, s["id"][:8]))
 
     async def _update_session_detail(
         self,
@@ -350,9 +358,34 @@ class CapDepTUI(App[None]):
                         f"target={payload.get('target', '')}"
                     )
                 lines.append(f"[dim]{ts}[/dim] [bold]{t}[/bold] {summary}")
+                # Surface the deterministic operator recovery for a
+                # denied decision, the same hint the REPL shows.
+                if t == "policy.decided" and payload.get("decision") == "deny":
+                    hint = DENY_RECOVERY.get(payload.get("rule") or "")
+                    if hint:
+                        lines.append(f"  [cyan]↳ recover:[/cyan] [dim]{hint}[/dim]")
             trace_text = "\n".join(lines)
 
-        self.query_one("#trace", Static).update(trace_text)
+        # Prepend the session's compartment + capability constraints so
+        # the whole v0.7 family (expiry / rate / revocation / one-shot /
+        # destructive) is visible in the TUI, not just the REPL.
+        labels = full.get("label_set", [])
+        word, style = compartment_summary(labels)
+        header = [
+            f"[bold]compartment[/bold] [{style}]{word}[/{style}]  "
+            f"{render_labels(labels)}",
+        ]
+        caps = full.get("capability_set", [])
+        if caps:
+            header.append(f"[bold]capabilities[/bold] ({len(caps)}):")
+            header.extend(f"  - {capability_line(c)}" for c in caps)
+        else:
+            header.append("[bold]capabilities[/bold]: [dim]none[/dim]")
+        header.append("")
+
+        self.query_one("#trace", Static).update(
+            "\n".join(header) + trace_text,
+        )
 
     def on_data_table_row_highlighted(self, event: Any) -> None:
         # Pyright can't narrow Textual events here; accept Any.
