@@ -89,7 +89,7 @@ def test_canonical_payload_is_deterministic() -> None:
         action="SEND_EMAIL",
         target="alice@example.com",
         payload="hi",
-        labels_in={"trusted.user_direct", "confidential.health"},
+        labels_in=frozenset({"trusted.user_direct", "confidential.health"}),
     )
     assert a == b
 

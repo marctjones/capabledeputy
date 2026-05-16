@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -36,7 +37,7 @@ async def _run_prescription(
     tmp_path: Path,
     *,
     aliasing: bool,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     app = App(
         state_db_path=tmp_path / f"state-{aliasing}.db",
         audit_log_path=tmp_path / f"audit-{aliasing}.jsonl",

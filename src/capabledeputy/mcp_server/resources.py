@@ -16,6 +16,7 @@ from typing import Any
 from uuid import UUID
 
 import mcp.types as mcp_types
+from pydantic import AnyUrl
 
 from capabledeputy.ipc.client import DaemonClient
 
@@ -35,12 +36,15 @@ async def list_resources(client: DaemonClient) -> list[mcp_types.Resource]:
         description = f"Labeled memory entry. Labels: {', '.join(labels) if labels else '(none)'}"
         resources.append(
             mcp_types.Resource(
-                uri=f"{MEMORY_URI_PREFIX}{entry['key']}",
+                uri=AnyUrl(f"{MEMORY_URI_PREFIX}{entry['key']}"),
                 name=f"memory:{entry['key']}",
                 title=entry["key"],
                 description=description,
                 mimeType="application/json",
-                **{"_meta": meta},
+                # mcp models alias the metadata field as `_meta`; the
+                # SDK accepts it at runtime but pyright's generated
+                # model doesn't expose the alias. Boundary ignore.
+                **{"_meta": meta},  # pyright: ignore[reportArgumentType]
             ),
         )
     return resources

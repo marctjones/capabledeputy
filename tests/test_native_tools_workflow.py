@@ -98,7 +98,9 @@ async def test_inbox_read_marks_read_and_returns_body() -> None:
     assert result.output["found"] is True
     assert "buy 100 shares" in result.output["body"]
     assert Label.UNTRUSTED_EXTERNAL in result.additional_labels
-    assert inbox.get("m1").unread is False
+    msg = inbox.get("m1")
+    assert msg is not None
+    assert msg.unread is False
 
 
 async def test_web_fetch_returns_untrusted_label() -> None:

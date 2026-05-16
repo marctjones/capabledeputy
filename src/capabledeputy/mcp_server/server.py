@@ -119,7 +119,9 @@ async def discover_tools(client: DaemonClient) -> list[mcp_types.Tool]:
                 description=tool["description"],
                 inputSchema=schema,
                 annotations=annotations,
-                **{"_meta": _tool_meta(tool)},
+                # mcp `_meta` alias; SDK accepts at runtime, pyright's
+                # generated model doesn't expose it. Boundary ignore.
+                **{"_meta": _tool_meta(tool)},  # pyright: ignore[reportArgumentType]
             ),
         )
     return tools
@@ -173,11 +175,16 @@ async def _try_elicit_and_approve(
     try:
         elicit_result = await server.request_context.session.elicit(
             message=(f"Approve this {tool_name} despite policy rule '{rule}'? to={args.get('to')}"),
-            requested_schema=mcp_types.ElicitRequestedSchema(
-                type="object",
-                properties=schema["properties"],
-                required=schema["required"],
-            ),
+            # mcp's elicit() takes requestedSchema as a plain dict
+            # (camelCase). The prior code passed `requested_schema=`
+            # with an ElicitRequestedSchema object — wrong kwarg AND
+            # wrong type; this path would have raised at runtime when
+            # the email-approval elicitation fired.
+            requestedSchema={
+                "type": "object",
+                "properties": schema["properties"],
+                "required": schema["required"],
+            },
         )
     except Exception:
         return None
