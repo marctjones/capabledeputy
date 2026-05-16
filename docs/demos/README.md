@@ -62,6 +62,32 @@ demonstrations**, **user workflow demos**, **adversarial demos**, and
 
 `✓` shown directly · `~` shown indirectly · `—` not applicable
 
+### Feature & v0.5–v0.7 properties (demos 11–21)
+
+The matrix above covers the v0.1–v0.4 era. Demos 11–21 verify the
+later capability-constraint, programmatic, federation, and
+surface/UX properties:
+
+| Property | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Destructive-op gate (Clark-Wilson) | ✓ | | | | | | | ~ | | | |
+| Programmatic mode / static analysis | | ✓ | | | | | | | | | |
+| Tool-token aliasing (strict ocap) | | | ✓ | | | | | | | | |
+| Per-tenant compartment scoping | | | | ✓ | | | | | | | |
+| Signed federation envelope | | | | | ✓ | | | | | | |
+| Per-tool container isolation | | | | | | ✓ | | | | | |
+| Interactive REPL drives real agent | | | | | | | ✓ | ~ | | | ✓ |
+| DENY vs approval vs declassify map | | | | | | | | ✓ | | | ~ |
+| Time-bounded capability (`capability-expired`) | | | | | | | | | ✓ | | ~ |
+| Rate-limited capability (`rate-limit-exceeded`) | | | | | | | | | | ✓ | ~ |
+| Prior-use revocation | ~ | | | | | | | ✓ | | | |
+| Server-side chokepoint approval registration | | | | | | | ~ | ✓ | | | ✓ |
+| Unified drive+monitor+approve surface | | | | | | | | | | | ✓ |
+| LLM-isolation invariant (`--no-policy-preview`) | | | | | | | | ✓ | ✓ | ✓ | |
+| Audit reconstructs the decision | ✓ | ✓ | | ✓ | | | | ✓ | ✓ | ✓ | ✓ |
+
+`✓` shown directly · `~` shown indirectly · `—` not applicable
+
 ## Run them all
 
 ```bash

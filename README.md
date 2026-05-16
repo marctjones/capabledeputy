@@ -18,8 +18,10 @@ The design draws on classical information security models — Bell-LaPadula, Bib
 
 ## Documentation
 
+- [docs/SURFACES.md](docs/SURFACES.md) — **which command do I use?** (chat vs console vs tui vs demo vs …) — start here
 - [DESIGN.md](DESIGN.md) — full design specification
 - [ROADMAP.md](ROADMAP.md) — phased implementation plan
+- [docs/demos/README.md](docs/demos/README.md) — 21 end-to-end demos
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and contribution guide
 
 ## Development
