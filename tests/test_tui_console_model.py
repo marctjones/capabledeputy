@@ -1,0 +1,104 @@
+"""Tests for the unified-TUI view-model (pure functions)."""
+
+from __future__ import annotations
+
+from rich.text import Text
+
+from capabledeputy.tui.console_model import (
+    format_turn,
+    outcome_line,
+    pending_approvals,
+    status_lines,
+)
+
+
+def _plain(lines: list[str]) -> str:
+    """Markup-stripped join — assert on what the human reads, not the
+    Rich tag soup."""
+    return "\n".join(Text.from_markup(ln).plain for ln in lines)
+
+
+def test_outcome_line_allow_and_deny() -> None:
+    allow = Text.from_markup(outcome_line(
+        {"decision": "allow", "tool_name": "inbox.list",
+         "labels_added": ["untrusted.external"]},
+    )).plain
+    assert "✓ allow" in allow
+    assert "inbox.list" in allow
+    assert "+untrusted.external" in allow
+
+    deny = Text.from_markup(outcome_line(
+        {"decision": "deny", "tool_name": "email.send",
+         "rule": "untrusted-meets-egress"},
+    )).plain
+    assert "✗ deny" in deny
+    assert "rule=untrusted-meets-egress" in deny
+
+
+def test_format_turn_includes_reply_and_recovery_hint() -> None:
+    result = {
+        "content": "I can't do that.",
+        "iterations": 2,
+        "finish_reason": "stop",
+        "tool_outcomes": [
+            {
+                "decision": "deny",
+                "tool_name": "email.send",
+                "rule": "untrusted-meets-egress",
+                "reason": "rule fired",
+            },
+        ],
+    }
+    lines = format_turn(result)
+    blob = _plain(lines)
+    assert "agent" in blob and "I can't do that." in blob
+    assert "✗ deny" in blob
+    assert "rule fired" in blob
+    assert "↳ recover:" in blob  # deterministic hint surfaced
+
+
+def test_pending_approvals_extracts_ids() -> None:
+    result = {
+        "tool_outcomes": [
+            {"decision": "allow", "tool_name": "memory.read"},
+            {"decision": "require_approval", "tool_name": "purchase.queue",
+             "approval_id": 7},
+            {"decision": "require_approval", "tool_name": "x", "approval_id": None},
+        ],
+    }
+    assert pending_approvals(result) == [7]
+
+
+def test_pending_approvals_empty_when_none() -> None:
+    assert pending_approvals({"tool_outcomes": [{"decision": "allow"}]}) == []
+
+
+def test_status_lines_show_compartment_and_caps() -> None:
+    session = {
+        "label_set": ["untrusted.external"],
+        "used_kinds": ["READ_FS"],
+        "capability_set": [
+            {"kind": "SEND_EMAIL", "pattern": "*@x.com"},
+            {
+                "kind": "QUEUE_PURCHASE",
+                "pattern": "amazon",
+                "rate_limit": {"max_uses": 3, "window_seconds": 60},
+            },
+        ],
+    }
+    lines = status_lines(session)
+    blob = _plain(lines)
+    assert "TAINTED" in blob
+    assert "untrusted.external" in blob
+    assert "used:" in blob and "READ_FS" in blob
+    assert "capabilities (2)" in blob
+    assert "SEND_EMAIL" in blob
+    assert "rate 3/60s" in blob  # constraint surfaced via presentation
+
+
+def test_status_lines_clean_session_no_caps() -> None:
+    lines = status_lines({"label_set": [], "capability_set": []})
+    blob = _plain(lines)
+    assert "clean" in blob
+    assert "capabilities (0)" in blob
+    assert "none" in blob

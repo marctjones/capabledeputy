@@ -92,10 +92,33 @@ def version() -> None:
 
 @app.command("tui")
 def tui_command() -> None:
-    """Launch the Textual TUI for live monitoring and approvals."""
+    """Launch the read-only Textual TUI for live monitoring and approvals."""
     from capabledeputy.tui.app import run
 
     run()
+
+
+@app.command("console")
+def console_command(
+    session_id: Annotated[
+        str,
+        typer.Argument(help="Session id to drive (see `capdep session list`)"),
+    ],
+) -> None:
+    """Unified TUI: drive the agent, monitor the live security state,
+    and grant approvals — one window, no second terminal."""
+    client = DaemonClient(default_socket_path())
+    try:
+        anyio.run(client.call, "ping", {})
+    except DaemonNotRunningError:
+        err_console.print(
+            "[red]daemon not running.[/red] start it with "
+            "[bold]capdep daemon start[/bold] and retry.",
+        )
+        raise typer.Exit(code=2) from None
+    from capabledeputy.tui.console import run
+
+    run(session_id)
 
 
 @app.command("dry-run")
