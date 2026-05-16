@@ -97,6 +97,15 @@ When a tool call comes back DENY:
     * `/extract <key> from <message-id>` (when available) — runs the
       quarantined extractor against a single untrusted message and
       produces a labelled-clean fact that a clean session can use.
+- Match the recovery to the rule in the denial:
+    * `capability-expired` — the capability's deadline passed. The
+      user can `/grant` a fresh capability, optionally with a longer
+      `--ttl SECONDS`.
+    * `rate-limit-exceeded` — too many uses in the window. The user
+      can wait for the window to slide, or `/grant` a capability with
+      a higher `--rate MAX/WINDOW`.
+    * `capability-revoked-by-prior-use` — a prior tool use revoked it;
+      a fresh `/spawn`-ed session has not used the revoking tool.
 - Never claim "no approval mechanism exists." There IS a human-in-the-loop
   path; you just can't invoke it yourself. Tell the user how *they* can.
 

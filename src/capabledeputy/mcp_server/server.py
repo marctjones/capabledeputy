@@ -30,6 +30,25 @@ Spec leverage (per modelcontextprotocol.io/specification/2025-11-25):
     than running a separate `capdep approval approve` command.
   - Log notifications mirror policy decisions so host UIs surface
     them in real time.
+
+Known boundary (v0.7 audit, documented not silently drifting):
+  - In-flow *elicitation* (offer-to-approve without leaving the tool
+    call) is intentionally scoped to `email.send` / SEND_EMAIL via a
+    manual `approval.submit`. It predates server-side chokepoint
+    approval registration (the daemon now auto-registers approvals and
+    the outcome carries `approval_id`). It does NOT yet offer in-flow
+    approval for the other now-approvable actions (purchase,
+    destructive ops). Generalising it to consume `approval_id`
+    uniformly is a scoped follow-up — deferred because the MCP stdio
+    surface has no integration tests (same posture as the Textual
+    apps); rushing an under-tested change to an external approval path
+    is the larger risk.
+  - All denials (including the v0.7 rules capability-expired /
+    rate-limit-exceeded / capability-revoked-by-prior-use) DO surface
+    to the host as an isError tool result carrying rule + reason +
+    the shared deterministic recovery hint. Enforcement is unaffected
+    — the daemon's `decide()` is the chokepoint; this proxy only
+    relays decisions.
 """
 
 from __future__ import annotations
@@ -46,6 +65,7 @@ from mcp.server.stdio import stdio_server
 
 from capabledeputy.ipc.client import DaemonClient
 from capabledeputy.ipc.socket_path import default_socket_path
+from capabledeputy.presentation import DENY_RECOVERY
 
 SERVER_NAME = "capdep"
 
@@ -285,6 +305,14 @@ async def dispatch_tool(
         rule = result.get("rule") or "no_rule"
         reason = result.get("reason") or ""
         text = f"policy denied (decision={result['decision']}, rule={rule}): {reason}"
+        # Surface the same deterministic operator recovery the REPL /
+        # TUI / console show (shared, tested presentation.DENY_RECOVERY)
+        # so MCP hosts get actionable guidance for the v0.7 rules
+        # (capability-expired / rate-limit-exceeded / revoked) too —
+        # not just an opaque denial.
+        recovery = DENY_RECOVERY.get(rule)
+        if recovery:
+            text += f"  [recover: {recovery}]"
         meta: dict[str, Any] = {
             "io.capabledeputy/decision": result["decision"],
             "io.capabledeputy/rule": rule,
