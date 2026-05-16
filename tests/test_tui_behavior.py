@@ -6,31 +6,10 @@ socket, no new dependency."""
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from typing import Any
 
 from capabledeputy.tui.app import ApprovalDetailScreen, CapDepTUI
 from capabledeputy.tui.console import CapDepConsole
-
-
-class _FakeClient:
-    def __init__(self, responses: dict[str, Any]) -> None:
-        self._responses = responses
-        self.calls: list[tuple[str, dict[str, Any] | None]] = []
-
-    async def call(
-        self, method: str, params: dict[str, Any] | None = None,
-    ) -> Any:
-        self.calls.append((method, params))
-        return self._responses.get(method, {})
-
-    async def subscribe(self, streams: list[str]) -> AsyncIterator[dict]:
-        async def _empty() -> AsyncIterator[dict]:
-            return
-            yield  # pragma: no cover
-
-        return _empty()
-
 
 _SID = "abcd1234-0000-0000-0000-000000000000"
 _SESSION = {
@@ -52,9 +31,9 @@ async def _settle(pilot: Any, n: int = 6) -> None:
         await pilot.pause()
 
 
-async def test_console_submit_reaches_daemon_and_renders() -> None:
+async def test_console_submit_reaches_daemon_and_renders(fake_daemon) -> None:
     app = CapDepConsole(_SID)
-    app._client = _FakeClient(  # type: ignore[assignment]
+    app._client = fake_daemon(
         {
             "session.get": _SESSION,
             "session.send": {
@@ -74,9 +53,9 @@ async def test_console_submit_reaches_daemon_and_renders() -> None:
         assert len(app.query_one("#log", RichLog).lines) > before
 
 
-async def test_console_require_approval_opens_modal_then_approves() -> None:
+async def test_console_require_approval_opens_modal_then_approves(fake_daemon) -> None:
     app = CapDepConsole(_SID)
-    app._client = _FakeClient(  # type: ignore[assignment]
+    app._client = fake_daemon(
         {
             "session.get": _SESSION,
             "session.send": {
@@ -113,9 +92,9 @@ async def test_console_require_approval_opens_modal_then_approves() -> None:
         assert not isinstance(app.screen, ApprovalDetailScreen)
 
 
-async def test_console_deny_renders_recovery_hint() -> None:
+async def test_console_deny_renders_recovery_hint(fake_daemon) -> None:
     app = CapDepConsole(_SID)
-    app._client = _FakeClient(  # type: ignore[assignment]
+    app._client = fake_daemon(
         {
             "session.get": _SESSION,
             "session.send": {
@@ -142,9 +121,9 @@ async def test_console_deny_renders_recovery_hint() -> None:
         assert "recover" in text  # DENY_RECOVERY hint surfaced
 
 
-async def test_spectator_open_approval_and_approve() -> None:
+async def test_spectator_open_approval_and_approve(fake_daemon) -> None:
     app = CapDepTUI(poll_interval=999.0)
-    app._client = _FakeClient(  # type: ignore[assignment]
+    app._client = fake_daemon(
         {
             "session.list": {"sessions": []},
             "approval.list": {"approvals": [_APPROVAL]},
