@@ -80,6 +80,9 @@ select = [
 
 [tool.pyright]
 include = ["src", "tests"]
+# scripts/ is not type-checked (not in include) but is on extraPaths so
+# tests/test_policy_scripts.py can resolve the harness it imports.
+extraPaths = ["scripts"]
 exclude = ["**/__pycache__", "**/.venv"]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
