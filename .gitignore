@@ -42,6 +42,9 @@ state.db
 audit.jsonl
 *.sock
 
+# Agent-local config (machine-specific; speckit skills + local settings)
+.claude/
+
 # Secrets
 *.key
 *.KEY
