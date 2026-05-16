@@ -127,7 +127,11 @@ async def test_capability_kind_inferred_from_annotations() -> None:
         await adapter.register_tools(registry)
 
     assert registry.get("fakefs.read_file").capability_kind == CapabilityKind.READ_FS
-    assert registry.get("fakefs.write_file").capability_kind == CapabilityKind.WRITE_FS
+    # write_file carries destructiveHint AND a "write" name token: it must
+    # map to the GRANULAR MODIFY_FS (a destructive kind) so the policy
+    # engine's destructive-op gate fires. Mapping it to the legacy
+    # WRITE_FS union — the pre-WI-1 behavior — silently bypassed that gate.
+    assert registry.get("fakefs.write_file").capability_kind == CapabilityKind.MODIFY_FS
     assert registry.get("fakefs.fetch").capability_kind == CapabilityKind.WEB_FETCH
 
 
@@ -178,8 +182,98 @@ def test_infer_capability_kind_purchase_by_name() -> None:
     assert _infer_capability_kind(None, "checkout") == CapabilityKind.QUEUE_PURCHASE
 
 
-def test_infer_capability_kind_default_fallback() -> None:
-    assert _infer_capability_kind(None, "do_stuff") == CapabilityKind.READ_FS
+def test_infer_capability_kind_unclassifiable_returns_none() -> None:
+    # Pre-WI-1 this returned a permissive READ_FS default (fail open).
+    # It must now return None so the caller fails closed.
+    assert _infer_capability_kind(None, "do_stuff") is None
+
+
+def test_infer_capability_kind_destructive_maps_to_granular() -> None:
+    assert _infer_capability_kind(None, "delete_file") == CapabilityKind.DELETE_FS
+    assert _infer_capability_kind(None, "update_record") == CapabilityKind.MODIFY_FS
+    assert _infer_capability_kind(None, "create_doc") == CapabilityKind.CREATE_FS
+    assert _infer_capability_kind(None, "delete_event") == CapabilityKind.DELETE_CAL
+
+    destructive = mcp_types.ToolAnnotations(destructiveHint=True, readOnlyHint=False)
+    assert _infer_capability_kind(destructive, "apply") == CapabilityKind.MODIFY_FS
+
+
+def _build_unclassifiable_server() -> Server:
+    server: Server = Server("mystery-upstream")
+
+    @server.list_tools()
+    async def _list_tools() -> list[mcp_types.Tool]:
+        return [
+            mcp_types.Tool(
+                name="do_stuff",
+                description="Does unspecified stuff.",
+                inputSchema={"type": "object"},
+            ),
+        ]
+
+    @server.call_tool()
+    async def _call_tool(
+        name: str,
+        arguments: dict[str, Any] | None,
+    ) -> mcp_types.CallToolResult:
+        return mcp_types.CallToolResult(
+            content=[mcp_types.TextContent(type="text", text="ok")],
+            isError=False,
+        )
+
+    return server
+
+
+async def test_strict_mode_rejects_unclassifiable_tool() -> None:
+    server = _build_unclassifiable_server()
+    registry = ToolRegistry()
+    config = UpstreamServerConfig(name="mystery", command=("noop",))  # strict=True
+
+    async with create_connected_server_and_client_session(server) as session:
+        adapter = LabeledMcpAdapter(config=config, session=session)
+        names = await adapter.register_tools(registry)
+
+    assert names == []
+    assert "do_stuff" in adapter.rejected_tools
+    assert "mystery.do_stuff" not in registry
+
+
+async def test_non_strict_falls_back_to_read_fs() -> None:
+    server = _build_unclassifiable_server()
+    registry = ToolRegistry()
+    config = UpstreamServerConfig(
+        name="mystery",
+        command=("noop",),
+        strict=False,
+    )
+
+    async with create_connected_server_and_client_session(server) as session:
+        adapter = LabeledMcpAdapter(config=config, session=session)
+        await adapter.register_tools(registry)
+
+    assert adapter.rejected_tools == []
+    assert registry.get("mystery.do_stuff").capability_kind == CapabilityKind.READ_FS
+
+
+async def test_strict_mode_keeps_explicit_override() -> None:
+    server = _build_unclassifiable_server()
+    registry = ToolRegistry()
+    config = UpstreamServerConfig(
+        name="mystery",
+        command=("noop",),
+        tool_overrides={
+            "do_stuff": UpstreamToolOverride(
+                capability_kind=CapabilityKind.READ_FS,
+            ),
+        },
+    )
+
+    async with create_connected_server_and_client_session(server) as session:
+        adapter = LabeledMcpAdapter(config=config, session=session)
+        await adapter.register_tools(registry)
+
+    assert registry.get("mystery.do_stuff").capability_kind == CapabilityKind.READ_FS
+    assert adapter.rejected_tools == []
 
 
 def test_parse_config_round_trip() -> None:
@@ -208,3 +302,6 @@ def test_parse_config_round_trip() -> None:
     assert parsed[0].command == ("uvx", "mcp-server-filesystem", "/tmp")
     assert parsed[0].tool_overrides["read_file"].capability_kind == CapabilityKind.READ_FS
     assert Label.UNTRUSTED_EXTERNAL in parsed[1].inherent_labels
+    # Fail-closed is the default posture.
+    assert parsed[0].strict is True
+    assert parsed[1].strict is True

@@ -33,6 +33,12 @@ class UpstreamServerConfig:
     inherent_labels: frozenset[Label] = field(default_factory=frozenset)
     tool_overrides: dict[str, UpstreamToolOverride] = field(default_factory=dict)
     isolation: ContainerIsolation | None = None
+    # Fail-closed by default: an upstream tool that cannot be confidently
+    # classified into a capability kind (no explicit override, no high-
+    # confidence inference) is REFUSED registration rather than silently
+    # granted a permissive default. Set strict=False only for trusted/
+    # legacy servers where best-effort inference is acceptable.
+    strict: bool = True
 
     def effective_command(self) -> tuple[str, ...]:
         """If isolation is configured, prepend the container runtime's
@@ -68,6 +74,7 @@ def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
                 inherent_labels=inherent_labels,
                 tool_overrides=overrides,
                 isolation=isolation,
+                strict=bool(entry.get("strict", True)),
             ),
         )
     return out

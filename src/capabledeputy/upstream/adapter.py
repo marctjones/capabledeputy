@@ -31,38 +31,62 @@ if TYPE_CHECKING:
     from mcp import ClientSession
 
 
+_DELETE_TOKENS = ("delete", "remove", "unlink", "rmdir", "destroy", "purge")
+_MODIFY_TOKENS = ("write", "update", "modify", "edit", "patch", "replace", "set", "append")
+_CREATE_TOKENS = ("create", "new", "add", "mkdir")
+
+
 def _infer_capability_kind(
     annotations: Any | None,
     name: str,
-) -> CapabilityKind:
-    """Best-effort mapping from upstream tool to capability kind.
+) -> CapabilityKind | None:
+    """Confidence-based mapping from an upstream tool to a capability
+    kind. Returns the kind ONLY when the tool is confidently
+    classifiable; returns ``None`` when it is not, so the caller can
+    fail closed (strict) or fall back (non-strict).
 
-    Hints used:
-      - readOnlyHint=True ⇒ READ_FS (could refine: WEB_FETCH if name
-        matches fetch/get patterns).
-      - destructiveHint=True or writeRelated names ⇒ WRITE_FS.
-      - "send"/"email" ⇒ SEND_EMAIL.
-      - "fetch"/"web"/"http" ⇒ WEB_FETCH.
-      - "calendar" ⇒ CALENDAR_*.
-      - "purchase"/"buy" ⇒ QUEUE_PURCHASE.
-      - default fallback ⇒ READ_FS (safest).
+    Security-relevant choices:
+      - destructive/modify/delete names and ``destructiveHint`` map to
+        the GRANULAR destructive kinds (MODIFY_*/DELETE_*), never the
+        legacy ``WRITE_FS`` union — otherwise the policy engine's
+        destructive-op gate would be silently bypassed.
+      - an unrecognised tool returns ``None`` (no permissive default).
     """
     lowered = name.lower()
-    if any(token in lowered for token in ("send", "email", "mail")):
+    read_only = annotations is not None and getattr(annotations, "readOnlyHint", False)
+    destructive = annotations is not None and getattr(
+        annotations,
+        "destructiveHint",
+        False,
+    )
+
+    if any(t in lowered for t in ("send", "email", "mail")):
         return CapabilityKind.SEND_EMAIL
-    if any(token in lowered for token in ("fetch", "web", "http", "url")):
+    if any(t in lowered for t in ("fetch", "web", "http", "url", "browse")):
         return CapabilityKind.WEB_FETCH
-    if "calendar" in lowered:
-        if annotations is not None and getattr(annotations, "readOnlyHint", False):
-            return CapabilityKind.CALENDAR_READ
-        return CapabilityKind.CALENDAR_WRITE
-    if any(token in lowered for token in ("purchase", "buy", "checkout")):
+    if any(t in lowered for t in ("purchase", "buy", "checkout", "order")):
         return CapabilityKind.QUEUE_PURCHASE
-    if annotations is not None and getattr(annotations, "readOnlyHint", False):
+
+    if "calendar" in lowered or "event" in lowered:
+        if read_only:
+            return CapabilityKind.CALENDAR_READ
+        if any(t in lowered for t in _DELETE_TOKENS):
+            return CapabilityKind.DELETE_CAL
+        if any(t in lowered for t in _CREATE_TOKENS):
+            return CapabilityKind.CREATE_CAL
+        if destructive or any(t in lowered for t in _MODIFY_TOKENS):
+            return CapabilityKind.MODIFY_CAL
+        return None
+
+    if any(t in lowered for t in _DELETE_TOKENS):
+        return CapabilityKind.DELETE_FS
+    if any(t in lowered for t in _CREATE_TOKENS):
+        return CapabilityKind.CREATE_FS
+    if destructive or any(t in lowered for t in _MODIFY_TOKENS):
+        return CapabilityKind.MODIFY_FS
+    if read_only or any(t in lowered for t in ("read", "get", "list", "search", "find")):
         return CapabilityKind.READ_FS
-    if annotations is not None and getattr(annotations, "destructiveHint", False):
-        return CapabilityKind.WRITE_FS
-    return CapabilityKind.READ_FS
+    return None
 
 
 def _extract_labels(annotations_meta: dict[str, Any] | None) -> frozenset[Label]:
@@ -91,10 +115,17 @@ class LabeledMcpAdapter:
         self._config = config
         self._session = session
         self._registered_names: list[str] = []
+        self._rejected_tools: list[str] = []
 
     @property
     def name(self) -> str:
         return self._config.name
+
+    @property
+    def rejected_tools(self) -> list[str]:
+        """Upstream tools refused registration under strict mode
+        (unclassifiable, no override). Surfaced for audit/observability."""
+        return list(self._rejected_tools)
 
     async def register_tools(self, registry: ToolRegistry) -> list[str]:
         """Discover upstream tools and register wrappers; return registered names."""
@@ -103,14 +134,26 @@ class LabeledMcpAdapter:
             name = f"{self._config.name}.{upstream_tool.name}"
             override = self._config.tool_overrides.get(upstream_tool.name)
 
-            kind = (
-                override.capability_kind
-                if override and override.capability_kind
-                else _infer_capability_kind(
+            kind: CapabilityKind | None
+            if override and override.capability_kind:
+                kind = override.capability_kind
+            else:
+                kind = _infer_capability_kind(
                     upstream_tool.annotations,
                     upstream_tool.name,
                 )
-            )
+
+            if kind is None:
+                # Not confidently classifiable and no explicit override.
+                if self._config.strict:
+                    # Fail closed: refuse to register. An unmapped tool
+                    # is unavailable, never silently granted READ_FS.
+                    self._rejected_tools.append(upstream_tool.name)
+                    continue
+                # Legacy/trusted server opted out of strict: most-
+                # restrictive fallback (read), not write/exec.
+                kind = CapabilityKind.READ_FS
+
             additional = override.additional_labels if override else frozenset()
             inherent = (
                 self._config.inherent_labels | additional | _extract_labels(upstream_tool.meta)
