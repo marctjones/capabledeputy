@@ -118,3 +118,72 @@ def test_two_tenants_with_distinct_compartments() -> None:
     )
     assert alice_decision.decision == Decision.REQUIRE_APPROVAL
     assert alice_decision.rule == "financial-meets-purchase"
+
+
+# --- Time/rate constraints enforce under the multi-tenant engine --------
+
+from datetime import UTC, datetime, timedelta  # noqa: E402
+from uuid import UUID  # noqa: E402
+
+from capabledeputy.policy.capabilities import RateLimit  # noqa: E402
+
+_MT_NOW = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
+_MT_AID = "33333333-3333-3333-3333-333333333333"
+
+
+def test_expired_capability_denies_under_multi_tenant() -> None:
+    alice = Tenant(id="alice")
+    tls = frozenset({TenantLabel(Label.TRUSTED_USER_DIRECT, alice)})
+    cap = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*", expires_at=_MT_NOW,
+    )
+    action = Action(kind=CapabilityKind.READ_FS, target="/x")
+    d = decide_multi_tenant(
+        tls, frozenset({cap}), action,
+        target_tenant=alice, now=_MT_NOW + timedelta(seconds=1),
+    )
+    assert d.decision == Decision.DENY
+    assert d.per_tenant[alice].rule == "capability-expired"
+
+
+def test_future_deadline_allows_under_multi_tenant() -> None:
+    alice = Tenant(id="alice")
+    tls = frozenset({TenantLabel(Label.TRUSTED_USER_DIRECT, alice)})
+    cap = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*",
+        expires_at=_MT_NOW + timedelta(hours=1),
+    )
+    action = Action(kind=CapabilityKind.READ_FS, target="/x")
+    d = decide_multi_tenant(
+        tls, frozenset({cap}), action, target_tenant=alice, now=_MT_NOW,
+    )
+    assert d.decision == Decision.ALLOW
+
+
+def test_rate_limit_enforced_under_multi_tenant() -> None:
+    alice = Tenant(id="alice")
+    tls = frozenset({TenantLabel(Label.TRUSTED_USER_DIRECT, alice)})
+    cap = Capability(
+        kind=CapabilityKind.READ_FS, pattern="*",
+        audit_id=UUID(_MT_AID),
+        rate_limit=RateLimit(max_uses=1, window_seconds=3600),
+    )
+    action = Action(kind=CapabilityKind.READ_FS, target="/x")
+    uses = {_MT_AID: (_MT_NOW - timedelta(seconds=1),)}
+    d = decide_multi_tenant(
+        tls, frozenset({cap}), action,
+        target_tenant=alice, now=_MT_NOW, cap_uses=uses,
+    )
+    assert d.decision == Decision.DENY
+    assert d.per_tenant[alice].rule == "rate-limit-exceeded"
+
+
+def test_multi_tenant_without_now_is_backward_compatible() -> None:
+    """Omitting now/cap_uses keeps prior behavior (non-expiring,
+    unlimited) — existing callers unaffected."""
+    alice = Tenant(id="alice")
+    tls = frozenset({TenantLabel(Label.TRUSTED_USER_DIRECT, alice)})
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    action = Action(kind=CapabilityKind.READ_FS, target="/x")
+    d = decide_multi_tenant(tls, frozenset({cap}), action, target_tenant=alice)
+    assert d.decision == Decision.ALLOW

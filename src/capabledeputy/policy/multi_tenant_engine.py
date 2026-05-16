@@ -11,11 +11,18 @@ decisions:
 
 A `target_tenant` parameter scopes the action to one tenant; if you
 ask "send email *as bob*", only Bob's labels can authorize the egress.
+
+The decision clock (`now`) and per-capability use log (`cap_uses`)
+are threaded through to every per-tenant `decide()` so time-bounded
+and rate-limited capabilities enforce identically under the
+multi-tenant engine — enforcement is uniform, not single-tenant-only
+(Principle I).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from capabledeputy.policy.actions import Action
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
@@ -44,6 +51,8 @@ def decide_multi_tenant(
     *,
     target_tenant: Tenant | None = None,
     used_kinds: frozenset[CapabilityKind] = frozenset(),
+    now: datetime | None = None,
+    cap_uses: dict[str, tuple[datetime, ...]] | None = None,
 ) -> MultiTenantDecision:
     """Run the policy engine per tenant and combine the results.
 
@@ -61,7 +70,12 @@ def decide_multi_tenant(
     for tenant in tenants:
         scoped_labels = labels_for_tenant(tenant_label_set, tenant)
         per_tenant[tenant] = decide(
-            scoped_labels, capabilities, action, used_kinds=used_kinds,
+            scoped_labels,
+            capabilities,
+            action,
+            used_kinds=used_kinds,
+            now=now,
+            cap_uses=cap_uses,
         )
 
     if any(d.decision == Decision.DENY for d in per_tenant.values()):
