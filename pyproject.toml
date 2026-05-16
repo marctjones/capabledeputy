@@ -28,7 +28,11 @@ dependencies = [
     "rich>=13.7",
     "litellm>=1.50",
     "mcp>=1.0",
-    "textual>=0.85",
+    # Pinned to a bounded range: SVG snapshot baselines
+    # (tests/__snapshots__) are sensitive to Textual's renderer; a
+    # major bump would churn them. Widen deliberately, with a
+    # --snapshot-update + visual re-review.
+    "textual>=8.2,<9",
     "pyyaml>=6.0.3",
     "prompt-toolkit>=3.0",
 ]
@@ -45,6 +49,7 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "pytest-cov>=5.0",
+    "pytest-textual-snapshot>=1.0",
     "ruff>=0.7",
     "pyright>=1.1.385",
     "hypothesis>=6.115",
@@ -94,6 +99,7 @@ asyncio_mode = "auto"
 markers = [
     "slow: marks tests as slow",
     "integration: marks tests as integration tests",
+    "snapshot: visual SVG regression (brittle across Textual bumps; isolate with -m 'not snapshot')",
 ]
 
 [tool.coverage.run]
