@@ -1,30 +1,35 @@
 <!--
 SYNC IMPACT REPORT
-Version change: (unratified template) → 1.0.0
-Bump rationale: MAJOR — initial ratification; first set of binding
-principles established for the project.
+Version change: 1.0.0 → 1.1.0
+Bump rationale: MINOR — two new binding principles added (VI, VII); no
+existing principle removed or redefined.
 
-Modified principles: none (initial adoption)
+Modified principles: none redefined.
 Added sections:
-  - Core Principles I–V (concrete, replacing template placeholders)
-  - Security & Architecture Constraints (replaces [SECTION_2_NAME])
-  - Development Workflow & Quality Gates (replaces [SECTION_3_NAME])
-  - Governance (filled)
-Removed sections: none
+  - Principle VI. Fail-Closed by Default (NON-NEGOTIABLE)
+  - Principle VII. Secure-by-Reduction; Owned Policy TCB
+  - Security & Architecture Constraints: one bullet on substrate-behind-
+    ports added to operationalize Principle VII.
+Removed sections: none.
+
+Governance updated: compliance check now resolves against Principles
+I–VII; NON-NEGOTIABLE set expanded to (I, III, V, VI).
 
 Templates requiring updates:
   - .specify/templates/plan-template.md — ✅ reviewed; "Constitution
-    Check" gate now resolves against Principles I–V (no edit needed;
-    plan.md for 001 already records the N/A→ratified transition)
-  - .specify/templates/spec-template.md — ✅ reviewed; no mandatory
-    section changes implied by these principles
-  - .specify/templates/tasks-template.md — ✅ reviewed; test-first and
-    observability task types already representable
+    Check" gate references the constitution generically (Principles
+    I–N), resolves against I–VII with no structural edit.
+  - .specify/templates/spec-template.md — ✅ reviewed; no new mandatory
+    section implied (fail-closed/reduction are realized in plan + tests,
+    not a spec section).
+  - .specify/templates/tasks-template.md — ✅ reviewed; fail-closed and
+    invariant-test task types already representable under Principle III.
   - .claude/skills/speckit-*/ command files — ✅ reviewed; generic
-    guidance, no constitution-specific references to update
+    guidance, no constitution-specific references to update.
 
-Follow-up TODOs: none. RATIFICATION_DATE set to project working date
-2026-05-15 (first adoption; no earlier embedded constitution existed).
+Follow-up TODOs: none. before_constitution git hook
+(speckit.git.initialize) intentionally NOT executed — repo already a
+git repository with history (consistent with prior project decisions).
 -->
 
 # CapableDeputy Constitution
@@ -101,6 +106,45 @@ unblocking, or persuading its way past policy.
 **Rationale**: "Human oversight" is only meaningful if the human sees
 exactly what will happen and the model cannot route around the human.
 
+### VI. Fail-Closed by Default (NON-NEGOTIABLE)
+
+At every point where external or untrusted input is mapped to
+authority — upstream MCP tool → capability-kind mapping, information-
+flow label assignment, sensitivity/context resolution, classification
+of unknown data — the system MUST refuse, or assume the
+most-restrictive outcome, whenever it cannot confidently and
+deterministically classify the input. Permissive defaults (e.g. an
+unclassifiable tool silently receiving a usable capability, unknown
+data treated as unlabeled) are prohibited. An unmapped or ambiguous
+input is unavailable, never best-effort-allowed. This property MUST be
+proven by a CI-enforced test (the refusal must fail the build if it
+regresses to fail-open).
+
+**Rationale**: Fail-open is how structural security quietly becomes
+theatre — one permissive default routes around every other principle.
+WI-1 made this real in the upstream adapter; it MUST NOT regress, and
+the same discipline binds all future adapter/label/classification
+work.
+
+### VII. Secure-by-Reduction; Owned Policy TCB
+
+CapableDeputy is deliberately a less-capable, secure alternative — not
+a feature-parity agent. Where a capability cannot be safely and
+deterministically enforced, the capability is cut, not shipped with a
+weaker control. The deterministic policy engine and information-flow
+model are the project's owned trusted computing base (TCB): they MUST
+be implemented and maintained in-repo and MUST NOT be delegated to,
+or replaced by, a third-party control plane. External substrate
+(sandboxes, scanners, MCP servers, agent runtimes) MAY be leveraged
+only behind explicit, in-repo ports and MUST remain outside the TCB;
+adopting another project's enforcement/agent loop wholesale is
+prohibited.
+
+**Rationale**: Breadth bought with an unenforceable control is
+negative value here. Keeping the TCB small, owned, and reimplemented
+is what makes the security argument auditable; the moment the decision
+plane is someone else's churning code, the guarantee is unprovable.
+
 ## Security & Architecture Constraints
 
 - Enforcement lives at exactly one chokepoint; a second enforcement
@@ -117,6 +161,11 @@ exactly what will happen and the model cannot route around the human.
   explicitly justified.
 - Secrets MUST never be committed; credential material stays
   gitignored and is loaded at runtime, never embedded.
+- External substrate MUST be integrated only behind an explicit
+  in-repo port (e.g. a sandbox actuator, an admission labeler); the
+  port — not the third-party tool — is what the TCB depends on, so a
+  substrate swap never touches the policy engine (operationalizes
+  Principle VII).
 
 ## Development Workflow & Quality Gates
 
@@ -146,9 +195,9 @@ Report and a semantic version bump:
 - **PATCH**: clarification or wording that does not change meaning.
 
 Compliance is verified at change-review time: every change MUST be
-checkable against Principles I–V, and any deviation MUST be justified
-in writing against a simpler alternative or rejected. The
-NON-NEGOTIABLE principles (I, III, V) admit no deviation; a change
+checkable against Principles I–VII, and any deviation MUST be
+justified in writing against a simpler alternative or rejected. The
+NON-NEGOTIABLE principles (I, III, V, VI) admit no deviation; a change
 that cannot satisfy them MUST be redesigned, not waived.
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-15 | **Last Amended**: 2026-05-15
+**Version**: 1.1.0 | **Ratified**: 2026-05-15 | **Last Amended**: 2026-05-16
