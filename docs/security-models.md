@@ -65,6 +65,87 @@ remain the detail.
    capability, the capability is cut, not shipped with a weaker control
    (Constitution VII).
 
+## Coverage, Priorities & Known Gaps
+
+Three tiers of intent (Principle VIII). The point of stating these is
+discipline: **do not compromise a Priority model in order to chase a
+better-than-stated result on an Approximate one, and do not spend
+effort on a Not-Pursued model.**
+
+### Priority — implement faithfully; these are the backbone
+
+These are faithful *and* the most practical in real use; they MUST NOT
+be weakened to advance a lesser model.
+
+- **Reference Monitor** — the deterministic chokepoint is a faithful
+  reference monitor (always-invoked, tamperproof via LLM-isolation,
+  small/verifiable). Non-negotiable backbone.
+- **Object-capability** — unforgeable, scoped, attenuable authority; no
+  ambient authority. Faithful in the capability layer (planner-side
+  fidelity completes when flow-pattern ③ is first-class).
+- **Denning lattice information flow** — the everyday workhorse;
+  becomes a *genuine* lattice once v0.9 tiers (levels) × data-category
+  (compartments) land.
+- **Clark-Wilson (enforceable core)** — gated well-formed transactions
+  + separation of duty (human approval) + pattern ④ as the certified
+  TP. The *core* is faithful and practical for the change/integrity
+  path (the full formalism is Not-Pursued, below — these are distinct).
+- **Brewer-Nash** — conflict-rule engine; faithful and practical for
+  multi-tenant / conflict-of-interest.
+
+### Approximate — the approximation *is* the goal
+
+We target a defined approximation; exceeding it is explicitly **not**
+worth compromising a Priority model. The stated fidelity is the ceiling
+we design to, not a shortfall to keep closing.
+
+- **Bell-LaPadula → dynamic BLP.** Goal: tiers = levels, context
+  profile = clearance, tier→required-flow-pattern = no-write-down. We
+  do **not** pursue static certified clearances / formal *-property
+  (that is Not-Pursued). Missing to reach the goal: an explicit
+  max-tier clearance on the context profile + read-up refusal.
+- **Noninterference → intransitive (+ per-tier true NI).** Goal:
+  controlled-declassification NI globally, and *true* NI for
+  `restricted`/`prohibited` via patterns ③/④. Whole-system transitive
+  NI is Not-Pursued. Missing: first-class pattern ③ / sealed-effect
+  (else `restricted` falls back to ②, which is intransitive).
+- **Biba → one-direction integrity only (scoped).** Goal: the
+  "no write-up" direction via the provenance axis
+  (`untrusted-meets-egress`). We explicitly do **not** pursue full
+  Biba (integrity clearances + "no read-down"); the confidentiality
+  tiers do not address integrity — this is the most under-served model
+  and the easiest to wrongly assume covered.
+
+### Not Pursued — explicit non-goals (do not attempt)
+
+Documented so effort is never spent here and reviewers do not flag
+their absence as a defect:
+
+- **Whole-system transitive noninterference** — theoretically
+  incompatible with a useful agent; only the intransitive/per-unit form
+  (Approximate) is targeted.
+- **Full static MLS Bell-LaPadula** (certified clearances, formal
+  *-property) — conflicts with dynamic taint + open-registry + capability
+  design; the dynamic approximation is the substitute.
+- **Full Clark-Wilson formalism** (UDI/CDI/TP/IVP certification regime)
+  — heavyweight; the enforceable core (Priority) is the substitute.
+- **Full Biba** (integrity clearances + no-read-down) — not on the
+  roadmap; only the scoped one-direction approximation is targeted.
+- **General HRU / Take-Grant safety** — safety is undecidable; sidestepped
+  by the capability model by construction. Implementing it generally is
+  impossible, not merely hard.
+
+### Tracked missing mechanisms (planned work, by leverage)
+
+1. **Context-profile clearance** (max tier a principal/use-case may
+   handle + read-up refusal) → completes *dynamic BLP*.
+2. **First-class flow-pattern ③ / sealed-effect** → unlocks *true NI*
+   for `restricted`.
+3. **Integrity floor + "no read-down"** on the provenance axis → the
+   unaddressed *Biba* half (NOT solved by confidentiality tiers).
+4. **Formal lattice dominance/join in the engine** (replace ad-hoc
+   conflict-rule pairs) → makes *Denning* fully faithful.
+
 ## How this is tracked
 
 - Adding/altering an enforcement mechanism MUST add or update a row
@@ -73,7 +154,7 @@ remain the detail.
   reviewable defect (candidate `/speckit-analyze` / constitution gate).
 - Detail and proofs live in `DESIGN.md` and `spec/CapableDeputy.tla`;
   governance lives in `.specify/memory/constitution.md` (Principles
-  I–VII). This file is the map between them.
+  I–VIII; VIII makes this map binding). This file is the map between them.
 - Applied companion: `docs/llm-flow-patterns.md` — the four
   operational patterns for how a planner LLM relates to labeled data
   (taint-tracking = the Denning row above; quarantine / reference-
