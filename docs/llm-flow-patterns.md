@@ -88,10 +88,53 @@ auto-escalates a session to pattern 2 or 4 once it carries any
 is available, and hides raw-data readers from the planner. Pattern
 choice is therefore policy-driven, not model-chosen.
 
+## Multistep Composition & Incompatibilities
+
+A multistep flow = multiple LLM passes, possibly different patterns per
+step, sequential or parallel, possibly sharing a session/label space.
+Most model failures are *composition* failures, not single-step ones.
+The following are **invariants** — a flow that violates one is a
+reviewable defect (Principle VIII), not a tuning choice.
+
+1. **Noninterference is per-step only.** It does not compose upward —
+   chained ②/③ declassifications leak at least as much as any single
+   one. Never assert whole-flow NI; only a sealed unit may claim it.
+2. **MLS-strict work is a sealed sub-session.** Static-MLS-BLP requires
+   tranquility (fixed levels/clearances) and is incompatible with
+   dynamic Denning taint in the *same* label space. Run it isolated;
+   declassify its output (②/③) back to the dynamic world.
+3. **Declassification markers are scoped, not sticky.** A `releasable`
+   (or any positive declassification) label MUST NOT survive a later
+   re-taint of the same session; it is consumed/scoped to the step
+   that produced it.
+4. **Integrity-critical steps precede untrusted declassification.** A
+   Biba-floor (pattern ④/⑤ integrity) step MUST run *before* any
+   untrusted-derived/declassified input could reach it — ordering is a
+   correctness constraint: a floor step after such a step reads down.
+5. **Parallel declassification to a shared sink needs an aggregate
+   budget.** Two concurrently within-schema-bound ② extractions can
+   jointly exceed intended disclosure (NI parallel-composition /
+   aggregation failure). Concurrent declassifications toward one egress
+   MUST share a disclosure budget.
+6. **Brewer-Nash requires global conflict state.** Independent parallel
+   sessions each individually clean can jointly span a conflict set;
+   Chinese Wall is sound only with a shared/serialized accessed-
+   compartment ledger across all concurrent passes.
+
+Per-datum vs. across-data: patterns ① and ③ are mutually exclusive for
+the *same* value in concurrent passes (expose vs. hide), but
+complementary across *different* data in one flow. Reference Monitor
+holds under concurrency **iff** every parallel pass still funnels
+through the single `decide()` chokepoint.
+
+Best-flow-per-model and complementary pairs are tabulated in
+`docs/security-models.md` (Coverage section).
+
 ## Cross-reference
 
 Each pattern realizes a row in `docs/security-models.md` (patterns 2–4
 are noninterference *declassification* variants; pattern 1 is the
 Denning lattice mechanism). New flow patterns MUST be added here and
 cross-linked to their model row there; pattern 3's gap is tracked as
-planned work until it is a documented first-class mechanism.
+planned work until it is a documented first-class mechanism. The six
+composition invariants above are enforced as cross-step review checks.

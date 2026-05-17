@@ -135,6 +135,33 @@ their absence as a defect:
   by the capability model by construction. Implementing it generally is
   impossible, not merely hard.
 
+### Salvageable as isolated modes (candidate, scoped — not global)
+
+A model impractical *globally* can be faithful *locally* when a step is
+isolated from the models it conflicts with. These are **candidate
+opt-in modes**, distinct from the global "Not Pursued" stance above;
+each MUST obey the composition invariants in
+`docs/llm-flow-patterns.md` (esp. #2 sealed sub-session, #4 ordering):
+
+- **Per-step Biba ("integrity-protected transaction")** — a pattern
+  ④/⑤ step enforcing an integrity floor on its inputs (refuse any input
+  whose provenance < trusted; no read-down within the step). Faithful
+  Biba *within the step*. Highest-value of the three; closes the
+  integrity gap locally without global integrity clearances.
+- **Sealed MLS Bell-LaPadula ("classified session")** — a sub-session
+  with a frozen label set + fixed principal clearance + no dynamic
+  relabel; output declassified (②/③) back to the dynamic world.
+  Practical **only** if never mixed concurrently with dynamic taint
+  (invariant #2).
+- **Certified-transaction Clark-Wilson** — only pre-registered
+  (hash-allowlisted) ④ programs may mutate CDIs, with post-condition
+  IVP checks; approaches the full formalism if a program-certification
+  registry is added.
+
+*Not* salvageable by any mode/flow: whole-system transitive NI and
+general HRU/Take-Grant safety (theoretical impossibilities, restated
+above) — no multistep trick changes this.
+
 ### Tracked missing mechanisms (planned work, by leverage)
 
 1. **Context-profile clearance** (max tier a principal/use-case may
