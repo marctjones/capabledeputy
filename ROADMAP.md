@@ -267,3 +267,26 @@ high-leverage in v0.1.
 - YubiKey PIV / FIDO2 backend body.
 - Mechanized proofs of label monotonicity and capability
   unforgeability in Coq/Lean.
+
+## v0.7+ — Secure-alternative hardening  ·  **DONE** (WI-1..WI-4)
+
+Project thesis sharpened this period: CapableDeputy is a deliberately
+less-capable, **secure OpenClaw alternative** (not an OpenClaw layer,
+not a feature-parity agent) — comparison set is NemoClaw / DefenseClaw,
+not OpenClaw. Codified as Constitution v1.1.0 Principles VI (Fail-Closed
+by Default, NON-NEGOTIABLE) and VII (Secure-by-Reduction; Owned TCB).
+
+| Item | Status | Commit |
+|---|---|---|
+| WI-1 fail-closed upstream MCP adapter (strict default, granular destructive mapping, `rejected_tools`) | DONE | `f464cf6` |
+| WI-2 curated MCP catalog (`configs/curated/`: official + Slack + Google Workspace, all strict/isolated) | DONE | `b017f96` |
+| WI-3 tasks/reminders stub + business-workflow scenario pack (incl. flagship injection→exfil block) | DONE | `66ab4c0` |
+| WI-4 daemon `--config`/`CAPDEP_CONFIG` upstream wiring; real `mcp-server-fetch` verified e2e | DONE | `2600391` |
+| Constitution v1.1.0 (Principles VI, VII) | DONE | `a0a1648` |
+
+Substrate ports (`SandboxActuator`, `AdmissionLabeler`) and a jailed
+tiered EXECUTE tool (WI-5) are deferred; OpenShell/CodeGuard are
+leveraged only behind those ports (Constitution VII). The v0.9
+labeling-framework design is captured in `docs/design-v0.9-labeling.md`
+(not yet `/speckit-specify`'d — active feature is delegation chains,
+`specs/002-`).
