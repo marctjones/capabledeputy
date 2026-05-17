@@ -1,0 +1,41 @@
+# Curated upstream config — Slack official MCP server.
+#
+# Producer: Slack (official server, launched Feb 2026). Well regarded.
+#
+# Label rationale:
+#   - Messages authored by OTHER people are untrusted.external (the
+#     prompt-injection vector). Read tools therefore taint the session,
+#     so the untrusted-meets-egress rule then blocks forwarding that
+#     content outward without an explicit declassifier.
+#   - Posting/sending is an egress action: mapped to SEND_EMAIL so the
+#     same egress conflict rules (financial-meets-email, etc.) apply.
+#     There is no Slack-specific capability kind by design — egress is
+#     egress; the channel is irrelevant to the policy.
+#
+# Verify `command:` against Slack's current docs before use.
+
+upstream_servers:
+  - name: slack
+    command: ["npx", "-y", "@slack/mcp-server"]
+    strict: true
+    inherent_labels:
+      - untrusted.external
+    tool_overrides:
+      # Reads: classify as READ_FS; inherent untrusted.external above
+      # already taints the session with relayed third-party content.
+      list_channels:        { capability_kind: READ_FS }
+      get_channel_history:  { capability_kind: READ_FS }
+      get_thread_replies:   { capability_kind: READ_FS }
+      get_users:            { capability_kind: READ_FS }
+      search_messages:      { capability_kind: READ_FS }
+      # Egress: posting a message leaves the trust boundary.
+      post_message:         { capability_kind: SEND_EMAIL }
+      reply_to_thread:      { capability_kind: SEND_EMAIL }
+      add_reaction:         { capability_kind: SEND_EMAIL }
+    isolation:
+      image: docker.io/library/node:22-slim
+      network: bridge
+      allowed_hosts:
+        - "slack.com:127.0.0.1"
+        - "www.slack.com:127.0.0.1"
+      memory: "256m"

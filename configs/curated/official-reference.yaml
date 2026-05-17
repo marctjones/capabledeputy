@@ -1,0 +1,114 @@
+# Curated upstream config — official / reference MCP servers.
+#
+# Producers: the modelcontextprotocol reference servers (filesystem,
+# fetch, git, time, memory). Highly regarded, low supply-chain risk.
+#
+# Security posture (every server below):
+#   - strict: true       -> a tool that is neither explicitly overridden
+#                            nor confidently classifiable is REFUSED
+#                            registration (see adapter.rejected_tools).
+#                            That rejection list IS the admission step:
+#                            review it, then add an explicit override
+#                            for anything you intend to allow.
+#   - explicit overrides  -> security-critical tools (write/edit/delete/
+#                            commit/push) are pinned to the GRANULAR
+#                            destructive capability kinds so the policy
+#                            engine's destructive-op gate fires.
+#   - isolation           -> least-privilege container: no network
+#                            unless the tool inherently needs it; scoped,
+#                            read-only volumes where possible.
+#
+# NOTE: `command:` lines are the canonical invocations at time of
+# writing. Verify each against the producer's current docs before use —
+# upstream packaging changes. The security fields below are what matter
+# and are stable regardless of launcher.
+
+upstream_servers:
+
+  # Local document access for drafting/research. Read-mostly: writes are
+  # pinned to granular kinds so the destructive-op gate engages.
+  - name: filesystem
+    command: ["uvx", "mcp-server-filesystem", "/data"]
+    strict: true
+    inherent_labels:
+      - confidential.personal
+    tool_overrides:
+      write_file:       { capability_kind: MODIFY_FS }
+      edit_file:        { capability_kind: MODIFY_FS }
+      move_file:        { capability_kind: MODIFY_FS }
+      create_directory: { capability_kind: CREATE_FS }
+      delete_file:      { capability_kind: DELETE_FS }
+    isolation:
+      image: docker.io/library/python:3.12-slim
+      network: none
+      volumes:
+        - host: /home/me/Documents
+          container: /data
+          ro: true
+      memory: "256m"
+      cpus: "0.5"
+
+  # Web research. All output is untrusted.external -> the engine's
+  # untrusted-meets-egress rule blocks exfiltration of fetched content.
+  - name: fetch
+    command: ["uvx", "mcp-server-fetch"]
+    strict: true
+    inherent_labels:
+      - untrusted.external
+    tool_overrides:
+      fetch: { capability_kind: WEB_FETCH }
+    isolation:
+      image: docker.io/library/python:3.12-slim
+      network: bridge
+      allowed_hosts:
+        - "REPLACE.with.api.host:127.0.0.1"
+      memory: "128m"
+
+  # Git over a project checkout. Reads classify by name; mutating ops
+  # are pinned so commits/pushes pass through the destructive gate.
+  - name: git
+    command: ["uvx", "mcp-server-git", "--repository", "/repo"]
+    strict: true
+    tool_overrides:
+      git_status:   { capability_kind: READ_FS }
+      git_diff:     { capability_kind: READ_FS }
+      git_log:      { capability_kind: READ_FS }
+      git_show:     { capability_kind: READ_FS }
+      git_add:      { capability_kind: MODIFY_FS }
+      git_commit:   { capability_kind: MODIFY_FS }
+      git_checkout: { capability_kind: MODIFY_FS }
+      git_create_branch: { capability_kind: CREATE_FS }
+    isolation:
+      image: docker.io/library/python:3.12-slim
+      network: none
+      volumes:
+        - host: /home/me/projects/scratch
+          container: /repo
+          ro: false
+      memory: "256m"
+
+  # Time helpers. Pure-compute, read-only, no network, no volumes.
+  - name: time
+    command: ["uvx", "mcp-server-time"]
+    strict: true
+    isolation:
+      image: docker.io/library/python:3.12-slim
+      network: none
+      memory: "64m"
+
+  # Knowledge-graph memory. Create/delete pinned to granular kinds.
+  - name: memory
+    command: ["uvx", "mcp-server-memory"]
+    strict: true
+    tool_overrides:
+      create_entities:     { capability_kind: CREATE_FS }
+      create_relations:    { capability_kind: CREATE_FS }
+      add_observations:    { capability_kind: MODIFY_FS }
+      delete_entities:     { capability_kind: DELETE_FS }
+      delete_relations:    { capability_kind: DELETE_FS }
+      delete_observations: { capability_kind: DELETE_FS }
+      open_nodes:          { capability_kind: READ_FS }
+    isolation:
+      image: docker.io/library/python:3.12-slim
+      network: none
+      memory: "128m"

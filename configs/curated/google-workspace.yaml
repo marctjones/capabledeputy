@@ -1,0 +1,82 @@
+# Curated upstream config — Google Workspace (Gmail / Calendar / Tasks).
+#
+# Producer: COMMUNITY / PREVIEW. The official Google Workspace MCP is in
+# Developer Preview; the widely-used community implementation is
+# taylorwilsdon/google_workspace_mcp. This is NOT an official-tier
+# producer, so it carries supply-chain risk.
+#
+# That risk is exactly why this config is the strongest-locked one:
+#   - strict: true              -> unmapped tools refused (admission).
+#   - explicit overrides on     -> every send/create/modify/delete is
+#     every mutating/egress tool    pinned; nothing destructive relies
+#                                   on inference.
+#   - isolation network allowlist to Google API hosts only.
+#   - OAuth scoping is the producer's job; do it least-privilege.
+#
+# Inbound mail/calendar content originates from third parties ->
+# untrusted.external, so the engine blocks exfiltration of it and the
+# regulated-data conflict rules apply when it is personal/financial.
+#
+# Verify `command:` and OAuth setup against the producer's current docs.
+
+upstream_servers:
+  - name: gmail
+    command: ["uvx", "workspace-mcp", "--tools", "gmail"]
+    strict: true
+    inherent_labels:
+      - untrusted.external
+      - confidential.personal
+    tool_overrides:
+      search_gmail_messages: { capability_kind: READ_FS }
+      get_gmail_message:     { capability_kind: READ_FS }
+      list_gmail_labels:     { capability_kind: READ_FS }
+      send_gmail_message:    { capability_kind: SEND_EMAIL }
+      draft_gmail_message:   { capability_kind: MODIFY_FS }
+      modify_gmail_labels:   { capability_kind: MODIFY_FS }
+      trash_gmail_message:   { capability_kind: DELETE_FS }
+    isolation:
+      image: docker.io/library/python:3.12-slim
+      network: bridge
+      allowed_hosts:
+        - "gmail.googleapis.com:127.0.0.1"
+        - "oauth2.googleapis.com:127.0.0.1"
+      memory: "256m"
+
+  - name: gcal
+    command: ["uvx", "workspace-mcp", "--tools", "calendar"]
+    strict: true
+    inherent_labels:
+      - confidential.personal
+    tool_overrides:
+      list_calendars:   { capability_kind: CALENDAR_READ }
+      list_events:      { capability_kind: CALENDAR_READ }
+      get_event:        { capability_kind: CALENDAR_READ }
+      create_event:     { capability_kind: CREATE_CAL }
+      modify_event:     { capability_kind: MODIFY_CAL }
+      delete_event:     { capability_kind: DELETE_CAL }
+    isolation:
+      image: docker.io/library/python:3.12-slim
+      network: bridge
+      allowed_hosts:
+        - "www.googleapis.com:127.0.0.1"
+        - "oauth2.googleapis.com:127.0.0.1"
+      memory: "256m"
+
+  - name: gtasks
+    command: ["uvx", "workspace-mcp", "--tools", "tasks"]
+    strict: true
+    inherent_labels:
+      - confidential.personal
+    tool_overrides:
+      list_tasks:   { capability_kind: READ_FS }
+      get_task:     { capability_kind: READ_FS }
+      create_task:  { capability_kind: CREATE_FS }
+      update_task:  { capability_kind: MODIFY_FS }
+      delete_task:  { capability_kind: DELETE_FS }
+    isolation:
+      image: docker.io/library/python:3.12-slim
+      network: bridge
+      allowed_hosts:
+        - "tasks.googleapis.com:127.0.0.1"
+        - "oauth2.googleapis.com:127.0.0.1"
+      memory: "128m"
