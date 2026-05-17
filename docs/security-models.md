@@ -187,3 +187,10 @@ above) — no multistep trick changes this.
   (taint-tracking = the Denning row above; quarantine / reference-
   substitution / code-mediated = the noninterference *declassification*
   rows). New flow patterns are tracked there and cross-link here.
+- Decision-layer companion: `docs/trust-model.md` — when/whether an
+  action proceeds and who authorizes it. It extends two rows here:
+  **Brewer-Nash** → purpose-as-category-admissibility (purpose-scoped
+  sessions exclude inadmissible categories — the inappropriate-context
+  defense ① cannot give); **Clark-Wilson** → reversibility-weighted
+  gating (replace the binary destructive-op gate; human-declared
+  recoverability). Both are v0.9-spec scope, capture-only.
