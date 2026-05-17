@@ -1,29 +1,28 @@
 <!--
 SYNC IMPACT REPORT
-Version change: 1.0.0 → 1.1.0
-Bump rationale: MINOR — two new binding principles added (VI, VII); no
+Version change: 1.1.0 → 1.2.0
+Bump rationale: MINOR — one new binding principle added (VIII); no
 existing principle removed or redefined.
 
 Modified principles: none redefined.
 Added sections:
-  - Principle VI. Fail-Closed by Default (NON-NEGOTIABLE)
-  - Principle VII. Secure-by-Reduction; Owned Policy TCB
-  - Security & Architecture Constraints: one bullet on substrate-behind-
-    ports added to operationalize Principle VII.
+  - Principle VIII. Model-Faithful Implementation; Deviations Documented
 Removed sections: none.
 
 Governance updated: compliance check now resolves against Principles
-I–VII; NON-NEGOTIABLE set expanded to (I, III, V, VI).
+I–VIII; NON-NEGOTIABLE set unchanged (I, III, V, VI) — VIII permits
+deviations, but the obligation to document them is non-waivable.
 
 Templates requiring updates:
   - .specify/templates/plan-template.md — ✅ reviewed; "Constitution
     Check" gate references the constitution generically (Principles
-    I–N), resolves against I–VII with no structural edit.
+    I–N), resolves against I–VIII with no structural edit.
   - .specify/templates/spec-template.md — ✅ reviewed; no new mandatory
-    section implied (fail-closed/reduction are realized in plan + tests,
+    section implied (model lineage lives in docs/security-models.md,
     not a spec section).
-  - .specify/templates/tasks-template.md — ✅ reviewed; fail-closed and
-    invariant-test task types already representable under Principle III.
+  - .specify/templates/tasks-template.md — ✅ reviewed; model-faithful
+    + deviation-doc task types already representable under Principle
+    III + Workflow gate.
   - .claude/skills/speckit-*/ command files — ✅ reviewed; generic
     guidance, no constitution-specific references to update.
 
@@ -145,6 +144,29 @@ negative value here. Keeping the TCB small, owned, and reimplemented
 is what makes the security argument auditable; the moment the decision
 plane is someone else's churning code, the guarantee is unprovable.
 
+### VIII. Model-Faithful Implementation; Deviations Documented
+
+Every enforcement mechanism MUST trace to a recognized formal security
+model (e.g. Denning lattice information flow, Bell-LaPadula, Biba,
+noninterference, Brewer-Nash, Clark-Wilson, object-capability,
+reference monitor). Mechanisms are implemented as faithfully to their
+model as practical; **deliberate deviations are permitted but MUST be
+recorded** — with rationale — in `docs/security-models.md` (and, for
+planner/data-flow patterns, `docs/llm-flow-patterns.md`). A mechanism
+with no model lineage, or a deviation from its model that is
+undocumented, is a reviewable defect that MUST be resolved (by adding
+the lineage/justification or redesigning), never silently accepted.
+
+The obligation to *document* the model and any deviation is
+non-waivable; the deviation itself remains an engineering judgment,
+subject to the simpler-alternative test like any other.
+
+**Rationale**: Ad-hoc security is unauditable and drifts. Anchoring
+each mechanism to a named model — and forcing every divergence to be
+written down where reviewers and `/speckit-analyze` can see it — keeps
+the system a *legible* implementation of established theory rather than
+a pile of plausible checks, and makes drift a detectable defect.
+
 ## Security & Architecture Constraints
 
 - Enforcement lives at exactly one chokepoint; a second enforcement
@@ -195,9 +217,11 @@ Report and a semantic version bump:
 - **PATCH**: clarification or wording that does not change meaning.
 
 Compliance is verified at change-review time: every change MUST be
-checkable against Principles I–VII, and any deviation MUST be
+checkable against Principles I–VIII, and any deviation MUST be
 justified in writing against a simpler alternative or rejected. The
 NON-NEGOTIABLE principles (I, III, V, VI) admit no deviation; a change
-that cannot satisfy them MUST be redesigned, not waived.
+that cannot satisfy them MUST be redesigned, not waived. Under
+Principle VIII a model deviation is permitted but its documentation in
+`docs/security-models.md` is non-waivable.
 
-**Version**: 1.1.0 | **Ratified**: 2026-05-15 | **Last Amended**: 2026-05-16
+**Version**: 1.2.0 | **Ratified**: 2026-05-15 | **Last Amended**: 2026-05-17
