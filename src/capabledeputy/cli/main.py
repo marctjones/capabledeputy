@@ -368,13 +368,32 @@ def daemon_start(
             ),
         ),
     ] = False,
+    config: Annotated[
+        str | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help=(
+                "Path to a daemon config file with an `upstream_servers:` "
+                "section (e.g. configs/curated/official-reference.yaml). "
+                "Those MCP servers are spawned for the daemon's lifetime "
+                "and their tools registered behind the policy engine, so "
+                "chat/console/tui see them automatically. Opt-in: omitted "
+                "= native tools only. Overrides CAPDEP_CONFIG."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Start the daemon in the foreground. Blocks until shutdown."""
+    from pathlib import Path
+
     console.print("[green]capdep daemon starting[/green]")
     if verbose:
         console.print("[dim]verbose RPC logging enabled[/dim]")
     if no_policy_preview:
         console.print("[dim]policy.preview tool disabled[/dim]")
+    if config:
+        console.print(f"[dim]daemon config: {config}[/dim]")
     try:
         # None → run_daemon falls through to CAPDEP_POLICY_PREVIEW / default.
         # False → hard-disable (CLI flag wins over env).
@@ -382,6 +401,7 @@ def daemon_start(
             lambda: run_daemon(
                 verbose=verbose,
                 policy_preview=False if no_policy_preview else None,
+                config_path=Path(config) if config else None,
             ),
         )
     except KeyboardInterrupt:

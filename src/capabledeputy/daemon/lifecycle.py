@@ -24,6 +24,39 @@ from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
 from capabledeputy.llm.litellm_client import LiteLLMClient
 from capabledeputy.secrets import load_anthropic_api_key
+from capabledeputy.upstream.config import load_config_file
+from capabledeputy.upstream.manager import UpstreamManager
+
+
+def _resolve_daemon_config(config_path: Path | None) -> Path | None:
+    """Daemon config file resolution (opt-in, fail-soft).
+
+    Precedence: explicit arg > CAPDEP_CONFIG env. Returns the path only
+    if it exists; loading external MCP servers is a deliberate operator
+    action, never implicit, so an absent/unset config is silently no-op.
+    """
+    import os
+
+    raw = config_path or (
+        Path(os.environ["CAPDEP_CONFIG"]) if os.environ.get("CAPDEP_CONFIG") else None
+    )
+    if raw is None or not raw.is_file():
+        return None
+    return raw
+
+
+def _report_admission(manager: UpstreamManager) -> None:
+    """Surface the strict-mode admission outcome to the daemon log so
+    the operator can see which upstream tools were registered and which
+    were refused (the WI-1 fail-closed rejections)."""
+    import sys
+
+    for adapter in manager.adapters:
+        rejected = adapter.rejected_tools
+        line = f"[upstream] {adapter.name}: registered ok"
+        if rejected:
+            line += f"; REFUSED {len(rejected)} unclassified: {sorted(rejected)}"
+        print(line, file=sys.stderr)
 
 
 async def run_daemon(
@@ -33,6 +66,7 @@ async def run_daemon(
     model: str | None = None,
     verbose: bool = False,
     policy_preview: bool | None = None,
+    config_path: Path | None = None,
 ) -> None:
     import os
 
@@ -94,7 +128,20 @@ async def run_daemon(
 
     app.audit.subscribe(_relay_audit)
 
-    await daemon.serve()
+    # Opt-in: if a daemon config file with an `upstream_servers:` section
+    # is provided, spawn those MCP servers for the daemon's lifetime and
+    # register their (policy-gated, labeled) tools into the SAME
+    # app.registry every client uses — so capdep chat / console / tui see
+    # them automatically, already gated. Absent config -> native only.
+    resolved = _resolve_daemon_config(config_path)
+    upstream_configs = load_config_file(resolved) if resolved is not None else []
+
+    if upstream_configs:
+        async with UpstreamManager(upstream_configs, app.registry) as manager:
+            _report_admission(manager)
+            await daemon.serve()
+    else:
+        await daemon.serve()
 
 
 async def stop_daemon(socket_path: Path | None = None) -> bool:
