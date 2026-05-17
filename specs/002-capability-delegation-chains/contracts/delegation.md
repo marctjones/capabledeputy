@@ -53,9 +53,11 @@ inert(C) =
 - O(depth), depth ≤ configured max.
 - Composes with all v0.7 constraints; no constraint overrides another
   (Security & Architecture Constraint).
-- Pending approval whose authorizing capability is `inert` can no
-  longer be approved into an ALLOW (FR-008); emits
-  `capability.cascade_revoked`.
+- A pending approval is invalidated iff
+  `inert(approval.capability_requested)` — the existing
+  `ApprovalRequest.capability_requested` field is the authorizing
+  capability (no new linkage/field). Such an approval can no longer be
+  approved into an ALLOW (FR-008); emits `capability.cascade_revoked`.
 - Already-dispatched calls are **not** unwound (FR-009).
 
 ## C3 — `session.delegate` RPC (control-plane, operator/agent-trigger)

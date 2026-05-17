@@ -78,6 +78,15 @@ New `decide()` denial reason: **`capability-cascaded`** (distinct from
 so audit attributes *why* precisely — Security & Architecture
 Constraint on distinguishing reasons).
 
+**Pending-approval linkage (no new field).** An `ApprovalRequest`
+already carries `capability_requested: Capability | None` (the
+authorizing capability, which after this feature carries
+`parent_audit_id`/`depth`). FR-008 cascade-invalidation is therefore
+`inert(approval.capability_requested)` evaluated by the *same*
+provenance walk — no new approval→capability link, schema change, or
+foundational task is required. An approval whose `capability_requested`
+is `inert` can no longer be approved into an ALLOW.
+
 ## Audit Records (extended `EventType`)
 
 | Event | Emitted when | Payload |
