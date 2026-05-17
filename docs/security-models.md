@@ -74,3 +74,8 @@ remain the detail.
 - Detail and proofs live in `DESIGN.md` and `spec/CapableDeputy.tla`;
   governance lives in `.specify/memory/constitution.md` (Principles
   I–VII). This file is the map between them.
+- Applied companion: `docs/llm-flow-patterns.md` — the four
+  operational patterns for how a planner LLM relates to labeled data
+  (taint-tracking = the Denning row above; quarantine / reference-
+  substitution / code-mediated = the noninterference *declassification*
+  rows). New flow patterns are tracked there and cross-link here.
