@@ -23,6 +23,7 @@ import policy_deny  # noqa: E402
 import policy_engine_harness  # noqa: E402
 import policy_labels  # noqa: E402
 import policy_require_approval  # noqa: E402
+import policy_workflows  # noqa: E402
 from _policy_harness import Scenario, run_scenario  # noqa: E402
 
 _SUITES = (
@@ -32,6 +33,7 @@ _SUITES = (
     policy_require_approval,
     policy_constraints,
     policy_labels,
+    policy_workflows,
 )
 
 _CASES: list[tuple[str, Scenario]] = [(mod.__name__, sc) for mod in _SUITES for sc in mod.SCENARIOS]

@@ -21,6 +21,7 @@ import policy_deny
 import policy_engine_harness
 import policy_labels
 import policy_require_approval
+import policy_workflows
 from _policy_harness import run_suite
 
 SUITES = [
@@ -30,6 +31,7 @@ SUITES = [
     policy_require_approval,
     policy_constraints,
     policy_labels,
+    policy_workflows,
 ]
 
 

@@ -18,6 +18,7 @@ from capabledeputy.tools.native.inbox import Inbox, make_inbox_tools
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
 from capabledeputy.tools.native.policy_preview import make_policy_preview_tools
 from capabledeputy.tools.native.purchase import PurchaseQueue, make_purchase_tools
+from capabledeputy.tools.native.tasks import TaskStore, make_tasks_tools
 from capabledeputy.tools.native.web import WebMock, make_web_tools
 from capabledeputy.tools.registry import ToolRegistry
 
@@ -41,6 +42,7 @@ class App:
         self.calendar = CalendarStore()
         self.inbox = Inbox()
         self.web = WebMock()
+        self.tasks = TaskStore()
         self.approval_queue = ApprovalQueue(audit=self.audit)
         self.registry = ToolRegistry()
         self.tool_client = LabeledToolClient(
@@ -68,6 +70,8 @@ class App:
         for tool in make_inbox_tools(self.inbox):
             self.registry.register(tool)
         for tool in make_web_tools(self.web):
+            self.registry.register(tool)
+        for tool in make_tasks_tools(self.tasks):
             self.registry.register(tool)
         # policy.preview lets the agent dry-run a policy decision so it
         # can plan around gates. It is read-only and OFF the enforcement
