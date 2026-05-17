@@ -91,6 +91,10 @@ use log of `C.audit_id` **and** of each ancestor `audit_id` (walk
 `parent_audit_id` upward, O(depth)), each into the session that holds
 that capability. Idempotent per dispatch (exactly one timestamp per
 ancestor per granted call). Pure given `(now, chain)` — no LLM input.
+**Ended ancestor:** fan-out writes only to *live* ancestor sessions; an
+ended/absent ancestor makes the descendant `inert` at the next
+`decide()` (cascade rule) — its window is not persisted and absence is
+never read as "unlimited" (fail-closed, Constitution VI; research D8).
 
 ## Invariant tests (Constitution III)
 

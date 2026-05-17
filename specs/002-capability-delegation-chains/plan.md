@@ -49,7 +49,7 @@ cascade + fan-out bounded by depth
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-Constitution **v1.1.0** (Principles I–VII). Evaluated incl. FR-015/FR-016:
+Constitution **v1.2.0** (Principles I–VIII). Evaluated incl. FR-015/FR-016:
 
 - **I. Deterministic, LLM-Isolated (NON-NEGOTIABLE)** — derivation,
   cascade, and the pooled-use fan-out are pure functions of explicit
@@ -77,9 +77,21 @@ Constitution **v1.1.0** (Principles I–VII). Evaluated incl. FR-015/FR-016:
 - **VII. Secure-by-Reduction; Owned TCB** — pure in-repo extension;
   single-parent tree; pooled accounting is a graph-local fan-out, no
   third party, no new abstraction. **PASS**.
+- **VIII. Model-Faithful Implementation; Deviations Documented** —
+  delegation traces to a recognized model: *object-capability
+  attenuation* + *monotone-lattice* flow. Its deliberate deviations
+  (single-parent tree not a DAG; cascade computed at decide() not
+  eager) are **documented in `docs/security-models.md`** (the
+  "Capability delegation chains" row). No model-less mechanism; the
+  deviation is recorded with rationale. **PASS** (substance already
+  satisfied in security-models.md; this gate now evaluates it
+  explicitly). Implementation MUST keep that row truthful (see
+  tasks.md Polish T035).
 
-**Gate result**: PASS on all of I–VII (pre- and, per the post-design
-note below, after Phase 1). No violations → Complexity Tracking empty.
+**Gate result**: PASS on all of I–VIII (pre- and, per the post-design
+note below, after Phase 1). Re-evaluated against Constitution v1.2.0
+(Principle VIII added after the original re-plan; substance unchanged,
+gate now current). No violations → Complexity Tracking empty.
 
 ## Project Structure
 
@@ -152,7 +164,7 @@ research D8).
 
 ## Complexity Tracking
 
-> All of I–VII pass; no violations. FR-015 (pooled accounting) is the
+> All of I–VIII pass; no violations. FR-015 (pooled accounting) is the
 > only non-trivial mechanism added; it is a graph-local O(depth)
 > fan-out reusing the v0.7 `cap_uses` structure — chosen specifically
 > over a downward subtree index or a separate use-log store

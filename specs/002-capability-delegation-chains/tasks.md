@@ -102,6 +102,7 @@ or escape the prior-use kill-set of its ancestor.
 - [ ] T032 [P] Determinism test: repeat US1+US2 flows; assert byte-identical decisions and identical audit content — SC-007 — in tests/test_delegation_e2e.py
 - [ ] T033 [P] Update ROADMAP.md (v0.8 delegation row + commit) and set `specs/002-capability-delegation-chains/spec.md` Status: Implemented
 - [ ] T034 Full gate green: `uv run ruff check`, `uv run ruff format --check`, `uv run pyright` (0), `uv run pytest` (all pass) — Constitution III done-criteria
+- [ ] T035 [P] Update `docs/security-models.md`: move the "Capability delegation chains" row from *spec'd* to *implemented* and verify the documented deviations (single-parent tree; cascade computed at decide()) match the built code — Constitution VIII obligation (model-faithfulness map MUST stay truthful)
 
 ---
 
@@ -111,7 +112,7 @@ or escape the prior-use kill-set of its ancestor.
 - **US1 (T011–T019)** depends only on Foundational → the MVP.
 - **US2 (T020–T028)** depends on US1 (needs provenance from T011/T013); T021/T022 pooled fan-out depends on T011 (provenance) + reuses v0.7 `cap_uses`.
 - **US3 (T029–T030)** depends on US1; independent of US2.
-- **Polish (T031–T034)** last.
+- **Polish (T031–T035)** last.
 
 ```
 Setup → Foundational → US1 (MVP) ─┬─→ US2 ─┐

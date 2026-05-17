@@ -147,6 +147,17 @@ the granted path only; reads unchanged. No new store, no new column —
 the v0.7 `cap_uses` map is reused (a non-delegated cap is the
 degenerate single-node chain).
 
+**Ended ancestor (fail-closed).** If an ancestor session is no longer
+live, its capability is absent from the live graph: the descendant is
+already `inert` by the cascade rule (you cannot inherit authority whose
+session is gone — consistent with FR-013 "no delegation from dead
+authority"). Therefore the fan-out writes only to *live* ancestor
+sessions, and a missing/ended ancestor short-circuits the descendant to
+inert at the next `decide()`. No persistence of an ended ancestor's
+window is required, and "ancestor absent" is never read as "ancestor
+not rate-limited" (that would be fail-open). Fail-closed,
+Constitution VI.
+
 **Alternatives rejected**:
 - *Read-aggregate (downward)*: ancestor rate check sums uses across its
   whole subtree at decision time — needs a child→descendant index or a
