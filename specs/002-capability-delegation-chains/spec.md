@@ -70,6 +70,13 @@ Delegation chains cannot grow without limit. There is a configurable maximum cha
 - **Pattern subset undecidability**: When it cannot be *proven* that the requested target pattern is a subset of the parent's, the request is refused (fail-closed), rather than attempting a permissive match.
 - **Parent loses the capability after delegating**: If the parent's capability is removed for any reason after a delegation, the descendant is cascaded dead (US2) — the descendant never has standing the parent lacks.
 
+## Clarifications
+
+### Session 2026-05-17
+
+- Q: Does a delegated capability's use count against the parent/ancestor rate budget, or only its own? → A: Pooled — a use counts against the child's own and every ancestor capability's rate window; any ancestor window reaching its limit disqualifies the subtree (makes US2-4 true by construction).
+- Q: What does a delegated capability get for the non-enumerated fields (`revoked_by`, `expiry` lifetime enum, `origin`)? → A: Inherit-restrictive — `revoked_by` ⊇ parent's (request may add, never remove); `expiry` lifetime clamped on one_shot<session<persistent, default one_shot; `origin` set by engine to a distinct DELEGATED marker. No non-enumerated field may yield a less-restrictive child.
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -88,6 +95,8 @@ Delegation chains cannot grow without limit. There is a configurable maximum cha
 - **FR-012**: The model/LLM MUST be able to *request* a delegation as part of spawning a child session, but MUST NOT be able to author the resulting grant, widen it, bypass attenuation, or approve its own delegation request; the engine alone derives and validates the capability, and any model-supplied capability content that would broaden scope MUST be ignored.
 - **FR-013**: A session MUST NOT delegate authority it does not itself currently hold, and MUST NOT delegate from a capability that is already revoked, expired, or rate-exhausted.
 - **FR-014**: Delegation MUST be acyclic: a session cannot delegate to itself, and a delegation request that would create a cycle in the session/delegation graph MUST be refused.
+- **FR-015**: A use of a delegated capability MUST be recorded against its own **and every ancestor** capability's rate window (pooled accounting up the provenance chain). A capability is rate-disqualified if its own or any ancestor's window has reached its limit — so a child can never be used to spend beyond an ancestor's rate ceiling (operationalizes US2-4, by construction).
+- **FR-016**: A delegated capability MUST inherit its parent's restrictive non-enumerated fields monotonically: `revoked_by` MUST be a superset of the parent's (a request MAY add prior-use kill conditions, MUST NOT remove any); the `expiry` lifetime MUST be clamped on the ordering `one_shot < session < persistent` and default to `one_shot` (never longer-lived than the parent); `origin` MUST be set by the engine to a distinct `DELEGATED` value for audit. No non-enumerated field may yield a less-restrictive child than its parent.
 
 ### Key Entities
 
