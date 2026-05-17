@@ -126,4 +126,61 @@ empty revoked-set.
 "backward-tolerant on read unless migration explicitly justified" — no
 migration is justified here.
 
-**Output**: all design unknowns resolved; no open clarifications.
+## D8 — Pooled rate accounting via use-log fan-out (FR-015)
+
+**Decision**: On a *granted* dispatch of a delegated capability `C`,
+`record_cap_use` appends the timestamp to the use log of `C.audit_id`
+**and** of every ancestor `audit_id` (walk `parent_audit_id` upward,
+O(depth)), each written into the session that holds that capability.
+`is_rate_exceeded` is unchanged — at `decide()`, a capability is
+rate-disqualified if its own window OR (via the `inert()` provenance
+walk) any ancestor's window has reached its limit. Because the fan-out
+already deposited descendant uses into the ancestor's log, the
+ancestor's window naturally reflects pooled usage. US2-4 ("a child
+cannot circumvent the parent's rate ceiling") is therefore true **by
+construction**, not by a separate guard.
+
+**Rationale**: Keeps the rate check a pure read of an existing
+per-capability log (v0.7 `cap_uses`), so cascade stays compute-at-
+decide and deterministic (Constitution I, II). Writes are O(depth) on
+the granted path only; reads unchanged. No new store, no new column —
+the v0.7 `cap_uses` map is reused (a non-delegated cap is the
+degenerate single-node chain).
+
+**Alternatives rejected**:
+- *Read-aggregate (downward)*: ancestor rate check sums uses across its
+  whole subtree at decision time — needs a child→descendant index or a
+  full graph scan per decision; heavier, and inverts the established
+  upward-only provenance walk.
+- *Separate chain use-log store keyed by root*: a second source of
+  truth for usage; migration + reconciliation risk versus reusing the
+  existing serialized `cap_uses`.
+
+## D9 — Inherit-restrictive non-enumerated fields (FR-016)
+
+**Decision**: `derive_delegated_capability` also fixes the fields the
+six-dimension clamp does not cover: `revoked_by` = parent's set ∪ any
+request additions (never a subset — a request MAY add prior-use kill
+conditions, MUST NOT remove); `expiry` lifetime clamped on the total
+order `one_shot < session < persistent`, defaulting to `one_shot`
+(never longer-lived than parent); `origin` set by the engine to a new
+`CapabilityOrigin.DELEGATED`. No non-enumerated field may yield a
+less-restrictive child.
+
+**Rationale**: Constitution VI (fail-closed) and II (by construction):
+a permissive default on an unenumerated field (e.g. empty `revoked_by`,
+`persistent` lifetime) would silently *widen* authority — exactly the
+hole the attenuation guarantee must not have. `DELEGATED` origin keeps
+the audit trail able to distinguish delegated grants (Security &
+Architecture Constraint on distinguishing reasons).
+
+**Alternatives rejected**:
+- *Attenuate only the six dimensions, reset others to engine defaults*:
+  empty `revoked_by` / `session` lifetime can be broader than the
+  parent → violates "never widen" (Constitution VI). Rejected.
+- *Copy parent's other fields verbatim, no lifetime tightening, no
+  DELEGATED marker*: safe but not maximally fail-closed and degrades
+  audit attribution. Rejected in favor of clamp + marker.
+
+**Output**: all design unknowns resolved (D1–D9); no open
+clarifications. Post-clarify FR-015/FR-016 incorporated.

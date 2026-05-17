@@ -24,8 +24,17 @@ read ⇒ `None` / `0` (default-tolerant `from_dict`, 001 precedent).
   `expires_at ≤ parent` (None inherits parent's, never extends);
   `rate_limit` no looser (count ≤, window ≥); `allows_destructive`
   only if parent's; `depth == parent.depth + 1`.
+- **Non-enumerated fields (FR-016, D9)**: `revoked_by` ⊇ parent's
+  (request may add kill-conditions, never remove); `expiry` lifetime
+  clamped on `one_shot < session < persistent`, default `one_shot`;
+  `origin == CapabilityOrigin.DELEGATED`. No non-enumerated field may
+  be less restrictive than the parent.
 - These hold **by construction** — the engine builds the child, never
   trusts a supplied one (Constitution II).
+
+`CapabilityOrigin` gains a new value `DELEGATED` (alongside
+`SYSTEM_DEFAULT`/`USER_APPROVED`/`PATTERN_RULE`); string-serialized,
+default-tolerant on read.
 
 ## DelegationRequest (new, transient — not persisted)
 
@@ -71,7 +80,10 @@ At `decide()`, a capability `C` is **inert** iff any of:
 - `C` itself expired / rate-exhausted / `audit_id ∈ revoked_audit_ids`
   (existing v0.7 checks + new revoked-set), OR
 - walking `parent_audit_id` upward, **any ancestor** is inert by the
-  same test (the cascade — D1).
+  same test (the cascade — D1) — including an ancestor whose rate
+  window is full of *pooled* uses (FR-015 / D8: descendant uses were
+  fanned into the ancestor's log, so the existing `is_rate_exceeded`
+  read already reflects them).
 
 New `decide()` denial reason: **`capability-cascaded`** (distinct from
 `capability-expired` / `rate-limit-exceeded` / `…-revoked-by-prior-use`
@@ -86,6 +98,19 @@ authorizing capability, which after this feature carries
 provenance walk — no new approval→capability link, schema change, or
 foundational task is required. An approval whose `capability_requested`
 is `inert` can no longer be approved into an ALLOW.
+
+## Pooled Rate Accounting (FR-015, D8)
+
+Reuses the v0.7 per-session `cap_uses: dict[audit_id → (timestamps…)]`
+— no new structure. On a **granted** dispatch of capability `C`,
+`record_cap_use` appends the timestamp under `C.audit_id` **and** under
+every ancestor `audit_id` (walk `parent_audit_id` upward, O(depth)),
+each into the session holding that capability. `is_rate_exceeded` is
+unchanged; because descendant uses were fanned into the ancestor's log,
+an ancestor's window reflects pooled usage and the `inert()` walk
+disqualifies the subtree once any ancestor window is full. A
+non-delegated capability is the degenerate single-node chain (identical
+to today's behavior). No DDL — `cap_uses` already serialized in v0.7.
 
 ## Audit Records (extended `EventType`)
 

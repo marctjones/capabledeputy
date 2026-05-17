@@ -31,6 +31,16 @@ Integration scenario proving the feature end-to-end (becomes
 6. **Cascade — expire/rate (US2)**: re-run with A's cap expiring / its
    rate exhausted instead of explicit revoke → identical descendant
    denial (the child cannot outlive or out-spend the ancestor).
+6a. **Pooled rate (FR-015)**: A's cap allows 3 uses/hour; A makes 0
+   calls, B (delegated, ≤3/h) makes 3 granted calls. Assert B's 4th
+   call is **denied** because A's *pooled* window is now full —
+   B never circumvents A's ceiling though B's own window allowed more.
+6b. **Inherit-restrictive (FR-016)**: A's cap has `revoked_by={X}` and
+   `expiry=session`. Delegate to B with no overrides → B's cap has
+   `revoked_by ⊇ {X}`, `expiry=one_shot` (default, ≤ parent),
+   `origin=DELEGATED`. A request to set B `revoked_by={}` or
+   `expiry=persistent` is **refused** (`revoked-by-narrowed` /
+   `lifetime-extended`).
 7. **No retro-unwind (FR-009)**: a tool call already past the
    chokepoint before the revoke completes is not reversed; only
    subsequent decisions and pending approvals are affected.
@@ -46,6 +56,8 @@ Integration scenario proving the feature end-to-end (becomes
   cascade; SC-003 pending approvals invalidated; SC-004 no over-depth
   chain; SC-005 one audit record per delegation/cascade; SC-006 no
   model-authored capability honored; SC-007 byte-identical on repeat.
+- FR-015 pooled rate (step 6a) and FR-016 inherit-restrictive (6b)
+  hold — covered under SC-001/SC-002/SC-007 by construction.
 - Full suite + linter green; pyright clean (Constitution III).
 
 ## Try it (once implemented)

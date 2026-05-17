@@ -32,10 +32,14 @@ silent clamp, so the caller learns):**
 | allows_destructive | child True only if parent True | `destructive-widened` |
 | parent_audit_id | set to `parent.audit_id` (engine-owned) | — |
 | depth | `parent.depth + 1` (engine-owned) | — |
+| revoked_by | `parent.revoked_by ∪ request.add` (superset only) | `revoked-by-narrowed` |
+| expiry (lifetime) | `min(request, parent)` on `one_shot<session<persistent`, default `one_shot` | `lifetime-extended` |
+| origin | set to `CapabilityOrigin.DELEGATED` (engine-owned) | — |
 
 Output capability gets a fresh `audit_id`. **Determinism**: identical
 `(parent, request, depth_limit)` ⇒ identical capability bytes and
-identical refusal reason (SC-007).
+identical refusal reason (SC-007). FR-016: no non-enumerated field may
+be less restrictive than the parent.
 
 ## C2 — Cascade guard inside `decide()`
 
@@ -51,6 +55,11 @@ inert(C) =
 ```
 
 - O(depth), depth ≤ configured max.
+- `rate_exhausted` for an ancestor reads its **pooled** window: on a
+  granted dispatch, `record_cap_use` fanned the timestamp into every
+  ancestor's `cap_uses` (FR-015 / D8), so the existing read already
+  reflects descendant usage — a child cannot spend past an ancestor's
+  ceiling, by construction (US2-4). No separate circumvention check.
 - Composes with all v0.7 constraints; no constraint overrides another
   (Security & Architecture Constraint).
 - A pending approval is invalidated iff
@@ -74,14 +83,29 @@ inert(C) =
 - `capability.revoke(session_id, audit_id)` is the paired operator RPC
   that adds to `revoked_audit_ids` (drives C2 cascade).
 
+## C4 — Pooled use recording at dispatch (FR-015)
+
+On a **granted** tool dispatch authorized by capability `C`,
+`SessionGraph.record_cap_use` MUST append the dispatch timestamp to the
+use log of `C.audit_id` **and** of each ancestor `audit_id` (walk
+`parent_audit_id` upward, O(depth)), each into the session that holds
+that capability. Idempotent per dispatch (exactly one timestamp per
+ancestor per granted call). Pure given `(now, chain)` — no LLM input.
+
 ## Invariant tests (Constitution III)
 
 - Per-dimension attenuation matrix: equal / each-narrower / each-wider
   → exactly the clamped cap or the right refusal (SC-001).
+- **FR-016**: derived `revoked_by ⊇ parent`; `expiry` lifetime ≤ parent
+  and defaults `one_shot`; `origin == DELEGATED`; a request that would
+  narrow `revoked_by` or extend lifetime is refused.
 - Chain: N attenuating hops succeed; N+1 → `depth-exceeded` (SC-004).
 - Cascade: revoke / expire / rate-exhaust ancestor ⇒ every descendant
   denied next decision, pending approvals invalidated, audited
   (SC-002/003/005).
+- **FR-015 pooled rate**: a child's grants consume the ancestor's
+  window; once the ancestor's pooled limit is hit, the child is denied
+  even though its *own* window is not full (US2-4, by construction).
 - LLM-isolation: a model-supplied widened capability is ignored;
   engine-derived cap is the only one in effect (SC-006).
 - Determinism: repeated runs ⇒ identical decisions + audit (SC-007).
