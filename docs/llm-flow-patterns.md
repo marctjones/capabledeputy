@@ -82,11 +82,37 @@ deterministic interpreter, never the model's context.
 
 ## Meta-control: mode auto-escalation — ✅ implemented (v0.7)
 
-Not a pattern but the **selector**: the execution-mode dispatcher
-auto-escalates a session to pattern 2 or 4 once it carries any
-`confidential.*` label and a quarantined extractor / programmatic mode
-is available, and hides raw-data readers from the planner. Pattern
-choice is therefore policy-driven, not model-chosen.
+Not a pattern but the **selector**. `select_mode(label_set, registry,
+*, prefer_programmatic, force_mode)` (`src/capabledeputy/mode/
+dispatcher.py`) is a **pure deterministic function** — it never calls
+or consults the LLM (Principle I: the choice of protection mode is
+itself outside the model). Precedence, strongest first:
+
+1. **`force_mode`** — CLI `--mode` for that turn only.
+2. **`prefer_programmatic`** — a session-level flag set at
+   `session.new`; opts the whole session into pattern ④.
+3. **Auto-heuristic** — if the session carries a `confidential.*`
+   label **and** a `quarantined.*` extractor is registered → pattern ②
+   (DUAL_LLM). Otherwise → pattern ① (TURN_LEVEL).
+
+Precise mapping & honest caveats:
+- The selector covers **① TURN_LEVEL / ② DUAL_LLM / ④ PROGRAMMATIC**
+  only. Pattern ③ is **not** a selectable mode (still partial); ⑤ does
+  not exist.
+- Sensitivity auto-escalates to **② only — never to ④**. Pattern ④ is
+  reached *exclusively* via `force_mode` or `prefer_programmatic`
+  (opt-in), never chosen automatically from labels.
+- Confidential labels **with no quarantined extractor registered** →
+  the session **stays ① (TURN_LEVEL)**: the planner still sees the raw
+  data. This is *not* a fail-open on enforcement — `decide()` still
+  blocks egress at the chokepoint regardless of mode — but it *is* a
+  fail-to-weaker-*exposure*: exposure-minimization is forgone while the
+  egress guarantee holds. Mode affects how much the planner sees, not
+  whether enforcement runs.
+- Returns `(mode, reason)`; the choice is audited as `mode.selected`.
+
+So pattern choice is **deterministic and policy-driven, never
+model-chosen** — a model cannot opt itself into a weaker pattern.
 
 ## Multistep Composition & Incompatibilities
 
