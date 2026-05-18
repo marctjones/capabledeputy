@@ -235,3 +235,66 @@ def test_no_rate_limit_never_exceeded() -> None:
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     many = tuple(datetime(2026, 1, 1, tzinfo=UTC) for _ in range(100))
     assert cap.is_rate_exceeded(datetime(2026, 1, 1, tzinfo=UTC), many) is False
+
+
+# --- 002 delegation foundational (T009/T010) ---------------------------
+from uuid import uuid4  # noqa: E402
+
+from capabledeputy.policy.capabilities import (  # noqa: E402
+    DEFAULT_MAX_DELEGATION_DEPTH,
+    pattern_is_subset,
+)
+
+
+def test_delegation_provenance_round_trip() -> None:
+    pid = uuid4()
+    cap = Capability(
+        kind=CapabilityKind.SEND_EMAIL,
+        pattern="mail/team/*",
+        origin=CapabilityOrigin.DELEGATED,
+        parent_audit_id=pid,
+        depth=2,
+    )
+    decoded = Capability.from_dict(cap.to_dict())
+    assert decoded == cap
+    assert decoded.parent_audit_id == pid
+    assert decoded.depth == 2
+    assert decoded.origin is CapabilityOrigin.DELEGATED
+
+
+def test_from_dict_without_provenance_is_backward_tolerant() -> None:
+    legacy = {
+        "kind": "READ_FS",
+        "pattern": "*",
+        "expiry": "session",
+        "origin": "system_default",
+        "audit_id": str(uuid4()),
+        "max_amount": None,
+        "allows_destructive": False,
+        "revoked_by": [],
+        "expires_at": None,
+        "rate_limit": None,
+    }
+    cap = Capability.from_dict(legacy)
+    assert cap.parent_audit_id is None
+    assert cap.depth == 0
+
+
+def test_default_max_delegation_depth_constant() -> None:
+    assert DEFAULT_MAX_DELEGATION_DEPTH == 3
+
+
+def test_pattern_is_subset_accepts_provable() -> None:
+    assert pattern_is_subset("mail/*", "mail/*")  # exact equal
+    assert pattern_is_subset("mail/team/*", "mail/*")  # narrower glob
+    assert pattern_is_subset("mail/team/report", "mail/*")  # concrete
+    assert pattern_is_subset("a@x.com", "*")  # under bare-* parent (pre="")
+
+
+def test_pattern_is_subset_rejects_unprovable_fail_closed() -> None:
+    assert not pattern_is_subset("mail/**", "mail/*")  # ** = broadening
+    assert not pattern_is_subset("mail2/*", "mail/*")  # different prefix
+    assert not pattern_is_subset("*", "mail/*")  # broader than parent
+    assert not pattern_is_subset("mail/?", "mail/*")  # ? not provable
+    assert not pattern_is_subset("x", "ma[il]/*")  # internal class in parent
+    assert not pattern_is_subset("mail/a*b", "mail/*")  # non-trailing *

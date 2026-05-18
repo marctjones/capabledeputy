@@ -14,8 +14,10 @@ SC-001..SC-007 mandate them.
 
 **Organization**: by user story (US1 P1 / US2 P2 / US3 P3); each an
 independently testable increment. Single-project layout per plan.md.
-No `SCHEMA_VERSION` bump (additive default-tolerant JSON; `cap_uses`
-reused for pooled accounting).
+Capability provenance rides the `capability_set` JSON blob (no DDL);
+the session-level `revoked_audit_ids` is columnar → `SCHEMA_VERSION`
+4→5 idempotent additive migration (research D7, corrected at impl).
+`cap_uses` is reused for pooled accounting.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -25,9 +27,9 @@ reused for pooled accounting).
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [ ] T001 [P] Add audit event types `DELEGATION_GRANTED`, `DELEGATION_REFUSED`, `CAPABILITY_CASCADE_REVOKED` to the `EventType` enum in src/capabledeputy/audit/events.py
-- [ ] T002 [P] Add `DelegationRequest` + `DelegationRefusal` frozen dataclasses (transient; reason set incl. `kind-not-held`, `pattern-not-subset`, `amount-widened`, `expiry-extended`, `rate-loosened`, `destructive-widened`, `revoked-by-narrowed`, `lifetime-extended`, `parent-dead`, `depth-exceeded`, `cycle`, `self-delegation`) in src/capabledeputy/policy/capabilities.py
-- [ ] T003 [P] Add `CAPDEP_MAX_DELEGATION_DEPTH` env read (default 3) alongside existing `CAPDEP_*` reads in src/capabledeputy/daemon/lifecycle.py
+- [X] T001 [P] Add audit event types `DELEGATION_GRANTED`, `DELEGATION_REFUSED`, `CAPABILITY_CASCADE_REVOKED` to the `EventType` enum in src/capabledeputy/audit/events.py
+- [X] T002 [P] Add `DelegationRequest` + `DelegationRefusal` frozen dataclasses (transient; reason set incl. `kind-not-held`, `pattern-not-subset`, `amount-widened`, `expiry-extended`, `rate-loosened`, `destructive-widened`, `revoked-by-narrowed`, `lifetime-extended`, `parent-dead`, `depth-exceeded`, `cycle`, `self-delegation`) in src/capabledeputy/policy/capabilities.py
+- [X] T003 [P] Add `CAPDEP_MAX_DELEGATION_DEPTH` env read (default 3) alongside existing `CAPDEP_*` reads in src/capabledeputy/daemon/lifecycle.py
 
 ---
 
@@ -35,13 +37,13 @@ reused for pooled accounting).
 
 **Purpose**: data-model extensions ALL stories depend on. No DDL.
 
-- [ ] T004 Add `parent_audit_id: UUID | None = None` and `depth: int = 0` to `Capability` in src/capabledeputy/policy/capabilities.py
-- [ ] T005 Add `DELEGATED` value to the `CapabilityOrigin` enum (string-serialized) in src/capabledeputy/policy/capabilities.py
-- [ ] T006 Extend `Capability.to_dict`/`from_dict` for `parent_audit_id`/`depth`/`origin=DELEGATED` with default-tolerant read in src/capabledeputy/policy/capabilities.py
-- [ ] T007 Add `revoked_audit_ids: frozenset[UUID] = frozenset()` to the session model + default-tolerant `to_dict`/`from_dict` in src/capabledeputy/session/model.py
-- [ ] T008 [P] Implement pure `pattern_is_subset(child, parent) -> bool` (conservative/decidable per research D4; not-provable ⇒ False) in src/capabledeputy/policy/capabilities.py
-- [ ] T009 [P] Serialization round-trip tests for T006/T007 incl. old-row default tolerance in tests/test_policy_capabilities.py and tests/test_session_store.py
-- [ ] T010 [P] `pattern_is_subset` tests — proven-subset accepted, undecidable/broadening rejected (fail-closed) in tests/test_policy_capabilities.py
+- [X] T004 Add `parent_audit_id: UUID | None = None` and `depth: int = 0` to `Capability` in src/capabledeputy/policy/capabilities.py
+- [X] T005 Add `DELEGATED` value to the `CapabilityOrigin` enum (string-serialized) in src/capabledeputy/policy/capabilities.py
+- [X] T006 Extend `Capability.to_dict`/`from_dict` for `parent_audit_id`/`depth`/`origin=DELEGATED` with default-tolerant read in src/capabledeputy/policy/capabilities.py
+- [X] T007 Add `revoked_audit_ids: frozenset[UUID] = frozenset()` to the session model + default-tolerant `to_dict`/`from_dict` in src/capabledeputy/session/model.py
+- [X] T008 [P] Implement pure `pattern_is_subset(child, parent) -> bool` (conservative/decidable per research D4; not-provable ⇒ False) in src/capabledeputy/policy/capabilities.py
+- [X] T009 [P] Serialization round-trip tests for T006/T007 incl. old-row default tolerance in tests/test_policy_capabilities.py and tests/test_session_store.py
+- [X] T010 [P] `pattern_is_subset` tests — proven-subset accepted, undecidable/broadening rejected (fail-closed) in tests/test_policy_capabilities.py
 
 **Checkpoint**: data model + helpers exist and round-trip.
 

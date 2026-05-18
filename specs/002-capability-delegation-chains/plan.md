@@ -25,7 +25,11 @@ the engine alone derives and validates.
 **Primary Dependencies**: none new — reuses `policy.engine.decide`,
 `policy.capabilities.Capability`, `session.graph`, `session.store`,
 `approval.queue`, `audit.writer`
-**Storage**: SQLite session store, `SCHEMA_VERSION = 4` — **unchanged**.
+**Storage**: SQLite session store. Capability provenance fields ride
+the `capability_set` JSON blob (no DDL). The session-level
+`revoked_audit_ids` is columnar → `SCHEMA_VERSION` bumped **4 → 5**
+with an idempotent additive migration (research D7, corrected at
+implementation).
 `parent_audit_id`/`depth` are additive default-tolerant capability
 JSON; `CapabilityOrigin.DELEGATED` is a new enum *value* (serialized as
 a string, default-tolerant); pooled rate accounting reuses the existing
@@ -128,7 +132,8 @@ src/capabledeputy/
 │   │                    #   provenance; revoke(); pooled record_cap_use
 │   │                    #   fans the timestamp to every ancestor cap's
 │   │                    #   use log (FR-015)
-│   └── store.py         # serialized fields default-tolerant (no DDL)
+│   └── store.py         # +revoked_audit_ids column; SCHEMA_VERSION
+│                         #   4→5 idempotent additive migration (D7)
 ├── tools/
 │   └── client.py        # on a granted delegated use, record_cap_use
 │                        #   fan-out across the provenance chain

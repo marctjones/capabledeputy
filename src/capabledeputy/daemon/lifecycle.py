@@ -23,9 +23,27 @@ from capabledeputy.daemon.tool_handlers import make_tool_handlers
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
 from capabledeputy.llm.litellm_client import LiteLLMClient
+from capabledeputy.policy.capabilities import DEFAULT_MAX_DELEGATION_DEPTH
 from capabledeputy.secrets import load_anthropic_api_key
 from capabledeputy.upstream.config import load_config_file
 from capabledeputy.upstream.manager import UpstreamManager
+
+
+def max_delegation_depth() -> int:
+    """Configured max delegation chain depth (002 FR-006). Deterministic,
+    operator-set: `CAPDEP_MAX_DELEGATION_DEPTH` env, else the default.
+    A non-positive / unparseable value falls back to the default
+    (fail-safe: never an unbounded chain)."""
+    import os
+
+    raw = os.environ.get("CAPDEP_MAX_DELEGATION_DEPTH")
+    if raw is None:
+        return DEFAULT_MAX_DELEGATION_DEPTH
+    try:
+        v = int(raw)
+    except ValueError:
+        return DEFAULT_MAX_DELEGATION_DEPTH
+    return v if v > 0 else DEFAULT_MAX_DELEGATION_DEPTH
 
 
 def _resolve_daemon_config(config_path: Path | None) -> Path | None:

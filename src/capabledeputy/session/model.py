@@ -106,6 +106,10 @@ class Session:
     # keyed by capability audit_id. Treated immutably (replace()), like
     # used_kinds. Empty ⇒ nothing rate-limited yet.
     cap_uses: dict[str, tuple[datetime, ...]] = field(default_factory=dict)
+    # 002 delegation cascade: capability audit_ids explicitly revoked
+    # in/for this session's authority graph. Consulted at decide();
+    # additive, default-tolerant on read (missing ⇒ empty).
+    revoked_audit_ids: frozenset[UUID] = field(default_factory=frozenset)
 
     @classmethod
     def new(
@@ -122,6 +126,7 @@ class Session:
         prefer_programmatic: bool = False,
         used_kinds: frozenset[CapabilityKind] = frozenset(),
         cap_uses: dict[str, tuple[datetime, ...]] | None = None,
+        revoked_audit_ids: frozenset[UUID] = frozenset(),
     ) -> Self:
         now = _utcnow()
         return cls(
@@ -140,6 +145,7 @@ class Session:
             prefer_programmatic=prefer_programmatic,
             used_kinds=used_kinds,
             cap_uses=cap_uses if cap_uses is not None else {},
+            revoked_audit_ids=revoked_audit_ids,
         )
 
     @property
@@ -171,6 +177,7 @@ class Session:
             "cap_uses": {
                 aid: [ts.isoformat() for ts in stamps] for aid, stamps in self.cap_uses.items()
             },
+            "revoked_audit_ids": sorted(str(a) for a in self.revoked_audit_ids),
         }
 
     @classmethod
@@ -196,4 +203,5 @@ class Session:
                 aid: tuple(datetime.fromisoformat(ts) for ts in stamps)
                 for aid, stamps in d.get("cap_uses", {}).items()
             },
+            revoked_audit_ids=frozenset(UUID(a) for a in d.get("revoked_audit_ids", ())),
         )

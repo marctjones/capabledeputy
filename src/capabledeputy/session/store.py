@@ -19,7 +19,7 @@ from anyio.to_thread import run_sync as run_in_thread
 
 from capabledeputy.session.model import Session
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     prefer_programmatic INTEGER NOT NULL DEFAULT 0,
     used_kinds TEXT NOT NULL DEFAULT '[]',
     cap_uses TEXT NOT NULL DEFAULT '{}',
+    revoked_audit_ids TEXT NOT NULL DEFAULT '[]',
     FOREIGN KEY (parent_id) REFERENCES sessions(id)
 );
 
@@ -84,7 +85,7 @@ class SessionStore:
             current = row["version"]
             if current == SCHEMA_VERSION:
                 return
-            if current in (1, 2, 3):
+            if current in (1, 2, 3, 4):
                 if current == 1:
                     # v1 → v2: add tool_aliasing and prefer_programmatic columns.
                     col_def = "INTEGER NOT NULL DEFAULT 0"
@@ -95,14 +96,14 @@ class SessionStore:
                         except sqlite3.OperationalError as e:
                             if "duplicate column" not in str(e).lower():
                                 raise
-                # v2 → v3: add used_kinds column (JSON array of CapabilityKind
-                # values) so tool-identity revocation survives daemon restarts.
-                # v2 → v3: used_kinds. v3 → v4: cap_uses. Each ALTER is
-                # idempotent (duplicate-column is caught) so a db at any
-                # of v1/v2/v3 converges to v4 in one pass.
+                # v2 → v3: used_kinds. v3 → v4: cap_uses. v4 → v5:
+                # revoked_audit_ids (002 delegation cascade). Each ALTER
+                # is idempotent (duplicate-column is caught) so a db at
+                # any of v1/v2/v3/v4 converges to v5 in one pass.
                 for col, default in (
                     ("used_kinds", "'[]'"),
                     ("cap_uses", "'{}'"),
+                    ("revoked_audit_ids", "'[]'"),
                 ):
                     ddl = f"ALTER TABLE sessions ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}"
                     try:
@@ -140,8 +141,9 @@ class SessionStore:
                     id, parent_id, status, intent,
                     label_set, capability_set, history, declassification_log,
                     created_at, updated_at, owner,
-                    tool_aliasing, prefer_programmatic, used_kinds, cap_uses
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    tool_aliasing, prefer_programmatic, used_kinds, cap_uses,
+                    revoked_audit_ids
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status = excluded.status,
                     intent = excluded.intent,
@@ -154,7 +156,8 @@ class SessionStore:
                     tool_aliasing = excluded.tool_aliasing,
                     prefer_programmatic = excluded.prefer_programmatic,
                     used_kinds = excluded.used_kinds,
-                    cap_uses = excluded.cap_uses
+                    cap_uses = excluded.cap_uses,
+                    revoked_audit_ids = excluded.revoked_audit_ids
                 """,
                 (
                     d["id"],
@@ -172,6 +175,7 @@ class SessionStore:
                     1 if d["prefer_programmatic"] else 0,
                     json.dumps(d["used_kinds"]),
                     json.dumps(d["cap_uses"]),
+                    json.dumps(d["revoked_audit_ids"]),
                 ),
             )
 
@@ -217,5 +221,6 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "prefer_programmatic": bool(row["prefer_programmatic"]),
             "used_kinds": json.loads(row["used_kinds"]),
             "cap_uses": json.loads(row["cap_uses"]),
+            "revoked_audit_ids": json.loads(row["revoked_audit_ids"]),
         },
     )

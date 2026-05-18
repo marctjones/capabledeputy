@@ -76,6 +76,15 @@ class CapabilityOrigin(StrEnum):
     SYSTEM_DEFAULT = "system_default"
     USER_APPROVED = "user_approved"
     PATTERN_RULE = "pattern_rule"
+    # A capability derived from a parent via monotonic attenuation
+    # (002 delegation chains). Engine-set; keeps the audit trail able
+    # to distinguish delegated grants (Constitution VIII / data-model).
+    DELEGATED = "delegated"
+
+
+# Default maximum delegation chain depth (002 FR-006). Configurable via
+# CAPDEP_MAX_DELEGATION_DEPTH (read in daemon/lifecycle.py); root = 0.
+DEFAULT_MAX_DELEGATION_DEPTH = 3
 
 
 @dataclass(frozen=True)
@@ -134,6 +143,12 @@ class Capability:
     # with expiry / revocation — any single disqualifier makes the
     # capability unusable.
     rate_limit: RateLimit | None = None
+    # 002 delegation provenance (additive, default-tolerant). A
+    # delegated capability derives from exactly one parent capability;
+    # `parent_audit_id` is that parent's audit_id, `depth` its position
+    # in the chain (root = 0, each hop +1). None/0 ⇒ not delegated.
+    parent_audit_id: UUID | None = None
+    depth: int = 0
 
     def is_expired(self, now: datetime) -> bool:
         """True iff this capability carries a deadline that has been
@@ -202,6 +217,8 @@ class Capability:
             "revoked_by": sorted(k.value for k in self.revoked_by),
             "expires_at": (self.expires_at.isoformat() if self.expires_at is not None else None),
             "rate_limit": (self.rate_limit.to_dict() if self.rate_limit is not None else None),
+            "parent_audit_id": (str(self.parent_audit_id) if self.parent_audit_id else None),
+            "depth": self.depth,
         }
 
     @classmethod
@@ -217,4 +234,88 @@ class Capability:
             revoked_by=frozenset(CapabilityKind(k) for k in d.get("revoked_by", ())),
             expires_at=(datetime.fromisoformat(d["expires_at"]) if d.get("expires_at") else None),
             rate_limit=(RateLimit.from_dict(d["rate_limit"]) if d.get("rate_limit") else None),
+            parent_audit_id=(UUID(d["parent_audit_id"]) if d.get("parent_audit_id") else None),
+            depth=int(d.get("depth", 0)),
         )
+
+
+class DelegationRefusalReason(StrEnum):
+    """Deterministic, machine-readable refusal reasons (002 data-model /
+    contracts C1). One per violated dimension/condition."""
+
+    KIND_NOT_HELD = "kind-not-held"
+    PATTERN_NOT_SUBSET = "pattern-not-subset"
+    AMOUNT_WIDENED = "amount-widened"
+    EXPIRY_EXTENDED = "expiry-extended"
+    RATE_LOOSENED = "rate-loosened"
+    DESTRUCTIVE_WIDENED = "destructive-widened"
+    REVOKED_BY_NARROWED = "revoked-by-narrowed"
+    LIFETIME_EXTENDED = "lifetime-extended"
+    PARENT_DEAD = "parent-dead"
+    DEPTH_EXCEEDED = "depth-exceeded"
+    CYCLE = "cycle"
+    SELF_DELEGATION = "self-delegation"
+
+
+@dataclass(frozen=True)
+class DelegationRequest:
+    """Caller's *desired narrowing* (002 data-model). Transient — not
+    persisted. Every field except `kind` is optional and may only
+    narrow; the engine clamps and constructs the child capability. A
+    model-supplied full Capability is ignored (FR-012)."""
+
+    kind: CapabilityKind
+    pattern: str | None = None
+    max_amount: int | None = None
+    expires_at: datetime | None = None
+    rate_limit: RateLimit | None = None
+    expiry: CapabilityExpiry | None = None
+    # FR-016: a request MAY add prior-use kill conditions, never remove.
+    add_revoked_by: frozenset[CapabilityKind] = field(default_factory=frozenset)
+
+
+@dataclass(frozen=True)
+class DelegationRefusal:
+    """Returned (instead of a Capability) when a delegation request
+    cannot be satisfied. Deterministic for identical inputs (SC-007)."""
+
+    reason: DelegationRefusalReason
+
+
+_GLOB_CHARS = ("*", "?", "[", "]")
+
+
+def _has_glob(s: str) -> bool:
+    return any(c in s for c in _GLOB_CHARS)
+
+
+def pattern_is_subset(child: str, parent: str) -> bool:
+    """Conservative, decidable subset test (002 research D4, FR-004).
+
+    Returns True ONLY when every target the `child` pattern matches is
+    provably also matched by `parent`. General glob⊆glob containment is
+    undecidable, so this is a deliberate under-approximation that errs
+    toward False (fail-closed, Constitution VI) — an unprovable case is
+    refused, never granted.
+
+    Accepted:
+      - exact equality (`child == parent`);
+      - single-trailing-`*` parent (`pre + "*"`, `pre` glob-free) where
+        `child` starts with `pre`, contains no `**`, and any glob in
+        `child` is at most a single trailing `*`.
+    Everything else (internal wildcards, `?`/`[]`, `**`, multiple `*`)
+    → False.
+    """
+    if child == parent:
+        return True
+    if "**" in child:
+        return False
+    if not (parent.endswith("*") and not _has_glob(parent[:-1])):
+        return False
+    pre = parent[:-1]
+    if not child.startswith(pre):
+        return False
+    body = child[:-1] if child.endswith("*") else child
+    # `body` must be a concrete narrowing — no remaining glob chars, and
+    # no `*` other than the one optional trailing star already stripped.
+    return not _has_glob(body)

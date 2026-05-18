@@ -36,6 +36,11 @@ class EventType(StrEnum):
     CAPABILITY_CHECKED = "capability.checked"
     CAPABILITY_GRANTED = "capability.granted"
 
+    # 002 capability delegation chains.
+    DELEGATION_GRANTED = "delegation.granted"
+    DELEGATION_REFUSED = "delegation.refused"
+    CAPABILITY_CASCADE_REVOKED = "capability.cascade_revoked"
+
     TOOL_DISPATCHED = "tool.dispatched"
     TOOL_RETURNED = "tool.returned"
 

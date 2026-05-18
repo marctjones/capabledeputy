@@ -115,16 +115,28 @@ keeps derivation a pure function with the model strictly a requester.
 be "validated" — invites trust-the-model-then-check; construction-by-
 clamping makes broadening unrepresentable (Constitution II).
 
-## D7 — No schema bump
+## D7 — Schema bump 4→5 for the session field only (CORRECTED at impl)
 
-**Decision**: `SCHEMA_VERSION` stays 4. `parent_audit_id`, `depth`,
-and the session revoked-set are additive JSON handled by the existing
-default-tolerant `from_dict`. Old rows load as non-delegated with an
-empty revoked-set.
+**Decision (revised during implementation, T007/T009).** The
+*capability* provenance fields (`parent_audit_id`, `depth`,
+`origin=DELEGATED`) ride the `capability_set` **JSON blob** column, so
+they need **no DDL** — handled by the default-tolerant
+`Capability.from_dict` (001 precedent holds for these). However the
+session-level **`revoked_audit_ids`** is a *top-level Session field*,
+and `SessionStore` is **columnar** (one SQL column per top-level
+field), not a single blob — so it requires a new column and a
+migration. `SCHEMA_VERSION` is therefore bumped **4 → 5** with an
+idempotent additive `ALTER TABLE ... ADD COLUMN revoked_audit_ids TEXT
+NOT NULL DEFAULT '[]'` that converges any v1–v4 db to v5 in one pass
+(same pattern as the v3→v4 `cap_uses` migration).
 
-**Rationale**: Exact precedent set by 001 (expiry attribute). Constitution
-"backward-tolerant on read unless migration explicitly justified" — no
-migration is justified here.
+**Rationale**: The original "no bump" decision was wrong about the
+*session* field — it assumed whole-Session JSON persistence; the store
+is per-column. The migration is **explicitly justified and
+backward-tolerant** (old rows default to an empty revoked-set), which
+Constitution "Schema/state evolution" expressly permits. This
+correction is recorded per Principle VIII (document the deviation when
+implementation contradicts the plan).
 
 ## D8 — Pooled rate accounting via use-log fan-out (FR-015)
 

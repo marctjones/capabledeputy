@@ -178,3 +178,26 @@ async def test_time_bounded_capability_survives_store_reload(
     )
     assert result.decision == Decision.DENY
     assert result.rule == CAPABILITY_EXPIRED_RULE
+
+
+async def test_revoked_audit_ids_survives_reload(store_path: Path) -> None:
+    """002 T007/T009: the session-level revoked-set is additive,
+    default-tolerant, and round-trips through the store."""
+    from dataclasses import replace
+
+    store = SessionStore(store_path)
+    s = Session.new(intent="deleg")
+    aid = uuid4()
+    s = replace(s, revoked_audit_ids=frozenset({aid}))
+    await store.upsert(s)
+    loaded = await store.get(s.id)
+    assert loaded is not None
+    assert loaded.revoked_audit_ids == frozenset({aid})
+    assert loaded == s
+
+
+async def test_legacy_session_dict_without_revoked_set(store_path: Path) -> None:
+    s = Session.new(intent="legacy")
+    d = s.to_dict()
+    del d["revoked_audit_ids"]
+    assert Session.from_dict(d).revoked_audit_ids == frozenset()

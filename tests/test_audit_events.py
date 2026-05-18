@@ -41,6 +41,7 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         "capability",
         "tool",
         "approval",
+        "delegation",  # 002 capability delegation chains
     }
     for et in EventType:
         head, sep, _ = et.value.partition(".")
@@ -73,6 +74,10 @@ def test_event_type_taxonomy_matches_design() -> None:
         "approval.denied",
         "approval.deferred",
         "approval.expired",
+        # 002 capability delegation chains (T001 / FR-011 / data-model).
+        "delegation.granted",
+        "delegation.refused",
+        "capability.cascade_revoked",
     }
     actual = {et.value for et in EventType}
     assert actual == expected, f"missing: {expected - actual}, extra: {actual - expected}"
