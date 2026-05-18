@@ -319,3 +319,92 @@ def pattern_is_subset(child: str, parent: str) -> bool:
     # `body` must be a concrete narrowing — no remaining glob chars, and
     # no `*` other than the one optional trailing star already stripped.
     return not _has_glob(body)
+
+
+_EXPIRY_RANK: dict[CapabilityExpiry, int] = {
+    CapabilityExpiry.ONE_SHOT: 0,
+    CapabilityExpiry.SESSION: 1,
+    CapabilityExpiry.PERSISTENT: 2,
+}
+
+
+def derive_delegated_capability(
+    parent: Capability,
+    request: DelegationRequest,
+    *,
+    depth_limit: int,
+) -> Capability | DelegationRefusal:
+    """Pure, deterministic derivation of an attenuated child capability
+    (002 contracts C1; FR-002/003/004/005/006/016). The engine
+    *constructs* the child by clamping every dimension to `parent`;
+    any widening request is refused with a deterministic reason rather
+    than silently clamped (the caller learns). No LLM input.
+
+    Session-context preconditions (kind-not-held, parent-inert,
+    cycle/self) are enforced by `SessionGraph.delegate`; this function
+    owns the depth bound + the per-dimension + non-enumerated clamps.
+    A fresh `audit_id` is minted (each delegated cap has its own
+    identity); all other fields are a deterministic function of
+    `(parent, request, depth_limit)`.
+    """
+    if request.kind != parent.kind:
+        return DelegationRefusal(DelegationRefusalReason.KIND_NOT_HELD)
+    if parent.depth + 1 > depth_limit:
+        return DelegationRefusal(DelegationRefusalReason.DEPTH_EXCEEDED)
+
+    if request.pattern is None:
+        pattern = parent.pattern
+    elif pattern_is_subset(request.pattern, parent.pattern):
+        pattern = request.pattern
+    else:
+        return DelegationRefusal(DelegationRefusalReason.PATTERN_NOT_SUBSET)
+
+    if request.max_amount is None:
+        max_amount = parent.max_amount
+    elif parent.max_amount is not None and request.max_amount > parent.max_amount:
+        return DelegationRefusal(DelegationRefusalReason.AMOUNT_WIDENED)
+    else:
+        max_amount = request.max_amount
+
+    if request.expires_at is None:
+        expires_at = parent.expires_at
+    elif parent.expires_at is not None and request.expires_at > parent.expires_at:
+        return DelegationRefusal(DelegationRefusalReason.EXPIRY_EXTENDED)
+    else:
+        expires_at = request.expires_at
+
+    if request.rate_limit is None:
+        rate_limit = parent.rate_limit
+    else:
+        p, r = parent.rate_limit, request.rate_limit
+        if p is not None and (r.max_uses > p.max_uses or r.window_seconds < p.window_seconds):
+            return DelegationRefusal(DelegationRefusalReason.RATE_LOOSENED)
+        rate_limit = r
+
+    # FR-016: revoked_by is a superset of the parent's (request may add
+    # kill-conditions, never remove — the request shape is add-only, so
+    # narrowing is unrepresentable by construction).
+    revoked_by = parent.revoked_by | request.add_revoked_by
+
+    # FR-016: expiry lifetime clamped on one_shot<session<persistent,
+    # default one_shot (most restrictive) when unspecified.
+    requested_expiry = request.expiry if request.expiry is not None else CapabilityExpiry.ONE_SHOT
+    if _EXPIRY_RANK[requested_expiry] > _EXPIRY_RANK[parent.expiry]:
+        return DelegationRefusal(DelegationRefusalReason.LIFETIME_EXTENDED)
+
+    return Capability(
+        kind=parent.kind,
+        pattern=pattern,
+        expiry=requested_expiry,
+        origin=CapabilityOrigin.DELEGATED,
+        audit_id=uuid4(),
+        max_amount=max_amount,
+        # Destructive authority is inherited, never widened: the request
+        # cannot carry allows_destructive (engine-owned).
+        allows_destructive=parent.allows_destructive,
+        revoked_by=revoked_by,
+        expires_at=expires_at,
+        rate_limit=rate_limit,
+        parent_audit_id=parent.audit_id,
+        depth=parent.depth + 1,
+    )

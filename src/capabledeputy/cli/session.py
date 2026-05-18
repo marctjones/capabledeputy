@@ -143,6 +143,59 @@ def session_fork(
     _render_session(s)
 
 
+@session_app.command("delegate")
+def session_delegate(
+    parent_id: Annotated[str, typer.Argument(help="Parent session id")],
+    child_id: Annotated[str, typer.Argument(help="Child session id")],
+    kind: Annotated[str, typer.Option("--kind", help="CapabilityKind to delegate")],
+    pattern: Annotated[
+        str | None,
+        typer.Option("--pattern", help="Narrower target pattern (must be a subset)"),
+    ] = None,
+    max_amount: Annotated[
+        int | None,
+        typer.Option("--max-amount", help="Lower amount cap (≤ parent)"),
+    ] = None,
+    ttl_seconds: Annotated[
+        int | None,
+        typer.Option("--ttl-seconds", help="Earlier expiry, seconds from now"),
+    ] = None,
+    expiry: Annotated[
+        str | None,
+        typer.Option("--expiry", help="Lifetime: one_shot|session|persistent"),
+    ] = None,
+) -> None:
+    """Delegate an attenuated capability from a parent to a child
+    session. The engine derives the (clamped) capability; every
+    broadening request is refused. The model can never call this with a
+    pre-built capability — only this narrowing request."""
+    from datetime import UTC, datetime, timedelta
+
+    params: dict[str, Any] = {
+        "parent_session_id": parent_id,
+        "child_session_id": child_id,
+        "kind": kind,
+    }
+    if pattern is not None:
+        params["pattern"] = pattern
+    if max_amount is not None:
+        params["max_amount"] = max_amount
+    if ttl_seconds is not None:
+        params["expires_at"] = (datetime.now(UTC) + timedelta(seconds=ttl_seconds)).isoformat()
+    if expiry is not None:
+        params["expiry"] = expiry
+    result = _call("session.delegate", params)
+    if result.get("granted"):
+        cap = result["capability"]
+        console.print(
+            f"[green]delegated[/green] {cap['kind']} "
+            f"pattern={cap['pattern']} depth={cap['depth']} "
+            f"audit_id={cap['audit_id']}",
+        )
+    else:
+        console.print(f"[red]refused[/red] reason={result.get('reason')}")
+
+
 @session_app.command("pause")
 def session_pause(
     session_id: Annotated[str, typer.Argument(help="Session id to pause")],

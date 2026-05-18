@@ -227,3 +227,112 @@ async def test_property_unique_ids_across_n_creates(n: int) -> None:
     sessions = [await graph.new() for _ in range(n)]
     ids = {s.id for s in sessions}
     assert len(ids) == n
+
+
+# --- 002 US1 (T018): SessionGraph.delegate ----------------------------
+import json as _json  # noqa: E402
+from datetime import UTC as _UTC  # noqa: E402
+from datetime import datetime as _dt  # noqa: E402
+from datetime import timedelta as _td  # noqa: E402
+
+from capabledeputy.policy.capabilities import (  # noqa: E402
+    Capability,
+    CapabilityKind,
+    DelegationRefusal,
+    DelegationRefusalReason,
+    DelegationRequest,
+)
+
+
+def _deleg_events(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    return [
+        _json.loads(line)["event_type"] for line in path.read_text().splitlines() if line.strip()
+    ]
+
+
+async def test_delegate_success_records_provenance_and_audit(
+    tmp_path: Path,
+) -> None:
+    g = SessionGraph(audit=AuditWriter(tmp_path / "a.jsonl"))
+    parent = await g.new(intent="parent")
+    child = await g.new(intent="child", parent=parent.id)
+    pcap = Capability(kind=CapabilityKind.SEND_EMAIL, pattern="mail/*", max_amount=100)
+    await g.grant_capability(parent.id, pcap)
+    out = await g.delegate(
+        parent.id,
+        child.id,
+        DelegationRequest(kind=CapabilityKind.SEND_EMAIL, max_amount=40),
+        depth_limit=3,
+    )
+    assert isinstance(out, Capability)
+    assert out.parent_audit_id == pcap.audit_id
+    assert out.depth == 1
+    assert out.max_amount == 40
+    assert out.audit_id in {c.audit_id for c in g.get(child.id).capability_set}
+    assert "delegation.granted" in _deleg_events(tmp_path / "a.jsonl")
+
+
+async def test_delegate_kind_not_held(tmp_path: Path) -> None:
+    g = SessionGraph(audit=AuditWriter(tmp_path / "a.jsonl"))
+    parent = await g.new(intent="p")
+    child = await g.new(intent="c", parent=parent.id)
+    out = await g.delegate(
+        parent.id,
+        child.id,
+        DelegationRequest(kind=CapabilityKind.SEND_EMAIL),
+        depth_limit=3,
+    )
+    assert out == DelegationRefusal(DelegationRefusalReason.KIND_NOT_HELD)
+    assert "delegation.refused" in _deleg_events(tmp_path / "a.jsonl")
+
+
+async def test_delegate_parent_dead_when_cap_expired(tmp_path: Path) -> None:
+    g = SessionGraph()
+    parent = await g.new(intent="p")
+    child = await g.new(intent="c", parent=parent.id)
+    await g.grant_capability(
+        parent.id,
+        Capability(
+            kind=CapabilityKind.SEND_EMAIL,
+            pattern="*",
+            expires_at=_dt.now(_UTC) - _td(hours=1),
+        ),
+    )
+    out = await g.delegate(
+        parent.id,
+        child.id,
+        DelegationRequest(kind=CapabilityKind.SEND_EMAIL),
+        depth_limit=3,
+    )
+    assert out == DelegationRefusal(DelegationRefusalReason.PARENT_DEAD)
+
+
+async def test_delegate_self_refused() -> None:
+    g = SessionGraph()
+    s = await g.new(intent="s")
+    out = await g.delegate(
+        s.id,
+        s.id,
+        DelegationRequest(kind=CapabilityKind.READ_FS),
+        depth_limit=3,
+    )
+    assert out == DelegationRefusal(DelegationRefusalReason.SELF_DELEGATION)
+
+
+async def test_delegate_cycle_refused() -> None:
+    g = SessionGraph()
+    a = await g.new(intent="a")
+    b = await g.new(intent="b", parent=a.id)
+    await g.grant_capability(
+        b.id,
+        Capability(kind=CapabilityKind.READ_FS, pattern="*"),
+    )
+    out = await g.delegate(
+        b.id,
+        a.id,
+        DelegationRequest(kind=CapabilityKind.READ_FS),
+        depth_limit=3,
+    )
+    assert out == DelegationRefusal(DelegationRefusalReason.CYCLE)

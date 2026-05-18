@@ -55,15 +55,15 @@ the session-level `revoked_audit_ids` is columnar → `SCHEMA_VERSION`
 refused across ALL fields (six dims + FR-016 non-enumerated);
 LLM-isolated.
 
-- [ ] T011 [US1] Implement pure `derive_delegated_capability(parent, request, *, depth_limit) -> Capability | DelegationRefusal`: ordered preconditions (kind-not-held, parent-dead, depth-exceeded, cycle/self) then per-dimension clamp-or-refuse for the six dims per contracts/delegation.md C1, fresh `audit_id`, `depth=parent.depth+1` in src/capabledeputy/policy/capabilities.py
-- [ ] T012 [US1] Extend `derive_delegated_capability` with FR-016 non-enumerated clamps: `revoked_by = parent.revoked_by ∪ request.add` (refuse `revoked-by-narrowed` if request removes any); `expiry` lifetime clamped on `one_shot<session<persistent` default `one_shot` (refuse `lifetime-extended`); `origin = CapabilityOrigin.DELEGATED` in src/capabledeputy/policy/capabilities.py
-- [ ] T013 [US1] Implement `SessionGraph.delegate(parent_sid, child_sid, request)`: resolve parent's live cap of `request.kind`, call derivation, on grant register the derived cap into the child + record provenance, emit `delegation.granted`/`delegation.refused` in src/capabledeputy/session/graph.py
-- [ ] T014 [US1] Add `session.delegate` daemon RPC (control-plane; accepts only the narrowing request; ignores any model-supplied capability) in src/capabledeputy/daemon/session_handlers.py
-- [ ] T015 [US1] Add `capdep session delegate <parent> <child> --kind --pattern --max-amount --ttl --rate` CLI wired to the RPC in src/capabledeputy/cli/main.py
-- [ ] T016 [P] [US1] Exhaustive per-dimension attenuation matrix test (equal/narrower/wider × the six dims ⇒ clamp or named refusal) — SC-001 — in tests/test_policy_capabilities.py
-- [ ] T017 [P] [US1] FR-016 tests: derived `revoked_by ⊇ parent`; `expiry` ≤ parent, default `one_shot`; `origin == DELEGATED`; requests narrowing `revoked_by` or extending lifetime refused — in tests/test_policy_capabilities.py
-- [ ] T018 [P] [US1] Tests: kind-not-held, parent-dead, self/cycle refusals; provenance recorded; audit pair emitted — in tests/test_session_graph.py
-- [ ] T019 [P] [US1] LLM-isolation invariant test: model-supplied widened `Capability` ignored; only engine-derived cap in effect — SC-006 — in tests/test_delegation_e2e.py
+- [X] T011 [US1] Implement pure `derive_delegated_capability(parent, request, *, depth_limit) -> Capability | DelegationRefusal`: ordered preconditions (kind-not-held, parent-dead, depth-exceeded, cycle/self) then per-dimension clamp-or-refuse for the six dims per contracts/delegation.md C1, fresh `audit_id`, `depth=parent.depth+1` in src/capabledeputy/policy/capabilities.py
+- [X] T012 [US1] Extend `derive_delegated_capability` with FR-016 non-enumerated clamps: `revoked_by = parent.revoked_by ∪ request.add` (refuse `revoked-by-narrowed` if request removes any); `expiry` lifetime clamped on `one_shot<session<persistent` default `one_shot` (refuse `lifetime-extended`); `origin = CapabilityOrigin.DELEGATED` in src/capabledeputy/policy/capabilities.py
+- [X] T013 [US1] Implement `SessionGraph.delegate(parent_sid, child_sid, request)`: resolve parent's live cap of `request.kind`, call derivation, on grant register the derived cap into the child + record provenance, emit `delegation.granted`/`delegation.refused` in src/capabledeputy/session/graph.py
+- [X] T014 [US1] Add `session.delegate` daemon RPC (control-plane; accepts only the narrowing request; ignores any model-supplied capability) in src/capabledeputy/daemon/session_handlers.py
+- [X] T015 [US1] Add `capdep session delegate <parent> <child> --kind --pattern --max-amount --ttl --rate` CLI wired to the RPC in src/capabledeputy/cli/main.py
+- [X] T016 [P] [US1] Exhaustive per-dimension attenuation matrix test (equal/narrower/wider × the six dims ⇒ clamp or named refusal) — SC-001 — in tests/test_policy_capabilities.py
+- [X] T017 [P] [US1] FR-016 tests: derived `revoked_by ⊇ parent`; `expiry` ≤ parent, default `one_shot`; `origin == DELEGATED`; requests narrowing `revoked_by` or extending lifetime refused — in tests/test_policy_capabilities.py
+- [X] T018 [P] [US1] Tests: kind-not-held, parent-dead, self/cycle refusals; provenance recorded; audit pair emitted — in tests/test_session_graph.py
+- [X] T019 [P] [US1] LLM-isolation invariant test: model-supplied widened `Capability` ignored; only engine-derived cap in effect — SC-006 — in tests/test_delegation_e2e.py
 
 **Checkpoint**: US1 independently demonstrable; MVP shippable
 (monotonic attenuation across all fields + LLM-isolation proven).

@@ -298,3 +298,138 @@ def test_pattern_is_subset_rejects_unprovable_fail_closed() -> None:
     assert not pattern_is_subset("mail/?", "mail/*")  # ? not provable
     assert not pattern_is_subset("x", "ma[il]/*")  # internal class in parent
     assert not pattern_is_subset("mail/a*b", "mail/*")  # non-trailing *
+
+
+# --- 002 US1: derive_delegated_capability (T016 matrix, T017 FR-016) ---
+from datetime import UTC as _UTC  # noqa: E402
+from datetime import datetime as _dt  # noqa: E402
+from datetime import timedelta as _td  # noqa: E402
+
+from capabledeputy.policy.capabilities import (  # noqa: E402
+    DelegationRefusal,
+    DelegationRefusalReason,
+    DelegationRequest,
+    derive_delegated_capability,
+)
+
+_T = _dt(2026, 6, 1, tzinfo=_UTC)
+
+
+def _parent() -> Capability:
+    return Capability(
+        kind=CapabilityKind.SEND_EMAIL,
+        pattern="mail/*",
+        expiry=CapabilityExpiry.SESSION,
+        max_amount=100,
+        expires_at=_T,
+        rate_limit=RateLimit(max_uses=5, window_seconds=3600),
+    )
+
+
+def _derive(req: DelegationRequest, *, limit: int = 5):
+    return derive_delegated_capability(_parent(), req, depth_limit=limit)
+
+
+def test_derive_equal_request_clamps_to_parent() -> None:
+    p = _parent()
+    c = derive_delegated_capability(
+        p,
+        DelegationRequest(kind=CapabilityKind.SEND_EMAIL),
+        depth_limit=5,
+    )
+    assert isinstance(c, Capability)
+    assert c.pattern == "mail/*"
+    assert c.max_amount == 100
+    assert c.expires_at == _T
+    assert c.parent_audit_id == p.audit_id
+    assert c.audit_id != p.audit_id  # fresh identity
+    assert c.depth == 1
+    assert c.origin is CapabilityOrigin.DELEGATED
+
+
+def test_derive_narrower_each_dimension_accepted() -> None:
+    c = _derive(
+        DelegationRequest(
+            kind=CapabilityKind.SEND_EMAIL,
+            pattern="mail/team/*",
+            max_amount=40,
+            expires_at=_T - _td(hours=1),
+            rate_limit=RateLimit(max_uses=2, window_seconds=7200),
+        ),
+    )
+    assert isinstance(c, Capability)
+    assert c.pattern == "mail/team/*"
+    assert c.max_amount == 40
+    assert c.expires_at == _T - _td(hours=1)
+    assert c.rate_limit == RateLimit(max_uses=2, window_seconds=7200)
+
+
+def test_derive_widening_refused_per_dimension() -> None:
+    reason = DelegationRefusalReason
+    assert _derive(
+        DelegationRequest(kind=CapabilityKind.SEND_EMAIL, max_amount=250),
+    ) == DelegationRefusal(reason.AMOUNT_WIDENED)
+    assert _derive(
+        DelegationRequest(kind=CapabilityKind.SEND_EMAIL, pattern="mail/**"),
+    ) == DelegationRefusal(reason.PATTERN_NOT_SUBSET)
+    assert _derive(
+        DelegationRequest(kind=CapabilityKind.SEND_EMAIL, expires_at=_T + _td(hours=1)),
+    ) == DelegationRefusal(reason.EXPIRY_EXTENDED)
+    assert _derive(
+        DelegationRequest(
+            kind=CapabilityKind.SEND_EMAIL,
+            rate_limit=RateLimit(max_uses=99, window_seconds=3600),
+        ),
+    ) == DelegationRefusal(reason.RATE_LOOSENED)
+    assert _derive(
+        DelegationRequest(kind=CapabilityKind.WEB_FETCH),
+    ) == DelegationRefusal(reason.KIND_NOT_HELD)
+
+
+def test_derive_depth_exceeded() -> None:
+    deep = Capability(kind=CapabilityKind.SEND_EMAIL, pattern="mail/*", depth=5)
+    out = derive_delegated_capability(
+        deep,
+        DelegationRequest(kind=CapabilityKind.SEND_EMAIL),
+        depth_limit=5,
+    )
+    assert out == DelegationRefusal(DelegationRefusalReason.DEPTH_EXCEEDED)
+
+
+def test_fr016_revoked_by_superset_and_lifetime_default_one_shot() -> None:
+    parent = Capability(
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
+        expiry=CapabilityExpiry.SESSION,
+        revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
+    )
+    c = derive_delegated_capability(
+        parent,
+        DelegationRequest(
+            kind=CapabilityKind.READ_FS,
+            add_revoked_by=frozenset({CapabilityKind.SEND_EMAIL}),
+        ),
+        depth_limit=3,
+    )
+    assert isinstance(c, Capability)
+    assert c.revoked_by >= parent.revoked_by  # superset, never narrower
+    assert CapabilityKind.SEND_EMAIL in c.revoked_by
+    assert c.expiry is CapabilityExpiry.ONE_SHOT  # default = most restrictive
+    assert c.origin is CapabilityOrigin.DELEGATED
+
+
+def test_fr016_lifetime_extended_refused() -> None:
+    parent = Capability(
+        kind=CapabilityKind.READ_FS,
+        pattern="*",
+        expiry=CapabilityExpiry.SESSION,
+    )
+    out = derive_delegated_capability(
+        parent,
+        DelegationRequest(
+            kind=CapabilityKind.READ_FS,
+            expiry=CapabilityExpiry.PERSISTENT,
+        ),
+        depth_limit=3,
+    )
+    assert out == DelegationRefusal(DelegationRefusalReason.LIFETIME_EXTENDED)

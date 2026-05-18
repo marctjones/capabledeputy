@@ -13,7 +13,14 @@ from uuid import UUID
 
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
-from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.capabilities import (
+    Capability,
+    CapabilityKind,
+    DelegationRefusal,
+    DelegationRefusalReason,
+    DelegationRequest,
+    derive_delegated_capability,
+)
 from capabledeputy.policy.labels import Label
 from capabledeputy.session.model import Session, SessionStatus, Turn
 from capabledeputy.session.store import SessionStore
@@ -232,6 +239,103 @@ class SessionGraph:
                 ),
             )
         return updated
+
+    async def delegate(
+        self,
+        parent_session_id: UUID,
+        child_session_id: UUID,
+        request: DelegationRequest,
+        *,
+        depth_limit: int,
+        now: datetime | None = None,
+    ) -> Capability | DelegationRefusal:
+        """Delegate an attenuated capability from a parent session to a
+        child it spawned (002 US1 / contracts C1, C3). The caller
+        supplies only a narrowing `request`; the engine resolves the
+        parent capability and derives the child — a model-supplied
+        Capability is structurally impossible (FR-012). Session-context
+        preconditions (kind-not-held, parent-inert, cycle/self) are
+        enforced here; the per-dimension clamp is the pure
+        `derive_delegated_capability`.
+        """
+        now = now or datetime.now(UTC)
+        parent_session = self.get(parent_session_id)
+        self.get(child_session_id)  # SessionNotFoundError if missing
+
+        if parent_session_id == child_session_id:
+            return await self._refuse_delegation(
+                child_session_id,
+                DelegationRefusalReason.SELF_DELEGATION,
+            )
+
+        # Acyclic: the child must not be an ancestor of the parent in
+        # the spawn graph (would form a cycle in the authority graph).
+        anc = parent_session.parent
+        seen: set[UUID] = set()
+        while anc is not None and anc not in seen:
+            if anc == child_session_id:
+                return await self._refuse_delegation(
+                    child_session_id,
+                    DelegationRefusalReason.CYCLE,
+                )
+            seen.add(anc)
+            p = self._sessions.get(anc)
+            anc = p.parent if p is not None else None
+
+        candidates = sorted(
+            (c for c in parent_session.capability_set if c.kind == request.kind),
+            key=lambda c: str(c.audit_id),
+        )
+        if not candidates:
+            return await self._refuse_delegation(
+                child_session_id,
+                DelegationRefusalReason.KIND_NOT_HELD,
+            )
+        live = [
+            c
+            for c in candidates
+            if not c.is_expired(now) and c.audit_id not in parent_session.revoked_audit_ids
+        ]
+        if not live:
+            return await self._refuse_delegation(
+                child_session_id,
+                DelegationRefusalReason.PARENT_DEAD,
+            )
+
+        result = derive_delegated_capability(
+            live[0],
+            request,
+            depth_limit=depth_limit,
+        )
+        if isinstance(result, DelegationRefusal):
+            return await self._refuse_delegation(child_session_id, result.reason)
+
+        await self.grant_capability(child_session_id, result)
+        await self._emit(
+            EventType.DELEGATION_GRANTED,
+            self.get(child_session_id),
+            parent_session=str(parent_session_id),
+            parent_audit_id=str(live[0].audit_id),
+            child_audit_id=str(result.audit_id),
+            kind=result.kind.value,
+            depth=result.depth,
+        )
+        return result
+
+    async def _refuse_delegation(
+        self,
+        child_session_id: UUID,
+        reason: DelegationRefusalReason,
+    ) -> DelegationRefusal:
+        if self._audit is not None:
+            await self._audit.write(
+                Event(
+                    event_type=EventType.DELEGATION_REFUSED,
+                    session_id=child_session_id,
+                    payload={"reason": reason.value},
+                ),
+            )
+        return DelegationRefusal(reason)
 
     async def abort(self, session_id: UUID) -> Session:
         session = self.get(session_id)

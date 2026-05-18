@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from capabledeputy.daemon.handlers import Handler
+from capabledeputy.policy.capabilities import (
+    CapabilityExpiry,
+    CapabilityKind,
+    DelegationRefusal,
+    DelegationRequest,
+    RateLimit,
+)
 from capabledeputy.policy.labels import Label
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import SessionStatus
@@ -60,6 +68,32 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
         s = await graph.add_labels(UUID(params["session_id"]), labels)
         return s.to_dict()
 
+    async def session_delegate(params: dict[str, Any]) -> dict[str, Any]:
+        # Lazy import breaks the lifecycle<->handlers cycle.
+        from capabledeputy.daemon.lifecycle import max_delegation_depth
+
+        rl = params.get("rate_limit")
+        request = DelegationRequest(
+            kind=CapabilityKind(params["kind"]),
+            pattern=params.get("pattern"),
+            max_amount=params.get("max_amount"),
+            expires_at=(
+                datetime.fromisoformat(params["expires_at"]) if params.get("expires_at") else None
+            ),
+            rate_limit=(RateLimit.from_dict(rl) if rl else None),
+            expiry=(CapabilityExpiry(params["expiry"]) if params.get("expiry") else None),
+            add_revoked_by=frozenset(CapabilityKind(k) for k in params.get("add_revoked_by", ())),
+        )
+        result = await graph.delegate(
+            UUID(params["parent_session_id"]),
+            UUID(params["child_session_id"]),
+            request,
+            depth_limit=max_delegation_depth(),
+        )
+        if isinstance(result, DelegationRefusal):
+            return {"granted": False, "reason": result.reason.value}
+        return {"granted": True, "capability": result.to_dict()}
+
     return {
         "session.list": session_list,
         "session.new": session_new,
@@ -70,4 +104,5 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
         "session.get": session_get,
         "session.children": session_children,
         "session.add_labels": session_add_labels,
+        "session.delegate": session_delegate,
     }
