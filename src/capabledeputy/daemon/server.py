@@ -124,9 +124,16 @@ class Daemon:
                     line, _, buf = buf.partition(b"\n")
                     if line.strip():
                         await self._handle_line(stream, line)
+        except (anyio.BrokenResourceError, anyio.ClosedResourceError):
+            # The client hung up (mid-request or mid-response). That is
+            # a normal client lifecycle event — a polling TUI exiting, a
+            # one-shot CLI closing — and MUST terminate only THIS
+            # connection, never propagate out and take down the daemon.
+            pass
         finally:
             await self._unsubscribe_stream(stream)
-            await stream.aclose()
+            with suppress(anyio.BrokenResourceError, anyio.ClosedResourceError):
+                await stream.aclose()
 
     async def _handle_line(self, stream: SocketStream, line: bytes) -> None:
         try:
