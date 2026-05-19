@@ -163,7 +163,7 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - [ ] T063 [P] [US6] Test `tests/policy/test_bindings.py`: `HR-folder → TeamSharePoint` deny via named binding (Quickstart §1, SC-018); unbound location fail-closed; overlapping bindings most-restrictive.
 - [ ] T064 [P] [US6] Test `tests/policy/test_destination_id.py`: unidentifiable destination ⇒ deny/escalate, never "no rule matched" (SC-022).
 - [ ] T065 [P] [US6] Test `tests/policy/test_envelope_dial.py`: preference change keeps every outcome within envelope; hard-floor cells immovable by the dial (SC-010).
-- [ ] T066 [P] [US6] Test `tests/policy/test_override_policy.py`: `disallowed` refuses authorized invoker; `dual-control` requires distinct attester; `single-authorized` works; unauthorized refused (SC-014, Quickstart §4).
+- [ ] T066 [P] [US6] Test `tests/policy/test_override_policy.py`: `disallowed` refuses authorized invoker; `dual-control` requires distinct attester; `single-authorized` works; unauthorized refused (SC-014, SC-011, Quickstart §4).
 - [ ] T067 [P] [US6] Test `tests/policy/test_override_distinct_from_approval.py`: `Override Grant` produces capability with `origin=override_granted`; audit object distinct from ordinary approval (FR-038).
 - [ ] T068 [P] [US6] Test `tests/policy/test_no_terminal_unlock.py`: no rule/dial/AI/ordinary-approval can produce or unlock `prohibited` (SC-006).
 - [ ] T069 [P] [US6] Test `tests/policy/test_optimistic_execution.py`: reversible/non-egressing work runs without prompts; category-mixed artifact flagged + rollback offered (SC-013, Quickstart §2).
@@ -178,7 +178,7 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - [ ] T075 [US6] Create `src/capabledeputy/substrate/source_port.py` and `src/capabledeputy/substrate/version_write_port.py` (port-only interfaces per Constitution VII; **no provider impl** — that's spec 004); document the `canonical_resource_handle`/`canonical_destination_id`/`surfaces_destination_id` contract (FR-048) and `VersionedWritePort.write` returning `{prior_version_handle, post_state_hash, attestation}` (FR-044).
 - [ ] T076 [US6] Create `src/capabledeputy/policy/envelope.py`: `OutcomeEnvelope` loader (`configs/envelopes.yaml`); `RiskPreferenceProfile` loader (`configs/risk_preference.json`); `select_outcome(envelope, dial_value) → Decision` (FR-030); hard-floor cells have degenerate envelopes.
 - [ ] T077 [US6] Wire envelope dial into `src/capabledeputy/policy/decide.py`: after baseline + bounded-relax, the dial picks the envelope point; refuses to cross any hard floor (FR-026(d) + FR-030).
-- [ ] T078 [US6] Create `src/capabledeputy/policy/overrides.py`: `OverridePolicy`, `OverrideAuthorization`, `OverrideGrant` types + FSM per `contracts/override.md`; persisted in `override_grants` table.
+- [ ] T078 [US6] Create `src/capabledeputy/policy/overrides.py`: `OverridePolicy`, `OverrideAuthorization`, `OverrideGrant` types + FSM per `contracts/override.md`; persisted in `override_grants` table; auto-expiry enforced at every `decide()` call (SC-011).
 - [ ] T079 [US6] Implement `OverrideRequired` distinct return path in `src/capabledeputy/policy/decide.py` (replaces collapsing into `require-approval` for floor crossings) (FR-038); audit `decision.override_required`.
 - [ ] T080 [US6] Add `capdep override request/attest/list/show/refuse` CLI in new `src/capabledeputy/cli/override_cmd.py`; the planner has no path to invoke any of these (Principle I + V).
 - [ ] T081 [US6] Implement optimistic execution boundary in `src/capabledeputy/policy/decide.py` (FR-034): if effective reversibility is degree-low + agent=`system` + non-egressing, return `auto` without prompt; reversal-agent=`human` work surfaces/gates; carve-out for purpose-contamination (FR-009) — pre-excluded at spawn, not act-then-flag.
@@ -333,6 +333,24 @@ Task: "Define Axis B provenance lattice in src/capabledeputy/policy/labels.py"
 
 ---
 
+## Phase 10: Post-Analyze Remediations (T118–T121)
+
+**Logical phase ordering** (despite the late numerical IDs):
+- T118 and T119 belong to **Foundational** (must complete before any user story that derives or delegates labels/capabilities).
+- T120 is an invariant tripwire (Foundational alongside T015–T018).
+- T121 is a port (Foundational alongside T012's ToolDefinition extension).
+
+Treat these four as belonging to **"T020.5"** in the execution graph; they were appended numerically to avoid renumbering the 117 existing tasks.
+
+- [ ] T118 [P] Implement `most_restrictive_inherit(parent_field, child_field) → Field` helper in `src/capabledeputy/policy/labels.py`; call it at every derive/compose site — `policy/capabilities.py::derive_delegated_capability` (extends 002), `policy/labels.py` Axis-A/B/D composition, `policy/reversibility.py` composition, `policy/bindings.py` overlapping-binding composition. Applies to **non-enumerated** fields: `risk_ids` = set-union; `assignment_provenance` = strictest source; `revoked_by` = superset; `expires_at` = min (FR-013).
+- [ ] T119 [P] Test `tests/policy/test_non_enum_inheritance.py`: derived/delegated labels AND capabilities inherit most-restrictive on every non-enum field — explicit fixtures for `risk_ids`, `assignment_provenance`, `revoked_by`, `expires_at`, `write_discipline` (FR-013).
+- [ ] T120 [P] Tripwire test `tests/invariants/test_no_unratified_apply_path.py`: assert no module under `src/capabledeputy/` imports or implements a path keyed on `suggestion`, `pending_ratification`, or `unratified_apply`; ensures FR-014's "unratified ⇒ zero effect" invariant holds structurally in 003 by absence; must be replaced with a real behavioral "unratified ⇒ 0 effect" test once the suggest/ratify channel ships in a follow-on spec (FR-014).
+- [ ] T121 [P] Create port `src/capabledeputy/substrate/inspector_port.py` defining `RaiseOnlyInspector` (input: ingested value + current labels → output: optional taint-raising delta; MUST NOT clear taint); runtime ingest hook (extends T030's LabelAssignmentRecord path) calls registered inspectors after binding resolution and composes any returned taint via `most_restrictive_inherit` (T118). No provider inspector impl in 003 (deferred to 004) (FR-025).
+
+**Checkpoint**: T118–T121 should land before US-story phases that depend on them — practically, alongside Foundational completion.
+
+---
+
 ## Notes
 
 - `[P]` = different file, no incomplete-task dependency; safe to parallelize.
@@ -342,3 +360,4 @@ Task: "Define Axis B provenance lattice in src/capabledeputy/policy/labels.py"
 - Commit after each task or logical group (per the project's scoped-commit preference).
 - Avoid vague tasks, same-file conflicts, and cross-story dependencies that break independence.
 - 004 substrate (SandboxActuator + EXECUTE.sandbox jailed tool + provider source adapters + versioned-write actuator impls) is **out of scope** — every task here references only ports + rule/labeling/decision code that lives in-TCB; the `EXECUTE.sandbox` invocation path fail-closes with `OverrideRequired` until 004 ships, per T084/T085 (Principle VI honesty).
+- **Coverage-audit note (FR/SC citations)**: task bodies sometimes use a slash-shortened citation form like `(FR-032/036/038)` or `(FR-037/039)`. Coverage audits (incl. `/speckit-analyze`) MUST expand these into the equivalent comma-list (`FR-032, FR-036, FR-038`) before counting; otherwise naive substring matches will underreport coverage. `scripts/lint_risk_register.py` (T003) is the natural home for adding this expansion check.
