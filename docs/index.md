@@ -28,6 +28,9 @@ the LLM — controls capability dispatch.
 
 ## Where to go next
 
+- **[Governance scope](governance-scope.md)** — what CapableDeputy is
+  expected to do and not: the intersection-control thesis, AI-gov
+  coverage, deliberate non-goals, and the three bounding contingencies.
 - **[Design](design.md)** — threat model, theoretical foundations,
   the three execution modes, the session graph, labels and
   capabilities, and component specs.

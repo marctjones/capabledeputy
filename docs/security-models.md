@@ -25,6 +25,8 @@ remain the detail.
 | **Clark-Wilson** | Integrity / transactions | State changes only via certified well-formed transactions with separation of duty. |
 | **Object-capability** (Dennis–Van Horn; Miller) | Authority | Authority is an unforgeable, scoped, attenuable reference; no ambient authority. |
 | **Access-matrix / HRU** (Lampson; Harrison-Ruzzo-Ullman) | Authority | Rights are a subject×object×right relation; the decision is a function of it. |
+| **Gold Standard** (Lampson) | Accountability | Authenticate, Authorize, **Audit** — audit is a co-equal security property: every decision is answerable and reconstructible. |
+| **Provenance security** (Cheney et al.; secure-provenance) | Lineage | The where/why/how of every value and authority is recorded, immutable, non-repudiable — flow is explainable by its dependency graph. |
 
 ## Mechanism → model → implementation → deliberate deviation
 
@@ -43,6 +45,7 @@ remain the detail.
 | Dual-LLM quarantined extraction | **Noninterference declassification** | I, II | Schema validation *is* the declassifier — a structural, certified downgrade rather than an operator decision. |
 | Per-tenant label spaces | **Lattice compartments** | II | Additive scoping of the same conflict engine; no cross-tenant lattice join. |
 | Container isolation / federation signing / append-only audit | Defense-in-depth & **Reference-Monitor assurance** | Sec. Constraints | Supporting assurance, not a confidentiality/integrity model; audit gives the "verifiable" leg of the reference monitor. |
+| Append-only audit + `decide()` as a pure function of fully-logged inputs (replayable decision record); taint + single-parent delegation tree as a provenance graph | **Gold Standard (Audit)**; **Provenance security** | Sec. Constraints, VIII | Explanation is **complete for the control-plane decision/flow, deliberately silent on model cognition** (interpretability is out of scope by design — trusting the model is what the architecture refuses); single-parent **tree, not full DAG**; model self-narrated "reasoning" is NOT logged as explanation (confabulation risk). |
 | Fail-closed admission & undecidable-subset refusal | (cross-cutting) | VI | Where a model's check is undecidable (glob⊆glob) or unmapped, we take the **most-restrictive** action — a conservative *approximation* of the model, never a permissive one. |
 
 ## Global deliberate deviations (the framing, stated once)
@@ -92,6 +95,12 @@ be weakened to advance a lesser model.
   path (the full formalism is Not-Pursued, below — these are distinct).
 - **Brewer-Nash** — conflict-rule engine; faithful and practical for
   multi-tenant / conflict-of-interest.
+- **Accountability (Lampson Gold Standard — Audit)** — append-only
+  audit + `decide()` as a pure function of fully-logged inputs makes
+  every control-plane decision *replayable and answerable*. Faithful,
+  and the basis of decision/flow explainability. Boundary: it explains
+  the *decision and the flow*, never model cognition (the latter is a
+  deliberate non-goal, below).
 
 ### Approximate — the approximation *is* the goal
 
@@ -115,6 +124,12 @@ we design to, not a shortfall to keep closing.
   Biba (integrity clearances + "no read-down"); the confidentiality
   tiers do not address integrity — this is the most under-served model
   and the easiest to wrongly assume covered.
+- **Provenance security → single-parent provenance.** Goal: an
+  immutable, complete lineage for every value/authority (taint +
+  delegation graph). We target a **single-parent tree, not a full
+  DAG** (auditability over generality — the v0.8 delegation deviation);
+  lineage *completeness* is contingent on Reference-Monitor totality.
+  Full multi-parent provenance DAG is Not-Pursued.
 
 ### Not Pursued — explicit non-goals (do not attempt)
 
@@ -134,6 +149,12 @@ their absence as a defect:
 - **General HRU / Take-Grant safety** — safety is undecidable; sidestepped
   by the capability model by construction. Implementing it generally is
   impossible, not merely hard.
+- **Model-internal interpretability** — *why the model produced a
+  given output* is deliberately not pursued: opening that box means
+  trusting the model, which the architecture refuses by construction.
+  Decision/flow explainability (Priority, above) is the substitute; a
+  model's self-narrated "reasoning" MUST NOT be logged as if it were
+  that explanation (confabulation risk).
 
 ### Salvageable as isolated modes (candidate, scoped — not global)
 
@@ -182,6 +203,10 @@ above) — no multistep trick changes this.
 - Detail and proofs live in `DESIGN.md` and `spec/CapableDeputy.tla`;
   governance lives in `.specify/memory/constitution.md` (Principles
   I–VIII; VIII makes this map binding). This file is the map between them.
+- Scope companion: `docs/governance-scope.md` — names *which*
+  InfoSec/Privacy/AI-governance concern each in-scope mechanism serves
+  and what is deliberately cut. It depends on this map and must never
+  substitute for the Priority/Approximate/Not-Pursued classification.
 - Applied companion: `docs/llm-flow-patterns.md` — the four
   operational patterns for how a planner LLM relates to labeled data
   (taint-tracking = the Denning row above; quarantine / reference-
@@ -194,3 +219,8 @@ above) — no multistep trick changes this.
   defense ① cannot give); **Clark-Wilson** → reversibility-weighted
   gating (replace the binary destructive-op gate; human-declared
   recoverability). Both are v0.9-spec scope, capture-only.
+  `trust-model.md` §9 is the **external-framework anchor** (Contextual
+  Integrity / adaptive privacy ⇄ InfoSec ⇄ AI governance): the
+  decision-layer analogue of this map, tracing §2/§6 to recognized
+  privacy theory and binding the flow-pattern strength dial to
+  context-resolved privacy norms.

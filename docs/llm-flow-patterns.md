@@ -156,6 +156,17 @@ through the single `decide()` chokepoint.
 Best-flow-per-model and complementary pairs are tabulated in
 `docs/security-models.md` (Coverage section).
 
+## Audit trail = the flow-explanation artifact
+
+Each pattern's audit events — data read + labels acquired,
+`mode.selected` + reason, `decide()` outcomes, declassification points,
+approvals — *are* the decision/flow explanation for that pass: the
+applied face of the **Gold Standard (Audit)** + **Provenance-security**
+rows in `docs/security-models.md`. It explains *what the planner was
+allowed to touch and what gated each effect*, never *why the model
+chose its output* (interpretability is out of scope by design); a
+model's self-narrated reasoning is not part of this artifact.
+
 ## Cross-reference
 
 Each pattern realizes a row in `docs/security-models.md` (patterns 2–4
