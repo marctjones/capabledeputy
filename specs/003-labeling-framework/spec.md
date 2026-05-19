@@ -15,6 +15,7 @@
 - Q: Are the five tiers a strict total order for all comparisons? → A: Yes — none < sensitive < regulated < restricted < prohibited, totally ordered; "most-restrictive" = max tier; clearance/read-up compare on this order; prohibited is the maximum and terminal. Resolved in FR-027.
 - Q: What form does the mandatory risk-id take? → A: A single in-repo risk register; each entry has a stable internal id mapping to ≥1 external framework reference; labels/decisions cite the internal id. Resolved in FR-015, FR-028 + Risk Register Entry entity.
 - Q: How is context-expectedness determined deterministically? → A: An action is "expected" iff it matches an operator-registered expectation binding (initiator + effect + optional time window/parameters); non-match = "anomalous". Deterministic, human-declared, AI-read-only. Resolved in FR-029 + Expectation Binding entity.
+- Q: How are usability and risk-tolerance reconciled with strict deterministic controls (so operators don't disable enforcement or write `*` rules)? → A: A risk-preference dial that selects a point inside human-declared per-cell outcome envelopes; an asymmetry invariant (non-deterministic inputs may ratchet toward restriction or propose, never relax at decision time); and override as a scoped/expiring/audited capability instead of a silent permissive rule. Resolved in US6, FR-030/031/032.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -102,6 +103,23 @@ The operator needs the resolution layer to carry a per-profile maximum-tier clea
 
 ---
 
+### User Story 6 - Usable risk tuning without weakening the model (Priority: P3)
+
+The operator needs the system to be usable in practice — to dial risk tolerance up or down by communicating a single preference rather than rewriting rules, to let heuristics help *tighten* or *propose* without ever loosening at decision time, and to have a safe, visible override instead of being driven to disable enforcement or write overly-broad permissive rules.
+
+**Why this priority**: Practically critical — without this, strict controls get bypassed in the field, defeating the entire model. It is P3 (not lower) because adoption depends on it; it builds on US1 axes and US2 decision outcomes.
+
+**Independent Test**: Define per-cell outcome envelopes; flip a single risk-preference value and assert outcomes shift only *within* the declared envelopes (never beyond); assert a heuristic input can move an outcome stricter or file a proposal but can never relax one at decision time; assert disabling/loosening enforcement is only possible via a scoped, expiring, audited override capability and never via the model.
+
+**Acceptance Scenarios**:
+
+1. **Given** human-declared outcome envelopes and risk-preference `cautious`, **When** the preference is changed to `permissive`, **Then** outcomes shift only within each cell's declared `[strictest, loosest]` envelope, never beyond, and the shift is deterministic and audited.
+2. **Given** a non-deterministic input (heuristic/model/anomaly score), **When** it would relax an outcome at decision time, **Then** it is rejected; **When** it tightens or files a ratification proposal, **Then** it is accepted.
+3. **Given** an operator wants to bypass a control, **When** they invoke override, **Then** it is a scoped, time-boxed, loudly-audited capability (never AI-invokable) that expires automatically — there is no silent permissive-rule path.
+4. **Given** repeated human approvals of the same pattern, **When** the operator ratifies the suggested rule, **Then** subsequent matching actions resolve deterministically without prompting (asking decays).
+
+---
+
 ### Edge Cases
 
 - **Unclassifiable data**: a datum the assignment mechanism cannot confidently categorize MUST resolve to the most-restrictive applicable tier (fail-closed), never to an `unclassified`-permissive outcome.
@@ -111,6 +129,9 @@ The operator needs the resolution layer to carry a per-profile maximum-tier clea
 - **Effect-class union for wrappers**: a wrapper skill that wraps tools of differing effect classes MUST inherit the union (most powerful) effect, never the minimum.
 - **Profile/rule absence**: no profile and no rule for a category MUST yield the category's most-restrictive default, not a permissive fallthrough.
 - **AI attempts to mint a read-only invariant** (trust edge, recoverability, admissibility, authentication): MUST be refused and audited as a control-plane violation.
+- **Operator authors a wildcard / overly-broad permissive rule**: MUST be rejected at authoring time; the scoped/expiring Override Grant (FR-032) is offered instead — there is no silent broad-permit path.
+- **Override Grant outlives its window or is delegated**: MUST auto-expire and MUST NOT be inherited by any spawned/tainted session; expiry and any use MUST be audited.
+- **Risk preference set to most-permissive**: MUST still not move any hard-floor cell (prohibited, admissibility exclusion, max-tier clearance, integrity floor) — degenerate envelopes are immovable.
 
 ## Requirements *(mandatory)*
 
@@ -123,6 +144,9 @@ The operator needs the resolution layer to carry a per-profile maximum-tier clea
 - **FR-005**: Axis C effect class MUST be declared on the tool/source (no runtime content classifier); a wrapper inherits the union of wrapped effects; tool-provenance is a recorded sub-attribute.
 - **FR-006**: Axis D decision context (initiator+authentication, counterparty/relationship, context-expectedness, reversibility/recoverability) MUST be first-class, human-declared, and AI-read-only.
 - **FR-029**: Context-expectedness MUST be determined deterministically as a match against operator-registered **expectation bindings** (initiator + effect + optional time window and/or parameter constraints). An action matching a binding is `expected`; any action not matching one is `anomalous`. Expectation bindings are human-declared and AI-read-only; no statistical/heuristic anomaly inference is permitted (Principle I).
+- **FR-030**: The system MUST support a first-class **risk-preference profile** — a single human-set preference (e.g., `cautious | balanced | permissive`) that deterministically selects an outcome *within* per-cell human-declared **outcome envelopes** `[strictest, loosest]` keyed on (data-category × effect × decision-context × recoverability). Changing the preference MUST NOT require rewriting rules and MUST NOT move any outcome outside its declared envelope; the envelope bounds are human-declared, AI-read-only, and a `prohibited`/hard-floor cell (FR-026d) has a degenerate envelope that the dial cannot loosen.
+- **FR-031**: **Asymmetry invariant.** A non-deterministic input (model, heuristic, anomaly score, content inspector) MAY at decision time only move an outcome toward *more restriction* (ratchet-only), or produce a proposal for the human-ratified learning loop (FR-014); it MUST NEVER relax an outcome, clear taint, widen a capability, or select a looser envelope point at decision time. Any non-deterministic attempt to relax MUST be refused and audited.
+- **FR-032**: Loosening or disabling enforcement MUST only be possible via an explicit **override capability** that is scoped (to a category/effect/session), time-boxed (auto-expiring), loudly audited, and human-invoked only (never AI-invokable, never inheritable by a delegated/tainted session). The system MUST NOT provide any silent or permanent permissive-rule path equivalent to disabling a control; a wildcard/overly-broad rule MUST be rejected at authoring time with the override capability offered instead.
 - **FR-007**: A sensitivity-resolution layer MUST map `(data-category, user, use-case, purpose)` to a tier in `{none, sensitive, regulated, restricted, prohibited}` deterministically, engine-side, with no model participation.
 - **FR-027**: The five tiers MUST form a strict total order `none < sensitive < regulated < restricted < prohibited`. "Most-restrictive" is the maximum under this order; all clearance and read-up comparisons (FR-008) and baseline composition (FR-026) MUST use it; `prohibited` is the order's maximum and terminal (FR-017).
 - **FR-008**: Each context profile MUST carry a maximum-tier clearance; access to data resolving above the clearance MUST be refused (read-up refusal).
@@ -153,6 +177,9 @@ The operator needs the resolution layer to carry a per-profile maximum-tier clea
 - **Effect Class (Axis C)**: declared capability effect; attributes: effect kind, reversibility weight, social-commitment flag, tool-provenance.
 - **Decision Context (Axis D)**: initiator+authentication, counterparty/relationship, expectedness, recoverability — all human-declared.
 - **Expectation Binding**: operator-registered (initiator + effect + optional time window/parameters) defining what counts as `expected`; non-match ⇒ `anomalous` (FR-029).
+- **Outcome Envelope**: human-declared `[strictest, loosest]` outcome bounds for a (category × effect × decision-context × recoverability) cell; the dial selects within it (FR-030).
+- **Risk-Preference Profile**: a single human-set preference selecting the point within all applicable Outcome Envelopes; AI-read-only (FR-030).
+- **Override Grant**: a scoped, time-boxed, audited, human-invoked relaxation of enforcement; non-inheritable, auto-expiring; the only sanctioned bypass (FR-032).
 - **Context Profile**: per-user and per-use-case mapping `(category,user,use-case,purpose)→tier`, plus max-tier clearance.
 - **Admissibility Rule**: human-declared `(purpose, category) → inadmissible` exclusion.
 - **Human-Authored Decision Rule**: predicate over axes A–D → outcome; carries risk-id; ratification state.
@@ -173,6 +200,8 @@ The operator needs the resolution layer to carry a per-profile maximum-tier clea
 - **SC-007**: Every threshold-crossing allow in the test suite produces exactly one residual-risk exception object (no silent threshold crossings).
 - **SC-008**: 100% of `restricted`-tier sealed-path scenarios assert the planner context never held the raw data.
 - **SC-009**: Every data category in the shipped core traces to a documented framework risk, and every named deliberate non-goal is absent from requirements (scope-honesty audit passes).
+- **SC-010**: Across the risk-dial test matrix, 100% of preference changes keep every outcome within its declared envelope (0 out-of-envelope shifts), and 0 outcomes are relaxed by any non-deterministic input at decision time.
+- **SC-011**: 100% of enforcement bypasses in the test suite occur only through a scoped, expiring, audited Override Grant; 0 succeed via a wildcard/permissive rule or any AI-invoked path; 100% of Override Grants auto-expire.
 
 ## Assumptions
 
