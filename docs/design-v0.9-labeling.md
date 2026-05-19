@@ -82,8 +82,16 @@ C/I/A, GDPR/HIPAA/PCI, FAIR loss-weighting.
 1. `risk-id` on every label and decision (NIST Measure rollup).
 2. Threshold-crossing ALLOWs become auditable exception objects
    (ISO 23894 residual-risk acceptance).
-3. Add a terminal **`prohibited`** tier no approval can unlock
-   (EU AI Act).
+3. **`prohibited`** is the highest tier, unreachable by any automatic
+   path (rule/dial/AI/ordinary approval). **Superseded 2026-05-19
+   (operator-autonomy decision):** it is *not* inherently terminal —
+   crossing is governed by an operator-configured Override Policy
+   (`disallowed` | `single-authorized` | `dual-control`), defaulting
+   **fail-closed to `disallowed`** for `prohibited`/hard floors until
+   the operator opts in. EU AI Act prohibited practices are surfaced
+   with maximal-friction, human-only, separation-of-duty override (or
+   the operator's chosen permanent terminal), not a hard-coded block.
+   See `specs/003-labeling-framework` FR-017/FR-032/FR-036.
 4. Provenance is a monotone lattice with exactly one audited
    declassifier (OWASP launderable-taint).
 5. Control-plane reflexivity: label/cap/profile/audit ops are
