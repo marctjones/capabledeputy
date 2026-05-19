@@ -189,7 +189,9 @@ above) — no multistep trick changes this.
 1. **Context-profile clearance** (max tier a principal/use-case may
    handle + read-up refusal) → completes *dynamic BLP*.
 2. **First-class flow-pattern ③ / sealed-effect** → unlocks *true NI*
-   for `restricted`.
+   for `restricted`. Rule is now first-class in `specs/003`
+   (FR-047 for ③, FR-040/041/042 for ⑤ sealed-effect via disposable
+   isolation); impl pending (003 plan/tasks for ③; spec 004 for ⑤).
 3. **Integrity floor + "no read-down"** on the provenance axis → the
    unaddressed *Biba* half (NOT solved by confidentiality tiers).
 4. **Formal lattice dominance/join in the engine** (replace ad-hoc

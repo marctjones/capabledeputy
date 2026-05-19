@@ -42,7 +42,7 @@ schema-validated projection. The schema *is* the declassifier.
 - **Use when:** the planner needs *facts derived from* sensitive data,
   not the data itself (briefings, triage, summaries).
 
-### 3. Reference / placeholder substitution (data-blind planning) — 🔶 partial / planned
+### 3. Reference / placeholder substitution (data-blind planning) — 🔶 rule first-class (spec 003 FR-047); impl pending
 
 The planner manipulates only **opaque handles/placeholders**. The
 deterministic runtime binds the real labeled value at a controlled
@@ -54,11 +54,14 @@ value at any point.
 - **Guarantee (target):** the planner is *structurally incapable* of
   leaking what it never holds; insertion is explicit, auditable, and
   the destination of each secret is tracked.
-- **Status — honest gap:** the building blocks exist — per-session
-  unforgeable tool/capability tokens (v0.3) and programmatic
-  variable-binding — but this is **not yet a first-class, named
-  mechanism** with the "controlled re-insertion + provenance of where
-  the secret lands" guarantee. Crystallizing it is planned work.
+- **Status — honest:** the **rule is now first-class in spec 003**
+  (FR-047) — pattern ③ is selectable by `select_mode` and is *required*
+  for `restricted`-tier sessions (no fallback to ② intransitive
+  declassification). The building blocks (per-session unforgeable
+  tool/capability tokens v0.3, programmatic variable-binding) exist;
+  **implementation pending** is the controlled-re-insertion bind point
+  + the "where-the-secret-landed" destination provenance recorded per
+  Reference Handle. Tracked through `/speckit-plan` for 003.
 - **Model lineage:** object-capability handles; CaMeL ("defeat prompt
   injection by design").
 - **Use when:** the planner must *route/orchestrate* sensitive data it
