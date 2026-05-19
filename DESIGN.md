@@ -2,7 +2,7 @@
 
 ## 1. Vision
 
-CapableDeputy is a **structurally secure runtime for personal AI agents.** It answers the question "ten months after CaMeL, where are the production-grade prompt-injection-resistant agents?" by building one — multi-provider, MIT-licensed, terminal-operated, designed for individuals who want capable AI assistance without surrendering health records, financial data, or third-party communications to the LLM's word-completion machinery.
+CapableDeputy is a **structurally secure runtime for personal AI agents.** It answers the question "ten months after CaMeL, where are the production-grade prompt-injection-resistant agents?" by building one — multi-provider, proprietary, terminal-operated, designed for individuals who want capable AI assistance without surrendering health records, financial data, or third-party communications to the LLM's word-completion machinery.
 
 It is not another perimeter classifier (Lakera, Cisco AI Defense, LlamaFirewall). It is not another sandbox runtime (NVIDIA OpenShell, NemoClaw). It is the **architectural layer** that propagates capabilities and information-flow labels through every action an agent takes, escalates to programmatic execution when stakes warrant, and forces every cross-compartment data flow through deterministic, human-auditable approval gates.
 
@@ -519,7 +519,7 @@ declassification gate.
 | State | SQLite | Zero-ops, deterministic, easy to back up |
 | Test framework | pytest + Hypothesis | Property-based testing for the policy engine |
 | LLM record/replay | `vcr.py`-style cassettes | Deterministic test replay |
-| License | Apache 2.0 | Permissive, commercial-friendly, the right move for security infra |
+| License | Proprietary (All Rights Reserved) | Closed source; no rights granted without written permission |
 
 ## 12. Testing Strategy
 
@@ -645,7 +645,7 @@ Each scenario must produce a clean trace inspectable via `capdep trace`.
 - **Project name:** CapableDeputy.
 - **Daemon binary:** `capdep`.
 - **Tagline:** *"A capable deputy, never a confused one."*
-- **License:** Apache 2.0.
+- **License:** Proprietary — All Rights Reserved (Copyright (c) 2026 Marc Jones).
 - **Repository:** to be created.
 
 ## 17. Implementation Status (v0.1)

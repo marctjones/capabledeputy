@@ -8,7 +8,7 @@ DESIGN.md and the trace/observability model described in §9.
 ## v0.1 — Core Runtime
 
 ### Phase 0 — Foundations  ·  **DONE** (`fa141f3`)
-- Repository scaffold, Apache 2.0 license, code-of-conduct, contributing guide.
+- Repository scaffold, proprietary (All Rights Reserved) license, code-of-conduct, contributing guide.
 - CI: lint (ruff), type-check (pyright), test (pytest), coverage tracking.
 - Daemon skeleton: Unix socket listener, JSON-RPC plumbing.
 - CLI skeleton: `capdep daemon start/stop/status` and `capdep version`.

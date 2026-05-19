@@ -46,4 +46,4 @@ uv run pytest
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+Proprietary — Copyright (c) 2026 Marc Jones. All rights reserved. No license is granted; see [LICENSE](LICENSE).

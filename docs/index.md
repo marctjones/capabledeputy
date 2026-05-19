@@ -10,7 +10,7 @@ data flow through deterministic, human-auditable approval gates.
 
 It answers the question — *ten months after CaMeL, where are the
 production-grade prompt-injection-resistant agents?* — by building
-one: multi-provider, MIT-licensed, terminal-operated, designed for
+one: multi-provider, proprietary, terminal-operated, designed for
 individuals who want capable AI assistance without surrendering
 health records, financial data, or third-party communications to the
 LLM's word-completion machinery.

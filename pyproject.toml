@@ -4,7 +4,7 @@ version = "0.0.1"
 description = "Structurally secure runtime for personal AI agents — a capable deputy, never a confused one."
 readme = "README.md"
 requires-python = ">=3.12"
-license = "Apache-2.0"
+license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]
 authors = [
     { name = "Marc Jones", email = "marc@joneslaw.io" },
@@ -13,7 +13,7 @@ keywords = ["ai", "agent", "security", "capability", "information-flow-control",
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: Other/Proprietary License",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS :: MacOS X",
     "Programming Language :: Python :: 3 :: Only",
