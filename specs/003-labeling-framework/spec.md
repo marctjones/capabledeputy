@@ -10,6 +10,11 @@
 ### Session 2026-05-19
 
 - Q: Legacy 8-value label data — in-place migration or forward-only cutover? → A: Forward-only; legacy data treated as most-restrictive until re-labeled (no in-place rewrite). Resolved in FR-024.
+- Q: Does v0.9 build a data-category assignment mechanism, or consume categories assigned upstream? → A: Consume — v0.9 builds the registry, resolution layer, and decision function only; categories arrive from source declaration / curated+admission-controlled MCP / human declaration, plus an optional raise-only inspector. No trusted content classifier is built. Resolved in FR-022, FR-025.
+- Q: How do multiple matching rule sources compose? → A: Baseline + bounded relax — resolution sets a strictest-across-sources baseline; a human-authored decision rule may relax it only within explicit human-declared bounds; hard floors (prohibited, admissibility exclusion, max-tier clearance, integrity floor) are non-relaxable. Resolved in FR-026.
+- Q: Are the five tiers a strict total order for all comparisons? → A: Yes — none < sensitive < regulated < restricted < prohibited, totally ordered; "most-restrictive" = max tier; clearance/read-up compare on this order; prohibited is the maximum and terminal. Resolved in FR-027.
+- Q: What form does the mandatory risk-id take? → A: A single in-repo risk register; each entry has a stable internal id mapping to ≥1 external framework reference; labels/decisions cite the internal id. Resolved in FR-015, FR-028 + Risk Register Entry entity.
+- Q: How is context-expectedness determined deterministically? → A: An action is "expected" iff it matches an operator-registered expectation binding (initiator + effect + optional time window/parameters); non-match = "anomalous". Deterministic, human-declared, AI-read-only. Resolved in FR-029 + Expectation Binding entity.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -117,23 +122,28 @@ The operator needs the resolution layer to carry a per-profile maximum-tier clea
 - **FR-004**: Axis B MUST be a monotone provenance lattice (`principal-direct` ≥ `system-internal` ≥ `external-untrusted`), mechanically derived, with exactly one audited sanctioned declassifier, and MUST support an integrity floor with no-read-down.
 - **FR-005**: Axis C effect class MUST be declared on the tool/source (no runtime content classifier); a wrapper inherits the union of wrapped effects; tool-provenance is a recorded sub-attribute.
 - **FR-006**: Axis D decision context (initiator+authentication, counterparty/relationship, context-expectedness, reversibility/recoverability) MUST be first-class, human-declared, and AI-read-only.
+- **FR-029**: Context-expectedness MUST be determined deterministically as a match against operator-registered **expectation bindings** (initiator + effect + optional time window and/or parameter constraints). An action matching a binding is `expected`; any action not matching one is `anomalous`. Expectation bindings are human-declared and AI-read-only; no statistical/heuristic anomaly inference is permitted (Principle I).
 - **FR-007**: A sensitivity-resolution layer MUST map `(data-category, user, use-case, purpose)` to a tier in `{none, sensitive, regulated, restricted, prohibited}` deterministically, engine-side, with no model participation.
+- **FR-027**: The five tiers MUST form a strict total order `none < sensitive < regulated < restricted < prohibited`. "Most-restrictive" is the maximum under this order; all clearance and read-up comparisons (FR-008) and baseline composition (FR-026) MUST use it; `prohibited` is the order's maximum and terminal (FR-017).
 - **FR-008**: Each context profile MUST carry a maximum-tier clearance; access to data resolving above the clearance MUST be refused (read-up refusal).
 - **FR-009**: Purpose MUST additionally gate category *admissibility*: a human-declared rule may mark a category inadmissible as an input to a purpose; such categories MUST be excluded from a session of that purpose at spawn (no readable capability granted or delegable).
 - **FR-010**: The action outcome MUST be a deterministic pure function over the cross-product of axes A–D, valued in `{auto, suggest, require-approval, deny}`.
 - **FR-011**: Absent a matching human-authored rule, the outcome MUST be `suggest` or `deny` — never `auto` (never-auto default).
+- **FR-026**: Rule-source composition MUST be **baseline + bounded relax**: (a) the *baseline* outcome is the most-restrictive across all matching resolution sources (category default/resolution-mode, context profile, max-tier clearance, purpose-admissibility); (b) a human-authored decision rule MAY relax the baseline (e.g., `suggest`→`auto`) **only** within explicit human-declared bounds (e.g., human-declared recoverability, authenticated initiator); (c) the relaxation inputs MUST be human-declared, AI-read-only facts (FR-012) — the model may never supply or assert them; (d) the following are **hard floors no rule may cross**: the terminal `prohibited` tier (FR-017), purpose-admissibility exclusion (FR-009), per-profile max-tier clearance / read-up refusal (FR-008), and the provenance integrity floor (FR-004). A relaxation that would cross any hard floor MUST be refused and audited.
 - **FR-012**: The trust/relationship graph, recoverability metadata, purpose-admissibility, and initiator authentication MUST be human-declared; the system MUST reject any attempt by the model to mint, widen, or assert them.
 - **FR-013**: A derived/delegated label MUST inherit the most-restrictive value of any non-enumerated field.
 - **FR-014**: Labels, profiles, and rules MUST be changeable only via an AI-suggests → human-ratifies → engine-applies path; an unratified suggestion MUST have zero effect on decisions.
-- **FR-015**: Every label and every decision MUST carry at least one named framework risk-id; a label with no risk-id MUST fail validation.
+- **FR-015**: Every label and every decision MUST cite at least one internal risk-register id; a label citing none MUST fail validation (the SC-001 orphan audit).
+- **FR-028**: The system MUST maintain a single in-repo risk register; each entry has a stable internal id and maps to one or more external framework references (OWASP LLM/Agentic, MITRE ATLAS, NIST AI RMF, EU AI Act, FIPS 199, GDPR/HIPAA/PCI, FAIR). Labels and decisions reference the internal id, not raw external identifiers; an internal id MUST NOT exist with zero external references.
 - **FR-016**: A decision that crosses a configured risk threshold but is allowed MUST produce an auditable residual-risk exception object.
 - **FR-017**: The tier `prohibited` MUST be terminal — no approval, override, or escalation path may unlock it.
 - **FR-018**: Label, capability, profile, and audit operations MUST be `ADMINISTER`-class and unreachable from any session carrying untrusted-tainted provenance (control-plane reflexivity).
 - **FR-019**: Gating MUST be reversibility-weighted over human-declared recoverability, replacing the binary destructive-op gate, and MUST include a social-commitment effect class treated as reputationally irreversible.
 - **FR-020**: The system MUST provide a sealed-effect path so that `restricted`-tier data can be handled without ever entering the planner session context (true noninterference, asserted structurally).
 - **FR-021**: Every resolution (tier, admissibility, outcome) MUST be reproducible from logged inputs; model self-narrated reasoning MUST NOT be recorded as decision rationale.
-- **FR-022**: The label-assignment mechanism MUST record the provenance of how each label was assigned (source-declared, admission-labeler, human-declared, raise-only inspector); an inspector may only raise (add taint), never clear it.
+- **FR-022**: Every labeled datum MUST carry an assignment-provenance record of how its category was assigned (source-declared, curated/admission-controlled MCP, human-declared, or raise-only inspector); an inspector may only raise (add taint), never clear it.
 - **FR-023**: Unclassifiable or ambiguously classifiable data MUST resolve fail-closed to the most-restrictive applicable tier.
+- **FR-025**: v0.9 MUST consume data-category assignments from existing upstream sources and MUST NOT build a trusted runtime content classifier or a category-inference service; the only assignment component v0.9 introduces is an optional raise-only inspector. The labeling oracle is bounded and made auditable (FR-022), not eliminated.
 - **FR-024**: Migration is forward-only: existing data still carrying a legacy 8-value label MUST be treated as most-restrictive until it is re-labeled under the four-axis model. No in-place rewrite of existing session/store records is required; legacy state MUST never resolve to a more permissive outcome than the new model would give.
 
 ### Key Entities *(include if feature involves data)*
@@ -142,9 +152,11 @@ The operator needs the resolution layer to carry a per-profile maximum-tier clea
 - **Provenance Level (Axis B)**: position in the integrity lattice; attribute: is-sanctioned-declassifier (exactly one).
 - **Effect Class (Axis C)**: declared capability effect; attributes: effect kind, reversibility weight, social-commitment flag, tool-provenance.
 - **Decision Context (Axis D)**: initiator+authentication, counterparty/relationship, expectedness, recoverability — all human-declared.
+- **Expectation Binding**: operator-registered (initiator + effect + optional time window/parameters) defining what counts as `expected`; non-match ⇒ `anomalous` (FR-029).
 - **Context Profile**: per-user and per-use-case mapping `(category,user,use-case,purpose)→tier`, plus max-tier clearance.
 - **Admissibility Rule**: human-declared `(purpose, category) → inadmissible` exclusion.
 - **Human-Authored Decision Rule**: predicate over axes A–D → outcome; carries risk-id; ratification state.
+- **Risk Register Entry**: stable internal risk id + one-or-more external framework references; the single source labels/decisions cite (FR-028).
 - **Residual-Risk Exception**: record of an allowed threshold-crossing decision (who/what/when/which risk).
 - **Label-Assignment Record**: how/by-what a label was put on a datum (for oracle auditability).
 
@@ -152,7 +164,7 @@ The operator needs the resolution layer to carry a per-profile maximum-tier clea
 
 ### Measurable Outcomes
 
-- **SC-001**: 100% of stable-core and registered labels carry ≥1 framework risk-id (zero orphan labels) — verifiable by a registry audit.
+- **SC-001**: 100% of stable-core and registered labels cite ≥1 internal risk-register id, and 100% of risk-register entries carry ≥1 external framework reference (zero orphan labels, zero unmapped register entries) — verifiable by an automated registry audit.
 - **SC-002**: Sensitivity/admissibility/outcome resolution is 100% reproducible: re-running any recorded decision from its logged inputs yields an identical outcome and rationale in an automated determinism check.
 - **SC-003**: With an empty rule set, 0 consequential actions resolve to `auto` (100% land in suggest/require-approval/deny) — the never-auto default holds.
 - **SC-004**: In an inappropriate-context test battery, 100% of attempts to bring an inadmissible category into a purpose-scoped session are refused at spawn or grant time.
@@ -166,7 +178,7 @@ The operator needs the resolution layer to carry a per-profile maximum-tier clea
 
 - The stable core is approximately the ~12 categories enumerated in `docs/design-v0.9-labeling.md`; the exact frozen list is finalized during planning, pruning any category that cannot trace to a framework risk.
 - "User" and "use-case" already exist as session/profile concepts; profiles layer on existing session context rather than introducing a new identity system.
-- Label assignment for *data* is performed by source declaration, the curated/admission-controlled MCP path (existing WI-1/WI-2 mechanism), human declaration, or a raise-only inspector — not by a trusted runtime content classifier; the labeling oracle is acknowledged as the load-bearing assumption and is addressed via assignment-provenance recording, not eliminated.
+- Data-category assignment is consumed from existing upstream sources (now a firm scope boundary — FR-025/FR-022 — not a soft assumption); the existing curated/admission-controlled MCP path (WI-1/WI-2) is the primary source for externally-ingested data.
 - External substrate (sandbox, admission scanner) is leveraged only behind in-repo ports and is never part of the decision plane (Constitution VII).
 - Deliberate non-goals (model accuracy/bias/eval/content-safety; privacy lawful-basis/consent/DSAR; substrate security) are out of scope by secure-by-reduction and are not requirements here.
 - Enforcement remains LLM-isolated and deterministic (Constitution Principle I); this feature does not introduce any model call into resolution or decision.
