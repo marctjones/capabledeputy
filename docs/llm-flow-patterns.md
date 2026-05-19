@@ -80,6 +80,29 @@ deterministic interpreter, never the model's context.
 - **Use when:** the work is mechanical transformation/processing of
   sensitive data at volume.
 
+### 5. Sealed-effect via disposable isolation — 🔶 design (rule: spec 003; impl: spec 004)
+
+Deterministic code transforms labeled data **inside a disposable,
+egress-free isolation region** (no network, no host mounts except
+declared inputs). The planner never holds the raw data; it only
+authors the task and receives the returned output. The region boundary
+is simultaneously the **seal** (planner-blindness) and the
+**reversibility** (rollback = discard the region), so a contained
+pipeline — however long or data-heavy — runs optimistically with no
+gate; the gate is placed only where an output crosses the boundary.
+
+- **Planner sees:** the task and the output artifact — never the raw
+  contained data.
+- **Guarantee:** in-region effects are reversible by construction;
+  autonomous execution is safe up to the boundary.
+- **Model lineage:** Reference-Monitor assurance + intransitive-NI
+  *declassification* at the boundary (`security-models.md`). It is the
+  concrete realization of the previously-speculated "sealed-effect".
+- **Critical non-property:** the region is **not** a declassifier
+  (invariant #7 below).
+- **Use when:** mechanical transform/aggregation of sensitive data at
+  volume where the planner needs only the result.
+
 ## Meta-control: mode auto-escalation — ✅ implemented (v0.7)
 
 Not a pattern but the **selector**. `select_mode(label_set, registry,
@@ -146,6 +169,14 @@ reviewable defect (Principle VIII), not a tuning choice.
    sessions each individually clean can jointly span a conflict set;
    Chinese Wall is sound only with a shared/serialized accessed-
    compartment ledger across all concurrent passes.
+7. **Containment is not declassification.** Running a step in a
+   disposable isolation region (pattern ⑤) establishes only the
+   reversibility/integrity of the *computation*. Its output retains the
+   most-restrictive source data label; discarding the region is a
+   rollback, never a downgrade. Egress of a contained output MUST be
+   gated by its source labels exactly as if uncontained — "it ran in a
+   sandbox" is never grounds to permit egress. A flow that declassifies
+   by containment is a reviewable defect (Principle VIII).
 
 Per-datum vs. across-data: patterns ① and ③ are mutually exclusive for
 the *same* value in concurrent passes (expose vs. hide), but
