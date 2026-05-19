@@ -52,3 +52,10 @@ audit.jsonl
 .env
 .env.*
 CLAUDEAPI.*
+
+# Operator-local runtime configs (machine-specific; reference out-of-repo
+# secret paths but contain no secrets themselves). The "-local" suffix is
+# the convention; do NOT commit these.
+configs/*-local.yaml
+configs/*-local.yml
+configs/*-local.json
