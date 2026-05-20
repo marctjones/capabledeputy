@@ -8,9 +8,10 @@ from capabledeputy.approval.queue import ApprovalQueue
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.client import LLMClient
 from capabledeputy.paths import default_audit_log_path, default_state_db_path
+from capabledeputy.policy.purposes import Purposes
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.store import SessionStore
-from capabledeputy.tools.client import LabeledToolClient
+from capabledeputy.tools.client import LabeledToolClient, PolicyContext
 from capabledeputy.tools.native.calendar import CalendarStore, make_calendar_tools
 from capabledeputy.tools.native.email import EmailOutbox, make_email_tools
 from capabledeputy.tools.native.extract import make_extract_tools
@@ -32,10 +33,18 @@ class App:
         quarantined_llm: LLMClient | None = None,
         skills_dir: Path | None = None,
         enable_policy_preview: bool = True,
+        policy_context: PolicyContext | None = None,
+        purposes: Purposes | None = None,
     ) -> None:
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(state_db_path or default_state_db_path())
-        self.graph = SessionGraph(audit=self.audit, store=self.store)
+        # 003 runtime activation — SessionGraph receives the Purposes
+        # registry so spawn/grant/delegate enforce FR-009 admissibility.
+        self.graph = SessionGraph(
+            audit=self.audit,
+            store=self.store,
+            purposes=purposes,
+        )
         self.memory = LabeledMemoryStore()
         self.purchase_queue = PurchaseQueue()
         self.email_outbox = EmailOutbox()
@@ -45,11 +54,18 @@ class App:
         self.tasks = TaskStore()
         self.approval_queue = ApprovalQueue(audit=self.audit)
         self.registry = ToolRegistry()
+        self.policy_context = policy_context
+        self.purposes = purposes
+        # 003 runtime activation — LabeledToolClient receives the
+        # PolicyContext bus so engine.decide() composes the v2 axes,
+        # envelope dial, override grants, bindings, etc. With None
+        # the dispatcher behaves exactly as v0.7.
         self.tool_client = LabeledToolClient(
             self.registry,
             self.graph,
             self.audit,
             approval_queue=self.approval_queue,
+            policy_context=policy_context,
         )
         self.llm_client: LLMClient | None = llm_client
         self.quarantined_llm: LLMClient | None = quarantined_llm or llm_client

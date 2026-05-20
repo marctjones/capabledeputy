@@ -25,6 +25,10 @@ from capabledeputy.patterns.reference_handle import (
     is_planner_safe_token,
 )
 from capabledeputy.policy.actions import Action
+from capabledeputy.policy.assurance import (
+    ResidualRiskThresholds,
+    should_emit_residual_risk,
+)
 from capabledeputy.policy.bindings import BindingSet
 from capabledeputy.policy.decision_rules import DecisionRules
 from capabledeputy.policy.engine import PolicyDecision, decide
@@ -56,6 +60,7 @@ class PolicyContext:
     risk_preference: RiskPreference | None = None
     clearance_max_tier: Tier | None = None
     integrity_floor_level: str | None = None
+    residual_risk_thresholds: ResidualRiskThresholds | None = None
 
 
 def build_policy_decided_payload(
@@ -206,7 +211,7 @@ class LabeledToolClient:
             **v2_kwargs,
         )
 
-        await self._emit_policy_decision(session_id, tool_name, args, policy_decision)
+        await self._emit_policy_decision(session_id, tool_name, args, policy_decision, tool)
         await self._emit_capability_checked(session_id, action, policy_decision)
 
         if policy_decision.decision != Decision.ALLOW:
@@ -500,6 +505,7 @@ class LabeledToolClient:
         tool_name: str,
         args: dict[str, Any],
         decision: PolicyDecision,
+        tool: ToolDefinition,
     ) -> None:
         await self._audit.write(
             Event(
@@ -520,6 +526,41 @@ class LabeledToolClient:
                     ),
                 ),
             )
+        # T092 / FR-016 — emit RESIDUAL_RISK_EXCEPTION when an ALLOW
+        # decision crosses an operator-declared risk threshold. Pulls
+        # risk_ids from any matched_capability + matched v2 rules.
+        if (
+            self._policy_context is not None
+            and self._policy_context.residual_risk_thresholds is not None
+            and decision.decision is Decision.ALLOW
+        ):
+            decision_risk_ids: list[str] = []
+            if decision.matched_capability is not None:
+                # Capability today has no direct risk_ids field; the
+                # T012 risk_ids declaration on the originating tool is
+                # the authoritative source. Audit captures both layers
+                # in a follow-up.
+                pass
+            decision_risk_ids.extend(tool.risk_ids)
+            signal = should_emit_residual_risk(
+                decision_is_allow=True,
+                decision_risk_ids=tuple(decision_risk_ids),
+                thresholds=self._policy_context.residual_risk_thresholds,
+            )
+            if signal.should_emit:
+                await self._audit.write(
+                    Event(
+                        event_type=EventType.RESIDUAL_RISK_EXCEPTION,
+                        session_id=session_id,
+                        payload={
+                            "tool": tool_name,
+                            "args": args,
+                            "decision_rule": decision.rule,
+                            "crossed_risk_ids": list(signal.crossed),
+                            "non_suppressible": True,
+                        },
+                    ),
+                )
 
     async def _emit_capability_checked(
         self,

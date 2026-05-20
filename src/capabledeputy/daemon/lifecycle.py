@@ -157,6 +157,67 @@ def _report_admission(manager: UpstreamManager) -> None:
         print(line, file=sys.stderr)
 
 
+def build_policy_context_from_configs(
+    configs_dir: Path | None = None,
+) -> Any:
+    """Build a PolicyContext bus from the operator-curated configs.
+
+    Called after `load_v09_configs()` has confirmed presence + parse;
+    this constructs the typed registries the engine consumes at
+    runtime. Each loader is best-effort here: a config that exists
+    but doesn't declare any entries yields an empty registry rather
+    than refusing — that's how a fresh deployment with stub configs
+    runs without v2 features active until the operator declares
+    real entries.
+
+    Returns the PolicyContext or raises on a load failure that the
+    daemon should not paper over (Principle VI fail-closed for any
+    declared-but-malformed config).
+    """
+
+    from capabledeputy.policy.bindings import load as load_bindings
+    from capabledeputy.policy.decision_rules import load as load_rules
+    from capabledeputy.policy.envelope import (
+        load_envelopes,
+        load_risk_preference,
+    )
+    from capabledeputy.policy.overrides import (
+        OverrideGrantStore,
+    )
+    from capabledeputy.policy.overrides import (
+        load as load_overrides,
+    )
+    from capabledeputy.policy.purposes import load as load_purposes
+    from capabledeputy.tools.client import PolicyContext
+
+    base = _resolve_v09_configs_dir(configs_dir)
+
+    # Each loader is fail-closed on missing/unparseable per its own
+    # contract. _resolve_v09_configs_dir + load_v09_configs already
+    # verified presence; here we re-parse into typed objects.
+    rules_v2 = load_rules(base / "rules.yaml")
+    bindings = load_bindings(base / "source_bindings.yaml")
+    overrides = load_overrides(base / "override_policy.yaml")
+    envelope_set = load_envelopes(base / "envelopes.yaml")
+    risk_pref = load_risk_preference(base / "risk_preference.json")
+    purposes_path = base / "purposes.yaml"
+    purposes = load_purposes(purposes_path) if purposes_path.is_file() else None
+
+    # 003 — handle store + override grant store live in-process; no
+    # disk-backed read here. Persistence layered on top later.
+    from capabledeputy.patterns.reference_handle import ReferenceHandleStore
+
+    return PolicyContext(
+        rules_v2=rules_v2,
+        bindings=bindings,
+        override_policies=overrides,
+        override_grants=OverrideGrantStore(),
+        handle_store=ReferenceHandleStore(),
+        envelope_set=envelope_set,
+        risk_preference=risk_pref.value,
+    ), purposes
+
+
 async def run_daemon(
     socket_path: Path | None = None,
     state_db_path: Path | None = None,
@@ -171,6 +232,10 @@ async def run_daemon(
     # 003 T005: fail-closed v0.9 config load before any other work.
     # If any file is missing or unparseable, refuse to start (Principle VI).
     load_v09_configs()
+    # 003 runtime activation — build the typed PolicyContext from the
+    # loaded configs and inject it into the App. Without this, the
+    # v2 four-axis pipeline stays dormant at runtime.
+    policy_context, purposes_registry = build_policy_context_from_configs()
 
     # Populate ANTHROPIC_API_KEY from CLAUDEAPI.KEY in the cwd if it isn't
     # already set, so users don't need to re-export the env var each shell.
@@ -202,6 +267,8 @@ async def run_daemon(
         quarantined_llm=quarantined_client,
         skills_dir=skills_dir,
         enable_policy_preview=enable_policy_preview,
+        policy_context=policy_context,
+        purposes=purposes_registry,
     )
     await app.startup()
 

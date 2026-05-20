@@ -70,6 +70,16 @@ def make_email_tools(outbox: EmailOutbox) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.SEND_EMAIL,
             handler=email_send,
             target_arg="to",
+            # 003 T012-full — declare v2 four-axis decision fields.
+            # social.send_email is in the FR-019 social-commitment
+            # set; the reversibility gate will force-irreversible
+            # regardless of what we declare here, but declaring it
+            # makes the audit/explain story honest.
+            effect_class="social.send_email",
+            default_reversibility={"degree": "irreversible", "agent": "external"},
+            social_commitment=True,
+            tool_provenance="operator-curated",
+            surfaces_destination_id=True,
             approval_route=ApprovalRoute(
                 action=ApprovalAction.SEND_EMAIL,
                 target_arg="to",

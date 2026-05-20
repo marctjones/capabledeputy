@@ -74,6 +74,17 @@ class SessionGraph:
         self._store = store
         self._purposes = purposes
 
+    def _has_restricted_candidates(self, categories: frozenset[str]) -> bool:
+        """Heuristic for FR-047 spawn-refusal: if any candidate category
+        is one of the operator-declared restricted-tier categories, the
+        Pattern (3)/(5) requirement applies. Today we conservatively
+        treat the literal substring 'restricted' or known restricted
+        categories ('health', 'financial' at restricted tier) as the
+        signal; a richer check that consults the loaded Purposes /
+        labels.yaml category table is a follow-up."""
+        restricted_hints = frozenset({"restricted", "health", "financial"})
+        return any(c in restricted_hints for c in categories)
+
     def _check_admissibility(
         self,
         *,
@@ -142,6 +153,7 @@ class SessionGraph:
         parent: UUID | None = None,
         purpose_handle: str = UNSET_PURPOSE_HANDLE,
         candidate_capability_categories: frozenset[str] | None = None,
+        restricted_tier_modes_available: tuple[bool, bool] | None = None,
     ) -> Session:
         """Spawn a new session.
 
@@ -161,6 +173,31 @@ class SessionGraph:
             purpose_handle=purpose_handle,
             categories=candidates,
         )
+        # T099 / FR-047 runtime activation — a session whose tool
+        # surface has no Pattern (3) handle-aware tool AND no
+        # SandboxActuator port is refused at spawn for restricted-
+        # tier work. The caller passes
+        # `restricted_tier_modes_available=(has_handles, has_sandbox)`
+        # when it knows the surface; None disables the check (back-
+        # compat). The check fires only when the caller indicates
+        # restricted-tier intent via at least one RESTRICTED candidate
+        # category — see _restricted_categories below.
+        if restricted_tier_modes_available is not None and self._has_restricted_candidates(
+            candidates,
+        ):
+            from capabledeputy.mode.dispatcher import ModeSelectionError, select_mode_for_restricted
+
+            has_handles, has_sandbox = restricted_tier_modes_available
+            try:
+                select_mode_for_restricted(
+                    has_accepts_handles_tool=has_handles,
+                    has_sandbox_actuator=has_sandbox,
+                )
+            except ModeSelectionError as e:
+                raise PurposeAdmissibilityError(
+                    purpose_handle=purpose_handle,
+                    inadmissible_categories=candidates,
+                ) from e
         session = Session.new(
             owner=owner,
             intent=intent,
