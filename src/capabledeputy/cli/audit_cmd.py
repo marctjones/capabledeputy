@@ -1,9 +1,9 @@
 """003 audit subcommands: storage-shape, etc.
 
-Phase 1 (T004) skeleton. The real storage-shape audit logic (verify
-every sessions row populates the four axis fields per FR-045/SC-019)
-lands in Foundational T016 — this file just registers the subcommand
-and resolves the DB path so the surface exists for downstream code.
+T004 registered the subcommand surface; T016 wired in the real shape
+check via policy/storage_audit.py. The CLI itself is a thin wrapper
+around audit_storage_shape() that pretty-prints the report and exits
+non-zero on any FR-045/SC-019 violation.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import typer
 from rich.console import Console
 
 from capabledeputy.paths import default_state_db_path
+from capabledeputy.policy.storage_audit import audit_storage_shape
 
 console = Console()
 err_console = Console(stderr=True)
@@ -33,14 +34,25 @@ def storage_shape_command(
     ] = None,
 ) -> None:
     """Audit that every sessions row populates the v0.9 four-axis fields
-    (FR-045, SC-019). T004 skeleton — the real shape check lands in T016."""
+    (FR-045, SC-019). Exits non-zero on any shape violation."""
     db_path = db or default_state_db_path()
-    if not db_path.exists():
-        err_console.print(f"[yellow]no session store at {db_path}; nothing to audit[/yellow]")
-        raise typer.Exit(code=0)
     console.print(f"[dim]db: {db_path}[/dim]")
-    console.print(
-        "[yellow]storage-shape audit not yet implemented "
-        "(T004 skeleton; real check lands in T016).[/yellow]",
+    report = audit_storage_shape(db_path)
+    if report.n_total == 0:
+        console.print("[yellow]no sessions stored; nothing to audit[/yellow]")
+        raise typer.Exit(code=0)
+    if report.ok:
+        console.print(
+            f"[green]ok[/green] — {report.n_total} session(s) pass the "
+            "four-axis storage shape check (FR-045 / SC-019).",
+        )
+        raise typer.Exit(code=0)
+    err_console.print(
+        f"[red]FAIL[/red] — {len(report.bad_rows)}/{report.n_total} sessions "
+        "violate the four-axis storage shape:",
     )
-    raise typer.Exit(code=0)
+    for sid, reason in report.bad_rows[:20]:
+        err_console.print(f"  - {sid}: {reason}")
+    if len(report.bad_rows) > 20:
+        err_console.print(f"  ... and {len(report.bad_rows) - 20} more")
+    raise typer.Exit(code=1)
