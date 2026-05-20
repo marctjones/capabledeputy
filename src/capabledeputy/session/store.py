@@ -43,13 +43,154 @@ CREATE TABLE IF NOT EXISTS sessions (
     used_kinds TEXT NOT NULL DEFAULT '[]',
     cap_uses TEXT NOT NULL DEFAULT '{}',
     revoked_audit_ids TEXT NOT NULL DEFAULT '[]',
+    -- 003 v0.9 four-axis storage shape (T008, FR-045). axis_c lives on
+    -- capability_set/ToolDefinition, not on the session.
+    axis_a TEXT NOT NULL DEFAULT '[]',
+    axis_b TEXT NOT NULL DEFAULT '[]',
+    axis_d TEXT NOT NULL DEFAULT '{}',
+    purpose_handle TEXT NOT NULL DEFAULT 'unset',
+    reference_handles TEXT NOT NULL DEFAULT '{}',
+    risk_preference_at_spawn TEXT NOT NULL DEFAULT 'cautious',
+    effective_isolation_region_id TEXT NULL,
     FOREIGN KEY (parent_id) REFERENCES sessions(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at);
+
+-- 003 v0.9 operator-config-derived tables (T009). Source-of-truth is
+-- the corresponding configs/*.yaml or .json file; these tables hold
+-- the loaded form for fast lookup + provenance audit.
+
+CREATE TABLE IF NOT EXISTS source_location_bindings (
+    name TEXT PRIMARY KEY,
+    scope_pattern_canonical TEXT NOT NULL,
+    category TEXT NOT NULL,
+    default_tier TEXT NOT NULL,
+    reversibility TEXT NULL,
+    mutability TEXT NULL,
+    write_discipline TEXT NULL,
+    risk_ids TEXT NOT NULL,
+    assignment_provenance TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS relationship_groups (
+    group_id TEXT PRIMARY KEY,
+    member_principal_ids TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS expectation_bindings (
+    binding_id TEXT PRIMARY KEY,
+    initiator TEXT NOT NULL,
+    effect_kind TEXT NOT NULL,
+    time_window TEXT NULL,
+    param_constraints TEXT NULL,
+    risk_ids TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS purposes (
+    purpose_id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    admissible_categories TEXT NULL,
+    inadmissible_categories TEXT NULL,
+    recommended_pattern TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS override_policies (
+    tier_or_floor TEXT PRIMARY KEY,
+    policy TEXT NOT NULL,
+    authorized_principal_ids TEXT NOT NULL,
+    attester_principal_ids TEXT NULL,
+    expiry_seconds INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS override_grants (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    action_kind TEXT NOT NULL,
+    target TEXT NOT NULL,
+    target_category_tier TEXT NOT NULL,
+    hard_floor_crossed TEXT NOT NULL,
+    invoker_principal TEXT NOT NULL,
+    attester_principal TEXT NULL,
+    override_policy_at_grant TEXT NOT NULL,
+    friction_level TEXT NOT NULL,
+    audit_id TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    consumed_at TEXT NULL,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_override_grants_session ON override_grants(session_id);
+CREATE INDEX IF NOT EXISTS idx_override_grants_expires ON override_grants(expires_at);
 """
+
+
+# 003 T011 — legacy label_set -> axis_a/axis_b mapping (FR-024 forward-
+# only). REGULATED chosen for the confidential.* legacy values: preserves
+# the "sensitive, needs approval" semantics without escalating to
+# RESTRICTED (which would suddenly require Pattern ③ at spawn — a
+# usability regression for migrated sessions). EGRESS_* values are
+# effect-class signals and stay in the legacy label_set column for
+# audit; they don't map to axis_a/axis_b.
+_LEGACY_TO_AXIS_A: dict[str, dict[str, str]] = {
+    "confidential.health": {"category": "health", "tier": "regulated"},
+    "confidential.financial": {"category": "financial", "tier": "regulated"},
+    "confidential.personal": {"category": "personal", "tier": "regulated"},
+}
+_LEGACY_TO_AXIS_B: dict[str, dict[str, object]] = {
+    "untrusted.external": {"level": "external-untrusted", "integrity_floor": False},
+    "untrusted.user_input": {"level": "external-untrusted", "integrity_floor": False},
+    "trusted.user_direct": {"level": "principal-direct", "integrity_floor": False},
+}
+
+
+def _convert_legacy_label_set(label_set_json: str) -> tuple[str, str]:
+    """T011 legacy converter: read the v0.7 label_set JSON list and
+    return (axis_a_json, axis_b_json) for backfill into the new columns.
+    Most-restrictive position per FR-024 — REGULATED for confidential.*,
+    EXTERNAL_UNTRUSTED for untrusted.*. Idempotent: re-running on
+    already-converted data yields equivalent output."""
+    try:
+        labels = json.loads(label_set_json or "[]")
+    except json.JSONDecodeError:
+        return "[]", "[]"
+
+    axis_a_entries: list[dict[str, object]] = []
+    axis_b_entries: list[dict[str, object]] = []
+    seen_categories: set[str] = set()
+    seen_levels: set[str] = set()
+
+    for label in labels:
+        if label in _LEGACY_TO_AXIS_A:
+            spec = _LEGACY_TO_AXIS_A[label]
+            cat = spec["category"]
+            if cat in seen_categories:
+                continue
+            seen_categories.add(cat)
+            axis_a_entries.append(
+                {
+                    "category": cat,
+                    "tier": spec["tier"],
+                    "risk_ids": [],
+                    "assignment_provenance": "legacy-migration",
+                },
+            )
+        elif label in _LEGACY_TO_AXIS_B:
+            spec_b = _LEGACY_TO_AXIS_B[label]
+            lvl = str(spec_b["level"])
+            if lvl in seen_levels:
+                continue
+            seen_levels.add(lvl)
+            axis_b_entries.append(spec_b)
+        # EGRESS_* and unknown labels: skip; remain in legacy label_set.
+
+    return json.dumps(axis_a_entries), json.dumps(axis_b_entries)
 
 
 class SchemaVersionError(RuntimeError):
@@ -98,15 +239,22 @@ class SessionStore:
                                 raise
                 # v2 → v3: used_kinds. v3 → v4: cap_uses. v4 → v5:
                 # revoked_audit_ids (002 delegation cascade). v5 → v6:
-                # axis-orthogonal columns + new tables land in 003 T008.
-                # T001 here only broadens the condition + stamps v6; the
-                # actual ALTERs for v5→v6 arrive in Foundational T008.
+                # 003 axis-orthogonal columns (T008) + new tables (T009)
+                # land here. Legacy label_set converter (T011) backfills
+                # axis_a/axis_b from existing label_set rows.
                 # Each ALTER is idempotent (duplicate-column is caught)
                 # so a db at any of v1..v5 converges to v6 in one pass.
                 for col, default in (
                     ("used_kinds", "'[]'"),
                     ("cap_uses", "'{}'"),
                     ("revoked_audit_ids", "'[]'"),
+                    # 003 T008 — four-axis storage shape.
+                    ("axis_a", "'[]'"),
+                    ("axis_b", "'[]'"),
+                    ("axis_d", "'{}'"),
+                    ("purpose_handle", "'unset'"),
+                    ("reference_handles", "'{}'"),
+                    ("risk_preference_at_spawn", "'cautious'"),
                 ):
                     ddl = f"ALTER TABLE sessions ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}"
                     try:
@@ -114,6 +262,32 @@ class SessionStore:
                     except sqlite3.OperationalError as e:
                         if "duplicate column" not in str(e).lower():
                             raise
+                # NULL-able column (no default needed beyond NULL).
+                try:
+                    conn.execute(
+                        "ALTER TABLE sessions ADD COLUMN effective_isolation_region_id TEXT NULL",
+                    )
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e).lower():
+                        raise
+
+                # T011 legacy converter: backfill axis_a/axis_b from
+                # any existing label_set rows that haven't been converted
+                # yet (idempotent — re-running produces the same JSON).
+                # Detect "not yet converted" by axis_a == '[]' default;
+                # treat axis_b similarly. A session with no legacy labels
+                # to map remains at [] / []; that's fine.
+                rows_to_convert = conn.execute(
+                    "SELECT id, label_set FROM sessions WHERE axis_a = '[]' AND axis_b = '[]'",
+                ).fetchall()
+                for row in rows_to_convert:
+                    axis_a_json, axis_b_json = _convert_legacy_label_set(row["label_set"])
+                    if axis_a_json == "[]" and axis_b_json == "[]":
+                        continue  # nothing to backfill
+                    conn.execute(
+                        "UPDATE sessions SET axis_a = ?, axis_b = ? WHERE id = ?",
+                        (axis_a_json, axis_b_json, row["id"]),
+                    )
                 conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
                 return
             raise SchemaVersionError(
@@ -145,8 +319,12 @@ class SessionStore:
                     label_set, capability_set, history, declassification_log,
                     created_at, updated_at, owner,
                     tool_aliasing, prefer_programmatic, used_kinds, cap_uses,
-                    revoked_audit_ids
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    revoked_audit_ids,
+                    axis_a, axis_b, axis_d, purpose_handle,
+                    reference_handles, risk_preference_at_spawn,
+                    effective_isolation_region_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status = excluded.status,
                     intent = excluded.intent,
@@ -160,7 +338,14 @@ class SessionStore:
                     prefer_programmatic = excluded.prefer_programmatic,
                     used_kinds = excluded.used_kinds,
                     cap_uses = excluded.cap_uses,
-                    revoked_audit_ids = excluded.revoked_audit_ids
+                    revoked_audit_ids = excluded.revoked_audit_ids,
+                    axis_a = excluded.axis_a,
+                    axis_b = excluded.axis_b,
+                    axis_d = excluded.axis_d,
+                    purpose_handle = excluded.purpose_handle,
+                    reference_handles = excluded.reference_handles,
+                    risk_preference_at_spawn = excluded.risk_preference_at_spawn,
+                    effective_isolation_region_id = excluded.effective_isolation_region_id
                 """,
                 (
                     d["id"],
@@ -179,6 +364,13 @@ class SessionStore:
                     json.dumps(d["used_kinds"]),
                     json.dumps(d["cap_uses"]),
                     json.dumps(d["revoked_audit_ids"]),
+                    json.dumps(d["axis_a"]),
+                    json.dumps(d["axis_b"]),
+                    json.dumps(d["axis_d"]),
+                    d["purpose_handle"],
+                    json.dumps(d["reference_handles"]),
+                    d["risk_preference_at_spawn"],
+                    d["effective_isolation_region_id"],
                 ),
             )
 
@@ -207,6 +399,17 @@ class SessionStore:
 
 
 def _row_to_session(row: sqlite3.Row) -> Session:
+    # 003 T010 — default-tolerant reads for the v0.9 columns. A row
+    # written at SCHEMA_VERSION 5 (pre-migration in-memory copy) will
+    # not have these columns; sqlite3.Row raises IndexError on a
+    # missing column, so we probe with `try` and fall back to defaults.
+    def _col(name: str, default: object) -> object:
+        try:
+            value = row[name]
+        except IndexError:
+            return default
+        return value if value is not None else default
+
     return Session.from_dict(
         {
             "id": row["id"],
@@ -225,5 +428,12 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "used_kinds": json.loads(row["used_kinds"]),
             "cap_uses": json.loads(row["cap_uses"]),
             "revoked_audit_ids": json.loads(row["revoked_audit_ids"]),
+            "axis_a": json.loads(str(_col("axis_a", "[]"))),
+            "axis_b": json.loads(str(_col("axis_b", "[]"))),
+            "axis_d": json.loads(str(_col("axis_d", "{}"))),
+            "purpose_handle": _col("purpose_handle", "unset"),
+            "reference_handles": json.loads(str(_col("reference_handles", "{}"))),
+            "risk_preference_at_spawn": _col("risk_preference_at_spawn", "cautious"),
+            "effective_isolation_region_id": _col("effective_isolation_region_id", None),
         },
     )

@@ -13,7 +13,7 @@ from typing import Any, Self
 from uuid import UUID, uuid4
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import AxisA, AxisB, AxisD, Label
 
 
 class SessionStatus(StrEnum):
@@ -110,6 +110,17 @@ class Session:
     # in/for this session's authority graph. Consulted at decide();
     # additive, default-tolerant on read (missing ⇒ empty).
     revoked_audit_ids: frozenset[UUID] = field(default_factory=frozenset)
+    # 003 v0.9 labeling — T010. Four-axis representation. axis_c lives
+    # on Capability.kind / ToolDefinition.effect_class, not here.
+    # Defaults are safe: empty axes + 'unset' purpose ⇒ admits no
+    # consequential effects (FR-046 fail-closed at decide()).
+    axis_a: AxisA = field(default_factory=AxisA)
+    axis_b: AxisB = field(default_factory=AxisB)
+    axis_d: AxisD = field(default_factory=AxisD)
+    purpose_handle: str = "unset"
+    reference_handles: dict[str, dict[str, Any]] = field(default_factory=dict)
+    risk_preference_at_spawn: str = "cautious"
+    effective_isolation_region_id: str | None = None
 
     @classmethod
     def new(
@@ -127,6 +138,13 @@ class Session:
         used_kinds: frozenset[CapabilityKind] = frozenset(),
         cap_uses: dict[str, tuple[datetime, ...]] | None = None,
         revoked_audit_ids: frozenset[UUID] = frozenset(),
+        axis_a: AxisA | None = None,
+        axis_b: AxisB | None = None,
+        axis_d: AxisD | None = None,
+        purpose_handle: str = "unset",
+        reference_handles: dict[str, dict[str, Any]] | None = None,
+        risk_preference_at_spawn: str = "cautious",
+        effective_isolation_region_id: str | None = None,
     ) -> Self:
         now = _utcnow()
         return cls(
@@ -146,6 +164,13 @@ class Session:
             used_kinds=used_kinds,
             cap_uses=cap_uses if cap_uses is not None else {},
             revoked_audit_ids=revoked_audit_ids,
+            axis_a=axis_a if axis_a is not None else AxisA(),
+            axis_b=axis_b if axis_b is not None else AxisB(),
+            axis_d=axis_d if axis_d is not None else AxisD(),
+            purpose_handle=purpose_handle,
+            reference_handles=reference_handles if reference_handles is not None else {},
+            risk_preference_at_spawn=risk_preference_at_spawn,
+            effective_isolation_region_id=effective_isolation_region_id,
         )
 
     @property
@@ -178,6 +203,14 @@ class Session:
                 aid: [ts.isoformat() for ts in stamps] for aid, stamps in self.cap_uses.items()
             },
             "revoked_audit_ids": sorted(str(a) for a in self.revoked_audit_ids),
+            # 003 v0.9 four-axis additions (T010). axis_c lives on caps.
+            "axis_a": self.axis_a.to_dict(),
+            "axis_b": self.axis_b.to_dict(),
+            "axis_d": self.axis_d.to_dict(),
+            "purpose_handle": self.purpose_handle,
+            "reference_handles": self.reference_handles,
+            "risk_preference_at_spawn": self.risk_preference_at_spawn,
+            "effective_isolation_region_id": self.effective_isolation_region_id,
         }
 
     @classmethod
@@ -204,4 +237,13 @@ class Session:
                 for aid, stamps in d.get("cap_uses", {}).items()
             },
             revoked_audit_ids=frozenset(UUID(a) for a in d.get("revoked_audit_ids", ())),
+            # 003 v0.9 four-axis additions — default-tolerant per
+            # Constitution §Sec. Constraints (T010 / FR-045).
+            axis_a=AxisA.from_dict(d.get("axis_a") or []),
+            axis_b=AxisB.from_dict(d.get("axis_b") or []),
+            axis_d=AxisD.from_dict(d.get("axis_d")),
+            purpose_handle=str(d.get("purpose_handle", "unset")),
+            reference_handles=dict(d.get("reference_handles") or {}),
+            risk_preference_at_spawn=str(d.get("risk_preference_at_spawn", "cautious")),
+            effective_isolation_region_id=d.get("effective_isolation_region_id"),
         )
