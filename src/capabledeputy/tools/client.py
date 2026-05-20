@@ -15,16 +15,39 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
+from capabledeputy.patterns.reference_handle import (
+    ReferenceHandleError,
+    ReferenceHandleStore,
+    is_planner_safe_token,
+)
 from capabledeputy.policy.actions import Action
+from capabledeputy.policy.bindings import BindingSet
+from capabledeputy.policy.decision_rules import DecisionRules
 from capabledeputy.policy.engine import PolicyDecision, decide
 from capabledeputy.policy.labels import Label
+from capabledeputy.policy.overrides import OverridePolicies
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
-from capabledeputy.tools.registry import ToolContext, ToolRegistry
+from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry
+
+
+@dataclass(frozen=True)
+class PolicyContext:
+    """Operator-curated context the dispatcher needs to invoke the v2
+    decision pipeline. Each field is independently optional —
+    LabeledToolClient back-compat lives by passing `None`. Production
+    code constructs this once at daemon start and injects it into the
+    LabeledToolClient.
+    """
+
+    rules_v2: DecisionRules | None = None
+    bindings: BindingSet | None = None
+    override_policies: OverridePolicies | None = None
+    handle_store: ReferenceHandleStore | None = None
 
 
 def build_policy_decided_payload(
@@ -131,6 +154,7 @@ class LabeledToolClient:
         graph: SessionGraph,
         audit: AuditWriter,
         approval_queue: Any = None,
+        policy_context: PolicyContext | None = None,
     ) -> None:
         self._registry = registry
         self._graph = graph
@@ -140,6 +164,10 @@ class LabeledToolClient:
         # registered in the queue here, at the policy chokepoint —
         # not by whichever client happens to be driving the session.
         self._approval_queue = approval_queue
+        # 003 composition sub-phase A — when provided, the v2 four-axis
+        # decision pipeline activates. When None, the client behaves
+        # exactly as v0.7 (back-compat).
+        self._policy_context = policy_context
 
     async def call_tool(
         self,
@@ -159,6 +187,7 @@ class LabeledToolClient:
         # at the chokepoint, threaded into decide() AND reused as the
         # recorded use timestamp so the rate-limit window is consistent.
         dispatch_now = datetime.now(UTC)
+        v2_kwargs = self._build_v2_decide_kwargs(session, tool)
         policy_decision = decide(
             session.label_set,
             session.capability_set,
@@ -166,6 +195,7 @@ class LabeledToolClient:
             used_kinds=session.used_kinds,
             now=dispatch_now,
             cap_uses=session.cap_uses,
+            **v2_kwargs,
         )
 
         await self._emit_policy_decision(session_id, tool_name, args, policy_decision)
@@ -243,8 +273,20 @@ class LabeledToolClient:
             )
 
         context = ToolContext(session_id=session_id, label_set=session.label_set)
+        # T104 — Pattern (3) ReferenceHandle bind step. AFTER decide()
+        # approved, BEFORE the handler runs: substitute any handle-shaped
+        # values in declared handle_arg_names with the store-bound real
+        # value. Emits pattern3.handle_bind with the canonical
+        # destination id (FR-047). Skipped when policy_context.handle_store
+        # is None or the tool doesn't accept handles.
+        bound_args = await self._bind_reference_handles(
+            session_id=session_id,
+            tool=tool,
+            tool_name=tool_name,
+            args=args,
+        )
         try:
-            result = await tool.handler(args, context)
+            result = await tool.handler(bound_args, context)
         except Exception as e:
             return ToolCallOutcome(
                 decision=Decision.ALLOW,
@@ -287,6 +329,97 @@ class LabeledToolClient:
             tool_name=tool_name,
             tool_args=args,
         )
+
+    def _build_v2_decide_kwargs(
+        self,
+        session: Any,
+        tool: ToolDefinition,
+    ) -> dict[str, Any]:
+        """Build the kw-only v2 args for engine.decide() from the
+        session axes + tool definition + policy context. When the
+        policy context is absent OR the tool doesn't declare an
+        effect_class, returns an empty dict (the v2 leg stays
+        dormant; legacy behavior preserved)."""
+        if self._policy_context is None or tool.effect_class is None:
+            return {}
+        return {
+            "axis_a": session.axis_a,
+            "axis_b": session.axis_b,
+            "axis_d": session.axis_d,
+            "effect_class": tool.effect_class,
+            "rules_v2": self._policy_context.rules_v2,
+        }
+
+    async def _bind_reference_handles(
+        self,
+        *,
+        session_id: UUID,
+        tool: ToolDefinition,
+        tool_name: str,
+        args: dict[str, Any],
+    ) -> dict[str, Any]:
+        """T104 — substitute Pattern (3) handle ids with real values
+        from the store; emit pattern3.handle_bind per substitution.
+        Returns the substituted args dict. If no policy_context or no
+        handle_store wired, returns `args` unchanged. The bind() call
+        itself enforces unforgeable / per-session / non-empty-
+        destination invariants (FR-047)."""
+        if (
+            self._policy_context is None
+            or self._policy_context.handle_store is None
+            or not tool.accepts_handles
+            or not tool.handle_arg_names
+        ):
+            return args
+        store = self._policy_context.handle_store
+        substituted: dict[str, Any] = dict(args)
+        for arg_name in tool.handle_arg_names:
+            raw = substituted.get(arg_name)
+            if not isinstance(raw, str) or not is_planner_safe_token(raw):
+                continue
+            try:
+                handle_id = UUID(raw)
+            except ValueError:
+                continue
+            # Best-effort destination canonical id: the tool's
+            # target_arg if surfaces_destination_id is declared; else
+            # tool name. The full T012 path is to consult a port — that
+            # lands when source_port has providers (spec 004).
+            dest = (
+                str(substituted.get(tool.target_arg, ""))
+                if tool.surfaces_destination_id
+                else f"tool:{tool_name}"
+            )
+            audit_id = uuid4()
+            try:
+                value = store.bind(
+                    session_id=session_id,
+                    handle_id=handle_id,
+                    destination_canonical_id=dest or f"tool:{tool_name}",
+                    tool=tool_name,
+                    audit_id=audit_id,
+                )
+            except ReferenceHandleError:
+                # Forged / cross-session / empty-destination: refuse
+                # the substitution; the handler sees the raw token, the
+                # underlying call typically fails — fail-loud not
+                # fail-silent.
+                continue
+            substituted[arg_name] = value
+            await self._audit.write(
+                Event(
+                    audit_id=audit_id,
+                    event_type=EventType.PATTERN3_HANDLE_BIND,
+                    session_id=session_id,
+                    payload={
+                        "handle_id": str(handle_id),
+                        "tool": tool_name,
+                        "arg_name": arg_name,
+                        "destination_canonical_id": dest or f"tool:{tool_name}",
+                    },
+                ),
+            )
+        return substituted
 
     async def _register_approval(
         self,

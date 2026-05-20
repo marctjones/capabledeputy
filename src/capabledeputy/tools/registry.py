@@ -61,6 +61,16 @@ class ToolDefinition:
     # back-compat for existing tools.
     accepts_handles: bool = False
     handle_arg_names: tuple[str, ...] = field(default_factory=tuple)
+    # 003 T012-full — v2 four-axis decision fields. All default-tolerant
+    # so existing ToolDefinition() callers keep working unchanged.
+    # When set, the v2 leg of engine.decide() consumes them.
+    effect_class: str | None = None  # axis C; e.g., "data.read_file"
+    default_reversibility: dict[str, str] | None = None  # {"degree": ..., "agent": ...}
+    default_mutability_target_facets: tuple[str, ...] = field(default_factory=tuple)
+    social_commitment: bool = False  # FR-019 hard-coded irreversible
+    tool_provenance: str = "operator-curated"  # e.g., "operator-curated" | "mcp"
+    surfaces_destination_id: bool = False  # FR-048 — port-backed canonical id
+    risk_ids: tuple[str, ...] = field(default_factory=tuple)
 
     def extract_target(self, args: dict[str, Any]) -> str:
         return str(args.get(self.target_arg, ""))
