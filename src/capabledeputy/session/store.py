@@ -149,22 +149,55 @@ _LEGACY_TO_AXIS_B: dict[str, dict[str, object]] = {
     "trusted.user_direct": {"level": "principal-direct", "integrity_floor": False},
 }
 
+# 003 T047 — legacy trust prefix -> Axis-D initiator+authentication.
+# We have no faithful record of the actual initiator on legacy rows,
+# so the migration picks conservative values derived from the trust
+# prefix that *was* recorded:
+#   * trusted.user_direct  ⇒ principal:legacy-migration / device-bound
+#   * untrusted.*          ⇒ external:legacy-untrusted / none
+# Most-restrictive composition (FR-024): if a session carries any
+# `untrusted.*` label, the untrusted axis_d wins regardless of
+# whether `trusted.user_direct` is also present — the worst-case
+# initiator drives the migration.
+_AXIS_D_TRUSTED_DEFAULT: dict[str, object] = {
+    "initiator": "principal:legacy-migration",
+    "authentication": "device-bound",
+    "counterparty": None,
+    "relationship_group_ids": [],
+    "expectedness": "anomalous",
+    "reversibility": {"degree": "irreversible", "agent": "external"},
+}
+_AXIS_D_UNTRUSTED_DEFAULT: dict[str, object] = {
+    "initiator": "external:legacy-untrusted",
+    "authentication": "none",
+    "counterparty": None,
+    "relationship_group_ids": [],
+    "expectedness": "anomalous",
+    "reversibility": {"degree": "irreversible", "agent": "external"},
+}
+_LEGACY_TRUSTED_LABELS = frozenset({"trusted.user_direct"})
+_LEGACY_UNTRUSTED_LABELS = frozenset({"untrusted.external", "untrusted.user_input"})
 
-def _convert_legacy_label_set(label_set_json: str) -> tuple[str, str]:
-    """T011 legacy converter: read the v0.7 label_set JSON list and
-    return (axis_a_json, axis_b_json) for backfill into the new columns.
-    Most-restrictive position per FR-024 — REGULATED for confidential.*,
-    EXTERNAL_UNTRUSTED for untrusted.*. Idempotent: re-running on
-    already-converted data yields equivalent output."""
+
+def _convert_legacy_label_set(label_set_json: str) -> tuple[str, str, str]:
+    """T011/T047 legacy converter: read the v0.7 label_set JSON list and
+    return (axis_a_json, axis_b_json, axis_d_json) for backfill into
+    the new columns. Most-restrictive position per FR-024 — REGULATED
+    for confidential.*, EXTERNAL_UNTRUSTED for untrusted.*, and an
+    Axis-D initiator/authentication derived from the trust prefix.
+    Idempotent: re-running on already-converted data yields equivalent
+    output. Returns ('[]', '[]', '{}') when nothing maps."""
     try:
         labels = json.loads(label_set_json or "[]")
     except json.JSONDecodeError:
-        return "[]", "[]"
+        return "[]", "[]", "{}"
 
     axis_a_entries: list[dict[str, object]] = []
     axis_b_entries: list[dict[str, object]] = []
     seen_categories: set[str] = set()
     seen_levels: set[str] = set()
+    saw_trusted = False
+    saw_untrusted = False
 
     for label in labels:
         if label in _LEGACY_TO_AXIS_A:
@@ -188,9 +221,22 @@ def _convert_legacy_label_set(label_set_json: str) -> tuple[str, str]:
                 continue
             seen_levels.add(lvl)
             axis_b_entries.append(spec_b)
+        if label in _LEGACY_TRUSTED_LABELS:
+            saw_trusted = True
+        if label in _LEGACY_UNTRUSTED_LABELS:
+            saw_untrusted = True
         # EGRESS_* and unknown labels: skip; remain in legacy label_set.
 
-    return json.dumps(axis_a_entries), json.dumps(axis_b_entries)
+    # T047 — Axis-D derivation. Most-restrictive: untrusted wins if
+    # any untrusted label is present, even alongside trusted.
+    if saw_untrusted:
+        axis_d_json = json.dumps(_AXIS_D_UNTRUSTED_DEFAULT)
+    elif saw_trusted:
+        axis_d_json = json.dumps(_AXIS_D_TRUSTED_DEFAULT)
+    else:
+        axis_d_json = "{}"
+
+    return json.dumps(axis_a_entries), json.dumps(axis_b_entries), axis_d_json
 
 
 class SchemaVersionError(RuntimeError):
@@ -271,22 +317,26 @@ class SessionStore:
                     if "duplicate column" not in str(e).lower():
                         raise
 
-                # T011 legacy converter: backfill axis_a/axis_b from
-                # any existing label_set rows that haven't been converted
-                # yet (idempotent — re-running produces the same JSON).
-                # Detect "not yet converted" by axis_a == '[]' default;
-                # treat axis_b similarly. A session with no legacy labels
-                # to map remains at [] / []; that's fine.
+                # T011/T047 legacy converter: backfill axis_a/axis_b/
+                # axis_d from any existing label_set rows that haven't
+                # been converted yet (idempotent — re-running produces
+                # the same JSON). Detect "not yet converted" by
+                # axis_a == '[]' default; treat axis_b/axis_d similarly.
+                # A session with no legacy labels to map remains at
+                # default; that's fine.
                 rows_to_convert = conn.execute(
-                    "SELECT id, label_set FROM sessions WHERE axis_a = '[]' AND axis_b = '[]'",
+                    "SELECT id, label_set FROM sessions "
+                    "WHERE axis_a = '[]' AND axis_b = '[]' AND axis_d = '{}'",
                 ).fetchall()
                 for row in rows_to_convert:
-                    axis_a_json, axis_b_json = _convert_legacy_label_set(row["label_set"])
-                    if axis_a_json == "[]" and axis_b_json == "[]":
+                    axis_a_json, axis_b_json, axis_d_json = _convert_legacy_label_set(
+                        row["label_set"],
+                    )
+                    if axis_a_json == "[]" and axis_b_json == "[]" and axis_d_json == "{}":
                         continue  # nothing to backfill
                     conn.execute(
-                        "UPDATE sessions SET axis_a = ?, axis_b = ? WHERE id = ?",
-                        (axis_a_json, axis_b_json, row["id"]),
+                        "UPDATE sessions SET axis_a = ?, axis_b = ?, axis_d = ? WHERE id = ?",
+                        (axis_a_json, axis_b_json, axis_d_json, row["id"]),
                     )
                 conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
                 return

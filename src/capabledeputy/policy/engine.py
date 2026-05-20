@@ -19,7 +19,10 @@ from capabledeputy.policy.capabilities import (
 from capabledeputy.policy.decision_rules import (
     DecisionRules,
     EvaluationResult,
+    RelaxInput,
+    RelaxInspectionResult,
     RuleOutcome,
+    inspect_relax_inputs,
 )
 from capabledeputy.policy.decision_rules import evaluate as _evaluate_v2
 from capabledeputy.policy.labels import AxisA, AxisB, AxisD, Label
@@ -34,6 +37,7 @@ DESTRUCTIVE_OP_RULE = "destructive-op-needs-approval"
 REVOKED_BY_PRIOR_USE_RULE = "capability-revoked-by-prior-use"
 CAPABILITY_EXPIRED_RULE = "capability-expired"
 RATE_LIMIT_EXCEEDED_RULE = "rate-limit-exceeded"
+RELAX_REFUSED_RULE = "v2:relax_refused"
 V2_RULE_PREFIX = "v2:"
 
 
@@ -46,6 +50,20 @@ class PolicyDecision:
     effective_labels: frozenset[Label] = frozenset()
     v2_outcome: RuleOutcome | None = None
     v2_matched_rule_ids: tuple[str, ...] = field(default_factory=tuple)
+    # T046 — relax inputs that were refused per FR-031 asymmetry. When
+    # non-empty, the decision is DENY and `rule == RELAX_REFUSED_RULE`.
+    # The list is preserved on the decision so the caller can emit
+    # `RELAXATION_REFUSED` audit events recording the offending inputs.
+    refused_relax_inputs: tuple[RelaxInput, ...] = field(default_factory=tuple)
+    # T048 — snapshots of the v2 axis inputs at decision time. When the
+    # v2 leg ran, these are populated so the audit payload can record
+    # the full Axis-A/B/D context + effect_class — enough for T041
+    # decision-replay to reconstruct the same evaluate() outcome from
+    # the logged event alone (FR-021).
+    axis_a_snapshot: AxisA | None = None
+    axis_b_snapshot: AxisB | None = None
+    axis_d_snapshot: AxisD | None = None
+    effect_class: str | None = None
 
 
 _LEGACY_RANK: dict[Decision, int] = {
@@ -295,12 +313,35 @@ def decide(
     effect_class: str | None = None,
     rules_v2: DecisionRules | None = None,
     default_v2_outcome: RuleOutcome = RuleOutcome.SUGGEST,
+    relax_inputs: tuple[RelaxInput, ...] = (),
 ) -> PolicyDecision:
     """Public chokepoint. Runs the legacy decision path, then — when
     the v2 axis inputs and rule set are provided — composes the v2
     decision-rule evaluator's result (FR-010/011/014/031). V2 may only
     ratchet stricter; legacy DENY always stands. When any v2 input is
-    omitted, behavior is identical to the v0.7 engine (back-compat)."""
+    omitted, behavior is identical to the v0.7 engine (back-compat).
+
+    FR-031 asymmetry (T046): if any element of `relax_inputs` has a
+    non-deterministic origin (anything outside
+    `decision_rules.ALLOWED_RELAX_ORIGINS`), the entire decision is
+    refused — returned as DENY with rule `RELAX_REFUSED_RULE` — and
+    the refused inputs are surfaced on `PolicyDecision.refused_relax_inputs`
+    so the caller can emit a `RELAXATION_REFUSED` audit event.
+    """
+    if relax_inputs:
+        inspected: RelaxInspectionResult = inspect_relax_inputs(relax_inputs)
+        if inspected.has_refusal:
+            origins = sorted({r.origin for r in inspected.refused})
+            return PolicyDecision(
+                decision=Decision.DENY,
+                rule=RELAX_REFUSED_RULE,
+                reason=(
+                    f"FR-031: relax input(s) from non-deterministic origin(s) {origins} refused"
+                ),
+                effective_labels=label_set,
+                refused_relax_inputs=inspected.refused,
+            )
+
     legacy = _decide_legacy(
         label_set,
         capabilities,
@@ -327,4 +368,11 @@ def decide(
         target=action.target,
         default_when_no_match=default_v2_outcome,
     )
-    return _compose_with_v2(legacy, v2)
+    composed = _compose_with_v2(legacy, v2)
+    return replace(
+        composed,
+        axis_a_snapshot=axis_a,
+        axis_b_snapshot=axis_b,
+        axis_d_snapshot=axis_d,
+        effect_class=effect_class,
+    )

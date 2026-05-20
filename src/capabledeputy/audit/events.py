@@ -54,6 +54,7 @@ class EventType(StrEnum):
     ENVELOPE_DIAL_CHANGED = "envelope.dial_changed"  # FR-030 owner-set
     RISK_REGISTER_AUDIT = "risk_register.audit"  # FR-015/028 orphan audit
     RESIDUAL_RISK_EXCEPTION = "residual_risk.exception"  # FR-016 threshold-crossing
+    RELAXATION_REFUSED = "policy.relaxation_refused"  # FR-031 (T046)
 
     TOOL_DISPATCHED = "tool.dispatched"
     TOOL_RETURNED = "tool.returned"

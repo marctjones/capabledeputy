@@ -99,6 +99,8 @@ def test_event_type_taxonomy_matches_design() -> None:
         "envelope.dial_changed",
         "risk_register.audit",
         "residual_risk.exception",
+        # 003 US2 T046 — FR-031 asymmetry refusal.
+        "policy.relaxation_refused",
     }
     actual = {et.value for et in EventType}
     assert actual == expected, f"missing: {expected - actual}, extra: {actual - expected}"

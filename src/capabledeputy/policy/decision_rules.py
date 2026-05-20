@@ -28,7 +28,6 @@ from typing import Any
 
 import yaml
 
-from capabledeputy.policy.expectations import ExpectationBindings
 from capabledeputy.policy.labels import AxisA, AxisB, AxisD
 
 
@@ -95,28 +94,29 @@ class RulePredicate:
             return False
         if self.effect_class is not None and self.effect_class != effect_class:
             return False
-        if self.axis_a_category is not None:
-            if not any(c.category == self.axis_a_category for c in axis_a.categories):
-                return False
-        if self.axis_b_provenance is not None:
-            if not any(e.level.value == self.axis_b_provenance for e in axis_b.entries):
-                return False
-        if self.axis_d_initiator is not None and axis_d.initiator != self.axis_d_initiator:
-            return False
-        if (
-            self.axis_d_counterparty is not None
-            and axis_d.counterparty != self.axis_d_counterparty
+        if self.axis_a_category is not None and not any(
+            c.category == self.axis_a_category for c in axis_a.categories
         ):
             return False
-        if self.axis_d_relationship_group_id is not None:
-            if self.axis_d_relationship_group_id not in axis_d.relationship_group_ids:
-                return False
+        if self.axis_b_provenance is not None and not any(
+            e.level.value == self.axis_b_provenance for e in axis_b.entries
+        ):
+            return False
+        if self.axis_d_initiator is not None and axis_d.initiator != self.axis_d_initiator:
+            return False
+        if self.axis_d_counterparty is not None and axis_d.counterparty != self.axis_d_counterparty:
+            return False
+        if (
+            self.axis_d_relationship_group_id is not None
+            and self.axis_d_relationship_group_id not in axis_d.relationship_group_ids
+        ):
+            return False
         if self.axis_d_expectedness is not None and axis_d.expectedness != self.axis_d_expectedness:
             return False
-        if self.axis_d_reversibility_degree is not None:
-            if axis_d.reversibility.get("degree") != self.axis_d_reversibility_degree:
-                return False
-        return True
+        return not (
+            self.axis_d_reversibility_degree is not None
+            and axis_d.reversibility.get("degree") != self.axis_d_reversibility_degree
+        )
 
 
 @dataclass(frozen=True)
@@ -187,9 +187,7 @@ def evaluate(
         return EvaluationResult(
             outcome=default_when_no_match,
             matched_rule_ids=(),
-            rationale=(
-                f"no human-ratified rule matched; default={default_when_no_match.value}"
-            ),
+            rationale=(f"no human-ratified rule matched; default={default_when_no_match.value}"),
         )
 
     composed = _most_restrictive(*(r.outcome for r in matched))
@@ -273,26 +271,79 @@ def _parse_predicate(when: dict[str, Any]) -> RulePredicate:
     )
 
 
-# --- T037 stub: asymmetry invariant (FR-031) ------------------------
+# --- T037/T046: asymmetry invariant (FR-031) -------------------------
+
+# Whitelist of origins that may contribute a *relax* input (an input
+# that, if accepted, would move a decision toward AUTO). Anything not
+# in this set is non-deterministic from the policy engine's point of
+# view — model suggestions, runtime heuristics, anomaly-detector
+# confidence scores, etc. — and is refused per FR-031.
+ALLOWED_RELAX_ORIGINS: frozenset[str] = frozenset(
+    {
+        "operator-config",
+        "human-ratified-rule",
+        "curated-mcp",
+    },
+)
+
+
+@dataclass(frozen=True)
+class RelaxInput:
+    """A runtime-provided claim that the baseline decision should be
+    relaxed (moved toward AUTO). Each carries a free-form description
+    and an `origin` tag. Only `origin` values in ALLOWED_RELAX_ORIGINS
+    are accepted; everything else is refused per FR-031.
+
+    `origin` is operator/system-attached metadata, not user input —
+    a model cannot forge its own origin tag because the tag is set by
+    the trusted code path that constructs the RelaxInput, never by
+    the model that suggested the underlying content."""
+
+    description: str
+    origin: str
 
 
 def refuse_non_deterministic_relax_input(
     *,
     input_origin: str,
 ) -> None:
-    """Helper used by US2 callers that *might* try to relax based on a
-    runtime hint (e.g., model-suggested input). Per FR-031, relax
-    inputs whose origin is NOT a deterministic operator-curated source
-    MUST be refused. This helper raises DecisionRuleError; the caller
-    is expected to convert that to an audit event + decision outcome.
-
-    Allowed origins: 'operator-config', 'human-ratified-rule',
-    'curated-mcp'. Anything else (especially 'llm-suggested',
-    'planner-suggested', 'unratified') ⇒ refuse.
-    """
-    allowed = {"operator-config", "human-ratified-rule", "curated-mcp"}
-    if input_origin not in allowed:
+    """Raising form of the asymmetry check. Used in pure-function
+    contexts where the caller wants an exception. For audit-emitting
+    callers (e.g. engine.decide()), use `inspect_relax_inputs()`
+    which returns structured info instead of raising."""
+    if input_origin not in ALLOWED_RELAX_ORIGINS:
         raise DecisionRuleError(
             f"FR-031: relax input from non-deterministic origin "
-            f"{input_origin!r} refused (allowed: {sorted(allowed)})",
+            f"{input_origin!r} refused "
+            f"(allowed: {sorted(ALLOWED_RELAX_ORIGINS)})",
         )
+
+
+@dataclass(frozen=True)
+class RelaxInspectionResult:
+    """Outcome of inspecting a batch of RelaxInputs for FR-031 compliance.
+
+    `refused` lists the inputs whose origin is non-deterministic.
+    `accepted` lists the inputs whose origin is in
+    ALLOWED_RELAX_ORIGINS. If `refused` is non-empty, callers MUST
+    refuse the entire decision (FR-031 asymmetry) and emit an audit
+    record capturing the refused inputs (T046).
+    """
+
+    accepted: tuple[RelaxInput, ...]
+    refused: tuple[RelaxInput, ...]
+
+    @property
+    def has_refusal(self) -> bool:
+        return len(self.refused) > 0
+
+
+def inspect_relax_inputs(
+    relax_inputs: tuple[RelaxInput, ...],
+) -> RelaxInspectionResult:
+    """Partition a batch of relax inputs into accepted/refused
+    according to FR-031. Does NOT raise — the caller is expected to
+    fold the result into a structured decision + audit event."""
+    accepted = tuple(r for r in relax_inputs if r.origin in ALLOWED_RELAX_ORIGINS)
+    refused = tuple(r for r in relax_inputs if r.origin not in ALLOWED_RELAX_ORIGINS)
+    return RelaxInspectionResult(accepted=accepted, refused=refused)

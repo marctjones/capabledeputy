@@ -22,4 +22,52 @@
 #       human_ratified_by: <principal-id>
 #       human_ratified_at: <ISO-8601>
 
-rules: []
+rules:
+  # US2 scenario 2 — cron-initiated, expected-window backup (T039).
+  # The same effect via inbound:unauthenticated does NOT match (its
+  # axis_d.initiator differs) and falls to the never-auto default.
+  - rule_id: cron-backup-auto
+    when:
+      axis_c:
+        effect_class: backup_storage
+      axis_d:
+        initiator: "cron:backup-job"
+        expectedness: expected
+    outcome: auto
+    rationale: cron-initiated backups under expected schedule are routine
+    risk_ids: []
+    human_ratified_by: marc@example.com
+    human_ratified_at: 2026-05-19T00:00:00Z
+
+  # US2 scenario 5 — share proprietary_work within an authorized
+  # relationship group (T038 scenario in test_relationship_groups).
+  # Non-members fall to never-auto SUGGEST (no rule for their case).
+  - rule_id: proprietary-share-to-project-p
+    when:
+      axis_a:
+        category: proprietary_work
+      axis_c:
+        effect_class: share
+      axis_d:
+        relationship_group_id: project-p
+    outcome: auto
+    rationale: project-P members are authorized recipients for proprietary work
+    risk_ids: []
+    human_ratified_by: marc@example.com
+    human_ratified_at: 2026-05-19T00:00:00Z
+
+  # Kill-switch ratchet — DENY all personal-data email egress until
+  # the operator removes this rule. Demonstrates a stricter-by-rule
+  # composition: this DENY composes most-restrictive with any AUTO
+  # rule that might also match (the DENY wins).
+  - rule_id: block-personal-email
+    when:
+      axis_a:
+        category: personal
+      axis_c:
+        effect_class: send_email
+    outcome: deny
+    rationale: operator-configured kill switch for personal-data egress
+    risk_ids: []
+    human_ratified_by: marc@example.com
+    human_ratified_at: 2026-05-19T00:00:00Z

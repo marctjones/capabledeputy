@@ -57,7 +57,48 @@ def build_policy_decided_payload(
     if decision.v2_outcome is not None:
         payload["v2_outcome"] = decision.v2_outcome.value
         payload["v2_matched_rule_ids"] = list(decision.v2_matched_rule_ids)
+    if decision.refused_relax_inputs:
+        payload["refused_relax_inputs"] = [
+            {"description": r.description, "origin": r.origin}
+            for r in decision.refused_relax_inputs
+        ]
+    # T048 — full Axis-A/B/D snapshot when v2 ran. Enough for T041
+    # audit-reconstruction to rebuild AxisA/B/D from the payload and
+    # replay evaluate() to the same outcome (FR-021).
+    if decision.axis_a_snapshot is not None:
+        payload["axis_a"] = decision.axis_a_snapshot.to_dict()
+    if decision.axis_b_snapshot is not None:
+        payload["axis_b"] = decision.axis_b_snapshot.to_dict()
+    if decision.axis_d_snapshot is not None:
+        payload["axis_d"] = decision.axis_d_snapshot.to_dict()
+    if decision.effect_class is not None:
+        payload["effect_class"] = decision.effect_class
     return payload
+
+
+def build_relaxation_refused_payload(
+    tool_name: str,
+    args: dict[str, Any],
+    decision: PolicyDecision,
+) -> dict[str, Any]:
+    """Construct the JSON payload for a `policy.relaxation_refused`
+    audit event (T046 / FR-031).
+
+    Emitted alongside the ordinary `policy.decided` event whenever a
+    decision carries refused relax inputs — gives auditors a
+    stand-alone, alertable event capturing the FR-031 violation and
+    the offending origins.
+    """
+    return {
+        "tool": tool_name,
+        "args": args,
+        "refused_relax_inputs": [
+            {"description": r.description, "origin": r.origin}
+            for r in decision.refused_relax_inputs
+        ],
+        "decision_rule": decision.rule,
+        "decision_reason": decision.reason,
+    }
 
 
 @dataclass(frozen=True)
@@ -299,6 +340,18 @@ class LabeledToolClient:
                 payload=build_policy_decided_payload(tool_name, args, decision),
             ),
         )
+        if decision.refused_relax_inputs:
+            await self._audit.write(
+                Event(
+                    event_type=EventType.RELAXATION_REFUSED,
+                    session_id=session_id,
+                    payload=build_relaxation_refused_payload(
+                        tool_name,
+                        args,
+                        decision,
+                    ),
+                ),
+            )
 
     async def _emit_capability_checked(
         self,
