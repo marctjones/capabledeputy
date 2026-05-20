@@ -346,6 +346,37 @@ ToolDefinition extension (effect_class, social_commitment,
 default_reversibility, default_mutability_target_facets,
 tool_provenance, surfaces_destination_id, risk_ids).
 
+**Composition + runtime activation landed** in rc.1 through rc.6
+(2026-05). All wire-ins above are done; T012-full additive fields
+shipped on every native tool; daemon builds the PolicyContext from
+operator configs at startup; CLI ↔ daemon override IPC bridges the
+critical state gap; per-session profile derivation activates BLP +
+Biba.
+
+| Item | Status | Tag |
+|---|---|---|
+| Composition sub-phases A-E (foundation/handle binding/override/bindings/reversibility gate) | DONE | `v0.9.0-rc.1` → `v0.9.0-rc.3` |
+| Demos #1/#3/#7/#8 wired (envelope dial, approval grouping, control-plane reflexivity, clearance + floor) | DONE | `v0.9.0-rc.3` |
+| Policy-language gap closures (multi-category predicates, time-of-day, AssignmentProvenance, raise-only-inspector hook, Pattern (5) demo actuator) | DONE | `v0.9.0-rc.5` |
+| Runtime activation (daemon wires PolicyContext from configs; SessionGraph spawn-refusal; CLI ↔ daemon override IPC; profile-derived BLP/Biba) | DONE | `v0.9.0-rc.6` |
+
+## v0.9 → v1.0 (spec 004) — MCP + substrate integration  ·  **DESIGNED**
+
+Spec `specs/004-mcp-and-substrate/`. Closes the production-substrate gap.
+Generic MCP adapter + 8 tier-1 MCP server mappings (GitHub, Google
+Workspace, Microsoft 365, Notion, Slack, Playwright, Context7, Anthropic 7
+references) + native fs/web.search/code.execute tools + real
+SandboxActuator providers (Podman, Modal, Firecracker) + OTLP/Splunk
+sinks + WebAuthn/Duo/OAuth identity stack + two regression demos
+against the documented incident corpus (Meta-director autonomous-deletion,
+ToxicSkills payload survival) + DefenseClaw integration plugin. 60 tasks
+across 8 phases.
+
+See `specs/004-mcp-and-substrate/research.md` for the competitive
+landscape research that motivated the integration target list, and
+`specs/004-mcp-and-substrate/defenseclaw-integration.md` for the
+complementary/competing analysis against Cisco DefenseClaw.
+
 The v0.9 labeling-framework design is captured in
 `docs/design-v0.9-labeling.md` (the historical design dump) and is now
 fully formalized in the 003 spec set.
