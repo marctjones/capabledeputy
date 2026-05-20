@@ -41,7 +41,7 @@ remain the detail.
 | Destructive-op gate + approvals | **Clark-Wilson** | V | Gated dispatch = the well-formed transaction; human verbatim approval = separation of duty / IVP. We do **not** formalize full CW UDI/CDI/TP/IVP triples. |
 | Human-in-the-loop approval state machine | **Clark-Wilson** (sep. of duty) | V | The authorizer is a human; the model (LLM) is structurally excluded — an added constraint beyond CW. |
 | Time-bound / rate-limited / prior-use revocation | **Object-capability attenuation** | IV | Attenuation extended to *temporal* and *usage* dimensions; evaluated at decide(), not capability rebind. |
-| Capability delegation chains (v0.8, spec'd) | **Object-capability attenuation**; monotone lattice | IV, VI | **Single-parent tree, not a DAG** (auditability over generality); cascade **computed at decide()**, not eager teardown. |
+| Capability delegation chains (v0.8, partial) | **Object-capability attenuation**; monotone lattice | IV, VI | **Single-parent tree, not a DAG** (auditability over generality); cascade **computed at decide()**, not eager teardown. US1 attenuated derivation + US3 depth-limit shipped; US2 cascade revocation deferred. |
 | Dual-LLM quarantined extraction | **Noninterference declassification** | I, II | Schema validation *is* the declassifier — a structural, certified downgrade rather than an operator decision. |
 | Per-tenant label spaces | **Lattice compartments** | II | Additive scoping of the same conflict engine; no cross-tenant lattice join. |
 | Container isolation / federation signing / append-only audit | Defense-in-depth & **Reference-Monitor assurance** | Sec. Constraints | Supporting assurance, not a confidentiality/integrity model; audit gives the "verifiable" leg of the reference monitor. |
