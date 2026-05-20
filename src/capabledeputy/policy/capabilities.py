@@ -255,6 +255,9 @@ class DelegationRefusalReason(StrEnum):
     DEPTH_EXCEEDED = "depth-exceeded"
     CYCLE = "cycle"
     SELF_DELEGATION = "self-delegation"
+    # 003 US3 T059 — delegation would introduce a data category that
+    # the child session's purpose does not admit (FR-009 structural).
+    INADMISSIBLE_CATEGORY = "inadmissible-category"
 
 
 @dataclass(frozen=True)

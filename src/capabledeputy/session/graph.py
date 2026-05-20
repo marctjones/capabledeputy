@@ -22,6 +22,11 @@ from capabledeputy.policy.capabilities import (
     derive_delegated_capability,
 )
 from capabledeputy.policy.labels import Label
+from capabledeputy.policy.purposes import (
+    UNSET_PURPOSE_HANDLE,
+    Purposes,
+    categories_of_capability,
+)
 from capabledeputy.session.model import Session, SessionStatus, Turn
 from capabledeputy.session.store import SessionStore
 
@@ -36,16 +41,70 @@ class SessionStateError(RuntimeError):
     pass
 
 
+class PurposeAdmissibilityError(RuntimeError):
+    """T056/T057/T059 — A grant or spawn would introduce a category
+    inadmissible for the session's declared purpose (FR-009/FR-046).
+    Raised by SessionGraph operations; the caller is expected to
+    convert into a structured refusal or audit event."""
+
+    def __init__(
+        self,
+        *,
+        purpose_handle: str,
+        inadmissible_categories: frozenset[str],
+    ) -> None:
+        super().__init__(
+            f"purpose {purpose_handle!r} does not admit categories "
+            f"{sorted(inadmissible_categories)} (FR-009)",
+        )
+        self.purpose_handle = purpose_handle
+        self.inadmissible_categories = inadmissible_categories
+
+
 class SessionGraph:
     def __init__(
         self,
         *,
         audit: AuditWriter | None = None,
         store: SessionStore | None = None,
+        purposes: Purposes | None = None,
     ) -> None:
         self._sessions: dict[UUID, Session] = {}
         self._audit = audit
         self._store = store
+        self._purposes = purposes
+
+    def _check_admissibility(
+        self,
+        *,
+        purpose_handle: str,
+        categories: frozenset[str],
+    ) -> None:
+        """Raise PurposeAdmissibilityError if any of `categories` is
+        inadmissible for the given purpose. Fail-closed when no
+        Purposes registry is configured AND categories were declared
+        (operator has no way to admit anything — refuse). When
+        categories is empty, no check needed (T056 only fires on
+        declared categories)."""
+        if not categories:
+            return
+        if self._purposes is None:
+            # No registry ⇒ no purpose admits anything ⇒ everything
+            # inadmissible. FR-046 fail-closed.
+            raise PurposeAdmissibilityError(
+                purpose_handle=purpose_handle,
+                inadmissible_categories=categories,
+            )
+        inadmissible = categories_of_capability(
+            cap_categories=categories,
+            purposes=self._purposes,
+            purpose_handle=purpose_handle,
+        )
+        if inadmissible:
+            raise PurposeAdmissibilityError(
+                purpose_handle=purpose_handle,
+                inadmissible_categories=inadmissible,
+            )
 
     async def load(self) -> None:
         if self._store is None:
@@ -81,13 +140,34 @@ class SessionGraph:
         tool_aliasing: bool = False,
         prefer_programmatic: bool = False,
         parent: UUID | None = None,
+        purpose_handle: str = UNSET_PURPOSE_HANDLE,
+        candidate_capability_categories: frozenset[str] | None = None,
     ) -> Session:
+        """Spawn a new session.
+
+        003 US3 (T056/T057): if `candidate_capability_categories` is
+        supplied, every category must be admissible under
+        `purpose_handle` — otherwise PurposeAdmissibilityError is
+        raised before the session is created. Empty / None means
+        no categories were declared at spawn; that's fine, but any
+        subsequent grant_capability with categories will be checked.
+
+        `purpose_handle` defaults to `unset` (FR-046 fail-closed:
+        any subsequent declared-category grant is refused unless the
+        caller explicitly picks a purpose).
+        """
+        candidates = candidate_capability_categories or frozenset()
+        self._check_admissibility(
+            purpose_handle=purpose_handle,
+            categories=candidates,
+        )
         session = Session.new(
             owner=owner,
             intent=intent,
             tool_aliasing=tool_aliasing,
             prefer_programmatic=prefer_programmatic,
             parent=parent,
+            purpose_handle=purpose_handle,
         )
         await self._save(session)
         self._sessions[session.id] = session
@@ -98,6 +178,7 @@ class SessionGraph:
             intent=intent,
             tool_aliasing=tool_aliasing or None,
             prefer_programmatic=prefer_programmatic or None,
+            purpose_handle=(purpose_handle if purpose_handle != UNSET_PURPOSE_HANDLE else None),
         )
         return session
 
@@ -112,6 +193,10 @@ class SessionGraph:
             raise SessionStateError(
                 f"cannot fork terminal session {parent_id} (status={parent.status})",
             )
+        # T058 — purpose-preserving fork: the child inherits the
+        # parent's purpose_handle so capabilities admissible in the
+        # parent stay admissible in the child (and inadmissible ones
+        # remain refused).
         child = Session.new(
             parent=parent_id,
             owner=parent.owner,
@@ -120,6 +205,7 @@ class SessionGraph:
             capability_set=parent.capability_set,
             history=parent.history,
             declassification_log=parent.declassification_log,
+            purpose_handle=parent.purpose_handle,
         )
         await self._save(child)
         self._sessions[child.id] = child
@@ -216,8 +302,24 @@ class SessionGraph:
         self,
         session_id: UUID,
         capability: Capability,
+        *,
+        categories: frozenset[str] = frozenset(),
     ) -> Session:
+        """Grant a capability to a session.
+
+        003 US3 (T056 continued): if `categories` is non-empty, every
+        category must be admissible under the session's
+        `purpose_handle` — otherwise PurposeAdmissibilityError is
+        raised before the grant lands. The caller (typically a tool
+        wiring or an operator script) supplies the categories the
+        capability's read scope spans; capabilities themselves do not
+        yet carry that mapping (lands with T012 effect_class).
+        """
         session = self.get(session_id)
+        self._check_admissibility(
+            purpose_handle=session.purpose_handle,
+            categories=categories,
+        )
         if capability in session.capability_set:
             return session
         new_caps = session.capability_set | {capability}
@@ -248,6 +350,7 @@ class SessionGraph:
         *,
         depth_limit: int,
         now: datetime | None = None,
+        categories: frozenset[str] = frozenset(),
     ) -> Capability | DelegationRefusal:
         """Delegate an attenuated capability from a parent session to a
         child it spawned (002 US1 / contracts C1, C3). The caller
@@ -309,6 +412,28 @@ class SessionGraph:
         )
         if isinstance(result, DelegationRefusal):
             return await self._refuse_delegation(child_session_id, result.reason)
+
+        # T059 — purpose-admissibility check against the CHILD session's
+        # purpose: a delegation that would introduce an inadmissible
+        # category is refused, even if it would otherwise satisfy the
+        # 002 attenuation rules.
+        child_session = self.get(child_session_id)
+        if categories:
+            if self._purposes is None:
+                return await self._refuse_delegation(
+                    child_session_id,
+                    DelegationRefusalReason.INADMISSIBLE_CATEGORY,
+                )
+            inadmissible = categories_of_capability(
+                cap_categories=categories,
+                purposes=self._purposes,
+                purpose_handle=child_session.purpose_handle,
+            )
+            if inadmissible:
+                return await self._refuse_delegation(
+                    child_session_id,
+                    DelegationRefusalReason.INADMISSIBLE_CATEGORY,
+                )
 
         await self.grant_capability(child_session_id, result)
         await self._emit(
