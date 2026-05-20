@@ -70,6 +70,29 @@ class TaskStore:
         self._tasks[task_id] = replace(existing, done=True)
         return True
 
+    def edit(
+        self,
+        task_id: str,
+        *,
+        title: str | None = None,
+        notes: str | None = None,
+    ) -> bool:
+        existing = self._tasks.get(task_id)
+        if existing is None:
+            return False
+        updates: dict[str, Any] = {}
+        if title is not None:
+            updates["title"] = title
+        if notes is not None:
+            updates["notes"] = notes
+        if not updates:
+            return True
+        self._tasks[task_id] = replace(existing, **updates)
+        return True
+
+    def remove(self, task_id: str) -> bool:
+        return self._tasks.pop(task_id, None) is not None
+
 
 def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
     async def tasks_add(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
@@ -95,6 +118,18 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
     async def tasks_complete(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
         ok = store.complete(str(args["id"]))
         return ToolResult(output={"completed": ok}, additional_labels=_PERSONAL)
+
+    async def tasks_edit(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
+        ok = store.edit(
+            str(args["id"]),
+            title=args.get("title"),
+            notes=args.get("notes"),
+        )
+        return ToolResult(output={"edited": ok}, additional_labels=_PERSONAL)
+
+    async def tasks_delete(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
+        ok = store.remove(str(args["id"]))
+        return ToolResult(output={"deleted": ok}, additional_labels=_PERSONAL)
 
     return [
         ToolDefinition(
@@ -149,6 +184,51 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
             ),
             capability_kind=CapabilityKind.MODIFY_FS,
             handler=tasks_complete,
+            target_arg="id",
+            inherent_labels=_PERSONAL,
+            parameters_schema={
+                "type": "object",
+                "properties": {"id": {"type": "string"}},
+                "required": ["id"],
+            },
+        ),
+        ToolDefinition(
+            name="tasks.edit",
+            effect_class="data.modify_local",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
+            description=(
+                "Edit an existing task's title or notes. MODIFY_FS — "
+                "destructive-op gate fires unless the cap has "
+                "allows_destructive. Required args: id (string); "
+                "optional title, notes."
+            ),
+            capability_kind=CapabilityKind.MODIFY_FS,
+            handler=tasks_edit,
+            target_arg="id",
+            inherent_labels=_PERSONAL,
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "title": {"type": "string"},
+                    "notes": {"type": "string"},
+                },
+                "required": ["id"],
+            },
+        ),
+        ToolDefinition(
+            name="tasks.delete",
+            effect_class="data.delete_local",
+            default_reversibility={"degree": "irreversible", "agent": "external"},
+            tool_provenance="operator-curated",
+            description=(
+                "Delete a task by id. DELETE_FS + irreversible/external "
+                "— the reversibility gate refuses without override. "
+                "Required args: id (string)."
+            ),
+            capability_kind=CapabilityKind.DELETE_FS,
+            handler=tasks_delete,
             target_arg="id",
             inherent_labels=_PERSONAL,
             parameters_schema={

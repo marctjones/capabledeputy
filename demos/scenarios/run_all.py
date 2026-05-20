@@ -6,7 +6,7 @@ Run with:
 The -s is what makes the narration visible. The driver invokes each
 demo with a 'DEMO i / N' banner so a long run is easy to scan.
 
-The 16 demos are organized in three arcs:
+The 19 demos are organized in three arcs:
 
   Single-mechanism demos
     Each exercises one security model or flow pattern cleanly so the
@@ -34,7 +34,9 @@ from demos.scenarios.clinical_records_research import test_clinical_records_demo
 from demos.scenarios.daily_briefing import test_daily_briefing_demo
 from demos.scenarios.data_blind_disclosure import test_data_blind_disclosure_demo
 from demos.scenarios.dial_assisted_research import test_dial_assisted_research_demo
+from demos.scenarios.email_drafting_workflow import test_email_drafting_workflow_demo
 from demos.scenarios.hr_data_handling import test_hr_data_handling_demo
+from demos.scenarios.local_doc_drafting import test_local_doc_drafting_demo
 from demos.scenarios.local_doc_qa import test_local_doc_qa_demo
 from demos.scenarios.multi_session_handoff import test_multi_session_handoff_demo
 from demos.scenarios.optimistic_burn import test_optimistic_burn_demo
@@ -43,6 +45,7 @@ from demos.scenarios.prompt_injection_defense import test_prompt_injection_demo
 from demos.scenarios.risk_dial import test_risk_dial_demo
 from demos.scenarios.secure_inbox_triage import test_secure_inbox_triage_demo
 from demos.scenarios.task_compartments import test_task_compartments_demo
+from demos.scenarios.task_lifecycle import test_task_lifecycle_demo
 from demos.scenarios.travel_booking import test_travel_booking_demo
 
 # Order:
@@ -72,7 +75,10 @@ _RUN_ORDER: tuple[tuple[str, Any], ...] = (
     ("Dial-Assisted Research", test_dial_assisted_research_demo),
     ("Calendar With Invites", test_calendar_with_invites_demo),
     ("Task Compartments", test_task_compartments_demo),
+    ("Task Lifecycle", test_task_lifecycle_demo),
     ("Local Doc Q&A", test_local_doc_qa_demo),
+    ("Local Doc Drafting", test_local_doc_drafting_demo),
+    ("Email Drafting Workflow", test_email_drafting_workflow_demo),
     ("Travel Booking", test_travel_booking_demo),
     ("Bulk Approval Grouped", test_bulk_approval_demo),
     ("Data-Blind Disclosure", test_data_blind_disclosure_demo),

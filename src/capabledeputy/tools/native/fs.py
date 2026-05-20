@@ -1,11 +1,12 @@
-"""Local filesystem read tools — `fs.read` (text) and `fs.read_pdf`.
+"""Local filesystem tools — `fs.read`, `fs.read_pdf`, `fs.create`,
+`fs.modify`.
 
-Two REAL tools (not stubs): the operator can read text files and PDFs
-off the local filesystem. The tools are minimal by design — read-only,
-size-bounded, and aware of `PolicyContext.bindings` if the operator has
-declared any.
+REAL tools (not stubs). Two read operations and two write operations
+on the local filesystem. The tools are minimal by design — size-
+bounded, absolute-path-only, and aware of `PolicyContext.bindings` if
+the operator has declared any.
 
-Binding behavior:
+Read-side label behavior:
   - With a bound BindingSet: every path goes through `bindings.resolve`.
     Unbound paths refuse (fail-closed per FR-023). The matched binding
     determines `category` and `tier`, which the dispatcher uses for the
@@ -14,13 +15,19 @@ Binding behavior:
     legacy `UNTRUSTED_USER_INPUT` label so the session knows the source
     is operator-curated-but-not-vetted.
 
-Output bound at 64 KiB per file to keep the orchestrator's context
-window honest. PDF pages are concatenated with form-feed separators so
-schema-bounded extractors can detect page boundaries.
+Write-side capability mapping:
+  - `fs.create` -> CREATE_FS (non-destructive: refused if target exists)
+  - `fs.modify` -> MODIFY_FS (destructive — the destructive-op gate
+                  fires unless the matched capability declares
+                  `allows_destructive=True`)
 
-`fs.write` / `fs.modify` are deliberately NOT added here — write tools
-have a much bigger blast radius and belong with spec-005's `fs.write`
-that integrates with the binding's `write_discipline`.
+`fs.delete` is intentionally not yet exposed — delete is the highest
+blast-radius primitive and belongs with spec-005's binding-driven
+write_discipline (the binding tells us whether the path is in a
+versioned/snapshotted zone). Until then operators run shell deletes.
+
+Size cap: 64 KiB on both reads and writes. The cap is per-call, not
+per-process; an agent can chunk explicitly via successive calls.
 """
 
 from __future__ import annotations
@@ -32,9 +39,6 @@ from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
-# Cap each read at 64 KiB. The orchestrator's context is precious; if
-# the operator wants more, they should explicitly chunk via offset/limit
-# (future work) or summarize with quarantined.extract first.
 _MAX_BYTES = 64 * 1024
 
 
@@ -70,10 +74,6 @@ async def _fs_read_handler(args: dict[str, Any], _ctx: ToolContext) -> ToolResul
         return ToolResult(output={"ok": False, "error": f"read failed: {e}"})
     return ToolResult(
         output={"ok": True, "path": raw_path, "uri": uri, "text": text},
-        # In the absence of a binding (no PolicyContext.bindings), tag
-        # the value untrusted-user-input. With a binding, the dispatcher
-        # will derive the correct category/tier via FR-043; the legacy
-        # label still flows because that path is still wired.
         additional_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
     )
 
@@ -91,7 +91,6 @@ async def _fs_read_pdf_handler(args: dict[str, Any], _ctx: ToolContext) -> ToolR
         return ToolResult(
             output={"ok": False, "error": "PDF exceeds the read-size cap"},
         )
-    # Local import keeps pypdf optional for users who don't read PDFs.
     try:
         from pypdf import PdfReader
     except ImportError:
@@ -118,6 +117,87 @@ async def _fs_read_pdf_handler(args: dict[str, Any], _ctx: ToolContext) -> ToolR
             "truncated": len(text) > _MAX_BYTES,
         },
         additional_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
+    )
+
+
+async def _fs_create_handler(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
+    raw_path = str(args["path"])
+    content = str(args.get("content", ""))
+    try:
+        uri = _to_file_uri(raw_path)
+    except ValueError as e:
+        return ToolResult(output={"ok": False, "error": str(e)})
+    encoded = content.encode("utf-8")
+    if len(encoded) > _MAX_BYTES:
+        return ToolResult(
+            output={
+                "ok": False,
+                "error": f"content exceeds {_MAX_BYTES}-byte write cap",
+            },
+        )
+    p = Path(raw_path).expanduser()
+    if p.exists():
+        return ToolResult(
+            output={
+                "ok": False,
+                "error": f"target exists: {raw_path} (use fs.modify to overwrite)",
+            },
+        )
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(encoded)
+    except OSError as e:
+        return ToolResult(output={"ok": False, "error": f"write failed: {e}"})
+    return ToolResult(
+        output={
+            "ok": True,
+            "path": raw_path,
+            "uri": uri,
+            "bytes_written": len(encoded),
+            "created": True,
+        },
+    )
+
+
+async def _fs_modify_handler(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
+    raw_path = str(args["path"])
+    content = str(args.get("content", ""))
+    try:
+        uri = _to_file_uri(raw_path)
+    except ValueError as e:
+        return ToolResult(output={"ok": False, "error": str(e)})
+    encoded = content.encode("utf-8")
+    if len(encoded) > _MAX_BYTES:
+        return ToolResult(
+            output={
+                "ok": False,
+                "error": f"content exceeds {_MAX_BYTES}-byte write cap",
+            },
+        )
+    p = Path(raw_path).expanduser()
+    if not p.is_file():
+        return ToolResult(
+            output={
+                "ok": False,
+                "error": f"target does not exist: {raw_path} (use fs.create to create)",
+            },
+        )
+    try:
+        # Write to a sibling temp file first, then atomic rename, so
+        # a half-completed write can't leave the original truncated.
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp.write_bytes(encoded)
+        tmp.replace(p)
+    except OSError as e:
+        return ToolResult(output={"ok": False, "error": f"write failed: {e}"})
+    return ToolResult(
+        output={
+            "ok": True,
+            "path": raw_path,
+            "uri": uri,
+            "bytes_written": len(encoded),
+            "created": False,
+        },
     )
 
 
@@ -174,6 +254,58 @@ def make_fs_tools() -> list[ToolDefinition]:
                     },
                 },
                 "required": ["path"],
+            },
+        ),
+        ToolDefinition(
+            name="fs.create",
+            description=(
+                "Create a new UTF-8 text file. REFUSES if the target "
+                "already exists (use fs.modify to overwrite). Required "
+                "args: path (absolute), content (string). Bounded at "
+                f"{_MAX_BYTES} bytes."
+            ),
+            capability_kind=CapabilityKind.CREATE_FS,
+            handler=_fs_create_handler,
+            target_arg="path",
+            effect_class="data.create_local",
+            # Creating a NEW file (refuses if target exists) is genuinely
+            # low-stakes: the operator can delete it. Real deployments
+            # can add friction via envelopes or path bindings without
+            # touching this default.
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
+            surfaces_destination_id=True,
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Absolute path."},
+                    "content": {"type": "string"},
+                },
+                "required": ["path", "content"],
+            },
+        ),
+        ToolDefinition(
+            name="fs.modify",
+            description=(
+                "Overwrite an existing UTF-8 text file. REFUSES if the "
+                "target does not already exist (use fs.create instead). "
+                "Atomic-replace semantics — a failed write leaves the "
+                "original intact. Required args: path (absolute), content."
+            ),
+            capability_kind=CapabilityKind.MODIFY_FS,
+            handler=_fs_modify_handler,
+            target_arg="path",
+            effect_class="data.modify_local",
+            default_reversibility={"degree": "reversible-with-friction", "agent": "human"},
+            tool_provenance="operator-curated",
+            surfaces_destination_id=True,
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Absolute path."},
+                    "content": {"type": "string"},
+                },
+                "required": ["path", "content"],
             },
         ),
     ]
