@@ -29,6 +29,21 @@ class ExecutionMode(StrEnum):
     TURN_LEVEL = "turn_level"
     DUAL_LLM = "dual_llm"
     PROGRAMMATIC = "programmatic"
+    # 003 US5 T105 — Pattern ③ Reference Handle mode. The planner sees
+    # only handle ids; the dispatcher binds real values post-decide().
+    REFERENCE = "reference"
+    # 003 US5 T105 — Pattern ⑤ Sealed-effect mode. Effects run inside
+    # a disposable isolation region (containment lifts effective
+    # reversibility to reversible/system). Requires a SandboxActuator
+    # port to be wired; if not, spawn refuses (FR-047/FR-042).
+    SEALED = "sealed"
+
+
+class ModeSelectionError(RuntimeError):
+    """Mode selection failed-closed (FR-047). Raised when a session
+    requires `restricted`-tier handling but neither Pattern ③
+    (accepts_handles=True tools) nor Pattern ⑤ (SandboxActuator port)
+    is available."""
 
 
 _CONFIDENTIAL_LABELS: frozenset[Label] = frozenset(
@@ -99,6 +114,51 @@ def filter_tools_for_mode(
     if mode != ExecutionMode.DUAL_LLM:
         return tools
     return [t for t in tools if t.name not in _RAW_LABELED_DATA_TOOLS]
+
+
+# --- T105 — restricted-tier mode floor (FR-047) ---------------------
+
+
+def select_mode_for_restricted(
+    *,
+    has_accepts_handles_tool: bool,
+    has_sandbox_actuator: bool,
+) -> tuple[ExecutionMode, str]:
+    """Pick the execution mode for a session whose effective tier is
+    `restricted`. The contract (FR-047):
+
+      - Prefer REFERENCE (Pattern ③) if any tool in the session's
+        surface declares `accepts_handles=True` — the planner stays
+        data-blind.
+      - Otherwise fall back to SEALED (Pattern ⑤) if a SandboxActuator
+        port is wired — the work runs in a disposable region.
+      - Neither available ⇒ raise ModeSelectionError. The spawn must
+        be refused before any capability is granted (fail-closed).
+
+    Returns (mode, reason) like select_mode does.
+    """
+    if has_accepts_handles_tool:
+        return (
+            ExecutionMode.REFERENCE,
+            "restricted-tier session: Pattern (3) handles available",
+        )
+    if has_sandbox_actuator:
+        return (
+            ExecutionMode.SEALED,
+            "restricted-tier session: Pattern (5) sandbox actuator available",
+        )
+    raise ModeSelectionError(
+        "restricted-tier session requires Pattern (3) accepts_handles or "
+        "Pattern (5) SandboxActuator — neither available; spawn refused (FR-047)",
+    )
+
+
+def tool_surface_offers_handles(tools: list[ToolDefinition]) -> bool:
+    """True iff any tool in `tools` declares `accepts_handles=True`.
+    Lets the spawn-time check (T099) consult the tool surface without
+    importing ToolDefinition internals at the call site.
+    """
+    return any(getattr(t, "accepts_handles", False) for t in tools)
 
 
 def visible_tools(

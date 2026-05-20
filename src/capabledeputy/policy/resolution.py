@@ -324,3 +324,103 @@ def resolve_tier(
         rationale="; ".join(rationale_parts),
         contributing_profile_ids=tuple(contributing),
     )
+
+
+# --- T101 — max-tier clearance read-up refusal (FR-008 / US5) -------
+
+
+class ClearanceRefusedError(RuntimeError):
+    """A read of a datum at tier T was attempted under a profile whose
+    `max_tier` is lower than T. Refused per FR-008. Fail-closed."""
+
+    def __init__(
+        self,
+        *,
+        profile_id: str,
+        profile_max_tier: Tier,
+        attempted_tier: Tier,
+    ) -> None:
+        super().__init__(
+            f"profile {profile_id!r} clearance is {profile_max_tier.value} "
+            f"but datum tier is {attempted_tier.value} — read refused (FR-008)",
+        )
+        self.profile_id = profile_id
+        self.profile_max_tier = profile_max_tier
+        self.attempted_tier = attempted_tier
+
+
+def check_max_tier_clearance(
+    *,
+    profile: ContextProfile,
+    attempted_tier: Tier,
+) -> None:
+    """Raise ClearanceRefusedError if `attempted_tier` exceeds the
+    profile's `max_tier`. No-op when the profile declares no max_tier
+    (open clearance) — operator's choice (FR-008).
+
+    Read-up refusal: a profile cleared to `regulated` cannot read a
+    `restricted` or `prohibited` datum. The check is on the *resolved*
+    tier from `resolve_tier()`, not the raw default.
+    """
+    if profile.max_tier is None:
+        return
+    if compare(attempted_tier, profile.max_tier) > 0:
+        raise ClearanceRefusedError(
+            profile_id=profile.id,
+            profile_max_tier=profile.max_tier,
+            attempted_tier=attempted_tier,
+        )
+
+
+# --- T102 — Biba integrity floor (FR-004 / US5) ---------------------
+
+
+class IntegrityFloorError(RuntimeError):
+    """A step demanded a higher-integrity input than was provided.
+    Biba no-read-down direction: an integrity-floored step refuses
+    any input whose provenance is below the floor. Refused per FR-004."""
+
+    def __init__(
+        self,
+        *,
+        floor: str,
+        input_level: str,
+    ) -> None:
+        super().__init__(
+            f"integrity floor {floor!r} refuses input at level {input_level!r} (FR-004)",
+        )
+        self.floor = floor
+        self.input_level = input_level
+
+
+# Floor levels and their integrity ranks (higher rank = stricter floor).
+# Mirrors the ProvenanceLevel ordering in policy.labels:
+#   PRINCIPAL_DIRECT > SYSTEM_INTERNAL > EXTERNAL_UNTRUSTED.
+# An integrity-floored step at PRINCIPAL_DIRECT only accepts
+# PRINCIPAL_DIRECT inputs; at SYSTEM_INTERNAL, accepts SYSTEM_INTERNAL
+# or PRINCIPAL_DIRECT; at EXTERNAL_UNTRUSTED, accepts everything
+# (degenerate floor — no integrity demand).
+_INTEGRITY_RANK: dict[str, int] = {
+    "external-untrusted": 0,
+    "system-internal": 1,
+    "principal-direct": 2,
+}
+
+
+def check_integrity_floor(
+    *,
+    floor_level: str,
+    input_level: str,
+) -> None:
+    """Biba no-read-down check (FR-004). Raises IntegrityFloorError
+    if `input_level` is below `floor_level` on the provenance lattice.
+
+    Both arguments are the string forms of `ProvenanceLevel` to keep
+    this helper string-based (callers may not have AxisB constructed
+    when they invoke this from a non-AxisB path)."""
+    if floor_level not in _INTEGRITY_RANK:
+        raise IntegrityFloorError(floor=floor_level, input_level=input_level)
+    if input_level not in _INTEGRITY_RANK:
+        raise IntegrityFloorError(floor=floor_level, input_level=input_level)
+    if _INTEGRITY_RANK[input_level] < _INTEGRITY_RANK[floor_level]:
+        raise IntegrityFloorError(floor=floor_level, input_level=input_level)

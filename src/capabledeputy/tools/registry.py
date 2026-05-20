@@ -54,6 +54,13 @@ class ToolDefinition:
     # tool is never expected to gate (or has no auto-submit path; the
     # user falls back to /submit).
     approval_route: ApprovalRoute | None = None
+    # 003 US5 T012-partial — Pattern (3) Reference Handle opt-in.
+    # When True, the dispatcher may substitute ReferenceHandle ids
+    # into the named args. The handle store binds the real value
+    # post-decide() (FR-047). Defaults False to keep behavior
+    # back-compat for existing tools.
+    accepts_handles: bool = False
+    handle_arg_names: tuple[str, ...] = field(default_factory=tuple)
 
     def extract_target(self, args: dict[str, Any]) -> str:
         return str(args.get(self.target_arg, ""))
