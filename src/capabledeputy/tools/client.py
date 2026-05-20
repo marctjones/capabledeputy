@@ -354,6 +354,8 @@ class LabeledToolClient:
         if self._policy_context.override_grants is not None:
             kwargs["override_grants"] = self._policy_context.override_grants
             kwargs["session_id"] = session.id
+        if self._policy_context.bindings is not None:
+            kwargs["bindings"] = self._policy_context.bindings
         return kwargs
 
     async def _bind_reference_handles(

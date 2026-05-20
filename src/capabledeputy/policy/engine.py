@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from capabledeputy.policy.actions import Action
+from capabledeputy.policy.bindings import BindingError, BindingSet
 from capabledeputy.policy.capabilities import (
     DESTRUCTIVE_KINDS,
     Capability,
@@ -42,6 +43,7 @@ CAPABILITY_EXPIRED_RULE = "capability-expired"
 RATE_LIMIT_EXCEEDED_RULE = "rate-limit-exceeded"
 RELAX_REFUSED_RULE = "v2:relax_refused"
 V2_RULE_PREFIX = "v2:"
+BINDING_UNBOUND_RULE = "binding-unbound"
 
 
 @dataclass(frozen=True)
@@ -325,6 +327,7 @@ def decide(
     relax_inputs: tuple[RelaxInput, ...] = (),
     override_grants: OverrideGrantStore | None = None,
     session_id: Any = None,
+    bindings: BindingSet | None = None,
 ) -> PolicyDecision:
     """Public chokepoint. Runs the legacy decision path, then — when
     the v2 axis inputs and rule set are provided — composes the v2
@@ -372,6 +375,26 @@ def decide(
                     effective_labels=label_set,
                 )
 
+    # T077 / Demo #6 — binding canonicalization. When the operator
+    # has wired a BindingSet, every write/egress destination must
+    # canonicalize through it. An unbound or non-canonicalizable
+    # target ⇒ refuse (FR-023 / FR-048 / SC-022). On success, the
+    # canonical destination id replaces action.target for the v2
+    # rule predicate so model-controlled case-varying inputs cannot
+    # bypass rules authored against the canonical form.
+    canonical_target: str | None = None
+    if bindings is not None and action.target:
+        try:
+            resolution = bindings.resolve(action.target)
+            canonical_target = resolution.canonical_destination_id
+        except BindingError as e:
+            return PolicyDecision(
+                decision=Decision.DENY,
+                rule=BINDING_UNBOUND_RULE,
+                reason=str(e),
+                effective_labels=label_set,
+            )
+
     if relax_inputs:
         inspected: RelaxInspectionResult = inspect_relax_inputs(relax_inputs)
         if inspected.has_refusal:
@@ -409,7 +432,7 @@ def decide(
         axis_b=axis_b,
         axis_d=axis_d,
         effect_class=effect_class,
-        target=action.target,
+        target=canonical_target if canonical_target is not None else action.target,
         default_when_no_match=default_v2_outcome,
     )
     composed = _compose_with_v2(legacy, v2)
