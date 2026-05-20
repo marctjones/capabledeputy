@@ -27,6 +27,39 @@ from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.registry import ToolContext, ToolRegistry
 
 
+def build_policy_decided_payload(
+    tool_name: str,
+    args: dict[str, Any],
+    decision: PolicyDecision,
+) -> dict[str, Any]:
+    """Construct the JSON payload for a `policy.decided` audit event.
+
+    The base payload mirrors the v0.7 surface for back-compat.
+    When the decision was reached with the v2 (003 US2) axis-based
+    evaluator in play, two additional fields land in the payload:
+    `v2_outcome` (the RuleOutcome the evaluator produced — AUTO/
+    SUGGEST/REQUIRE_APPROVAL/DENY) and `v2_matched_rule_ids` (the
+    sorted ids of human-ratified rules that matched). Together these
+    give T041 audit-reconstruction enough to replay the v2 leg of
+    the composition (FR-021).
+
+    Omitted entirely when no v2 evaluation ran (back-compat reads of
+    a pre-Phase-4 trace must not see new keys).
+    """
+    payload: dict[str, Any] = {
+        "tool": tool_name,
+        "args": args,
+        "decision": decision.decision.value,
+        "rule": decision.rule,
+        "reason": decision.reason,
+        "effective_labels": sorted(label.value for label in decision.effective_labels),
+    }
+    if decision.v2_outcome is not None:
+        payload["v2_outcome"] = decision.v2_outcome.value
+        payload["v2_matched_rule_ids"] = list(decision.v2_matched_rule_ids)
+    return payload
+
+
 @dataclass(frozen=True)
 class ToolCallOutcome:
     decision: Decision
@@ -263,14 +296,7 @@ class LabeledToolClient:
             Event(
                 event_type=EventType.POLICY_DECIDED,
                 session_id=session_id,
-                payload={
-                    "tool": tool_name,
-                    "args": args,
-                    "decision": decision.decision.value,
-                    "rule": decision.rule,
-                    "reason": decision.reason,
-                    "effective_labels": sorted(label.value for label in decision.effective_labels),
-                },
+                payload=build_policy_decided_payload(tool_name, args, decision),
             ),
         )
 
