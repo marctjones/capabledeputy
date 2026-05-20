@@ -44,6 +44,7 @@ Why all three at once: a running agent collapses what were three mostly *design-
 - [DESIGN.md](DESIGN.md) — full design specification
 - [ROADMAP.md](ROADMAP.md) — phased implementation plan
 - [docs/demos/README.md](docs/demos/README.md) — 21 end-to-end demos
+- [demos/scenarios/README.md](demos/scenarios/README.md) — **9 narrated executable demos** (runnable via pytest)
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and contribution guide
 
 ## Development
@@ -52,6 +53,21 @@ Why all three at once: a running agent collapses what were three mostly *design-
 uv sync --all-groups
 uv run pytest
 ```
+
+### See it in action
+
+The fastest way to understand what the policy engine actually does:
+
+```bash
+# Run all 9 narrated demos in order, with operator-facing prose:
+uv run pytest demos/scenarios/run_all.py --no-cov -s
+
+# Or a single demo (the marquee one):
+uv run pytest demos/scenarios/daily_briefing.py --no-cov -s
+```
+
+See [demos/scenarios/README.md](demos/scenarios/README.md) for the
+demo lineup and what each one proves.
 
 ## License
 

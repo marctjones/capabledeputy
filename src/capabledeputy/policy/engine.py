@@ -405,6 +405,18 @@ def decide(
                 now=eff_now,
             )
             if isinstance(mint_result, Capability):
+                # FR-036 single-use: mark the grant CONSUMED so a
+                # subsequent decide() falls back to the normal policy.
+                from dataclasses import replace as _dc_replace
+
+                from capabledeputy.policy.overrides import GrantState
+
+                consumed = _dc_replace(
+                    active,
+                    state=GrantState.CONSUMED,
+                    consumed_at=eff_now,
+                )
+                override_grants.update(consumed)
                 return PolicyDecision(
                     decision=Decision.ALLOW,
                     rule="override-grant-active",

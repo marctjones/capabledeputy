@@ -364,6 +364,8 @@ class LabeledToolClient:
             labels_added=labels_added,
             tool_name=tool_name,
             tool_args=args,
+            rule=policy_decision.rule,
+            reason=policy_decision.reason,
         )
 
     async def _apply_inspectors(
