@@ -30,6 +30,7 @@ from capabledeputy.policy.decision_rules import DecisionRules
 from capabledeputy.policy.engine import PolicyDecision, decide
 from capabledeputy.policy.labels import Label
 from capabledeputy.policy.overrides import OverrideGrantStore, OverridePolicies
+from capabledeputy.policy.reversibility import ReversibilityLabel
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry
@@ -356,6 +357,17 @@ class LabeledToolClient:
             kwargs["session_id"] = session.id
         if self._policy_context.bindings is not None:
             kwargs["bindings"] = self._policy_context.bindings
+        # T094 / Demo #4 — derive effective reversibility from the
+        # tool's default_reversibility (when declared). The binding's
+        # mutability composition lands in a follow-up; today the
+        # tool's declaration is authoritative.
+        if tool.default_reversibility is not None:
+            import contextlib
+
+            with contextlib.suppress(KeyError, ValueError):
+                kwargs["effective_reversibility"] = ReversibilityLabel.from_dict(
+                    tool.default_reversibility,
+                )
         return kwargs
 
     async def _bind_reference_handles(

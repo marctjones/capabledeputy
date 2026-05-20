@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from capabledeputy.policy.actions import Action
+from capabledeputy.policy.assurance import EffectGate, reversibility_gate
 from capabledeputy.policy.bindings import BindingError, BindingSet
 from capabledeputy.policy.capabilities import (
     DESTRUCTIVE_KINDS,
@@ -29,7 +30,9 @@ from capabledeputy.policy.decision_rules import (
 )
 from capabledeputy.policy.decision_rules import evaluate as _evaluate_v2
 from capabledeputy.policy.labels import AxisA, AxisB, AxisD, Label
+from capabledeputy.policy.optimistic import evaluate_optimistic
 from capabledeputy.policy.overrides import OverrideGrantStore, use_override
+from capabledeputy.policy.reversibility import ReversibilityLabel
 from capabledeputy.policy.rules import CONFLICT_RULES, ConflictRule, Decision
 
 _EGRESS_LABEL_FOR_KIND: dict[CapabilityKind, Label] = {
@@ -44,6 +47,27 @@ RATE_LIMIT_EXCEEDED_RULE = "rate-limit-exceeded"
 RELAX_REFUSED_RULE = "v2:relax_refused"
 V2_RULE_PREFIX = "v2:"
 BINDING_UNBOUND_RULE = "binding-unbound"
+REVERSIBILITY_IRREVERSIBLE_RULE = "reversibility-irreversible"
+REVERSIBILITY_REQUIRES_APPROVAL_RULE = "reversibility-requires-approval"
+OPTIMISTIC_AUTO_RULE = "optimistic-auto"
+
+# Effect-class substrings that mark an egressing action. Egress crosses
+# the containment boundary; even reversible/system loses optimistic
+# auto when egressing (see policy/optimistic.py docstring).
+_EGRESS_EFFECT_MARKERS: tuple[str, ...] = (
+    "egress",
+    "send",
+    "post",
+    "write_remote",
+    "share",
+)
+
+
+def _effect_class_is_egressing(effect_class: str | None) -> bool:
+    if not effect_class:
+        return False
+    lo = effect_class.lower()
+    return any(marker in lo for marker in _EGRESS_EFFECT_MARKERS)
 
 
 @dataclass(frozen=True)
@@ -328,6 +352,7 @@ def decide(
     override_grants: OverrideGrantStore | None = None,
     session_id: Any = None,
     bindings: BindingSet | None = None,
+    effective_reversibility: ReversibilityLabel | None = None,
 ) -> PolicyDecision:
     """Public chokepoint. Runs the legacy decision path, then — when
     the v2 axis inputs and rule set are provided — composes the v2
@@ -395,6 +420,41 @@ def decide(
                 effective_labels=label_set,
             )
 
+    # T094 / T081 / Demo #4 — reversibility-weighted gating +
+    # optimistic execution. When the caller supplies an effective
+    # reversibility label AND an effect class, run the FR-019 gate.
+    # social.* effects are hard-coded irreversible inside
+    # reversibility_gate; the gate also routes reversible/system
+    # toward optimistic auto (the result composes with everything
+    # else most-restrictive — overrides and existing legacy DENY
+    # always win).
+    reversibility_outcome: Decision | None = None
+    reversibility_rule: str | None = None
+    reversibility_reason: str | None = None
+    if effective_reversibility is not None and effect_class is not None:
+        gate, _label, gate_rationale = reversibility_gate(
+            effect_class=effect_class,
+            declared_reversibility=effective_reversibility,
+        )
+        if gate is EffectGate.DENY:
+            reversibility_outcome = Decision.DENY
+            reversibility_rule = REVERSIBILITY_IRREVERSIBLE_RULE
+            reversibility_reason = gate_rationale
+        elif gate is EffectGate.REQUIRE_APPROVAL:
+            reversibility_outcome = Decision.REQUIRE_APPROVAL
+            reversibility_rule = REVERSIBILITY_REQUIRES_APPROVAL_RULE
+            reversibility_reason = gate_rationale
+        elif gate is EffectGate.AUTO_OK:
+            # AUTO_OK means the gate allows; check optimistic auto.
+            opt = evaluate_optimistic(
+                effective_reversibility=effective_reversibility,
+                is_egressing=_effect_class_is_egressing(effect_class),
+            )
+            if opt.should_auto:
+                reversibility_outcome = Decision.ALLOW
+                reversibility_rule = OPTIMISTIC_AUTO_RULE
+                reversibility_reason = opt.rationale
+
     if relax_inputs:
         inspected: RelaxInspectionResult = inspect_relax_inputs(relax_inputs)
         if inspected.has_refusal:
@@ -425,6 +485,15 @@ def decide(
         or effect_class is None
         or rules_v2 is None
     ):
+        # Even on the legacy-only path, the reversibility gate
+        # applies when the caller supplied an effective label.
+        if reversibility_outcome is not None:
+            return _compose_with_reversibility(
+                legacy,
+                reversibility_outcome=reversibility_outcome,
+                reversibility_rule=reversibility_rule,
+                reversibility_reason=reversibility_reason,
+            )
         return legacy
     v2 = _evaluate_v2(
         rules=rules_v2,
@@ -436,6 +505,13 @@ def decide(
         default_when_no_match=default_v2_outcome,
     )
     composed = _compose_with_v2(legacy, v2)
+    if reversibility_outcome is not None:
+        composed = _compose_with_reversibility(
+            composed,
+            reversibility_outcome=reversibility_outcome,
+            reversibility_rule=reversibility_rule,
+            reversibility_reason=reversibility_reason,
+        )
     return replace(
         composed,
         axis_a_snapshot=axis_a,
@@ -443,3 +519,47 @@ def decide(
         axis_d_snapshot=axis_d,
         effect_class=effect_class,
     )
+
+
+def _compose_with_reversibility(
+    base: PolicyDecision,
+    *,
+    reversibility_outcome: Decision,
+    reversibility_rule: str | None,
+    reversibility_reason: str | None,
+) -> PolicyDecision:
+    """Compose the reversibility-gate / optimistic-auto outcome with
+    the legacy + v2 result. Most-restrictive wins UNLESS the
+    reversibility outcome is OPTIMISTIC_AUTO and the base is
+    REQUIRE_APPROVAL on the default v2 branch — in that case the
+    optimistic auto carve-out applies (FR-034 reversible/system +
+    non-egressing ⇒ auto without prompt).
+
+    Concretely: a reversibility ALLOW (optimistic auto) only relaxes
+    a base REQUIRE_APPROVAL when the base is the v2 default (no
+    matching human-ratified rule); any DENY or rule-driven outcome
+    still wins. This keeps Principle V (single chokepoint, no
+    accidental relaxation) honest.
+    """
+    # Optimistic-auto carve-out: only relaxes a base REQUIRE_APPROVAL
+    # produced by the v2 never-auto default, never relaxes DENY.
+    if (
+        reversibility_outcome is Decision.ALLOW
+        and base.decision is Decision.REQUIRE_APPROVAL
+        and base.v2_outcome is RuleOutcome.SUGGEST
+    ):
+        return replace(
+            base,
+            decision=Decision.ALLOW,
+            rule=reversibility_rule,
+            reason=reversibility_reason,
+        )
+    # Otherwise most-restrictive: if reversibility is stricter, take it.
+    if _LEGACY_RANK[reversibility_outcome] < _LEGACY_RANK[base.decision]:
+        return replace(
+            base,
+            decision=reversibility_outcome,
+            rule=reversibility_rule,
+            reason=reversibility_reason,
+        )
+    return base
