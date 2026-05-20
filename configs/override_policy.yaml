@@ -1,0 +1,18 @@
+# 003 Override Policy (FR-032, FR-036, FR-038).
+# Distinct from ordinary approval — Override is the mechanism for
+# crossing hard floors (prohibited, admissibility-exclusion,
+# max-tier-clearance, integrity-floor) and produces capabilities with
+# origin=override_granted. `disallowed` refuses even authorized
+# invokers; `single-authorized` allows one named principal;
+# `dual-control` requires a distinct attester.
+# Owner-set; AI-read-only.
+#
+# Shape (per data-model.md):
+#   policies:
+#     - tier_or_floor: <prohibited|admissibility-exclusion|max-tier-clearance|integrity-floor>
+#       policy: <disallowed|single-authorized|dual-control>
+#       authorized_principal_ids: [<principal-id>, ...]
+#       attester_principal_ids: [<principal-id>, ...]   # required for dual-control
+#       expiry_seconds: <int>   # friction-scaled to severity
+
+policies: []

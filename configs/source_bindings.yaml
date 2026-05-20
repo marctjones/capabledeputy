@@ -1,0 +1,22 @@
+# 003 Source/Location Label Bindings (FR-043, FR-048).
+# Operator-declared, ordered list of (scope_pattern, label_set,
+# write_discipline?) rules. Scope patterns are canonical URIs
+# (file:///abs/path/**, unc:///host/share/**, https://site/..., mcp:server/id).
+# Most-specific subtree wins for category/tier; bindings compose
+# most-restrictive when they overlap on disjoint dimensions; unbound
+# or non-canonicalizable input fail-closes (FR-023). Resolver consulted
+# on every read/ingest AND every write/egress.
+#
+# Shape (per data-model.md):
+#   bindings:
+#     - name: <operator-given-identifier>     # e.g., HR-folder
+#       scope_pattern_canonical: <canonical-uri-glob>
+#       category: <axis-A-category>
+#       default_tier: <none|sensitive|regulated|restricted|prohibited>
+#       reversibility: {degree: ..., agent: ...}  # optional
+#       mutability: {degree: ..., agent: ...}     # optional
+#       write_discipline: <version-preserving|in-place>  # optional
+#       risk_ids: [<register-id>, ...]
+#       assignment_provenance: <provenance>
+
+bindings: []

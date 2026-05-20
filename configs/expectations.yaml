@@ -1,0 +1,16 @@
+# 003 Expectation Bindings (FR-029).
+# Deterministic registry of (initiator, effect, time_window, params)
+# that count as "expected"; anything not matching is "anomalous".
+# NO heuristic anomaly inference allowed — this is a pure registry
+# match, evaluated in resolve.
+#
+# Shape (per data-model.md):
+#   bindings:
+#     - binding_id: <slug>
+#       initiator: <initiator-pattern>
+#       effect_kind: <axis-C-effect-class>
+#       time_window: <cron-like or null>
+#       param_constraints: <dict or null>
+#       risk_ids: [<register-id>, ...]
+
+bindings: []

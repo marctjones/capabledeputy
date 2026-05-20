@@ -19,7 +19,7 @@ from anyio.to_thread import run_sync as run_in_thread
 
 from capabledeputy.session.model import Session
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -85,7 +85,7 @@ class SessionStore:
             current = row["version"]
             if current == SCHEMA_VERSION:
                 return
-            if current in (1, 2, 3, 4):
+            if current in (1, 2, 3, 4, 5):
                 if current == 1:
                     # v1 → v2: add tool_aliasing and prefer_programmatic columns.
                     col_def = "INTEGER NOT NULL DEFAULT 0"
@@ -97,9 +97,12 @@ class SessionStore:
                             if "duplicate column" not in str(e).lower():
                                 raise
                 # v2 → v3: used_kinds. v3 → v4: cap_uses. v4 → v5:
-                # revoked_audit_ids (002 delegation cascade). Each ALTER
-                # is idempotent (duplicate-column is caught) so a db at
-                # any of v1/v2/v3/v4 converges to v5 in one pass.
+                # revoked_audit_ids (002 delegation cascade). v5 → v6:
+                # axis-orthogonal columns + new tables land in 003 T008.
+                # T001 here only broadens the condition + stamps v6; the
+                # actual ALTERs for v5→v6 arrive in Foundational T008.
+                # Each ALTER is idempotent (duplicate-column is caught)
+                # so a db at any of v1..v5 converges to v6 in one pass.
                 for col, default in (
                     ("used_kinds", "'[]'"),
                     ("cap_uses", "'{}'"),

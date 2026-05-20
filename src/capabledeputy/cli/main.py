@@ -10,6 +10,7 @@ from rich.console import Console
 
 from capabledeputy.cli.approval import approval_app
 from capabledeputy.cli.audit import audit_app, watch_command
+from capabledeputy.cli.audit_cmd import storage_shape_command
 from capabledeputy.cli.chat import chat_command, demo_app
 from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.session import session_app
@@ -37,6 +38,7 @@ app.add_typer(approval_app, name="approval")
 app.add_typer(demo_app, name="demo")
 app.command("chat")(chat_command)
 app.command("watch")(watch_command)
+audit_app.command("storage-shape")(storage_shape_command)
 
 
 @app.command("trace")

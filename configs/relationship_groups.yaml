@@ -1,0 +1,12 @@
+# 003 Relationship Groups (FR-033).
+# Human-declared, AI-read-only groupings of principals (e.g.,
+# `project-P`, `team-A`, `spouse`). Used by decision rules to
+# scope sharing/disclosure decisions by relationship rather than by
+# identity alone.
+#
+# Shape (per data-model.md):
+#   groups:
+#     - group_id: <slug>
+#       member_principal_ids: [<principal-id>, ...]
+
+groups: []

@@ -1,0 +1,30 @@
+# 003 Label definitions (FR-002, FR-007, FR-037, FR-039).
+# Axis A data categories (stable_core + registered), Axis C effect
+# classes (declared on ToolDefinition, not here), reversibility and
+# mutability labels. Operator-editable, version-controlled.
+#
+# Categories shape (Axis A):
+#   categories:
+#     - id: <slug>                    # e.g., health, finance, proprietary_work
+#       kind: <stable_core|registered>
+#       c_impact: <none|low|medium|high>   # confidentiality
+#       i_impact: <none|low|medium|high>   # integrity
+#       default_tier: <none|sensitive|regulated|restricted|prohibited>
+#       resolution_mode: <fixed-high|context-up|context-resolved>
+#       risk_ids: [<register-id>, ...]
+#
+# Reversibility labels shape (per data-model.md):
+#   reversibility_labels:
+#     - id: <slug>
+#       degree: <reversible|reversible-with-friction|irreversible>
+#       agent: <system|human|external>
+#
+# Mutability labels shape:
+#   mutability_labels:
+#     - id: <slug>
+#       degree: <immutable|append-only|in-place>
+#       agent: <system|human|external>
+
+categories: []
+reversibility_labels: []
+mutability_labels: []

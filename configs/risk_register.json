@@ -1,0 +1,4 @@
+{
+  "_comment": "003 risk register (FR-015, FR-028). Every label MUST cite >=1 entry id; every entry MUST cite >=1 external framework_refs (NIST, ISO, OWASP, CIS, etc.). CI-lint enforces SC-001. Loaded at daemon start; AI-read-only; operator-editable in source control.",
+  "entries": []
+}

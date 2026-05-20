@@ -1,0 +1,19 @@
+# 003 Context Profiles (FR-007, FR-008).
+# A profile assigns a (user, use_case) pair to per-category resolution
+# behavior — e.g., a clinician profile may "context-up" health data to
+# a higher tier than a general profile. `max_tier` is the clearance
+# ceiling for the profile (FR-008 read-up refusal). Profiles compose
+# most-restrictive when multiple match.
+#
+# Shape (per data-model.md):
+#   profiles:
+#     - id: <slug>                    # e.g., clinician, daily-briefing
+#       user_pattern: <principal-id-or-pattern>
+#       use_case: <slug>              # e.g., clinical, general
+#       max_tier: <none|sensitive|regulated|restricted|prohibited>
+#       category_overrides:
+#         - category: <category-id>
+#           tier: <none|sensitive|regulated|restricted|prohibited>   # optional override
+#           resolution_mode: <fixed-high|context-up|context-resolved> # optional override
+
+profiles: []

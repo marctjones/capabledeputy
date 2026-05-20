@@ -1,0 +1,17 @@
+# 003 Outcome Envelopes (FR-030).
+# Per-cell {strictest, loosest} bounds. The risk-preference dial
+# selects a point within each cell's envelope; hard-floor cells have
+# degenerate envelopes (strictest == loosest, immovable by the dial).
+# Cell key = (category, effect, decision_context_canonical, reversibility).
+#
+# Shape (per data-model.md):
+#   envelopes:
+#     - cell:
+#         category: <axis-A-category>
+#         effect: <axis-C-effect-class>
+#         decision_context_canonical: <axis-D-canonical-form>
+#         reversibility: <degree>
+#       strictest: <deny|require-approval|suggest|auto>
+#       loosest: <deny|require-approval|suggest|auto>
+
+envelopes: []

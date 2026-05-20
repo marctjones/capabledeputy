@@ -1,0 +1,25 @@
+# 003 Human-Authored Decision Rules (FR-010, FR-014, FR-026).
+# Predicates over axes A-D + target that ratchet stricter relative to
+# the baseline never-auto default (FR-011). Rules can only RELAX the
+# baseline within the cell's outcome envelope (FR-030) and never
+# across a hard floor. Unratified suggestions ⇒ zero effect (FR-014).
+#
+# Shape (per data-model.md):
+#   rules:
+#     - rule_id: <slug>
+#       when:                          # predicate over axes + target
+#         axis_a: {category: <id>}     # optional, omitted = any
+#         axis_b: {provenance: <id>}   # optional
+#         axis_c: {effect_class: <id>} # optional
+#         axis_d:                      # optional
+#           initiator: <pattern>
+#           counterparty: <pattern-or-group>
+#           expectedness: <expected|anomalous>
+#           reversibility: <degree>
+#       outcome: <auto|suggest|require-approval|deny>
+#       rationale: <human-authored>
+#       risk_ids: [<register-id>, ...]
+#       human_ratified_by: <principal-id>
+#       human_ratified_at: <ISO-8601>
+
+rules: []

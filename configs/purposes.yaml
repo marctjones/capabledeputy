@@ -1,0 +1,17 @@
+# 003 Purpose registry (FR-009, FR-046).
+# Each purpose declares admissible / inadmissible data categories so a
+# session spawned with that purpose cannot hold any capability that
+# reads an inadmissible category (structural prevention at spawn, not
+# act-then-flag). `unset` is the default for sessions spawned without
+# an explicit purpose_handle and admits no consequential effects.
+# Owner-set; AI-read-only.
+#
+# Shape (per data-model.md):
+#   purposes:
+#     - purpose_id: <slug>
+#       label: <human-readable>
+#       admissible_categories: [<category>, ...]   # whitelist; optional
+#       inadmissible_categories: [<category>, ...] # blacklist; optional
+#       recommended_pattern: <pattern>             # hint, not authoritative
+
+purposes: []

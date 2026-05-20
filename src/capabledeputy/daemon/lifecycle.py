@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from capabledeputy.app import App
 from capabledeputy.daemon.agent_handlers import make_agent_handlers
@@ -44,6 +47,83 @@ def max_delegation_depth() -> int:
     except ValueError:
         return DEFAULT_MAX_DELEGATION_DEPTH
     return v if v > 0 else DEFAULT_MAX_DELEGATION_DEPTH
+
+
+# 003 Phase 1 T005: load_v09_configs is fail-closed (refuses daemon
+# start on missing or unparseable file). Per-loader schema validation
+# (e.g., labels.yaml category shape) lands per-feature in Phases 2+;
+# T005 only enforces *presence + parseability* of the eleven files.
+
+_V09_CONFIG_FILES_JSON: tuple[str, ...] = (
+    "risk_register.json",
+    "risk_preference.json",
+)
+_V09_CONFIG_FILES_YAML: tuple[str, ...] = (
+    "purposes.yaml",
+    "source_bindings.yaml",
+    "relationship_groups.yaml",
+    "expectations.yaml",
+    "override_policy.yaml",
+    "envelopes.yaml",
+    "labels.yaml",
+    "profiles.yaml",
+    "rules.yaml",
+)
+
+
+class V09ConfigError(RuntimeError):
+    """A v0.9 config file is missing or fails to parse. Fail-closed
+    per Constitution Principle VI — the daemon must refuse to start
+    rather than run with a partially configured policy oracle."""
+
+
+def _resolve_v09_configs_dir(override: Path | None = None) -> Path:
+    """Configs dir resolution: explicit arg > CAPDEP_CONFIGS_DIR env
+    > `configs/` relative to cwd. Returned path is not required to
+    exist here; presence is checked by load_v09_configs()."""
+    import os
+
+    if override is not None:
+        return override
+    env = os.environ.get("CAPDEP_CONFIGS_DIR")
+    if env:
+        return Path(env)
+    return Path("configs")
+
+
+def load_v09_configs(configs_dir: Path | None = None) -> dict[str, Any]:
+    """Load every v0.9 operator-config file (003 FR-009, FR-015, FR-029,
+    FR-030, FR-032, FR-033, FR-043, FR-046). Fail-closed on missing or
+    unparseable file: raises V09ConfigError. Returns a dict keyed by
+    filename stem with the parsed body so downstream loaders can split
+    further validation per-feature."""
+    base = _resolve_v09_configs_dir(configs_dir)
+    if not base.is_dir():
+        raise V09ConfigError(
+            f"v0.9 configs dir not found at {base}; set CAPDEP_CONFIGS_DIR "
+            "or run the daemon from a directory with a configs/ tree.",
+        )
+
+    loaded: dict[str, Any] = {}
+    for name in _V09_CONFIG_FILES_JSON:
+        path = base / name
+        if not path.is_file():
+            raise V09ConfigError(f"v0.9 config missing: {path}")
+        try:
+            loaded[path.stem] = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            raise V09ConfigError(f"v0.9 config unparseable: {path} — {e}") from e
+
+    for name in _V09_CONFIG_FILES_YAML:
+        path = base / name
+        if not path.is_file():
+            raise V09ConfigError(f"v0.9 config missing: {path}")
+        try:
+            loaded[path.stem] = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError as e:
+            raise V09ConfigError(f"v0.9 config unparseable: {path} — {e}") from e
+
+    return loaded
 
 
 def _resolve_daemon_config(config_path: Path | None) -> Path | None:
@@ -87,6 +167,10 @@ async def run_daemon(
     config_path: Path | None = None,
 ) -> None:
     import os
+
+    # 003 T005: fail-closed v0.9 config load before any other work.
+    # If any file is missing or unparseable, refuse to start (Principle VI).
+    load_v09_configs()
 
     # Populate ANTHROPIC_API_KEY from CLAUDEAPI.KEY in the cwd if it isn't
     # already set, so users don't need to re-export the env var each shell.
