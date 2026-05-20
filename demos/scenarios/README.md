@@ -1,6 +1,6 @@
 # CapableDeputy Demo Scenarios
 
-Twelve narrated, executable demos. Each is a pytest-asyncio test that
+Sixteen narrated, executable demos. Each is a pytest-asyncio test that
 exercises one or more security properties of the policy engine. Run
 with `-s` to see the operator-facing narration:
 
@@ -28,8 +28,8 @@ about to be demonstrated before reading the steps.
 | 3 | `risk_dial` | FR-030 / SC-010 envelope dial + hard-floor invariant |
 | 5 | `hr_data_handling` | Profile-bound clearance ceiling (FR-008 BLP) |
 | 7 | `optimistic_burn` | FR-034 carve-out boundary (reversible/system + non-egressing) |
-| 11 | `bulk_approval_grouped` | Approval bundle — program-hash-pinned re-execution |
-| 12 | `data_blind_disclosure` | Pattern ③ ReferenceHandle structural invariants |
+| 15 | `bulk_approval_grouped` | Approval bundle — program-hash-pinned re-execution |
+| 16 | `data_blind_disclosure` | Pattern ③ ReferenceHandle structural invariants |
 
 ### Multi-mechanism demos (combinations + workflow context)
 
@@ -38,9 +38,18 @@ about to be demonstrated before reading the steps.
 | 1 | `daily_briefing` | Brewer-Nash + FR-019 social-commitment + FR-038 override + FR-034 carve-out + dual-control attester |
 | 4 | `clinical_records_research` | Brewer-Nash (PHI-meets-egress) + FR-008 BLP read-up |
 | 6 | `prompt_injection_defense` | Pattern ② DUAL_LLM + FR-025 raise-only inspector (monotone composition) |
-| 8 | `secure_inbox_triage` | **Pattern ② + Pattern ③ + FR-025 inspector + Brewer-Nash + FR-019** — the canonical multi-mechanism inbox-triage workflow |
+| 8 | `secure_inbox_triage` | **Pattern ② + Pattern ③ + FR-025 inspector + Brewer-Nash + FR-019** — canonical multi-mechanism inbox-triage workflow |
 | 9 | `multi_session_handoff` | Session fork + label propagation + Brewer-Nash + operator-explicit re-scoping |
 | 10 | `dial_assisted_research` | FR-030 envelope dial + multi-fetch UNTRUSTED_EXTERNAL accumulation + SC-010 hard floor |
+
+### Personal-assistant common-workflow demos
+
+| # | Demo | Workflow |
+|---|---|---|
+| 11 | `calendar_with_invites` | External calendar invite → accept → forward attempt refused (untrusted-meets-egress) |
+| 12 | `task_compartments` | Personal tasks + financial summary on the same session; egress attempt fires Brewer-Nash financial-meets-email |
+| 13 | `local_doc_qa` | **Real `fs.read` + `fs.read_pdf`** on local files; UNTRUSTED_USER_INPUT propagates; save-locally allowed, egress refused |
+| 14 | `travel_booking` | Trip planning: 4 purchases. One-at-a-time vs. bundle. Bundle is program-hash pinned |
 
 ### Reading the output
 
@@ -58,13 +67,28 @@ Each step renders as:
 The actor column (`USER`, `AI`, `POLICY`, `TOOL`, `AUDIT`) is keyed to
 72-column rows so you can scan a long run for ✓ / ✗ outcomes.
 
+## What runs against REAL tools vs. stubs
+
+| Surface | Real or stub? |
+|---|---|
+| Memory store (`memory.*`) | Real (in-process) |
+| File system (`fs.read`, `fs.read_pdf`) | **Real** — reads from disk, uses pypdf |
+| Inbox (`inbox.*`) | Stub (in-process `Inbox`) |
+| Email send (`email.send`) | Stub (`EmailOutbox` records; doesn't deliver) |
+| Calendar (`calendar.*`) | Stub (`CalendarStore`) |
+| Tasks (`tasks.*`) | Stub (`TaskStore`) |
+| Web fetch (`web.fetch`) | Stub (`WebMock` with pre-loaded URLs) |
+| Purchase (`purchase.queue`) | Stub (`PurchaseQueue` records; doesn't buy) |
+| Quarantined extract (`quarantined.extract`) | Real, but needs a configured `quarantined_llm` |
+
+Demos that need PDF reading construct the PDF at test-time via
+`pypdf.PdfWriter` so they're hermetic — no checked-in fixture files.
+
 ## What's NOT here
 
-These demos use stub tools and an in-memory store. They exercise the
-policy engine and the substrate ports — the parts of CapableDeputy
-that are load-bearing for the security argument. **Real-world**
-integration tests (Gmail, Slack, GitHub, etc.) live under spec 004
-once the MCP adapter lands.
+External-service integrations (Gmail, Slack, GitHub, Google Calendar,
+real shopping APIs) are deliberately out of scope; they need the MCP
+adapter, which is spec-004 work (`U001-U020`).
 
 ## Reading the audit log
 

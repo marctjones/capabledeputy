@@ -35,6 +35,7 @@ dependencies = [
     "textual>=8.2,<9",
     "pyyaml>=6.0.3",
     "prompt-toolkit>=3.0",
+    "pypdf>=6.11.0",
 ]
 
 [project.scripts]

@@ -6,7 +6,7 @@ Run with:
 The -s is what makes the narration visible. The driver invokes each
 demo with a 'DEMO i / N' banner so a long run is easy to scan.
 
-The 12 demos are organized in three arcs:
+The 16 demos are organized in three arcs:
 
   Single-mechanism demos
     Each exercises one security model or flow pattern cleanly so the
@@ -29,26 +29,35 @@ from typing import Any
 import pytest
 
 from demos.scenarios.bulk_approval_grouped import test_bulk_approval_demo
+from demos.scenarios.calendar_with_invites import test_calendar_with_invites_demo
 from demos.scenarios.clinical_records_research import test_clinical_records_demo
 from demos.scenarios.daily_briefing import test_daily_briefing_demo
 from demos.scenarios.data_blind_disclosure import test_data_blind_disclosure_demo
 from demos.scenarios.dial_assisted_research import test_dial_assisted_research_demo
 from demos.scenarios.hr_data_handling import test_hr_data_handling_demo
+from demos.scenarios.local_doc_qa import test_local_doc_qa_demo
 from demos.scenarios.multi_session_handoff import test_multi_session_handoff_demo
 from demos.scenarios.optimistic_burn import test_optimistic_burn_demo
 from demos.scenarios.override_workflow import test_override_workflow_demo
 from demos.scenarios.prompt_injection_defense import test_prompt_injection_demo
 from demos.scenarios.risk_dial import test_risk_dial_demo
 from demos.scenarios.secure_inbox_triage import test_secure_inbox_triage_demo
+from demos.scenarios.task_compartments import test_task_compartments_demo
+from demos.scenarios.travel_booking import test_travel_booking_demo
 
 # Order:
-#   1-3   Single mechanisms, easy intro (briefing → override → risk dial)
-#   4-7   Operator-knob + clearance demos
-#   8     Inbox triage — the canonical Pattern ② + ③ + inspector mix
+#   1-3   Marquee + override + dial (single-mechanism intros)
+#   4-5   Clearance / profile (Brewer-Nash + BLP)
+#   6-7   Defense-in-depth (injection, optimistic carve-out)
+#   8     Inbox triage — Pattern ② + ③ + inspector
 #   9     Multi-session handoff — fork inheritance
-#   10    Dial-assisted research — dial steering a real workflow
-#   11    Bulk approval — programmatic execution + bundle
-#   12    Data-blind disclosure — Pattern ③ structural test
+#   10    Dial-assisted research — dial in a real workflow
+#   11    Calendar invites — untrusted-external from a real source
+#   12    Task compartments — Brewer-Nash on mixed personal categories
+#   13    Local doc Q&A — REAL fs.read + fs.read_pdf tools
+#   14    Travel booking — bundle vs. one-at-a-time on purchases
+#   15    Bulk approval — programmatic execution + bundle (purchases)
+#   16    Data-blind disclosure — Pattern ③ structural test
 
 _RUN_ORDER: tuple[tuple[str, Any], ...] = (
     ("Daily Briefing", test_daily_briefing_demo),
@@ -61,6 +70,10 @@ _RUN_ORDER: tuple[tuple[str, Any], ...] = (
     ("Secure Inbox Triage", test_secure_inbox_triage_demo),
     ("Multi-Session Handoff", test_multi_session_handoff_demo),
     ("Dial-Assisted Research", test_dial_assisted_research_demo),
+    ("Calendar With Invites", test_calendar_with_invites_demo),
+    ("Task Compartments", test_task_compartments_demo),
+    ("Local Doc Q&A", test_local_doc_qa_demo),
+    ("Travel Booking", test_travel_booking_demo),
     ("Bulk Approval Grouped", test_bulk_approval_demo),
     ("Data-Blind Disclosure", test_data_blind_disclosure_demo),
 )

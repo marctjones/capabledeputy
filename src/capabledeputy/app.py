@@ -15,6 +15,7 @@ from capabledeputy.tools.client import LabeledToolClient, PolicyContext
 from capabledeputy.tools.native.calendar import CalendarStore, make_calendar_tools
 from capabledeputy.tools.native.email import EmailOutbox, make_email_tools
 from capabledeputy.tools.native.extract import make_extract_tools
+from capabledeputy.tools.native.fs import make_fs_tools
 from capabledeputy.tools.native.inbox import Inbox, make_inbox_tools
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
 from capabledeputy.tools.native.policy_preview import make_policy_preview_tools
@@ -88,6 +89,8 @@ class App:
         for tool in make_web_tools(self.web):
             self.registry.register(tool)
         for tool in make_tasks_tools(self.tasks):
+            self.registry.register(tool)
+        for tool in make_fs_tools():
             self.registry.register(tool)
         # policy.preview lets the agent dry-run a policy decision so it
         # can plan around gates. It is read-only and OFF the enforcement
