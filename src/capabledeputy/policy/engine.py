@@ -7,7 +7,7 @@ phases iterate on policy by replaying historical traces (DESIGN.md §9.5).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
 from capabledeputy.policy.actions import Action
@@ -16,7 +16,13 @@ from capabledeputy.policy.capabilities import (
     Capability,
     CapabilityKind,
 )
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.decision_rules import (
+    DecisionRules,
+    EvaluationResult,
+    RuleOutcome,
+)
+from capabledeputy.policy.decision_rules import evaluate as _evaluate_v2
+from capabledeputy.policy.labels import AxisA, AxisB, AxisD, Label
 from capabledeputy.policy.rules import CONFLICT_RULES, ConflictRule, Decision
 
 _EGRESS_LABEL_FOR_KIND: dict[CapabilityKind, Label] = {
@@ -28,6 +34,7 @@ DESTRUCTIVE_OP_RULE = "destructive-op-needs-approval"
 REVOKED_BY_PRIOR_USE_RULE = "capability-revoked-by-prior-use"
 CAPABILITY_EXPIRED_RULE = "capability-expired"
 RATE_LIMIT_EXCEEDED_RULE = "rate-limit-exceeded"
+V2_RULE_PREFIX = "v2:"
 
 
 @dataclass(frozen=True)
@@ -37,6 +44,58 @@ class PolicyDecision:
     reason: str | None = None
     matched_capability: Capability | None = None
     effective_labels: frozenset[Label] = frozenset()
+    v2_outcome: RuleOutcome | None = None
+    v2_matched_rule_ids: tuple[str, ...] = field(default_factory=tuple)
+
+
+_LEGACY_RANK: dict[Decision, int] = {
+    Decision.DENY: 0,
+    Decision.REQUIRE_APPROVAL: 1,
+    Decision.ALLOW: 2,
+}
+
+# V2 RuleOutcome → legacy Decision mapping. SUGGEST collapses to
+# REQUIRE_APPROVAL: the v2 evaluator says "surface this to a human"
+# (FR-011 never-auto default), and the legacy chokepoint expresses
+# that as REQUIRE_APPROVAL. AUTO maps to ALLOW only when reached by
+# a human-ratified rule (evaluate() guarantees this — FR-014).
+_V2_TO_LEGACY: dict[RuleOutcome, Decision] = {
+    RuleOutcome.DENY: Decision.DENY,
+    RuleOutcome.REQUIRE_APPROVAL: Decision.REQUIRE_APPROVAL,
+    RuleOutcome.SUGGEST: Decision.REQUIRE_APPROVAL,
+    RuleOutcome.AUTO: Decision.ALLOW,
+}
+
+
+def _compose_with_v2(legacy: PolicyDecision, v2: EvaluationResult) -> PolicyDecision:
+    """Compose the legacy PolicyDecision with the v2 EvaluationResult.
+
+    FR-031 asymmetry: v2 may only ratchet stricter, never relax. If
+    legacy already denies/requires-approval and v2 says AUTO, the
+    legacy outcome stands — but v2_outcome/v2_matched_rule_ids are
+    still recorded on the decision for audit (T048).
+    """
+    v2_as_legacy = _V2_TO_LEGACY[v2.outcome]
+    if _LEGACY_RANK[v2_as_legacy] < _LEGACY_RANK[legacy.decision]:
+        # v2 ratchets stricter.
+        rule_label = (
+            V2_RULE_PREFIX + ",".join(v2.matched_rule_ids)
+            if v2.matched_rule_ids
+            else V2_RULE_PREFIX + "default"
+        )
+        return replace(
+            legacy,
+            decision=v2_as_legacy,
+            rule=rule_label,
+            reason=v2.rationale,
+            v2_outcome=v2.outcome,
+            v2_matched_rule_ids=v2.matched_rule_ids,
+        )
+    return replace(
+        legacy,
+        v2_outcome=v2.outcome,
+        v2_matched_rule_ids=v2.matched_rule_ids,
+    )
 
 
 def egress_label_for(kind: CapabilityKind) -> Label | None:
@@ -74,7 +133,7 @@ def find_capability(
     return None
 
 
-def decide(
+def _decide_legacy(
     label_set: frozenset[Label],
     capabilities: frozenset[Capability],
     action: Action,
@@ -219,3 +278,53 @@ def decide(
         matched_capability=cap,
         effective_labels=effective_labels,
     )
+
+
+def decide(
+    label_set: frozenset[Label],
+    capabilities: frozenset[Capability],
+    action: Action,
+    rules: tuple[ConflictRule, ...] = CONFLICT_RULES,
+    used_kinds: frozenset[CapabilityKind] = frozenset(),
+    now: datetime | None = None,
+    cap_uses: dict[str, tuple[datetime, ...]] | None = None,
+    *,
+    axis_a: AxisA | None = None,
+    axis_b: AxisB | None = None,
+    axis_d: AxisD | None = None,
+    effect_class: str | None = None,
+    rules_v2: DecisionRules | None = None,
+    default_v2_outcome: RuleOutcome = RuleOutcome.SUGGEST,
+) -> PolicyDecision:
+    """Public chokepoint. Runs the legacy decision path, then — when
+    the v2 axis inputs and rule set are provided — composes the v2
+    decision-rule evaluator's result (FR-010/011/014/031). V2 may only
+    ratchet stricter; legacy DENY always stands. When any v2 input is
+    omitted, behavior is identical to the v0.7 engine (back-compat)."""
+    legacy = _decide_legacy(
+        label_set,
+        capabilities,
+        action,
+        rules,
+        used_kinds,
+        now,
+        cap_uses,
+    )
+    if (
+        axis_a is None
+        or axis_b is None
+        or axis_d is None
+        or effect_class is None
+        or rules_v2 is None
+    ):
+        return legacy
+    v2 = _evaluate_v2(
+        rules=rules_v2,
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class=effect_class,
+        target=action.target,
+        default_when_no_match=default_v2_outcome,
+    )
+    return _compose_with_v2(legacy, v2)
