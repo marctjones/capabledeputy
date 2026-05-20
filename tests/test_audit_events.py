@@ -42,6 +42,14 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         "tool",
         "approval",
         "delegation",  # 002 capability delegation chains
+        # 003 v0.9 labeling framework (T014).
+        "binding",
+        "override",
+        "pattern3",
+        "isolation_region",
+        "envelope",
+        "risk_register",
+        "residual_risk",
     }
     for et in EventType:
         head, sep, _ = et.value.partition(".")
@@ -78,6 +86,19 @@ def test_event_type_taxonomy_matches_design() -> None:
         "delegation.granted",
         "delegation.refused",
         "capability.cascade_revoked",
+        # 003 v0.9 labeling framework (T014).
+        "binding.applied",
+        "override.granted",
+        "override.attested",
+        "override.refused",
+        "override.expired",
+        "override.use_refused",
+        "pattern3.handle_bind",
+        "isolation_region.created",
+        "isolation_region.discarded",
+        "envelope.dial_changed",
+        "risk_register.audit",
+        "residual_risk.exception",
     }
     actual = {et.value for et in EventType}
     assert actual == expected, f"missing: {expected - actual}, extra: {actual - expected}"

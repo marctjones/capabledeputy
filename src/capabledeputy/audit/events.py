@@ -41,6 +41,20 @@ class EventType(StrEnum):
     DELEGATION_REFUSED = "delegation.refused"
     CAPABILITY_CASCADE_REVOKED = "capability.cascade_revoked"
 
+    # 003 v0.9 labeling framework — T014.
+    BINDING_APPLIED = "binding.applied"  # FR-043 Source/Location Binding
+    OVERRIDE_GRANTED = "override.granted"  # FR-032
+    OVERRIDE_ATTESTED = "override.attested"  # FR-036 dual-control
+    OVERRIDE_REFUSED = "override.refused"  # FR-036
+    OVERRIDE_EXPIRED = "override.expired"  # FR-036
+    OVERRIDE_USE_REFUSED = "override.use_refused"  # FR-038
+    PATTERN3_HANDLE_BIND = "pattern3.handle_bind"  # FR-047 Reference Handle
+    ISOLATION_REGION_CREATED = "isolation_region.created"  # FR-040
+    ISOLATION_REGION_DISCARDED = "isolation_region.discarded"  # FR-040
+    ENVELOPE_DIAL_CHANGED = "envelope.dial_changed"  # FR-030 owner-set
+    RISK_REGISTER_AUDIT = "risk_register.audit"  # FR-015/028 orphan audit
+    RESIDUAL_RISK_EXCEPTION = "residual_risk.exception"  # FR-016 threshold-crossing
+
     TOOL_DISPATCHED = "tool.dispatched"
     TOOL_RETURNED = "tool.returned"
 
