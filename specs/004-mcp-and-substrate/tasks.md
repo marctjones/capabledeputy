@@ -71,6 +71,8 @@ For each: mapping file + fixture + integration test. No upstream modification.
 - [ ] **U034** [P] Implement `src/capabledeputy/substrate/podman_sandbox.py` — rootless container, `--read-only`, `--net=none` default; ephemeral volumes only for declared `read_write` paths.
 - [ ] **U035** [P] Implement `src/capabledeputy/substrate/modal_sandbox.py` — hosted code sandbox via the Modal API; cost-bounded.
 - [ ] **U036** [P] Implement `src/capabledeputy/substrate/firecracker_sandbox.py` — kernel-level isolation; matches NemoClaw's primitives.
+- [ ] **U036A** [P] Implement `src/capabledeputy/substrate/nemoclaw_sandbox.py` — wrap NVIDIA's OpenShell runtime as a `SandboxActuator` provider. Operators already running NemoClaw can plug CD in without changing substrate. Includes a one-time migrator that translates NemoClaw's YAML policy (filesystem/network/syscall rules) into CD's binding + envelope configs. Sibling to Podman/Modal/Firecracker at the same layer.
+- [ ] **U036B** [P] Tests `tests/test_nemoclaw_sandbox.py` — lifecycle parity with the other providers; policy translation correctness (recorded NemoClaw YAML → expected CD bindings).
 - [ ] **U037** Define attestation signed-manifest format in `src/capabledeputy/substrate/attestation.py`: (region_id, image_digest, command, env, exit_code, output_digest) signed with the operator's signing key.
 - [ ] **U038** Tests `tests/test_sandbox_providers.py` — lifecycle (create → execute → discard) + attestation verification + isolation-posture composition for each provider.
 - [ ] **U039** Operator-config selector for which substrate provider to use; configurable per `EXECUTE.sandbox` invocation OR globally.
@@ -112,9 +114,31 @@ These are the positioning artifacts (research.md "What CD should test itself aga
 
 ---
 
-## Phase 8: Polish + DefenseClaw integration
+## Phase 8: Polish + DefenseClaw + NemoClaw integration
+
+DefenseClaw and NemoClaw integrate at two distinct layers:
+
+- **DefenseClaw plugin (U058)** — CD-as-policy-backend FOR DefenseClaw.
+  CD's engine.decide() replaces DefenseClaw's regex+optional-LLM-judge
+  runtime guardrails. DefenseClaw's scanner stack + sandbox + audit
+  pipeline + identity mapping stay unchanged. See
+  `defenseclaw-integration.md`.
+
+- **DefenseClaw scanner tools (U058A-U058B)** — DefenseClaw's CodeGuard
+  AS A SET OF CD TOOLS. Operators can call the scanner from inside
+  `capdep chat` before installing new ToolDefinitions or MCP servers.
+  This is the inverse direction: CD-calls-DefenseClaw rather than
+  DefenseClaw-calls-CD.
+
+- **NemoClaw audit-sink (U058C)** — already covered partially by
+  U041/U042 (OTLP/Splunk). NemoClaw's audit pipeline is the same
+  shape; this task ensures CD's audit events flow into a deployed
+  NemoClaw observability stack without operator-side translation.
 
 - [ ] **U058** [P] **DefenseClaw plugin (CD as deterministic policy oracle)**: `src/capabledeputy/integrations/defenseclaw_plugin/` — a thin wrapper that exposes CD's `engine.decide()` as a DefenseClaw policy backend, replacing DefenseClaw's regex+optional-LLM-judge path with CD's deterministic engine. See `defenseclaw-integration.md` for the architectural assessment.
+- [ ] **U058A** [P] **DefenseClaw scanner tools** — `src/capabledeputy/tools/native/security.py` with `security.scan_code`, `security.scan_skill`, `security.scan_mcp` that dispatch to DefenseClaw's CodeGuard REST API. Each declares full T012 fields (`effect_class="introspection.security_scan"`, `default_reversibility=reversible/system`, etc.); CD's policy gates the scan call itself before it hits DefenseClaw. Scanner findings flow back as risk_register annotations that orphan-citation refusal can act on.
+- [ ] **U058B** [P] Tests `tests/test_defenseclaw_scanner_tools.py` — mocked CodeGuard endpoint; verify scan results convert to CD risk_ids; verify CD's engine still gates the scanner-tool call itself.
+- [ ] **U058C** [P] **NemoClaw audit-sink alignment** — extend the OTLP/Splunk writers from U041/U042 with NemoClaw-event-naming conventions so CD events land in an operator's existing NemoClaw dashboards without operator-side schema translation. Documentation only if the OTLP semantic conventions align; small adapter otherwise.
 - [ ] **U059** [P] Update `ROADMAP.md` with spec-004 progress markers.
 - [ ] **U060** Final sweep: `uv run ruff check && uv run ruff format --check && uv run pyright && uv run pytest`; tag `v1.0.0-rc.1`.
 
@@ -131,7 +155,7 @@ These are the positioning artifacts (research.md "What CD should test itself aga
 ## Parallel Opportunities
 
 - Phase 2 tasks U013–U026 all parallel (different mapping files).
-- Phase 4 substrate providers (U034, U035, U036) all parallel.
+- Phase 4 substrate providers (U034, U035, U036, U036A) all parallel.
 - Phase 5 sinks (U041, U042) parallel.
 - Phase 6 auth providers (U046, U049, U051) parallel.
 
