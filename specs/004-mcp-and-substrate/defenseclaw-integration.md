@@ -101,62 +101,99 @@ planner entirely.
 labeled values through CD's handle store before they reach OpenClaw's
 brain layer. The planner gets UUIDs; the substrate binds at the boundary.
 
-## Integration patterns — three options
+## Integration patterns — six directions, all composable
 
-### Option A — DefenseClaw plugin that calls CD as policy backend
+After a follow-up research pass on DefenseClaw's actual extension surface
+(REST API on port 18970, custom scanner plugin workflow, WebSocket tap on
+OpenClaw gateway, LiteLLM-compatible guardrail proxy on port 4000,
+webhook + OTLP + Splunk HEC audit sinks, external catalog ingestion with
+SSRF guards, YAML + Rego policy in `policies/scanners/` and
+`policies/guardrail/`), the integration story is richer than the
+original three-option framing. DefenseClaw is genuinely built to be
+extended, and CD can plug in at six distinct points — most of them
+composable rather than mutually exclusive.
 
-A thin Go module that DefenseClaw's gateway loads as a policy backend.
-DefenseClaw's existing admission scanners, sandbox controls, and audit
-sinks are unchanged; only the **decision** is delegated to CD over a
-loopback HTTP(S) interface.
+### Direction 1 — CD as DefenseClaw policy backend (the runtime decision)
 
-**Pros**:
-- DefenseClaw users opt in without ripping out their existing pipeline.
-- CD's deterministic engine becomes a selectable upgrade.
-- Distribution leverage: DefenseClaw's marketing reach.
+DefenseClaw's runtime guardrails today use regex + optional LLM judge.
+Replace that path with CD's deterministic engine via a Go gateway module
+that calls CD over loopback HTTP. DefenseClaw's scanners, sandbox, and
+audit pipeline are unchanged.
 
-**Cons**:
-- DefenseClaw's policy language (YAML + Rego) and CD's policy language
-  (11 config files) coexist; operators must understand both.
-- Network hop for every decision (CD runs as a sidecar).
+**Task**: `U058` (existing).
+**Tradeoff**: a network hop per decision; CD must run as a sidecar.
 
-**Verdict**: **Recommended**. Ship as `src/capabledeputy/integrations/
-defenseclaw_plugin/` per task **U058**.
+### Direction 2 — CD as a DefenseClaw custom scanner
 
-### Option B — CD absorbs DefenseClaw's scanner stack
+DefenseClaw's plugin workflow lets operators register custom scanners
+alongside `cisco-ai-skill-scanner`, `cisco-ai-mcp-scanner`, and CodeGuard.
+DefenseClaw invokes them during admission and combines verdicts via Rego.
+**CD's `engine.decide()` registers as a custom scanner** — DefenseClaw
+calls CD during admission, CD returns a verdict, DefenseClaw's policy
+engine composes it with the other scanners' findings.
 
-CD adds an admission-scanning phase that runs CodeGuard-equivalents
-(secrets, dangerous exec, etc.) at MCP-tool registration time.
+**Task**: `U058D` (new).
+**Tradeoff**: only fires at admission, not at every tool dispatch. Pairs
+well with Direction 1 for full coverage.
 
-**Pros**:
-- One operator-facing surface.
-- Scanner verdicts feed CD's risk_register as additional axis-A risk_ids.
+### Direction 3 — CD calls DefenseClaw's scanners as tools
 
-**Cons**:
-- Duplicates Cisco's investment in CodeGuard rather than composing with it.
-- We don't have Cisco's scanner-rules corpus; reimplementing is months of
-  work.
+CD's native tools (`security.scan_code`, `security.scan_skill`,
+`security.scan_mcp`) dispatch HTTP calls to DefenseClaw's REST API on
+port 18970. Operator can scan a candidate ToolDefinition or MCP server
+from inside `capdep chat` before installing it.
 
-**Verdict**: not recommended as primary path. **A subset is worth doing**:
-adapt DefenseClaw's CodeGuard rules as additional fixture entries for our
-existing risk register, so a CD-only deployment gets a starter scanner
-without us having to maintain it.
+**Task**: `U058A` (existing).
+**Tradeoff**: requires DefenseClaw running locally. Useful for operators
+already using DefenseClaw; useful as a standalone scanner integration
+even when CD isn't running under DefenseClaw.
 
-### Option C — DefenseClaw absorbs CD's engine
+### Direction 4 — CD as the LiteLLM-compatible guardrail proxy
 
-The inverse: Cisco picks up CD and embeds the deterministic engine in
-DefenseClaw's runtime-guardrail step.
+DefenseClaw exposes a LiteLLM-compatible guardrail proxy on port 4000
+that fronts upstream LLMs. CD can BE that proxy — every model call is
+intercepted, axis-B taint is composed onto the planner's context, and
+the resulting tool calls flow through CD's engine.
 
-**Pros**:
-- Maximum distribution of CD's IP.
-- Enterprise backing (Cisco's brand).
+**Task**: `U058E` (new).
+**Tradeoff**: this is a deeper integration that re-routes ALL model
+traffic through CD; high value for "no LLM in the policy path" (Principle
+I) but operationally invasive.
 
-**Cons**:
-- Requires Cisco partnership / licensing arrangement.
-- Loses CD's standalone identity.
-- Sets up Cisco as upstream for everyone we'd want to sell to.
+### Direction 5 — CD consumes DefenseClaw audit as taint signals
 
-**Verdict**: a longer-term conversation. Not blocked by Option A.
+DefenseClaw fans out scanner verdicts + policy decisions to webhooks /
+OTLP / Splunk. CD subscribes to that fan-out as an additional audit-
+event source. A CodeGuard finding becomes an axis-B taint signal that
+composes into CD's session state — making CD's decisions richer with
+DefenseClaw's static-analysis evidence.
+
+**Task**: `U058F` (new).
+**Tradeoff**: introduces an asynchronous data path between two security
+oracles; requires careful deduplication.
+
+### Direction 6 — CD shares DefenseClaw's catalog ingestion
+
+DefenseClaw pulls capability catalogs from clawhub, smithery, skills.sh,
+git, HTTPS YAML, and file with SSRF guards + scanner-driven verdicts.
+CD's MCP adapter can reuse that catalog ingestion instead of
+reimplementing the SSRF-guarded fetcher.
+
+**Task**: `U058G` (new).
+**Tradeoff**: introduces a dependency on DefenseClaw being installed for
+catalog operations; would need a fallback for CD-standalone deployments.
+
+### Recommendation
+
+Ship Direction 1 (U058) + Direction 3 (U058A) as the **anchor pair** —
+these are the most operationally useful and least invasive. Direction
+2 (U058D) is a small follow-on once U058 is stable. Directions 4, 5, 6
+are **opportunistic** — implement when an operator specifically needs
+them.
+
+The original options A/B/C from the earlier version of this document
+collapsed too many distinctions. The actual integration surface is much
+richer; design accordingly.
 
 ## Recommended architecture
 
@@ -213,14 +250,34 @@ If we don't integrate:
    `capdep override` etc. remain operational against the daemon's own
    store. Either deployment shape works; the plugin is opt-in.
 
-## Action items (also tracked in tasks.md U058)
+## Action items (tracked in tasks.md U058 / U058A / U058D-G)
 
-- [ ] U058 — Ship the DefenseClaw plugin (`src/capabledeputy/integrations/
-  defenseclaw_plugin/`). Includes:
-  - A Go gateway adapter that calls CD's engine over loopback.
-  - A YAML schema mapping DefenseClaw policy fields to CD's PolicyContext.
-  - An integration test that drives a recorded DefenseClaw policy through
-    the plugin and asserts the CD-side decision is what DefenseClaw's
-    operator-curated policy would have produced.
-  - A write-up `integrations/defenseclaw_plugin/README.md` framing the
-    plugin as "DefenseClaw + CD deterministic decision backend."
+Anchor pair (recommended first):
+
+- [ ] **U058** — Ship the DefenseClaw plugin (CD-as-policy-backend).
+  `src/capabledeputy/integrations/defenseclaw_plugin/` with Go gateway
+  adapter, YAML schema mapping, integration test, README framing the
+  plugin as "DefenseClaw + CD deterministic decision backend."
+- [ ] **U058A** — Ship the DefenseClaw scanner tools (CD-calls-scanners).
+  `src/capabledeputy/tools/native/security.py` with `security.scan_code`,
+  `security.scan_skill`, `security.scan_mcp` calling DefenseClaw's REST
+  API on port 18970.
+
+Small follow-on:
+
+- [ ] **U058D** — Register CD as a DefenseClaw custom scanner.
+  CD's `engine.decide()` exposed as a scanner endpoint DefenseClaw
+  invokes during admission. Pairs with U058 for full coverage
+  (admission + runtime).
+
+Opportunistic — implement when an operator needs them:
+
+- [ ] **U058E** — CD as the LiteLLM-compatible guardrail proxy on port
+  4000. Re-routes all model traffic through CD's policy engine; honors
+  Principle I (no LLM in policy path) end-to-end.
+- [ ] **U058F** — CD consumes DefenseClaw audit fan-out (webhooks / OTLP /
+  Splunk) as additional taint signals. CodeGuard finding becomes an
+  axis-B raise on the affected session.
+- [ ] **U058G** — CD's MCP adapter reuses DefenseClaw's catalog
+  ingestion (clawhub, smithery, skills.sh, git, HTTPS YAML, file with
+  SSRF guards). Avoids re-implementing the fetcher.
