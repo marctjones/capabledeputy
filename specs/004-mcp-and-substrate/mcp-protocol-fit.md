@@ -9,8 +9,45 @@ spec requires, and how CapableDeputy can support each MCP protocol surface
 discipline**.
 
 This document is the architectural prerequisite for spec-007 (stub-as-MCP
-integration tests) and spec-008 (daemon-as-MCP-server). Both depend on
-the design positions taken here.
+integration tests). Spec-008 (daemon-as-MCP-server) is deferred per
+operator decision (see [Decisions](#decisions) below).
+
+The **deep design** for how labels, policies, flow patterns, and
+approval-fatigue minimization integrate at the MCP layer is in the
+companion document
+[`mcp-policy-integration.md`](./mcp-policy-integration.md).
+
+---
+
+## Decisions
+
+These resolve the open questions from the original audit (operator
+review 2026-05-20):
+
+1. **`trust_tier` default = `operator-curated`** (not `unvetted`).
+   Operators are expected to register MCP servers deliberately; the
+   default posture for any registered server is "I, the operator,
+   reviewed this server's manifest and trust it enough to honor its
+   tool annotations." Servers that haven't been reviewed should not
+   be registered. The `unvetted` and `vendor-vetted` tiers remain as
+   bracketing options but are not the default.
+
+2. **OAuth tokens use per-server isolation, scoped to a flow-pattern
+   session.** Each upstream MCP server has its own token store, and
+   each token is bound to a specific (server_id, flow-pattern-session)
+   pair. When the flow-pattern session ends, the token is invalidated
+   or held in escrow for explicit re-use approval. This is a more
+   conservative posture than typical web-app OAuth and mirrors the
+   single-use override grant pattern. Full design in
+   [`mcp-policy-integration.md` §3.7](./mcp-policy-integration.md#37-oauth-flow-pattern-session-model).
+
+3. **Spec-008 (daemon-as-MCP-server) is out of scope for now.** The
+   focus is consuming upstream MCP servers safely, not exposing
+   CapableDeputy as one. Revisit later.
+
+The remaining open questions (heuristic-disagrees-with-annotation
+policy, prompt UX, OAuth token store details) are addressed in the
+deep design document with concrete recommendations.
 
 ---
 
@@ -391,34 +428,32 @@ Every refused capability call is audited.
 
 ---
 
-## Open design decisions
+## Open design decisions (resolved)
 
-These need operator/principal review before spec-007 starts:
+1. ✅ **`trust_tier` default = `operator-curated`** (see [Decisions](#decisions)).
+   For an `operator-curated` server, the heuristic still runs, but the
+   server's tool annotations are honored when present and consistent.
+   See [`mcp-policy-integration.md` §2.1](./mcp-policy-integration.md#21-tools).
 
-1. **`trust_tier` defaults.** Anthropic's reference MCP servers — should
-   they be `operator-curated` by default, or still `unvetted`? My
-   recommendation: `unvetted` for everything; the operator pins specific
-   servers as needed.
+2. ✅ **Prompt messages: operator-explicit forward.** The slash-command
+   renders the prompt in the operator's TUI; the operator clicks
+   "forward to LLM" deliberately. Prompt content is tagged
+   `UNTRUSTED_EXTERNAL` whether forwarded or not. See [`mcp-policy-integration.md` §2.5](./mcp-policy-integration.md#25-prompts).
 
-2. **Prompt messages on the operator's TUI.** Do we surface them as
-   "click to forward to LLM," or do we render them as read-only
-   reference (operator manually composes)? Trade-off: more friction =
-   safer; less friction = usable.
+3. ✅ **Heuristic disagrees with annotation: warn + refuse on severe
+   contradiction.** A `READ_FS`-heuristic tool that declares
+   `destructiveHint=true` is refused at registration with audit
+   event `MCP_HEURISTIC_DISAGREEMENT_REFUSED`. The operator can
+   override with explicit config.
 
-3. **Heuristic-disagrees-with-annotation policy.** Today we silently
-   prefer the heuristic. Should that *refuse to register* the tool
-   when the disagreement is severe (e.g., heuristic says `READ_FS` but
-   `destructiveHint=true`)?
+4. ✅ **OAuth: per-server isolation scoped to flow-pattern session**
+   (see [Decisions](#decisions)). Each upstream server has a private
+   token store. Each token is bound to (server_id, flow-pattern-session).
+   Full design in [`mcp-policy-integration.md` §3.7](./mcp-policy-integration.md#37-oauth-flow-pattern-session-model).
 
-4. **OAuth flow location.** When we add HTTP transport, do tokens live
-   in the existing per-uid secrets store, or do we need per-server
-   isolation (e.g., systemd-credentials)? Recommendation: existing
-   secrets store with per-server keying — but document the threat model.
-
-5. **Should the daemon expose a CapableDeputy-as-MCP-server endpoint
-   (spec-008)?** That's a separate question, but the protocol-fit
-   work here is a prerequisite — the design must hold from both
-   directions.
+5. ✅ **Spec-008 deferred** — focus is consuming MCP servers; exposing
+   CapableDeputy AS an MCP server is a separate concern, not in
+   current scope.
 
 ---
 
