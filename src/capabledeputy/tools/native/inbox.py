@@ -96,6 +96,9 @@ def make_inbox_tools(inbox: Inbox) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="inbox.list",
+            effect_class="data.read_inbox",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
             description=(
                 "List inbound messages. Returns untrusted.external-labeled "
                 "metadata. Required args: unread_only (bool, default true)."
@@ -113,6 +116,9 @@ def make_inbox_tools(inbox: Inbox) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="inbox.read",
+            effect_class="data.read_inbox",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
             description=(
                 "Read one inbound message by id. The body is labeled "
                 "untrusted.external; reading propagates that label into "

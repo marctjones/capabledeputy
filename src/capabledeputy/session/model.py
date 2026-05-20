@@ -121,6 +121,11 @@ class Session:
     reference_handles: dict[str, dict[str, Any]] = field(default_factory=dict)
     risk_preference_at_spawn: str = "cautious"
     effective_isolation_region_id: str | None = None
+    # 003 runtime activation — the profile id under which this
+    # session is being evaluated. PolicyContext's loaded profiles
+    # registry resolves it; the engine derives clearance_max_tier
+    # and integrity_floor_level from the profile (FR-008 / FR-004).
+    clearance_profile_id: str | None = None
 
     @classmethod
     def new(
@@ -145,6 +150,7 @@ class Session:
         reference_handles: dict[str, dict[str, Any]] | None = None,
         risk_preference_at_spawn: str = "cautious",
         effective_isolation_region_id: str | None = None,
+        clearance_profile_id: str | None = None,
     ) -> Self:
         now = _utcnow()
         return cls(
@@ -171,6 +177,7 @@ class Session:
             reference_handles=reference_handles if reference_handles is not None else {},
             risk_preference_at_spawn=risk_preference_at_spawn,
             effective_isolation_region_id=effective_isolation_region_id,
+            clearance_profile_id=clearance_profile_id,
         )
 
     @property
@@ -211,6 +218,7 @@ class Session:
             "reference_handles": self.reference_handles,
             "risk_preference_at_spawn": self.risk_preference_at_spawn,
             "effective_isolation_region_id": self.effective_isolation_region_id,
+            "clearance_profile_id": self.clearance_profile_id,
         }
 
     @classmethod
@@ -246,4 +254,5 @@ class Session:
             reference_handles=dict(d.get("reference_handles") or {}),
             risk_preference_at_spawn=str(d.get("risk_preference_at_spawn", "cautious")),
             effective_isolation_region_id=d.get("effective_isolation_region_id"),
+            clearance_profile_id=d.get("clearance_profile_id"),
         )

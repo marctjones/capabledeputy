@@ -158,6 +158,99 @@ class ReferenceHandleStore:
         return handle_id in self._values
 
 
+async def wrap_output_with_handles(
+    *,
+    store: ReferenceHandleStore,
+    session_id: UUID,
+    output: dict[str, Any],
+    sensitive_keys: tuple[str, ...] = (),
+    labels: ResolvedLabels | None = None,
+) -> dict[str, Any]:
+    """Pattern (3) producer side.
+
+    Substitute each value at `sensitive_keys` in `output` with a
+    ReferenceHandle issued by the store. The planner sees only the
+    UUID string; the substrate (dispatcher) binds the real value
+    post-decide. Without this helper, every read-tool's raw value
+    flows directly into the planner's context.
+
+    Returns a new dict (does not mutate). Non-sensitive keys are
+    copied through unchanged. Empty `sensitive_keys` returns the
+    output unchanged (no-op wrapper).
+
+    Operators wire this into read-tool adapters that produce labeled
+    data. Example:
+
+        async def medical_read(args, ctx):
+            value = ... # fetch from substrate
+            return ToolResult(
+                output=await wrap_output_with_handles(
+                    store=ctx.handle_store,
+                    session_id=ctx.session_id,
+                    output={"record": value, "key": args["key"]},
+                    sensitive_keys=("record",),
+                    labels=ResolvedLabels(
+                        axis_a=("health",),
+                        axis_b=("source-declared",),
+                    ),
+                ),
+            )
+
+    The dispatcher's post-decide bind step (LabeledToolClient._bind_
+    reference_handles) then substitutes the UUID back to `value`
+    before the consuming tool's handler runs.
+    """
+    if not sensitive_keys:
+        return dict(output)
+    resolved_labels = labels or ResolvedLabels()
+    wrapped: dict[str, Any] = {}
+    for key, value in output.items():
+        if key in sensitive_keys:
+            handle = store.issue(session_id, value, resolved_labels)
+            wrapped[key] = str(handle.id)
+        else:
+            wrapped[key] = value
+    return wrapped
+
+
+def make_handle_wrapper(
+    tool_handler: Any,
+    *,
+    store: ReferenceHandleStore,
+    sensitive_keys: tuple[str, ...],
+    labels: ResolvedLabels | None = None,
+) -> Any:
+    """Decorator factory: wrap a tool handler so its output's
+    sensitive_keys are auto-issued as ReferenceHandles. The
+    planner-visible output contains UUIDs; the bound values live
+    in the store and are substituted at the dispatcher's bind step
+    on downstream tools that declare accepts_handles=True.
+
+    Operators apply this to any read-tool that fetches data above a
+    tier threshold; the resulting tool integrates into the existing
+    ToolDefinition without further changes. Pattern (3) is now end-
+    to-end: producer wrapper here, consumer bind in client.py.
+    """
+    from capabledeputy.tools.registry import ToolResult
+
+    async def wrapped(args: dict[str, Any], context: Any) -> Any:
+        raw = await tool_handler(args, context)
+        wrapped_output = await wrap_output_with_handles(
+            store=store,
+            session_id=context.session_id,
+            output=raw.output if isinstance(raw, ToolResult) else dict(raw),
+            sensitive_keys=sensitive_keys,
+            labels=labels,
+        )
+        if isinstance(raw, ToolResult):
+            from dataclasses import replace as _replace
+
+            return _replace(raw, output=wrapped_output)
+        return ToolResult(output=wrapped_output)
+
+    return wrapped
+
+
 def is_planner_safe_token(planner_token: str) -> bool:
     """Cheap sanity check that callers can use to assert the planner
     is NOT holding a raw labeled value. A planner-safe token is the

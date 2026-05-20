@@ -16,4 +16,35 @@
 #           tier: <none|sensitive|regulated|restricted|prohibited>   # optional override
 #           resolution_mode: <fixed-high|context-up|context-resolved> # optional override
 
-profiles: []
+profiles:
+  # Starter profiles — operator-editable. These activate BLP read-up
+  # refusal (FR-008) and Biba integrity floor (FR-004) when a
+  # session declares `clearance_profile_id` matching one of these.
+
+  # General profile: open clearance, no integrity floor demanded.
+  # The default for sessions that don't pick a tighter profile.
+  - id: general
+    user_pattern: "*"
+    use_case: general
+    max_tier: restricted  # cleared up to restricted; prohibited refused
+
+  # Daily-briefing profile: principal-driven workflows; full clearance.
+  - id: daily-briefing
+    user_pattern: "*"
+    use_case: daily-briefing
+    max_tier: restricted
+
+  # Clinical profile: regulated clearance ceiling (e.g., research
+  # context cleared to regulated health data, not restricted).
+  - id: clinical-regulated
+    user_pattern: "*"
+    use_case: clinical
+    max_tier: regulated
+
+  # Service-account profile: integrity-floored, system-internal floor
+  # demanded — refuses external-untrusted inputs. Useful for backup
+  # cron, scheduled syncs, and other non-interactive workflows.
+  - id: service-account
+    user_pattern: "*"
+    use_case: service
+    max_tier: sensitive

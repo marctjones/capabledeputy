@@ -54,6 +54,9 @@ def make_policy_preview_tools(graph: SessionGraph) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="policy.preview",
+            effect_class="introspection.policy",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
             description=(
                 "Predict whether a tool call would be allowed, denied, or "
                 "require approval — without dispatching it. Pass `kind` "

@@ -52,6 +52,9 @@ def make_extract_tools(
     return [
         ToolDefinition(
             name="quarantined.extract",
+            effect_class="data.read_quarantined",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
             description=(
                 "Extract structured fields from labeled memory through a "
                 "quarantined LLM. The labeled raw text never enters the "

@@ -70,6 +70,11 @@ def make_purchase_tools(queue: PurchaseQueue) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="purchase.queue",
+            effect_class="social.queue_purchase",
+            default_reversibility={"degree": "irreversible", "agent": "external"},
+            social_commitment=True,
+            tool_provenance="operator-curated",
+            surfaces_destination_id=True,
             description=(
                 "Queue a purchase for human approval. Does not actually buy "
                 "anything; the request is recorded for the user to review. "

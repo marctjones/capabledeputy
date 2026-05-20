@@ -47,6 +47,10 @@ def make_web_tools(mock: WebMock) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="web.fetch",
+            effect_class="data.read_remote",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
+            surfaces_destination_id=True,
             description=(
                 "Fetch text content from a URL. ALL responses are labeled "
                 "untrusted.external; this label propagates into the calling "

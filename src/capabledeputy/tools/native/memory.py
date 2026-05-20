@@ -116,6 +116,9 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.WRITE_FS,
             handler=memory_write,
             target_arg="key",
+            effect_class="data.write_local",
+            default_reversibility={"degree": "reversible-with-friction", "agent": "human"},
+            tool_provenance="operator-curated",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -135,6 +138,9 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.READ_FS,
             handler=memory_read,
             target_arg="key",
+            effect_class="data.read_local",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -153,6 +159,9 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.CREATE_FS,
             handler=memory_create,
             target_arg="key",
+            effect_class="data.create_local",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -170,6 +179,9 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
                 "allows_destructive=True. Required args: key, value."
             ),
             capability_kind=CapabilityKind.MODIFY_FS,
+            effect_class="data.modify_local",
+            default_reversibility={"degree": "reversible-with-friction", "agent": "human"},
+            tool_provenance="operator-curated",
             handler=memory_update,
             target_arg="key",
             approval_route=_DESTRUCTIVE_ROUTE,
@@ -184,6 +196,9 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="memory.delete",
+            effect_class="data.delete_local",
+            default_reversibility={"degree": "irreversible", "agent": "external"},
+            tool_provenance="operator-curated",
             description=(
                 "Remove a key from the memory store. Destructive: "
                 "requires approval unless the capability has "

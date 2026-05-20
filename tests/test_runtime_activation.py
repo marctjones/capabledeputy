@@ -41,9 +41,11 @@ def test_build_policy_context_loads_from_repo_configs() -> None:
     # The shipped configs/rules.yaml has the 3 example rules from T049.
     assert ctx.rules_v2 is not None
     assert len(ctx.rules_v2.rules) >= 1
-    # Bindings + envelopes today are stubs (empty lists) — the loaders
-    # still produce non-None registries.
-    assert ctx.bindings is not None
+    # Bindings are opt-in: empty source_bindings.yaml ⇒ ctx.bindings
+    # is None (faithful fail-closed without locking out a fresh
+    # install). As soon as the operator declares any binding the
+    # field populates and FR-023 fail-closed kicks in.
+    assert ctx.bindings is None
     assert ctx.override_policies is not None
     assert ctx.override_grants is not None
     assert ctx.handle_store is not None

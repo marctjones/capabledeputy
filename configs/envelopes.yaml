@@ -14,4 +14,39 @@
 #       strictest: <deny|require-approval|suggest|auto>
 #       loosest: <deny|require-approval|suggest|auto>
 
-envelopes: []
+envelopes:
+  # Starter envelopes — operator-editable. Demonstrate the dial
+  # mechanism with realistic cells. The risk_preference dial picks
+  # inside [strictest, loosest]; hard-floor cells (strictest ==
+  # loosest) are immovable.
+
+  # Reading local memory under a principal context is cheap and
+  # reversible. Operator may pick anything from auto down.
+  - cell:
+      category: scratch
+      effect: data.read_local
+      decision_context_canonical: "principal:alice"
+      reversibility: reversible
+    strictest: suggest
+    loosest: auto
+
+  # Modifying local memory crosses friction even under the dial —
+  # cautious wants approval; permissive permits suggest.
+  - cell:
+      category: scratch
+      effect: data.modify_local
+      decision_context_canonical: "principal:alice"
+      reversibility: reversible-with-friction
+    strictest: require-approval
+    loosest: suggest
+
+  # Hard floor example: deleting personal data is denied regardless
+  # of the dial. Operator can lift this by editing the strictest
+  # field — that edit is itself audit-loud.
+  - cell:
+      category: personal
+      effect: data.delete_local
+      decision_context_canonical: "principal:alice"
+      reversibility: irreversible
+    strictest: deny
+    loosest: deny

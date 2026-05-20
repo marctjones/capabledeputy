@@ -161,6 +161,9 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="calendar.events_today",
+            effect_class="data.read_calendar",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
             description=(
                 "List calendar events for a specific day (default today). "
                 "Returns confidential.personal-labeled data. Required args: "
@@ -182,6 +185,9 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="calendar.create_event",
+            effect_class="data.write_calendar",
+            default_reversibility={"degree": "reversible-with-friction", "agent": "human"},
+            tool_provenance="operator-curated",
             description=(
                 "Create a new calendar event. Non-destructive (bypasses "
                 "destructive-op gate). The session's label set propagates "
@@ -204,6 +210,9 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="calendar.update_event",
+            effect_class="data.modify_calendar",
+            default_reversibility={"degree": "reversible-with-friction", "agent": "human"},
+            tool_provenance="operator-curated",
             description=(
                 "Update fields on an existing event. Destructive: gated by "
                 "the destructive-op rule. Required args: id (event uuid). "
@@ -227,6 +236,9 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="calendar.delete_event",
+            effect_class="data.delete_calendar",
+            default_reversibility={"degree": "irreversible", "agent": "external"},
+            tool_provenance="operator-curated",
             description=(
                 "Remove an event by id. Destructive: gated by the "
                 "destructive-op rule. Required args: id (event uuid)."

@@ -99,6 +99,9 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="tasks.add",
+            effect_class="data.create_local",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
             description=(
                 "Add a personal to-do item. Non-destructive (CREATE_FS). "
                 "Required args: title (string); optional notes (string)."
@@ -118,6 +121,9 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="tasks.list",
+            effect_class="data.read_local",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
             description=(
                 "List personal to-do items (open by default). Read-only. "
                 "Optional arg: include_done (bool)."
@@ -132,6 +138,9 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="tasks.complete",
+            effect_class="data.modify_local",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
             description=(
                 "Mark a to-do item done. Mutates existing state "
                 "(MODIFY_FS): the destructive-op gate engages unless the "

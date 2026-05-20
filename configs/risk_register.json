@@ -1,4 +1,65 @@
 {
   "_comment": "003 risk register (FR-015, FR-028). Every label MUST cite >=1 entry id; every entry MUST cite >=1 external framework_refs (NIST, ISO, OWASP, CIS, etc.). CI-lint enforces SC-001. Loaded at daemon start; AI-read-only; operator-editable in source control.",
-  "entries": []
+  "entries": [
+    {
+      "id": "RISK-PII-DISCLOSURE",
+      "summary": "Unintended disclosure of personally identifiable information.",
+      "framework_refs": [
+        "NIST-CSF-PR.DS-5",
+        "NIST-CSF-PR.DS-1",
+        "ISO-27001-A.8.10",
+        "OWASP-API3:2023"
+      ]
+    },
+    {
+      "id": "RISK-FIN-LEAK",
+      "summary": "Unintended disclosure of financial / payment data.",
+      "framework_refs": [
+        "PCI-DSS-3.3",
+        "NIST-CSF-PR.DS-5",
+        "ISO-27001-A.8.10"
+      ]
+    },
+    {
+      "id": "RISK-HEALTH-LEAK",
+      "summary": "Unintended disclosure of health / medical records.",
+      "framework_refs": [
+        "HIPAA-164.502",
+        "NIST-CSF-PR.DS-5",
+        "ISO-27001-A.8.10"
+      ]
+    },
+    {
+      "id": "RISK-PROP-LEAK",
+      "summary": "Disclosure of proprietary work to unauthorized recipients.",
+      "framework_refs": [
+        "ISO-27001-A.8.10",
+        "NIST-CSF-PR.AC-4"
+      ]
+    },
+    {
+      "id": "RISK-PROMPT-INJECTION",
+      "summary": "Untrusted input influences a control-plane decision.",
+      "framework_refs": [
+        "OWASP-LLM01:2025",
+        "NIST-CSF-PR.IP-6"
+      ]
+    },
+    {
+      "id": "RISK-IRREVERSIBLE-SEND",
+      "summary": "Irreversible outbound communication (social commitment).",
+      "framework_refs": [
+        "NIST-CSF-PR.AC-4",
+        "ISO-27001-A.8.10"
+      ]
+    },
+    {
+      "id": "RISK-DESTRUCTIVE-WRITE",
+      "summary": "Destructive write to an in-place target without rollback.",
+      "framework_refs": [
+        "NIST-CSF-PR.IP-4",
+        "ISO-27001-A.8.14"
+      ]
+    }
+  ]
 }

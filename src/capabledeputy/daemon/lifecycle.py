@@ -27,6 +27,7 @@ from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
 from capabledeputy.llm.litellm_client import LiteLLMClient
 from capabledeputy.policy.capabilities import DEFAULT_MAX_DELEGATION_DEPTH
+from capabledeputy.policy.overrides import OverridePolicies
 from capabledeputy.secrets import load_anthropic_api_key
 from capabledeputy.upstream.config import load_config_file
 from capabledeputy.upstream.manager import UpstreamManager
@@ -189,6 +190,7 @@ def build_policy_context_from_configs(
         load as load_overrides,
     )
     from capabledeputy.policy.purposes import load as load_purposes
+    from capabledeputy.policy.resolution import load_profiles
     from capabledeputy.tools.client import PolicyContext
 
     base = _resolve_v09_configs_dir(configs_dir)
@@ -196,8 +198,17 @@ def build_policy_context_from_configs(
     # Each loader is fail-closed on missing/unparseable per its own
     # contract. _resolve_v09_configs_dir + load_v09_configs already
     # verified presence; here we re-parse into typed objects.
+    profiles = load_profiles(base / "profiles.yaml")
     rules_v2 = load_rules(base / "rules.yaml")
-    bindings = load_bindings(base / "source_bindings.yaml")
+    # Bindings are opt-in: an empty configs/source_bindings.yaml means
+    # "operator hasn't authored any yet" — bindings stays None so
+    # decide() skips canonicalization. As soon as the operator declares
+    # even one binding, the file's fail-closed semantics activate (any
+    # URI outside the declared scopes refuses). This avoids the cold-
+    # start gotcha where a fresh install with stub configs refuses all
+    # egress, while still honoring FR-023 fail-closed once enabled.
+    raw_bindings = load_bindings(base / "source_bindings.yaml")
+    bindings = raw_bindings if raw_bindings.bindings else None
     overrides = load_overrides(base / "override_policy.yaml")
     envelope_set = load_envelopes(base / "envelopes.yaml")
     risk_pref = load_risk_preference(base / "risk_preference.json")
@@ -223,6 +234,7 @@ def build_policy_context_from_configs(
         handle_store=ReferenceHandleStore(),
         envelope_set=envelope_set,
         risk_preference=risk_pref.value,
+        profiles=profiles,
     ), purposes
 
 
@@ -298,6 +310,19 @@ async def run_daemon(
     handlers.update(make_memory_handlers(app))
     handlers.update(make_programmatic_handlers(app))
     handlers.update(make_bundle_handlers(app))
+    # 003 US6 — override RPC handlers bridge the CLI to the daemon's
+    # OverrideGrantStore + OverridePolicies. Without these, the
+    # `capdep override` CLI mutates a process-local store that the
+    # daemon never sees.
+    if app.policy_context is not None and app.policy_context.override_grants is not None:
+        from capabledeputy.daemon.override_handlers import make_override_handlers
+
+        handlers.update(
+            make_override_handlers(
+                app.policy_context.override_grants,
+                app.policy_context.override_policies or OverridePolicies(by_floor={}),
+            ),
+        )
     handlers.update(make_demo_handlers(app))
     handlers.update(make_extract_handlers(app))
 

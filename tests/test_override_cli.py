@@ -266,7 +266,7 @@ def test_show_unknown_grant_fails() -> None:
     runner = _runner()
     result = runner.invoke(override_app, ["show", str(uuid4())])
     assert result.exit_code == 1
-    assert "unknown grant" in result.output
+    assert "unknown_grant" in result.output
 
 
 def test_refuse_marks_grant_refused() -> None:

@@ -68,6 +68,12 @@ class PolicyContext:
     # Composition is monotone (most_restrictive_inherit); inspectors
     # cannot CLEAR taint, only RAISE it.
     inspectors: tuple[Any, ...] = ()
+    # 003 runtime activation — Profiles registry keyed by profile_id.
+    # When a session has clearance_profile_id set, the dispatcher
+    # derives per-session clearance_max_tier (FR-008 BLP) +
+    # integrity_floor_level (FR-004 Biba) from the matching profile.
+    # Without this, BLP/Biba are library-only and never fire.
+    profiles: dict[str, Any] = field(default_factory=dict)
 
 
 def build_policy_decided_payload(
@@ -434,10 +440,25 @@ class LabeledToolClient:
             kwargs["envelope_set"] = self._policy_context.envelope_set
         if self._policy_context.risk_preference is not None:
             kwargs["risk_preference"] = self._policy_context.risk_preference
-        if self._policy_context.clearance_max_tier is not None:
-            kwargs["clearance_max_tier"] = self._policy_context.clearance_max_tier
-        if self._policy_context.integrity_floor_level is not None:
-            kwargs["integrity_floor_level"] = self._policy_context.integrity_floor_level
+        # Per-session profile derivation (FR-008 BLP + FR-004 Biba).
+        # If the session declares a clearance_profile_id, look up the
+        # profile and use its max_tier / integrity_floor_level. This
+        # is the wiring that makes BLP/Biba runtime-active. The
+        # context-level fallback (clearance_max_tier kwarg) still
+        # works for single-tenant configurations.
+        derived_clearance = None
+        derived_floor = None
+        if getattr(session, "clearance_profile_id", None) and self._policy_context.profiles:
+            profile = self._policy_context.profiles.get(session.clearance_profile_id)
+            if profile is not None:
+                derived_clearance = getattr(profile, "max_tier", None)
+                derived_floor = getattr(profile, "integrity_floor_level", None)
+        clearance = derived_clearance or self._policy_context.clearance_max_tier
+        floor = derived_floor or self._policy_context.integrity_floor_level
+        if clearance is not None:
+            kwargs["clearance_max_tier"] = clearance
+        if floor is not None:
+            kwargs["integrity_floor_level"] = floor
         if self._policy_context.risk_register is not None:
             kwargs["risk_register"] = self._policy_context.risk_register
         kwargs["sandbox_actuator_wired"] = self._policy_context.sandbox_actuator_wired
