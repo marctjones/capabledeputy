@@ -75,9 +75,16 @@ class DecisionRuleError(RuntimeError):
 class RulePredicate:
     """A rule's `when:` clause. Each optional field, if set, requires
     the corresponding axis attribute to match exactly. Missing fields
-    match anything (wildcard)."""
+    match anything (wildcard).
 
-    axis_a_category: str | None = None
+    `axis_a_categories` accepts a tuple (AND semantics — ALL listed
+    categories must be present on the session's axis_a). Empty tuple
+    means wildcard. `axis_a_category` (singular) is kept for back-
+    compat and treated as a one-element tuple at match time.
+    """
+
+    axis_a_category: str | None = None  # back-compat singular form
+    axis_a_categories: tuple[str, ...] = ()  # new: AND-semantics multi
     axis_b_provenance: str | None = None
     effect_class: str | None = None  # axis C lives on tool/cap, named here for symmetry
     axis_d_initiator: str | None = None
@@ -85,6 +92,7 @@ class RulePredicate:
     axis_d_relationship_group_id: str | None = None
     axis_d_expectedness: str | None = None  # "expected" | "anomalous"
     axis_d_reversibility_degree: str | None = None
+    axis_d_time_window: tuple[int, int] | None = None  # (start_hour, end_hour) UTC
     target: str | None = None  # exact string match if set
 
     def matches(
@@ -95,15 +103,32 @@ class RulePredicate:
         axis_d: AxisD,
         effect_class: str,
         target: str,
+        now_hour: int | None = None,
     ) -> bool:
         if self.target is not None and self.target != target:
             return False
         if self.effect_class is not None and self.effect_class != effect_class:
             return False
-        if self.axis_a_category is not None and not any(
-            c.category == self.axis_a_category for c in axis_a.categories
-        ):
-            return False
+        # Multi-category AND-semantics: every category in
+        # axis_a_categories must be present on the session's axis_a.
+        # The singular axis_a_category is folded in as an additional
+        # required member.
+        required_categories: list[str] = list(self.axis_a_categories)
+        if self.axis_a_category is not None:
+            required_categories.append(self.axis_a_category)
+        if required_categories:
+            present = {c.category for c in axis_a.categories}
+            for req in required_categories:
+                if req not in present:
+                    return False
+        if self.axis_d_time_window is not None and now_hour is not None:
+            start_h, end_h = self.axis_d_time_window
+            if start_h <= end_h:
+                if not (start_h <= now_hour <= end_h):
+                    return False
+            elif not (now_hour >= start_h or now_hour <= end_h):
+                # Wrap-midnight window (e.g., 22..6).
+                return False
         if self.axis_b_provenance is not None and not any(
             e.level.value == self.axis_b_provenance for e in axis_b.entries
         ):
@@ -156,6 +181,7 @@ def evaluate(
     effect_class: str,
     target: str,
     default_when_no_match: RuleOutcome = RuleOutcome.SUGGEST,
+    now_hour: int | None = None,
 ) -> EvaluationResult:
     """Evaluate rules deterministically.
 
@@ -186,6 +212,7 @@ def evaluate(
             axis_d=axis_d,
             effect_class=effect_class,
             target=target,
+            now_hour=now_hour,
         ):
             matched.append(rule)
 
@@ -264,8 +291,20 @@ def _parse_predicate(when: dict[str, Any]) -> RulePredicate:
         raise DecisionRuleError("when.axis_a / axis_b must be dicts")
     if not isinstance(axis_c, dict) or not isinstance(axis_d, dict):
         raise DecisionRuleError("when.axis_c / axis_d must be dicts")
+    tw_raw = axis_d.get("time_window")
+    tw: tuple[int, int] | None = None
+    if tw_raw is not None:
+        if not (isinstance(tw_raw, list | tuple) and len(tw_raw) == 2):
+            raise DecisionRuleError(
+                "when.axis_d.time_window must be [start_hour, end_hour]",
+            )
+        tw = (int(tw_raw[0]), int(tw_raw[1]))
+    categories_raw = axis_a.get("categories") or ()
+    if not isinstance(categories_raw, list | tuple):
+        raise DecisionRuleError("when.axis_a.categories must be a list")
     return RulePredicate(
         axis_a_category=axis_a.get("category"),
+        axis_a_categories=tuple(str(c) for c in categories_raw),
         axis_b_provenance=axis_b.get("provenance"),
         effect_class=axis_c.get("effect_class"),
         axis_d_initiator=axis_d.get("initiator"),
@@ -273,6 +312,7 @@ def _parse_predicate(when: dict[str, Any]) -> RulePredicate:
         axis_d_relationship_group_id=axis_d.get("relationship_group_id"),
         axis_d_expectedness=axis_d.get("expectedness"),
         axis_d_reversibility_degree=axis_d.get("reversibility"),
+        axis_d_time_window=tw,
         target=when.get("target"),
     )
 

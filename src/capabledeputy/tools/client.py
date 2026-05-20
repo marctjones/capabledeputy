@@ -63,6 +63,11 @@ class PolicyContext:
     residual_risk_thresholds: ResidualRiskThresholds | None = None
     risk_register: Any = None
     sandbox_actuator_wired: bool = False
+    # FR-025 raise-only inspectors. Run on every tool return so any
+    # taint the inspector identifies is added to the session's axes.
+    # Composition is monotone (most_restrictive_inherit); inspectors
+    # cannot CLEAR taint, only RAISE it.
+    inspectors: tuple[Any, ...] = ()
 
 
 def build_policy_decided_payload(
@@ -319,6 +324,16 @@ class LabeledToolClient:
             ),
         )
 
+        # FR-025 raise-only inspector hook. Inspectors examine the
+        # returned value + current axes and may return a delta. The
+        # delta is composed via most_restrictive_inherit on AxisA/B,
+        # which is monotone — inspectors can only RAISE taint, never
+        # clear it. The runtime contract is structural: even a
+        # buggy/malicious inspector that returns a lower-restriction
+        # AxisA cannot lower the actual session axes.
+        if self._policy_context is not None and self._policy_context.inspectors:
+            await self._apply_inspectors(session, result.output)
+
         labels_to_add = tool.inherent_labels | result.additional_labels
         labels_added: frozenset[Label] = frozenset()
         if labels_to_add:
@@ -344,6 +359,39 @@ class LabeledToolClient:
             tool_name=tool_name,
             tool_args=args,
         )
+
+    async def _apply_inspectors(
+        self,
+        session: Any,
+        value: object,
+    ) -> None:
+        """FR-025 — run every registered raise-only inspector against
+        the just-returned value + current session axes; compose any
+        returned taint into the session via most_restrictive_inherit.
+        Refused to lower — the composition is monotone by construction."""
+        from dataclasses import replace as dc_replace
+
+        from capabledeputy.policy.labels import (
+            most_restrictive_inherit_axis_a,
+            most_restrictive_inherit_axis_b,
+        )
+
+        if self._policy_context is None:
+            return
+        new_axis_a = session.axis_a
+        new_axis_b = session.axis_b
+        for inspector in self._policy_context.inspectors:
+            delta = inspector.inspect(
+                value=value,
+                current_axis_a=new_axis_a,
+                current_axis_b=new_axis_b,
+            )
+            new_axis_a = most_restrictive_inherit_axis_a(new_axis_a, delta.axis_a_raise)
+            new_axis_b = most_restrictive_inherit_axis_b(new_axis_b, delta.axis_b_raise)
+        if new_axis_a != session.axis_a or new_axis_b != session.axis_b:
+            updated = dc_replace(session, axis_a=new_axis_a, axis_b=new_axis_b)
+            await self._graph._save(updated)
+            self._graph._sessions[session.id] = updated
 
     def _build_v2_decide_kwargs(
         self,

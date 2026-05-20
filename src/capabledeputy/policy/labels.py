@@ -73,6 +73,23 @@ def provenance_max(*levels: ProvenanceLevel) -> ProvenanceLevel:
 # --- Axis A: Data Category (FR-002, FR-007) --------------------------
 
 
+class AssignmentProvenance(StrEnum):
+    """Where a label assignment came from. The strictest source wins
+    on composition (most_restrictive_inherit). Per spec, the
+    `raise-only-inspector` provenance is special: it can only ADD
+    taint, never CLEAR it — used by the raise-only-inspector hook
+    in the dispatcher.
+    """
+
+    SYSTEM_DEFAULT = "system-default"
+    SOURCE_DECLARED = "source-declared"  # the substrate told us
+    CURATED_MCP = "curated-mcp"  # operator-vetted MCP server
+    HUMAN_DECLARED = "human-declared"  # the principal said so
+    RAISE_ONLY_INSPECTOR = "raise-only-inspector"  # FR-025
+    LEGACY_MIGRATION = "legacy-migration"  # v5->v6 backfill
+    OPERATOR_DECLARED = "operator-declared"  # binding-resolved
+
+
 @dataclass(frozen=True)
 class AxisACategory:
     """One entry in a session's Axis A label set: (category-id,
