@@ -306,7 +306,7 @@ True 002 status: 21/35 tasks done. US2 was deferred to keep 003 (v0.9
 labeling) ahead in priority order — the cascade work is well-defined
 and can land any time without blocking 003.
 
-## v0.9 — Labeling framework  ·  **DESIGNED** (implementation pending)
+## v0.9 — Labeling framework  ·  **IN FLIGHT** (US1–US6 contracts complete; composition wire-in pending)
 
 Spec `specs/003-labeling-framework/`. Four-axis labeling
 (category/provenance/effect/decision-context) with deterministic
@@ -320,13 +320,31 @@ deferred to spec 004 substrate track: `SandboxActuator` impl,
 `EXECUTE.sandbox` jailed tool, provider source adapters, versioned-write
 actuator impls.
 
-| Item | Status | Commit |
+| Item | Status | Commit / Tag |
 |---|---|---|
 | Spec (`/speckit-specify` + two clarify passes + Principle-VIII gap close) | DONE | `10633e3` → `a50272d` |
 | Plan + Phase 0 research + Phase 1 data-model/contracts/quickstart | DONE | `d6b60c1` |
 | Tasks (117 tasks, 9 phases, US1=MVP) | DONE | `d2190b2` |
 | Analyze remediation (6 edits: 2 MEDIUM, 4 LOW) | DONE | `6025fc1` |
-| Implementation (Phase 1 Setup → Phase 9 Polish, T001–T121) | PLANNED | — |
+| Phase 1 Setup (T001–T005) | DONE | `237b9f7` |
+| Phase 2 Foundational (T006–T020, T118–T121) | DONE | `f2ab1e3` → `f00b912` |
+| Phase 3 US1 MVP (T021–T035) | DONE | `v0.9.0-us1-mvp` |
+| Phase 4 US2 — decision-context + never-auto (T036–T049) | DONE | `v0.9.0-us2-checkpoint` |
+| Phase 5 US3 — purpose admissibility (T050–T060) | DONE | `v0.9.0-us3-checkpoint` |
+| Phase 6 US6 — practical adoption layer (T061–T086) | CONTRACTS | `v0.9.0-us6-checkpoint` |
+| Phase 7 US4 — assurance deltas (T087–T095) | CONTRACTS | `v0.9.0-us4-checkpoint` |
+| Phase 8 US5 — clearance / floor / Pattern ③ (T096–T107) | CONTRACTS | `v0.9.0-us5-checkpoint` |
+| Phase 9 Polish (T108–T117) | IN FLIGHT | — |
+
+**Composition wire-in pending** (called out in the US4/US5/US6
+commit messages): `engine.decide()` composing the envelope dial,
+OverrideRequired distinct return, optimistic-execution short-circuit,
+write-discipline verification, clearance check, integrity floor,
+control-plane reflexivity, reversibility-weighted gating, and the
+dispatcher-side bind of ReferenceHandle. Also pending: T012-full
+ToolDefinition extension (effect_class, social_commitment,
+default_reversibility, default_mutability_target_facets,
+tool_provenance, surfaces_destination_id, risk_ids).
 
 The v0.9 labeling-framework design is captured in
 `docs/design-v0.9-labeling.md` (the historical design dump) and is now

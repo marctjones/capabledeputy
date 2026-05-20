@@ -23,16 +23,26 @@ class StorageShapeReport:
     """Result of an audit_storage_shape() call.
 
     `n_total` is the total session rows examined. `bad_rows` lists
-    (session_id, reason) for any row failing the shape check.
-    SC-019 passes iff bad_rows is empty.
+    (session_id, reason) for any row failing the *structural* shape
+    check (parseable JSON, right types). `flat_legacy_session_ids`
+    lists rows that pass the structural check but still carry the
+    flat-legacy pattern (non-empty label_set + empty axis_a + empty
+    axis_b + empty axis_d) — i.e., the v5→v6 converter missed them.
+    SC-019 passes iff BOTH lists are empty.
     """
 
     n_total: int = 0
     bad_rows: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    flat_legacy_session_ids: tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def ok(self) -> bool:
-        return not self.bad_rows
+        return not self.bad_rows and not self.flat_legacy_session_ids
+
+    @property
+    def is_clean(self) -> bool:
+        """Alias for `ok` — matches the noun the CLI report uses."""
+        return self.ok
 
 
 def audit_storage_shape(db_path: Path) -> StorageShapeReport:
@@ -55,11 +65,22 @@ def audit_storage_shape(db_path: Path) -> StorageShapeReport:
         return StorageShapeReport(n_total=0, bad_rows=())
 
     bad: list[tuple[str, str]] = []
+    flat_legacy: list[str] = []
     with closing(sqlite3.connect(str(db_path))) as conn:
         conn.row_factory = sqlite3.Row
-        cursor = conn.execute(
-            "SELECT id, axis_a, axis_b, axis_d, purpose_handle, reference_handles FROM sessions",
-        )
+        # Probe schema — older test stores may not have all columns.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(sessions)").fetchall()}
+        has_label_set = "label_set" in cols
+        has_purpose_handle = "purpose_handle" in cols
+        has_reference_handles = "reference_handles" in cols
+        select_cols = ["id", "axis_a", "axis_b", "axis_d"]
+        if has_label_set:
+            select_cols.append("label_set")
+        if has_purpose_handle:
+            select_cols.append("purpose_handle")
+        if has_reference_handles:
+            select_cols.append("reference_handles")
+        cursor = conn.execute(f"SELECT {', '.join(select_cols)} FROM sessions")
         rows = cursor.fetchall()
 
     for row in rows:
@@ -91,17 +112,40 @@ def audit_storage_shape(db_path: Path) -> StorageShapeReport:
             bad.append((sid, "axis_d is not parseable JSON"))
             continue
 
-        if not isinstance(row["purpose_handle"], str) or not row["purpose_handle"]:
+        if has_purpose_handle and (
+            not isinstance(row["purpose_handle"], str) or not row["purpose_handle"]
+        ):
             bad.append((sid, "purpose_handle is empty or non-string"))
             continue
 
-        try:
-            handles = json.loads(row["reference_handles"])
-            if not isinstance(handles, dict):
-                bad.append((sid, "reference_handles is not an object"))
+        if has_reference_handles:
+            try:
+                handles = json.loads(row["reference_handles"])
+                if not isinstance(handles, dict):
+                    bad.append((sid, "reference_handles is not an object"))
+                    continue
+            except (json.JSONDecodeError, TypeError):
+                bad.append((sid, "reference_handles is not parseable JSON"))
                 continue
-        except (json.JSONDecodeError, TypeError):
-            bad.append((sid, "reference_handles is not parseable JSON"))
-            continue
 
-    return StorageShapeReport(n_total=len(rows), bad_rows=tuple(bad))
+        # SC-019 semantic check: non-empty label_set + all axes empty
+        # ⇒ flat-legacy row that escaped the v5→v6 converter.
+        if has_label_set:
+            try:
+                legacy = json.loads(row["label_set"])
+            except (json.JSONDecodeError, TypeError):
+                legacy = []
+            if (
+                isinstance(legacy, list)
+                and len(legacy) > 0
+                and len(axis_a) == 0
+                and len(axis_b) == 0
+                and len(axis_d) == 0
+            ):
+                flat_legacy.append(sid)
+
+    return StorageShapeReport(
+        n_total=len(rows),
+        bad_rows=tuple(bad),
+        flat_legacy_session_ids=tuple(flat_legacy),
+    )
