@@ -29,6 +29,11 @@ from capabledeputy.policy.decision_rules import (
     inspect_relax_inputs,
 )
 from capabledeputy.policy.decision_rules import evaluate as _evaluate_v2
+from capabledeputy.policy.envelope import (
+    CellKey,
+    EnvelopeSet,
+    RiskPreference,
+)
 from capabledeputy.policy.labels import AxisA, AxisB, AxisD, Label
 from capabledeputy.policy.optimistic import evaluate_optimistic
 from capabledeputy.policy.overrides import OverrideGrantStore, use_override
@@ -50,6 +55,10 @@ BINDING_UNBOUND_RULE = "binding-unbound"
 REVERSIBILITY_IRREVERSIBLE_RULE = "reversibility-irreversible"
 REVERSIBILITY_REQUIRES_APPROVAL_RULE = "reversibility-requires-approval"
 OPTIMISTIC_AUTO_RULE = "optimistic-auto"
+ENVELOPE_DIAL_RULE = "envelope-dial"
+CONTROL_PLANE_TAINTED_RULE = "control-plane-tainted-session"
+CLEARANCE_REFUSED_RULE = "clearance-refused"
+INTEGRITY_FLOOR_REFUSED_RULE = "integrity-floor-refused"
 
 # Effect-class substrings that mark an egressing action. Egress crosses
 # the containment boundary; even reversible/system loses optimistic
@@ -353,6 +362,10 @@ def decide(
     session_id: Any = None,
     bindings: BindingSet | None = None,
     effective_reversibility: ReversibilityLabel | None = None,
+    envelope_set: EnvelopeSet | None = None,
+    risk_preference: RiskPreference | None = None,
+    clearance_max_tier: Any = None,
+    integrity_floor_level: str | None = None,
 ) -> PolicyDecision:
     """Public chokepoint. Runs the legacy decision path, then — when
     the v2 axis inputs and rule set are provided — composes the v2
@@ -455,6 +468,120 @@ def decide(
                 reversibility_rule = OPTIMISTIC_AUTO_RULE
                 reversibility_reason = opt.rationale
 
+    # Sub-phase G / Demo #7 — control-plane reflexivity (FR-018).
+    # A tainted session (AxisB carries external-untrusted) cannot
+    # exercise any ADMINISTER-class effect. Refused before legacy/v2
+    # so the audit reason is unambiguous.
+    if effect_class is not None and axis_b is not None:
+        from capabledeputy.policy.assurance import (
+            control_plane_admissible,
+            is_control_plane_effect,
+        )
+
+        if is_control_plane_effect(effect_class) and not control_plane_admissible(
+            effect_class=effect_class,
+            axis_b=axis_b,
+        ):
+            return PolicyDecision(
+                decision=Decision.DENY,
+                rule=CONTROL_PLANE_TAINTED_RULE,
+                reason=(
+                    f"FR-018: session with external-untrusted provenance "
+                    f"cannot exercise control-plane effect {effect_class!r}"
+                ),
+                effective_labels=label_set,
+                axis_a_snapshot=axis_a,
+                axis_b_snapshot=axis_b,
+                axis_d_snapshot=axis_d,
+                effect_class=effect_class,
+            )
+
+    # Sub-phase H / Demo #8 — clearance + integrity floor (FR-008/FR-004).
+    # Clearance: if axis_a carries a category whose resolved tier
+    # exceeds clearance_max_tier, refuse (BLP read-up). Integrity:
+    # if integrity_floor_level is set and any axis_b entry is below
+    # the floor, refuse (Biba read-down).
+    if clearance_max_tier is not None and axis_a is not None:
+        from capabledeputy.policy.tiers import compare as _tier_compare
+
+        for cat in axis_a.categories:
+            if _tier_compare(cat.tier, clearance_max_tier) > 0:
+                return PolicyDecision(
+                    decision=Decision.DENY,
+                    rule=CLEARANCE_REFUSED_RULE,
+                    reason=(
+                        f"FR-008: profile clearance {clearance_max_tier.value} "
+                        f"refuses read of category {cat.category!r} at tier "
+                        f"{cat.tier.value}"
+                    ),
+                    effective_labels=label_set,
+                    axis_a_snapshot=axis_a,
+                    axis_b_snapshot=axis_b,
+                    axis_d_snapshot=axis_d,
+                    effect_class=effect_class,
+                )
+
+    if integrity_floor_level is not None and axis_b is not None:
+        from capabledeputy.policy.resolution import (
+            IntegrityFloorError,
+            check_integrity_floor,
+        )
+
+        for entry in axis_b.entries:
+            try:
+                check_integrity_floor(
+                    floor_level=integrity_floor_level,
+                    input_level=entry.level.value,
+                )
+            except IntegrityFloorError as e:
+                return PolicyDecision(
+                    decision=Decision.DENY,
+                    rule=INTEGRITY_FLOOR_REFUSED_RULE,
+                    reason=str(e),
+                    effective_labels=label_set,
+                    axis_a_snapshot=axis_a,
+                    axis_b_snapshot=axis_b,
+                    axis_d_snapshot=axis_d,
+                    effect_class=effect_class,
+                )
+
+    # Sub-phase F / Demo #1 — envelope dial (FR-030 / SC-010).
+    # Look up the cell envelope and select an outcome via the
+    # operator's risk_preference. Hard-floor envelopes are immovable
+    # by construction (degenerate envelopes; see policy/envelope.py).
+    envelope_outcome: Decision | None = None
+    envelope_rule: str | None = None
+    envelope_reason: str | None = None
+    # The cell key uses the FIRST axis-A category (most-specific
+    # post-resolution); decision_context_canonical is the initiator
+    # string for stability. Multi-category sessions produce one
+    # envelope lookup per category — future work.
+    if (
+        envelope_set is not None
+        and risk_preference is not None
+        and effect_class is not None
+        and axis_a is not None
+        and axis_d is not None
+        and effective_reversibility is not None
+        and axis_a.categories
+    ):
+        cell = CellKey(
+            category=axis_a.categories[0].category,
+            effect=effect_class,
+            decision_context_canonical=axis_d.initiator,
+            reversibility=effective_reversibility.degree.value,
+        )
+        envelope = envelope_set.lookup(cell)
+        if envelope is not None:
+            selected = envelope.select(risk_preference)
+            envelope_outcome = _V2_TO_LEGACY[selected]
+            envelope_rule = f"{ENVELOPE_DIAL_RULE}:{risk_preference.value}->{selected.value}"
+            envelope_reason = (
+                f"envelope[{cell.category}/{cell.effect}/"
+                f"{cell.decision_context_canonical}/{cell.reversibility}] "
+                f"@ dial={risk_preference.value} -> {selected.value}"
+            )
+
     if relax_inputs:
         inspected: RelaxInspectionResult = inspect_relax_inputs(relax_inputs)
         if inspected.has_refusal:
@@ -485,16 +612,24 @@ def decide(
         or effect_class is None
         or rules_v2 is None
     ):
-        # Even on the legacy-only path, the reversibility gate
-        # applies when the caller supplied an effective label.
+        # Even on the legacy-only path, the reversibility / envelope
+        # gates apply when the caller supplied them.
+        result = legacy
         if reversibility_outcome is not None:
-            return _compose_with_reversibility(
-                legacy,
+            result = _compose_with_reversibility(
+                result,
                 reversibility_outcome=reversibility_outcome,
                 reversibility_rule=reversibility_rule,
                 reversibility_reason=reversibility_reason,
             )
-        return legacy
+        if envelope_outcome is not None:
+            result = _compose_with_envelope(
+                result,
+                envelope_outcome=envelope_outcome,
+                envelope_rule=envelope_rule,
+                envelope_reason=envelope_reason,
+            )
+        return result
     v2 = _evaluate_v2(
         rules=rules_v2,
         axis_a=axis_a,
@@ -512,6 +647,13 @@ def decide(
             reversibility_rule=reversibility_rule,
             reversibility_reason=reversibility_reason,
         )
+    if envelope_outcome is not None:
+        composed = _compose_with_envelope(
+            composed,
+            envelope_outcome=envelope_outcome,
+            envelope_rule=envelope_rule,
+            envelope_reason=envelope_reason,
+        )
     return replace(
         composed,
         axis_a_snapshot=axis_a,
@@ -519,6 +661,27 @@ def decide(
         axis_d_snapshot=axis_d,
         effect_class=effect_class,
     )
+
+
+def _compose_with_envelope(
+    base: PolicyDecision,
+    *,
+    envelope_outcome: Decision,
+    envelope_rule: str | None,
+    envelope_reason: str | None,
+) -> PolicyDecision:
+    """Compose the envelope-dial outcome with the base decision.
+    Most-restrictive wins. The dial NEVER relaxes a stricter base —
+    SC-010 invariant: hard-floor cells immovable by the dial.
+    """
+    if _LEGACY_RANK[envelope_outcome] < _LEGACY_RANK[base.decision]:
+        return replace(
+            base,
+            decision=envelope_outcome,
+            rule=envelope_rule,
+            reason=envelope_reason,
+        )
+    return base
 
 
 def _compose_with_reversibility(

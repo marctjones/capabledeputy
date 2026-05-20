@@ -28,10 +28,12 @@ from capabledeputy.policy.actions import Action
 from capabledeputy.policy.bindings import BindingSet
 from capabledeputy.policy.decision_rules import DecisionRules
 from capabledeputy.policy.engine import PolicyDecision, decide
+from capabledeputy.policy.envelope import EnvelopeSet, RiskPreference
 from capabledeputy.policy.labels import Label
 from capabledeputy.policy.overrides import OverrideGrantStore, OverridePolicies
 from capabledeputy.policy.reversibility import ReversibilityLabel
 from capabledeputy.policy.rules import Decision
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry
 
@@ -50,6 +52,10 @@ class PolicyContext:
     override_policies: OverridePolicies | None = None
     override_grants: OverrideGrantStore | None = None
     handle_store: ReferenceHandleStore | None = None
+    envelope_set: EnvelopeSet | None = None
+    risk_preference: RiskPreference | None = None
+    clearance_max_tier: Tier | None = None
+    integrity_floor_level: str | None = None
 
 
 def build_policy_decided_payload(
@@ -368,6 +374,15 @@ class LabeledToolClient:
                 kwargs["effective_reversibility"] = ReversibilityLabel.from_dict(
                     tool.default_reversibility,
                 )
+        # Sub-phases F/H — envelope dial + clearance/floor.
+        if self._policy_context.envelope_set is not None:
+            kwargs["envelope_set"] = self._policy_context.envelope_set
+        if self._policy_context.risk_preference is not None:
+            kwargs["risk_preference"] = self._policy_context.risk_preference
+        if self._policy_context.clearance_max_tier is not None:
+            kwargs["clearance_max_tier"] = self._policy_context.clearance_max_tier
+        if self._policy_context.integrity_floor_level is not None:
+            kwargs["integrity_floor_level"] = self._policy_context.integrity_floor_level
         return kwargs
 
     async def _bind_reference_handles(

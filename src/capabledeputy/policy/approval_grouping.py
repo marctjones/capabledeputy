@@ -13,6 +13,7 @@ that converts groups into a single approval prompt lives elsewhere.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 class ApprovalGroupingError(RuntimeError):
@@ -101,6 +102,28 @@ def group_by_rationale(
         for r in order
     )
     return ApprovalGroupSet(groups=groups)
+
+
+def group_pending_approvals(
+    pending: list[Any],
+) -> ApprovalGroupSet:
+    """Demo #3 runtime path — group a list of ApprovalRequest by
+    `justification`. Each unique justification becomes a group;
+    actions sharing a justification roll up into one prompt.
+
+    Accepts ApprovalRequest-shaped objects (any object with `action`,
+    `target`, `justification` attributes) to avoid a circular import
+    on approval.model. The operator's UI consumes the returned groups.
+    """
+    actions = tuple(
+        ApprovableAction(
+            action_kind=str(getattr(r, "action", "")),
+            target=str(getattr(r, "target", "")),
+            rationale=str(getattr(r, "justification", "")),
+        )
+        for r in pending
+    )
+    return group_by_rationale(actions)
 
 
 def _aggregate_impact(actions: list[ApprovableAction]) -> str:
