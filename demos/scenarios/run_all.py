@@ -6,20 +6,20 @@ Run with:
 The -s is what makes the narration visible. The driver invokes each
 demo with a 'DEMO i / N' banner so a long run is easy to scan.
 
-The 19 demos are organized in three arcs:
+The 24 demos are organized by what they emphasize:
 
   Single-mechanism demos
-    Each exercises one security model or flow pattern cleanly so the
+    Exercise one security model or flow pattern cleanly so the
     mechanism is visible in isolation.
 
   Multi-mechanism demos
-    Each combines 3+ mechanisms in a realistic workflow. These are
-    the load-bearing arguments for the design — security models
-    that compose are stronger than any single layer.
+    Combine 3+ mechanisms in a realistic workflow. These are the
+    load-bearing arguments for the design — security models that
+    compose are stronger than any single layer.
 
-  Structural-invariant demos
-    Demos that prove a property holds by construction (monotone
-    inheritance, single-use grants, hard floors).
+  Personal-assistant common-workflow demos
+    Mirror what an operator actually runs day-to-day on a desktop
+    assistant, with the policy chokepoint visible in each step.
 """
 
 from __future__ import annotations
@@ -31,14 +31,19 @@ import pytest
 from demos.scenarios.bulk_approval_grouped import test_bulk_approval_demo
 from demos.scenarios.calendar_with_invites import test_calendar_with_invites_demo
 from demos.scenarios.clinical_records_research import test_clinical_records_demo
+from demos.scenarios.compliance_review_workflow import test_compliance_review_workflow_demo
 from demos.scenarios.daily_briefing import test_daily_briefing_demo
 from demos.scenarios.data_blind_disclosure import test_data_blind_disclosure_demo
 from demos.scenarios.dial_assisted_research import test_dial_assisted_research_demo
 from demos.scenarios.email_drafting_workflow import test_email_drafting_workflow_demo
+from demos.scenarios.expense_categorization import test_expense_categorization_demo
 from demos.scenarios.hr_data_handling import test_hr_data_handling_demo
+from demos.scenarios.journal_daily import test_journal_daily_demo
 from demos.scenarios.local_doc_drafting import test_local_doc_drafting_demo
 from demos.scenarios.local_doc_qa import test_local_doc_qa_demo
+from demos.scenarios.meeting_prep_routine import test_meeting_prep_routine_demo
 from demos.scenarios.multi_session_handoff import test_multi_session_handoff_demo
+from demos.scenarios.news_briefing_workflow import test_news_briefing_workflow_demo
 from demos.scenarios.optimistic_burn import test_optimistic_burn_demo
 from demos.scenarios.override_workflow import test_override_workflow_demo
 from demos.scenarios.prompt_injection_defense import test_prompt_injection_demo
@@ -48,39 +53,36 @@ from demos.scenarios.task_compartments import test_task_compartments_demo
 from demos.scenarios.task_lifecycle import test_task_lifecycle_demo
 from demos.scenarios.travel_booking import test_travel_booking_demo
 
-# Order:
-#   1-3   Marquee + override + dial (single-mechanism intros)
-#   4-5   Clearance / profile (Brewer-Nash + BLP)
-#   6-7   Defense-in-depth (injection, optimistic carve-out)
-#   8     Inbox triage — Pattern ② + ③ + inspector
-#   9     Multi-session handoff — fork inheritance
-#   10    Dial-assisted research — dial in a real workflow
-#   11    Calendar invites — untrusted-external from a real source
-#   12    Task compartments — Brewer-Nash on mixed personal categories
-#   13    Local doc Q&A — REAL fs.read + fs.read_pdf tools
-#   14    Travel booking — bundle vs. one-at-a-time on purchases
-#   15    Bulk approval — programmatic execution + bundle (purchases)
-#   16    Data-blind disclosure — Pattern ③ structural test
-
 _RUN_ORDER: tuple[tuple[str, Any], ...] = (
+    # Single-mechanism intros
     ("Daily Briefing", test_daily_briefing_demo),
     ("Override Workflow", test_override_workflow_demo),
     ("Risk Dial", test_risk_dial_demo),
+    # Clearance / profile / Brewer-Nash
     ("Clinical Records", test_clinical_records_demo),
     ("HR Data Handling", test_hr_data_handling_demo),
+    ("Compliance Review", test_compliance_review_workflow_demo),
+    # Defense-in-depth
     ("Prompt Injection Defense", test_prompt_injection_demo),
     ("Optimistic Burn", test_optimistic_burn_demo),
+    # Multi-mechanism workflows
     ("Secure Inbox Triage", test_secure_inbox_triage_demo),
     ("Multi-Session Handoff", test_multi_session_handoff_demo),
     ("Dial-Assisted Research", test_dial_assisted_research_demo),
+    ("News Briefing Workflow", test_news_briefing_workflow_demo),
+    # Personal-assistant common workflows
     ("Calendar With Invites", test_calendar_with_invites_demo),
+    ("Meeting Prep Routine", test_meeting_prep_routine_demo),
     ("Task Compartments", test_task_compartments_demo),
     ("Task Lifecycle", test_task_lifecycle_demo),
     ("Local Doc Q&A", test_local_doc_qa_demo),
     ("Local Doc Drafting", test_local_doc_drafting_demo),
+    ("Journal Daily", test_journal_daily_demo),
     ("Email Drafting Workflow", test_email_drafting_workflow_demo),
+    ("Expense Categorization", test_expense_categorization_demo),
     ("Travel Booking", test_travel_booking_demo),
     ("Bulk Approval Grouped", test_bulk_approval_demo),
+    # Structural-invariant demo
     ("Data-Blind Disclosure", test_data_blind_disclosure_demo),
 )
 
