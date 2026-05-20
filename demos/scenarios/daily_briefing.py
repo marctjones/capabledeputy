@@ -1,21 +1,12 @@
 """Daily briefing — the marquee workflow demo.
 
 Story:
-  A knowledge worker spawns a session under the `daily-briefing`
-  profile. The session reads their inbox, runs the labeled contents
-  through a quarantined extractor (Pattern (2) DUAL_LLM), saves a
-  summary to memory, then attempts to email the summary to a teammate.
-  CapableDeputy denies the email — the social-commitment hard rule
-  (FR-019) forces irreversible/external on `email.send`. The operator
-  invokes the override workflow; a distinct attester confirms; the
-  re-attempted send goes through with `origin=override_granted`.
-
-Security models exercised:
-  - Brewer-Nash conflict rules (legacy v0.7 path; still active)
-  - FR-019 reversibility-weighted gating with social-commitment hard rule
-  - Pattern (2) DUAL_LLM via quarantined.extract
-  - FR-038 override-distinct-from-approval (dual-control)
-  - SC-014 distinct attester
+  Alice spawns a session under the `daily-briefing` profile. She
+  asks the agent to read her inbox, save a one-line summary to
+  memory, and email it to a teammate. The policy engine gates each
+  step. The email send is denied; Alice requests an override; a
+  distinct authorized attester signs off; the re-attempted send is
+  ALLOWED with origin=OVERRIDE_GRANTED.
 """
 
 from __future__ import annotations
@@ -41,34 +32,46 @@ from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.client import PolicyContext
 from demos.scenarios._helpers import (
+    ai,
+    audit,
     collect_events,
+    demo_header,
     event_types,
     make_app,
     make_session,
-    narrate,
+    note,
+    policy,
+    policy_outcome,
+    step,
+    tool,
+    user,
 )
 
 
 @pytest.mark.asyncio
 async def test_daily_briefing_demo(tmp_path: Any) -> None:
-    narrate(
-        "Daily Briefing — knowledge worker scenario",
-        """
-        Alice spawns a session under daily-briefing profile, reads her
-        inbox, asks an LLM to summarize, saves the summary, then tries
-        to email it. CapableDeputy gates the email send.
-        """,
+    demo_header(
+        "Daily Briefing — knowledge-worker scenario",
+        blurb=(
+            "Alice asks the agent to read her inbox, summarize, save the "
+            "summary, then email it to a teammate. CapableDeputy gates each "
+            "step; the send is denied and only proceeds after a distinct "
+            "authorized attester signs off."
+        ),
+        models=("Brewer-Nash", "FR-019 social-commitment", "FR-038 override"),
+        patterns=("dual-control attester", "FR-034 optimistic-auto"),
     )
 
-    # Operator wires the override policy so a denied email can be
-    # unlocked via dual-control attestation.
+    # security-officer is the attester role here — distinct from
+    # bob@example.com (the email recipient). The roster is operator
+    # config; we name it by role, not by accident-of-shared-prefix.
     override_policies = OverridePolicies(
         by_floor={
             HardFloor.MAX_TIER_CLEARANCE: OverridePolicyEntry(
                 floor=HardFloor.MAX_TIER_CLEARANCE,
                 policy=OverridePolicy.DUAL_CONTROL,
                 authorized_principal_ids=frozenset({"alice"}),
-                attester_principal_ids=frozenset({"bob", "carol"}),
+                attester_principal_ids=frozenset({"security-officer", "manager"}),
                 expiry_seconds=300,
             ),
         },
@@ -80,8 +83,6 @@ async def test_daily_briefing_demo(tmp_path: Any) -> None:
     )
     app = make_app(tmp_path, policy_context=ctx)
     await app.startup()
-
-    # Session has the capabilities a daily briefing needs.
     s = await make_session(
         app,
         axis_a_categories=(("personal", Tier.SENSITIVE),),
@@ -112,53 +113,48 @@ async def test_daily_briefing_demo(tmp_path: Any) -> None:
         ),
     )
 
-    # 1. Read the inbox (stub — empty inbox is fine for the demo).
-    narrate("Step 1", "Alice asks the agent to read her inbox.")
-    inbox_outcome = await app.tool_client.call_tool(
-        s.id,
-        "inbox.list",
-        {},
-    )
+    step(1, "Read the inbox")
+    user('"check my inbox"')
+    ai("call inbox.list()")
+    inbox_outcome = await app.tool_client.call_tool(s.id, "inbox.list", {})
     assert inbox_outcome.decision == Decision.ALLOW
-    narrate("  → result", f"inbox.list ALLOWED (rule={inbox_outcome.rule})")
+    policy_outcome(inbox_outcome)
+    tool("inbox.list → 0 messages (empty stub)")
 
-    # 2. Save the summary as a new memory entry. memory.create is
-    # reversible/system so the optimistic-auto carve-out fires.
-    narrate("Step 2", "Agent saves a summary to memory (new entry).")
+    step(2, "Save the day's summary to memory")
+    ai('call memory.create(key="briefing-2026-05-19", value=…)')
     memory_outcome = await app.tool_client.call_tool(
         s.id,
         "memory.create",
         {"key": "briefing-2026-05-19", "value": "Summary..."},
     )
     assert memory_outcome.decision == Decision.ALLOW
-    narrate(
-        "  → result",
-        f"memory.create ALLOWED (rule={memory_outcome.rule})\n"
-        "    reversible/system + non-egressing ⇒ optimistic-auto carve-out\n"
-        "    (FR-034). No prompt needed for this class of work.",
+    policy_outcome(
+        memory_outcome,
+        rationale="reversible/system + non-egressing ⇒ optimistic-auto carve-out (FR-034).",
     )
+    tool("memory.create → ok")
 
-    # 3. Attempt to email the summary. This is the FR-019 hard rule.
-    narrate("Step 3", "Agent tries to email the summary to bob@example.com.")
+    step(3, "Email the summary to bob@example.com")
+    ai('call email.send(to="bob@example.com", subject="Daily briefing", body=…)')
     email_outcome = await app.tool_client.call_tool(
         s.id,
         "email.send",
         {"to": "bob@example.com", "subject": "Daily briefing", "body": "Summary..."},
     )
     assert email_outcome.decision == Decision.DENY
-    narrate(
-        "  → result",
-        f"email.send DENIED (rule={email_outcome.rule}, reason={email_outcome.reason})\n"
-        "    FR-019 social-commitment: a sent email cannot be unsent.\n"
-        "    The reversibility gate forces irreversible/external regardless\n"
-        "    of what the tool declared.",
+    policy_outcome(
+        email_outcome,
+        rationale=(
+            "FR-019 social-commitment: a sent email cannot be unsent. The "
+            "reversibility gate forces irreversible/external regardless of "
+            "what the tool declared."
+        ),
     )
+    tool("(skipped)")
 
-    # 4. Operator requests an override.
-    narrate(
-        "Step 4",
-        "Alice requests an override grant; Bob (distinct attester) confirms.",
-    )
+    step(4, "Alice requests an override; security-officer attests")
+    user("override.request  →  SEND_EMAIL  bob@example.com")
 
     from capabledeputy.daemon.override_handlers import make_override_handlers
 
@@ -175,31 +171,30 @@ async def test_daily_briefing_demo(tmp_path: Any) -> None:
             "friction_confirmed": True,
         }
     )
-    assert "id" in request_resp
     assert request_resp["state"] == "pending_attestation"
-    grant_id = request_resp["id"]
-    narrate("  → grant", f"id={grant_id[:8]}... state=pending_attestation")
+    policy("pending_attestation", rationale=f"grant id={request_resp['id'][:8]}…")
 
+    note(
+        "security-officer (distinct human, not bob@example.com) reviews and "
+        "calls override.attest from their own terminal."
+    )
+    user("override.attest  --attester security-officer  --confirmed")
     attest_resp = await handlers["override.attest"](
         {
-            "grant_id": grant_id,
-            "attester": "bob",
+            "grant_id": request_resp["id"],
+            "attester": "security-officer",
             "confirmed": True,
         }
     )
     assert attest_resp["state"] == "active"
-    narrate(
-        "  → attestation",
-        "Bob's confirmation accepted; grant state=active. Alice could not\n"
-        "    self-attest (FR-036 distinct attester / SC-014).",
+    policy(
+        "active",
+        rule="FR-036 distinct-attester",
+        rationale="SC-014: attester ≠ invoker satisfied. Grant active.",
     )
 
-    # 5. Re-attempt the email. The active override grant short-circuits
-    #    decide() to ALLOW with origin=override_granted.
-    narrate(
-        "Step 5",
-        "Re-attempt the email send. Override grant short-circuits to ALLOW.",
-    )
+    step(5, "Re-attempt the email — override grant short-circuits to ALLOW")
+    ai('call email.send(to="bob@example.com", …) — retry')
     retry_outcome = await app.tool_client.call_tool(
         s.id,
         "email.send",
@@ -207,23 +202,18 @@ async def test_daily_briefing_demo(tmp_path: Any) -> None:
     )
     assert retry_outcome.decision == Decision.ALLOW
     assert retry_outcome.rule == "override-grant-active"
-    narrate(
-        "  → result",
-        f"email.send ALLOWED (rule={retry_outcome.rule})\n"
-        "    The minted capability carries origin=OVERRIDE_GRANTED,\n"
-        "    distinct from user_approved (FR-038).",
+    policy_outcome(
+        retry_outcome,
+        rationale=(
+            "Minted capability carries origin=OVERRIDE_GRANTED, distinct from "
+            "user_approved (FR-038). Grant is now CONSUMED — single use."
+        ),
     )
+    tool("email.send → sent")
 
-    # 6. Audit trail evidence.
     events = await collect_events(app)
     types = event_types(events)
-    narrate(
-        "Audit",
-        f"{len(events)} events emitted. Sequence includes\n"
-        f"    {[t.value for t in types[:10]]}\n"
-        "    full audit log at: " + str(app.audit._path),
-    )
-
-    # Sanity: every key step recorded.
+    audit(f"{len(events)} events emitted. First 6: " + ", ".join(t.value for t in types[:6]))
+    note(f"full audit log at {app.audit._path}")
     assert EventType.POLICY_DECIDED in types
     assert EventType.TOOL_DISPATCHED in types

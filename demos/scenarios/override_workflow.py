@@ -1,18 +1,9 @@
-"""Override workflow — FR-036 / FR-038 / SC-014 dual-control.
+"""Override workflow — dual-control + single-use grant FSM.
 
-Story:
-  An operator denied at the policy chokepoint requests a grant. We
-  exercise three control rules in one run:
-    - self-attestation refused (FR-036 distinct attester / SC-014)
-    - wrong attester refused (only listed attesters can confirm)
-    - distinct authorized attester ALLOWS, grant transitions to ACTIVE
-    - grant is single-use: the FIRST decide() consumes it; a SECOND
-      attempt falls back to the normal policy (FR-036)
-
-Security models exercised:
-  - FR-036 single-use, distinct-attester override grants
-  - FR-038 override-distinct-from-approval (origin=OVERRIDE_GRANTED)
-  - SC-014 dual-control guarantee
+Exercises the override grant state machine: request → refused
+self-attest → refused wrong attester → distinct authorized attester
+ALLOWS → first use consumes the grant → second attempt falls back to
+the normal policy.
 """
 
 from __future__ import annotations
@@ -36,18 +27,31 @@ from capabledeputy.policy.overrides import (
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.client import PolicyContext
-from demos.scenarios._helpers import make_app, make_session, narrate
+from demos.scenarios._helpers import (
+    ai,
+    demo_header,
+    make_app,
+    make_session,
+    note,
+    policy,
+    policy_outcome,
+    step,
+    tool,
+    user,
+)
 
 
 @pytest.mark.asyncio
 async def test_override_workflow_demo(tmp_path: Any) -> None:
-    narrate(
+    demo_header(
         "Override Workflow — dual-control + single-use",
-        """
-        A denied email send is unlocked via DUAL_CONTROL. We show the
-        FSM's refusal of self-attestation, refusal of a non-authorized
-        attester, and single-use consumption of the grant.
-        """,
+        blurb=(
+            "A denied email is unlocked via DUAL_CONTROL. We show three "
+            "refusal paths plus the successful path, then confirm "
+            "single-use consumption."
+        ),
+        models=("FR-036 distinct-attester", "FR-038 override origin"),
+        patterns=("dual-control FSM", "single-use grant"),
     )
 
     override_policies = OverridePolicies(
@@ -56,7 +60,7 @@ async def test_override_workflow_demo(tmp_path: Any) -> None:
                 floor=HardFloor.MAX_TIER_CLEARANCE,
                 policy=OverridePolicy.DUAL_CONTROL,
                 authorized_principal_ids=frozenset({"alice"}),
-                attester_principal_ids=frozenset({"bob", "carol"}),
+                attester_principal_ids=frozenset({"security-officer", "manager"}),
                 expiry_seconds=300,
             ),
         },
@@ -86,8 +90,9 @@ async def test_override_workflow_demo(tmp_path: Any) -> None:
 
     handlers = make_override_handlers(override_grants, override_policies)
 
-    narrate("Step 1", "Alice requests an override for SEND_EMAIL → bob@example.com.")
-    request_resp = await handlers["override.request"](
+    step(1, "Alice requests an override")
+    user("override.request  →  SEND_EMAIL  bob@example.com")
+    req = await handlers["override.request"](
         {
             "session_id": str(s.id),
             "action_kind": "SEND_EMAIL",
@@ -99,51 +104,60 @@ async def test_override_workflow_demo(tmp_path: Any) -> None:
             "friction_confirmed": True,
         }
     )
-    grant_id = request_resp["id"]
-    assert request_resp["state"] == "pending_attestation"
-    narrate("  → grant", f"id={grant_id[:8]}... state=pending_attestation")
+    grant_id = req["id"]
+    assert req["state"] == "pending_attestation"
+    policy("pending_attestation", rationale=f"grant id={grant_id[:8]}…")
 
-    narrate(
-        "Step 2",
-        "Alice tries to self-attest. The FSM refuses (FR-036 / SC-014):\n"
-        "    a single principal cannot satisfy both halves of dual control.",
-    )
-    self_attest = await handlers["override.attest"](
+    step(2, "Alice tries to self-attest — refused")
+    user("override.attest  --attester alice  --confirmed")
+    r = await handlers["override.attest"](
         {
             "grant_id": grant_id,
             "attester": "alice",
             "confirmed": True,
         }
     )
-    assert self_attest.get("error") is not None or self_attest.get("state") != "active"
-    narrate("  → refusal", f"attest result = {self_attest}")
-
-    narrate(
-        "Step 3",
-        "Mallory (not in attester roster) tries to attest. Also refused.",
+    assert r.get("refused")
+    policy(
+        "refused",
+        rule="attester_same_as_invoker",
+        rationale="FR-036 / SC-014: one principal cannot satisfy both halves.",
     )
-    bad_attest = await handlers["override.attest"](
+
+    step(3, "Mallory (not on attester roster) tries — refused")
+    user("override.attest  --attester mallory  --confirmed")
+    r = await handlers["override.attest"](
         {
             "grant_id": grant_id,
             "attester": "mallory",
             "confirmed": True,
         }
     )
-    assert bad_attest.get("error") is not None or bad_attest.get("state") != "active"
-    narrate("  → refusal", f"attest result = {bad_attest}")
+    assert r.get("refused")
+    policy(
+        "refused",
+        rule="attester_unauthorized",
+        rationale="mallory is not in the operator-configured attester roster.",
+    )
 
-    narrate("Step 4", "Bob (authorized) attests. Grant transitions to ACTIVE.")
-    ok_attest = await handlers["override.attest"](
+    step(4, "security-officer (authorized + distinct) attests")
+    user("override.attest  --attester security-officer  --confirmed")
+    r = await handlers["override.attest"](
         {
             "grant_id": grant_id,
-            "attester": "bob",
+            "attester": "security-officer",
             "confirmed": True,
         }
     )
-    assert ok_attest["state"] == "active"
-    narrate("  → attestation", "Grant active. Alice can now retry the action.")
+    assert r["state"] == "active"
+    policy(
+        "active",
+        rule="FR-036 distinct-attester",
+        rationale="Grant transitions to ACTIVE; Alice can now retry.",
+    )
 
-    narrate("Step 5", "First email.send under the grant. ALLOW with override-grant-active.")
+    step(5, "First retry — override grant short-circuits to ALLOW")
+    ai('call email.send(to="bob@example.com", …)')
     out1 = await app.tool_client.call_tool(
         s.id,
         "email.send",
@@ -151,20 +165,25 @@ async def test_override_workflow_demo(tmp_path: Any) -> None:
     )
     assert out1.decision == Decision.ALLOW
     assert out1.rule == "override-grant-active"
-    narrate("  → first attempt", f"ALLOWED (rule={out1.rule}); grant consumed.")
-
-    narrate(
-        "Step 6",
-        "Second email.send — the grant is single-use, so the policy now\n"
-        "    falls back to the normal path (DENY by reversibility gate).",
+    policy_outcome(
+        out1,
+        rationale="Capability minted with origin=OVERRIDE_GRANTED (FR-038).",
     )
+    tool("email.send → sent. Grant now CONSUMED.")
+
+    step(6, "Second retry — grant is single-use; policy falls back")
+    ai('call email.send(to="bob@example.com", …) — second time')
     out2 = await app.tool_client.call_tool(
         s.id,
         "email.send",
         {"to": "bob@example.com", "subject": "x2", "body": "y2"},
     )
     assert out2.decision == Decision.DENY
-    narrate(
-        "  → second attempt",
-        f"DENIED (rule={out2.rule}). Single-use property (FR-036) holds.",
+    policy_outcome(
+        out2,
+        rationale=(
+            "Single-use property (FR-036): the consumed grant no longer "
+            "matches; reversibility gate now refuses."
+        ),
     )
+    note("To send again Alice would file a fresh override request.")

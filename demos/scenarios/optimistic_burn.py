@@ -1,23 +1,9 @@
 """Optimistic-execution burn — FR-034 carve-out for reversible/system.
 
-Story:
-  A bot writes a hundred reminders to its local memory store. Each
-  write is reversible (delete the key) and the agent of reversal is
-  the system (no human action needed). None of the writes egress.
-
-  Under FR-034 the engine carves these out: ALLOW with rule
-  `optimistic-auto`, no approval prompt. This is the bright-line
-  test for "where can the agent move fast without a human in the
-  loop?" — the answer is: reversible/system + non-egressing.
-
-  Counter-example: the same agent then tries a `memory.delete`,
-  which is irreversible/external. The carve-out does NOT apply; the
-  reversibility gate fires and refuses.
-
-Security models exercised:
-  - FR-034 / SC-013 optimistic execution boundary
-  - Compose composition vs reversibility gate (gate trumps optimistic
-    once reversibility leaves the reversible/system corner)
+100 reversible/system writes proceed with zero prompts. Then a single
+delete attempt — irreversible/external — refuses. The carve-out is
+bright-line; the gate ratchets the moment the action leaves the
+reversible/system corner.
 """
 
 from __future__ import annotations
@@ -34,17 +20,28 @@ from capabledeputy.policy.capabilities import (
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.client import PolicyContext
-from demos.scenarios._helpers import make_app, make_session, narrate
+from demos.scenarios._helpers import (
+    ai,
+    demo_header,
+    make_app,
+    make_session,
+    note,
+    policy_outcome,
+    step,
+    tool,
+)
 
 
 @pytest.mark.asyncio
 async def test_optimistic_burn_demo(tmp_path: Any) -> None:
-    narrate(
+    demo_header(
         "Optimistic Burn — reversible/system + non-egressing → AUTO",
-        """
-        Hundred reminders, hundred ALLOWs, zero prompts. Then one
-        delete attempt — the carve-out doesn't extend that far.
-        """,
+        blurb=(
+            "100 reminders, 100 ALLOWs, zero prompts. Then one delete "
+            "attempt — the carve-out does not extend that far."
+        ),
+        models=("FR-034 optimistic-auto", "SC-013 carve-out boundary"),
+        patterns=("non-egressing reversible/system",),
     )
 
     ctx = PolicyContext()
@@ -70,6 +67,8 @@ async def test_optimistic_burn_demo(tmp_path: Any) -> None:
         ),
     )
 
+    step(1, "Burn: 100 x memory.create")
+    ai("loop 100x: call memory.create(key=f'reminder-{i}', value=…)")
     rules_hit: list[str | None] = []
     for i in range(100):
         out = await app.tool_client.call_tool(
@@ -79,20 +78,17 @@ async def test_optimistic_burn_demo(tmp_path: Any) -> None:
         )
         assert out.decision is Decision.ALLOW
         rules_hit.append(out.rule)
+    tool("memory.create → ok x 100 (no prompts, no rule fired)")
+    note(f"Distinct rule values across the 100 calls: {sorted({r or '<none>' for r in rules_hit})}")
 
-    narrate(
-        "Bulk writes",
-        f"100 x memory.create. All ALLOW. Distinct rules seen = "
-        f"{sorted({r or '<none>' for r in rules_hit})}",
-    )
-
-    narrate("Delete attempt", "Now try memory.delete — irreversible/external.")
+    step(2, "memory.delete — irreversible/external")
+    ai('call memory.delete(key="reminder-0")')
     out_del = await app.tool_client.call_tool(s.id, "memory.delete", {"key": "reminder-0"})
-    narrate(
-        "  → result",
-        f"memory.delete → {out_del.decision.value} (rule={out_del.rule})\n"
-        f"    reason: {out_del.reason}",
-    )
-    # The carve-out does NOT extend to irreversible. The reversibility
-    # gate refuses.
     assert out_del.decision is Decision.DENY
+    policy_outcome(
+        out_del,
+        rationale=(
+            "Carve-out does not extend to irreversible. Reversibility gate refuses (FR-019)."
+        ),
+    )
+    tool("(skipped)")
