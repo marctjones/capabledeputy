@@ -80,6 +80,12 @@ class CapabilityOrigin(StrEnum):
     # (002 delegation chains). Engine-set; keeps the audit trail able
     # to distinguish delegated grants (Constitution VIII / data-model).
     DELEGATED = "delegated"
+    # 003 US6 T019/T078 — capability minted by an Override Grant
+    # (crossing a hard floor under operator policy). Carries the
+    # `override_grant_id` linking to the OverrideGrant record. Always
+    # distinct from `user_approved` — the audit object is separate
+    # too (FR-038).
+    OVERRIDE_GRANTED = "override_granted"
 
 
 # Default maximum delegation chain depth (002 FR-006). Configurable via
@@ -149,6 +155,11 @@ class Capability:
     # in the chain (root = 0, each hop +1). None/0 ⇒ not delegated.
     parent_audit_id: UUID | None = None
     depth: int = 0
+    # 003 US6 T019 — id of the OverrideGrant that minted this
+    # capability (when `origin == OVERRIDE_GRANTED`). None for all
+    # other origins. Default-tolerant on read so pre-Phase-6 stores
+    # still parse.
+    override_grant_id: UUID | None = None
 
     def is_expired(self, now: datetime) -> bool:
         """True iff this capability carries a deadline that has been
@@ -219,6 +230,9 @@ class Capability:
             "rate_limit": (self.rate_limit.to_dict() if self.rate_limit is not None else None),
             "parent_audit_id": (str(self.parent_audit_id) if self.parent_audit_id else None),
             "depth": self.depth,
+            "override_grant_id": (
+                str(self.override_grant_id) if self.override_grant_id is not None else None
+            ),
         }
 
     @classmethod
@@ -236,6 +250,9 @@ class Capability:
             rate_limit=(RateLimit.from_dict(d["rate_limit"]) if d.get("rate_limit") else None),
             parent_audit_id=(UUID(d["parent_audit_id"]) if d.get("parent_audit_id") else None),
             depth=int(d.get("depth", 0)),
+            override_grant_id=(
+                UUID(d["override_grant_id"]) if d.get("override_grant_id") else None
+            ),
         )
 
 
