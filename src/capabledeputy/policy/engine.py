@@ -59,6 +59,8 @@ ENVELOPE_DIAL_RULE = "envelope-dial"
 CONTROL_PLANE_TAINTED_RULE = "control-plane-tainted-session"
 CLEARANCE_REFUSED_RULE = "clearance-refused"
 INTEGRITY_FLOOR_REFUSED_RULE = "integrity-floor-refused"
+SANDBOX_NO_ACTUATOR_RULE = "sandbox-no-actuator"
+ORPHAN_RISK_CITATION_RULE = "orphan-risk-citation"
 
 # Effect-class substrings that mark an egressing action. Egress crosses
 # the containment boundary; even reversible/system loses optimistic
@@ -366,6 +368,8 @@ def decide(
     risk_preference: RiskPreference | None = None,
     clearance_max_tier: Any = None,
     integrity_floor_level: str | None = None,
+    risk_register: Any = None,
+    sandbox_actuator_wired: bool = False,
 ) -> PolicyDecision:
     """Public chokepoint. Runs the legacy decision path, then — when
     the v2 axis inputs and rule set are provided — composes the v2
@@ -495,6 +499,62 @@ def decide(
                 axis_d_snapshot=axis_d,
                 effect_class=effect_class,
             )
+
+    # Sandbox-without-actuator (FR-042 / SC-017) — EXECUTE.sandbox
+    # invoked when no SandboxActuator port is wired ⇒ refuse with the
+    # explicit rule so the operator can wire a provider or use Pattern
+    # (3) instead.
+    if (
+        effect_class is not None
+        and effect_class.lower().startswith("execute.sandbox")
+        and not sandbox_actuator_wired
+    ):
+        return PolicyDecision(
+            decision=Decision.OVERRIDE_REQUIRED,
+            rule=SANDBOX_NO_ACTUATOR_RULE,
+            reason=(
+                f"FR-042/SC-017: {effect_class!r} requires a SandboxActuator "
+                f"port; none wired (spec 004 provider impl)"
+            ),
+            effective_labels=label_set,
+            axis_a_snapshot=axis_a,
+            axis_b_snapshot=axis_b,
+            axis_d_snapshot=axis_d,
+            effect_class=effect_class,
+        )
+
+    # Orphan risk-citation refusal (FR-015 runtime side). If a risk
+    # register is wired AND axis_a labels declare risk_ids, any id NOT
+    # in the register refuses the decision. The CI lint already catches
+    # missing framework_refs at build time; this catches runtime
+    # citations of unknown ids.
+    if risk_register is not None and axis_a is not None:
+        from capabledeputy.policy.assurance import validate_label_citation
+
+        for cat in axis_a.categories:
+            # Categories that don't declare any risk_ids are a CI-lint
+            # concern (SC-001); runtime check focuses on category that
+            # DOES cite ids, and refuses when any id is unknown.
+            if not cat.risk_ids:
+                continue
+            orphans = validate_label_citation(
+                risk_ids=cat.risk_ids,
+                register=risk_register,
+            )
+            if orphans:
+                return PolicyDecision(
+                    decision=Decision.DENY,
+                    rule=ORPHAN_RISK_CITATION_RULE,
+                    reason=(
+                        f"FR-015: category {cat.category!r} cites unknown "
+                        f"risk ids {sorted(orphans)}"
+                    ),
+                    effective_labels=label_set,
+                    axis_a_snapshot=axis_a,
+                    axis_b_snapshot=axis_b,
+                    axis_d_snapshot=axis_d,
+                    effect_class=effect_class,
+                )
 
     # Sub-phase H / Demo #8 — clearance + integrity floor (FR-008/FR-004).
     # Clearance: if axis_a carries a category whose resolved tier

@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS override_grants (
     audit_id TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     consumed_at TEXT NULL,
+    state TEXT NOT NULL DEFAULT 'active',
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
 
@@ -271,6 +272,18 @@ class SessionStore:
                 return
             current = row["version"]
             if current == SCHEMA_VERSION:
+                # Even at v6, the override_grants.state column was
+                # added after initial v6 ship — apply the idempotent
+                # ALTER so stores created from the older v6 schema
+                # gain the column without a version bump.
+                try:
+                    conn.execute(
+                        "ALTER TABLE override_grants ADD COLUMN state "
+                        "TEXT NOT NULL DEFAULT 'active'",
+                    )
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e).lower():
+                        raise
                 return
             if current in (1, 2, 3, 4, 5):
                 if current == 1:

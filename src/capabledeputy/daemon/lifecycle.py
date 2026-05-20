@@ -159,6 +159,7 @@ def _report_admission(manager: UpstreamManager) -> None:
 
 def build_policy_context_from_configs(
     configs_dir: Path | None = None,
+    state_db_path: Path | None = None,
 ) -> Any:
     """Build a PolicyContext bus from the operator-curated configs.
 
@@ -207,11 +208,18 @@ def build_policy_context_from_configs(
     # disk-backed read here. Persistence layered on top later.
     from capabledeputy.patterns.reference_handle import ReferenceHandleStore
 
+    # If a state_db_path is provided, the override grant store
+    # persists to override_grants table and reloads on construction.
+    grant_store = (
+        OverrideGrantStore(db_path=state_db_path)
+        if state_db_path is not None
+        else OverrideGrantStore()
+    )
     return PolicyContext(
         rules_v2=rules_v2,
         bindings=bindings,
         override_policies=overrides,
-        override_grants=OverrideGrantStore(),
+        override_grants=grant_store,
         handle_store=ReferenceHandleStore(),
         envelope_set=envelope_set,
         risk_preference=risk_pref.value,
@@ -234,8 +242,15 @@ async def run_daemon(
     load_v09_configs()
     # 003 runtime activation — build the typed PolicyContext from the
     # loaded configs and inject it into the App. Without this, the
-    # v2 four-axis pipeline stays dormant at runtime.
-    policy_context, purposes_registry = build_policy_context_from_configs()
+    # v2 four-axis pipeline stays dormant at runtime. The
+    # OverrideGrantStore persists to the session store DB so grants
+    # survive daemon restarts.
+    from capabledeputy.paths import default_state_db_path
+
+    effective_db = state_db_path or default_state_db_path()
+    policy_context, purposes_registry = build_policy_context_from_configs(
+        state_db_path=effective_db,
+    )
 
     # Populate ANTHROPIC_API_KEY from CLAUDEAPI.KEY in the cwd if it isn't
     # already set, so users don't need to re-export the env var each shell.

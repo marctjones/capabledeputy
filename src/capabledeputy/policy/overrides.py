@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 import yaml
@@ -339,16 +340,149 @@ def use_override(
 class OverrideGrantStore:
     """In-memory grant store. Holds grants by id and indexes by
     (session_id, action_kind, target) so the engine.decide() chokepoint
-    can short-circuit a matching active grant into ALLOW. Persistence
-    (override_grants table) lands in a follow-up; this in-memory layer
-    is enough for the demo path and tests.
+    can short-circuit a matching active grant into ALLOW.
+
+    Optional persistence: when constructed with `db_path`, grants are
+    serialized to the `override_grants` SQLite table on every add/
+    update. The store eagerly loads the table on init() so a daemon
+    restart preserves all ACTIVE grants. Use the bare in-memory
+    constructor for tests and demos that don't need persistence.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, db_path: Any = None) -> None:
         self._by_id: dict[UUID, OverrideGrant] = {}
+        self._db_path = db_path
+        if db_path is not None:
+            self._load_from_db()
+
+    def _connect(self) -> Any:
+        import sqlite3
+
+        conn = sqlite3.connect(str(self._db_path), isolation_level=None)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _load_from_db(self) -> None:
+        """Eager load every persisted grant into memory. Called from
+        __init__ when db_path is set. Idempotent.
+
+        Defensive: if the table or `state` column doesn't exist yet
+        (daemon constructed the store before app.startup() ran the
+        schema migration), treat as 'no grants to load' and continue.
+        The first add() will create the table via the schema's
+        IF NOT EXISTS + the v6 ALTER fixup."""
+        import json
+        import sqlite3
+        from contextlib import closing
+
+        with closing(self._connect()) as conn:
+            try:
+                cursor = conn.execute(
+                    "SELECT id, session_id, action_kind, target, "
+                    "target_category_tier, hard_floor_crossed, invoker_principal, "
+                    "attester_principal, override_policy_at_grant, friction_level, "
+                    "audit_id, expires_at, consumed_at, state FROM override_grants",
+                )
+            except sqlite3.OperationalError:
+                # Table or column not yet present — nothing to load.
+                return
+            for row in cursor.fetchall():
+                entry_raw = json.loads(row["override_policy_at_grant"])
+                entry = OverridePolicyEntry(
+                    floor=HardFloor(entry_raw["floor"]),
+                    policy=OverridePolicy(entry_raw["policy"]),
+                    authorized_principal_ids=frozenset(
+                        entry_raw.get("authorized_principal_ids", []),
+                    ),
+                    attester_principal_ids=frozenset(
+                        entry_raw.get("attester_principal_ids", []),
+                    ),
+                    expiry_seconds=int(entry_raw.get("expiry_seconds", 300)),
+                    friction_level=(
+                        FrictionLevel(entry_raw["friction_level"])
+                        if entry_raw.get("friction_level")
+                        else None
+                    ),
+                )
+                tier_raw = json.loads(row["target_category_tier"])
+                grant = OverrideGrant(
+                    id=UUID(row["id"]),
+                    session_id=UUID(row["session_id"]),
+                    action_kind=CapabilityKind(row["action_kind"]),
+                    target=row["target"],
+                    target_category_tier=(tier_raw[0], tier_raw[1]),
+                    hard_floor_crossed=HardFloor(row["hard_floor_crossed"]),
+                    invoker_principal=row["invoker_principal"],
+                    attester_principal=row["attester_principal"],
+                    policy_at_grant=entry,
+                    friction_level=FrictionLevel(row["friction_level"]),
+                    state=GrantState(row["state"]),
+                    expires_at=datetime.fromisoformat(row["expires_at"]),
+                    consumed_at=(
+                        datetime.fromisoformat(row["consumed_at"]) if row["consumed_at"] else None
+                    ),
+                    audit_id=UUID(row["audit_id"]),
+                )
+                self._by_id[grant.id] = grant
+
+    def _persist(self, grant: OverrideGrant) -> None:
+        """UPSERT a grant into the override_grants table. No-op when
+        no db_path was wired."""
+        if self._db_path is None:
+            return
+        import json
+        from contextlib import closing
+
+        entry_payload = {
+            "floor": grant.policy_at_grant.floor.value,
+            "policy": grant.policy_at_grant.policy.value,
+            "authorized_principal_ids": sorted(
+                grant.policy_at_grant.authorized_principal_ids,
+            ),
+            "attester_principal_ids": sorted(
+                grant.policy_at_grant.attester_principal_ids,
+            ),
+            "expiry_seconds": grant.policy_at_grant.expiry_seconds,
+            "friction_level": (
+                grant.policy_at_grant.friction_level.value
+                if grant.policy_at_grant.friction_level is not None
+                else None
+            ),
+        }
+        tier_payload = list(grant.target_category_tier)
+        with closing(self._connect()) as conn:
+            conn.execute(
+                "INSERT INTO override_grants ("
+                "id, session_id, action_kind, target, target_category_tier, "
+                "hard_floor_crossed, invoker_principal, attester_principal, "
+                "override_policy_at_grant, friction_level, audit_id, "
+                "expires_at, consumed_at, state"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "attester_principal = excluded.attester_principal, "
+                "consumed_at = excluded.consumed_at, "
+                "state = excluded.state",
+                (
+                    str(grant.id),
+                    str(grant.session_id),
+                    grant.action_kind.value,
+                    grant.target,
+                    json.dumps(tier_payload),
+                    grant.hard_floor_crossed.value,
+                    grant.invoker_principal,
+                    grant.attester_principal,
+                    json.dumps(entry_payload),
+                    grant.friction_level.value,
+                    str(grant.audit_id),
+                    grant.expires_at.isoformat(),
+                    grant.consumed_at.isoformat() if grant.consumed_at else None,
+                    grant.state.value,
+                ),
+            )
 
     def add(self, grant: OverrideGrant) -> None:
         self._by_id[grant.id] = grant
+        self._persist(grant)
 
     def get(self, grant_id: UUID) -> OverrideGrant | None:
         return self._by_id.get(grant_id)
@@ -356,6 +490,7 @@ class OverrideGrantStore:
     def update(self, grant: OverrideGrant) -> None:
         if grant.id in self._by_id:
             self._by_id[grant.id] = grant
+            self._persist(grant)
 
     def list_all(self) -> list[OverrideGrant]:
         return list(self._by_id.values())

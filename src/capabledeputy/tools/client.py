@@ -61,6 +61,8 @@ class PolicyContext:
     clearance_max_tier: Tier | None = None
     integrity_floor_level: str | None = None
     residual_risk_thresholds: ResidualRiskThresholds | None = None
+    risk_register: Any = None
+    sandbox_actuator_wired: bool = False
 
 
 def build_policy_decided_payload(
@@ -388,6 +390,9 @@ class LabeledToolClient:
             kwargs["clearance_max_tier"] = self._policy_context.clearance_max_tier
         if self._policy_context.integrity_floor_level is not None:
             kwargs["integrity_floor_level"] = self._policy_context.integrity_floor_level
+        if self._policy_context.risk_register is not None:
+            kwargs["risk_register"] = self._policy_context.risk_register
+        kwargs["sandbox_actuator_wired"] = self._policy_context.sandbox_actuator_wired
         return kwargs
 
     async def _bind_reference_handles(
