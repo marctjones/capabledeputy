@@ -336,6 +336,58 @@ def use_override(
 # --- YAML loader ----------------------------------------------------
 
 
+class OverrideGrantStore:
+    """In-memory grant store. Holds grants by id and indexes by
+    (session_id, action_kind, target) so the engine.decide() chokepoint
+    can short-circuit a matching active grant into ALLOW. Persistence
+    (override_grants table) lands in a follow-up; this in-memory layer
+    is enough for the demo path and tests.
+    """
+
+    def __init__(self) -> None:
+        self._by_id: dict[UUID, OverrideGrant] = {}
+
+    def add(self, grant: OverrideGrant) -> None:
+        self._by_id[grant.id] = grant
+
+    def get(self, grant_id: UUID) -> OverrideGrant | None:
+        return self._by_id.get(grant_id)
+
+    def update(self, grant: OverrideGrant) -> None:
+        if grant.id in self._by_id:
+            self._by_id[grant.id] = grant
+
+    def list_all(self) -> list[OverrideGrant]:
+        return list(self._by_id.values())
+
+    def find_active(
+        self,
+        *,
+        session_id: UUID,
+        action_kind: CapabilityKind,
+        target: str,
+        now: datetime,
+    ) -> OverrideGrant | None:
+        """Return an ACTIVE, not-expired, not-consumed grant matching
+        (session_id, action_kind, target). Multiple matches would be
+        a bug; we return the first by id-order for determinism.
+        """
+        candidates = sorted(
+            (
+                g
+                for g in self._by_id.values()
+                if g.session_id == session_id
+                and g.action_kind == action_kind
+                and g.target == target
+                and g.state is GrantState.ACTIVE
+                and not g.is_expired(now)
+                and g.consumed_at is None
+            ),
+            key=lambda g: str(g.id),
+        )
+        return candidates[0] if candidates else None
+
+
 def load(path: Path) -> OverridePolicies:
     """Load configs/override_policy.yaml. Fail-closed on missing/
     unparseable. Empty `policies:` permitted — every override request

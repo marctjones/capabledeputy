@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID
 
 from capabledeputy.policy.actions import Action
 from capabledeputy.policy.capabilities import (
@@ -26,6 +28,7 @@ from capabledeputy.policy.decision_rules import (
 )
 from capabledeputy.policy.decision_rules import evaluate as _evaluate_v2
 from capabledeputy.policy.labels import AxisA, AxisB, AxisD, Label
+from capabledeputy.policy.overrides import OverrideGrantStore, use_override
 from capabledeputy.policy.rules import CONFLICT_RULES, ConflictRule, Decision
 
 _EGRESS_LABEL_FOR_KIND: dict[CapabilityKind, Label] = {
@@ -68,8 +71,13 @@ class PolicyDecision:
 
 _LEGACY_RANK: dict[Decision, int] = {
     Decision.DENY: 0,
-    Decision.REQUIRE_APPROVAL: 1,
-    Decision.ALLOW: 2,
+    # OVERRIDE_REQUIRED sits between DENY and REQUIRE_APPROVAL: the
+    # operator's override path can resolve it; ordinary approval
+    # cannot. Composition ratchets stricter, so OVERRIDE_REQUIRED
+    # wins over REQUIRE_APPROVAL and ALLOW.
+    Decision.OVERRIDE_REQUIRED: 1,
+    Decision.REQUIRE_APPROVAL: 2,
+    Decision.ALLOW: 3,
 }
 
 # V2 RuleOutcome → legacy Decision mapping. SUGGEST collapses to
@@ -79,6 +87,7 @@ _LEGACY_RANK: dict[Decision, int] = {
 # a human-ratified rule (evaluate() guarantees this — FR-014).
 _V2_TO_LEGACY: dict[RuleOutcome, Decision] = {
     RuleOutcome.DENY: Decision.DENY,
+    RuleOutcome.OVERRIDE_REQUIRED: Decision.OVERRIDE_REQUIRED,
     RuleOutcome.REQUIRE_APPROVAL: Decision.REQUIRE_APPROVAL,
     RuleOutcome.SUGGEST: Decision.REQUIRE_APPROVAL,
     RuleOutcome.AUTO: Decision.ALLOW,
@@ -314,6 +323,8 @@ def decide(
     rules_v2: DecisionRules | None = None,
     default_v2_outcome: RuleOutcome = RuleOutcome.SUGGEST,
     relax_inputs: tuple[RelaxInput, ...] = (),
+    override_grants: OverrideGrantStore | None = None,
+    session_id: Any = None,
 ) -> PolicyDecision:
     """Public chokepoint. Runs the legacy decision path, then — when
     the v2 axis inputs and rule set are provided — composes the v2
@@ -328,6 +339,39 @@ def decide(
     the refused inputs are surfaced on `PolicyDecision.refused_relax_inputs`
     so the caller can emit a `RELAXATION_REFUSED` audit event.
     """
+    # T079 override grant short-circuit. If an ACTIVE, not-expired,
+    # not-consumed grant matches (session_id, action.kind, action.target),
+    # mint the override-derived capability and short-circuit to ALLOW.
+    # This is the only path that produces origin=OVERRIDE_GRANTED at
+    # decide() time (FR-038).
+    if override_grants is not None and session_id is not None and isinstance(session_id, UUID):
+        eff_now = now if now is not None else datetime.now(UTC)
+        active = override_grants.find_active(
+            session_id=session_id,
+            action_kind=action.kind,
+            target=action.target,
+            now=eff_now,
+        )
+        if active is not None:
+            mint_result = use_override(
+                active,
+                action_kind=action.kind,
+                target=action.target,
+                now=eff_now,
+            )
+            if isinstance(mint_result, Capability):
+                return PolicyDecision(
+                    decision=Decision.ALLOW,
+                    rule="override-grant-active",
+                    reason=(
+                        f"override grant {active.id} authorizes "
+                        f"{action.kind.value}({action.target}) until "
+                        f"{active.expires_at.isoformat()}"
+                    ),
+                    matched_capability=mint_result,
+                    effective_labels=label_set,
+                )
+
     if relax_inputs:
         inspected: RelaxInspectionResult = inspect_relax_inputs(relax_inputs)
         if inspected.has_refusal:

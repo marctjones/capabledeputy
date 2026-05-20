@@ -29,7 +29,7 @@ from capabledeputy.policy.bindings import BindingSet
 from capabledeputy.policy.decision_rules import DecisionRules
 from capabledeputy.policy.engine import PolicyDecision, decide
 from capabledeputy.policy.labels import Label
-from capabledeputy.policy.overrides import OverridePolicies
+from capabledeputy.policy.overrides import OverrideGrantStore, OverridePolicies
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry
@@ -47,6 +47,7 @@ class PolicyContext:
     rules_v2: DecisionRules | None = None
     bindings: BindingSet | None = None
     override_policies: OverridePolicies | None = None
+    override_grants: OverrideGrantStore | None = None
     handle_store: ReferenceHandleStore | None = None
 
 
@@ -337,18 +338,23 @@ class LabeledToolClient:
     ) -> dict[str, Any]:
         """Build the kw-only v2 args for engine.decide() from the
         session axes + tool definition + policy context. When the
-        policy context is absent OR the tool doesn't declare an
-        effect_class, returns an empty dict (the v2 leg stays
-        dormant; legacy behavior preserved)."""
-        if self._policy_context is None or tool.effect_class is None:
+        policy context is absent, returns an empty dict (the v2 leg
+        stays dormant; legacy behavior preserved). When override_grants
+        is present, threads it + session_id so an active grant
+        short-circuits to ALLOW (Demo #2 / T079)."""
+        if self._policy_context is None:
             return {}
-        return {
-            "axis_a": session.axis_a,
-            "axis_b": session.axis_b,
-            "axis_d": session.axis_d,
-            "effect_class": tool.effect_class,
-            "rules_v2": self._policy_context.rules_v2,
-        }
+        kwargs: dict[str, Any] = {}
+        if tool.effect_class is not None:
+            kwargs["axis_a"] = session.axis_a
+            kwargs["axis_b"] = session.axis_b
+            kwargs["axis_d"] = session.axis_d
+            kwargs["effect_class"] = tool.effect_class
+            kwargs["rules_v2"] = self._policy_context.rules_v2
+        if self._policy_context.override_grants is not None:
+            kwargs["override_grants"] = self._policy_context.override_grants
+            kwargs["session_id"] = session.id
+        return kwargs
 
     async def _bind_reference_handles(
         self,

@@ -12,6 +12,7 @@ from capabledeputy.cli.approval import approval_app
 from capabledeputy.cli.audit import audit_app, watch_command
 from capabledeputy.cli.audit_cmd import storage_shape_command
 from capabledeputy.cli.chat import chat_command, demo_app
+from capabledeputy.cli.override_cmd import override_app
 from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.session import session_app
 from capabledeputy.cli.tool import tool_app
@@ -35,6 +36,7 @@ app.add_typer(audit_app, name="audit")
 app.add_typer(policy_app, name="policy")
 app.add_typer(tool_app, name="tool")
 app.add_typer(approval_app, name="approval")
+app.add_typer(override_app, name="override")
 app.add_typer(demo_app, name="demo")
 app.command("chat")(chat_command)
 app.command("watch")(watch_command)

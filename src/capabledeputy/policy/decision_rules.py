@@ -40,6 +40,7 @@ class RuleOutcome(StrEnum):
     """
 
     DENY = "deny"
+    OVERRIDE_REQUIRED = "override-required"
     REQUIRE_APPROVAL = "require-approval"
     SUGGEST = "suggest"
     AUTO = "auto"
@@ -47,9 +48,14 @@ class RuleOutcome(StrEnum):
 
 _OUTCOME_RANK: dict[RuleOutcome, int] = {
     RuleOutcome.DENY: 0,
-    RuleOutcome.REQUIRE_APPROVAL: 1,
-    RuleOutcome.SUGGEST: 2,
-    RuleOutcome.AUTO: 3,
+    # OVERRIDE_REQUIRED sits between DENY and REQUIRE_APPROVAL: it's
+    # more restrictive than ordinary approval (only the override path
+    # can resolve it) but less restrictive than outright deny (the
+    # operator CAN authorize via dual-control etc.).
+    RuleOutcome.OVERRIDE_REQUIRED: 1,
+    RuleOutcome.REQUIRE_APPROVAL: 2,
+    RuleOutcome.SUGGEST: 3,
+    RuleOutcome.AUTO: 4,
 }
 
 
