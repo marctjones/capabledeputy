@@ -93,8 +93,8 @@ or escape the prior-use kill-set of its ancestor.
 
 ## Phase 5: US3 — Bounded delegation depth (Priority: P3)
 
-- [ ] T029 [US3] Enforce `parent.depth + 1 ≤ depth_limit` in the `derive_delegated_capability` precondition order (before clamps), limit threaded from T003, refusal `depth-exceeded` independent of other dimensions in src/capabledeputy/policy/capabilities.py and src/capabledeputy/session/graph.py
-- [ ] T030 [P] [US3] Tests: chain of exactly N attenuating hops succeed; N+1 ⇒ `depth-exceeded` even when a valid attenuation; reconfiguring the limit governs only new delegations, existing deeper chains stay valid until independently revoked/expired — SC-004 — in tests/test_session_graph.py
+- [X] T029 [US3] Enforce `parent.depth + 1 ≤ depth_limit` in the `derive_delegated_capability` precondition order (before clamps), limit threaded from T003, refusal `depth-exceeded` independent of other dimensions in src/capabledeputy/policy/capabilities.py and src/capabledeputy/session/graph.py
+- [X] T030 [P] [US3] Tests: chain of exactly N attenuating hops succeed; N+1 ⇒ `depth-exceeded` even when a valid attenuation; reconfiguring the limit governs only new delegations, existing deeper chains stay valid until independently revoked/expired — SC-004 — in tests/test_session_graph.py
 
 ---
 
