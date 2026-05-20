@@ -286,7 +286,48 @@ by Default, NON-NEGOTIABLE) and VII (Secure-by-Reduction; Owned TCB).
 
 Substrate ports (`SandboxActuator`, `AdmissionLabeler`) and a jailed
 tiered EXECUTE tool (WI-5) are deferred; OpenShell/CodeGuard are
-leveraged only behind those ports (Constitution VII). The v0.9
-labeling-framework design is captured in `docs/design-v0.9-labeling.md`
-(not yet `/speckit-specify`'d — active feature is delegation chains,
-`specs/002-`).
+leveraged only behind those ports (Constitution VII).
+
+## v0.8 — Capability delegation chains  ·  **PARTIAL** (US1 + US3 shipped; US2 deferred)
+
+Spec `specs/002-capability-delegation-chains/`. Adds engine-derived
+attenuated capability delegation with monotonic-narrowing enforcement,
+bounded depth, and LLM-isolated derivation.
+
+| Item | Status | Commit |
+|---|---|---|
+| Phases 1–2: audit-event types, `DelegationRequest`/`Refusal`, `parent_audit_id`/`depth` on `Capability`, `pattern_is_subset` (T001–T010) | DONE | `cd0c585` |
+| US1 (T011–T019): `derive_delegated_capability` clamp-or-refuse across six dims + FR-016 non-enum fields (`revoked_by`/`expiry`/`origin`); `SessionGraph.delegate`; `session.delegate` RPC + CLI; LLM-isolation invariant test | DONE | `951b4ce` |
+| US3 (T029–T030): depth-limit precondition + tests (shipped silently as part of T011's `depth_limit` parameter) | DONE | `951b4ce` |
+| US2 (T020–T028): cascade revocation across the live graph; pooled rate fan-out (FR-015); `capability.revoke` RPC/CLI; pending-approval invalidation | DEFERRED | — |
+| Polish (T031–T035): e2e quickstart test, determinism test, doc cross-refs, full gate run | DEFERRED | — |
+
+True 002 status: 21/35 tasks done. US2 was deferred to keep 003 (v0.9
+labeling) ahead in priority order — the cascade work is well-defined
+and can land any time without blocking 003.
+
+## v0.9 — Labeling framework  ·  **DESIGNED** (implementation pending)
+
+Spec `specs/003-labeling-framework/`. Four-axis labeling
+(category/provenance/effect/decision-context) with deterministic
+sensitivity-resolution layer, named Source/Location Label Bindings,
+unified Reversibility & Mutability, Risk-Preference + Outcome
+Envelopes, Override Policy distinct from approval, Relationship
+Groups, Expectation Bindings, EXECUTE tiering, isolation posture, and
+Reference Handle (Pattern ③). 117 tasks across 9 phases; US1 (orthogonal
+labels + deterministic resolution) is the MVP. **Out of scope** —
+deferred to spec 004 substrate track: `SandboxActuator` impl,
+`EXECUTE.sandbox` jailed tool, provider source adapters, versioned-write
+actuator impls.
+
+| Item | Status | Commit |
+|---|---|---|
+| Spec (`/speckit-specify` + two clarify passes + Principle-VIII gap close) | DONE | `10633e3` → `a50272d` |
+| Plan + Phase 0 research + Phase 1 data-model/contracts/quickstart | DONE | `d6b60c1` |
+| Tasks (117 tasks, 9 phases, US1=MVP) | DONE | `d2190b2` |
+| Analyze remediation (6 edits: 2 MEDIUM, 4 LOW) | DONE | `6025fc1` |
+| Implementation (Phase 1 Setup → Phase 9 Polish, T001–T121) | PLANNED | — |
+
+The v0.9 labeling-framework design is captured in
+`docs/design-v0.9-labeling.md` (the historical design dump) and is now
+fully formalized in the 003 spec set.
