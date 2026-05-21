@@ -42,6 +42,28 @@ from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry
 
 
+def _replace_tool_result(
+    original: Any,
+    *,
+    output: Any = None,
+    additional_labels: frozenset[Label] | None = None,
+) -> Any:
+    """Build a new ToolResult preserving fields that weren't overridden.
+
+    Spec 004 P0 declassifier wire-in uses this to swap the tool's
+    output for the declassifier's transformed value while keeping
+    everything else intact.
+    """
+    from dataclasses import replace as _dc_replace
+
+    kwargs: dict[str, Any] = {}
+    if output is not None:
+        kwargs["output"] = output
+    if additional_labels is not None:
+        kwargs["additional_labels"] = additional_labels
+    return _dc_replace(original, **kwargs)
+
+
 @dataclass(frozen=True)
 class PolicyContext:
     """Operator-curated context the dispatcher needs to invoke the v2
@@ -74,6 +96,14 @@ class PolicyContext:
     # Foundation for operator-authored decision refinement (Starlark
     # primitives, OPA consultation, etc.).
     decision_inspectors: tuple[Any, ...] = ()
+    # DeclassifyingTransformers run on tool output AFTER inspectors,
+    # BEFORE label propagation. Each transforms the value and emits a
+    # structural-proof. The session sees the transformed value with
+    # fewer labels attached (declassifier reduces per-result label
+    # propagation; session label_set still grows monotonically).
+    # Operator-declared order; sequential composition (each sees the
+    # previous one's output).
+    declassifiers: tuple[Any, ...] = ()
     # 003 runtime activation — Profiles registry keyed by profile_id.
     # When a session has clearance_profile_id set, the dispatcher
     # derives per-session clearance_max_tier (FR-008 BLP) +
@@ -402,7 +432,35 @@ class LabeledToolClient:
         if self._policy_context is not None and self._policy_context.inspectors:
             await self._apply_inspectors(session, result.output)
 
-        labels_to_add = tool.inherent_labels | result.additional_labels
+        # Spec 004 P0 — DeclassifyingTransformer chain hook. Runs
+        # AFTER inspectors so the declassifier sees any value the
+        # inspector tainted. Each declassifier transforms the value
+        # and emits a structural-proof. Crucially: declassifiers
+        # reduce the PER-RESULT inherent_labels propagated to the
+        # session, not the session's existing label_set (session
+        # label growth stays monotonic — declassifier just adds
+        # FEWER labels for this particular result).
+        if self._policy_context is not None and self._policy_context.declassifiers:
+            new_output, removed_labels = await self._apply_declassifiers(
+                session_id,
+                session,
+                tool_name,
+                result.output,
+                tool.inherent_labels | result.additional_labels,
+            )
+            # Replace output with transformed value; subtract any
+            # labels the declassifier "lowered away" from the set
+            # that propagates this turn.
+            result = _replace_tool_result(
+                result,
+                output=new_output,
+                additional_labels=result.additional_labels - removed_labels,
+            )
+            tool_inherent_for_propagation = tool.inherent_labels - removed_labels
+        else:
+            tool_inherent_for_propagation = tool.inherent_labels
+
+        labels_to_add = tool_inherent_for_propagation | result.additional_labels
         labels_added: frozenset[Label] = frozenset()
         if labels_to_add:
             before = session.label_set
@@ -508,6 +566,97 @@ class LabeledToolClient:
             ),
         )
         return adjusted
+
+    async def _apply_declassifiers(
+        self,
+        session_id: Any,
+        session: Any,
+        tool_name: str,
+        value: Any,
+        candidate_labels: frozenset[Label],
+    ) -> tuple[Any, frozenset[Label]]:
+        """Run the declassifier chain on tool output. Returns
+        (transformed_value, labels_to_remove_from_propagation).
+
+        Each declassifier that fires:
+          - Transforms the value (output becomes the chain's tail value)
+          - Identifies labels to subtract from per-result propagation
+            based on its `lower_axis_*` fields
+          - Emits a DECLASSIFIER_APPLIED audit event with the diff +
+            structural_proof_kind
+
+        The session's label_set is NOT lowered — declassifier only
+        reduces the labels propagated by THIS particular result. The
+        chokepoint composition stays monotone.
+        """
+        if self._policy_context is None or not self._policy_context.declassifiers:
+            return value, frozenset()
+
+        from capabledeputy.substrate.declassifier_port import (
+            apply_declassifier_chain,
+        )
+
+        try:
+            final_value, applied = apply_declassifier_chain(
+                tuple(self._policy_context.declassifiers),
+                value=value,
+                current_axis_a=getattr(session, "axis_a", None),
+                current_axis_b=getattr(session, "axis_b", None),
+                context={"tool": tool_name},
+            )
+        except Exception as e:
+            # A buggy declassifier must not crash the chokepoint —
+            # treat as no-op and surface the failure for the operator.
+            await self._audit.write(
+                Event(
+                    event_type=EventType.DECLASSIFIER_APPLIED,
+                    session_id=session_id,
+                    payload={
+                        "tool": tool_name,
+                        "error": str(e),
+                    },
+                ),
+            )
+            return value, frozenset()
+
+        # Emit one DECLASSIFIER_APPLIED per declassifier that fired.
+        # Auditor sees the structural proof for each step.
+        removed_labels: set[Label] = set()
+        for result in applied:
+            await self._audit.write(
+                Event(
+                    event_type=EventType.DECLASSIFIER_APPLIED,
+                    session_id=session_id,
+                    payload={
+                        "tool": tool_name,
+                        "structural_proof_kind": result.structural_proof_kind,
+                        "audit_diff": result.audit_diff,
+                        "lower_axis_a_categories": list(result.lower_axis_a_categories),
+                        "lower_axis_b_level": result.lower_axis_b_level,
+                    },
+                ),
+            )
+            # Identify per-result Label members to drop from propagation
+            # based on the declassifier's signals. The mapping is
+            # operator-curated; here we apply a conservative default:
+            # if a declassifier lowers pii to 'none', drop PII-bearing
+            # labels from this result's propagation. Operators with
+            # richer label hierarchies wire custom logic via the
+            # declassifier's own implementation.
+            for entry in result.lower_axis_a_categories:
+                cat = entry.get("category", "").lower()
+                to_tier = entry.get("to_tier", "").lower()
+                if to_tier == "none":
+                    # Drop labels whose value contains the category name
+                    for label in candidate_labels:
+                        if cat and cat in label.value.lower():
+                            removed_labels.add(label)
+            if result.lower_axis_b_level == "trusted":
+                for label in candidate_labels:
+                    if "untrusted" in label.value.lower():
+                        removed_labels.add(label)
+
+        return final_value, frozenset(removed_labels)
 
     async def _apply_inspectors(
         self,
