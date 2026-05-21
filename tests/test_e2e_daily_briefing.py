@@ -86,8 +86,12 @@ async def test_daily_briefing_via_schema_extraction(tmp_path: Path) -> None:
     # Pre-populated by an out-of-band sync job — the agent never reads
     # this text directly. Note the labels: PERSONAL (calendar) +
     # UNTRUSTED_EXTERNAL (inbox content).
+    # Sentinel header BRIEF_SOURCE_RAW_BLOCK is intentionally unusual so
+    # the assertion below can detect raw-leak distinctly from any
+    # naturally-occurring "CALENDAR" string (e.g. the system prompt
+    # listing valid CapabilityKinds).
     raw_source = (
-        "CALENDAR\n"
+        "BRIEF_SOURCE_RAW_BLOCK\n"
         "  09:00 standup\n"
         "  10:00 1:1 with Maria\n"
         "  14:00 design review\n"
@@ -129,7 +133,11 @@ async def test_daily_briefing_via_schema_extraction(tmp_path: Path) -> None:
     assert "1:1 with Maria" in serialized  # came in via the schema field
     assert "alice@example.com" not in serialized  # did NOT leak
     assert "contractor@example.com" not in serialized  # did NOT leak
-    assert "CALENDAR" not in serialized  # raw block didn't leak
+    # The unique sentinel proves the raw block didn't leak. (Plain
+    # "CALENDAR" would also appear in the system prompt's
+    # CapabilityKind list — so we use a tagged sentinel to keep this
+    # assertion targeted at the actual security property.)
+    assert "BRIEF_SOURCE_RAW_BLOCK" not in serialized
 
     # The session's label state — the extract path doesn't propagate
     # the source's labels because the schema is the declassification.

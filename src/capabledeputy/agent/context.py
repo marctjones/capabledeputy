@@ -72,6 +72,18 @@ def _session_dial_str(session: Session) -> str:
     return session.risk_preference_at_spawn
 
 
+def _session_caps_str(session: Session) -> str:
+    """Format the session's currently-granted capabilities. Empty set
+    means the agent has zero permissions — the LLM context tells it to
+    surface that to the user rather than fabricate."""
+    if not session.capability_set:
+        return "(none — agent has zero capabilities; tell user to /grant)"
+    parts = []
+    for cap in sorted(session.capability_set, key=lambda c: (c.kind.value, c.pattern)):
+        parts.append(f"{cap.kind.value}({cap.pattern})")
+    return ", ".join(parts)
+
+
 def _likely_outcome_for_tool(
     tool: ToolDefinition,
     label_set: frozenset[Label],
@@ -297,6 +309,7 @@ When a tool call comes back REQUIRE_APPROVAL:
 - Profile: {profile_str}
 - Risk dial: {dial_str}
 - Current labels: {labels_str}
+- Capabilities held by this session: {_session_caps_str(session)}
 
 # Available Tools
 
@@ -315,6 +328,22 @@ When a tool is denied:
 
 When you have completed the task, respond with a final answer and no
 tool calls. Be concise and honest about what you did and didn't do.
+
+# Capability Kinds (VALID values for `/grant <KIND>`)
+
+The ONLY valid CapabilityKind values are listed below. NEVER suggest
+or invent any other kind — `/grant INBOX_READ`, `/grant EMAIL_READ`,
+`/grant ANY_*` do not exist and will be refused. When telling the
+user to /grant something, use one of these exact strings:
+
+  READ_FS, WRITE_FS, CREATE_FS, MODIFY_FS, DELETE_FS,
+  SEND_EMAIL, WEB_FETCH,
+  CALENDAR_READ, CREATE_CAL, MODIFY_CAL, DELETE_CAL,
+  QUEUE_PURCHASE
+
+For example, to give the agent read access to email/inbox tools, use
+`/grant READ_FS *` (because IMAP and inbox tools are mapped to
+READ_FS in the operator's config), NOT some fictional INBOX_READ.
 """
 
     # Compute deterministic hash

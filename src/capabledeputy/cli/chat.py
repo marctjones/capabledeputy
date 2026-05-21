@@ -1217,36 +1217,109 @@ def chat_command(
             ),
         ),
     ] = False,
+    no_default_caps: Annotated[
+        bool,
+        typer.Option(
+            "--no-default-caps",
+            help=(
+                "When auto-creating a session, do NOT pre-grant the default "
+                "read-only capabilities. Operator must /grant explicitly. "
+                "(Default: auto-grant READ_FS, CALENDAR_READ, WEB_FETCH "
+                "wildcards so the agent can actually do work.)"
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Interactive REPL against a session.
 
     Run without arguments to do EVERYTHING:
       - Auto-start the daemon if it isn't already running (background)
       - Auto-create a fresh session
+      - Pre-grant default read-only caps (READ_FS, CALENDAR_READ,
+        WEB_FETCH wildcards) so the agent can actually do work
       - Drop into the chat REPL
 
       capdep chat                       # one-command experience
       capdep chat --config <path.yaml>  # auto-start daemon with this config
-      capdep chat <session-id>          # resume existing session
+      capdep chat <session-id>          # resume existing session (no auto-grant)
       capdep chat --new                 # force fresh session
       capdep chat --intent "X"          # custom intent for new session
       capdep chat --no-autostart        # fail if daemon not running
+      capdep chat --no-default-caps     # don't auto-grant; use /grant manually
 
-    Daemon stdout/stderr goes to /tmp/capdep-daemon-*.log when
-    auto-started, so failures are debuggable.
+    The chokepoint still enforces every label / Brewer-Nash / expiry /
+    rate rule — the default caps just mean "kinds of action allowed
+    for this session" without per-call /grant friction.
     """
     _ensure_daemon(autostart=not no_autostart, config=config)
 
     effective_id: str | None = None if new else session_id
+    auto_created = False
     if effective_id is None:
         params: dict[str, Any] = {"intent": intent or "chat"}
         s = _call("session.new", params)
         effective_id = str(s["id"])
+        auto_created = True
         console.print(
             f"[green]new session:[/green] {effective_id}  intent={intent or 'chat'}",
         )
 
+    # Pre-grant useful read-only caps on auto-created sessions so the
+    # agent doesn't fail at "I have no tools available" — the user
+    # shouldn't have to chant /grant for safe reads.
+    if auto_created and not no_default_caps:
+        _grant_default_read_caps(effective_id)
+
     _repl_loop(effective_id)
+
+
+def _grant_default_read_caps(session_id: str) -> None:
+    """Grant the safe, read-only capability set every personal-assistant
+    session needs: filesystem reads, calendar reads, web fetches, and
+    common modify-style operations.
+
+    The chokepoint still enforces label propagation, Brewer-Nash, and
+    every other rule on top — these caps only mean "this kind of
+    action is generally permitted for this session", not "let
+    everything through".
+    """
+    from uuid import uuid4
+
+    default_caps = (
+        ("READ_FS", "*"),
+        ("CALENDAR_READ", "*"),
+        ("WEB_FETCH", "*"),
+        ("CREATE_FS", "/tmp/*"),  # scratch writes
+    )
+    granted: list[str] = []
+    for kind, pattern in default_caps:
+        cap = {
+            "kind": kind,
+            "pattern": pattern,
+            "expiry": "session",
+            "origin": "user_approved",
+            "audit_id": str(uuid4()),
+            "allows_destructive": False,
+            "revoked_by": [],
+            "expires_at": None,
+            "rate_limit": None,
+        }
+        try:
+            _call(
+                "session.grant_capability",
+                {"session_id": session_id, "capability": cap},
+            )
+            granted.append(f"{kind}({pattern})")
+        except Exception as e:
+            err_console.print(
+                f"[yellow]could not pre-grant {kind}: {e}[/yellow]",
+            )
+    if granted:
+        console.print(
+            f"[dim]pre-granted caps: {', '.join(granted)}  "
+            "(use [bold]/grant[/bold] for more; "
+            "[bold]--no-default-caps[/bold] to disable)[/dim]",
+        )
 
 
 demo_app = typer.Typer(
