@@ -1,8 +1,39 @@
 # MCP Policy Integration — Deep Design
 
-**Companion to** [`mcp-protocol-fit.md`](./mcp-protocol-fit.md).
+**Companion to** [`mcp-protocol-fit.md`](./mcp-protocol-fit.md) and
+[`programmatic-policy-primitives.md`](./programmatic-policy-primitives.md).
 **Audience:** architect / implementer / operator deciding how third-
 party MCP servers map onto CapableDeputy's policy engine.
+
+**Note:** the consolidated reference for the policy language and
+the three programmatic primitives (RaiseOnlyInspector,
+DecisionInspector, DeclassifyingTransformer) lives in
+[`programmatic-policy-primitives.md`](./programmatic-policy-primitives.md).
+This document focuses on the MCP-specific design positions and
+references the primitives doc for primitive definitions.
+
+**Updated positions** (from later conversation rounds):
+
+1. **Sampling** is supported by default for operator-curated servers;
+   routed through the quarantined LLM is OPTIONAL (chokepoint mediates
+   tool calls anyway). `sampling.tools` requires per-server enable
+   with an exposed-tool-subset config.
+2. **Elicitation form mode** integrated into the existing approval
+   queue (new `ApprovalAction.ELICITATION_RESPOND`). URL mode for
+   OAuth flows with the flow-pattern-session model (§3.7).
+3. **Prompts** auto-forward for operator-curated servers when tagged
+   `io.joneslaw/capabilitydeputy/safe_to_forward`.
+4. **`resources/updated` push notifications** are proxied through the
+   chokepoint as synthesized `resources/read` actions — not refused.
+5. **Namespace** is `io.joneslaw/capabilitydeputy/*` (MCP `_meta`
+   reverse-DNS convention).
+6. **Incoming data is labeled (not approval-gated); outgoing data
+   is approval-gated based on session + per-arg payload labels.**
+   This is the asymmetry that makes MCP integration practical.
+7. **Inspectors, decision inspectors, and declassifiers** are the
+   three programmatic primitives. See
+   [`programmatic-policy-primitives.md`](./programmatic-policy-primitives.md)
+   for definitions, hook list, and composition rules.
 
 This document answers the question:
 **given the protocol-fit positions, how do labels, flow patterns,

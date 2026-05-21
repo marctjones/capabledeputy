@@ -175,3 +175,236 @@ DefenseClaw and NemoClaw integrate at two distinct layers:
 - T012 declarations on MCP-mapped tools are the operator's truth: a tool
   whose upstream behavior changes should have its mapping reviewed, not
   silently re-tagged.
+
+---
+
+# Addendum: Programmatic Policy Primitives + Hook System (U101-U200)
+
+**Added 2026-05-20** after the design rounds documented in
+`mcp-protocol-fit.md`, `mcp-policy-integration.md`, and
+`programmatic-policy-primitives.md`.
+
+These tasks extend the policy engine with three programmatic
+primitives (RaiseOnlyInspector, DecisionInspector,
+DeclassifyingTransformer), the named hook system, and the per-arg
+payload labeling mechanism. They are FOUNDATIONAL for the MCP work
+above — most of the MCP surfaces require these primitives to be
+mediated safely.
+
+**Estimated effort:** ~60 days total across the new tasks below.
+
+## Phase P0 — Foundational primitives (build first)
+
+These are the architectural changes that the rest of the spec
+depends on.
+
+### Primitive ports
+
+- [ ] **U101** Create `src/capabledeputy/policy/decision_inspector.py`
+  with `DecisionInspector` Protocol + `DecisionRelax` /
+  `DecisionTighten` dataclasses + `DecisionInspectorContext`.
+- [ ] **U102** Create `src/capabledeputy/policy/declassifier.py`
+  with `DeclassifyingTransformer` Protocol + `DeclassifyResult` +
+  `DeclassifyContext` dataclasses.
+- [ ] **U103** [P] Extend `policy/labels.py` with `lower_category`,
+  `lower_tier` helpers for declassifiers.
+
+### Hook execution machinery
+
+- [ ] **U104** Create `src/capabledeputy/hooks/registry.py`:
+  named-hook registry; primitives register per hook; engine looks
+  up at runtime.
+- [ ] **U105** Create `src/capabledeputy/hooks/loader.py`: load
+  `configs/hooks.yaml`.
+- [ ] **U106** [P] Wire ingress hooks: `on_tool_result`,
+  `on_resource_read`, `on_inbox_read`, `on_fs_read`, `on_web_fetch`,
+  `on_memory_read`, `on_mcp_incoming`, `on_label_propagation`.
+- [ ] **U107** [P] Wire policy-boundary hooks: `pre_chokepoint`,
+  `at_chokepoint.decision`, `pre_dispatch`, `pre_approval_queue`.
+- [ ] **U108** [P] Wire egress hooks: `pre_email_send`,
+  `pre_purchase`, `pre_mcp_outgoing`, `pre_fs_write`,
+  `pre_calendar_write`.
+- [ ] **U109** [P] Wire session-lifecycle hooks: `on_session_spawn`,
+  `on_session_fork`, `on_session_terminal`.
+- [ ] **U110** [P] Wire storage hooks: `on_memory_write`,
+  `on_audit_emit`.
+- [ ] **U111** [P] Wire LLM-boundary hooks: `pre_llm_call.*`,
+  `post_llm_call.*`.
+
+### Audit events
+
+- [ ] **U112** Extend `audit/events.py`:
+  `LABEL_RAISED_BY_INSPECTOR`, `DECISION_RELAXED`,
+  `DECISION_TIGHTENED`, `DECLASSIFICATION_APPLIED`,
+  `DECLASSIFICATION_REFUSED_BY_FLOOR`, `HOOK_FIRED`.
+
+### Configuration loaders
+
+- [ ] **U113** YAML DSL parser for inspector rules → callable
+  `RaiseOnlyInspector`.
+- [ ] **U114** YAML DSL parser for decision rules → callable
+  `DecisionInspector`.
+- [ ] **U115** YAML DSL parser for declassifier rules → callable
+  `DeclassifyingTransformer`.
+- [ ] **U116** Python module loader for `configs/inspectors/`,
+  `configs/decision_inspectors/`, `configs/declassifiers/`,
+  `configs/upstream_policies/`.
+
+### Composition + floors
+
+- [ ] **U117** Update `engine.decide()` to apply DecisionInspectors
+  after standard policy; compose with envelope; respect hard floors.
+- [ ] **U118** Declassification floors:
+  `configs/declassification_floors.yaml` + enforcement.
+- [ ] **U119** Shadow mode: per-primitive `shadow: true` flag.
+
+### Per-arg payload labels
+
+- [ ] **U120** Extend `ToolDefinition` with
+  `payload_args: tuple[str, ...]`.
+- [ ] **U121** Update `engine.decide()` to inspect per-arg labels;
+  apply Brewer-Nash + hard-refuse logic per-arg.
+- [ ] **U122** [P] Update native tools (email.send, purchase.queue,
+  fs.write, etc.) to declare their `payload_args`.
+- [ ] **U123** [P] Tests `tests/test_payload_args.py`.
+
+**P0 sum: ~15 days.**
+
+## Phase P1 — MCP surface integration
+
+Depends on P0.
+
+### Trust tier + heuristic
+
+- [ ] **U130** Per-server `trust_tier` config.
+- [ ] **U131** Heuristic-disagreement detection + refusal/warning
+  + audit events.
+- [ ] **U132** `io.joneslaw/capabilitydeputy/*` annotation namespace
+  honoring per trust tier.
+
+### MCP surfaces
+
+- [ ] **U133** `resources/list` + `resources/read` adapter wiring
+  with ingress-hook firing.
+- [ ] **U134** `prompts/list` + `prompts/get` with `safe_to_forward`
+  auto-forward path.
+- [ ] **U135** Sampling support: declare capability; route to
+  configurable LLM; per-server `sampling.tools` enable with
+  exposed-tool-subset config.
+- [ ] **U136** [P] Elicitation form mode + approval queue
+  integration (new `ApprovalAction.ELICITATION_RESPOND`).
+- [ ] **U137** [P] Elicitation URL mode (depends on P3 OAuth).
+- [ ] **U138** [P] Per-server scoped `roots/list` projected from
+  BindingSet.
+
+### Notifications
+
+- [ ] **U140** `notifications/resources/updated` proxy handler:
+  synthesize `resources/read`; run through chokepoint; route per
+  per-server subscription policy.
+- [ ] **U141** Per-server `subscriptions:` config block.
+- [ ] **U142** [P] `*/list_changed` handlers (mark stale).
+- [ ] **U143** [P] Operational notifications (`progress`,
+  `cancelled`, `message`).
+- [ ] **U144** Per-server rate limit on incoming notifications.
+- [ ] **U145** Bundle-within-window collector for pushes.
+
+### Per-server policy modules
+
+- [ ] **U146** ServerPolicy Protocol + loader.
+- [ ] **U147** Adapter mapping resolution order (per-server module
+  → YAML override → annotations → heuristic).
+
+**P1 sum: ~15 days** (excluding U137 + U150-U152 which depend on P3).
+
+## Phase P2 — Observability + ecosystem
+
+- [ ] **U160** [P] CLI `capdep policy review` (declassification
+  history).
+- [ ] **U161** [P] CLI `capdep policy decisions` (relax/tighten
+  history).
+- [ ] **U162** [P] TUI panel: live audit stream.
+- [ ] **U163** Replay harness for primitives.
+- [ ] **U164** Fixture sessions for primitive unit tests.
+- [ ] **U165** [P] Operator-facing YAML DSL documentation.
+- [ ] **U166** [P] Example operator-curated primitive modules.
+
+**P2 sum: ~7 days.**
+
+## Phase P3 — Streamable HTTP + OAuth (was implied in original)
+
+- [ ] **U170** `transport_http.py` Streamable HTTP per MCP spec.
+- [ ] **U171** Origin validation; localhost binding.
+- [ ] **U172** Session ID handling.
+- [ ] **U173** SSE stream resumability.
+- [ ] **U174** OAuth 2.1 client.
+
+### OAuth flow-pattern-session model
+
+- [ ] **U150** Token store per `(server_id, purpose_handle, initiator)`;
+  escrow on session-end.
+- [ ] **U151** Token lifecycle: issue/refresh/discard/audit.
+- [ ] **U152** Operator UI for reuse-from-escrow vs. re-authorize.
+
+**P3 sum: ~14 days.**
+
+## Phase P4 — Optional: community + advanced
+
+- [ ] **U180** Notion policy module.
+- [ ] **U181** GitHub policy module.
+- [ ] **U182** Slack policy module.
+- [ ] **U183** Google Workspace policy module.
+- [ ] **U185** Per-tool-kind hook routing optimization.
+- [ ] **U186** Memoization layer.
+- [ ] **U187** [P] DSL extensions: time-window matching, regex
+  extraction in declassifiers.
+
+**P4 sum: ~10 days.**
+
+## Dependency graph (P0 → P4)
+
+```
+P0 (primitives + hooks + audit) ──┐
+                                  ├─→ P1 (MCP surfaces; uses hooks)
+                                  ├─→ P2 (observability; uses audit)
+                                  │
+P3 (HTTP + OAuth) ────────────────┴─→ P1.elicitation-URL,
+                                       P1.K (OAuth-dependent surfaces)
+
+P4 builds on P1, P2, P3.
+```
+
+## Acceptance criteria (extended)
+
+In addition to the original Phase 1-7 criteria:
+
+- All P0 primitives unit-tested in `tests/test_primitives_*.py`
+- All hooks have integration tests with fixture sessions
+- All P1 MCP surfaces tested against a stub MCP server
+- Shadow mode validated end-to-end
+- Declassification floors validated
+- Audit replay deterministic
+- Per-arg payload-label gating validated
+
+## Risk register (extended)
+
+- **R10: hook-list scope creep.** Hard-cap at the 25 hooks in
+  `programmatic-policy-primitives.md` §5.
+- **R11: composition order ambiguity.** Document resolution order
+  in chokepoint code; ensure operator-declared order respected.
+- **R12: shadow mode misuse.** Document that production-critical
+  primitives should not stay in shadow indefinitely.
+- **R13: declassifier abuse.** Mitigated by floors + audit + diff
+  review + shadow-mode onboarding.
+- **R14: per-arg labels under-declared.** Operators must explicitly
+  declare `payload_args`. Default empty = no per-arg gating unless
+  declared.
+
+## Out of scope (deferred)
+
+- CapableDeputy AS an MCP server (spec-008 — deferred per operator
+  decision)
+- Operator-defined custom hooks (use predefined list; spec new
+  hooks if needed)
+- Cross-machine session federation
+- Server-side policy in MCP (would require MCP protocol extension)
