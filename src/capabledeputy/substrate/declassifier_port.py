@@ -1,0 +1,144 @@
+"""DeclassifyingTransformer port (spec 004 P0).
+
+Third programmatic primitive. Transforms a value AND lowers session
+labels, with a structural-proof field so auditors can verify the
+declassification rationale.
+
+The model of a declassifier is:
+  (value, current_axes) -> (transformed_value, new_axes, proof)
+
+Where:
+  - transformed_value REPLACES the input value (the agent never sees
+    the original after declassification)
+  - new_axes is the lowered label set (must be a SUBSET of input
+    axes — declassifiers cannot raise; raising is RaiseOnlyInspector's job)
+  - proof is a structural attestation: "regex-redacted N SSNs",
+    "projected to schema X", "passed quarantined classifier Y"
+
+Use cases:
+  - RegexRedactor:        SSNs / credit cards / phone numbers → [REDACTED]
+                          ⇒ lower pii.restricted → pii.sensitive
+  - SchemaProjector:      arbitrary input → only the schema's allowed
+                          fields ⇒ lower untrusted.external → trusted
+  - QuarantinedClassifier: pass through a separate LLM that emits
+                          structured JSON; only the JSON returns ⇒
+                          lower untrusted → trusted
+
+Compared to the other two primitives:
+  - RaiseOnlyInspector: at INGEST; can only raise
+  - DecisionInspector:  at DECISION; relax/tighten outcomes
+  - DeclassifyingTransformer: at TRANSFORM; lower labels + replace value
+
+Composition is sequential: multiple transformers run in operator-declared
+order; each sees the previous one's output (and adjusted labels). This
+lets operators stack transformations (e.g., first regex-redact, then
+project to schema).
+
+Contract: pure function. No I/O. No side effects. The structural-proof
+must be auditable + reproducible from the input.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Protocol
+
+
+@dataclass(frozen=True)
+class DeclassifyResult:
+    """Output of one declassifier application.
+
+    Attributes:
+        transformed_value: The value the agent will see (replaces input).
+        lower_axis_a_categories: Categories to LOWER. Each entry is
+                                 {category, to_tier} where to_tier is the
+                                 new (strictly lower) tier.
+        lower_axis_b_level: New axis_b (provenance) level, must be a
+                            lower restriction than input. None = unchanged.
+        audit_diff: One-line summary for the audit log
+                    ("3 SSNs redacted", "5 fields projected").
+        structural_proof_kind: Tag identifying the proof type
+                              ("regex-redacted", "schema-projected",
+                               "quarantined-extract"). Auditor uses this
+                              to know HOW to verify the declassification.
+    """
+
+    transformed_value: Any
+    lower_axis_a_categories: tuple[dict[str, str], ...] = field(default_factory=tuple)
+    lower_axis_b_level: str | None = None
+    audit_diff: str = ""
+    structural_proof_kind: str = ""
+
+
+class DeclassifyingTransformer(Protocol):
+    """Declassifier contract.
+
+    Implementations declare a `name` for audit attribution and a
+    `declassify()` method called by the runtime in operator-declared
+    order. Each sees the previous transformer's output. Returns None
+    to pass through unchanged.
+
+    The transformed_value REPLACES the input value the agent sees.
+    Composition: outputs feed into the next transformer's input.
+    """
+
+    name: str
+
+    def declassify(
+        self,
+        *,
+        value: Any,
+        current_axis_a: Any,
+        current_axis_b: Any,
+        context: dict[str, Any] | None = None,
+    ) -> DeclassifyResult | None:
+        """Transform value (optionally) and lower labels (optionally).
+
+        Args:
+            value: Current value (from upstream tool or prior declassifier).
+            current_axis_a: Session's current AxisA categories.
+            current_axis_b: Session's current AxisB level.
+            context: Operator-supplied context (e.g., destination URI).
+
+        Returns:
+            DeclassifyResult to apply, or None to pass through unchanged.
+        """
+        ...
+
+
+def apply_declassifier_chain(
+    declassifiers: tuple[DeclassifyingTransformer, ...],
+    value: Any,
+    current_axis_a: Any,
+    current_axis_b: Any,
+    context: dict[str, Any] | None = None,
+) -> tuple[Any, list[DeclassifyResult]]:
+    """Apply declassifiers in operator-declared order.
+
+    Each declassifier sees the previous transformer's output. Returns
+    the final transformed value + the list of every applied result
+    (for audit). Declassifiers returning None are skipped (no-op).
+
+    Pure function — does not mutate inputs; declassifiers are by
+    contract pure too.
+    """
+    current_value = value
+    applied: list[DeclassifyResult] = []
+    current_axa = current_axis_a
+    current_axb = current_axis_b
+    for transformer in declassifiers:
+        result = transformer.declassify(
+            value=current_value,
+            current_axis_a=current_axa,
+            current_axis_b=current_axb,
+            context=context,
+        )
+        if result is None:
+            continue
+        applied.append(result)
+        current_value = result.transformed_value
+        # Note: actual axis lowering is applied by host code (the
+        # chokepoint integration), not here — this function returns
+        # the desired deltas for the host to apply with monotone-aware
+        # composition. The transformer pipeline only transforms values.
+    return current_value, applied
