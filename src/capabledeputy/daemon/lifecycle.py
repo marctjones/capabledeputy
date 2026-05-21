@@ -130,18 +130,32 @@ def load_v09_configs(configs_dir: Path | None = None) -> dict[str, Any]:
 def _resolve_daemon_config(config_path: Path | None) -> Path | None:
     """Daemon config file resolution (opt-in, fail-soft).
 
-    Precedence: explicit arg > CAPDEP_CONFIG env. Returns the path only
-    if it exists; loading external MCP servers is a deliberate operator
-    action, never implicit, so an absent/unset config is silently no-op.
+    Precedence:
+      1. explicit `config_path` arg
+      2. CAPDEP_CONFIG env var
+      3. `~/.config/capabledeputy/daemon.yaml` (the user-local default,
+         populated by `capdep imap-setup` and friends — opt-in because
+         the file only exists once the operator has registered something)
+
+    Returns the path only if it exists; loading external MCP servers is
+    a deliberate operator action, never implicit, so when no source
+    yields a file this returns None.
     """
     import os
 
     raw = config_path or (
         Path(os.environ["CAPDEP_CONFIG"]) if os.environ.get("CAPDEP_CONFIG") else None
     )
-    if raw is None or not raw.is_file():
-        return None
-    return raw
+    if raw is not None:
+        return raw if raw.is_file() else None
+
+    # User-local default — present iff a setup command has registered.
+    from capabledeputy.cli._managed_config import user_default_daemon_config_path
+
+    user_default = user_default_daemon_config_path()
+    if user_default.is_file():
+        return user_default
+    return None
 
 
 def _report_admission(manager: UpstreamManager) -> None:

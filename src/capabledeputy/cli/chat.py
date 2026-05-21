@@ -107,11 +107,43 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
     """Verify the daemon is reachable; optionally auto-start it.
 
     When autostart=True, spawns the daemon in the background and polls
-    until the socket comes up (10s timeout). Logs to a temp file so
+    until the socket comes up (30s timeout). Logs to a temp file so
     the operator can debug startup failures.
+
+    Config resolution mirrors the daemon's own: explicit `config` arg
+    wins; otherwise CAPDEP_CONFIG; otherwise the user-local default at
+    `~/.config/capabledeputy/daemon.yaml` if present. The chosen path
+    is printed so it's never a mystery which tools the daemon will
+    load.
     """
+    from capabledeputy.cli._managed_config import (
+        imap_credentials_present,
+        has_managed_block,
+        IMAP_BLOCK_ID,
+        resolve_daemon_config_with_source,
+        user_default_daemon_config_path,
+    )
+
+    resolved_path, source = resolve_daemon_config_with_source(config)
+
+    # Drift warning: credentials exist but the daemon config doesn't
+    # reference them — the user did setup once, then maybe edited the
+    # file by hand. Show the one-liner that fixes it.
+    if imap_credentials_present():
+        if resolved_path is None or not has_managed_block(resolved_path, IMAP_BLOCK_ID):
+            console.print(
+                "[yellow]heads up:[/yellow] IMAP credentials are stashed but the daemon "
+                "config doesn't reference them. Run "
+                "[bold]capdep imap-setup --register-only[/bold] to wire them in.",
+            )
+
     try:
         _call("ping")
+        if resolved_path is not None:
+            console.print(
+                f"[dim]daemon already running (config when started would have been "
+                f"{resolved_path} via {source})[/dim]",
+            )
         return
     except DaemonNotRunningError:
         if not autostart:
@@ -133,9 +165,21 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
     from pathlib import Path
 
     console.print("[green]starting daemon in background...[/green]")
+    if resolved_path is not None:
+        label = (
+            "user default" if source == "user-default" else source
+        )
+        console.print(f"[dim]using daemon config: {resolved_path} ({label})[/dim]")
+    else:
+        console.print(
+            "[dim]no daemon config found — bundled tools only. Run "
+            "[bold]capdep imap-setup[/bold] to wire in Gmail.[/dim]",
+        )
     cmd = [sys.executable, "-m", "capabledeputy.cli.main", "daemon", "start"]
-    if config:
-        cmd.extend(["--config", config])
+    # Pass the resolved path explicitly so the child daemon doesn't
+    # re-resolve (and we get one source-of-truth in the log).
+    if resolved_path is not None:
+        cmd.extend(["--config", str(resolved_path)])
     log_path = Path("/tmp") / f"capdep-daemon-{int(time.time())}.log"
     log_file = log_path.open("w")
     proc = subprocess.Popen(
