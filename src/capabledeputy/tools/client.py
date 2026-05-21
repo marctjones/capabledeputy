@@ -68,6 +68,12 @@ class PolicyContext:
     # Composition is monotone (most_restrictive_inherit); inspectors
     # cannot CLEAR taint, only RAISE it.
     inspectors: tuple[Any, ...] = ()
+    # DecisionInspectors run AFTER the standard policy decision and
+    # may relax (loosen) or tighten (strengthen) the outcome. Composes
+    # monotonically: tighten beats relax (most-restrictive wins).
+    # Foundation for operator-authored decision refinement (Starlark
+    # primitives, OPA consultation, etc.).
+    decision_inspectors: tuple[Any, ...] = ()
     # 003 runtime activation — Profiles registry keyed by profile_id.
     # When a session has clearance_profile_id set, the dispatcher
     # derives per-session clearance_max_tier (FR-008 BLP) +
@@ -232,6 +238,18 @@ class LabeledToolClient:
             **v2_kwargs,
         )
 
+        # DecisionInspector hook: registered inspectors run AFTER the
+        # standard decision and may relax (loosen) or tighten
+        # (strengthen) the outcome. Tighten beats Relax; non-monotone
+        # moves are rejected at composition time.
+        policy_decision = await self._apply_decision_inspectors(
+            session_id,
+            session,
+            action,
+            tool_name,
+            policy_decision,
+        )
+
         await self._emit_policy_decision(session_id, tool_name, args, policy_decision, tool)
         await self._emit_capability_checked(session_id, action, policy_decision)
 
@@ -375,6 +393,81 @@ class LabeledToolClient:
             rule=policy_decision.rule,
             reason=policy_decision.reason,
         )
+
+    async def _apply_decision_inspectors(
+        self,
+        session_id: Any,
+        session: Any,
+        action: Any,
+        tool_name: str,
+        proposed: Any,
+    ) -> Any:
+        """Run any registered DecisionInspectors on the proposed
+        policy decision. Returns the (possibly adjusted) decision.
+
+        Composes monotonically — TIGHTEN beats RELAX. Each inspector
+        firing is audited so the trail captures the override origin.
+        """
+        if self._policy_context is None or not self._policy_context.decision_inspectors:
+            return proposed
+
+        from capabledeputy.substrate.decision_inspector_port import (
+            compose_inspector_outcomes,
+        )
+
+        outcomes: list[tuple[str, Any]] = []
+        for inspector in self._policy_context.decision_inspectors:
+            try:
+                oc = inspector.inspect(
+                    action=action,
+                    session=session,
+                    proposed_outcome=proposed,
+                )
+            except Exception as e:
+                # A buggy inspector must not crash the chokepoint —
+                # treat as abstain + audit the failure for the operator.
+                await self._audit.write(
+                    Event(
+                        event_type=EventType.POLICY_DECIDED,
+                        session_id=session_id,
+                        payload={
+                            "tool": tool_name,
+                            "decision_inspector_error": str(e),
+                            "inspector": getattr(inspector, "name", "<unknown>"),
+                        },
+                    ),
+                )
+                continue
+            if oc is not None:
+                outcomes.append((getattr(inspector, "name", "<unknown>"), oc))
+
+        composed = compose_inspector_outcomes(proposed.decision, outcomes)
+        if composed is None:
+            return proposed
+
+        new_decision, rule_with_origin, rationale = composed
+        from dataclasses import replace as _dc_replace
+
+        adjusted = _dc_replace(
+            proposed,
+            decision=new_decision,
+            rule=rule_with_origin,
+            reason=rationale or proposed.reason,
+        )
+        await self._audit.write(
+            Event(
+                event_type=EventType.POLICY_DECIDED,
+                session_id=session_id,
+                payload={
+                    "tool": tool_name,
+                    "decision_inspector_applied": rule_with_origin,
+                    "original_decision": proposed.decision.value,
+                    "adjusted_decision": new_decision.value,
+                    "rationale": rationale,
+                },
+            ),
+        )
+        return adjusted
 
     async def _apply_inspectors(
         self,
