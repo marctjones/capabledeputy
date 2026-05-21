@@ -106,7 +106,8 @@ async def test_inbox_read_marks_read_and_returns_body() -> None:
 async def test_web_fetch_returns_untrusted_label() -> None:
     mock = WebMock()
     mock.serve("https://example.com", "<html>...</html>")
-    [fetch_tool] = make_web_tools(mock)
+    tools = {t.name: t for t in make_web_tools(mock)}
+    fetch_tool = tools["web.fetch"]
     result = await fetch_tool.handler({"url": "https://example.com"}, _ctx())
     assert result.output["found"] is True
     assert Label.UNTRUSTED_EXTERNAL in result.additional_labels
@@ -114,7 +115,8 @@ async def test_web_fetch_returns_untrusted_label() -> None:
 
 async def test_web_fetch_unknown_url_returns_not_found() -> None:
     mock = WebMock()
-    [fetch_tool] = make_web_tools(mock)
+    tools = {t.name: t for t in make_web_tools(mock)}
+    fetch_tool = tools["web.fetch"]
     result = await fetch_tool.handler({"url": "https://nope"}, _ctx())
     assert result.output["found"] is False
 
@@ -132,6 +134,7 @@ async def test_app_registers_all_workflow_tools(tmp_path: Path) -> None:
         "inbox.list",
         "inbox.read",
         "web.fetch",
+        "web.search",
     }
     assert expected.issubset(names)
     cal = app.registry.get("calendar.events_today")
