@@ -1,0 +1,26 @@
+# Auto-approval patterns for recurring safe workflows.
+# Each pattern still emits APPROVAL_REQUESTED + APPROVAL_APPROVED
+# audit events, so you have the trail; the pattern just removes the
+# manual prompt.
+#
+# TIGHTEN the recipient/vendor globs to your specific addresses
+# BEFORE enabling. A bare *@example.com auto-approves email to ANY
+# address at that domain — only do that for domains you control.
+
+patterns:
+  # Self-correspondence — drafts you send to yourself. Replace
+  # me@example.com with YOUR actual address.
+  - name: self-correspondence
+    action: SEND_EMAIL
+    target_pattern: "me@example.com"
+    ttl_hours: 720  # 30 days
+    created_by: "preset:personal-assistant"
+
+  # Self-calendar events (events with you as the only attendee). The
+  # target_pattern matches the operator's own email address; replace
+  # with yours.
+  - name: self-calendar-event
+    action: CREATE_CAL
+    target_pattern: "me@example.com"
+    ttl_hours: 720
+    created_by: "preset:personal-assistant"

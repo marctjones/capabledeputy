@@ -1,0 +1,112 @@
+# Master daemon config for the personal-assistant preset.
+# Wires up the 5 bundled MCP servers + Google Workspace + signals
+# the daemon to read the other policy files from this same directory.
+#
+# Use:
+#   capdep daemon start --config configs/personal-assistant/daemon.yaml
+#
+# The daemon's policy loader walks the parent directory of this file
+# looking for: profiles.yaml, purposes.yaml, source_bindings.yaml,
+# envelopes.yaml, override_policy.yaml, approval-patterns.yaml. Drop
+# them next to this file to be picked up.
+
+upstream_servers:
+  # ---------------- bundled Python servers ----------------
+  # No Node.js / npm required. Pure Python, ships with capdep.
+
+  - name: bundled-fs
+    command: ["capdep", "mcp-server-fs"]
+    inherent_labels: []
+    tool_overrides:
+      "fs.read":
+        capability_kind: READ_FS
+      "fs.list":
+        capability_kind: READ_FS
+      "fs.create":
+        capability_kind: CREATE_FS
+      "fs.write":
+        capability_kind: WRITE_FS
+      "fs.delete":
+        capability_kind: DELETE_FS
+
+  - name: bundled-fetch
+    command: ["capdep", "mcp-server-fetch"]
+    inherent_labels: ["untrusted.external"]
+    tool_overrides:
+      "fetch.get":
+        capability_kind: WEB_FETCH
+
+  - name: bundled-search
+    command: ["capdep", "mcp-server-search"]
+    inherent_labels: ["untrusted.external"]
+    tool_overrides:
+      "search.web":
+        capability_kind: WEB_FETCH
+
+  - name: bundled-memory
+    command: ["capdep", "mcp-server-memory"]
+    inherent_labels: []
+    tool_overrides:
+      "memory.create":
+        capability_kind: CREATE_FS
+      "memory.read":
+        capability_kind: READ_FS
+      "memory.update":
+        capability_kind: WRITE_FS
+      "memory.delete":
+        capability_kind: DELETE_FS
+      "memory.list":
+        capability_kind: READ_FS
+
+  - name: bundled-git
+    command: ["capdep", "mcp-server-git"]
+    inherent_labels: []
+    tool_overrides:
+      "git.status":
+        capability_kind: READ_FS
+      "git.log":
+        capability_kind: READ_FS
+      "git.diff":
+        capability_kind: READ_FS
+      "git.show":
+        capability_kind: READ_FS
+      "git.branch_list":
+        capability_kind: READ_FS
+
+  # ---------------- Google Workspace ----------------
+  # Comment out this block if you don't want / haven't set up Google
+  # integration. See docs/gworkspace-setup.md for the one-time OAuth
+  # consent flow.
+
+  - name: google
+    command: ["capdep", "mcp-server-gworkspace"]
+    inherent_labels: []
+    tool_overrides:
+      "gmail.list_threads":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "gmail.read_thread":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "gmail.send":
+        capability_kind: SEND_EMAIL
+      "gmail.search":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "docs.read":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal"]
+      "docs.create":
+        capability_kind: CREATE_FS
+      "drive.list":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal"]
+      "drive.read_file_content":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "calendar.list_events":
+        capability_kind: CALENDAR_READ
+        additional_labels: ["confidential.personal"]
+      "calendar.create_event":
+        capability_kind: CREATE_CAL
+    strict: true

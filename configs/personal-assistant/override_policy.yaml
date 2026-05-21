@@ -1,0 +1,33 @@
+# Override policy — single-user mode.
+# The operator IS the attester; dual-control is N/A here because
+# there's no second human to attest. For multi-user deployments, change
+# `single-authorized` to `dual-control` and supply attester ids.
+
+policies:
+  # Crossing the max-tier-clearance hard floor (reading data the
+  # current profile isn't cleared for) requires an explicit override.
+  - tier_or_floor: max-tier-clearance
+    policy: single-authorized
+    authorized_principal_ids: ["operator"]
+    expiry_seconds: 900   # 15 minutes — friction-scaled
+
+  # Crossing the integrity-floor (writing to higher-integrity
+  # destination than the session is cleared for) is similar.
+  - tier_or_floor: integrity-floor
+    policy: single-authorized
+    authorized_principal_ids: ["operator"]
+    expiry_seconds: 900
+
+  # Touching the prohibited tier requires a deliberate override.
+  # Default policy: refused even with override. Operator must
+  # change this to `single-authorized` to permit specific overrides.
+  - tier_or_floor: prohibited
+    policy: disallowed
+
+  # Admissibility-exclusion (purpose-bound: a category not admissible
+  # in this purpose) can be overridden with extra friction, since the
+  # operator is choosing to cross a category boundary deliberately.
+  - tier_or_floor: admissibility-exclusion
+    policy: single-authorized
+    authorized_principal_ids: ["operator"]
+    expiry_seconds: 1800  # 30 minutes — wider since it's category-scoped

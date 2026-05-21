@@ -1,0 +1,18 @@
+# Personal-assistant profile: single operator, broad clearance, no
+# Biba integrity floor demanded. The operator IS the trusted root —
+# this is single-user mode, not a multi-tenant deployment.
+
+profiles:
+  - id: personal
+    user_pattern: "*"
+    use_case: general
+    # Cleared up to restricted (most personal categories live here).
+    # Hits 'prohibited' tier → requires override.
+    max_tier: restricted
+
+  # For sessions doing tax / financial / health work that the operator
+  # wants extra friction on, declare this profile instead.
+  - id: regulated-work
+    user_pattern: "*"
+    use_case: regulated
+    max_tier: regulated

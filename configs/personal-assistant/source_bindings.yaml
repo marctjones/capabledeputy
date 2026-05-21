@@ -1,0 +1,114 @@
+# Local path + Google service URI label mappings.
+# Edit paths to match YOUR filesystem layout.
+# Most-specific scope wins; bindings compose most-restrictive on
+# overlap.
+
+bindings:
+  # ---------------- local filesystem ----------------
+
+  - name: documents-personal
+    scope_pattern_canonical: "file:///home/*/Documents/personal/**"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: documents-work
+    scope_pattern_canonical: "file:///home/*/Documents/work/**"
+    category: work
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: documents-finance
+    scope_pattern_canonical: "file:///home/*/Documents/finance/**"
+    category: finance
+    default_tier: restricted
+    assignment_provenance: operator-declared
+
+  - name: documents-drafts
+    scope_pattern_canonical: "file:///home/*/Documents/drafts/**"
+    category: scratch
+    default_tier: none
+    assignment_provenance: operator-declared
+
+  - name: documents-other
+    scope_pattern_canonical: "file:///home/*/Documents/**"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: notes-scratch
+    scope_pattern_canonical: "file:///home/*/notes/scratch/**"
+    category: scratch
+    default_tier: none
+    assignment_provenance: operator-declared
+
+  - name: notes-inbox-summaries
+    scope_pattern_canonical: "file:///home/*/notes/inbox-summaries/**"
+    category: email
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: notes-research
+    scope_pattern_canonical: "file:///home/*/notes/research/**"
+    category: public
+    default_tier: none
+    assignment_provenance: operator-declared
+
+  - name: notes-default
+    scope_pattern_canonical: "file:///home/*/notes/**"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: code-personal
+    scope_pattern_canonical: "file:///home/*/code/**"
+    category: code
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: downloads
+    scope_pattern_canonical: "file:///home/*/Downloads/**"
+    # Downloads is by definition externally-sourced; treat as untrusted.
+    category: public
+    default_tier: none
+    assignment_provenance: operator-declared
+
+  # ---------------- Google Workspace ----------------
+
+  - name: gmail-content
+    scope_pattern_canonical: "gmail://**"
+    category: email
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: gdocs-content
+    scope_pattern_canonical: "gdoc://**"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: gdrive-content
+    scope_pattern_canonical: "gdrive://**"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: gcal-content
+    scope_pattern_canonical: "gcal://**"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  # ---------------- web ----------------
+
+  - name: web-https
+    scope_pattern_canonical: "https://**"
+    category: public
+    default_tier: none
+    assignment_provenance: operator-declared
+
+  - name: web-http
+    scope_pattern_canonical: "http://**"
+    category: public
+    default_tier: none
+    assignment_provenance: operator-declared

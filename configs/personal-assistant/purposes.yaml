@@ -1,0 +1,89 @@
+# Five working purposes for daily personal-assistant use.
+# Each purpose carries its own bindings + default_capabilities so a
+# session spawned with that purpose is born with the right caps.
+
+purposes:
+  - purpose_id: general
+    label: "General assistance (default)"
+    # The broadest set; lets the agent read most local content, search
+    # the web, take notes, browse code repos.
+    admissible_categories:
+      - personal
+      - work
+      - public
+      - scratch
+      - code
+      - email
+    default_capabilities:
+      - kind: READ_FS
+        pattern: "/home/*/Documents/**"
+      - kind: READ_FS
+        pattern: "/home/*/notes/**"
+      - kind: READ_FS
+        pattern: "/home/*/code/**"
+      - kind: CREATE_FS
+        pattern: "/home/*/notes/scratch/**"
+      - kind: WEB_FETCH
+        pattern: "https://*"
+      - kind: CALENDAR_READ
+        pattern: "*"
+    bindings:
+      - scope_pattern_canonical: "file:///home/*/notes/scratch/**"
+        category: scratch
+        default_tier: none
+
+  - purpose_id: inbox
+    label: "Email triage and summarization"
+    admissible_categories: [personal, work, email, public]
+    default_capabilities:
+      - kind: READ_FS
+        pattern: "*"  # gmail.list_threads / read_thread are READ_FS
+      - kind: CALENDAR_READ
+        pattern: "*"
+      - kind: CREATE_FS
+        pattern: "/home/*/notes/inbox-summaries/**"
+    bindings:
+      - scope_pattern_canonical: "gmail://**"
+        category: email
+        default_tier: sensitive
+
+  - purpose_id: calendar
+    label: "Calendar review and scheduling"
+    admissible_categories: [personal, work, public]
+    default_capabilities:
+      - kind: CALENDAR_READ
+        pattern: "*"
+      - kind: CREATE_CAL
+        pattern: "*"
+      - kind: READ_FS
+        pattern: "/home/*/notes/**"
+
+  - purpose_id: writing
+    label: "Document drafting and editing"
+    admissible_categories: [personal, work, public, scratch]
+    default_capabilities:
+      - kind: READ_FS
+        pattern: "/home/*/Documents/**"
+      - kind: READ_FS
+        pattern: "/home/*/notes/**"
+      - kind: CREATE_FS
+        pattern: "/home/*/Documents/drafts/**"
+      - kind: CREATE_FS
+        pattern: "/home/*/notes/**"
+      - kind: MODIFY_FS
+        pattern: "/home/*/Documents/drafts/**"
+      - kind: WEB_FETCH
+        pattern: "https://*"
+
+  - purpose_id: research
+    label: "Web research with note-taking"
+    admissible_categories: [public, scratch, personal]
+    default_capabilities:
+      - kind: WEB_FETCH
+        pattern: "https://*"
+      - kind: READ_FS
+        pattern: "/home/*/notes/**"
+      - kind: CREATE_FS
+        pattern: "/home/*/notes/research/**"
+      - kind: READ_FS
+        pattern: "/home/*/Documents/**"

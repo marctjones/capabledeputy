@@ -1,0 +1,108 @@
+# Per-cell risk-preference dial bounds.
+# Each envelope sets the [strictest, loosest] decision the dial can
+# select between. Hard-floor cells use degenerate envelopes (immovable).
+
+envelopes:
+  # --- safe local reads ---
+  # Reading your own notes is always allowed; not even cautious dial
+  # touches this.
+  - cell:
+      category: scratch
+      effect: data.read_local
+      decision_context_canonical: "principal:*"
+      reversibility: reversible
+    strictest: auto
+    loosest: auto
+
+  - cell:
+      category: personal
+      effect: data.read_local
+      decision_context_canonical: "principal:*"
+      reversibility: reversible
+    strictest: suggest
+    loosest: auto
+
+  - cell:
+      category: work
+      effect: data.read_local
+      decision_context_canonical: "principal:*"
+      reversibility: reversible
+    strictest: suggest
+    loosest: auto
+
+  # --- web fetch ---
+  # Always allowed (the inherent label takes care of subsequent egress).
+  - cell:
+      category: public
+      effect: data.read_remote
+      decision_context_canonical: "principal:*"
+      reversibility: reversible
+    strictest: auto
+    loosest: auto
+
+  # --- local writes ---
+  # Scratch writes are free.
+  - cell:
+      category: scratch
+      effect: data.create_local
+      decision_context_canonical: "principal:*"
+      reversibility: reversible
+    strictest: auto
+    loosest: auto
+
+  # Drafts: cautious dial demands a prompt; balanced auto-allows.
+  - cell:
+      category: scratch
+      effect: data.create_local
+      decision_context_canonical: "principal:*"
+      reversibility: reversible-with-friction
+    strictest: require-approval
+    loosest: auto
+
+  # --- email send (always at least require-approval) ---
+  - cell:
+      category: email
+      effect: social.send_email
+      decision_context_canonical: "principal:*"
+      reversibility: irreversible
+    # No dial setting lets this auto-allow. The chokepoint social-
+    # commitment rule additionally hard-floors it.
+    strictest: deny
+    loosest: require-approval
+
+  # --- calendar create (require-approval; dial can relax to suggest for self) ---
+  - cell:
+      category: personal
+      effect: data.create_calendar
+      decision_context_canonical: "principal:*"
+      reversibility: reversible-with-friction
+    strictest: require-approval
+    loosest: suggest
+
+  # --- destructive ops (always at least require-approval) ---
+  - cell:
+      category: personal
+      effect: data.delete_local
+      decision_context_canonical: "principal:*"
+      reversibility: irreversible
+    strictest: deny
+    loosest: require-approval
+
+  - cell:
+      category: scratch
+      effect: data.delete_local
+      decision_context_canonical: "principal:*"
+      reversibility: irreversible
+    strictest: require-approval
+    loosest: require-approval
+
+  # --- restricted tier (regulated work) ---
+  # Reading restricted data demands cautious-dial friction; even
+  # balanced doesn't auto-allow.
+  - cell:
+      category: finance
+      effect: data.read_local
+      decision_context_canonical: "principal:*"
+      reversibility: reversible
+    strictest: require-approval
+    loosest: suggest
