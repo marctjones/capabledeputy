@@ -29,6 +29,8 @@ from pathlib import Path
 
 import yaml
 
+from capabledeputy.policy.capabilities import Capability, CapabilityKind
+
 
 class PurposeError(RuntimeError):
     """purposes.yaml is malformed or unparseable. Fail-closed per
@@ -48,6 +50,12 @@ class Purpose:
     admissible_categories: frozenset[str] = field(default_factory=frozenset)
     inadmissible_categories: frozenset[str] = field(default_factory=frozenset)
     recommended_pattern: str | None = None
+    # Capabilities a session spawned with this purpose is born with.
+    # The /grant flow is still required for any cap NOT in this list.
+    # Operators use this to encode "every research-purpose session
+    # automatically gets fs.read on ~/research/**" without making the
+    # user grant by hand every time.
+    default_capabilities: tuple[Capability, ...] = field(default_factory=tuple)
 
     def admits(self, category: str) -> bool:
         """True iff this purpose admits the given data category for
@@ -115,14 +123,108 @@ def load(path: Path) -> Purposes:
             raise PurposeError(
                 f"purposes[{i}].inadmissible_categories must be a list",
             )
+        caps_raw = item.get("default_capabilities") or []
+        if not isinstance(caps_raw, list):
+            raise PurposeError(
+                f"purposes[{i}].default_capabilities must be a list",
+            )
+        default_capabilities = tuple(
+            _parse_default_capability(cap_raw, i, j) for j, cap_raw in enumerate(caps_raw)
+        )
         out[pid] = Purpose(
             purpose_id=pid,
             label=str(item.get("label", "")),
             admissible_categories=frozenset(str(c) for c in admissible_raw),
             inadmissible_categories=frozenset(str(c) for c in inadmissible_raw),
             recommended_pattern=item.get("recommended_pattern"),
+            default_capabilities=default_capabilities,
         )
     return Purposes(purposes=out)
+
+
+def _parse_default_capability(raw: dict, purpose_idx: int, cap_idx: int) -> Capability:
+    """Parse a default-capability entry from a purpose YAML block.
+
+    Schema (minimal — only what an operator needs to spawn a session
+    with useful pre-granted caps):
+
+      - kind: READ_FS                 # required, must be a CapabilityKind
+        pattern: "/home/me/research/**"  # required
+        origin: operator              # optional; defaults to operator
+        allows_destructive: false     # optional; defaults to false
+        max_amount: 0                 # optional; 0 = unlimited
+        rate_limit: null              # optional; cap.uses-per-window
+    """
+    if not isinstance(raw, dict):
+        raise PurposeError(
+            f"purposes[{purpose_idx}].default_capabilities[{cap_idx}] must be an object",
+        )
+    try:
+        kind_str = str(raw["kind"])
+    except KeyError:
+        raise PurposeError(
+            f"purposes[{purpose_idx}].default_capabilities[{cap_idx}] missing 'kind'",
+        ) from None
+    try:
+        kind = CapabilityKind(kind_str)
+    except ValueError as e:
+        raise PurposeError(
+            f"purposes[{purpose_idx}].default_capabilities[{cap_idx}] unknown kind {kind_str!r}",
+        ) from e
+    try:
+        pattern = str(raw["pattern"])
+    except KeyError:
+        raise PurposeError(
+            f"purposes[{purpose_idx}].default_capabilities[{cap_idx}] missing 'pattern'",
+        ) from None
+    # Build the Capability directly; from_dict requires audit_id +
+    # expiry which aren't in the operator's YAML by design. Defaults
+    # (SESSION expiry, OPERATOR origin, fresh audit_id) match how a
+    # manual `capdep grant` builds caps.
+    from datetime import UTC
+    from datetime import datetime as _dt
+
+    from capabledeputy.policy.capabilities import (
+        CapabilityExpiry,
+        CapabilityOrigin,
+    )
+
+    try:
+        origin_str = raw.get("origin") or "user_approved"
+        origin = CapabilityOrigin(str(origin_str))
+    except ValueError as e:
+        raise PurposeError(
+            f"purposes[{purpose_idx}].default_capabilities[{cap_idx}] "
+            f"unknown origin {raw.get('origin')!r}",
+        ) from e
+    expires_at = None
+    if raw.get("expires_at"):
+        try:
+            expires_at = _dt.fromisoformat(str(raw["expires_at"]))
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+        except ValueError as e:
+            raise PurposeError(
+                f"purposes[{purpose_idx}].default_capabilities[{cap_idx}] "
+                f"unparseable expires_at: {raw.get('expires_at')!r}",
+            ) from e
+    max_amount = raw.get("max_amount")
+    if max_amount is not None:
+        max_amount = int(max_amount)
+    try:
+        return Capability(
+            kind=kind,
+            pattern=pattern,
+            expiry=CapabilityExpiry.SESSION,
+            origin=origin,
+            allows_destructive=bool(raw.get("allows_destructive", False)),
+            max_amount=max_amount,
+            expires_at=expires_at,
+        )
+    except (ValueError, TypeError) as e:
+        raise PurposeError(
+            f"purposes[{purpose_idx}].default_capabilities[{cap_idx}] malformed: {e}",
+        ) from e
 
 
 # --- T056 helper: capability admissibility check --------------------

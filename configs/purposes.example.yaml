@@ -1,0 +1,66 @@
+# Example Purpose registry showcasing per-purpose default_capabilities.
+#
+# Each purpose declares:
+#   - admissible_categories: data categories sessions may READ
+#   - default_capabilities: caps the session is born with (no /grant needed)
+#
+# Sessions spawn with `purpose=research` (or similar) automatically get
+# the listed caps + the read-admissibility for the listed categories.
+#
+# To use:
+#   cp configs/purposes.example.yaml configs/purposes.yaml
+# then edit paths to match your filesystem layout.
+
+purposes:
+  - purpose_id: research
+    label: "Research / scratch work"
+    admissible_categories: [research, public]
+    default_capabilities:
+      # Read the research tree freely
+      - kind: READ_FS
+        pattern: "/home/me/research/**"
+      # Create new files in scratch
+      - kind: CREATE_FS
+        pattern: "/home/me/research/scratch/**"
+      # Memory + web access for research sessions
+      - kind: WEB_FETCH
+        pattern: "https://*"
+
+  - purpose_id: tax-prep
+    label: "Tax preparation (regulated)"
+    # Tax sessions can read finance and public; nothing else
+    admissible_categories: [finance, public]
+    default_capabilities:
+      - kind: READ_FS
+        pattern: "/home/me/finance/tax-2026/**"
+      - kind: CREATE_FS
+        pattern: "/home/me/finance/tax-2026/drafts/**"
+      # No web access here on purpose — keep tax sessions narrow
+
+  - purpose_id: inbox-triage
+    label: "Email triage and labeling"
+    admissible_categories: [email, public]
+    default_capabilities:
+      - kind: CALENDAR_READ
+        pattern: "*"
+      # Operator must explicitly grant SEND_EMAIL for any outgoing
+      # commitment; we don't include it as a default since send is
+      # a social-commitment action that warrants per-session attention.
+
+  - purpose_id: code-review
+    label: "Code review (local repos)"
+    admissible_categories: [code, public]
+    default_capabilities:
+      - kind: READ_FS
+        pattern: "/home/me/code/**"
+
+  - purpose_id: shopping
+    label: "Capped purchases"
+    admissible_categories: [public]
+    default_capabilities:
+      - kind: WEB_FETCH
+        pattern: "https://*"
+      # Pre-authorized small purchases up to $50; bigger needs /grant
+      - kind: QUEUE_PURCHASE
+        pattern: "amazon.com/*"
+        max_amount: 5000  # in cents

@@ -198,6 +198,17 @@ class SessionGraph:
                     purpose_handle=purpose_handle,
                     inadmissible_categories=candidates,
                 ) from e
+        # Look up the purpose's default capabilities BEFORE creating
+        # the session so the new Session is born with them. This
+        # encodes the operator's standing intent: "every research
+        # session has fs.read on ~/research/**" without forcing the
+        # /grant flow per session. The purposes registry is fail-
+        # closed: unknown or UNSET purpose contributes no defaults.
+        default_caps: frozenset[Capability] = frozenset()
+        if self._purposes is not None and purpose_handle != UNSET_PURPOSE_HANDLE:
+            purpose = self._purposes.get(purpose_handle)
+            if purpose is not None and purpose.default_capabilities:
+                default_caps = frozenset(purpose.default_capabilities)
         session = Session.new(
             owner=owner,
             intent=intent,
@@ -205,6 +216,7 @@ class SessionGraph:
             prefer_programmatic=prefer_programmatic,
             parent=parent,
             purpose_handle=purpose_handle,
+            capability_set=default_caps,
         )
         await self._save(session)
         self._sessions[session.id] = session
@@ -217,6 +229,20 @@ class SessionGraph:
             prefer_programmatic=prefer_programmatic or None,
             purpose_handle=(purpose_handle if purpose_handle != UNSET_PURPOSE_HANDLE else None),
         )
+        # Audit the auto-granted caps individually so the trace shows
+        # what the session is born with — same shape as explicit
+        # /grant. Operators inspecting an audit log can see exactly
+        # where each capability came from.
+        for cap in default_caps:
+            await self._emit(
+                EventType.CAPABILITY_GRANTED,
+                session,
+                kind=cap.kind.value,
+                pattern=cap.pattern,
+                origin=cap.origin.value,
+                source="purpose-default",
+                purpose_handle=purpose_handle,
+            )
         return session
 
     async def fork(
