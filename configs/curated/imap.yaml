@@ -1,0 +1,33 @@
+# IMAP + SMTP via the bundled mcp-server-imap.
+#
+# Operator first runs:
+#   capdep imap-setup
+# to write credentials. For Gmail: generate an App Password at
+# https://myaccount.google.com/apppasswords first.
+#
+# Then:
+#   capdep daemon start --config configs/curated/imap.yaml
+
+upstream_servers:
+  - name: mail
+    command: ["capdep", "mcp-server-imap"]
+    inherent_labels: []
+    tool_overrides:
+      "imap.list_threads":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "imap.read_message":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "imap.search":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "imap.send":
+        capability_kind: SEND_EMAIL
+      "imap.list_folders":
+        capability_kind: READ_FS
+      "imap.mark_read":
+        capability_kind: MODIFY_FS
+      "imap.archive":
+        capability_kind: MODIFY_FS
+    strict: true
