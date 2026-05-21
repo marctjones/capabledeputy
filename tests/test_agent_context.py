@@ -32,10 +32,12 @@ def empty_session() -> Session:
 def rich_session() -> Session:
     """Create a session with labels and metadata."""
     return Session.new(
-        label_set=frozenset({
-            Label.UNTRUSTED_EXTERNAL,
-            Label.CONFIDENTIAL_FINANCIAL,
-        }),
+        label_set=frozenset(
+            {
+                Label.UNTRUSTED_EXTERNAL,
+                Label.CONFIDENTIAL_FINANCIAL,
+            }
+        ),
         intent="financial-review",
         clearance_profile_id="tier_2",
         risk_preference_at_spawn="balanced",
@@ -194,10 +196,7 @@ class TestRichSession:
         ctx = build_llm_context(rich_session, tools, registry, events)
 
         # Labels should be sorted
-        assert (
-            "Current labels: confidential.financial, untrusted.external"
-            in ctx.system_prompt
-        )
+        assert "Current labels: confidential.financial, untrusted.external" in ctx.system_prompt
 
     def test_rich_session_includes_metadata(
         self,
@@ -242,10 +241,12 @@ class TestToolInclusionAndHints:
         tool_desc, tool_defn = email_tool
 
         session = Session.new(
-            label_set=frozenset({
-                Label.UNTRUSTED_EXTERNAL,
-                Label.EGRESS_EMAIL,
-            }),
+            label_set=frozenset(
+                {
+                    Label.UNTRUSTED_EXTERNAL,
+                    Label.EGRESS_EMAIL,
+                }
+            ),
         )
 
         tools = [tool_desc]
@@ -265,10 +266,12 @@ class TestToolInclusionAndHints:
         tool_desc, tool_defn = email_tool
 
         session = Session.new(
-            label_set=frozenset({
-                Label.CONFIDENTIAL_FINANCIAL,
-                Label.EGRESS_EMAIL,
-            }),
+            label_set=frozenset(
+                {
+                    Label.CONFIDENTIAL_FINANCIAL,
+                    Label.EGRESS_EMAIL,
+                }
+            ),
         )
 
         tools = [tool_desc]

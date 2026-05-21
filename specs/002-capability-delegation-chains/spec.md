@@ -2,7 +2,7 @@
 
 **Feature Branch**: `main` (continues established v0.4–v0.7 workflow; no feature branch)  
 **Created**: 2026-05-16  
-**Status**: Partially Implemented (US1 + US3 shipped; US2 cascade revocation + Polish deferred)  
+**Status**: Implemented (US1 + US2 + US3 shipped 2026-05-21)  
 **Input**: User description: "Capability delegation chains. A session can delegate an attenuated subset of its own capabilities to a child session it spawns. The deterministic policy engine MUST enforce monotonic attenuation … each hop must attenuate or preserve, never widen … revoking/expiring/rate-exhausting a capability cascades to every capability delegated from it across the live session graph … enforcement stays LLM-isolated … audit every delegation and every cascade revocation."
 
 ## User Scenarios & Testing *(mandatory)*

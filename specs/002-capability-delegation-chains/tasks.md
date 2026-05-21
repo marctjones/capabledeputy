@@ -76,15 +76,15 @@ LLM-isolated.
 descendant inert next decision; pooled rate (FR-015) so a child cannot
 out-spend an ancestor; pending approvals invalidated; audited.
 
-- [ ] T020 [US2] Implement the cascade guard inside `decide()`: `inert(C)` = self expired/rate-exhausted/`audit_id ∈ revoked_audit_ids` OR any ancestor inert (O(depth) provenance walk, research D1); deny with distinct reason `capability-cascaded` attributed to the originating ancestor in src/capabledeputy/policy/engine.py
-- [ ] T021 [US2] Implement pooled `SessionGraph.record_cap_use` (FR-015/D8/C4): on a granted dispatch of `C`, append the timestamp under `C.audit_id` AND each ancestor `audit_id` (walk `parent_audit_id` upward, O(depth)), each into the session holding that capability; idempotent per dispatch in src/capabledeputy/session/graph.py
-- [ ] T022 [US2] Wire the pooled fan-out at the granted-dispatch site so delegated tool calls record against the chain (extend the existing rate-limited-cap recording) in src/capabledeputy/tools/client.py
-- [ ] T023 [US2] Add `SessionGraph.revoke(session_id, audit_id)` (adds to `revoked_audit_ids`) + `capability.revoke` daemon RPC + `capdep capability revoke` CLI (operator/control-plane only) in src/capabledeputy/session/graph.py, src/capabledeputy/daemon/session_handlers.py, src/capabledeputy/cli/main.py
-- [ ] T024 [US2] Invalidate any pending approval where `inert(approval.capability_requested)` (reuse existing `ApprovalRequest.capability_requested`; no new linkage) and emit `capability.cascade_revoked` (originating audit_id, trigger, affected descendant audit_ids + sessions) in src/capabledeputy/approval/queue.py
-- [ ] T025 [P] [US2] Tests: revoke/expire/rate-exhaust ancestor ⇒ child & grandchild denied next decision with `capability-cascaded`; reason distinct from expired/rate/prior-use — SC-002 — in tests/test_policy_engine.py
-- [ ] T026 [P] [US2] FR-015 pooled-rate test: ancestor cap N uses/window, ancestor makes 0 calls, child makes N granted calls ⇒ child's (N+1)th DENIED though child's own window not full; sibling unaffected — US2-4 — in tests/test_policy_engine.py
-- [ ] T027 [P] [US2] Test: pending approval authorized by a cascaded descendant can no longer be approved into ALLOW; one `capability.cascade_revoked` record — SC-003/SC-005 — in tests/test_approval_chokepoint_registration.py
-- [ ] T028 [P] [US2] Test: a call already past the chokepoint before revoke is NOT unwound (FR-009) in tests/test_delegation_e2e.py
+- [X] T020 [US2] Implement the cascade guard inside `decide()`: `inert(C)` = self expired/rate-exhausted/`audit_id ∈ revoked_audit_ids` OR any ancestor inert (O(depth) provenance walk, research D1); deny with distinct reason `capability-cascaded` attributed to the originating ancestor in src/capabledeputy/policy/engine.py
+- [X] T021 [US2] Implement pooled `SessionGraph.record_cap_use` (FR-015/D8/C4): on a granted dispatch of `C`, append the timestamp under `C.audit_id` AND each ancestor `audit_id` (walk `parent_audit_id` upward, O(depth)), each into the session holding that capability; idempotent per dispatch in src/capabledeputy/session/graph.py
+- [X] T022 [US2] Wire the pooled fan-out at the granted-dispatch site so delegated tool calls record against the chain (extend the existing rate-limited-cap recording) in src/capabledeputy/tools/client.py
+- [X] T023 [US2] Add `SessionGraph.revoke(session_id, audit_id)` (adds to `revoked_audit_ids`) + `capability.revoke` daemon RPC + `capdep capability revoke` CLI (operator/control-plane only) in src/capabledeputy/session/graph.py, src/capabledeputy/daemon/session_handlers.py, src/capabledeputy/cli/main.py
+- [X] T024 [US2] Invalidate any pending approval where `inert(approval.capability_requested)` (reuse existing `ApprovalRequest.capability_requested`; no new linkage) and emit `capability.cascade_revoked` (originating audit_id, trigger, affected descendant audit_ids + sessions) in src/capabledeputy/approval/queue.py
+- [X] T025 [P] [US2] Tests: revoke/expire/rate-exhaust ancestor ⇒ child & grandchild denied next decision with `capability-cascaded`; reason distinct from expired/rate/prior-use — SC-002 — in tests/test_policy_engine.py
+- [X] T026 [P] [US2] FR-015 pooled-rate test: ancestor cap N uses/window, ancestor makes 0 calls, child makes N granted calls ⇒ child's (N+1)th DENIED though child's own window not full; sibling unaffected — US2-4 — in tests/test_policy_engine.py
+- [X] T027 [P] [US2] Test: pending approval authorized by a cascaded descendant can no longer be approved into ALLOW; one `capability.cascade_revoked` record — SC-003/SC-005 — in tests/test_approval_chokepoint_registration.py
+- [X] T028 [P] [US2] Test: a call already past the chokepoint before revoke is NOT unwound (FR-009) in tests/test_delegation_e2e.py
 
 **Checkpoint**: containment closed — a child cannot outlive, out-spend,
 or escape the prior-use kill-set of its ancestor.
@@ -100,11 +100,11 @@ or escape the prior-use kill-set of its ancestor.
 
 ## Phase 6: Polish & Cross-Cutting
 
-- [ ] T031 [P] End-to-end quickstart test (all steps incl. 6a pooled-rate, 6b inherit-restrictive, no-retro-unwind, LLM-isolation) in tests/test_delegation_e2e.py
-- [ ] T032 [P] Determinism test: repeat US1+US2 flows; assert byte-identical decisions and identical audit content — SC-007 — in tests/test_delegation_e2e.py
-- [ ] T033 [P] Update ROADMAP.md (v0.8 delegation row + commit) and set `specs/002-capability-delegation-chains/spec.md` Status: Implemented
+- [X] T031 [P] End-to-end quickstart test (all steps incl. 6a pooled-rate, 6b inherit-restrictive, no-retro-unwind, LLM-isolation) in tests/test_delegation_e2e.py
+- [X] T032 [P] Determinism test: repeat US1+US2 flows; assert byte-identical decisions and identical audit content — SC-007 — in tests/test_delegation_e2e.py
+- [X] T033 [P] Update ROADMAP.md (v0.8 delegation row + commit) and set `specs/002-capability-delegation-chains/spec.md` Status: Implemented
 - [ ] T034 Full gate green: `uv run ruff check`, `uv run ruff format --check`, `uv run pyright` (0), `uv run pytest` (all pass) — Constitution III done-criteria
-- [ ] T035 [P] Update `docs/security-models.md`: move the "Capability delegation chains" row from *spec'd* to *implemented* and verify the documented deviations (single-parent tree; cascade computed at decide()) match the built code — Constitution VIII obligation (model-faithfulness map MUST stay truthful)
+- [X] T035 [P] Update `docs/security-models.md`: move the "Capability delegation chains" row from *spec'd* to *implemented* and verify the documented deviations (single-parent tree; cascade computed at decide()) match the built code — Constitution VIII obligation (model-faithfulness map MUST stay truthful)
 
 ---
 

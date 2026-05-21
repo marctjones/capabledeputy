@@ -83,16 +83,14 @@ def _likely_outcome_for_tool(
     "ALLOW likely", or "???".
     """
     # Egress tools with untrusted content -> DENY
-    if (
-        (Label.UNTRUSTED_EXTERNAL in label_set or Label.UNTRUSTED_USER_INPUT in label_set)
-        and (Label.EGRESS_EMAIL in label_set or Label.EGRESS_PURCHASE in label_set)
+    if (Label.UNTRUSTED_EXTERNAL in label_set or Label.UNTRUSTED_USER_INPUT in label_set) and (
+        Label.EGRESS_EMAIL in label_set or Label.EGRESS_PURCHASE in label_set
     ):
         return "likely DENY (untrusted-meets-egress)"
 
     # Health label with egress -> DENY
-    if (
-        Label.CONFIDENTIAL_HEALTH in label_set
-        and (Label.EGRESS_EMAIL in label_set or Label.EGRESS_PURCHASE in label_set)
+    if Label.CONFIDENTIAL_HEALTH in label_set and (
+        Label.EGRESS_EMAIL in label_set or Label.EGRESS_PURCHASE in label_set
     ):
         return "likely DENY (health-meets-egress)"
 
@@ -116,10 +114,13 @@ def _likely_outcome_for_tool(
     if tool.default_reversibility is not None:
         degree = tool.default_reversibility.get("degree", "")
         agent = tool.default_reversibility.get("agent", "")
-        if degree == "reversible" and agent == "system":
-            # Check effect class doesn't egress
-            if tool.effect_class and not tool.effect_class.startswith("egress"):
-                return "likely AUTO"
+        if (
+            degree == "reversible"
+            and agent == "system"
+            and tool.effect_class
+            and not tool.effect_class.startswith("egress")
+        ):
+            return "likely AUTO"
 
     # Default fallback
     return "ALLOW likely"
@@ -146,11 +147,7 @@ def _format_recent_decisions(events: list[Event], max_count: int = 10) -> tuple[
     Returns (formatted_string, count_included).
     """
     # Filter to POLICY_DECIDED and TOOL_RETURNED events
-    policy_events = [
-        e
-        for e in events
-        if e.event_type == EventType.POLICY_DECIDED
-    ]
+    policy_events = [e for e in events if e.event_type == EventType.POLICY_DECIDED]
 
     # Take last N
     recent = policy_events[-max_count:] if policy_events else []

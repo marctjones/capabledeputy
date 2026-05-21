@@ -124,12 +124,10 @@ def compose_inspector_outcomes(
     tightens: list[tuple[str, DecisionTighten]] = []
     relaxes: list[tuple[str, DecisionRelax]] = []
     for name, oc in outcomes:
-        if isinstance(oc, DecisionTighten):
-            if is_strictly_more_restrictive(oc.to, proposed):
-                tightens.append((name, oc))
-        elif isinstance(oc, DecisionRelax):
-            if is_strictly_less_restrictive(oc.to, proposed):
-                relaxes.append((name, oc))
+        if isinstance(oc, DecisionTighten) and is_strictly_more_restrictive(oc.to, proposed):
+            tightens.append((name, oc))
+        elif isinstance(oc, DecisionRelax) and is_strictly_less_restrictive(oc.to, proposed):
+            relaxes.append((name, oc))
     if tightens:
         # Strictest tighten wins (highest restrictiveness index).
         name, t = max(tightens, key=lambda x: _RESTRICTIVENESS.get(x[1].to, -1))

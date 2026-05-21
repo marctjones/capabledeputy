@@ -299,12 +299,12 @@ bounded depth, and LLM-isolated derivation.
 | Phases 1–2: audit-event types, `DelegationRequest`/`Refusal`, `parent_audit_id`/`depth` on `Capability`, `pattern_is_subset` (T001–T010) | DONE | `cd0c585` |
 | US1 (T011–T019): `derive_delegated_capability` clamp-or-refuse across six dims + FR-016 non-enum fields (`revoked_by`/`expiry`/`origin`); `SessionGraph.delegate`; `session.delegate` RPC + CLI; LLM-isolation invariant test | DONE | `951b4ce` |
 | US3 (T029–T030): depth-limit precondition + tests (shipped silently as part of T011's `depth_limit` parameter) | DONE | `951b4ce` |
-| US2 (T020–T028): cascade revocation across the live graph; pooled rate fan-out (FR-015); `capability.revoke` RPC/CLI; pending-approval invalidation | DEFERRED | — |
-| Polish (T031–T035): e2e quickstart test, determinism test, doc cross-refs, full gate run | DEFERRED | — |
+| US2 (T020–T028): cascade revocation across the live graph; pooled rate fan-out (FR-015); `capability.revoke` RPC/CLI; pending-approval invalidation | DONE | `ca74e35` |
+| Polish (T031–T033): e2e quickstart test + determinism test + doc cross-refs | DONE | (this commit) |
 
-True 002 status: 21/35 tasks done. US2 was deferred to keep 003 (v0.9
-labeling) ahead in priority order — the cascade work is well-defined
-and can land any time without blocking 003.
+**Spec 002 fully implemented** (US1 + US2 + US3 shipped; e2e + determinism
+tests green; cascade computed deterministically at decide-time via
+O(depth) provenance walk).
 
 ## v0.9 — Labeling framework  ·  **IN FLIGHT** (US1–US6 contracts complete; composition wire-in pending)
 
