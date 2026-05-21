@@ -360,17 +360,34 @@ Biba.
 | Policy-language gap closures (multi-category predicates, time-of-day, AssignmentProvenance, raise-only-inspector hook, Pattern (5) demo actuator) | DONE | `v0.9.0-rc.5` |
 | Runtime activation (daemon wires PolicyContext from configs; SessionGraph spawn-refusal; CLI ↔ daemon override IPC; profile-derived BLP/Biba) | DONE | `v0.9.0-rc.6` |
 
-## v0.9 → v1.0 (spec 004) — MCP + substrate integration  ·  **DESIGNED**
+## v0.9 → v1.0 (spec 004) — MCP + substrate integration  ·  **FOUNDATIONS LANDED**
 
-Spec `specs/004-mcp-and-substrate/`. Closes the production-substrate gap.
-Generic MCP adapter + 8 tier-1 MCP server mappings (GitHub, Google
-Workspace, Microsoft 365, Notion, Slack, Playwright, Context7, Anthropic 7
-references) + native fs/web.search/code.execute tools + real
-SandboxActuator providers (Podman, Modal, Firecracker) + OTLP/Splunk
-sinks + WebAuthn/Duo/OAuth identity stack + two regression demos
-against the documented incident corpus (Meta-director autonomous-deletion,
-ToxicSkills payload survival) + DefenseClaw integration plugin. 60 tasks
-across 8 phases.
+Spec `specs/004-mcp-and-substrate/`. Foundation phases (P0/P1/P2/P3
+substrate ports + builtins + tests) are now shipped:
+
+| Phase | Items | Status |
+|---|---|---|
+| **P0** programmatic primitives | RaiseOnlyInspector, DecisionInspector + 2 builtins, DeclassifyingTransformer + 2 builtins + chokepoint wire-in, per-arg payload labels (FR-027/039), 3 new audit events, named HookRegistry (T020) | **DONE** |
+| **P1** MCP surfaces | SamplingMediator port + 3 builtins, ElicitationMediator port + 3 builtins, upstream MCP resources/list + resources/read | **DONE** |
+| **P2** OSCAL + observability | OSCAL Component Definition emission, OSCAL System Security Plan, audit-evidence bundle (events grouped by NIST control), `capdep compliance-emit-*` CLI | **DONE** |
+| **P3** policy authoring | PolicyScriptHost port + SafePythonScriptHost reference, OPA sidecar adapter (OpaConsultingInspector) | **FOUNDATIONS** |
+
+Spec 002 (capability delegation chains) is also **fully implemented**
+(US1 + US2 cascade + US3 depth) — see the v0.8 section above.
+
+Operator-visible new surfaces:
+- `capdep compliance-emit-oscal --output ./oscal-bundle.json`
+- `capdep compliance-emit-ssp --output ./ssp.json`
+- `capdep compliance-emit-evidence --audit-log ./audit.jsonl --output ./evidence.json`
+- 5 bundled Python MCP servers: `capdep mcp-server-{fs,fetch,search,memory,git}`
+- 3 new audit event types: `inspector.applied`, `decision_inspector.applied`, `declassifier.applied`
+- Per-purpose `default_capabilities` + `bindings` in `configs/purposes.yaml`
+- Operator-published resources via `configs/resources.yaml` + `resources.list`/`resources.read` tools
+
+Generic MCP adapter + 8 tier-1 MCP server mappings + native code.execute +
+real SandboxActuator providers (Podman, Modal, Firecracker) + OTLP/Splunk
+sinks + WebAuthn/Duo/OAuth identity stack + regression demos + DefenseClaw
+integration plugin: **still designed, not implemented**.
 
 See `specs/004-mcp-and-substrate/research.md` for the competitive
 landscape research that motivated the integration target list, and
