@@ -71,6 +71,16 @@ class ToolDefinition:
     tool_provenance: str = "operator-curated"  # e.g., "operator-curated" | "mcp"
     surfaces_destination_id: bool = False  # FR-048 — port-backed canonical id
     risk_ids: tuple[str, ...] = field(default_factory=tuple)
+    # Spec 004 P0 FR-027/039 — per-arg payload labels. Maps an arg
+    # name to a frozenset of Labels that fire WHEN THAT ARG IS NON-EMPTY.
+    # Example: email.send.arg_inherent_labels = {
+    #   "body": frozenset({Label.CONFIDENTIAL_PERSONAL}),
+    #   "attachments": frozenset({Label.UNTRUSTED_USER}),
+    # }
+    # The chokepoint adds these per-arg labels in addition to the
+    # tool-level inherent_labels. Lets a tool declare "the body field
+    # carries personal data" without painting EVERY call with that label.
+    arg_inherent_labels: dict[str, frozenset[Label]] = field(default_factory=dict)
 
     def extract_target(self, args: dict[str, Any]) -> str:
         return str(args.get(self.target_arg, ""))
@@ -80,6 +90,33 @@ class ToolDefinition:
             return None
         value = args.get(self.amount_arg)
         return int(value) if value is not None else None
+
+    def extract_arg_inherent_labels(
+        self,
+        args: dict[str, Any],
+    ) -> frozenset[Label]:
+        """Spec 004 P0 FR-027/039 — per-arg payload labels.
+
+        For each (arg_name, labels) declaration: if the corresponding
+        value in `args` is non-empty (truthy + not empty string/dict/list),
+        include those labels. Result is the union of all matching
+        per-arg labels; empty if no declared arg is populated.
+        """
+        if not self.arg_inherent_labels:
+            return frozenset()
+        out: set[Label] = set()
+        for arg_name, labels in self.arg_inherent_labels.items():
+            value = args.get(arg_name)
+            if value is None:
+                continue
+            # Empty containers / strings don't trigger; truthy values do.
+            if hasattr(value, "__len__"):
+                if len(value) == 0:
+                    continue
+            elif not value:
+                continue
+            out.update(labels)
+        return frozenset(out)
 
 
 class DuplicateToolError(ValueError):

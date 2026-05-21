@@ -460,7 +460,14 @@ class LabeledToolClient:
         else:
             tool_inherent_for_propagation = tool.inherent_labels
 
-        labels_to_add = tool_inherent_for_propagation | result.additional_labels
+        # Spec 004 P0 FR-027/039 — per-arg payload labels. The tool
+        # declares which arg values carry which labels; we add them
+        # to this turn's propagation only when the corresponding arg
+        # was actually populated. Lets tool authors say "body carries
+        # confidential.personal" without painting EVERY email send
+        # call regardless of body content.
+        per_arg_labels = tool.extract_arg_inherent_labels(args)
+        labels_to_add = tool_inherent_for_propagation | result.additional_labels | per_arg_labels
         labels_added: frozenset[Label] = frozenset()
         if labels_to_add:
             before = session.label_set
