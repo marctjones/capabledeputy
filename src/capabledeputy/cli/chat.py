@@ -103,15 +103,56 @@ def _call(method: str, params: dict[str, Any] | None = None) -> Any:
     return anyio.run(_client().call, method, params or {})
 
 
-def _ensure_daemon() -> None:
+def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
+    """Verify the daemon is reachable; optionally auto-start it.
+
+    When autostart=True, spawns the daemon in the background and polls
+    until the socket comes up (10s timeout). Logs to a temp file so
+    the operator can debug startup failures.
+    """
     try:
         _call("ping")
+        return
     except DaemonNotRunningError:
-        err_console.print(
-            "[red]daemon not running.[/red] start it in another terminal "
-            "with [bold]capdep daemon start[/bold] and re-run this command.",
-        )
-        raise typer.Exit(code=2) from None
+        if not autostart:
+            err_console.print(
+                "[red]daemon not running.[/red] start it in another terminal "
+                "with [bold]capdep daemon start[/bold] and re-run this command.\n"
+                "Or pass [bold]--autostart[/bold] to spawn one in the background.",
+            )
+            raise typer.Exit(code=2) from None
+
+    # Autostart path: spawn in background, poll
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+
+    console.print("[green]starting daemon in background...[/green]")
+    cmd = [sys.executable, "-m", "capabledeputy.cli.main", "daemon", "start"]
+    if config:
+        cmd.extend(["--config", config])
+    log_path = Path("/tmp") / f"capdep-daemon-{int(time.time())}.log"
+    log_file = log_path.open("w")
+    subprocess.Popen(
+        cmd,
+        stdout=log_file,
+        stderr=log_file,
+        start_new_session=True,
+    )
+    console.print(f"[dim]daemon log: {log_path}[/dim]")
+    for _ in range(50):
+        time.sleep(0.2)
+        try:
+            _call("ping")
+            console.print("[green]daemon ready[/green]")
+            return
+        except DaemonNotRunningError:
+            continue
+    err_console.print(
+        f"[red]daemon failed to start within 10s; check {log_path}[/red]",
+    )
+    raise typer.Exit(code=2) from None
 
 
 _TURN_COUNTER = {"n": 0}
@@ -1129,18 +1170,47 @@ def chat_command(
             ),
         ),
     ] = False,
+    config: Annotated[
+        str | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help=(
+                "Daemon config (upstream MCP servers) to use IF the daemon "
+                "needs to be auto-started. Ignored when the daemon is "
+                "already running."
+            ),
+        ),
+    ] = None,
+    no_autostart: Annotated[
+        bool,
+        typer.Option(
+            "--no-autostart",
+            help=(
+                "Refuse to auto-start the daemon — fail with a clear error "
+                "if it's not already running."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Interactive REPL against a session.
 
-    Run without arguments to auto-create a fresh session and drop
-    straight into chat:
+    Run without arguments to do EVERYTHING:
+      - Auto-start the daemon if it isn't already running (background)
+      - Auto-create a fresh session
+      - Drop into the chat REPL
 
-      capdep chat                  # creates session, enters REPL
-      capdep chat <session-id>     # uses existing session
-      capdep chat --new            # forces a new session
-      capdep chat --intent "X"     # set intent for the auto-created session
+      capdep chat                       # one-command experience
+      capdep chat --config <path.yaml>  # auto-start daemon with this config
+      capdep chat <session-id>          # resume existing session
+      capdep chat --new                 # force fresh session
+      capdep chat --intent "X"          # custom intent for new session
+      capdep chat --no-autostart        # fail if daemon not running
+
+    Daemon stdout/stderr goes to /tmp/capdep-daemon-*.log when
+    auto-started, so failures are debuggable.
     """
-    _ensure_daemon()
+    _ensure_daemon(autostart=not no_autostart, config=config)
 
     effective_id: str | None = None if new else session_id
     if effective_id is None:
