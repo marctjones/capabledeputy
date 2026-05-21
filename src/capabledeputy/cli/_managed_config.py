@@ -185,6 +185,101 @@ def write_managed_block(
     return (False, True)
 
 
+def write_top_level_managed_block(
+    path: Path,
+    block_id: str,
+    block_body: str,
+) -> tuple[bool, bool]:
+    """Insert or replace a managed block at the YAML top level (not
+    under `upstream_servers:`). Used for the `sandbox:` block, whose
+    body INCLUDES the top-level key.
+
+    Marker format and idempotency are the same as `write_managed_block`,
+    but the markers are at column zero (no two-space indent) so they
+    don't appear to be part of any list.
+
+    Returns `(replaced, content_changed)`.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    begin = f"# BEGIN capdep-managed: {block_id}"
+    end = f"# END capdep-managed: {block_id}"
+    body_normalized = block_body.rstrip("\n")
+    new_block = f"{begin}\n{body_normalized}\n{end}\n"
+
+    if not path.is_file():
+        # File doesn't exist yet — write header + this block alone.
+        content = f"{_HEADER}{new_block}"
+        path.write_text(content, encoding="utf-8")
+        return (False, True)
+
+    original = path.read_text(encoding="utf-8")
+    lines = original.splitlines(keepends=False)
+
+    begin_idx = next((i for i, ln in enumerate(lines) if ln.strip() == begin), -1)
+    end_idx = next((i for i, ln in enumerate(lines) if ln.strip() == end), -1)
+
+    if begin_idx >= 0 and end_idx >= 0 and end_idx > begin_idx:
+        new_lines = (
+            lines[:begin_idx]
+            + new_block.rstrip("\n").split("\n")
+            + lines[end_idx + 1 :]
+        )
+        new_content = "\n".join(new_lines)
+        if not new_content.endswith("\n"):
+            new_content += "\n"
+        if new_content == original:
+            return (True, False)
+        path.write_text(new_content, encoding="utf-8")
+        return (True, True)
+
+    # No existing block — append at end, with a blank line separator.
+    suffix = "" if original.endswith("\n") else "\n"
+    new_content = original + suffix + "\n" + new_block
+    path.write_text(new_content, encoding="utf-8")
+    return (False, True)
+
+
+def register_default_assistant_surface(
+    path: Path,
+    *,
+    include_sandbox: bool | None = None,
+) -> list[str]:
+    """Write/refresh all the bundled MCP server managed blocks (fs,
+    memory, git, fetch, search) in `path`. If `include_sandbox` is
+    True, also writes the sandbox block; if False, skips it; if None
+    (default), the sandbox block is included iff `podman --version`
+    succeeds. Returns the list of human-readable status messages —
+    callers print them to the operator.
+    """
+    messages: list[str] = []
+    for block_id, body in DEFAULT_ASSISTANT_BUNDLED_BLOCKS:
+        replaced, changed = write_managed_block(path, block_id, body)
+        if changed and replaced:
+            messages.append(f"refreshed {block_id}")
+        elif changed:
+            messages.append(f"registered {block_id}")
+        else:
+            messages.append(f"{block_id} already up to date")
+
+    if include_sandbox is None:
+        include_sandbox = podman_available()
+    if include_sandbox:
+        replaced, changed = write_top_level_managed_block(
+            path, SANDBOX_BLOCK_ID, SANDBOX_BLOCK_BODY,
+        )
+        if changed and replaced:
+            messages.append("refreshed sandbox (podman, scratch region)")
+        elif changed:
+            messages.append("registered sandbox (podman, scratch region)")
+        else:
+            messages.append("sandbox already up to date")
+    else:
+        messages.append("sandbox skipped (podman not detected)")
+
+    return messages
+
+
 def remove_managed_block(path: Path, block_id: str) -> bool:
     """Strip the managed block with this id from `path`. Returns True
     if a block was removed, False if nothing to do (file missing or
@@ -233,3 +328,140 @@ IMAP_BLOCK_BODY = """\
         capability_kind: MODIFY_FS
     strict: true
 """
+
+
+# ---- bundled MCP server blocks (no external deps, ship with capdep) ----
+
+BUNDLED_FS_BLOCK_ID = "bundled-fs"
+BUNDLED_FS_BLOCK_BODY = """\
+  - name: bundled-fs
+    command: ["capdep", "mcp-server-fs"]
+    inherent_labels: []
+    tool_overrides:
+      "fs.read":
+        capability_kind: READ_FS
+      "fs.list":
+        capability_kind: READ_FS
+      "fs.create":
+        capability_kind: CREATE_FS
+      "fs.write":
+        capability_kind: WRITE_FS
+      "fs.delete":
+        capability_kind: DELETE_FS
+    strict: true
+"""
+
+BUNDLED_FETCH_BLOCK_ID = "bundled-fetch"
+BUNDLED_FETCH_BLOCK_BODY = """\
+  - name: bundled-fetch
+    command: ["capdep", "mcp-server-fetch"]
+    inherent_labels: ["untrusted.external"]
+    tool_overrides:
+      "fetch.get":
+        capability_kind: WEB_FETCH
+    strict: true
+"""
+
+BUNDLED_SEARCH_BLOCK_ID = "bundled-search"
+BUNDLED_SEARCH_BLOCK_BODY = """\
+  - name: bundled-search
+    command: ["capdep", "mcp-server-search"]
+    inherent_labels: ["untrusted.external"]
+    tool_overrides:
+      "search.web":
+        capability_kind: WEB_FETCH
+    strict: true
+"""
+
+BUNDLED_MEMORY_BLOCK_ID = "bundled-memory"
+BUNDLED_MEMORY_BLOCK_BODY = """\
+  - name: bundled-memory
+    command: ["capdep", "mcp-server-memory"]
+    inherent_labels: []
+    tool_overrides:
+      "memory.create":
+        capability_kind: CREATE_FS
+      "memory.read":
+        capability_kind: READ_FS
+      "memory.update":
+        capability_kind: WRITE_FS
+      "memory.delete":
+        capability_kind: DELETE_FS
+      "memory.list":
+        capability_kind: READ_FS
+    strict: true
+"""
+
+BUNDLED_GIT_BLOCK_ID = "bundled-git"
+BUNDLED_GIT_BLOCK_BODY = """\
+  - name: bundled-git
+    command: ["capdep", "mcp-server-git"]
+    inherent_labels: []
+    tool_overrides:
+      "git.status":
+        capability_kind: READ_FS
+      "git.log":
+        capability_kind: READ_FS
+      "git.diff":
+        capability_kind: READ_FS
+      "git.show":
+        capability_kind: READ_FS
+      "git.branch_list":
+        capability_kind: READ_FS
+    strict: true
+"""
+
+
+# All bundled blocks grouped for `register_default_assistant_surface`.
+# Order is the order they appear in the managed file, with the
+# safer/more-bounded ones first.
+DEFAULT_ASSISTANT_BUNDLED_BLOCKS: tuple[tuple[str, str], ...] = (
+    (BUNDLED_FS_BLOCK_ID, BUNDLED_FS_BLOCK_BODY),
+    (BUNDLED_MEMORY_BLOCK_ID, BUNDLED_MEMORY_BLOCK_BODY),
+    (BUNDLED_GIT_BLOCK_ID, BUNDLED_GIT_BLOCK_BODY),
+    (BUNDLED_FETCH_BLOCK_ID, BUNDLED_FETCH_BLOCK_BODY),
+    (BUNDLED_SEARCH_BLOCK_ID, BUNDLED_SEARCH_BLOCK_BODY),
+)
+
+
+# ---- top-level `sandbox:` block ----
+# This is NOT inside `upstream_servers:` — it's a peer YAML key. The
+# managed-block helper handles it via the `top_level=True` mode below.
+
+SANDBOX_BLOCK_ID = "sandbox"
+SANDBOX_BLOCK_BODY = """\
+sandbox:
+  provider: podman
+  regions:
+    - id: scratch
+      image: docker.io/library/alpine:latest
+      network: none
+      memory_mb: 512
+      cpus: 1.0
+      pids_limit: 128
+      timeout_seconds_default: 30
+      auto_io_mounts: true
+"""
+
+
+def podman_available() -> bool:
+    """True iff the `podman` CLI is on PATH and `--version` exits zero.
+    Used by setup commands to decide whether to write the sandbox
+    managed block. Cached per-process; not aggressive enough about
+    detection that we'd want to retry."""
+    import shutil
+    import subprocess
+
+    bin_path = shutil.which("podman")
+    if bin_path is None:
+        return False
+    try:
+        result = subprocess.run(  # noqa: S603
+            [bin_path, "--version"],
+            capture_output=True,
+            timeout=3,
+            check=False,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False

@@ -166,3 +166,120 @@ def test_imap_credentials_present(xdg_tmp: Path) -> None:
     secrets_dir.mkdir(parents=True)
     (secrets_dir / "imap-config.yaml").write_text("imap: {}\n", encoding="utf-8")
     assert imap_credentials_present() is True
+
+
+# --- Default-assistant surface + top-level sandbox block --------------------
+
+
+def test_register_default_assistant_surface_writes_all_blocks(xdg_tmp: Path) -> None:
+    from capabledeputy.cli._managed_config import (
+        BUNDLED_FETCH_BLOCK_ID,
+        BUNDLED_FS_BLOCK_ID,
+        BUNDLED_GIT_BLOCK_ID,
+        BUNDLED_MEMORY_BLOCK_ID,
+        BUNDLED_SEARCH_BLOCK_ID,
+        register_default_assistant_surface,
+    )
+
+    path = user_default_daemon_config_path()
+    # include_sandbox=False to keep the test podman-binary-independent
+    msgs = register_default_assistant_surface(path, include_sandbox=False)
+    text = path.read_text(encoding="utf-8")
+    for block_id in (
+        BUNDLED_FS_BLOCK_ID,
+        BUNDLED_MEMORY_BLOCK_ID,
+        BUNDLED_GIT_BLOCK_ID,
+        BUNDLED_FETCH_BLOCK_ID,
+        BUNDLED_SEARCH_BLOCK_ID,
+    ):
+        assert f"# BEGIN capdep-managed: {block_id}" in text
+        assert f"# END capdep-managed: {block_id}" in text
+    # The file parses as YAML and lists all five upstream servers
+    parsed = yaml.safe_load(text)
+    names = {s["name"] for s in parsed["upstream_servers"]}
+    assert {"bundled-fs", "bundled-memory", "bundled-git", "bundled-fetch", "bundled-search"}.issubset(names)
+    # status messages report one line per block + a sandbox-skipped message
+    assert any("bundled-fs" in m for m in msgs)
+    assert any("sandbox skipped" in m for m in msgs)
+
+
+def test_register_default_assistant_surface_idempotent(xdg_tmp: Path) -> None:
+    from capabledeputy.cli._managed_config import register_default_assistant_surface
+
+    path = user_default_daemon_config_path()
+    register_default_assistant_surface(path, include_sandbox=False)
+    first = path.read_text(encoding="utf-8")
+    msgs = register_default_assistant_surface(path, include_sandbox=False)
+    assert path.read_text(encoding="utf-8") == first
+    # Every entry says "already up to date"
+    assert all("already up to date" in m or "sandbox skipped" in m for m in msgs)
+
+
+def test_register_default_coexists_with_imap_block(xdg_tmp: Path) -> None:
+    """imap-setup writes the IMAP block; running register_default
+    afterwards must not disturb it (and vice versa)."""
+    from capabledeputy.cli._managed_config import register_default_assistant_surface
+
+    path = user_default_daemon_config_path()
+    write_managed_block(path, "imap", IMAP_BLOCK_BODY)
+    register_default_assistant_surface(path, include_sandbox=False)
+    text = path.read_text(encoding="utf-8")
+    assert "# BEGIN capdep-managed: imap" in text
+    assert "# BEGIN capdep-managed: bundled-fs" in text
+    parsed = yaml.safe_load(text)
+    names = {s["name"] for s in parsed["upstream_servers"]}
+    assert "mail" in names  # imap server's name
+    assert "bundled-fs" in names
+
+
+def test_sandbox_top_level_block(xdg_tmp: Path) -> None:
+    """The sandbox block lives at the top of the YAML, NOT under
+    upstream_servers:. Verify it parses cleanly + sits alongside the
+    upstream entries."""
+    from capabledeputy.cli._managed_config import (
+        SANDBOX_BLOCK_BODY,
+        SANDBOX_BLOCK_ID,
+        register_default_assistant_surface,
+        write_top_level_managed_block,
+    )
+
+    path = user_default_daemon_config_path()
+    register_default_assistant_surface(path, include_sandbox=False)
+    write_top_level_managed_block(path, SANDBOX_BLOCK_ID, SANDBOX_BLOCK_BODY)
+    text = path.read_text(encoding="utf-8")
+    parsed = yaml.safe_load(text)
+    # Both top-level keys present
+    assert "upstream_servers" in parsed
+    assert "sandbox" in parsed
+    assert parsed["sandbox"]["provider"] == "podman"
+    assert any(r["id"] == "scratch" for r in parsed["sandbox"]["regions"])
+
+
+def test_sandbox_top_level_block_replace_in_place(xdg_tmp: Path) -> None:
+    from capabledeputy.cli._managed_config import write_top_level_managed_block
+
+    path = user_default_daemon_config_path()
+    write_top_level_managed_block(
+        path,
+        "sandbox",
+        "sandbox:\n  provider: podman\n  regions: []\n",
+    )
+    original = path.read_text(encoding="utf-8")
+    replaced, changed = write_top_level_managed_block(
+        path,
+        "sandbox",
+        "sandbox:\n  provider: podman\n  regions: []\n",
+    )
+    assert replaced is True
+    assert changed is False  # idempotent
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_podman_available_falls_back_to_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When `podman` is not on PATH, podman_available() returns False."""
+    import shutil
+
+    from capabledeputy.cli._managed_config import podman_available
+
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    assert podman_available() is False

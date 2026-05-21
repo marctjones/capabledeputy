@@ -527,6 +527,62 @@ app.command("mcp-server-gworkspace")(_make_bundled_mcp_command("gworkspace"))
 app.command("mcp-server-imap")(_make_bundled_mcp_command("imap"))
 
 
+@app.command("setup")
+def setup_command(
+    no_sandbox: Annotated[
+        bool,
+        typer.Option(
+            "--no-sandbox",
+            help="Don't register a Podman sandbox region even if podman is detected.",
+        ),
+    ] = False,
+    force_sandbox: Annotated[
+        bool,
+        typer.Option(
+            "--force-sandbox",
+            help="Register the sandbox block even if podman isn't on PATH (you'll install it later).",
+        ),
+    ] = False,
+) -> None:
+    """Register the standard bundled-server assistant surface — fs,
+    memory, git, fetch, search — plus a Podman sandbox region if
+    available.
+
+    Writes managed blocks under `~/.config/capabledeputy/daemon.yaml`.
+    Re-running is safe and idempotent: existing blocks are refreshed,
+    user-authored content between managed markers is preserved.
+
+    Use this instead of `imap-setup` when you don't want Gmail wired
+    up. Run both if you want both — they update different managed
+    blocks in the same file.
+    """
+    from capabledeputy.cli._managed_config import (
+        register_default_assistant_surface,
+        user_default_daemon_config_path,
+    )
+
+    if no_sandbox and force_sandbox:
+        err_console.print(
+            "[red]--no-sandbox and --force-sandbox are mutually exclusive[/red]",
+        )
+        raise typer.Exit(code=2)
+
+    daemon_yaml = user_default_daemon_config_path()
+    include_sandbox = (
+        False if no_sandbox else True if force_sandbox else None
+    )
+    console.print("[bold]registering bundled assistant tools:[/bold]")
+    for msg in register_default_assistant_surface(
+        daemon_yaml, include_sandbox=include_sandbox,
+    ):
+        console.print(f"  [dim]·[/dim] {msg}")
+    console.print(
+        f"\n[green]daemon config: {daemon_yaml}[/green]\n"
+        "[bold]next:[/bold] [bold]capdep chat[/bold] — tools available "
+        "automatically.",
+    )
+
+
 @app.command("imap-setup")
 def imap_setup(
     host: Annotated[
@@ -650,6 +706,8 @@ smtp:
         )
         return
 
+    from capabledeputy.cli._managed_config import register_default_assistant_surface
+
     daemon_yaml = user_default_daemon_config_path()
     replaced, changed = write_managed_block(daemon_yaml, IMAP_BLOCK_ID, IMAP_BLOCK_BODY)
     if changed and replaced:
@@ -658,9 +716,17 @@ smtp:
         console.print(f"[green]registered IMAP block in {daemon_yaml}[/green]")
     else:
         console.print(f"[dim]IMAP block in {daemon_yaml} already up to date[/dim]")
+
+    # Also register the standard bundled-server surface (fs, memory,
+    # git, fetch, search) + sandbox if podman is available. One setup
+    # run, complete assistant.
+    console.print("\n[bold]registering bundled assistant tools:[/bold]")
+    for msg in register_default_assistant_surface(daemon_yaml):
+        console.print(f"  [dim]·[/dim] {msg}")
+
     console.print(
-        "\n[bold]next:[/bold] [bold]capdep chat[/bold] — Gmail tools will be "
-        "available automatically (no --config needed).",
+        "\n[bold]next:[/bold] [bold]capdep chat[/bold] — Gmail + fs + memory + "
+        "git + fetch + search tools will be available automatically.",
     )
 
 

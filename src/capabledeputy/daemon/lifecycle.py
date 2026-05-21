@@ -311,7 +311,25 @@ async def run_daemon(
 
     # Populate ANTHROPIC_API_KEY from CLAUDEAPI.KEY in the cwd if it isn't
     # already set, so users don't need to re-export the env var each shell.
-    load_anthropic_api_key()
+    import sys as _sys_for_key
+
+    pre_existing = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    loaded = load_anthropic_api_key()
+    if pre_existing:
+        print("[llm] ANTHROPIC_API_KEY found in environment", file=_sys_for_key.stderr)
+    elif loaded:
+        print(
+            "[llm] ANTHROPIC_API_KEY loaded from ./CLAUDEAPI.KEY",
+            file=_sys_for_key.stderr,
+        )
+    else:
+        print(
+            "[llm] WARNING: no ANTHROPIC_API_KEY in env and no CLAUDEAPI.KEY "
+            "file in cwd — LLM calls will fail until you set one. "
+            "Either `export ANTHROPIC_API_KEY=...` or drop the key in "
+            "./CLAUDEAPI.KEY (will be auto-loaded next start).",
+            file=_sys_for_key.stderr,
+        )
 
     # Precedence: explicit arg (CLI flag) > CAPDEP_POLICY_PREVIEW env >
     # default on. The env var is off only for explicit falsey values.

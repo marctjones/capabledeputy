@@ -121,8 +121,11 @@ def capability_line(
 # recovery. Shared so the REPL hint and the TUI trace agree.
 DENY_RECOVERY: dict[str, str] = {
     "untrusted-meets-egress": (
-        "/extract <msg> <schema> to declassify a fact, then /spawn a "
-        "clean session and /grant a one-shot cap"
+        "this session read untrusted content (e.g. inbox / fetched URL) and "
+        "now wants to send it out — that's the bait-and-pivot pattern the "
+        "engine blocks. Recovery: /spawn a fresh session with --intent "
+        "'reply to <person>' and grant a one-shot SEND_EMAIL cap; or use "
+        "/extract to declassify a specific fact first"
     ),
     "health-meets-egress": (
         "/spawn a clean session — health data cannot egress from a tainted session at all"

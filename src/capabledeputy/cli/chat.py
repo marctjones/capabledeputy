@@ -33,6 +33,8 @@ equivalent `capdep` subcommands):
   Observability:
     /trace                  re-render the last turn's tool outcomes
     /audit [N]              last N audit events for current session
+    /tools [filter]         list tools currently available (optionally
+                            filtered by substring)
 
   Misc:
     /help                   this list
@@ -136,6 +138,23 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
                 "config doesn't reference them. Run "
                 "[bold]capdep imap-setup --register-only[/bold] to wire them in.",
             )
+
+    # LLM key pre-flight: warn upfront if we're about to autostart a
+    # daemon with no key wired. The daemon will also log this, but
+    # surfacing it before the user types a message saves a confusing
+    # round-trip with the LLM rejecting an unauthenticated call.
+    import os as _os
+    from capabledeputy.secrets import DEFAULT_KEY_FILENAME
+
+    has_env_key = bool(_os.environ.get("ANTHROPIC_API_KEY"))
+    has_file_key = Path.cwd().joinpath(DEFAULT_KEY_FILENAME).is_file()
+    if autostart and not has_env_key and not has_file_key:
+        console.print(
+            "[yellow]heads up:[/yellow] no ANTHROPIC_API_KEY in env and no "
+            f"{DEFAULT_KEY_FILENAME} in cwd ({Path.cwd()}). The agent's LLM "
+            "calls will fail. Either `export ANTHROPIC_API_KEY=...` first, "
+            f"or place the key in ./{DEFAULT_KEY_FILENAME}.",
+        )
 
     try:
         _call("ping")
@@ -784,6 +803,44 @@ def _handle_remember(arg: str) -> None:
     )
 
 
+def _handle_tools(filter_substring: str = "") -> None:
+    """/tools [filter] — render the tools the daemon currently exposes,
+    grouped by capability kind. Optional substring filter narrows the
+    list (e.g. `/tools gmail` shows only gmail.*)."""
+    try:
+        result = _call("tool.list")
+    except Exception as e:
+        err_console.print(f"[red]tool.list failed:[/red] {e}")
+        return
+
+    tools = result.get("tools", []) or []
+    if not tools:
+        console.print("[dim]no tools registered[/dim]")
+        return
+
+    needle = filter_substring.lower().strip()
+    if needle:
+        tools = [t for t in tools if needle in (t.get("name") or "").lower()]
+    if not tools:
+        console.print(f"[dim]no tools match {filter_substring!r}[/dim]")
+        return
+
+    # Group by capability kind for scannability.
+    by_kind: dict[str, list[dict[str, Any]]] = {}
+    for t in tools:
+        kind = t.get("capability_kind") or "?"
+        by_kind.setdefault(kind, []).append(t)
+
+    console.print(f"[bold]{len(tools)} tool(s) available[/bold]")
+    for kind in sorted(by_kind):
+        console.print(f"\n[cyan]{kind}[/cyan]")
+        for t in sorted(by_kind[kind], key=lambda x: x.get("name", "")):
+            name = t.get("name", "?")
+            effect = t.get("effect_class") or ""
+            effect_str = f"  [dim]({effect})[/dim]" if effect else ""
+            console.print(f"  [bold]{name}[/bold]{effect_str}")
+
+
 def _handle_schemas() -> None:
     result = _call("extract.schemas")
     schemas = result.get("schemas", [])
@@ -1181,6 +1238,9 @@ def _run_repl(
                 else:
                     _render_turn(last_result)
                 continue
+            if cmd == "tools":
+                _handle_tools(arg.strip())
+                continue
             err_console.print(f"[red]unknown command:[/red] /{cmd}")
             continue
 
@@ -1334,6 +1394,10 @@ def _grant_default_read_caps(session_id: str) -> None:
         ("CALENDAR_READ", "*"),
         ("WEB_FETCH", "*"),
         ("CREATE_FS", "/tmp/*"),  # scratch writes
+        # Sandbox: granting scoped to the bundled `scratch` region.
+        # If the daemon has no actuator wired, sandbox.run won't be in
+        # the tool list anyway, so the cap is harmless.
+        ("EXECUTE_SANDBOX", "scratch"),
     )
     granted: list[str] = []
     for kind, pattern in default_caps:
