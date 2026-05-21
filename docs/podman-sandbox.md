@@ -104,11 +104,38 @@ Every `podman run` invocation includes:
 
 | Direction | Mechanism |
 |-----------|-----------|
-| **In: small payload** | `stdin_bytes` argument to `execute()` — piped to the container's stdin before output capture starts. |
-| **In: file tree** | Read-only bind mount declared in the region spec (`read_only: true`). |
+| **In: stdin** | `stdin_bytes` argument to `execute()` (`stdin` in the `sandbox.run` tool). Piped to the container's stdin before output capture starts. |
+| **In: files (per-execution)** | `inputs={name: bytes}` argument. Each name lands at `/in/<name>` inside the container as a read-only file. `auto_io_mounts=True` (default) is required. |
+| **In: persistent file tree** | Read-only bind mount declared in the region spec under `mounts:`. |
 | **Out: stdout / stderr** | Captured by the actuator; hashed into `SandboxResult.output_digest`. Streamed live via `progress_callback`. |
-| **Out: file tree** | Write-allowed bind mount (`read_only: false`); the host-side directory is your responsibility to scope and clean up. |
+| **Out: files (per-execution)** | The container writes to `/out/<name>`. Each file is harvested into `SandboxResult.outputs` (name, size, sha256, utf-8 preview, truncated flag). Full bytes available via `actuator.read_output(region_id, name)` until the region is discarded. |
+| **Out: persistent file tree** | Operator-declared write-allowed bind mount (`read_only: false`) — the host-side dir is the operator's responsibility to scope and clean up. |
 | **Network** | Default `none`. Override per-region via `network: bridge` or `network: slirp4netns:...`; do this only with an explicit egress allowlist policy in mind. |
+
+### Per-execution auto-IO (the common path)
+
+Every region with `auto_io_mounts: true` (default) gets fresh
+`/in` (read-only) and `/out` (read-write) mounts on every `execute()`
+call. The host-side dirs live in a per-region temp dir that is
+cleaned up on `discard_region()` — so each run is truly disposable,
+even when files were exchanged.
+
+Mount options used: `:Z,U` — `:Z` is the SELinux relabel (mandatory
+on Fedora/RHEL, harmless elsewhere); `:U` chowns the mount to the
+container's effective uid (65534/nobody) so the unprivileged user can
+actually read /in and write /out under rootless Podman. Without `:U`
+the container exits with permission denied.
+
+### Caps on output harvest
+
+| Field | Default | Effect |
+|-------|---------|--------|
+| `output_preview_bytes` | 4096 | Bytes returned inline in the result's `preview` field. Larger files set `truncated=true` and require `read_output()` for the full bytes. |
+| `output_max_files` | 32 | Cap on number of files harvested. Files beyond this limit are silently dropped. |
+| `output_max_total_bytes` | 16 MiB | Total bytes across all outputs. The harvest stops once this is reached. |
+
+These caps protect the daemon from a runaway container that fills
+`/out` with gigabytes of data.
 
 ## Progress + cancellation
 
@@ -148,9 +175,49 @@ guarantee" path.
 When an actuator is wired, the LLM system prompt includes a Sandbox
 section listing region ids, images, and network status. The agent is
 told that containment lifts reversibility and does **not** declassify
-outputs. The agent currently cannot start a sandbox run directly —
-that's a forthcoming `sandbox.exec` tool. Today the operator drives
-runs through the substrate API.
+outputs.
+
+The agent calls `sandbox.run`:
+
+```jsonc
+{
+  "spec_id": "scratch",
+  "argv": ["/bin/sh", "-c", "tr 'a-z' 'A-Z' < /in/text.txt > /out/result.txt"],
+  "inputs": {"text.txt": "hello world"},
+  "timeout_seconds": 30
+}
+```
+
+Result:
+
+```jsonc
+{
+  "spec_id": "scratch",
+  "exit_code": 0,
+  "output_digest": "...",
+  "cancelled": false,
+  "timed_out": false,
+  "outputs": [
+    {
+      "name": "result.txt",
+      "size": 12,
+      "sha256": "...",
+      "preview": "HELLO WORLD\n",
+      "truncated": false
+    }
+  ]
+}
+```
+
+The chokepoint gates the call:
+1. Session must hold `EXECUTE_SANDBOX <spec_id>` capability — grant via
+   `/grant EXECUTE_SANDBOX <spec_id>` (or `/grant EXECUTE_SANDBOX *`).
+2. The `EXECUTE.sandbox` effect_class fails-closed if no actuator is
+   wired (FR-042 / SC-017). When wired, the standard v2 pipeline runs.
+3. After dispatch, `compose_with_isolation` lifts effective
+   reversibility to `reversible/system` because the run happened
+   inside a disposable region (FR-040). Outputs that leave the region
+   retain their source labels (FR-041).
 
 ## Testing
 

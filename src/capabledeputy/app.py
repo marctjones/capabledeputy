@@ -117,6 +117,14 @@ class App:
         if self._enable_policy_preview:
             for tool in make_policy_preview_tools(self.graph):
                 self.registry.register(tool)
+        # 004 U036: agent-callable sandbox.run tool when an actuator
+        # is wired. Returns an empty list when the policy context has
+        # no sandbox_actuator, so the tool list stays clean on installs
+        # without Podman.
+        from capabledeputy.tools.native.sandbox import make_sandbox_tools
+
+        for tool in make_sandbox_tools(self.policy_context):
+            self.registry.register(tool)
         if self.quarantined_llm is not None:
             for tool in make_extract_tools(self.memory, self.quarantined_llm):
                 self.registry.register(tool)

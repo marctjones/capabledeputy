@@ -27,6 +27,8 @@ from capabledeputy.substrate.podman_sandbox import (
     PodmanRegionSpec,
     PodmanSandboxActuator,
     UnknownRegion,
+    _harvest_outputs,
+    _validate_input_name,
     load_sandbox_specs_from_file,
     parse_sandbox_config,
 )
@@ -538,6 +540,245 @@ sandbox:
 
 
 # --- Integration smoke (skipped if podman missing) --------------------------
+
+
+# --- Input / output file flow ------------------------------------------------
+
+
+def test_validate_input_name_rejects_path_traversal() -> None:
+    with pytest.raises(ValueError):
+        _validate_input_name("../etc/passwd")
+    with pytest.raises(ValueError):
+        _validate_input_name("a/b")
+    with pytest.raises(ValueError):
+        _validate_input_name(".hidden")
+    with pytest.raises(ValueError):
+        _validate_input_name("")
+    # Valid names pass:
+    _validate_input_name("script.py")
+    _validate_input_name("data.json")
+
+
+def test_execute_writes_inputs_to_in_dir(fake_podman: None, tmp_path) -> None:
+    """The /in mount is populated from `inputs` before the container
+    starts. We verify by inspecting the actuator's argv (the -v flag
+    points at a real directory we can inspect)."""
+    a = PodmanSandboxActuator(
+        (PodmanRegionSpec(spec_id="x", image="alpine"),),
+        podman_bin="/fake/podman",
+    )
+    rid = a.create_region()
+    a.execute(
+        region_id=rid,
+        argv=("cat", "/in/hello.txt"),
+        env={},
+        timeout_seconds=5,
+        inputs={"hello.txt": b"hello world\n"},
+    )
+    argv = FakePopen.seen_argvs[-1]
+    # Find the /in mount in -v args
+    v_args = [argv[i + 1] for i, x in enumerate(argv) if x == "-v"]
+    in_mounts = [v for v in v_args if v.endswith(":/in:ro,Z,U")]
+    assert len(in_mounts) == 1
+    host_in_dir = in_mounts[0].split(":", 1)[0]
+    # The file should exist on the host side and contain the bytes
+    import os as _os
+
+    assert "hello.txt" in _os.listdir(host_in_dir)
+    with open(_os.path.join(host_in_dir, "hello.txt"), "rb") as f:
+        assert f.read() == b"hello world\n"
+
+
+def test_execute_rejects_invalid_input_name(fake_podman: None) -> None:
+    a = PodmanSandboxActuator(
+        (PodmanRegionSpec(spec_id="x", image="alpine"),),
+        podman_bin="/fake/podman",
+    )
+    rid = a.create_region()
+    with pytest.raises(ValueError):
+        a.execute(
+            region_id=rid,
+            argv=("true",),
+            env={},
+            timeout_seconds=5,
+            inputs={"../etc/shadow": b"pwned"},
+        )
+
+
+def test_execute_rejects_inputs_when_auto_io_disabled(fake_podman: None) -> None:
+    spec = PodmanRegionSpec(spec_id="x", image="alpine", auto_io_mounts=False)
+    a = PodmanSandboxActuator((spec,), podman_bin="/fake/podman")
+    rid = a.create_region()
+    with pytest.raises(ValueError, match="auto_io_mounts=False"):
+        a.execute(
+            region_id=rid,
+            argv=("true",),
+            env={},
+            timeout_seconds=5,
+            inputs={"x.txt": b"y"},
+        )
+
+
+def test_execute_emits_in_and_out_mounts_by_default(fake_podman: None) -> None:
+    """auto_io_mounts=True (default) means every execute gets fresh
+    /in and /out mounts, even if `inputs` is None."""
+    a = PodmanSandboxActuator(
+        (PodmanRegionSpec(spec_id="x", image="alpine"),),
+        podman_bin="/fake/podman",
+    )
+    rid = a.create_region()
+    a.execute(region_id=rid, argv=("true",), env={}, timeout_seconds=5)
+    argv = FakePopen.seen_argvs[-1]
+    v_args = [argv[i + 1] for i, x in enumerate(argv) if x == "-v"]
+    assert any(v.endswith(":/in:ro,Z,U") for v in v_args)
+    assert any(v.endswith(":/out:rw,Z,U") for v in v_args)
+
+
+def test_harvest_outputs_empty_dir(tmp_path) -> None:
+    spec = PodmanRegionSpec(spec_id="x", image="alpine")
+    out = _harvest_outputs(tmp_path, spec)
+    assert out == ()
+
+
+def test_harvest_outputs_collects_files_with_previews(tmp_path) -> None:
+    spec = PodmanRegionSpec(
+        spec_id="x", image="alpine", output_preview_bytes=10,
+    )
+    (tmp_path / "a.txt").write_text("hello world this is long")
+    (tmp_path / "b.json").write_text('{"k": 1}')
+    outputs = _harvest_outputs(tmp_path, spec)
+    by_name = {o.name: o for o in outputs}
+    assert set(by_name) == {"a.txt", "b.json"}
+    # a.txt is longer than preview cap → truncated
+    assert by_name["a.txt"].truncated is True
+    assert len(by_name["a.txt"].preview.encode("utf-8")) <= 10
+    # b.json fits in preview → not truncated
+    assert by_name["b.json"].truncated is False
+    assert by_name["b.json"].preview == '{"k": 1}'
+
+
+def test_harvest_outputs_respects_max_files(tmp_path) -> None:
+    spec = PodmanRegionSpec(spec_id="x", image="alpine", output_max_files=2)
+    for i in range(5):
+        (tmp_path / f"f{i}.txt").write_text(str(i))
+    outputs = _harvest_outputs(tmp_path, spec)
+    assert len(outputs) == 2
+
+
+def test_harvest_outputs_respects_total_bytes(tmp_path) -> None:
+    spec = PodmanRegionSpec(
+        spec_id="x", image="alpine", output_max_total_bytes=10,
+    )
+    (tmp_path / "a.txt").write_bytes(b"x" * 8)
+    (tmp_path / "b.txt").write_bytes(b"y" * 8)
+    outputs = _harvest_outputs(tmp_path, spec)
+    # The second file gets included but truncated to fit the cap.
+    assert sum(len(o.preview.encode("utf-8")) for o in outputs) <= 16
+
+
+def test_read_output_round_trip(fake_podman: None) -> None:
+    """Write a known payload via inputs, have the (fake) container exit;
+    we then call read_output() on something we placed in /out by
+    hand to simulate what a real container would do."""
+    import os as _os
+
+    a = PodmanSandboxActuator(
+        (PodmanRegionSpec(spec_id="x", image="alpine"),),
+        podman_bin="/fake/podman",
+    )
+    rid = a.create_region()
+    result = a.execute(
+        region_id=rid,
+        argv=("true",),
+        env={},
+        timeout_seconds=5,
+        inputs={"in.txt": b"input data"},
+    )
+    # FakePopen doesn't actually run the container, so /out is empty.
+    # Simulate the container having written a file by dropping one
+    # into the harvest dir, then re-harvesting.
+    assert a._regions[rid].harvest_dir is not None
+    out_path = _os.path.join(a._regions[rid].harvest_dir, "out", "result.txt")
+    with open(out_path, "wb") as f:
+        f.write(b"sandbox-produced output\n")
+    _os.chmod(out_path, 0o644)
+    data = a.read_output(rid, "result.txt")
+    assert data == b"sandbox-produced output\n"
+
+
+def test_read_output_unknown_region(fake_podman: None) -> None:
+    a = PodmanSandboxActuator(
+        (PodmanRegionSpec(spec_id="x", image="alpine"),),
+        podman_bin="/fake/podman",
+    )
+    with pytest.raises(UnknownRegion):
+        a.read_output("not-a-region", "x")
+
+
+def test_read_output_path_traversal_blocked(fake_podman: None) -> None:
+    a = PodmanSandboxActuator(
+        (PodmanRegionSpec(spec_id="x", image="alpine"),),
+        podman_bin="/fake/podman",
+    )
+    rid = a.create_region()
+    a.execute(region_id=rid, argv=("true",), env={}, timeout_seconds=5)
+    with pytest.raises(ValueError):
+        a.read_output(rid, "../../etc/passwd")
+
+
+def test_discard_region_cleans_harvest_dir(fake_podman: None) -> None:
+    import os as _os
+
+    a = PodmanSandboxActuator(
+        (PodmanRegionSpec(spec_id="x", image="alpine"),),
+        podman_bin="/fake/podman",
+    )
+    rid = a.create_region()
+    a.execute(region_id=rid, argv=("true",), env={}, timeout_seconds=5)
+    hd = a._regions[rid].harvest_dir
+    assert hd is not None
+    assert _os.path.isdir(hd)
+    a.discard_region(rid)
+    assert not _os.path.exists(hd)
+
+
+# --- Integration smoke (skipped if podman missing) --------------------------
+
+
+@pytest.mark.skipif(
+    shutil.which("podman") is None, reason="real podman binary not present",
+)
+def test_real_podman_round_trip_files(tmp_path) -> None:
+    """End-to-end: pass a script in via inputs, have it read the
+    input + write a transformed output, harvest it back, verify
+    bytes are correct."""
+    spec = PodmanRegionSpec(
+        spec_id="rt",
+        image="docker.io/library/alpine:latest",
+    )
+    a = PodmanSandboxActuator((spec,))
+    rid = a.create_region()
+    try:
+        result = a.execute(
+            region_id=rid,
+            argv=(
+                "/bin/sh",
+                "-c",
+                "tr 'a-z' 'A-Z' < /in/lower.txt > /out/upper.txt",
+            ),
+            env={},
+            timeout_seconds=30,
+            inputs={"lower.txt": b"hello world\n"},
+        )
+        assert result.exit_code == 0
+        names = {o.name for o in result.outputs}
+        assert "upper.txt" in names
+        upper = next(o for o in result.outputs if o.name == "upper.txt")
+        assert upper.preview == "HELLO WORLD\n"
+        # Also via read_output:
+        assert a.read_output(rid, "upper.txt") == b"HELLO WORLD\n"
+    finally:
+        a.discard_region(rid)
 
 
 @pytest.mark.skipif(

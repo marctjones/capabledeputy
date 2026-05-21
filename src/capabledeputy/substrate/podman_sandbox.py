@@ -51,6 +51,7 @@ from dataclasses import dataclass, field
 from capabledeputy.substrate.sandbox_actuator import (
     ProgressCallback,
     SandboxActuator,
+    SandboxOutputFile,
     SandboxProgress,
     SandboxResult,
 )
@@ -117,6 +118,18 @@ class PodmanRegionSpec:
     require_digest_pin: bool = False
     env_allowlist: tuple[str, ...] = ()
     extra_args: tuple[str, ...] = ()
+    # Per-execution scratch dirs auto-mounted at /in (read-only,
+    # populated from caller's `inputs`) and /out (read-write, harvested
+    # into SandboxResult.outputs). The agent-facing `sandbox.run` tool
+    # relies on these. Set False if a region needs only operator-
+    # declared static mounts.
+    auto_io_mounts: bool = True
+    # Caps applied during the output harvest. Per-file preview is the
+    # bytes returned inline in the result; full bytes stay on disk
+    # until the region is discarded (`read_output()` retrieves them).
+    output_preview_bytes: int = 4096
+    output_max_files: int = 32
+    output_max_total_bytes: int = 16 * 1024 * 1024  # 16 MiB
 
     def validate(self) -> None:
         """Raise ValueError on a malformed spec. Called by the
@@ -151,12 +164,15 @@ class PodmanRegionSpec:
 class _LiveRegion:
     """Mutable per-region state held by the actuator. `process` is the
     currently-executing `podman run` subprocess (if any), used by
-    cancel/discard."""
+    cancel/discard. `harvest_dir` is the host-side copy of `/out`
+    from the most recent `execute()` call — kept on disk until
+    `discard_region` so `read_output()` can pull bytes."""
 
     spec: PodmanRegionSpec
     container_name: str
     process: subprocess.Popen | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
+    harvest_dir: str | None = None  # filled after each execute(); cleared on discard
 
 
 class PodmanSandboxActuator(SandboxActuator):
@@ -237,12 +253,15 @@ class PodmanSandboxActuator(SandboxActuator):
         """Tear down `region_id`. If a container is still running we
         best-effort `podman kill` + `podman rm -f`; the `--rm` flag on
         `podman run` would clean up on graceful exit, but a kill is
-        the safety net for the bad-case."""
+        the safety net for the bad-case. Also cleans up the harvest
+        dir holding the last execute's output files."""
         with self._regions_lock:
             region = self._regions.pop(region_id, None)
         if region is None:
             return
         self._force_remove_container(region.container_name)
+        if region.harvest_dir is not None:
+            shutil.rmtree(region.harvest_dir, ignore_errors=True)
 
     def cancel(self, region_id: str) -> bool:
         """Send SIGTERM (then SIGKILL) to a running container in this
@@ -280,7 +299,11 @@ class PodmanSandboxActuator(SandboxActuator):
         timeout_seconds: int,
         progress_callback: ProgressCallback | None = None,
         stdin_bytes: bytes | None = None,
+        inputs: dict[str, bytes] | None = None,
     ) -> SandboxResult:
+        import tempfile
+        from pathlib import Path
+
         with self._regions_lock:
             region = self._regions.get(region_id)
         if region is None:
@@ -288,7 +311,36 @@ class PodmanSandboxActuator(SandboxActuator):
                 f"sandbox region {region_id!r} is not live "
                 f"(never created or already discarded)",
             )
-        run_argv = self._build_run_argv(region, argv, env)
+
+        # Prepare per-execution scratch dirs for /in (RO) and /out (RW)
+        # when the region has auto_io_mounts enabled. The /in dir is
+        # populated from `inputs` BEFORE the container starts; /out is
+        # empty and harvested AFTER. The previous execute's harvest_dir
+        # (if any) is cleaned up here so each run starts fresh.
+        io_root: Path | None = None
+        in_dir: Path | None = None
+        out_dir: Path | None = None
+        if region.spec.auto_io_mounts:
+            if region.harvest_dir is not None:
+                shutil.rmtree(region.harvest_dir, ignore_errors=True)
+                region.harvest_dir = None
+            io_root = Path(tempfile.mkdtemp(prefix=f"capdep-sandbox-{region_id}-"))
+            in_dir = io_root / "in"
+            out_dir = io_root / "out"
+            in_dir.mkdir(mode=0o755)
+            out_dir.mkdir(mode=0o777)  # container writes as uid 65534
+            for name, content in (inputs or {}).items():
+                _validate_input_name(name)
+                (in_dir / name).write_bytes(content)
+                (in_dir / name).chmod(0o644)
+        elif inputs:
+            raise ValueError(
+                f"region {region_id!r} has auto_io_mounts=False; cannot accept inputs",
+            )
+
+        run_argv = self._build_run_argv(
+            region, argv, env, in_dir=in_dir, out_dir=out_dir,
+        )
         emit = _safe_emit(progress_callback)
         emit(SandboxProgress(kind="lifecycle", payload="image_check"))
 
@@ -409,13 +461,65 @@ class PodmanSandboxActuator(SandboxActuator):
         digest = hashlib.sha256(
             b"\x01".join((bytes(stdout_bytes), bytes(stderr_bytes))),
         ).hexdigest()
+
+        # Harvest /out into the result — file metadata + truncated
+        # previews inline. Full bytes stay on disk in `out_dir` until
+        # discard_region or the next execute on this region. Keep the
+        # harvest_dir on the region so read_output() can find it.
+        outputs: tuple[SandboxOutputFile, ...] = ()
+        if out_dir is not None:
+            outputs = _harvest_outputs(out_dir, region.spec)
+            region.harvest_dir = str(io_root) if io_root is not None else None
+        elif io_root is not None:
+            shutil.rmtree(io_root, ignore_errors=True)
+
         return SandboxResult(
             region_id=region_id,
             exit_code=exit_code,
             output_digest=digest,
             cancelled=cancelled,
             timed_out=timed_out,
+            outputs=outputs,
         )
+
+    def read_output(
+        self,
+        region_id: str,
+        name: str,
+        *,
+        max_bytes: int = 1024 * 1024,
+    ) -> bytes:
+        """Read raw bytes of `name` from the most-recent execute's
+        harvest dir. Region must still be live (not discarded)."""
+        from pathlib import Path
+
+        _validate_input_name(name)
+        with self._regions_lock:
+            region = self._regions.get(region_id)
+        if region is None:
+            raise UnknownRegion(
+                f"sandbox region {region_id!r} is not live",
+            )
+        if region.harvest_dir is None:
+            raise FileNotFoundError(
+                f"region {region_id!r} has no harvest dir — "
+                "either execute() wasn't called, or auto_io_mounts is disabled",
+            )
+        target = Path(region.harvest_dir) / "out" / name
+        # Defense in depth: resolve and ensure still under the harvest dir.
+        try:
+            resolved = target.resolve(strict=True)
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f"output {name!r} not present in region {region_id!r}",
+            ) from e
+        base = Path(region.harvest_dir).resolve()
+        if base not in resolved.parents:
+            raise PermissionError(
+                f"output path {name!r} escapes the harvest dir",
+            )
+        with open(resolved, "rb") as f:
+            return f.read(max_bytes)
 
     # ---- internals ----
 
@@ -424,6 +528,9 @@ class PodmanSandboxActuator(SandboxActuator):
         region: _LiveRegion,
         argv: tuple[str, ...],
         env: dict[str, str],
+        *,
+        in_dir=None,
+        out_dir=None,
     ) -> list[str]:
         """Compose the full `podman run ...` command line. Caller's
         argv is appended last after `--` so flag-shaped strings can't
@@ -453,6 +560,21 @@ class PodmanSandboxActuator(SandboxActuator):
             # be able to read the volume at all.
             ro = "ro" if m.read_only else "rw"
             cmd.extend(["-v", f"{m.host_path}:{m.container_path}:{ro},Z"])
+        # Auto-IO mounts: per-execution scratch dirs surface at /in
+        # (read-only) and /out (read-write). Caller writes to /in
+        # before the run (`inputs` argument); the actuator harvests
+        # /out after the run (SandboxResult.outputs).
+        #
+        # `:U` is the magic that makes rootless Podman work here: it
+        # chowns the mount to the container's effective uid (here
+        # 65534/`nobody`) so the unprivileged in-container user can
+        # actually read /in and write to /out. Without `:U`, the
+        # host-uid-to-container-uid mapping rejects the write and
+        # the container exits with permission denied.
+        if in_dir is not None:
+            cmd.extend(["-v", f"{in_dir}:/in:ro,Z,U"])
+        if out_dir is not None:
+            cmd.extend(["-v", f"{out_dir}:/out:rw,Z,U"])
         for name in spec.env_allowlist:
             val = env.get(name) if env else None
             if val is None:
@@ -567,6 +689,74 @@ def load_sandbox_specs_from_file(path) -> tuple[PodmanRegionSpec, ...]:
 
         raw = _json.loads(text)
     return parse_sandbox_config(raw)
+
+
+def _validate_input_name(name: str) -> None:
+    """Names must be plain filenames — no slashes, no leading dot. Keeps
+    the in/out surface flat and predictable; defense in depth against
+    path-traversal attempts even though we mount the dir read-only."""
+    if not name:
+        raise ValueError("input/output name must be non-empty")
+    if "/" in name or "\\" in name:
+        raise ValueError(f"input/output name {name!r} must not contain a path separator")
+    if name.startswith("."):
+        raise ValueError(f"input/output name {name!r} must not start with a dot")
+    if name in ("..", "."):
+        raise ValueError(f"input/output name {name!r} is reserved")
+
+
+def _harvest_outputs(
+    out_dir,
+    spec: PodmanRegionSpec,
+) -> tuple[SandboxOutputFile, ...]:
+    """Walk `out_dir` (flat — no recursion) and produce a tuple of
+    SandboxOutputFile records, capped by the region's per-file +
+    total caps. Files are sorted by name for deterministic ordering
+    (audit replay friendly)."""
+    from pathlib import Path
+
+    out_path = Path(out_dir)
+    if not out_path.is_dir():
+        return ()
+    entries = sorted(
+        [p for p in out_path.iterdir() if p.is_file()],
+        key=lambda p: p.name,
+    )
+    if len(entries) > spec.output_max_files:
+        entries = entries[: spec.output_max_files]
+    results: list[SandboxOutputFile] = []
+    total_seen = 0
+    for entry in entries:
+        try:
+            data = entry.read_bytes()
+        except OSError:
+            continue
+        size = len(data)
+        if total_seen + size > spec.output_max_total_bytes:
+            # Cap reached — emit a placeholder for the truncated file
+            # and stop. The agent gets visibility that more existed.
+            remaining = max(spec.output_max_total_bytes - total_seen, 0)
+            data = data[:remaining]
+        total_seen += len(data)
+        sha = hashlib.sha256(data).hexdigest()
+        preview_bytes = data[: spec.output_preview_bytes]
+        try:
+            preview = preview_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            preview = preview_bytes.decode("utf-8", errors="replace")
+        results.append(
+            SandboxOutputFile(
+                name=entry.name,
+                size=size,
+                sha256=sha,
+                preview=preview,
+                truncated=size > spec.output_preview_bytes
+                or total_seen >= spec.output_max_total_bytes,
+            ),
+        )
+        if total_seen >= spec.output_max_total_bytes:
+            break
+    return tuple(results)
 
 
 def _safe_emit(cb: ProgressCallback | None):

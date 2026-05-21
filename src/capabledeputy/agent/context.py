@@ -248,8 +248,16 @@ When to ask the user for sandboxed execution:
 - The user wants to try an untrusted blob (a downloaded script, a
   generated patch) without risk to their host filesystem.
 
-You cannot start a sandbox run yourself yet — tell the user the
-region is available and let them invoke it via the operator surface.
+How to use it: call the `sandbox.run` tool (when granted
+`EXECUTE_SANDBOX <spec_id>` capability). Pass:
+  - `spec_id`: one of the region ids above
+  - `argv`: command + args, e.g. ["python3", "/in/script.py"]
+  - `inputs`: optional {filename: "text"} or {filename: {base64: "..."}}
+              — each lands at /in/<filename> inside the container
+  - `timeout_seconds`: optional, default 30, max 600
+The container runs, files it writes under /out come back in the
+result. The region is discarded after the run — containment is
+the guarantee.
 
 """
     else:

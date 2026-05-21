@@ -37,6 +37,13 @@ class CapabilityKind(StrEnum):
     MODIFY_CAL = "MODIFY_CAL"
     DELETE_CAL = "DELETE_CAL"
 
+    # 004 U034/U035 — sandboxed execution. Pattern matches the region
+    # spec_id (e.g. `EXECUTE_SANDBOX scratch` allows running in the
+    # `scratch` region; `EXECUTE_SANDBOX *` allows any). The policy
+    # engine separately gates the effect_class on whether an actuator
+    # is wired (FR-042 fail-closed).
+    EXECUTE_SANDBOX = "EXECUTE_SANDBOX"
+
 
 # Action kinds the policy engine treats as "destructive" — modifying or
 # deleting existing state. New tools opt into stricter gating by setting

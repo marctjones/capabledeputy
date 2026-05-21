@@ -69,6 +69,7 @@ class InProcessSandboxActuator(SandboxActuator):
         timeout_seconds: int,
         progress_callback: ProgressCallback | None = None,
         stdin_bytes: bytes | None = None,
+        inputs: dict[str, bytes] | None = None,
     ) -> SandboxResult:
         """Demo execution: refuses if the region isn't live; otherwise
         returns a SandboxResult with a deterministic output digest
