@@ -228,6 +228,10 @@ class LabeledToolClient:
         # recorded use timestamp so the rate-limit window is consistent.
         dispatch_now = datetime.now(UTC)
         v2_kwargs = self._build_v2_decide_kwargs(session, tool)
+        # 002 US2: pass the session's revoked_audit_ids so any
+        # capability inert under cascade is denied at decide time.
+        # Default-tolerant: pre-002 sessions deserialize with the
+        # empty set, which is a no-op here.
         policy_decision = decide(
             session.label_set,
             session.capability_set,
@@ -235,6 +239,7 @@ class LabeledToolClient:
             used_kinds=session.used_kinds,
             now=dispatch_now,
             cap_uses=session.cap_uses,
+            revoked_audit_ids=getattr(session, "revoked_audit_ids", frozenset()),
             **v2_kwargs,
         )
 
@@ -311,6 +316,12 @@ class LabeledToolClient:
         # sliding-window rate-limit log (keyed by audit_id). Same
         # timestamp as the decision clock. Pruned to the capability's
         # window so the log stays bounded.
+        #
+        # 002 US2-4 FR-015 pooled rate accounting: when the matched
+        # capability is delegated, also record the use against every
+        # ancestor up the parent_audit_id chain. A child cannot
+        # out-spend its ancestor: each granted descendant dispatch
+        # decrements the ancestor's window too.
         matched = policy_decision.matched_capability
         if matched is not None and matched.rate_limit is not None:
             from datetime import timedelta
@@ -323,6 +334,31 @@ class LabeledToolClient:
                     seconds=matched.rate_limit.window_seconds,
                 ),
             )
+            # Pooled fan-out: walk parent_audit_id upward. The ancestor
+            # may live in any session up the spawn chain (the session
+            # that delegated). For now, record into THIS session's
+            # cap_uses bucket keyed by the ancestor's audit_id — the
+            # decision clock reads cap_uses for any audit_id, so the
+            # accounting hits home regardless of which session holds
+            # the ancestor cap (next-decision check walks the chain).
+            cap_index = {c.audit_id: c for c in session.capability_set}
+            parent_id = matched.parent_audit_id
+            while parent_id is not None:
+                parent = cap_index.get(parent_id)
+                if parent is None:
+                    break
+                # Record using the parent's rate window so prune is
+                # at the right horizon for that ancestor.
+                if parent.rate_limit is not None:
+                    await self._graph.record_cap_use(
+                        session_id,
+                        str(parent.audit_id),
+                        dispatch_now,
+                        prune_older_than=timedelta(
+                            seconds=parent.rate_limit.window_seconds,
+                        ),
+                    )
+                parent_id = parent.parent_audit_id
 
         context = ToolContext(session_id=session_id, label_set=session.label_set)
         # T104 — Pattern (3) ReferenceHandle bind step. AFTER decide()

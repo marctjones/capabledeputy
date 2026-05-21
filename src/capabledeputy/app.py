@@ -62,7 +62,11 @@ class App:
         # resources.list / resources.read tools register either way
         # but return empty catalogs.
         self.resources = resources or StaticResourcePublisher(resources=())
-        self.approval_queue = ApprovalQueue(audit=self.audit)
+        # 002 US2 — approval queue receives the graph so it can
+        # validate at approve-time that the capability_requested is
+        # not cascaded-inert. Without the graph, the queue still
+        # works but skips cascade invalidation (back-compat).
+        self.approval_queue = ApprovalQueue(audit=self.audit, graph=self.graph)
         self.registry = ToolRegistry()
         self.policy_context = policy_context
         self.purposes = purposes

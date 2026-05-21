@@ -38,10 +38,12 @@ class ApprovalQueue:
         self,
         audit: AuditWriter | None = None,
         pattern_registry: ApprovalPatternRegistry | None = None,
+        graph: Any = None,
     ) -> None:
         self._next_id = 1
         self._requests: dict[int, ApprovalRequest] = {}
         self._audit = audit
+        self._graph = graph
         self.patterns = pattern_registry or ApprovalPatternRegistry()
 
     def __len__(self) -> int:
@@ -136,6 +138,71 @@ class ApprovalQueue:
             raise ApprovalStateError(
                 f"approval {request_id} not pending (status={request.status})",
             )
+
+        # 002 US2 / FR-014 — refuse to approve into ALLOW if the
+        # capability that would authorize the action is now inert
+        # (revoked / expired / cascaded). The chokepoint would deny
+        # it anyway at execution; refusing here is the audited form.
+        if request.capability_requested is not None:
+            cap = request.capability_requested
+            from capabledeputy.policy.engine import (
+                _build_audit_id_index,
+                _is_cascaded_inert,
+            )
+
+            from_session_id = request.from_session
+            session_caps: frozenset = frozenset()
+            session_revoked: frozenset = frozenset()
+            if from_session_id is not None:
+                try:
+                    s = self._graph.get(from_session_id) if self._graph else None
+                except Exception:
+                    s = None
+                if s is not None:
+                    session_caps = s.capability_set
+                    session_revoked = getattr(s, "revoked_audit_ids", frozenset())
+            now = datetime.now(UTC)
+            # Consult the session's caps to walk the chain.
+            cap_index = _build_audit_id_index(session_caps | {cap})
+            cascaded, originator = _is_cascaded_inert(
+                cap,
+                cap_index=cap_index,
+                revoked_audit_ids=session_revoked,
+                now=now,
+                cap_uses=None,
+            )
+            if cascaded:
+                # Mark the approval invalidated rather than approving it.
+                originator_id = originator.audit_id if originator is not None else cap.audit_id
+                invalidated = replace(
+                    request,
+                    status=ApprovalStatus.DENIED,
+                    decision_at=now,
+                    decided_by="cascade-invalidation",
+                    decision_scope={
+                        "reason": "capability-cascaded",
+                        "originating_audit_id": str(originator_id),
+                    },
+                )
+                self._requests[request_id] = invalidated
+                if self._audit:
+                    await self._audit.write(
+                        Event(
+                            event_type=EventType.CAPABILITY_CASCADE_REVOKED,
+                            session_id=from_session_id,
+                            payload={
+                                "approval_id": request_id,
+                                "originating_audit_id": str(originator_id),
+                                "trigger": "approval-revisit",
+                                "affected_audit_id": str(cap.audit_id),
+                            },
+                        ),
+                    )
+                raise ApprovalStateError(
+                    f"approval {request_id} invalidated: capability "
+                    f"{cap.audit_id} is cascaded-inert (originator "
+                    f"{originator_id})",
+                )
 
         if require_signature:
             if signature is None or signer_for_verify is None:

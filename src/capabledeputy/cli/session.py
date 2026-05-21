@@ -143,6 +143,36 @@ def session_fork(
     _render_session(s)
 
 
+@session_app.command("revoke")
+def session_revoke(
+    session_id: Annotated[str, typer.Argument(help="Session that holds the capability")],
+    audit_id: Annotated[str, typer.Argument(help="Capability audit_id to revoke")],
+    trigger: Annotated[
+        str,
+        typer.Option("--trigger", help="Why this revocation (audited)"),
+    ] = "operator-revoke",
+) -> None:
+    """002 US2 — revoke a capability by audit_id within a session.
+
+    The cascade is computed lazily at the next decide(); any descendant
+    that traces back to this audit_id via parent_audit_id will be
+    denied with `capability-cascaded` and pending approvals authorized
+    by that descendant will be invalidated at approve-time.
+
+    Operator-only; the AI cannot invoke this.
+    """
+    params = {
+        "session_id": session_id,
+        "audit_id": audit_id,
+        "trigger": trigger,
+    }
+    s = _call("capability.revoke", params)
+    console.print(
+        f"[green]revoked[/green] audit_id={audit_id} in session={session_id[:8]} trigger={trigger}",
+    )
+    _render_session(s)
+
+
 @session_app.command("delegate")
 def session_delegate(
     parent_id: Annotated[str, typer.Argument(help="Parent session id")],

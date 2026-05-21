@@ -175,6 +175,61 @@ def _cap_uses_for(
     return cap_uses.get(str(cap.audit_id), ())
 
 
+CAPABILITY_CASCADED_RULE = "capability-cascaded"
+
+
+def _build_audit_id_index(
+    capabilities: frozenset[Capability],
+) -> dict[UUID, Capability]:
+    """Build a map from audit_id → Capability for O(1) ancestor lookups
+    during cascade inert checks. Pure function of the capability set."""
+    return {c.audit_id: c for c in capabilities}
+
+
+def _is_cascaded_inert(
+    cap: Capability,
+    *,
+    cap_index: dict[UUID, Capability],
+    revoked_audit_ids: frozenset[UUID],
+    now: datetime,
+    cap_uses: dict[str, tuple[datetime, ...]] | None,
+) -> tuple[bool, Capability | None]:
+    """Walk `cap`'s ancestor chain via parent_audit_id. Returns
+    (True, originating_ancestor) if any link is inert — self or any
+    ancestor revoked/expired/rate-exhausted. Returns (False, None) if
+    every link is live.
+
+    inert(C) = C.audit_id in revoked_audit_ids OR C.is_expired OR
+               C.is_rate_exceeded OR (C has a parent AND inert(parent))
+
+    Computed at decision time per research D1 — no eager mutation.
+    """
+    visited: set[UUID] = set()
+    current: Capability | None = cap
+    while current is not None:
+        # Cycle defense (parent_audit_id is single-parent by design,
+        # but a corrupt store could create one; treat cycle as inert).
+        if current.audit_id in visited:
+            return True, current
+        visited.add(current.audit_id)
+
+        if current.audit_id in revoked_audit_ids:
+            return True, current
+        if current.is_expired(now):
+            return True, current
+        if current.is_rate_exceeded(now, _cap_uses_for(current, cap_uses)):
+            return True, current
+
+        if current.parent_audit_id is None:
+            return False, None
+        current = cap_index.get(current.parent_audit_id)
+        if current is None:
+            # Parent referenced but absent from this session's cap set —
+            # treat as inert (the chain is broken; fail-closed).
+            return True, None
+    return False, None
+
+
 def find_capability(
     capabilities: frozenset[Capability],
     action: Action,
@@ -205,6 +260,7 @@ def _decide_legacy(
     used_kinds: frozenset[CapabilityKind] = frozenset(),
     now: datetime | None = None,
     cap_uses: dict[str, tuple[datetime, ...]] | None = None,
+    revoked_audit_ids: frozenset[UUID] = frozenset(),
 ) -> PolicyDecision:
     # Single decision clock: resolve once so every time-sensitive
     # check in this decision agrees. Deterministic and injectable —
@@ -280,6 +336,33 @@ def _decide_legacy(
         return PolicyDecision(
             decision=Decision.DENY,
             reason=f"no matching capability for {action.kind.value}({action.target})",
+            effective_labels=label_set,
+        )
+
+    # 002 US2 cascade revocation: if the matched capability OR any
+    # ancestor (via parent_audit_id chain) is revoked / expired /
+    # rate-exhausted, the descendant inherits inert status — DENY
+    # with capability-cascaded attributing the originating ancestor.
+    # Computed at decision time per research D1 (no eager mutation).
+    cap_index = _build_audit_id_index(capabilities)
+    cascaded, originator = _is_cascaded_inert(
+        cap,
+        cap_index=cap_index,
+        revoked_audit_ids=revoked_audit_ids,
+        now=eff_now,
+        cap_uses=cap_uses,
+    )
+    if cascaded:
+        originator_id = originator.audit_id if originator is not None else cap.audit_id
+        return PolicyDecision(
+            decision=Decision.DENY,
+            rule=CAPABILITY_CASCADED_RULE,
+            reason=(
+                f"capability for {action.kind.value}({action.target}) "
+                f"is cascaded-inert: originating ancestor "
+                f"audit_id={originator_id} (revoked/expired/exhausted)"
+            ),
+            matched_capability=cap,
             effective_labels=label_set,
         )
 
@@ -370,6 +453,7 @@ def decide(
     integrity_floor_level: str | None = None,
     risk_register: Any = None,
     sandbox_actuator_wired: bool = False,
+    revoked_audit_ids: frozenset[UUID] = frozenset(),
 ) -> PolicyDecision:
     """Public chokepoint. Runs the legacy decision path, then — when
     the v2 axis inputs and rule set are provided — composes the v2
@@ -676,6 +760,7 @@ def decide(
         used_kinds,
         now,
         cap_uses,
+        revoked_audit_ids,
     )
     if (
         axis_a is None

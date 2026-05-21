@@ -68,6 +68,25 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
         s = await graph.add_labels(UUID(params["session_id"]), labels)
         return s.to_dict()
 
+    async def capability_revoke(params: dict[str, Any]) -> dict[str, Any]:
+        """002 US2 — revoke a capability by audit_id within a session.
+
+        Adds the audit_id to the session's revoked_audit_ids set.
+        Cascade computed lazily at next decide(); any descendant
+        across the spawn graph that traces back to this ancestor is
+        denied at that point with capability-cascaded. Operator-only;
+        the AI cannot invoke this.
+        """
+        session_id = UUID(params["session_id"])
+        audit_id = UUID(params["audit_id"])
+        trigger = str(params.get("trigger", "operator-revoke"))
+        s = await graph.revoke_capability(
+            session_id,
+            audit_id,
+            trigger=trigger,
+        )
+        return s.to_dict()
+
     async def session_delegate(params: dict[str, Any]) -> dict[str, Any]:
         # Lazy import breaks the lifecycle<->handlers cycle.
         from capabledeputy.daemon.lifecycle import max_delegation_depth
@@ -105,4 +124,5 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
         "session.children": session_children,
         "session.add_labels": session_add_labels,
         "session.delegate": session_delegate,
+        "capability.revoke": capability_revoke,
     }

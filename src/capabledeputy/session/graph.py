@@ -405,6 +405,49 @@ class SessionGraph:
             )
         return updated
 
+    async def revoke_capability(
+        self,
+        session_id: UUID,
+        capability_audit_id: UUID,
+        *,
+        trigger: str = "operator-revoke",
+    ) -> Session:
+        """Mark a capability revoked by adding its audit_id to the
+        session's revoked_audit_ids set. The cascade is computed
+        lazily at the next decide() — any descendant matching this
+        ancestor at decision time fails with capability-cascaded.
+
+        Idempotent — re-revoking is a no-op (just returns the session).
+        Operator/control-plane only; the AI cannot invoke this.
+
+        Emits CAPABILITY_CASCADE_REVOKED audit event recording the
+        originating audit_id and trigger for auditor reconstruction
+        (FR-014 / SC-002).
+        """
+        session = self.get(session_id)
+        if capability_audit_id in session.revoked_audit_ids:
+            return session
+        new_revoked = session.revoked_audit_ids | {capability_audit_id}
+        updated = replace(
+            session,
+            revoked_audit_ids=new_revoked,
+            updated_at=datetime.now(UTC),
+        )
+        await self._save(updated)
+        self._sessions[session_id] = updated
+        if self._audit is not None:
+            await self._audit.write(
+                Event(
+                    event_type=EventType.CAPABILITY_CASCADE_REVOKED,
+                    session_id=session_id,
+                    payload={
+                        "audit_id": str(capability_audit_id),
+                        "trigger": trigger,
+                    },
+                ),
+            )
+        return updated
+
     async def delegate(
         self,
         parent_session_id: UUID,
