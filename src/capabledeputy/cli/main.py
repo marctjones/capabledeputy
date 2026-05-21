@@ -821,3 +821,10 @@ def daemon_status_cmd() -> None:
     else:
         console.print("[yellow]daemon not running[/yellow]")
         raise typer.Exit(code=1)
+
+
+# Allow `python -m capabledeputy.cli.main ...` invocation so subprocess
+# spawns (e.g., the chat auto-start path) work without depending on a
+# `capdep` script being on PATH.
+if __name__ == "__main__":
+    app()

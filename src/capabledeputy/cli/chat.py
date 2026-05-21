@@ -122,7 +122,11 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
             )
             raise typer.Exit(code=2) from None
 
-    # Autostart path: spawn in background, poll
+    # Autostart path: spawn in background, poll. The daemon has to do
+    # schema migration + upstream MCP subprocess spawns + label config
+    # parsing before the socket is up, so the timeout has to be wider
+    # than the trivial "process started" check. 30s covers real-world
+    # configs (5 bundled servers + Google Workspace + IMAP).
     import subprocess
     import sys
     import time
@@ -134,23 +138,44 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
         cmd.extend(["--config", config])
     log_path = Path("/tmp") / f"capdep-daemon-{int(time.time())}.log"
     log_file = log_path.open("w")
-    subprocess.Popen(
+    proc = subprocess.Popen(
         cmd,
         stdout=log_file,
         stderr=log_file,
         start_new_session=True,
     )
     console.print(f"[dim]daemon log: {log_path}[/dim]")
-    for _ in range(50):
+
+    # Poll for socket readiness; if the subprocess exits early, surface
+    # that immediately instead of waiting for the timeout.
+    deadline_steps = 150  # 150 * 0.2s = 30s
+    for _ in range(deadline_steps):
         time.sleep(0.2)
+        # Bail out early on subprocess exit
+        if proc.poll() is not None:
+            log_file.close()
+            try:
+                tail = log_path.read_text(encoding="utf-8")[-2000:]
+            except Exception:
+                tail = "(could not read log)"
+            err_console.print(
+                f"[red]daemon process exited early (code {proc.returncode})[/red]\n"
+                f"[dim]log tail ({log_path}):[/dim]\n{tail}",
+            )
+            raise typer.Exit(code=2) from None
         try:
             _call("ping")
             console.print("[green]daemon ready[/green]")
             return
         except DaemonNotRunningError:
             continue
+    log_file.close()
+    try:
+        tail = log_path.read_text(encoding="utf-8")[-2000:]
+    except Exception:
+        tail = "(could not read log)"
     err_console.print(
-        f"[red]daemon failed to start within 10s; check {log_path}[/red]",
+        f"[red]daemon failed to start within 30s[/red]\n[dim]log tail ({log_path}):[/dim]\n{tail}",
     )
     raise typer.Exit(code=2) from None
 
