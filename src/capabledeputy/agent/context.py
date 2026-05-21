@@ -189,6 +189,7 @@ def build_llm_context(
     recent_events: list[Event],
     *,
     max_recent_decisions: int = 10,
+    sandbox_summary: str | None = None,
 ) -> LLMContext:
     """Build deterministic LLM context given session + tools + audit events.
 
@@ -222,6 +223,37 @@ def build_llm_context(
         recent_events,
         max_recent_decisions,
     )
+
+    # --- Sandbox section ---
+    # Only present when an actuator is wired. Tells the agent the
+    # operational rule: containment lifts reversibility, but does NOT
+    # declassify outputs that leave the region (FR-041).
+    if sandbox_summary:
+        sandbox_section = f"""# Sandbox (disposable isolation regions)
+
+{sandbox_summary}
+
+What the sandbox does for you:
+- Lifts reversibility to `reversible/system` while a run executes
+  inside a region — the region's discard undoes every side effect
+  inside it, by construction.
+- Does NOT declassify outputs. Data that leaves the region keeps
+  its source-category labels. Containment kills the side effect,
+  not the label.
+
+When to ask the user for sandboxed execution:
+- The action is risky/irreversible at the host level, but trivially
+  undoable inside a container (a build that writes files, a script
+  that mutates a checked-out tree, an experimental command run).
+- The user wants to try an untrusted blob (a downloaded script, a
+  generated patch) without risk to their host filesystem.
+
+You cannot start a sandbox run yourself yet — tell the user the
+region is available and let them invoke it via the operator surface.
+
+"""
+    else:
+        sandbox_section = ""
 
     # --- Assemble full system prompt ---
     system_prompt = f"""You are an AI assistant operating inside CapableDeputy.
@@ -329,7 +361,7 @@ When a tool is denied:
 When you have completed the task, respond with a final answer and no
 tool calls. Be concise and honest about what you did and didn't do.
 
-# Capability Kinds (VALID values for `/grant <KIND>`)
+{sandbox_section}# Capability Kinds (VALID values for `/grant <KIND>`)
 
 The ONLY valid CapabilityKind values are listed below. NEVER suggest
 or invent any other kind — `/grant INBOX_READ`, `/grant EMAIL_READ`,

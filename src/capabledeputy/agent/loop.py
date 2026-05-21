@@ -271,12 +271,32 @@ async def run_turn(
     # Create tool registry dict for context builder
     tool_registry_dict = {tool.name: registry.get(tool.name) for tool in registry.list()}
 
+    # Surface available sandbox regions to the agent (Phase A: agent
+    # context plumbing for the Podman provider). Empty/None when no
+    # actuator is wired so the system prompt skips the section.
+    sandbox_summary: str | None = None
+    pc = tool_client.policy_context
+    if pc is not None and pc.sandbox_actuator is not None:
+        actuator = pc.sandbox_actuator
+        # Best-effort: actuator may not expose its specs (e.g. demo).
+        specs = getattr(actuator, "_specs", None)
+        if specs:
+            lines = ["Available disposable regions:"]
+            for spec_id, spec in specs.items():
+                net = getattr(spec, "network", "?")
+                img = getattr(spec, "image", "?")
+                lines.append(f"  - {spec_id}: image={img}, network={net}")
+            sandbox_summary = "\n".join(lines)
+        else:
+            sandbox_summary = "A SandboxActuator is wired (provider details unavailable)."
+
     llm_context = build_llm_context(
         session,
         tool_descriptions,
         tool_registry_dict,
         recent_events,
         max_recent_decisions=10,
+        sandbox_summary=sandbox_summary,
     )
 
     # Audit the context for replay purposes

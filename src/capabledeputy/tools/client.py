@@ -84,7 +84,11 @@ class PolicyContext:
     integrity_floor_level: str | None = None
     residual_risk_thresholds: ResidualRiskThresholds | None = None
     risk_register: Any = None
-    sandbox_actuator_wired: bool = False
+    # SandboxActuator (substrate port): None when no provider is
+    # configured. The legacy `sandbox_actuator_wired` bool is now a
+    # derived property below — kept for callers that only need the
+    # presence check (e.g. the policy engine's fail-closed gate).
+    sandbox_actuator: Any = None  # SandboxActuator | None — Any to avoid import cycle
     # FR-025 raise-only inspectors. Run on every tool return so any
     # taint the inspector identifies is added to the session's axes.
     # Composition is monotone (most_restrictive_inherit); inspectors
@@ -118,6 +122,14 @@ class PolicyContext:
     # None ⇒ no per-purpose binding composition; global bindings
     # only.
     purposes: Any = None
+
+    @property
+    def sandbox_actuator_wired(self) -> bool:
+        """Back-compat shim: True iff a SandboxActuator provider is
+        plugged in. The policy engine's fail-closed gate on
+        EXECUTE.sandbox uses just this bool; callers that need the
+        actuator itself read `sandbox_actuator`."""
+        return self.sandbox_actuator is not None
 
 
 def build_policy_decided_payload(
@@ -238,6 +250,12 @@ class LabeledToolClient:
         # decision pipeline activates. When None, the client behaves
         # exactly as v0.7 (back-compat).
         self._policy_context = policy_context
+
+    @property
+    def policy_context(self) -> PolicyContext | None:
+        """Read-only accessor so callers (e.g. the agent loop building
+        an LLM-context summary) don't have to reach into a private."""
+        return self._policy_context
 
     async def call_tool(
         self,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 from typing import Any
@@ -277,6 +278,36 @@ async def run_daemon(
     policy_context, purposes_registry = build_policy_context_from_configs(
         state_db_path=effective_db,
     )
+
+    # 004 U034/U035: same config can declare a `sandbox:` block with
+    # region specs for the Podman provider. Construct the actuator
+    # BEFORE the App so it threads through PolicyContext into the
+    # tool client (the EXECUTE.sandbox fail-closed gate reads
+    # policy_context.sandbox_actuator_wired downstream).
+    resolved_pre_app = _resolve_daemon_config(config_path)
+    if resolved_pre_app is not None and policy_context is not None:
+        import sys as _sys
+
+        from capabledeputy.substrate.podman_sandbox import (
+            PodmanSandboxActuator,
+            load_sandbox_specs_from_file,
+        )
+
+        specs = load_sandbox_specs_from_file(resolved_pre_app)
+        if specs:
+            # Fail-closed: misconfigured sandbox is a hard error, never
+            # a silent fall-through to the demo actuator.
+            actuator = PodmanSandboxActuator(specs)
+            policy_context = dataclasses.replace(
+                policy_context,
+                sandbox_actuator=actuator,
+            )
+            print(
+                f"[sandbox] PodmanSandboxActuator wired with "
+                f"{len(specs)} region spec(s): "
+                f"{', '.join(s.spec_id for s in specs)}",
+                file=_sys.stderr,
+            )
 
     # Populate ANTHROPIC_API_KEY from CLAUDEAPI.KEY in the cwd if it isn't
     # already set, so users don't need to re-export the env var each shell.

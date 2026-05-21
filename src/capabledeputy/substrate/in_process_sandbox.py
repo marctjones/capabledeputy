@@ -25,7 +25,12 @@ from __future__ import annotations
 import hashlib
 import secrets
 
-from capabledeputy.substrate.sandbox_actuator import SandboxActuator, SandboxResult
+from capabledeputy.substrate.sandbox_actuator import (
+    ProgressCallback,
+    SandboxActuator,
+    SandboxProgress,
+    SandboxResult,
+)
 
 
 class InProcessSandboxActuator(SandboxActuator):
@@ -49,6 +54,12 @@ class InProcessSandboxActuator(SandboxActuator):
             self._live_regions.discard(region_id)
             self._discarded_regions.add(region_id)
 
+    def cancel(self, region_id: str) -> bool:
+        # No real execution to interrupt in the in-process stub;
+        # always reports "nothing to cancel" so tests can assert the
+        # contract returns a bool.
+        return False
+
     def execute(
         self,
         *,
@@ -56,6 +67,8 @@ class InProcessSandboxActuator(SandboxActuator):
         argv: tuple[str, ...],
         env: dict[str, str],
         timeout_seconds: int,
+        progress_callback: ProgressCallback | None = None,
+        stdin_bytes: bytes | None = None,
     ) -> SandboxResult:
         """Demo execution: refuses if the region isn't live; otherwise
         returns a SandboxResult with a deterministic output digest
@@ -66,8 +79,20 @@ class InProcessSandboxActuator(SandboxActuator):
                 f"sandbox region {region_id!r} is not live "
                 f"(either never created or already discarded)",
             )
+        if progress_callback is not None:
+            try:
+                progress_callback(
+                    SandboxProgress(kind="lifecycle", payload="container_start"),
+                )
+                progress_callback(
+                    SandboxProgress(kind="lifecycle", payload="container_exit"),
+                )
+            except Exception:
+                pass
         # Deterministic digest so audit-replay sees stable output ids.
         payload = ("\x00".join(argv) + "\x01" + repr(sorted(env.items()))).encode("utf-8")
+        if stdin_bytes:
+            payload += b"\x02" + hashlib.sha256(stdin_bytes).digest()
         digest = hashlib.sha256(payload).hexdigest()
         return SandboxResult(
             region_id=region_id,
