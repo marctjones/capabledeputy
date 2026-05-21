@@ -127,6 +127,70 @@ class LabeledMcpAdapter:
         (unclassifiable, no override). Surfaced for audit/observability."""
         return list(self._rejected_tools)
 
+    async def list_upstream_resources(self) -> list[dict[str, Any]]:
+        """Spec 004 P1 — discover the upstream server's resources catalog.
+
+        Returns a list of {uri, name, description, mime_type, labels}
+        dicts in the same shape as our StaticResourcePublisher's catalog
+        entries. Labels are derived from the upstream config's
+        inherent_labels plus any meta-supplied labels on each resource.
+
+        Gracefully handles servers that don't support resources/list —
+        returns an empty list instead of raising.
+        """
+        try:
+            listed = await self._session.list_resources()
+        except Exception:
+            return []
+        out: list[dict[str, Any]] = []
+        for r in getattr(listed, "resources", []):
+            uri = str(getattr(r, "uri", ""))
+            if not uri:
+                continue
+            meta_labels = _extract_labels(getattr(r, "meta", None))
+            all_labels = self._config.inherent_labels | meta_labels
+            out.append(
+                {
+                    "uri": uri,
+                    "name": str(getattr(r, "name", "") or uri),
+                    "description": str(getattr(r, "description", "") or ""),
+                    "mime_type": str(getattr(r, "mimeType", "") or "text/plain"),
+                    "labels": sorted(label.value for label in all_labels),
+                    "server": self._config.name,
+                },
+            )
+        return out
+
+    async def read_upstream_resource(self, uri: str) -> dict[str, Any]:
+        """Read a resource from the upstream server.
+
+        Returns {found, uri, content, mime_type, labels} same shape as
+        the native resources.read tool. Inherent labels propagate per
+        the upstream config.
+        """
+        try:
+            result = await self._session.read_resource(uri)
+        except Exception as e:
+            return {"found": False, "uri": uri, "error": str(e)}
+        contents = getattr(result, "contents", [])
+        # MCP returns a list of content blocks; collect text where
+        # available.
+        texts: list[str] = []
+        for c in contents:
+            t = getattr(c, "text", None)
+            if t is not None:
+                texts.append(str(t))
+        return {
+            "found": True,
+            "uri": uri,
+            "content": "\n".join(texts),
+            "mime_type": str(
+                getattr(contents[0], "mimeType", "text/plain") if contents else "text/plain"
+            ),
+            "labels": sorted(label.value for label in self._config.inherent_labels),
+            "server": self._config.name,
+        }
+
     async def register_tools(self, registry: ToolRegistry) -> list[str]:
         """Discover upstream tools and register wrappers; return registered names."""
         listed = await self._session.list_tools()
