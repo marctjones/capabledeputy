@@ -272,71 +272,31 @@ class SessionStore:
                 return
             current = row["version"]
             if current == SCHEMA_VERSION:
-                # Even at v6, the override_grants.state column was
-                # added after initial v6 ship — apply the idempotent
-                # ALTER so stores created from the older v6 schema
-                # gain the column without a version bump.
-                try:
-                    conn.execute(
-                        "ALTER TABLE override_grants ADD COLUMN state "
-                        "TEXT NOT NULL DEFAULT 'active'",
-                    )
-                except sqlite3.OperationalError as e:
-                    if "duplicate column" not in str(e).lower():
-                        raise
+                # Defensive idempotent backfill — a db can land at v6
+                # via several intermediate states (an early-v6 build
+                # before axis_a was added; a v5 db that got its version
+                # stamp bumped without the column ALTERs running).
+                # Re-apply ALL the v6 ALTERs unconditionally; duplicate-
+                # column errors are caught + ignored.
+                _apply_v6_idempotent_alters(conn)
                 return
             if current in (1, 2, 3, 4, 5):
                 if current == 1:
-                    # v1 → v2: add tool_aliasing and prefer_programmatic columns.
-                    col_def = "INTEGER NOT NULL DEFAULT 0"
+                    # v1 → v2: tool_aliasing + prefer_programmatic
                     for col in ("tool_aliasing", "prefer_programmatic"):
-                        ddl = f"ALTER TABLE sessions ADD COLUMN {col} {col_def}"
                         try:
-                            conn.execute(ddl)
+                            conn.execute(
+                                f"ALTER TABLE sessions ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0",
+                            )
                         except sqlite3.OperationalError as e:
                             if "duplicate column" not in str(e).lower():
                                 raise
-                # v2 → v3: used_kinds. v3 → v4: cap_uses. v4 → v5:
-                # revoked_audit_ids (002 delegation cascade). v5 → v6:
-                # 003 axis-orthogonal columns (T008) + new tables (T009)
-                # land here. Legacy label_set converter (T011) backfills
-                # axis_a/axis_b from existing label_set rows.
-                # Each ALTER is idempotent (duplicate-column is caught)
-                # so a db at any of v1..v5 converges to v6 in one pass.
-                for col, default in (
-                    ("used_kinds", "'[]'"),
-                    ("cap_uses", "'{}'"),
-                    ("revoked_audit_ids", "'[]'"),
-                    # 003 T008 — four-axis storage shape.
-                    ("axis_a", "'[]'"),
-                    ("axis_b", "'[]'"),
-                    ("axis_d", "'{}'"),
-                    ("purpose_handle", "'unset'"),
-                    ("reference_handles", "'{}'"),
-                    ("risk_preference_at_spawn", "'cautious'"),
-                ):
-                    ddl = f"ALTER TABLE sessions ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}"
-                    try:
-                        conn.execute(ddl)
-                    except sqlite3.OperationalError as e:
-                        if "duplicate column" not in str(e).lower():
-                            raise
-                # NULL-able column (no default needed beyond NULL).
-                try:
-                    conn.execute(
-                        "ALTER TABLE sessions ADD COLUMN effective_isolation_region_id TEXT NULL",
-                    )
-                except sqlite3.OperationalError as e:
-                    if "duplicate column" not in str(e).lower():
-                        raise
-
-                # T011/T047 legacy converter: backfill axis_a/axis_b/
-                # axis_d from any existing label_set rows that haven't
-                # been converted yet (idempotent — re-running produces
-                # the same JSON). Detect "not yet converted" by
-                # axis_a == '[]' default; treat axis_b/axis_d similarly.
-                # A session with no legacy labels to map remains at
-                # default; that's fine.
+                # v2..v5 → v6: apply all the column ALTERs idempotently,
+                # then backfill legacy label_set rows.
+                _apply_v6_idempotent_alters(conn)
+                # T011/T047 legacy converter: backfill axis_a/axis_b/axis_d
+                # from any existing label_set rows that haven't been
+                # converted yet.
                 rows_to_convert = conn.execute(
                     "SELECT id, label_set FROM sessions "
                     "WHERE axis_a = '[]' AND axis_b = '[]' AND axis_d = '{}'",
@@ -346,7 +306,7 @@ class SessionStore:
                         row["label_set"],
                     )
                     if axis_a_json == "[]" and axis_b_json == "[]" and axis_d_json == "{}":
-                        continue  # nothing to backfill
+                        continue
                     conn.execute(
                         "UPDATE sessions SET axis_a = ?, axis_b = ?, axis_d = ? WHERE id = ?",
                         (axis_a_json, axis_b_json, axis_d_json, row["id"]),
@@ -500,3 +460,50 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "effective_isolation_region_id": _col("effective_isolation_region_id", None),
         },
     )
+
+
+def _apply_v6_idempotent_alters(conn: sqlite3.Connection) -> None:
+    """Apply the v6 schema ALTERs idempotently — duplicate-column errors
+    are caught + ignored. Safe to call on:
+      - a freshly-created v6 db (no-op, every column already exists)
+      - a v5 db being upgraded (all columns added)
+      - an early-v6 db that was stamped before some columns existed
+        (the missing columns get added; the rest no-op)
+
+    Centralizes the column list so the same set is applied from both
+    the "upgrading from v1..v5" branch AND the defensive "already
+    at v6 but maybe inconsistent" branch in _initialize_sync.
+    """
+    for col, default in (
+        ("used_kinds", "'[]'"),
+        ("cap_uses", "'{}'"),
+        ("revoked_audit_ids", "'[]'"),
+        ("axis_a", "'[]'"),
+        ("axis_b", "'[]'"),
+        ("axis_d", "'{}'"),
+        ("purpose_handle", "'unset'"),
+        ("reference_handles", "'{}'"),
+        ("risk_preference_at_spawn", "'cautious'"),
+    ):
+        try:
+            conn.execute(
+                f"ALTER TABLE sessions ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}",
+            )
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+    for col in ("effective_isolation_region_id", "clearance_profile_id"):
+        try:
+            conn.execute(
+                f"ALTER TABLE sessions ADD COLUMN {col} TEXT NULL",
+            )
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+    try:
+        conn.execute(
+            "ALTER TABLE override_grants ADD COLUMN state TEXT NOT NULL DEFAULT 'active'",
+        )
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise

@@ -1099,11 +1099,59 @@ def _run_repl(
 
 
 def chat_command(
-    session_id: Annotated[str, typer.Argument(help="Session id to chat with")],
+    session_id: Annotated[
+        str | None,
+        typer.Argument(
+            help=(
+                "Session id to chat with. If omitted, a new session is "
+                "created automatically and used."
+            ),
+        ),
+    ] = None,
+    intent: Annotated[
+        str | None,
+        typer.Option(
+            "--intent",
+            help=(
+                "Intent for the auto-created session "
+                "(only used when no session_id is given). Default: 'chat'."
+            ),
+        ),
+    ] = None,
+    new: Annotated[
+        bool,
+        typer.Option(
+            "--new",
+            "-n",
+            help=(
+                "Force creation of a new session even if a session_id "
+                "is passed (the explicit id is ignored)."
+            ),
+        ),
+    ] = False,
 ) -> None:
-    """Interactive REPL against an existing session."""
+    """Interactive REPL against a session.
+
+    Run without arguments to auto-create a fresh session and drop
+    straight into chat:
+
+      capdep chat                  # creates session, enters REPL
+      capdep chat <session-id>     # uses existing session
+      capdep chat --new            # forces a new session
+      capdep chat --intent "X"     # set intent for the auto-created session
+    """
     _ensure_daemon()
-    _repl_loop(session_id)
+
+    effective_id: str | None = None if new else session_id
+    if effective_id is None:
+        params: dict[str, Any] = {"intent": intent or "chat"}
+        s = _call("session.new", params)
+        effective_id = str(s["id"])
+        console.print(
+            f"[green]new session:[/green] {effective_id}  intent={intent or 'chat'}",
+        )
+
+    _repl_loop(effective_id)
 
 
 demo_app = typer.Typer(

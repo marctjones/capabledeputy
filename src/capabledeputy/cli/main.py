@@ -45,6 +45,81 @@ app.command("watch")(watch_command)
 audit_app.command("storage-shape")(storage_shape_command)
 
 
+@app.command("go")
+def go_command(
+    config: Annotated[
+        str | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help=(
+                "Daemon config (upstream MCP servers). Default: bundled "
+                "Python servers only. Personal-assistant preset: "
+                "configs/personal-assistant/daemon.yaml"
+            ),
+        ),
+    ] = None,
+    intent: Annotated[
+        str | None,
+        typer.Option("--intent", help="Intent for the auto-created session"),
+    ] = None,
+) -> None:
+    """One-shot: ensure daemon is running, create a session, enter chat.
+
+    Replaces the manual three-step ritual:
+      1. capdep daemon start ...   (in one terminal)
+      2. capdep session new        (in another)
+      3. capdep chat <id>          (with the id from step 2)
+
+    With a single command. If the daemon is already running it's
+    reused; otherwise it's started in the background. A fresh
+    session is created and you drop straight into the REPL.
+    """
+    import subprocess as _subprocess
+    import time as _time
+    from pathlib import Path as _Path
+
+    # Check daemon — start if not running
+    try:
+        anyio.run(DaemonClient(default_socket_path()).call, "ping", {})
+        console.print("[dim]daemon already running[/dim]")
+    except DaemonNotRunningError:
+        console.print("[green]starting daemon in background...[/green]")
+        cmd = [sys.executable, "-m", "capabledeputy.cli.main", "daemon", "start"]
+        if config:
+            cmd.extend(["--config", config])
+        # Background spawn; log to stderr file so the user can debug
+        log_path = _Path("/tmp") / f"capdep-daemon-{int(_time.time())}.log"
+        log_file = log_path.open("w")
+        _subprocess.Popen(
+            cmd,
+            stdout=log_file,
+            stderr=log_file,
+            start_new_session=True,
+        )
+        console.print(f"[dim]daemon log: {log_path}[/dim]")
+        # Poll for socket up to 10s
+        for _ in range(50):
+            _time.sleep(0.2)
+            try:
+                anyio.run(DaemonClient(default_socket_path()).call, "ping", {})
+                console.print("[green]daemon ready[/green]")
+                break
+            except DaemonNotRunningError:
+                continue
+        else:
+            err_console.print(
+                f"[red]daemon failed to start within 10s; check {log_path}[/red]",
+            )
+            raise typer.Exit(code=2)
+
+    # Create session + drop into chat
+    chat_command(session_id=None, intent=intent, new=False)
+
+
+import sys
+
+
 @app.command("trace")
 def trace_command(
     session_id: Annotated[str, typer.Argument()],
