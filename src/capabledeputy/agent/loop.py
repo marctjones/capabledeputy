@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from uuid import UUID
 
+from capabledeputy.agent.context import build_llm_context
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.client import LLMClient
@@ -176,9 +177,22 @@ def _format_outcome(outcome: ToolCallOutcome) -> str:
     if outcome.error is not None:
         return f"tool error: {outcome.error}"
     if outcome.decision == Decision.DENY:
-        return f"policy denied: {outcome.rule or 'no_rule'}: {outcome.reason or ''}"
+        rule_part = outcome.rule or "policy"
+        reason_part = f": {outcome.reason}" if outcome.reason else ""
+        recovery_hint = (
+            "\n\nRecovery: This is a structural block, not a permission request. "
+            "Consider /spawn to create a fresh session, or /extract to isolate "
+            "the data separately."
+        )
+        return f"POLICY DENIED by rule '{rule_part}'{reason_part}{recovery_hint}"
     if outcome.decision == Decision.REQUIRE_APPROVAL:
-        return f"approval required by rule {outcome.rule}: {outcome.reason or 'queued'}"
+        rule_part = outcome.rule or "policy"
+        reason_part = f": {outcome.reason}" if outcome.reason else ""
+        recovery_hint = (
+            "\n\nApproval Status: The operation is queued for human review. "
+            "The operator will approve or deny it separately."
+        )
+        return f"APPROVAL REQUIRED by rule '{rule_part}'{reason_part}{recovery_hint}"
     output = outcome.output if outcome.output is not None else {}
     return str(output)
 
@@ -250,13 +264,41 @@ async def run_turn(
         ),
     )
 
-    messages: list[Message] = [Message(role=Role.SYSTEM, content=system_prompt)]
+    # Build deterministic LLM context with session state, tool hints, recent decisions
+    tool_descriptions = build_tool_descriptions(registry, mode, session)
+    recent_events = await audit.tail(limit=40)
+
+    # Create tool registry dict for context builder
+    tool_registry_dict = {tool.name: registry.get(tool.name) for tool in registry.list()}
+
+    llm_context = build_llm_context(
+        session,
+        tool_descriptions,
+        tool_registry_dict,
+        recent_events,
+        max_recent_decisions=10,
+    )
+
+    # Audit the context for replay purposes
+    await audit.write(
+        Event(
+            event_type=EventType.LLM_CONTEXT_ASSEMBLED,
+            session_id=session_id,
+            turn_id=len(session.history),
+            payload={
+                "context_hash": llm_context.context_hash,
+                "n_tools": llm_context.n_tools,
+                "n_recent_decisions": llm_context.n_recent_decisions,
+            },
+        ),
+    )
+
+    # Use the enriched context as system prompt
+    messages: list[Message] = [Message(role=Role.SYSTEM, content=llm_context.system_prompt)]
     for turn in session.history:
         message = _turn_to_message(turn)
         if message is not None:
             messages.append(message)
-
-    tool_descriptions = build_tool_descriptions(registry, mode, session)
 
     # Defense-in-depth: if visible_tools is empty, the LLM has no
     # tool_use options at all. Without explicit notice, models tend
