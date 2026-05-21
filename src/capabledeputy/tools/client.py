@@ -490,13 +490,17 @@ class LabeledToolClient:
             rule=rule_with_origin,
             reason=rationale or proposed.reason,
         )
+        # Dedicated DECISION_INSPECTOR_APPLIED event so auditors can
+        # filter primitive applications separately from raw policy
+        # decisions. Original POLICY_DECIDED event still fires at the
+        # ordinary dispatch site reflecting the adjusted outcome.
         await self._audit.write(
             Event(
-                event_type=EventType.POLICY_DECIDED,
+                event_type=EventType.DECISION_INSPECTOR_APPLIED,
                 session_id=session_id,
                 payload={
                     "tool": tool_name,
-                    "decision_inspector_applied": rule_with_origin,
+                    "applied_rule": rule_with_origin,
                     "original_decision": proposed.decision.value,
                     "adjusted_decision": new_decision.value,
                     "rationale": rationale,
@@ -531,8 +535,24 @@ class LabeledToolClient:
                 current_axis_a=new_axis_a,
                 current_axis_b=new_axis_b,
             )
+            pre_a, pre_b = new_axis_a, new_axis_b
             new_axis_a = most_restrictive_inherit_axis_a(new_axis_a, delta.axis_a_raise)
             new_axis_b = most_restrictive_inherit_axis_b(new_axis_b, delta.axis_b_raise)
+            # Audit each inspector that actually raised something. A
+            # no-op inspector (delta with empty axes) doesn't fire an
+            # event — keeps the audit stream signal-rich.
+            if new_axis_a != pre_a or new_axis_b != pre_b:
+                await self._audit.write(
+                    Event(
+                        event_type=EventType.INSPECTOR_APPLIED,
+                        session_id=session.id,
+                        payload={
+                            "inspector": getattr(inspector, "__class__", type(inspector)).__name__,
+                            "raised_axis_a": new_axis_a != pre_a,
+                            "raised_axis_b": new_axis_b != pre_b,
+                        },
+                    ),
+                )
         if new_axis_a != session.axis_a or new_axis_b != session.axis_b:
             updated = dc_replace(session, axis_a=new_axis_a, axis_b=new_axis_b)
             await self._graph._save(updated)

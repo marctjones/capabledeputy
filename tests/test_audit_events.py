@@ -50,6 +50,10 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         "envelope",
         "risk_register",
         "residual_risk",
+        # 004 P0 programmatic primitive applications.
+        "inspector",
+        "decision_inspector",
+        "declassifier",
     }
     for et in EventType:
         head, sep, _ = et.value.partition(".")
@@ -101,6 +105,10 @@ def test_event_type_taxonomy_matches_design() -> None:
         "residual_risk.exception",
         # 003 US2 T046 — FR-031 asymmetry refusal.
         "policy.relaxation_refused",
+        # 004 P0 — programmatic primitive applications.
+        "inspector.applied",
+        "decision_inspector.applied",
+        "declassifier.applied",
     }
     actual = {et.value for et in EventType}
     assert actual == expected, f"missing: {expected - actual}, extra: {actual - expected}"

@@ -31,6 +31,13 @@ class EventType(StrEnum):
 
     MODE_SELECTED = "mode.selected"
     POLICY_DECIDED = "policy.decided"
+    # Spec 004 P0 — programmatic primitive applications.
+    # INSPECTOR_APPLIED: a RaiseOnlyInspector raised session axes
+    # DECISION_INSPECTOR_APPLIED: a DecisionInspector relaxed/tightened
+    # DECLASSIFIER_APPLIED: a DeclassifyingTransformer lowered + transformed
+    INSPECTOR_APPLIED = "inspector.applied"
+    DECISION_INSPECTOR_APPLIED = "decision_inspector.applied"
+    DECLASSIFIER_APPLIED = "declassifier.applied"
 
     LABEL_PROPAGATED = "label.propagated"
     CAPABILITY_CHECKED = "capability.checked"
