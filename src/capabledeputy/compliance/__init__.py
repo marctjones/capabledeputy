@@ -24,9 +24,19 @@ from capabledeputy.compliance.oscal import (
     build_control_mapping,
     emit_oscal_bundle,
 )
+from capabledeputy.compliance.ssp import (
+    build_evidence_bundle,
+    build_system_security_plan,
+    emit_evidence_bundle,
+    emit_system_security_plan,
+)
 
 __all__ = [
     "build_component_definition",
     "build_control_mapping",
+    "build_evidence_bundle",
+    "build_system_security_plan",
+    "emit_evidence_bundle",
     "emit_oscal_bundle",
+    "emit_system_security_plan",
 ]

@@ -450,6 +450,90 @@ app.command("mcp-server-memory")(_make_bundled_mcp_command("memory"))
 app.command("mcp-server-git")(_make_bundled_mcp_command("git"))
 
 
+@app.command("compliance-emit-ssp")
+def compliance_emit_ssp(
+    output: Annotated[
+        str,
+        typer.Option("--output", "-o", help="Where to write the SSP JSON"),
+    ] = "./capdep-ssp.json",
+    system_name: Annotated[
+        str,
+        typer.Option(help="System name for the SSP metadata"),
+    ] = "CapableDeputy Personal Agent",
+    organization: Annotated[
+        str,
+        typer.Option(help="Owning organization"),
+    ] = "operator",
+) -> None:
+    """Emit a NIST OSCAL System Security Plan (SSP) for this installation.
+
+    Complements compliance-emit-oscal (which produces the Component
+    Definition). The SSP names the system, declares operational
+    context, and lists which NIST 800-53 controls CapableDeputy's
+    chokepoint rules implement.
+    """
+    from pathlib import Path
+
+    from capabledeputy.compliance.ssp import emit_system_security_plan
+    from capabledeputy.version import __version__
+
+    out_path = Path(output)
+    emit_system_security_plan(
+        out_path,
+        system_name=system_name,
+        organization=organization,
+        capdep_version=__version__,
+    )
+    console.print(f"[green]wrote SSP to {out_path}[/green]")
+
+
+@app.command("compliance-emit-evidence")
+def compliance_emit_evidence(
+    audit_log: Annotated[
+        str,
+        typer.Option(
+            "--audit-log",
+            help="Path to audit.jsonl to use as evidence source",
+        ),
+    ],
+    output: Annotated[
+        str,
+        typer.Option("--output", "-o", help="Where to write the evidence bundle JSON"),
+    ] = "./capdep-evidence.json",
+) -> None:
+    """Emit an audit-evidence bundle grouped by NIST control.
+
+    Reads audit.jsonl and groups policy.decided events under the NIST
+    control(s) their rule implements. Auditors get per-control
+    evidence trails directly from the daemon's audit log.
+    """
+    import json as _json
+    from pathlib import Path
+
+    from capabledeputy.compliance.ssp import emit_evidence_bundle
+
+    audit_path = Path(audit_log)
+    if not audit_path.is_file():
+        err_console.print(f"[red]audit log not found: {audit_path}[/red]")
+        raise typer.Exit(code=2)
+
+    events: list[dict] = []
+    for line in audit_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            events.append(_json.loads(line))
+        except _json.JSONDecodeError:
+            continue
+
+    out_path = Path(output)
+    emit_evidence_bundle(out_path, events)
+    console.print(
+        f"[green]wrote evidence bundle from {len(events)} events to {out_path}[/green]",
+    )
+
+
 @app.command("compliance-emit-oscal")
 def compliance_emit_oscal(
     output: Annotated[
