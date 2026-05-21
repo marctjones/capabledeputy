@@ -11,7 +11,7 @@ from capabledeputy.agent.loop import (
 from capabledeputy.audit.events import EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.fake import FakeLLMClient
-from capabledeputy.llm.types import FinishReason, LLMResponse, Message, Role, ToolCall
+from capabledeputy.llm.types import FinishReason, LLMResponse, Role, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import Label
 from capabledeputy.policy.rules import Decision
@@ -67,10 +67,7 @@ class TestContextAssemblyEvent:
         )
 
         events = await writer.read_all()
-        context_events = [
-            e for e in events
-            if e.event_type == EventType.LLM_CONTEXT_ASSEMBLED
-        ]
+        context_events = [e for e in events if e.event_type == EventType.LLM_CONTEXT_ASSEMBLED]
 
         assert len(context_events) == 1
         ctx_event = context_events[0]
@@ -96,6 +93,7 @@ class TestContextAssemblyEvent:
         # and dict[name, ToolDefinition] for tool_registry. ToolDescription
         # is what the LLM sees; ToolDefinition is the policy-aware view.
         from capabledeputy.llm.types import ToolDescription
+
         tool_descs = [
             ToolDescription(
                 name=t.name,
@@ -158,10 +156,7 @@ class TestSystemPromptReplacement:
 
         # Verify the event was written
         events = await writer.read_all()
-        ctx_events = [
-            e for e in events
-            if e.event_type == EventType.LLM_CONTEXT_ASSEMBLED
-        ]
+        ctx_events = [e for e in events if e.event_type == EventType.LLM_CONTEXT_ASSEMBLED]
         assert len(ctx_events) > 0
 
     async def test_context_includes_session_info(self, writer: AuditWriter) -> None:
