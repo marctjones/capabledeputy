@@ -108,10 +108,17 @@ class CapDepTUI(App[None]):
         Binding("r", "refresh", "Refresh", show=True),
         Binding("g", "toggle_graph", "Graph view", show=True),
         Binding("enter", "open_approval", "Open approval", show=True),
+        Binding("o", "list_overrides", "Overrides", show=True),
     ]
 
     CSS = """
     Screen { layout: vertical; }
+    #status-bar {
+        height: 1;
+        background: $primary 60%;
+        padding: 0 1;
+        text-style: bold;
+    }
     #panes { height: 1fr; }
     #left, #right { width: 50%; }
     .pane-title {
@@ -140,6 +147,7 @@ class CapDepTUI(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
+        yield Static("", id="status-bar")
         with Horizontal(id="panes"):
             with Vertical(id="left"):
                 yield Static("Sessions", classes="pane-title")
@@ -269,6 +277,8 @@ class CapDepTUI(App[None]):
 
         if self._selected_session_id:
             await self._update_session_detail(self._selected_session_id, audit_resp["events"])
+
+        await self._update_status_bar(audit_resp["events"])
 
     def _render_sessions(self) -> None:
         sessions_table = self.query_one("#sessions", DataTable)
@@ -411,6 +421,98 @@ class CapDepTUI(App[None]):
         self.push_screen(
             ApprovalDetailScreen(chosen),
             self._handle_approval_decision_for(chosen["id"]),
+        )
+
+    async def _update_status_bar(self, recent_events: list[dict[str, Any]]) -> None:
+        """Refresh the always-visible status bar at the top of the TUI.
+
+        Surfaces operator-level state that the panes don't otherwise
+        expose at a glance: active session compartment, pending
+        approvals + overrides, count of recent denials. Designed for
+        situational awareness — "what should I be paying attention to
+        right now?"
+        """
+        try:
+            override_resp = await self._client.call("override.list", {})
+            grants = override_resp.get("grants", [])
+        except Exception:
+            grants = []
+
+        # Active overrides: those in pending_attestation or active states
+        pending_overrides = sum(
+            1 for g in grants if g.get("state") in ("pending_attestation", "active")
+        )
+
+        # Recent denials in the last ~40 events
+        denials = sum(
+            1
+            for e in recent_events[-40:]
+            if e.get("event_type") == "policy.decided"
+            and (e.get("payload") or {}).get("decision") == "deny"
+        )
+
+        active_sessions = sum(1 for s in self._sessions if s["status"] == "active")
+        pending_approvals = len(self._approvals)
+
+        # Selected session compartment, if any
+        compartment_part = ""
+        if self._selected_session_id:
+            for s in self._sessions:
+                if s["id"] == self._selected_session_id:
+                    word, _style = compartment_summary(s.get("label_set", []))
+                    compartment_part = f"  selected: {s['id'][:8]} [{word}]"
+                    break
+
+        parts = [
+            f"sessions {active_sessions}",
+            f"pending approvals [bold yellow]{pending_approvals}[/bold yellow]"
+            if pending_approvals
+            else "pending approvals 0",
+            f"overrides [bold cyan]{pending_overrides}[/bold cyan]"
+            if pending_overrides
+            else "overrides 0",
+            f"recent denials [bold red]{denials}[/bold red]" if denials else "recent denials 0",
+        ]
+        import contextlib
+
+        text = "  ·  ".join(parts) + compartment_part
+
+        with contextlib.suppress(Exception):
+            self.query_one("#status-bar", Static).update(text)
+
+    def action_list_overrides(self) -> None:
+        """List active and pending override grants in a notification.
+
+        For now, a lightweight summary; a full modal could be added
+        later. The CLI (`capdep override list`) remains the primary
+        management surface.
+        """
+        self.run_worker(self._show_overrides())
+
+    async def _show_overrides(self) -> None:
+        try:
+            resp = await self._client.call("override.list", {})
+        except Exception as e:
+            self.notify(f"override.list failed: {e}", severity="error")
+            return
+        grants = resp.get("grants", [])
+        if not grants:
+            self.notify("no override grants in store", severity="information")
+            return
+        active = [g for g in grants if g.get("state") == "active"]
+        pending = [g for g in grants if g.get("state") == "pending_attestation"]
+        consumed = [g for g in grants if g.get("state") == "consumed"]
+        lines = []
+        if pending:
+            lines.append(f"{len(pending)} pending attestation")
+        if active:
+            lines.append(f"{len(active)} active")
+        if consumed:
+            lines.append(f"{len(consumed)} consumed")
+        self.notify(
+            "Override grants: " + ", ".join(lines) + "\n(use `capdep override list` for details)",
+            severity="information",
+            timeout=8,
         )
 
     def _handle_approval_decision_for(self, approval_id: int):
