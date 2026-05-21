@@ -1434,11 +1434,380 @@ target object:
 
 ---
 
+## 13. Related Work — what exists and where CapableDeputy fits
+
+The question naturally arises: aren't there established policy
+languages we should be using? Yes — and we use them where they fit.
+This section maps the landscape, explains where CapableDeputy
+overlaps with existing standards (and integrates with them), and
+where it deliberately occupies new ground (information flow for
+agents) because no existing standard addresses that layer.
+
+**Source basis:** the assessments below cite primary-source reading
+of the Cedar paper, the OPA/Rego documentation, NIST OSCAL technical
+materials, and language specifications (Lua, Starlark, WebAssembly,
+eBPF). Where a claim says "no support for X," that's drawn from the
+language's own design documents — not inferred.
+
+### 13.1 Authorization policy languages
+
+These answer the question: **"is this principal allowed to do this
+action on this resource under these conditions?"** They are well-
+suited for cap-style permit/deny decisions on individual actions.
+
+| Language | Steward | Style | Strengths | Limits for CapableDeputy |
+|---|---|---|---|---|
+| **Rego** (Open Policy Agent) | CNCF | Datalog-derived | Most mature; broad ecosystem; flexible | Steep learning curve; benchmarks show error-prone runtime exceptions; not designed for stateful info flow |
+| **Cedar** | AWS / Apache | Functional, typed, formally modeled in Lean | 42-60× faster than Rego; formal verification; deny-by-default; readable | Explicitly stateless; PAR-model (principal/action/resource); extensions limited to evaluator level |
+| **OpenFGA** | CNCF | Relation-based (Google Zanzibar-inspired) | Excellent for "is X a member of Y's team?" relationships | Less general; not designed for cross-action information flow |
+| **XACML** | OASIS | XML-based, ABAC | Architectural concepts (PEP/PDP/PAP/PIP) widely influential | Verbose; declining adoption; same auth-not-info-flow limitation |
+
+**Primary-source citations** for the limits column:
+
+- **Cedar paper (arXiv 2403.04651):** the paper describes Cedar as
+  explicitly stateless: *"No accumulation of historical decisions
+  or facts across requests. Each policy evaluation is isolated. No
+  built-in support for information flow tracking or label
+  propagation. The language makes no provision for taint analysis,
+  data lineage, or label-based confidentiality tracking."*
+  Extensions are "validator-defined" at the evaluator level — the
+  core language is closed.
+
+- **OPA/Rego documentation:** *"Rego has no mutable state. Policies
+  cannot perform side effects or maintain state across invocations.
+  Each evaluation is stateless and deterministic."* Information
+  flow expressible "but cannot automatically track information flow
+  or lazily evaluate side effects triggered by data access" — must
+  be modeled via explicit rule composition against external state.
+
+**What CapableDeputy could do with these:**
+
+Our **cap match + Brewer-Nash + BLP** layer is the part that overlaps
+with what these languages do well. An operator who already knows
+Rego or Cedar could (optionally, in a future spec) author rules in
+those languages, and CapableDeputy would compile them into the
+internal evaluator. That's an interop play, not a replacement —
+because the information-flow layer (label propagation,
+declassification with structural proof, programmatic primitives at
+named hooks) can't be expressed in their models without a parallel
+state machine outside the language.
+
+**The industry is starting to see this gap.** From the 2026 Permit.io
+analysis of policy languages for MCP and agentic systems:
+
+> *"Enforcing policies for agentic systems requires tracking
+> information flow across agents, which linear message histories
+> cannot capture, suggesting this is an emerging consideration in
+> policy language design."*
+
+CapableDeputy is one of the systems making information flow
+first-class in this emerging space.
+
+### 13.2 Compliance documentation languages
+
+These answer a different question: **"can a tool/auditor
+mechanically verify that we implement specific security controls?"**
+
+| Language | Steward | Purpose | Status |
+|---|---|---|---|
+| **OSCAL** (Open Security Controls Assessment Language) | NIST | Machine-readable expression of control catalogs, baselines, system security plans, assessment plans, assessment results | Active; supersedes OpenControl in most contexts; growing adoption |
+| **OpenControl** | community | Earlier YAML-based control documentation | Largely dormant; OSCAL has the momentum |
+
+**OSCAL is not policy enforcement.** You don't gate an action with
+OSCAL; you describe in OSCAL HOW you gate that action so auditors
+can verify your implementation maps to NIST 800-53 / FedRAMP / SOC 2
+/ ISO 27001 controls.
+
+**What CapableDeputy will do with OSCAL:**
+
+For operators who need to demonstrate compliance (regulated
+industries, public-sector, enterprise customers), CapableDeputy will
+emit OSCAL-shaped documents:
+
+- **Control implementation evidence** — for example, "we implement
+  AC-3 Access Enforcement via the capability + chokepoint
+  mechanism," pointing at audit events as evidence.
+- **Continuous assessment results** — streaming audit events as
+  OSCAL assessment results suitable for ingestion into compliance
+  dashboards.
+- **System security plan (SSP)** — describe our architecture in
+  OSCAL SSP format.
+
+This means CapableDeputy plugs into the broader compliance ecosystem
+without our policy engine needing to change. Auditors get the
+artifacts they need in the format they expect.
+
+Roadmap: see `tasks.md` Phase P2 (`U200`-`U206`).
+
+### 13.3 Information-flow research lineage
+
+This is where CapableDeputy's actual technical lineage lives. These
+systems implement information-flow primitives at various layers:
+
+| System | Layer | Concepts inherited |
+|---|---|---|
+| **Asbestos, HiStar, Flume** (MIT/Stanford, 2000s) | OS-level DIFC | Labels first-class; taint propagates; declassification requires explicit authority; read-up/read-down semantics |
+| **Jif** (Cornell) | Programming language | Static information-flow types; explicit declassification primitives |
+| **Bell-LaPadula** (foundational, 1973) | Theoretical | "no read-up, no write-down"; the model we use for clearance enforcement |
+| **Brewer-Nash** (foundational, 1989) | Theoretical | Conflict-of-interest compartments; what we use for category/category rules |
+| **Clark-Wilson** (1987) | Theoretical | Well-formed transactions; separation of duty — what FR-036 dual-control implements |
+| **Denning** (1976) | Theoretical | Lattice model of information flow; foundational |
+| **CaMeL** (Google DeepMind, 2025) | LLM-agent flow | Dual-LLM (planner + quarantined extractor) with schema-bound declassification — direct inspiration for our Pattern ② |
+| **Dromedary** (Microsoft Research) | LLM-agent flow | Flow patterns for agent safety; influences our pattern taxonomy |
+
+None of these is a "policy language" you can directly adopt for an
+agent runtime — they're either OS-kernel systems (Asbestos, HiStar)
+or language type systems (Jif) or theoretical frameworks (BLP,
+Brewer-Nash, Clark-Wilson, Denning). What we've done is take their
+foundational concepts and operationalize them in a configurable
+policy language at the agent runtime layer.
+
+### 13.4 Positioning
+
+Combining the surveys above, the honest claim:
+
+> **CapableDeputy implements information-flow control for AI
+> agents — a problem domain that mainstream authorization
+> languages (Rego/OPA, Cedar, OpenFGA, XACML) do not address.**
+>
+> The authorization-layer subset of our policy (capability
+> matching, Brewer-Nash conflict rules, BLP clearance enforcement)
+> overlaps with what those languages do well, and we can interop
+> with them as an alternative syntax. The information-flow layer
+> (label propagation, declassification with structural proof,
+> programmatic primitives at named hooks) is sui generis at the
+> agent runtime layer; the closest analogs are research DIFC
+> systems and the dual-LLM patterns from CaMeL / Dromedary.
+>
+> For compliance documentation, CapableDeputy emits OSCAL-shaped
+> artifacts compatible with NIST 800-53, FedRAMP, SOC 2, and
+> ISO 27001 frameworks.
+
+This is a defensible position. We're not duplicating existing
+standards — we're filling a gap, with clear interop where
+standards apply.
+
+### 13.5 What this means for an operator
+
+- **You DO NOT need to know Rego or Cedar to use CapableDeputy.**
+  The native policy language (capabilities, bindings, envelopes,
+  override policies, profiles, the three programmatic primitives)
+  is the primary surface.
+- **If you DO know Rego or Cedar**, future work will let you
+  author the cap + conflict-rule subset in those languages as an
+  alternative syntax. This is P4 (optional interop), not core.
+- **If you need to produce compliance evidence** for a regulated
+  context, the OSCAL emission feature (P2 roadmap) maps
+  CapableDeputy's mechanisms to NIST 800-53 / FedRAMP / SOC 2 /
+  ISO 27001 controls and produces machine-readable assessment
+  results from the audit log.
+- **If you're evaluating CapableDeputy academically or for
+  research**, the information-flow primitives are the novel
+  contribution. The closest prior work is CaMeL (Google DeepMind,
+  2025) and the DIFC OS research from the 2000s; the difference
+  is that we operationalize these for an agent runtime as
+  configurable policy, not as a one-off OS or compiler.
+
+---
+
+## 14. Runtime hosts for policy authoring
+
+The three programmatic primitives (`RaiseOnlyInspector`,
+`DecisionInspector`, `DeclassifyingTransformer`) need a **language
+and execution environment** in which operators author them. The
+current design says YAML DSL or Python module; this section
+surveys the broader space and recommends a layered approach with
+Starlark added between the two.
+
+### 14.1 Requirements for the host
+
+- **Determinism** — same inputs produce same outputs (required for
+  audit replay, regression testing)
+- **Bounded execution** — primitives run inside `decide()`; can't
+  hang the chokepoint
+- **No ambient I/O** — primitives are pure functions; the operator
+  declares which external state, if any, is available
+- **Resource limits** — CPU + memory caps per call
+- **Authorship clarity** — operator-readable, version-controllable,
+  testable
+- **Performance** — microsecond-scale per call (the chokepoint
+  fires on every action)
+
+### 14.2 Candidates surveyed
+
+| Host | Origin | Fit for CapDep |
+|---|---|---|
+| **YAML DSL (our own)** | n/a | ✓ Common cases — declarative rules, pre-compiled |
+| **Starlark** | Bazel (Google) | ✓ Sweet spot — Python-like, hermetic, no while/recursion/classes, deterministic, parallelizable |
+| **Lua** | embedded language standard | ✓ Production-grade — sandboxable, battle-tested (Roblox, Redis, nginx, WoW), but operator learning curve |
+| **WebAssembly (Wasmtime)** | W3C / Bytecode Alliance | ✓ For community-shared modules — multi-language source, capability-based imports, but per-call overhead ms not µs |
+| **Python module** | Python | ✓ For rich logic; operator trust at config time |
+| **TinyScheme** | GIMP/Apple sandbox heritage | △ Battle-tested in sandboxing (Apple MacOSX sandbox config uses it!), but operator learning curve |
+| **Red (modern REBOL)** | Nenad Rakočević | △ Research direction — alpha status, but dialecting genuinely interesting for DSLs |
+| **eBPF-style verified bytecode** | Linux kernel | △ Strongest verification, but building our own verifier is months of engineering |
+| **RestrictedPython** | Zope | ✗ Per its own docs: "not a sandbox system or a secured environment" |
+
+### 14.3 Primary-source notes on the leading candidates
+
+**Starlark** (Bazel's restricted-Python config language):
+
+From Bazel's documentation: function declaration prohibited in BUILD
+files; top-level `for`/`if` disallowed (only `if` expressions); no
+`while` loops, no `class` definitions, no recursion; no `*args` /
+`**kwargs`; integers limited to 32-bit signed; no `float` or `set`
+types; strings aren't iterable. Two mutable types (lists, dicts).
+"Each `.bzl` file and `BUILD` file operates within isolated contexts,
+preventing unintended state sharing across parallel execution
+environments." Hermetic execution is a primary design goal.
+
+For CapDep policy use: this is the **right fit between YAML and
+full Python**. The "removed Python features" are exactly the
+features we don't want operators to use in policy (loops that
+might not terminate, recursion that might overflow, classes with
+mutable state that defeats determinism).
+
+Reference implementations: `starlark-go`, `starlark-rust`, and
+Python via `bazel-starlark-py`.
+
+**Lua** (general-purpose embedded scripting):
+
+From the official Lua materials: ~388K binary, simple C API, "fast"
+benchmarks. Embedded in Roblox, Redis, nginx, World of Warcraft,
+Adobe Lightroom, and many other production systems. Sandboxing
+patterns are well-established (restrict global env; remove `io`,
+`os`, `debug.dump`, `loadstring`; instruction counting via
+`debug.sethook`). LuaJIT for hot-path performance (separate
+implementation).
+
+For CapDep policy use: viable production option. The trade-off
+vs. Starlark is operator familiarity (Python developers know
+Python syntax; Lua's syntax is different).
+
+**WebAssembly** (Wasmtime / WASI):
+
+Multi-language source: Rust, AssemblyScript, Go, C, Python (via
+Pyodide), more. Wasmtime is "fast and secure," with "fine-grained
+control over CPU and memory consumption." Imports are
+capability-based: the host explicitly declares which functions
+wasm modules can call. Per-call overhead is millisecond-scale (not
+microsecond) due to instance setup, so wasm is best for **loaded
+once at startup, called many times** patterns. Module size and
+sandbox isolation are both strong.
+
+For CapDep policy use: best fit for **community-shared policy
+modules** — package once in any source language, distribute as
+.wasm, run in any CapDep install with capability-bound imports.
+Not the right tool for per-call in-chokepoint primitives where
+microsecond performance matters.
+
+**eBPF** (Linux kernel's verified bytecode):
+
+The verifier checks: "Programs always run to completion (no
+infinite loops). No uninitialized variables or out-of-bounds
+memory access. Programs fit within size requirements and
+complexity limits." Programs written in C or Rust, compiled to
+eBPF bytecode via LLVM/Clang. "The verifier is meant as a safety
+tool, checking that programs are safe to run. It is not a security
+tool inspecting what the programs are doing."
+
+For CapDep: the **model** is exactly what we'd want for verified
+in-process policy execution — a verifier that proves termination
++ memory safety before allowing execution. But eBPF itself is
+tightly kernel-coupled; building a userspace equivalent (or
+extracting the verifier) is months of engineering. **WebAssembly
+covers ~80% of the same value proposition with much less custom
+work.**
+
+**TinyScheme** (small Scheme implementation):
+
+Used by GIMP and **Apple's MacOSX sandbox configuration**. That's
+a strong production-sandboxing signal: Apple chose embedded Scheme
+for their security boundary configuration. Small (compiles to
+~50KB), simple semantics, easy to bound. Operator learning curve
+is the trade-off — Scheme syntax is less familiar than Python-like.
+
+**Red** (modern REBOL):
+
+Started 2011 by Nenad Rakočević. Alpha status (32-bit only as of
+2026); single-file ~1MB executable; native compilation;
+homoiconic; supports **dialecting** (defining DSLs within Red
+syntax). Active development; small but committed community.
+"Highly embeddable."
+
+For CapDep: dialecting is a natural fit for policy DSL design —
+you could define a "CapDep policy dialect" that compiles via
+Red's machinery. But alpha status + small community makes this a
+research-direction candidate, not a production choice. Revisit
+post-1.0.
+
+**RestrictedPython**:
+
+From the official RestrictedPython docs themselves:
+*"RestrictedPython is not a sandbox system or a secured
+environment. This is a crucial distinction—it's a policy
+enforcement tool, not a true security boundary."*
+
+For CapDep: **rejected**. The maintainers explicitly disclaim
+sandboxing properties.
+
+### 14.4 Recommended layered approach
+
+Use the right tool at each tier of operator-authoring complexity:
+
+| Tier | Host | When operator chooses this |
+|---|---|---|
+| **1** | **YAML DSL** | Common cases: regex inspector, simple decision rules with `when` / `relax` / `tighten`, recipient-list matching. ~80% of operator authoring. |
+| **2** | **Starlark** | Rule-shaped logic beyond YAML — multi-clause matching with computed predicates, declarative decision tables, custom small functions. Hermetic + deterministic + bounded. |
+| **3** | **Python module** | Rich logic — multi-line transformations, schema validation against Pydantic models, stateful inspectors. Operator-authored; trust at config time. |
+| **4** | **WebAssembly module** | Community-shared policy modules — packaged once in any source language, distributed as `.wasm`, run with capability-bound imports. Future work. |
+
+Rejected at any tier:
+- **RestrictedPython** — per its own docs, not a sandbox
+- **Custom eBPF-style verifier** — too much engineering for too
+  little gain over wasm
+- **Red** — alpha status; revisit later
+
+Tier 2 (Starlark) is the addition from the language survey. Today's
+design specifies Tier 1 and Tier 3; adding Starlark gives operators
+a sandbox-friendly option for rule-shaped logic without committing
+to full Python modules.
+
+### 14.5 Implementation cost
+
+Adding Starlark support:
+
+| Item | Effort |
+|---|---|
+| Embed `starlark-go` (via FFI) OR write Python-side Starlark interpreter | 5 days |
+| Wire Starlark hooks to the three primitive Protocols (Inspector, DecisionInspector, DeclassifyingTransformer) | 3 days |
+| Per-call resource limits (instruction count, memory) | 2 days |
+| Configuration loader for `*.star` files | 1 day |
+| Test harness + fixtures | 2 days |
+| Operator documentation | 2 days |
+| **Total** | **~15 days** |
+
+This becomes new Phase P3 task `U210-U215` in `tasks.md`.
+
+Adding WebAssembly support (future):
+
+| Item | Effort |
+|---|---|
+| Embed `wasmtime-py` | 3 days |
+| Capability-based import surface | 4 days |
+| WASI subset for policy use | 3 days |
+| Module signing / verification | 3 days |
+| Test harness | 3 days |
+| Documentation | 2 days |
+| **Total** | **~18 days** (P4 community-policy work) |
+
+---
+
 ## Related documents
 
 - `mcp-protocol-fit.md` — security audit + decisions per MCP surface
 - `mcp-policy-integration.md` — design rationale for the policy
   integration positions (incoming-labeling pipeline, outgoing
   payload-args, OAuth flow-pattern-session, etc.)
-- `tasks.md` (when written) — implementation breakdown ordered by
-  priority and dependency
+- `tasks.md` — implementation breakdown ordered by priority and
+  dependency (OSCAL emission tasks `U200-U206` in Phase P2;
+  Starlark host `U210-U215` in P3; WebAssembly host in P4)

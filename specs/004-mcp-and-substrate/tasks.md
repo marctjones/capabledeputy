@@ -319,6 +319,8 @@ Depends on P0.
 
 ## Phase P2 — Observability + ecosystem
 
+### Observability
+
 - [ ] **U160** [P] CLI `capdep policy review` (declassification
   history).
 - [ ] **U161** [P] CLI `capdep policy decisions` (relax/tighten
@@ -329,7 +331,110 @@ Depends on P0.
 - [ ] **U165** [P] Operator-facing YAML DSL documentation.
 - [ ] **U166** [P] Example operator-curated primitive modules.
 
-**P2 sum: ~7 days.**
+### OSCAL compliance emission
+
+For operators in regulated contexts who need to demonstrate
+compliance against NIST 800-53, FedRAMP, SOC 2, ISO 27001, etc.
+CapableDeputy doesn't need to change its policy engine for this —
+it emits OSCAL-shaped documents derived from existing audit data +
+operator config.
+
+Reference: NIST OSCAL (Open Security Controls Assessment Language)
+— https://pages.nist.gov/OSCAL/. Schema spec: JSON/XML/YAML formats
+for control catalogs, baselines, system security plans (SSP),
+assessment plans, and assessment results.
+
+- [ ] **U200** Research: walk the relevant control catalogs (NIST
+  800-53 Rev 5 baseline; FedRAMP Moderate; SOC 2 Trust Services
+  Criteria; ISO 27001 Annex A) and map each control to the
+  CapableDeputy mechanism that implements it. Output: a YAML
+  mapping file `compliance/control_implementations.yaml`.
+
+  Examples of the mappings:
+  - `AC-3 Access Enforcement` → capability + chokepoint mechanism
+    (`engine.decide()` + `policy/capabilities.py`)
+  - `AC-4 Information Flow Enforcement` → label propagation,
+    Brewer-Nash rules, BLP clearance
+  - `AC-6 Least Privilege` → capability granularity + delegation
+    attenuation
+  - `AU-2 Event Logging` → audit event emission
+  - `AU-3 Content of Audit Records` → audit event schema
+  - `AU-9 Protection of Audit Information` → append-only audit log
+  - `CM-7 Least Functionality` → tool registry + per-tool
+    capability bindings
+  - `IA-2 Identification and Authentication` → clearance profile
+    + initiator field
+  - `SC-2 Application Partitioning` → session isolation +
+    Pattern ② DUAL_LLM
+  - `SC-4 Information in Shared System Resources` → label
+    propagation across session fork
+  - `SC-8 Transmission Confidentiality` → egress chokepoint +
+    per-arg payload labels
+  - `SC-28 Protection of Information at Rest` → labeled storage
+    + memory store
+  - `SI-4 System Monitoring` → audit stream + inspectors
+
+- [ ] **U201** Create `src/capabledeputy/compliance/oscal_emitter.py`
+  with OSCAL output functions:
+  - `emit_ssp(output_path)` — System Security Plan describing
+    the CapableDeputy installation
+  - `emit_control_implementations(output_path)` — control
+    implementation statements with pointer-to-evidence
+  - `emit_assessment_results(audit_log_path, output_path,
+    since_date=None)` — extract audit events that demonstrate
+    control implementation; emit as OSCAL assessment results
+
+- [ ] **U202** [P] OSCAL JSON schema validation:
+  use the official NIST-provided schemas
+  (https://github.com/usnistgov/OSCAL) to validate emitted
+  documents.
+
+- [ ] **U203** CLI: `capdep audit oscal --output-dir <dir>
+  [--since-date <iso>] [--catalog nist-800-53-r5 | fedramp-moderate
+  | soc2 | iso-27001-a]` — emit the OSCAL bundle.
+
+- [ ] **U204** [P] Tests `tests/test_oscal_emission.py`:
+  - Schema validation on each emitted document
+  - Round-trip: emit, load, verify control mappings present
+  - Audit-event extraction correctness (events for AU-2 cover the
+    right time window, etc.)
+
+- [ ] **U205** [P] Operator documentation: `docs/compliance.md`
+  covering which frameworks are supported, how to generate the
+  bundle, how to consume it in compliance tools (e.g., GovReady-Q,
+  Compliance Trestle).
+
+- [ ] **U206** Continuous-assessment mode: a daemon background
+  task that emits a fresh OSCAL assessment-results document on a
+  schedule (daily / weekly), suitable for ingestion into a
+  compliance dashboard. Output dir is operator-configured.
+
+**P2 sum: ~14 days** (7 observability + 7 OSCAL).
+
+### Starlark host for sandboxed primitive authoring
+
+The current design has YAML DSL (declarative) + Python module
+(operator-trusted). After the language survey in
+`programmatic-policy-primitives.md` §14, Starlark is the right
+host for the middle tier — Python-like syntax, hermetic +
+deterministic + bounded (no while loops, no recursion, no classes),
+designed for parallelizable config-language use.
+
+- [ ] **U210** Embed Starlark interpreter (evaluate `starlark-go`
+  via FFI vs. native Python implementation). Decision: `starlark-go`
+  is the reference; via subprocess or FFI.
+- [ ] **U211** Wire Starlark hooks to the three primitive Protocols.
+  Operator can author `.star` files at the same paths as Python
+  modules; loader resolves by extension.
+- [ ] **U212** Per-call resource limits (instruction count, memory
+  cap) via Starlark's built-in step counter.
+- [ ] **U213** Configuration loader for `*.star` files alongside
+  the Python module loader.
+- [ ] **U214** [P] Test harness + fixtures for Starlark primitives.
+- [ ] **U215** [P] Operator documentation: writing CapDep
+  primitives in Starlark.
+
+**Starlark host sum: ~15 days.**
 
 ## Phase P3 — Streamable HTTP + OAuth (was implied in original)
 
