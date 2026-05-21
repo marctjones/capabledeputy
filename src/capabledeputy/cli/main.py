@@ -448,6 +448,56 @@ app.command("mcp-server-fetch")(_make_bundled_mcp_command("fetch"))
 app.command("mcp-server-search")(_make_bundled_mcp_command("search"))
 app.command("mcp-server-memory")(_make_bundled_mcp_command("memory"))
 app.command("mcp-server-git")(_make_bundled_mcp_command("git"))
+app.command("mcp-server-gworkspace")(_make_bundled_mcp_command("gworkspace"))
+
+
+@app.command("gworkspace-setup")
+def gworkspace_setup() -> None:
+    """Run the one-time OAuth consent flow for Google Workspace.
+
+    Prerequisites:
+      1. Create a Google Cloud project + enable Gmail/Docs/Drive/Calendar APIs.
+      2. Create an OAuth 2.0 Client ID (type: Desktop application).
+      3. Download `credentials.json` and save it to:
+           ~/.config/capabledeputy/secrets/gworkspace-credentials.json
+           (mode 0600)
+
+    Then run this command. It opens a browser; you approve; the
+    refresh token is cached. Subsequent daemon spawns reuse it.
+
+    To revoke: delete
+      ~/.config/capabledeputy/secrets/gworkspace-token.json
+    and re-run setup.
+    """
+    from capabledeputy.mcp_servers._gworkspace_auth import (
+        credentials_path,
+        run_consent_flow,
+    )
+
+    cp = credentials_path()
+    if not cp.is_file():
+        err_console.print(
+            f"[red]missing OAuth client credentials at {cp}[/red]\n"
+            "  Create a Desktop OAuth client in Google Cloud Console and\n"
+            "  save the downloaded credentials.json there (mode 0600).",
+        )
+        raise typer.Exit(code=2)
+
+    console.print(
+        "[bold]starting OAuth consent flow[/bold] — a browser will open. "
+        "Approve the requested scopes.",
+    )
+    try:
+        tp = run_consent_flow()
+    except Exception as e:
+        err_console.print(f"[red]OAuth flow failed:[/red] {e}")
+        raise typer.Exit(code=1) from e
+
+    console.print(f"[green]token cached to {tp}[/green]")
+    console.print(
+        "\n[bold]next:[/bold] add the gworkspace server to a daemon config and start the daemon.\n"
+        "  See [bold]configs/curated/google-workspace.yaml[/bold] for an example.",
+    )
 
 
 @app.command("compliance-emit-ssp")
