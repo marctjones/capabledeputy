@@ -436,6 +436,50 @@ designed for parallelizable config-language use.
 
 **Starlark host sum: ~15 days.**
 
+### Starlark integration via starlark-rust + PyO3 (committed decision)
+
+Per `programmatic-policy-primitives.md` §15.1 the committed
+embedding path is `starlark-rust` (Facebook's production-grade
+crate, used in Buck2) with PyO3 bindings. These tasks expand the
+P3 Starlark host work with specific implementation steps.
+
+- [ ] **U220** Add Rust toolchain to dev environment + CI. Document
+  the cargo build flow.
+- [ ] **U221** Author a thin PyO3 wrapper crate
+  `capdep-starlark-bridge` exposing:
+  - `evaluate_inspector(source, value_json, axis_a_json, axis_b_json) -> InspectorDelta JSON`
+  - `evaluate_decision_inspector(source, action_json, session_json, outcome_json) -> Relax|Tighten|None JSON`
+  - `evaluate_declassifier(source, value_json, axis_a_json, axis_b_json, context_json) -> DeclassifyResult|None JSON`
+  Each call is bounded by a step counter (default 100,000 steps).
+- [ ] **U222** [P] Publish `capdep-starlark-bridge` as a Python
+  wheel; verify manylinux + macOS wheels build in CI.
+- [ ] **U223** Wire the bridge into the primitive Protocol classes
+  in `policy/decision_inspector.py`, `policy/declassifier.py`, and
+  `substrate/inspector_port.py`. When a primitive's source path
+  ends in `.star`, route to the bridge; when `.py`, route to the
+  existing Python module loader.
+- [ ] **U224** Per-primitive step-count config in operator YAML:
+  `step_limit: 100000` default; can be raised per-primitive.
+- [ ] **U225** [P] Test harness: `tests/test_starlark_primitives.py`
+  with fixture sessions + assert deterministic replay.
+- [ ] **U226** [P] Convert one example operator-curated primitive
+  per type to `.star` form (inspector, decision inspector,
+  declassifier) — operators see what idiomatic CapDep Starlark
+  looks like.
+- [ ] **U227** [P] Performance benchmark target: <200µs per
+  primitive call on the reference workload. If we miss, profile
+  + adjust.
+- [ ] **U228** Operator documentation in `docs/starlark-primitives.md`
+  covering: syntax cheat sheet, what builtins are available (regex,
+  time, helpers), how to write each primitive type, common
+  patterns, debugging.
+
+**Starlark integration sum: ~12 additional days** (on top of
+U210-U215 conceptual wiring).
+
+**Total Starlark commitment: ~27 days** for full host + integration
++ tooling + docs.
+
 ## Phase P3 — Streamable HTTP + OAuth (was implied in original)
 
 - [ ] **U170** `transport_http.py` Streamable HTTP per MCP spec.

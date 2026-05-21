@@ -1802,6 +1802,162 @@ Adding WebAssembly support (future):
 
 ---
 
+## 15. Architectural decision record — language host strategy
+
+**Decision (2026-05-20):** **Option A + Starlark via starlark-rust + PyO3.**
+
+CapDep's policy language is stateless (§14.4 discussion); the state
+is in CapDep's data structures (Session, OverrideGrantStore,
+ApprovalQueue, etc.) and the policy is invoked with snapshots. This
+keeps the policy a pure function of inputs.
+
+For authoring the primitives (RaiseOnlyInspector, DecisionInspector,
+DeclassifyingTransformer), we adopt a four-tier strategy:
+
+1. **YAML DSL** — declarative rules, regex inspectors, simple decision
+   tables. Covers ~80% of operator authoring.
+2. **Starlark** — rule-shaped logic beyond YAML; hermetic + bounded;
+   embedded via `starlark-rust` crate + PyO3 bindings.
+3. **Python module** — rich logic, schema validation, operator-trusted
+   at config time. Existing design.
+4. **WebAssembly** — future; for community-shared portable policy
+   modules.
+
+The **`engine.decide()` itself remains hand-coded Python** —
+orchestrating the policy evaluation through the named hooks,
+managing state transitions (label propagation, override FSM, bundle
+lifecycle), and dispatching to primitives.
+
+### 15.1 Why Starlark via starlark-rust + PyO3
+
+Among the language hosts surveyed (§14.2), Starlark fits the
+"safer, structured logic" tier best:
+
+- **Determinism, bounded execution, hermetic** by language design
+- **Python-familiar syntax** for our operator base
+- **Multi-implementation portability** — same Starlark code runs on
+  Go, Rust, and Python interpreters; not locked to one runtime
+- **No operator-authored-code security surface** — Starlark sandbox
+  is structural, not trust-based
+
+For the embedding, **starlark-rust** is the production-grade Rust
+implementation (Facebook battle-tested in Buck2); PyO3 gives us
+mature Python bindings. The combination is:
+
+- **Performance**: sub-millisecond per primitive call (target <200µs)
+- **Build complexity**: adds Rust toolchain dependency, mitigable
+  via published wheels
+- **Maintenance**: starlark-rust is actively maintained; PyO3 is the
+  standard Python-Rust bridge
+
+Alternatives considered and rejected:
+
+| Alternative | Why rejected |
+|---|---|
+| `starlark-go` via subprocess | Process spawn per evaluation = 10ms+ overhead |
+| `starlark-go` via FFI | Requires Go toolchain; FFI overhead similar to PyO3 |
+| Pure-Python Starlark interpreter | Slower; less mature; tracking the spec is operator burden |
+| Custom in-Python implementation | Months of work; reinventing what starlark-rust already does |
+
+### 15.2 OPA reference — what it offers and when to revisit
+
+OPA (Open Policy Agent) is the dominant authorization policy engine
+in the cloud-native ecosystem. CNCF graduated; deployed at Netflix,
+Pinterest, Shopify, and most large engineering orgs running
+Kubernetes. Uses Rego as its policy language.
+
+**What OPA is, structurally:**
+
+- A standalone Go daemon (or embedded library, or compiled to Wasm)
+- Receives JSON input → returns JSON decision
+- Pulls signed bundle from a central server (policy distribution)
+- Streams decision logs to a SIEM (auditability)
+- Three deployment modes:
+  - **Sidecar** (separate process; HTTP loopback; ms-scale)
+  - **Embedded library** (in-process; sub-ms)
+  - **Wasm** (compiled policies, embedded in any host; µs-scale)
+
+**How enterprises use it:**
+
+1. **Kubernetes admission control** (Gatekeeper — gate pod creation
+   against organizational policy)
+2. **API gateway authorization** (Envoy/Istio external auth)
+3. **Service-to-service mesh auth** (combined with mTLS identity)
+4. **CI/CD policy gates** (Conftest — block Terraform plans with
+   overly-permissive IAM, etc.)
+5. **Database row-level security** (proxy + OPA rewriting queries)
+6. **Cloud resource provisioning** (pre-deployment policy validation)
+7. **Network device config policy** (network shops validate switch/
+   router configs against organizational rules before push)
+
+**How OPA could be used with CapDep:**
+
+If an enterprise customer (e.g., a 5000-developer org standardizing
+on OPA) required CapDep to integrate, three options:
+
+| Option | Description | Effort |
+|---|---|---|
+| **OPA-A**: Bundle export | CapDep generates OPA bundles from its own static rules; doesn't use OPA at runtime. Audit teams verify policy with `opa test`. | ~1 week |
+| **OPA-B**: Embedded Wasm | Operator authors rules in Rego; compiled to Wasm; CapDep embeds wasmtime and calls compiled policies in-process. ~µs eval. | ~3 weeks |
+| **OPA-C**: OPA sidecar | CapDep daemon calls OPA over loopback HTTP. Full OPA ecosystem (bundles, decision logs, central management). ~1-5ms per call. | ~2 weeks |
+
+**Concrete enterprise scenario:** Cisco rolls out CapDep to 5000
+developers. Central security team writes baseline Rego policies for
+"no internal-Cisco data egresses to non-Cisco email domains,"
+distributes via signed bundle from `policies.cisco.com/capdep/`,
+each developer's CapDep pulls the bundle every 60s, decision logs
+stream to Cisco Splunk for audit. Compliance auditors run
+`opa test` against the active bundle to verify properties — much
+faster than reviewing 800 lines of Python.
+
+**When to revisit OPA integration:**
+
+- An enterprise customer specifically requires Rego authoring or
+  OPA bundle distribution
+- A regulator requires policy expressed in a standard external
+  language for compliance assessment
+- We want to publish CapDep's static rules as a shareable artifact
+  for security teams to inspect/customize
+
+Until one of those happens, OPA-A (bundle export) is the cheapest
+entry point if asked. OPA-B is the technically cleanest if
+adopted. OPA-C adds operational complexity that mostly benefits
+enterprises with existing OPA infrastructure.
+
+### 15.3 Implementation roadmap update
+
+Already in `tasks.md`:
+- **P3 U210-U215** (~15d): Starlark host via starlark-rust + PyO3
+- **P2 U200-U206** (~7d): OSCAL emission for compliance
+
+To be added (this decision):
+- **P3 U220-U228**: Starlark integration detail tasks (see tasks.md)
+
+Deferred / on-demand:
+- OPA integration (OPA-A bundle export, OPA-B Wasm embed, OPA-C
+  sidecar) — only when enterprise demand emerges
+- WebAssembly host for community policy modules (P4)
+- Red language host (revisit post-Red-1.0)
+- TinyScheme host (revisit if a vertical demands it)
+- Custom eBPF-style verifier (probably never — Wasm covers it)
+
+### 15.4 Open issues for the implementation phase
+
+- **starlark-rust PyO3 binding maturity**: verify the bindings handle
+  Starlark error propagation, value marshaling, and call latency
+  acceptably before committing the build dependency.
+- **Wheel distribution**: building a CapDep wheel that bundles
+  starlark-rust requires Rust toolchain in CI; need to evaluate
+  manylinux wheel feasibility.
+- **Operator UX for "Starlark vs. Python"**: the per-primitive choice
+  needs a clear default ("write your inspectors in Starlark unless
+  you need a Python library").
+- **Test harness fidelity**: Starlark primitives must replay
+  deterministically; need a fixture format that captures input
+  exactly.
+
+---
+
 ## Related documents
 
 - `mcp-protocol-fit.md` — security audit + decisions per MCP surface
@@ -1810,4 +1966,5 @@ Adding WebAssembly support (future):
   payload-args, OAuth flow-pattern-session, etc.)
 - `tasks.md` — implementation breakdown ordered by priority and
   dependency (OSCAL emission tasks `U200-U206` in Phase P2;
-  Starlark host `U210-U215` in P3; WebAssembly host in P4)
+  Starlark host `U210-U215` + `U220-U228` in P3; WebAssembly host
+  and OPA integration deferred until demand)
