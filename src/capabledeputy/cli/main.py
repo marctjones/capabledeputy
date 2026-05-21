@@ -450,6 +450,52 @@ app.command("mcp-server-memory")(_make_bundled_mcp_command("memory"))
 app.command("mcp-server-git")(_make_bundled_mcp_command("git"))
 
 
+@app.command("compliance-emit-oscal")
+def compliance_emit_oscal(
+    output: Annotated[
+        str,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Where to write the OSCAL bundle JSON",
+        ),
+    ] = "./capdep-oscal-bundle.json",
+    custom_mapping: Annotated[
+        str | None,
+        typer.Option(
+            "--custom-mapping",
+            help=(
+                "Path to a JSON file extending the default chokepoint-rule → "
+                "NIST 800-53 mapping. Operator can add CIS / ISO 27001 / etc. controls."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Emit a NIST OSCAL Component Definition documenting the
+    CapableDeputy installation's policy implementation.
+
+    Compliance teams ingest the output as standard OSCAL JSON; no
+    manual mapping needed. Each chokepoint rule appears as an
+    OSCAL control-implementation linked to the NIST 800-53 controls
+    it satisfies.
+    """
+    from pathlib import Path
+
+    from capabledeputy.compliance.oscal import emit_oscal_bundle
+    from capabledeputy.version import __version__
+
+    cm: dict[str, list[str]] | None = None
+    if custom_mapping:
+        import json as _json
+
+        cm_path = Path(custom_mapping)
+        cm = _json.loads(cm_path.read_text(encoding="utf-8"))
+
+    out_path = Path(output)
+    emit_oscal_bundle(out_path, capdep_version=__version__, custom_mapping=cm)
+    console.print(f"[green]wrote OSCAL bundle to {out_path}[/green]")
+
+
 @app.command("mcp-server")
 def mcp_server_command(
     session_id: str = typer.Option(..., "--session-id", "-s", help="Bound session id"),
