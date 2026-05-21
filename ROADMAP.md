@@ -384,15 +384,37 @@ Operator-visible new surfaces:
 - Per-purpose `default_capabilities` + `bindings` in `configs/purposes.yaml`
 - Operator-published resources via `configs/resources.yaml` + `resources.list`/`resources.read` tools
 
-Generic MCP adapter + 8 tier-1 MCP server mappings + native code.execute +
-real SandboxActuator providers (Podman, Modal, Firecracker) + OTLP/Splunk
-sinks + WebAuthn/Duo/OAuth identity stack + regression demos + DefenseClaw
-integration plugin: **still designed, not implemented**.
+### Spec 004 v1.0 scope (post 2026-05-21 trim)
+
+**To finish v1.0** (~80 days remaining):
+
+| Phase | Item | Effort |
+|---|---|---|
+| Phase 1 | Generic MCP adapter polish + audit hardening | ~5d |
+| Phase 2 | 4 tier-1 MCP server mappings (GitHub, Google Workspace, Microsoft 365, Notion) | ~15d |
+| Phase 3 | code.execute native tool | ~5d |
+| Phase 4 | Podman SandboxActuator (only — Modal + Firecracker deferred) | ~7d |
+| Phase 5 | OTLP exporter (only — Splunk deferred) | ~5d |
+| Phase 7 | Two regression demos (Meta-director, ToxicSkills) | ~5d |
+| P0 | Inspector composability tests + per-arg label audit refinements | ~3d |
+| P1 | Streamable HTTP transport + sampling chokepoint wire-in | ~10d |
+| P2 | OSCAL Profile + Assessment Plan + audit-replay pipeline | ~10d |
+| P3 | starlark-rust + PyO3 production runtime + OAuth flow-pattern-session for MCP credentials | ~15d |
+| Polish | Documentation + tasks.md housekeeping + integration tests | ~5d |
+
+**Explicitly out of v1.0 scope (deferred to v1.1+ or operator-on-demand):**
+
+- **DefenseClaw + NemoClaw integration plugins** — wait for those products' surfaces to stabilize before integrating
+- **WebAssembly host** — REMOVED; Starlark covers the same operator need at lower complexity
+- **Modal + Firecracker SandboxActuators** — Podman is enough for v1.0; cloud-tier actuators when an enterprise asks
+- **Splunk forwarder** — OTLP exporter is the standard; Splunk via OTLP→Splunk-HEC if needed downstream
+- **Identity provider stack** (WebAuthn / Duo / OAuth for human attesters) — env-var-based credentials (already shipped) suffice for v1.0. The richer identity flows wait for an operator with a specific compliance need driving them
 
 See `specs/004-mcp-and-substrate/research.md` for the competitive
 landscape research that motivated the integration target list, and
 `specs/004-mcp-and-substrate/defenseclaw-integration.md` for the
-complementary/competing analysis against Cisco DefenseClaw.
+complementary/competing analysis against Cisco DefenseClaw (now
+deferred; doc retained for the eventual integration revisit).
 
 The v0.9 labeling-framework design is captured in
 `docs/design-v0.9-labeling.md` (the historical design dump) and is now
