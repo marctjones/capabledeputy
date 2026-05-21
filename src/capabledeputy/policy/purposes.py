@@ -29,7 +29,9 @@ from pathlib import Path
 
 import yaml
 
+from capabledeputy.policy.bindings import SourceLocationLabelBinding
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.tiers import Tier
 
 
 class PurposeError(RuntimeError):
@@ -56,6 +58,13 @@ class Purpose:
     # automatically gets fs.read on ~/research/**" without making the
     # user grant by hand every time.
     default_capabilities: tuple[Capability, ...] = field(default_factory=tuple)
+    # Per-purpose path/URI label bindings. At chokepoint time, these
+    # are composed with the global BindingSet — specificity-based
+    # resolution (most-specific-wins) means a purpose's narrow paths
+    # override broader global rules without explicit precedence logic.
+    # Use case: "research sessions see ~/research/** as research/none;
+    # tax-prep sessions see ~/finance/tax-2026/** as finance/restricted."
+    bindings: tuple[SourceLocationLabelBinding, ...] = field(default_factory=tuple)
 
     def admits(self, category: str) -> bool:
         """True iff this purpose admits the given data category for
@@ -131,6 +140,14 @@ def load(path: Path) -> Purposes:
         default_capabilities = tuple(
             _parse_default_capability(cap_raw, i, j) for j, cap_raw in enumerate(caps_raw)
         )
+        bindings_raw = item.get("bindings") or []
+        if not isinstance(bindings_raw, list):
+            raise PurposeError(
+                f"purposes[{i}].bindings must be a list",
+            )
+        bindings = tuple(
+            _parse_purpose_binding(b_raw, i, j) for j, b_raw in enumerate(bindings_raw)
+        )
         out[pid] = Purpose(
             purpose_id=pid,
             label=str(item.get("label", "")),
@@ -138,6 +155,7 @@ def load(path: Path) -> Purposes:
             inadmissible_categories=frozenset(str(c) for c in inadmissible_raw),
             recommended_pattern=item.get("recommended_pattern"),
             default_capabilities=default_capabilities,
+            bindings=bindings,
         )
     return Purposes(purposes=out)
 
@@ -225,6 +243,46 @@ def _parse_default_capability(raw: dict, purpose_idx: int, cap_idx: int) -> Capa
         raise PurposeError(
             f"purposes[{purpose_idx}].default_capabilities[{cap_idx}] malformed: {e}",
         ) from e
+
+
+def _parse_purpose_binding(
+    raw: dict, purpose_idx: int, binding_idx: int
+) -> SourceLocationLabelBinding:
+    """Parse a per-purpose binding entry.
+
+    Minimal schema (operator-friendly subset of the full binding model):
+      - scope_pattern_canonical: glob   (required)
+      - category: str                   (required)
+      - default_tier: tier-name         (required)
+      - assignment_provenance: str      (optional; defaults to purpose-id)
+    """
+    if not isinstance(raw, dict):
+        raise PurposeError(
+            f"purposes[{purpose_idx}].bindings[{binding_idx}] must be an object",
+        )
+    for key in ("scope_pattern_canonical", "category", "default_tier"):
+        if key not in raw:
+            raise PurposeError(
+                f"purposes[{purpose_idx}].bindings[{binding_idx}] missing {key!r}",
+            )
+    try:
+        tier = Tier(str(raw["default_tier"]))
+    except ValueError as e:
+        raise PurposeError(
+            f"purposes[{purpose_idx}].bindings[{binding_idx}] "
+            f"unknown default_tier {raw['default_tier']!r}",
+        ) from e
+    # `name` is required by the SourceLocationLabelBinding model;
+    # synthesize a stable one from purpose + position if the operator
+    # didn't supply one.
+    default_name = f"purpose:{purpose_idx}:binding:{binding_idx}"
+    return SourceLocationLabelBinding(
+        name=str(raw.get("name", default_name)),
+        scope_pattern_canonical=str(raw["scope_pattern_canonical"]),
+        category=str(raw["category"]),
+        default_tier=tier,
+        assignment_provenance=str(raw.get("assignment_provenance", "purpose-declared")),
+    )
 
 
 # --- T056 helper: capability admissibility check --------------------

@@ -74,6 +74,14 @@ class PolicyContext:
     # integrity_floor_level (FR-004 Biba) from the matching profile.
     # Without this, BLP/Biba are library-only and never fire.
     profiles: dict[str, Any] = field(default_factory=dict)
+    # Purposes registry — when a session has purpose_handle set and
+    # the resolved Purpose has per-purpose bindings, the dispatcher
+    # composes them with the global BindingSet for that one decide()
+    # call. Most-specific-wins resolution means a purpose's narrow
+    # paths override broad global rules without explicit precedence.
+    # None ⇒ no per-purpose binding composition; global bindings
+    # only.
+    purposes: Any = None
 
 
 def build_policy_decided_payload(
@@ -425,7 +433,23 @@ class LabeledToolClient:
             kwargs["override_grants"] = self._policy_context.override_grants
             kwargs["session_id"] = session.id
         if self._policy_context.bindings is not None:
-            kwargs["bindings"] = self._policy_context.bindings
+            # Per-purpose binding composition (003 follow-on):
+            # if the session has a purpose_handle resolving to a
+            # Purpose with non-empty .bindings, compose them with
+            # the global BindingSet. Specificity-based resolution
+            # picks the most-specific match for category + tier;
+            # purpose paths typically beat global wildcards naturally.
+            effective_bindings = self._policy_context.bindings
+            ph = getattr(session, "purpose_handle", None)
+            if ph and self._policy_context.purposes is not None:
+                purpose = self._policy_context.purposes.get(ph)
+                if purpose is not None and purpose.bindings:
+                    from capabledeputy.policy.bindings import BindingSet
+
+                    effective_bindings = BindingSet(
+                        bindings=(*self._policy_context.bindings.bindings, *purpose.bindings),
+                    )
+            kwargs["bindings"] = effective_bindings
         # T094 / Demo #4 — derive effective reversibility from the
         # tool's default_reversibility (when declared). The binding's
         # mutability composition lands in a follow-up; today the
