@@ -3,6 +3,13 @@
 Each upstream server gets:
   - name: short identifier (used as a prefix on registered tool names)
   - command: argv list to launch the subprocess
+  - env: optional per-server environment variables. Values can
+    reference operator-shell env vars via ``${VAR}`` (or
+    ``${VAR:-default}``) — expanded at config-load time. Enables the
+    multi-credential pattern: two servers running the same upstream
+    image with different credentials end up as distinct prefixed
+    tools (e.g. ``github-work.list_issues`` vs.
+    ``github-personal.list_issues``).
   - inherent_labels: labels added to ANY tool result from this server
     (e.g., a fetch server gets `untrusted.external`)
   - tool_overrides: optional per-tool config (capability_kind override,
@@ -11,6 +18,8 @@ Each upstream server gets:
 
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -18,6 +27,25 @@ from typing import Any
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import Label
 from capabledeputy.upstream.isolation import ContainerIsolation, VolumeMount
+
+_ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+
+
+def expand_env_value(value: str, environ: dict[str, str] | None = None) -> str:
+    """Expand ``${VAR}`` / ``${VAR:-default}`` references in ``value``.
+
+    Unknown vars without a default expand to empty string (matches POSIX
+    shell behavior with ``set +u``). This is intentional: operator
+    omitting an optional credential should not crash daemon startup.
+    """
+    env = environ if environ is not None else os.environ
+
+    def _sub(match: re.Match[str]) -> str:
+        var_name = match.group(1)
+        default = match.group(2)
+        return env.get(var_name, default if default is not None else "")
+
+    return _ENV_VAR_PATTERN.sub(_sub, value)
 
 
 @dataclass(frozen=True)
@@ -33,6 +61,11 @@ class UpstreamServerConfig:
     inherent_labels: frozenset[Label] = field(default_factory=frozenset)
     tool_overrides: dict[str, UpstreamToolOverride] = field(default_factory=dict)
     isolation: ContainerIsolation | None = None
+    # Per-server environment variables, applied when spawning the
+    # subprocess. Values are already expanded; ${VAR} references
+    # resolved at parse_config time. Empty dict = inherit operator
+    # shell env only.
+    env: dict[str, str] = field(default_factory=dict)
     # Fail-closed by default: an upstream tool that cannot be confidently
     # classified into a capability kind (no explicit override, no high-
     # confidence inference) is REFUSED registration rather than silently
@@ -67,6 +100,8 @@ def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
                 additional_labels=extra,
             )
         isolation = _parse_isolation(entry.get("isolation"))
+        env_raw = entry.get("env") or {}
+        env = {str(k): expand_env_value(str(v)) for k, v in env_raw.items()}
         out.append(
             UpstreamServerConfig(
                 name=name,
@@ -74,6 +109,7 @@ def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
                 inherent_labels=inherent_labels,
                 tool_overrides=overrides,
                 isolation=isolation,
+                env=env,
                 strict=bool(entry.get("strict", True)),
             ),
         )

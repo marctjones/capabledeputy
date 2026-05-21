@@ -62,9 +62,17 @@ class UpstreamManager:
         # is configured, or the podman/docker-wrapped argv if it is.
         # MCP transport stays stdio either way.
         cmd = config.effective_command()
+        # Merge operator shell env with per-server env (per-server wins).
+        # Per-server env is config-time expanded ${VAR} references so the
+        # subprocess sees the resolved values, not the references.
+        import os
+
+        merged_env: dict[str, str] = dict(os.environ)
+        merged_env.update(config.env)
         params = StdioServerParameters(
             command=cmd[0],
             args=list(cmd[1:]),
+            env=merged_env if config.env else None,
         )
         read, write = await self._stack.enter_async_context(stdio_client(params))
         session = await self._stack.enter_async_context(ClientSession(read, write))

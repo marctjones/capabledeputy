@@ -414,6 +414,42 @@ def daemon_start(
         console.print("\n[yellow]capdep daemon stopped (SIGINT)[/yellow]")
 
 
+def _make_bundled_mcp_command(module_name: str):
+    """Factory: returns a CLI handler that runs the named bundled
+    MCP server. Used for the five `capdep mcp-server-<name>` commands
+    that expose CapableDeputy's own Python MCP servers via stdio.
+
+    These are STANDALONE servers — no CapableDeputy daemon required.
+    Within CapableDeputy: include them in an upstream_servers config
+    to load them as curated upstream tool sources.
+    """
+
+    def _handler() -> None:
+        import importlib
+
+        module = importlib.import_module(f"capabledeputy.mcp_servers.{module_name}")
+        module.main()
+
+    _handler.__name__ = f"mcp_server_{module_name}_command"
+    _handler.__doc__ = (
+        f"Run the bundled `{module_name}` MCP server over stdio. "
+        f"Configure your MCP host (Claude Desktop, etc.) to launch "
+        f"this command, or include it in a CapableDeputy "
+        f"upstream_servers config."
+    )
+    return _handler
+
+
+# Bundled Python MCP servers (minimal-install story; no Node.js / npm).
+# Each can be launched standalone OR included in an upstream_servers
+# config so the daemon spawns it as a curated upstream tool source.
+app.command("mcp-server-fs")(_make_bundled_mcp_command("fs"))
+app.command("mcp-server-fetch")(_make_bundled_mcp_command("fetch"))
+app.command("mcp-server-search")(_make_bundled_mcp_command("search"))
+app.command("mcp-server-memory")(_make_bundled_mcp_command("memory"))
+app.command("mcp-server-git")(_make_bundled_mcp_command("git"))
+
+
 @app.command("mcp-server")
 def mcp_server_command(
     session_id: str = typer.Option(..., "--session-id", "-s", help="Bound session id"),

@@ -1,0 +1,82 @@
+# CapableDeputy daemon config: load the five bundled Python MCP servers.
+#
+# These are minimal-install — pure Python, no Node.js / npm required.
+# Each is launched as a stdio MCP subprocess; the daemon wires their
+# tools into the policy chokepoint just like any external MCP server.
+#
+# Load via: capdep daemon start --config configs/curated/bundled-python-servers.yaml
+#
+# Tool names will be prefixed with the server `name` below — so
+# `fs.read` from the bundled-fs server becomes `bundled-fs.fs.read` in
+# the agent's tool list. Bindings should target the prefixed names.
+
+upstream_servers:
+  - name: bundled-fs
+    command: ["capdep", "mcp-server-fs"]
+    # fs.read returns local file content; treat as confidential unless
+    # binding patterns relax it.
+    inherent_labels: []
+    tool_overrides:
+      "fs.read":
+        capability_kind: READ_FS
+      "fs.list":
+        capability_kind: READ_FS
+      "fs.create":
+        capability_kind: CREATE_FS
+      "fs.write":
+        capability_kind: WRITE_FS
+      "fs.delete":
+        capability_kind: DELETE_FS
+
+  - name: bundled-fetch
+    command: ["capdep", "mcp-server-fetch"]
+    # Everything fetched from the open web is untrusted external.
+    inherent_labels: ["untrusted.external"]
+    tool_overrides:
+      "fetch.get":
+        capability_kind: WEB_FETCH
+
+  - name: bundled-search
+    command: ["capdep", "mcp-server-search"]
+    # Search results are also untrusted external content.
+    inherent_labels: ["untrusted.external"]
+    # Brave Search API key is read from operator's shell env at
+    # subprocess spawn time. To override per-server, declare an `env:`
+    # block below referencing ${VAR}.
+    tool_overrides:
+      "search.web":
+        capability_kind: WEB_FETCH
+
+  - name: bundled-memory
+    command: ["capdep", "mcp-server-memory"]
+    # Memory entries inherit no labels; the operator's bindings
+    # decide whether a particular key prefix is sensitive.
+    inherent_labels: []
+    tool_overrides:
+      "memory.create":
+        capability_kind: CREATE_FS
+      "memory.read":
+        capability_kind: READ_FS
+      "memory.update":
+        capability_kind: WRITE_FS
+      "memory.delete":
+        capability_kind: DELETE_FS
+      "memory.list":
+        capability_kind: READ_FS
+
+  - name: bundled-git
+    command: ["capdep", "mcp-server-git"]
+    # Source code is sensitive by default; operator can relax via
+    # bindings (e.g. public OSS repo → public tier).
+    inherent_labels: []
+    tool_overrides:
+      "git.status":
+        capability_kind: READ_FS
+      "git.log":
+        capability_kind: READ_FS
+      "git.diff":
+        capability_kind: READ_FS
+      "git.show":
+        capability_kind: READ_FS
+      "git.branch_list":
+        capability_kind: READ_FS
