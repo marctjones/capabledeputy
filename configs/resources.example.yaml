@@ -1,0 +1,42 @@
+# Example operator-published resources.
+#
+# Resources are documents the AI agent can list and read via the
+# resources.list and resources.read tools. Unlike fs.* (which expose
+# the raw filesystem and need bindings for label resolution),
+# resources let the operator publish a curated, named catalog with
+# explicit labels per resource.
+#
+# Schema:
+#   resources:
+#     - uri: <doc://name>           # required; unique
+#       name: <human label>          # required
+#       description: <one-line>      # optional
+#       mime_type: <MIME>            # optional; defaults to text/plain
+#       content_path: <absolute>     # required; loaded on read
+#       labels: [<inherent>, ...]    # optional; propagate into session on read
+#
+# To use:
+#   cp configs/resources.example.yaml configs/resources.yaml
+# then edit paths to point at your actual files.
+
+resources:
+  - uri: "doc://cv.md"
+    name: "Current CV"
+    description: "Master CV for job applications and intros"
+    mime_type: "text/markdown"
+    content_path: "/home/me/docs/cv.md"
+    labels: ["confidential.personal"]
+
+  - uri: "doc://style-guide.md"
+    name: "Personal writing style guide"
+    description: "Tone, voice, formatting conventions"
+    mime_type: "text/markdown"
+    content_path: "/home/me/docs/style-guide.md"
+    # No labels — this is internal-but-not-sensitive guidance.
+
+  - uri: "brief://project-alpha"
+    name: "Project Alpha brief"
+    description: "Current sprint goals and constraints"
+    mime_type: "text/markdown"
+    content_path: "/home/me/projects/alpha/brief.md"
+    labels: ["work"]

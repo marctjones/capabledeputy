@@ -9,6 +9,7 @@ from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.client import LLMClient
 from capabledeputy.paths import default_audit_log_path, default_state_db_path
 from capabledeputy.policy.purposes import Purposes
+from capabledeputy.resources.static import StaticResourcePublisher
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.store import SessionStore
 from capabledeputy.tools.client import LabeledToolClient, PolicyContext
@@ -20,6 +21,7 @@ from capabledeputy.tools.native.inbox import Inbox, make_inbox_tools
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
 from capabledeputy.tools.native.policy_preview import make_policy_preview_tools
 from capabledeputy.tools.native.purchase import PurchaseQueue, make_purchase_tools
+from capabledeputy.tools.native.resources import make_resources_tools
 from capabledeputy.tools.native.tasks import TaskStore, make_tasks_tools
 from capabledeputy.tools.native.web import WebMock, make_web_tools
 from capabledeputy.tools.registry import ToolRegistry
@@ -36,6 +38,7 @@ class App:
         enable_policy_preview: bool = True,
         policy_context: PolicyContext | None = None,
         purposes: Purposes | None = None,
+        resources: StaticResourcePublisher | None = None,
     ) -> None:
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(state_db_path or default_state_db_path())
@@ -54,6 +57,11 @@ class App:
         self.inbox = Inbox()
         self.web = WebMock()
         self.tasks = TaskStore()
+        # Operator-published resources (configs/resources.yaml). Empty
+        # publisher when the operator hasn't declared any; the
+        # resources.list / resources.read tools register either way
+        # but return empty catalogs.
+        self.resources = resources or StaticResourcePublisher(resources=())
         self.approval_queue = ApprovalQueue(audit=self.audit)
         self.registry = ToolRegistry()
         self.policy_context = policy_context
@@ -92,6 +100,8 @@ class App:
         for tool in make_tasks_tools(self.tasks):
             self.registry.register(tool)
         for tool in make_fs_tools():
+            self.registry.register(tool)
+        for tool in make_resources_tools(self.resources):
             self.registry.register(tool)
         # policy.preview lets the agent dry-run a policy decision so it
         # can plan around gates. It is read-only and OFF the enforcement
