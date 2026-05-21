@@ -480,6 +480,62 @@ U210-U215 conceptual wiring).
 **Total Starlark commitment: ~27 days** for full host + integration
 + tooling + docs.
 
+### OPA sidecar adapter (P3 opt-in, default off)
+
+Per the reconsidered analysis in
+`programmatic-policy-primitives.md` §15.3, OPA sidecar integration
+is **shipped as an opt-in P3 feature** (default off). With the
+hooks architecture, the adapter is small (~7 days). Operators with
+existing OPA infrastructure can enable; everyone else ignores it.
+
+The adapter does not add a runtime dependency on OPA — operators
+run their own OPA daemon. CapDep just speaks to it over loopback
+HTTP when configured.
+
+- [ ] **U230** Input serializer in
+  `src/capabledeputy/upstream/opa/serializer.py`. Marshal action,
+  session state, capabilities, proposed_outcome into JSON suitable
+  for OPA evaluation. Tested against the documented input schema.
+- [ ] **U231** OPA HTTP client in
+  `src/capabledeputy/upstream/opa/client.py`. Async POST to
+  `/v1/data/<package>` with operator-configured timeout
+  (default 100ms). Fail-closed on timeout (treats as "no opinion").
+- [ ] **U232** Output translator: parse OPA response into
+  `DecisionRelax | DecisionTighten | None`. Reject malformed
+  responses with audit; ignore them.
+- [ ] **U233** `OpaConsultingInspector` (DecisionInspector
+  implementation) in
+  `src/capabledeputy/upstream/opa/inspector.py`. Registers at
+  `at_chokepoint.decision`; optionally at `pre_chokepoint` for
+  pre-decision baseline enforcement.
+- [ ] **U234** Configuration surface in operator YAML:
+  ```yaml
+  opa:
+    enabled: true
+    endpoint: "http://localhost:8181"
+    package: "operator.capdep.authorization"
+    timeout_ms: 100
+    hooks: [at_chokepoint.decision]
+  ```
+- [ ] **U235** Schema documentation: publish
+  `docs/opa-input-schema.md` defining exactly what JSON OPA
+  receives + what it must return. Operators write Rego against
+  this contract.
+- [ ] **U236** Tests in `tests/test_opa_adapter.py`. Mock OPA
+  server + integration test against a real OPA running locally
+  (marked `live` so CI is deterministic by default).
+- [ ] **U237** [P] Operator examples in
+  `examples/opa-policies/`: Cisco-style baseline, regulated-data
+  restrictions, time-window policies. Each example has a `*.rego`
+  + a runnable test.
+
+**OPA adapter sum: ~7 days.**
+
+The Starlark+OPA composition pattern (Starlark inspector calls
+`opa_query()` host function for selective consultation) is a
+recommended idiom but doesn't require additional tasks — it falls
+out of having both U220-U228 (Starlark) and U230-U237 (OPA).
+
 ## Phase P3 — Streamable HTTP + OAuth (was implied in original)
 
 - [ ] **U170** `transport_http.py` Streamable HTTP per MCP spec.

@@ -1859,7 +1859,114 @@ Alternatives considered and rejected:
 | Pure-Python Starlark interpreter | Slower; less mature; tracking the spec is operator burden |
 | Custom in-Python implementation | Months of work; reinventing what starlark-rust already does |
 
-### 15.2 OPA reference — what it offers and when to revisit
+### 15.3 OPA sidecar — P3 opt-in, default off
+
+**Decision update (2026-05-20):** OPA sidecar integration **is part
+of the P3 commitment**, not "deferred until demand." Cost ~7 days
+given the hooks architecture; default-off in operator config.
+Operators with existing OPA infrastructure can opt in; everyone
+else ignores it. Implementation tasks `U230-U237` in `tasks.md`.
+
+**Why ship it as opt-in instead of waiting:**
+
+- The hooks architecture makes the adapter small (~7 days), not the
+  weeks I initially estimated
+- Composes cleanly with Starlark via the `opa_query()` host function
+  pattern (operator writes a Starlark inspector that selectively
+  consults OPA for higher-stakes decisions)
+- Provides an enterprise on-ramp without forcing anyone
+- No runtime dependency on OPA for operators who don't enable it
+- Audit + compliance value for the operators who do enable it
+
+**The Starlark+OPA composition pattern** is the recommended idiom:
+
+```python
+# configs/decision_inspectors/cisco_corporate.star
+
+def inspect(action, session, proposed_outcome):
+    # Fast path: routine reads never need to bother OPA
+    if action["kind"] == "READ_FS" and proposed_outcome["decision"] == "allow":
+        return None
+
+    # Higher-stakes: consult Cisco's central policy
+    opa_input = {
+        "action": action,
+        "session": {"labels": session["labels"]},
+        "proposed": proposed_outcome,
+    }
+    opa_result = opa_query(
+        package = "cisco.capdep.authorization",
+        input = opa_input,
+    )
+    if opa_result.get("tighten"):
+        return tighten(
+            to = opa_result["tighten"]["to"],
+            rule = opa_result["tighten"].get("rule", "opa-corporate-tighten"),
+            rationale = opa_result["tighten"].get("rationale", ""),
+        )
+    if opa_result.get("relax"):
+        return relax(
+            to = opa_result["relax"]["to"],
+            rule = opa_result["relax"].get("rule", "opa-corporate-relax"),
+            rationale = opa_result["relax"].get("rationale", ""),
+        )
+    return None
+```
+
+Three wins from this pattern:
+
+1. **Fast path in Starlark, slow path to OPA** — most decisions
+   resolve locally; only the ones requiring corporate policy
+   consultation make the OPA round trip
+2. **Operator chooses the seam** — what goes to OPA vs. what
+   resolves locally is operator-authored, not hard-coded
+3. **Local + remote policy compose** — local Starlark can ADD
+   strictness; central OPA can enforce the baseline; both run in
+   the same hook with composable outputs
+
+**Adapter primitives we'd implement** (see `tasks.md` U230-U237):
+
+1. **Input serializer** — marshal action + session + capabilities +
+   proposed_outcome to JSON
+2. **OPA HTTP client** — async POST with timeout, fail-closed
+3. **Output translator** — parse OPA response into
+   `DecisionRelax | DecisionTighten | None`
+4. **`OpaConsultingInspector`** — registers at
+   `at_chokepoint.decision` hook
+5. **Configuration surface** — operator YAML for endpoint, package,
+   timeout, hooks
+6. **Schema documentation** — `docs/opa-input-schema.md` so
+   operators have a stable contract to write Rego against
+7. **Test harness** — mock OPA + live OPA integration tests
+8. **Operator examples** — Cisco-style baseline, regulated-data
+   restrictions, time-window policies as ready-to-use templates
+
+**What we DON'T get from OPA support:**
+
+- OPA does NOT see CapDep actions on its own — we serialize and
+  send them
+- OPA does NOT enforce anything — CapDep is the enforcement point;
+  OPA just returns yes/no/relax/tighten
+- OPA does NOT modify CapDep state — label propagation, override
+  FSM, etc. all stay in CapDep host code
+
+So "OPA support" really means "we wrote an adapter that lets
+operators delegate the decision-refinement step to OPA when they
+want." The adapter is the work; OPA is the engine.
+
+**Bundle export option** (cheaper alternative for audit-only use
+cases) — still on the table:
+
+| Option | What | Effort | When to do |
+|---|---|---|---|
+| **Bundle export** | Generate OPA bundle from our static rules; doesn't use OPA at runtime | ~1 week | Audit-only requirement |
+| **Sidecar (this commit)** | Live OPA consultation via DecisionInspector | ~1 week | Operator wants runtime policy authoring in Rego |
+| **Embedded Wasm** | Compile policies to Wasm; embed wasmtime | ~3 weeks | If we want zero external process; revisit if anyone asks |
+
+We're committing to sidecar at P3. Bundle export and embedded Wasm
+remain "if asked" follow-ups.
+
+### 15.2 OPA reference — what it offers (background)
 
 OPA (Open Policy Agent) is the dominant authorization policy engine
 in the cloud-native ecosystem. CNCF graduated; deployed at Netflix,
@@ -1924,24 +2031,27 @@ entry point if asked. OPA-B is the technically cleanest if
 adopted. OPA-C adds operational complexity that mostly benefits
 enterprises with existing OPA infrastructure.
 
-### 15.3 Implementation roadmap update
+### 15.4 Implementation roadmap update
 
-Already in `tasks.md`:
-- **P3 U210-U215** (~15d): Starlark host via starlark-rust + PyO3
+Committed:
 - **P2 U200-U206** (~7d): OSCAL emission for compliance
+- **P3 U210-U215** (~15d): Starlark host conceptual wiring
+- **P3 U220-U228** (~12d): Starlark integration via starlark-rust
+  + PyO3 (concrete steps)
+- **P3 U230-U237** (~7d): OPA sidecar adapter (opt-in, default off)
 
-To be added (this decision):
-- **P3 U220-U228**: Starlark integration detail tasks (see tasks.md)
+**Committed P3 total: ~34 days for Starlark + OPA sidecar.**
 
 Deferred / on-demand:
-- OPA integration (OPA-A bundle export, OPA-B Wasm embed, OPA-C
-  sidecar) — only when enterprise demand emerges
+- OPA bundle export (audit-only) — ~1 week if asked
+- OPA embedded-Wasm — ~3 weeks if needed (most operators won't)
 - WebAssembly host for community policy modules (P4)
 - Red language host (revisit post-Red-1.0)
 - TinyScheme host (revisit if a vertical demands it)
 - Custom eBPF-style verifier (probably never — Wasm covers it)
+- Cedar integration (no operator demand path identified)
 
-### 15.4 Open issues for the implementation phase
+### 15.5 Open issues for the implementation phase
 
 - **starlark-rust PyO3 binding maturity**: verify the bindings handle
   Starlark error propagation, value marshaling, and call latency
@@ -1955,6 +2065,16 @@ Deferred / on-demand:
 - **Test harness fidelity**: Starlark primitives must replay
   deterministically; need a fixture format that captures input
   exactly.
+- **OPA decision-log dedup with CapDep audit**: when OPA is enabled,
+  OPA emits its own decision logs and CapDep emits audit events.
+  Decide canonical record (probably CapDep audit; OPA logs as
+  side stream); define a correlation ID linking them.
+- **OPA timeout policy**: default 100ms fail-closed (treats as "no
+  opinion"). Verify this is right; operator may need to tune per
+  workload.
+- **Starlark + OPA composition examples**: ship at least one
+  end-to-end example showing the recommended pattern so operators
+  can copy/adapt.
 
 ---
 
