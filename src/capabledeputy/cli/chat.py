@@ -299,9 +299,10 @@ def _render_outcomes_table(outcomes: list[dict[str, Any]]) -> None:
         if decision == "deny":
             if o.get("reason"):
                 console.print(f"  [dim]{o['reason']}[/dim]")
-            hint = _DENY_RECOVERY.get(o.get("rule") or "")
-            if hint:
-                console.print(f"  [cyan]↳ recover:[/cyan] [dim]{hint}[/dim]")
+            # Issue #3: prefer structured recovery_steps from the
+            # engine if present; fall back to the static prose hints
+            # for back-compat with audit events that lack the new field.
+            _render_recovery_steps(o.get("recovery_steps"), o.get("rule"))
         elif decision == "require_approval" and o.get("reason"):
             console.print(f"  [dim]{o['reason']}[/dim]")
         # The agent is told to policy.preview before outbound/destructive
@@ -321,11 +322,33 @@ def _render_outcomes_table(outcomes: list[dict[str, Any]]) -> None:
                 f"  [yellow]⊘ preview:[/yellow] [dim]{rule} would DENY this "
                 f"action — agent correctly skipped the real call[/dim]",
             )
-            hint = _DENY_RECOVERY.get(rule)
-            if hint:
-                console.print(f"  [cyan]↳ recover:[/cyan] [dim]{hint}[/dim]")
+            _render_recovery_steps(out.get("recovery_steps"), rule)
         if o.get("error"):
             console.print(f"  [red]error:[/red] {o['error']}")
+
+
+def _render_recovery_steps(steps: Any, fallback_rule: str | None) -> None:
+    """Render Issue #3 recovery steps as literal pasteable commands.
+    Falls back to the static `DENY_RECOVERY` prose hint if the
+    decision didn't carry structured steps (e.g. older audit events,
+    or rules the synthesizer doesn't know yet)."""
+    if steps:
+        console.print("  [cyan]↳ recover:[/cyan]")
+        for s in steps:
+            cmd = s.get("command") if isinstance(s, dict) else getattr(s, "command", "")
+            args = s.get("args") if isinstance(s, dict) else getattr(s, "args", ())
+            rationale = (
+                s.get("rationale") if isinstance(s, dict) else getattr(s, "rationale", "")
+            )
+            arg_str = " ".join(args) if args else ""
+            console.print(
+                f"     [bold]{cmd} {arg_str}[/bold]  [dim]· {rationale}[/dim]",
+            )
+        return
+    # Fallback to legacy prose hint
+    hint = _DENY_RECOVERY.get(fallback_rule or "")
+    if hint:
+        console.print(f"  [cyan]↳ recover:[/cyan] [dim]{hint}[/dim]")
 
 
 def _render_turn(result: dict[str, Any]) -> None:

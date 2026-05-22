@@ -11,6 +11,18 @@ from capabledeputy.daemon.handlers import Handler
 from capabledeputy.tools.client import ToolCallOutcome
 
 
+def _serialize_recovery_step(step: Any) -> dict[str, Any]:
+    """RecoveryStep → dict for the wire. Tolerant: accepts either a
+    real RecoveryStep dataclass or a dict (passed through unchanged)."""
+    if isinstance(step, dict):
+        return step
+    return {
+        "command": getattr(step, "command", ""),
+        "args": list(getattr(step, "args", ())),
+        "rationale": getattr(step, "rationale", ""),
+    }
+
+
 def _outcome_to_dict(outcome: ToolCallOutcome) -> dict[str, Any]:
     return {
         "decision": outcome.decision.value,
@@ -23,6 +35,10 @@ def _outcome_to_dict(outcome: ToolCallOutcome) -> dict[str, Any]:
         "tool_args": outcome.tool_args,
         "approval_submission": outcome.approval_submission,
         "approval_id": outcome.approval_id,
+        # Issue #3 — Recovery steps surface to the chat REPL and to
+        # the agent via policy.preview's output. Empty list when no
+        # synthesis fired (ALLOW or unsupported rule).
+        "recovery_steps": [_serialize_recovery_step(s) for s in (outcome.recovery_steps or ())],
     }
 
 

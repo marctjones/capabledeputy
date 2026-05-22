@@ -227,6 +227,11 @@ class ToolCallOutcome:
     # the approval themselves. None if no queue is wired (unit tests)
     # or the tool declares no approval_route.
     approval_id: int | None = None
+    # Issue #3 — Recovery-step sequence from `engine.decide()`. Empty
+    # for ALLOW outcomes and for rules without slash-command recovery.
+    # Renders in the REPL via `_render_recovery_steps`; the agent
+    # quotes these literally instead of inventing commands.
+    recovery_steps: tuple[Any, ...] = field(default_factory=tuple)
 
 
 class LabeledToolClient:
@@ -336,6 +341,7 @@ class LabeledToolClient:
                 tool_args=args,
                 approval_submission=approval_submission,
                 approval_id=approval_id,
+                recovery_steps=policy_decision.recovery_steps,
             )
 
         await self._audit.write(

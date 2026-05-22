@@ -48,6 +48,17 @@ def make_policy_preview_tools(graph: SessionGraph) -> list[ToolDefinition]:
                 "reason": decision.reason,
                 "would_match_capability": decision.matched_capability is not None,
                 "effective_labels": sorted(label.value for label in decision.effective_labels),
+                # Issue #3 — Recovery synthesis. The agent sees these
+                # in policy.preview's output and quotes them literally
+                # to the user instead of inventing slash commands.
+                "recovery_steps": [
+                    {
+                        "command": s.command,
+                        "args": list(s.args),
+                        "rationale": s.rationale,
+                    }
+                    for s in decision.recovery_steps
+                ],
             },
         )
 
