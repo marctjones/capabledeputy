@@ -1470,19 +1470,36 @@ def _toolbar_label_ansi(label: str) -> str:
     return label
 
 
-def _make_bottom_toolbar(cache: CompletionCache, focus: dict[str, str]):
-    """Always-visible status band. Reads the CompletionCache (already
-    polled every ~1s for the completer) so it's near-live and adds no
-    new polling. With refresh_interval set on the prompt, the
-    compartment indicator updates while the user just sits there —
-    you watch it go red as the agent reads untrusted content."""
+def _make_bottom_toolbar(
+    cache: CompletionCache,
+    focus: dict[str, str],
+    state: dict[str, Any] | None = None,
+):
+    """Two-line status band (#24).
+
+    Line 1: identity + IFC state (session, compartment, labels,
+    cap counts, pending approvals).
+    Line 2: contextual bindings hint — F-key recovery shown only
+    when recovery_steps are available, otherwise the basic shortcuts.
+
+    Reads CompletionCache (polled every ~1s for the completer) plus
+    a mutable `state` dict shared with the REPL loop. State carries
+    transient info that's not in the daemon: last error glyph,
+    available recovery steps, lifecycle markers. Re-renders on
+    every prompt-toolkit refresh tick (1.0s configured).
+    """
+
+    state = state if state is not None else {}
 
     def render() -> HTML:
         sid = focus["id"]
         sess = next((s for s in cache.sessions if s["id"] == sid), None)
         short = sid[:8]
         if sess is None:
-            return HTML(f" session <b>{short}</b> · <ansicyan>(syncing…)</ansicyan> ")
+            return HTML(
+                f" session <b>{short}</b> · <ansicyan>(syncing…)</ansicyan> \n"
+                f" <ansigray>Tab complete · Alt-Enter newline · ? help · /quit to exit</ansigray>"
+            )
         labels = sess.get("label_set", [])
         caps_list = sess.get("capability_set", [])
         ncaps = len(caps_list)
@@ -1514,11 +1531,38 @@ def _make_bottom_toolbar(cache: CompletionCache, focus: dict[str, str]):
         else:
             comp = "<ansigreen>—</ansigreen>"
         pending_seg = f" │ <ansiyellow><b>⚠ {npending} pending</b></ansiyellow>" if npending else ""
-        return HTML(
+
+        # Line 1 — identity + IFC state
+        line1 = (
             f" session <b>{short}</b> "
             f"│ compartment {word_tag}: {comp} "
-            f"│ caps {ncaps}{ttl_seg}{pending_seg} ",
+            f"│ caps {ncaps}{ttl_seg}{pending_seg} "
         )
+
+        # Line 2 — bindings hint, contextual
+        # When recovery steps are available, show F-key bindings.
+        # When approval is pending, show 'a' to review.
+        # Otherwise, show the basic shortcuts.
+        hints = []
+        recovery_steps = state.get("recovery_steps") or []
+        if recovery_steps:
+            f_keys = []
+            for i, step in enumerate(recovery_steps[:3], start=1):
+                cmd = step.get("command", "") if isinstance(step, dict) else getattr(step, "command", "")
+                f_keys.append(f"<ansicyan><b>F{i}</b></ansicyan> {cmd}")
+            hints.append(" · ".join(f_keys))
+        if npending:
+            hints.append("<ansiyellow><b>a</b></ansiyellow> review approval")
+        # Always-visible shortcut reminders
+        if not hints:
+            hints.append("<ansigray>Tab complete · Alt-Enter newline · ? help · /quit to exit</ansigray>")
+        else:
+            # When contextual hints are present, append a minimal reminder
+            hints.append("<ansigray>Tab · ? help</ansigray>")
+
+        line2 = " " + " · ".join(hints) + " "
+
+        return HTML(line1 + "\n" + line2)
 
     return render
 
@@ -1701,6 +1745,15 @@ def _repl_loop(session_id: str) -> None:
     focus = {"id": session_id, "label": _short_label(session_id)}
     last_result: dict[str, Any] | None = None
 
+    # Mutable REPL state shared with the bottom toolbar (#24) + key
+    # bindings (#26 F-key recovery). Updated by _run_repl after each
+    # turn: recovery_steps from the most recent denied outcome,
+    # lifecycle markers, etc.
+    state: dict[str, Any] = {
+        "recovery_steps": [],
+        "lifecycle": "idle",
+    }
+
     cache = CompletionCache(daemon_call=_call)
     cache.start()
 
@@ -1712,6 +1765,7 @@ def _repl_loop(session_id: str) -> None:
     # newlines is treated as text, not as multiple commands — also a
     # win for safety.
     from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.filters import Condition
 
     kb = KeyBindings()
 
@@ -1719,11 +1773,47 @@ def _repl_loop(session_id: str) -> None:
     def _newline(event) -> None:  # pyright: ignore[reportUnusedFunction]
         event.current_buffer.insert_text("\n")
 
+    # Issue #26 — F1/F2/F3 execute recovery steps from the most
+    # recent denied outcome. Bound conditionally: only fire when
+    # state["recovery_steps"] is non-empty. The Condition is
+    # re-evaluated on every keypress so steps clear naturally when
+    # the next turn lands.
+    def _recovery_available() -> bool:
+        return bool(state.get("recovery_steps"))
+
+    recovery_condition = Condition(_recovery_available)
+
+    def _run_recovery_step(event, idx: int) -> None:
+        steps = state.get("recovery_steps") or []
+        if idx >= len(steps):
+            return
+        step = steps[idx]
+        cmd = step.get("command", "") if isinstance(step, dict) else getattr(step, "command", "")
+        args = step.get("args") or [] if isinstance(step, dict) else list(getattr(step, "args", []))
+        command_line = f"{cmd} {' '.join(args)}".strip()
+        # Populate the buffer with the command and submit immediately.
+        # Clearing state["recovery_steps"] happens implicitly when the
+        # next turn renders new outcomes.
+        event.current_buffer.text = command_line
+        event.current_buffer.validate_and_handle()
+
+    @kb.add("f1", filter=recovery_condition)
+    def _recover_1(event) -> None:  # pyright: ignore[reportUnusedFunction]
+        _run_recovery_step(event, 0)
+
+    @kb.add("f2", filter=recovery_condition)
+    def _recover_2(event) -> None:  # pyright: ignore[reportUnusedFunction]
+        _run_recovery_step(event, 1)
+
+    @kb.add("f3", filter=recovery_condition)
+    def _recover_3(event) -> None:  # pyright: ignore[reportUnusedFunction]
+        _run_recovery_step(event, 2)
+
     pt_session = PromptSession(
         history=FileHistory(str(_history_path())),
         completer=CapDepCompleter(cache),
         complete_while_typing=False,
-        bottom_toolbar=_make_bottom_toolbar(cache, focus),
+        bottom_toolbar=_make_bottom_toolbar(cache, focus, state),
         refresh_interval=1.0,
         multiline=False,  # Enter submits; Alt-Enter inserts newline
         key_bindings=kb,
@@ -1731,11 +1821,10 @@ def _repl_loop(session_id: str) -> None:
 
     console.print(
         f"[bold]chat[/bold] [cyan]{focus['label']}[/cyan] "
-        f"[dim]({focus['id'][:8]} · /help · TAB for completion · "
-        f"↑/↓ for history · Alt-Enter for newline · live status below)[/dim]",
+        f"[dim]({focus['id'][:8]} · /help · TAB · ↑/↓ · Alt-Enter · F1-3 recover)[/dim]",
     )
     try:
-        _run_repl(pt_session, focus, last_result)
+        _run_repl(pt_session, focus, last_result, state)
     finally:
         cache.stop()
 
@@ -1744,6 +1833,7 @@ def _run_repl(
     pt_session: PromptSession,
     focus: dict[str, str],
     last_result: dict[str, Any] | None,
+    state: dict[str, Any] | None = None,
 ) -> None:
     while True:
         try:
@@ -1862,8 +1952,28 @@ def _run_repl(
             last_result = _send_message(focus["id"], line)
         except Exception as e:
             err_console.print(f"[red]rpc error:[/red] {e}")
+            if state is not None:
+                state["lifecycle"] = "failed"
+                state["recovery_steps"] = []
             continue
         _render_turn(last_result)
+        # Update the shared state so the bottom toolbar (#24) and the
+        # F-key recovery bindings (#26) reflect the latest turn's
+        # recovery_steps. Take the first denied outcome's steps; if
+        # multiple outcomes denied, the first one's recovery is the
+        # one the operator hits first when scanning.
+        if state is not None:
+            outcomes = last_result.get("tool_outcomes", []) or []
+            steps: list = []
+            for o in outcomes:
+                outcome_steps = o.get("recovery_steps") or []
+                if not outcome_steps and isinstance(o.get("output"), dict):
+                    outcome_steps = o["output"].get("recovery_steps") or []
+                if outcome_steps:
+                    steps = list(outcome_steps)
+                    break
+            state["recovery_steps"] = steps
+            state["lifecycle"] = "idle"
         # The runtime already registered any REQUIRE_APPROVAL in the
         # queue (at the policy chokepoint). Surface the verbatim review
         # inline, right where it happened — the user doesn't have to
