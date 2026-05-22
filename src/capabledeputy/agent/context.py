@@ -229,9 +229,16 @@ def build_llm_context(
     # operational rule: containment lifts reversibility, but does NOT
     # declassify outputs that leave the region (FR-041).
     if sandbox_summary:
-        sandbox_section = f"""# Sandbox (disposable isolation regions)
-
-{sandbox_summary}
+        # NB: This is a regular string with one explicit `.format(...)`
+        # call for `sandbox_summary`. NOT an f-string: the body
+        # contains literal `{filename}` / `{base64}` placeholders that
+        # describe the `sandbox.run` arg shape — if this were an
+        # f-string, Python would try to resolve those names at
+        # evaluation time and raise NameError.
+        sandbox_section = (
+            "# Sandbox (disposable isolation regions)\n\n"
+            + sandbox_summary
+            + """
 
 What the sandbox does for you:
 - Lifts reversibility to `reversible/system` while a run executes
@@ -260,6 +267,7 @@ result. The region is discarded after the run — containment is
 the guarantee.
 
 """
+        )
     else:
         sandbox_section = ""
 
