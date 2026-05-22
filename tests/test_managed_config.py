@@ -96,9 +96,9 @@ def test_two_blocks_coexist(xdg_tmp: Path) -> None:
     path = user_default_daemon_config_path()
     write_managed_block(path, "imap", IMAP_BLOCK_BODY)
     gworkspace_body = (
-        '  - name: gworkspace\n'
-        '    command: ["capdep", "mcp-server-gworkspace"]\n'
-        "    strict: true\n"
+        '  - name: gws\n'
+        '    command: ["gws", "mcp", "-s", "gmail"]\n'
+        "    strict: false\n"
     )
     write_managed_block(path, "gworkspace", gworkspace_body)
     text = path.read_text(encoding="utf-8")
@@ -106,7 +106,7 @@ def test_two_blocks_coexist(xdg_tmp: Path) -> None:
     assert "# BEGIN capdep-managed: gworkspace" in text
     parsed = yaml.safe_load(text)
     names = {s["name"] for s in parsed["upstream_servers"]}
-    assert {"mail", "gworkspace"}.issubset(names)
+    assert {"mail", "gws"}.issubset(names)
 
 
 def test_has_managed_block(xdg_tmp: Path) -> None:

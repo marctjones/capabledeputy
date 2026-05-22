@@ -1,15 +1,11 @@
-# Google Workspace setup (official CLI)
+# Google Workspace setup
 
 CapableDeputy wires Google Workspace (Gmail / Drive / Docs / Sheets /
-Calendar) via the **official Google Workspace CLI** — `gws` from
+Calendar) via the **Google Workspace CLI** — `gws` from
 `@googleworkspace/cli`. Google maintains the binary, owns the
 Discovery-API-derived tool surface, and stores OAuth tokens in your
 OS keyring (AES-256-GCM at rest). CapableDeputy spawns it as an
 upstream MCP server and proxies stdio through the policy chokepoint.
-
-> **Replaces** the deprecated home-grown `mcp-server-gworkspace`. New
-> installs should not use the home-grown path; existing deployments
-> continue to work but should migrate.
 
 ## Prerequisites
 
@@ -142,17 +138,3 @@ worth tuning. Drop services you don't use:
 ```bash
 capdep gworkspace-setup -s gmail,calendar
 ```
-
-## Switching from the old home-grown server
-
-Existing installs that have `command: ["capdep", "mcp-server-gworkspace"]`
-in their daemon config keep working, but the bundled server is
-deprecated. To migrate:
-
-1. `npm install -g @googleworkspace/cli && gws auth setup && gws auth login`
-2. Replace the old block in your daemon config with the new
-   `gws mcp -s ...` form (or just run `capdep gworkspace-setup` to
-   add the new managed block; remove the old block by hand).
-3. Restart the daemon. The agent's tool list will change — your
-   prompts may need a tweak if they reference specific old tool
-   names like `gmail.list_threads`.

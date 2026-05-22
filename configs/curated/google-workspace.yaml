@@ -1,4 +1,4 @@
-# Google Workspace via the OFFICIAL Google CLI MCP server (`gws mcp`).
+# Google Workspace via the Google Workspace CLI MCP server (`gws mcp`).
 #
 # Producer: GOOGLE (official). The Google Workspace CLI ships an
 # MCP-over-stdio server that exposes Drive / Gmail / Calendar / Docs /
@@ -15,10 +15,6 @@
 #   capdep daemon start --config configs/curated/google-workspace.yaml
 # or (recommended) `capdep gworkspace-setup` to wire the managed block
 # into your user-local daemon config so plain `capdep chat` picks it up.
-#
-# Replaces both:
-#   - the deprecated home-grown `capdep mcp-server-gworkspace`
-#   - the prior community `uvx workspace-mcp` invocation
 
 upstream_servers:
   - name: gws

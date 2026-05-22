@@ -523,7 +523,6 @@ app.command("mcp-server-fetch")(_make_bundled_mcp_command("fetch"))
 app.command("mcp-server-search")(_make_bundled_mcp_command("search"))
 app.command("mcp-server-memory")(_make_bundled_mcp_command("memory"))
 app.command("mcp-server-git")(_make_bundled_mcp_command("git"))
-app.command("mcp-server-gworkspace")(_make_bundled_mcp_command("gworkspace"))
 app.command("mcp-server-imap")(_make_bundled_mcp_command("imap"))
 
 
@@ -758,12 +757,11 @@ def gworkspace_setup(
         ),
     ] = "drive,gmail,calendar,docs,sheets",
 ) -> None:
-    """Wire up the OFFICIAL Google Workspace CLI MCP server (`gws mcp`).
+    """Wire up the Google Workspace CLI MCP server (`gws mcp`).
 
-    This replaces our home-grown `mcp-server-gworkspace` (deprecated)
-    with the Google-maintained CLI. Google handles OAuth token storage
-    (OS keyring, AES-256-GCM at rest) — no more home-rolled
-    credentials.json + token.json files on disk.
+    Google maintains the binary and handles OAuth token storage
+    (OS keyring, AES-256-GCM at rest); we just spawn `gws mcp` as
+    an upstream and proxy stdio through the policy chokepoint.
 
     Three steps the operator does ONCE:
 

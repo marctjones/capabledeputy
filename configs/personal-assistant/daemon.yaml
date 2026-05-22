@@ -73,10 +73,10 @@ upstream_servers:
       "git.branch_list":
         capability_kind: READ_FS
 
-  # ---------------- Google Workspace (OFFICIAL CLI) ----------------
-  # Wired to `gws mcp` from `@googleworkspace/cli`. Replaces the
-  # deprecated home-grown `mcp-server-gworkspace`. Google handles OAuth
-  # via OS keyring; we just spawn + proxy stdio.
+  # ---------------- Google Workspace ----------------
+  # Wired to `gws mcp` from `@googleworkspace/cli`. Google handles
+  # OAuth via OS keyring (AES-256-GCM at rest); we just spawn + proxy
+  # stdio through the policy chokepoint.
   #
   # Operator setup (once):
   #   npm install -g @googleworkspace/cli

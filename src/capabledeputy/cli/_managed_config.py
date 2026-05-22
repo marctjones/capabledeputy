@@ -424,12 +424,11 @@ DEFAULT_ASSISTANT_BUNDLED_BLOCKS: tuple[tuple[str, str], ...] = (
 )
 
 
-# ---- Google Workspace via the official `gws mcp` (Google Workspace CLI) ----
+# ---- Google Workspace via `gws mcp` (Google Workspace CLI) ----
 #
-# Authoritative path for Drive/Gmail/Calendar/Docs/Sheets. Replaces our
-# previous home-grown `mcp-server-gworkspace` (kept around for back-compat
-# but deprecated). Auth is handled by `gws auth setup` + `gws auth login`
-# — Google manages OAuth tokens in the OS keyring (AES-256-GCM), not us.
+# Authoritative path for Drive/Gmail/Calendar/Docs/Sheets. Auth is
+# handled by `gws auth setup` + `gws auth login` — Google manages
+# OAuth tokens in the OS keyring (AES-256-GCM), not us.
 #
 # Tool naming under `gws mcp` follows the Discovery API method names
 # (e.g. `gmail.users.messages.send`). The adapter's `_infer_capability_
