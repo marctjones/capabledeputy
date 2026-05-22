@@ -1836,15 +1836,32 @@ def _run_repl(
     state: dict[str, Any] | None = None,
 ) -> None:
     while True:
+        # Issue #25 — lifecycle state glyph on the prompt.
+        # Reads from the shared state dict; transitions are driven by
+        # _run_repl after each turn. Future #21 streaming work adds
+        # 'sending' and 'streaming' transitions during a turn.
+        lifecycle = (state or {}).get("lifecycle", "idle")
+        glyph_map = {
+            "idle":      "",
+            "sending":   "<ansiyellow>⏳</ansiyellow>",
+            "streaming": "<ansicyan>📡</ansicyan>",
+            "failed":    "<ansired>✗</ansired>",
+        }
+        glyph = glyph_map.get(lifecycle, "")
+        glyph_str = f"{glyph} " if glyph else ""
         try:
             line = pt_session.prompt(
                 HTML(
-                    f"<ansicyan><b>{focus['label']}</b></ansicyan>> ",
+                    f"<ansicyan><b>{focus['label']}</b></ansicyan>{glyph_str}> ",
                 ),
             ).rstrip()
         except (EOFError, KeyboardInterrupt):
             console.print("\n[dim]bye[/dim]")
             return
+        # Issue #25 — clear transient state glyphs once the operator
+        # has seen them (we're about to dispatch a new turn).
+        if state is not None and state.get("lifecycle") in ("failed",):
+            state["lifecycle"] = "idle"
         if not line:
             continue
         # Issue #12: accept bare `exit` / `quit` / `bye` as REPL exit.
