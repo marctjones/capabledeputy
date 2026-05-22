@@ -1283,33 +1283,156 @@ def _make_bottom_toolbar(cache: CompletionCache, focus: dict[str, str]):
 
 
 def _inline_approval_review(approval_ids: list[int]) -> None:
-    """The crown-jewel human-in-the-loop step, surfaced where it
-    happens. For each runtime-queued approval: render the verbatim
-    payload and prompt [a]pprove / [d]eny / [s]kip inline — no need to
-    remember the id and run a separate /approve."""
+    """Issue #7 — inline ApprovalQueue staging UI.
+
+    Surfaces the verbatim payload + labels + rule context at the
+    chokepoint moment. Single-key dispatch:
+      [a]pprove / [d]eny / [e]dit / [v]iew labels / [s]kip
+
+    The [e]dit path preserves §10.11 immutability: editing creates a
+    NEW approval request (new monotonic id, new hash); the original
+    is denied as superseded. Operator approves the new one. This is
+    the right semantics — approval is for a specific payload, not a
+    mutable target.
+    """
+    import os
+    import subprocess
+    import tempfile
+
+    from rich.table import Table
+
     for aid in approval_ids:
         try:
             show = _call("approval.show", {"id": aid})
         except Exception as e:
             err_console.print(f"[red]could not load approval #{aid}:[/red] {e}")
             continue
+
+        # Build the label/context line that prefaces the payload.
+        # Labels in/out describe the IFC flow this approval crosses.
+        labels_in = show.get("labels_in") or []
+        labels_out = show.get("labels_out") or []
+        justification = (show.get("justification") or "").strip()
+
+        # Header table — action, target, labels in/out, justification.
+        meta = Table.grid(padding=(0, 1))
+        meta.add_column(style="dim", no_wrap=True)
+        meta.add_column()
+        meta.add_row("action:", show.get("action", "?"))
+        meta.add_row("target:", show.get("target", "?"))
+        if labels_in:
+            meta.add_row("labels in:", ", ".join(labels_in))
+        if labels_out:
+            meta.add_row("labels out:", ", ".join(labels_out))
+        if justification:
+            meta.add_row("rationale:", justification)
+        console.print(meta)
+
         console.print(
             Panel(
                 show["payload"],
-                title=(f"approval #{aid} · {show['action']} → {show['target']}"),
-                subtitle="[dim]verbatim — this is exactly what will happen[/dim]",
+                title=f"approval #{aid} · verbatim payload",
+                subtitle="[dim]this is exactly what will happen if you approve[/dim]",
                 border_style="yellow",
             ),
         )
         choice = (
             Prompt.ask(
                 f"  approval #{aid}",
-                choices=["a", "d", "s"],
+                choices=["a", "d", "e", "v", "s"],
                 default="s",
             )
             .strip()
             .lower()
         )
+
+        if choice == "v":
+            # Show labels detail and any extra context. After viewing
+            # the user gets the choice prompt again.
+            console.print(f"  [dim]labels_in :[/dim] {', '.join(labels_in) or '(none)'}")
+            console.print(f"  [dim]labels_out:[/dim] {', '.join(labels_out) or '(none)'}")
+            console.print(
+                f"  [dim]rationale :[/dim] {justification or '(none)'}",
+            )
+            # Loop back for the actual a/d/e/s decision
+            choice = (
+                Prompt.ask(
+                    f"  approval #{aid}",
+                    choices=["a", "d", "e", "s"],
+                    default="s",
+                )
+                .strip()
+                .lower()
+            )
+
+        if choice == "e":
+            # Open the payload in $EDITOR. On save with changes, submit
+            # a new approval request and deny the original as superseded.
+            editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "nano"
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                suffix=".txt",
+                prefix=f"capdep-approval-{aid}-",
+                delete=False,
+            ) as f:
+                f.write(show["payload"])
+                tmp_path = f.name
+            try:
+                subprocess.run(  # noqa: S603
+                    [editor, tmp_path],
+                    check=False,
+                )
+                with open(tmp_path, encoding="utf-8") as f:
+                    edited_payload = f.read()
+            finally:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
+            if edited_payload == show["payload"]:
+                console.print(
+                    f"  [dim]no edits made; approval #{aid} remains queued — "
+                    "use /approve or /deny to decide[/dim]",
+                )
+                continue
+
+            # Submit a new request with the edited payload. The original
+            # is denied as superseded. Preserves §10.11 immutability:
+            # each (id, hash) pair stays bound to a single payload.
+            try:
+                new_request = _call(
+                    "approval.submit",
+                    {
+                        "from_session": show.get("from_session"),
+                        "action": show.get("action"),
+                        "payload": edited_payload,
+                        "target": show.get("target"),
+                        "labels_in": labels_in,
+                        "labels_out": labels_out,
+                        "justification": (
+                            justification + " (edited from approval " f"#{aid})"
+                            if justification
+                            else f"edited from approval #{aid}"
+                        ),
+                    },
+                )
+                _call(
+                    "approval.deny",
+                    {"id": aid, "reason": f"superseded by #{new_request.get('id', '?')}"},
+                )
+                new_id = new_request.get("id", "?")
+                console.print(
+                    f"  [yellow]edited[/yellow] — approval #{aid} denied as "
+                    f"superseded; new approval #{new_id} queued for review",
+                )
+                # Recurse for the new approval immediately
+                if isinstance(new_id, int):
+                    _inline_approval_review([new_id])
+            except Exception as e:
+                err_console.print(f"  [red]edit submit failed:[/red] {e}")
+            continue
+
         if choice == "a":
             result = _call("approval.approve", {"id": aid})
             console.print(f"  [green]✓ approved #{aid}[/green]")
