@@ -373,28 +373,57 @@ def _render_recovery_steps(steps: Any, fallback_rule: str | None) -> None:
         console.print(f"  [cyan]↳ recover:[/cyan] [dim]{hint}[/dim]")
 
 
+def _render_user_message(message: str) -> None:
+    """Echo the user's input back into scrollback as a chat-style
+    message. Without this, the user's typed message vanishes after
+    Enter — prompt-toolkit clears the prompt line — and the
+    conversation reads as one-sided in scrollback.
+
+    Header style is intentionally minimal: 'you  HH:MM' followed by
+    a thin rule. The message body has no border, no panel — just
+    plain text indented for visual separation from agent output."""
+    from datetime import datetime
+
+    ts = datetime.now().strftime("%H:%M")
+    console.print()
+    console.print(f"[bold]you[/bold]  [dim]{ts}[/dim]")
+    console.print(message)
+
+
 def _render_turn(result: dict[str, Any]) -> None:
+    """Render the agent's turn. Chat-style: a header line, compact
+    tool-call summaries, then the agent's markdown response. No
+    panels, no thick borders — flows like a chat transcript.
+
+    Tool outcomes render BEFORE the agent's prose (#30) so the
+    chronology of "agent called tools → agent composed response" is
+    preserved when reading top-to-bottom."""
     _TURN_COUNTER["n"] += 1
-    console.rule(
-        f"[dim]turn {_TURN_COUNTER['n']} · "
-        f"iters={result['iterations']} · {result['finish_reason']}[/dim]",
-        align="left",
-        style="dim",
-    )
-    # Issue #30 — tool outcomes render BEFORE the agent's prose so
-    # the chronology of "agent called tools → agent composed
-    # response" is preserved when reading top-to-bottom. Otherwise
-    # operators see the conclusion before the reasoning and have to
-    # scroll back up to align them.
+    iters = result.get("iterations", 1)
+    finish = result.get("finish_reason", "stop")
+    n_tools = len(result.get("tool_outcomes", []) or [])
+
+    console.print()
+    # Subtle header — no heavy rule, no boxes. Pattern matches the
+    # `you` header from `_render_user_message` for visual symmetry.
+    header_bits = [f"[bold cyan]agent[/bold cyan]  [dim]turn {_TURN_COUNTER['n']}"]
+    if iters > 1:
+        header_bits.append(f"{iters} iters")
+    if n_tools:
+        header_bits.append(f"{n_tools} tool call{'s' if n_tools != 1 else ''}")
+    if finish != "stop":
+        header_bits.append(finish)
+    console.print(" · ".join(header_bits) + "[/dim]")
+
+    # Issue #30 — tool outcomes before agent prose so reading
+    # top-to-bottom preserves chronology.
     _render_outcomes_table(result.get("tool_outcomes", []))
+
     # Issue #16 track 1: render agent output as markdown so headings,
-    # lists, code blocks render correctly. The agent's response often
-    # uses markdown structure for clarity; the plain-text fallback
-    # was visually noisy.
+    # lists, code blocks render correctly.
     from rich.markdown import Markdown
 
     content = result["content"]
-    console.print("[bold cyan]agent[/bold cyan]")
     console.print(Markdown(content, code_theme="monokai"))
 
 
@@ -1618,14 +1647,15 @@ def _inline_approval_review(approval_ids: list[int]) -> None:
             meta.add_row("rationale:", justification)
         console.print(meta)
 
-        console.print(
-            Panel(
-                show["payload"],
-                title=f"approval #{aid} · verbatim payload",
-                subtitle="[dim]this is exactly what will happen if you approve[/dim]",
-                border_style="yellow",
-            ),
-        )
+        # Lightweight rule + indented body — no heavy Panel. Reads
+        # as part of the conversation transcript rather than a modal.
+        console.print()
+        console.print(f"  [yellow]approval #{aid} · verbatim payload[/yellow]")
+        console.print("  [dim]" + "─" * 60 + "[/dim]")
+        for line_text in (show["payload"] or "").splitlines():
+            console.print(f"  {line_text}")
+        console.print("  [dim]" + "─" * 60 + "[/dim]")
+        console.print("  [dim]this is exactly what will happen if you approve[/dim]")
         choice = (
             Prompt.ask(
                 f"  approval #{aid}",
@@ -1824,9 +1854,18 @@ def _repl_loop(session_id: str) -> None:
         key_bindings=kb,
     )
 
+    console.print()
     console.print(
-        f"[bold]chat[/bold] [cyan]{focus['label']}[/cyan] "
-        f"[dim]({focus['id'][:8]} · /help · TAB · ↑/↓ · Alt-Enter · F1-3 recover)[/dim]",
+        f"[bold]capdep chat[/bold]  [dim]session {focus['id'][:8]}[/dim]",
+    )
+    console.print(
+        "[dim]Type a message to chat, or use a slash command. "
+        "Try [bold]/help[/bold] for commands, [bold]/tools[/bold] to see what "
+        "the agent can do, [bold]/grant[/bold] to add capabilities.[/dim]",
+    )
+    console.print(
+        "[dim]Shortcuts: TAB completion · ↑/↓ history · Alt-Enter newline · "
+        "F1-3 run recovery commands · /quit to exit[/dim]",
     )
     try:
         _run_repl(pt_session, focus, last_result, state)
@@ -1970,6 +2009,10 @@ def _run_repl(
             err_console.print(f"[red]unknown command:[/red] /{cmd}")
             continue
 
+        # Echo the user's input into scrollback so the conversation
+        # reads as a transcript (not just agent output following
+        # invisible prompt-toolkit input).
+        _render_user_message(line)
         try:
             last_result = _send_message(focus["id"], line)
         except Exception as e:
