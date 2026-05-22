@@ -46,11 +46,14 @@ def _to_content_list(result: str | dict[str, Any]) -> list[mcp_types.ContentBloc
     return [mcp_types.TextContent(type="text", text=text)]
 
 
-async def serve_tools(server_name: str, tools: list[ToolDescriptor]) -> None:
-    """Wire ``tools`` into an MCP stdio server identified by ``server_name``.
+def build_server(server_name: str, tools: list[ToolDescriptor]) -> Server:
+    """Construct an MCP ``Server`` from a list of ToolDescriptors without
+    binding it to any transport. The caller decides whether to attach
+    stdio (production), an in-memory pipe (tests), or HTTP (future).
 
-    Blocks until the stdio connection closes (typically when the parent
-    MCP host terminates the subprocess).
+    Extracted from ``serve_tools`` so tests can wire the server into
+    ``create_connected_server_and_client_session`` without spawning
+    a subprocess.
     """
     server: Server = Server(server_name)
     tool_by_name: dict[str, ToolDescriptor] = {t.name: t for t in tools}
@@ -83,6 +86,16 @@ async def serve_tools(server_name: str, tools: list[ToolDescriptor]) -> None:
         result = await tool_by_name[name].handler(args)
         return _to_content_list(result)
 
+    return server
+
+
+async def serve_tools(server_name: str, tools: list[ToolDescriptor]) -> None:
+    """Wire ``tools`` into an MCP stdio server identified by ``server_name``.
+
+    Blocks until the stdio connection closes (typically when the parent
+    MCP host terminates the subprocess).
+    """
+    server = build_server(server_name, tools)
     async with stdio_server() as (read, write):
         await server.run(
             read,

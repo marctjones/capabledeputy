@@ -58,6 +58,7 @@ dev = [
     "ruff>=0.7",
     "pyright>=1.1.385",
     "hypothesis>=6.115",
+    "pexpect>=4.9.0",
 ]
 
 [tool.ruff]
