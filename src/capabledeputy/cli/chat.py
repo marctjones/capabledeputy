@@ -381,6 +381,12 @@ def _render_turn(result: dict[str, Any]) -> None:
         align="left",
         style="dim",
     )
+    # Issue #30 — tool outcomes render BEFORE the agent's prose so
+    # the chronology of "agent called tools → agent composed
+    # response" is preserved when reading top-to-bottom. Otherwise
+    # operators see the conclusion before the reasoning and have to
+    # scroll back up to align them.
+    _render_outcomes_table(result.get("tool_outcomes", []))
     # Issue #16 track 1: render agent output as markdown so headings,
     # lists, code blocks render correctly. The agent's response often
     # uses markdown structure for clarity; the plain-text fallback
@@ -390,7 +396,6 @@ def _render_turn(result: dict[str, Any]) -> None:
     content = result["content"]
     console.print("[bold cyan]agent[/bold cyan]")
     console.print(Markdown(content, code_theme="monokai"))
-    _render_outcomes_table(result.get("tool_outcomes", []))
 
 
 def _list_approvals(status: str = "pending") -> list[dict[str, Any]]:
