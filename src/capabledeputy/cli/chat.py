@@ -1534,18 +1534,36 @@ def _repl_loop(session_id: str) -> None:
 
     cache = CompletionCache(daemon_call=_call)
     cache.start()
+
+    # Issue #16 — multi-line input. Default to single-line; Alt-Enter
+    # (Esc-then-Enter on most terminals) inserts a literal newline so
+    # multi-paragraph messages and pasted code blocks work. Enter still
+    # submits. Bracketed-paste mode (prompt-toolkit enables it by
+    # default when supported) means pasted content with internal
+    # newlines is treated as text, not as multiple commands — also a
+    # win for safety.
+    from prompt_toolkit.key_binding import KeyBindings
+
+    kb = KeyBindings()
+
+    @kb.add("escape", "enter")  # Alt-Enter
+    def _newline(event) -> None:  # pyright: ignore[reportUnusedFunction]
+        event.current_buffer.insert_text("\n")
+
     pt_session = PromptSession(
         history=FileHistory(str(_history_path())),
         completer=CapDepCompleter(cache),
         complete_while_typing=False,
         bottom_toolbar=_make_bottom_toolbar(cache, focus),
         refresh_interval=1.0,
+        multiline=False,  # Enter submits; Alt-Enter inserts newline
+        key_bindings=kb,
     )
 
     console.print(
         f"[bold]chat[/bold] [cyan]{focus['label']}[/cyan] "
         f"[dim]({focus['id'][:8]} · /help · TAB for completion · "
-        f"↑/↓ for history · live status below)[/dim]",
+        f"↑/↓ for history · Alt-Enter for newline · live status below)[/dim]",
     )
     try:
         _run_repl(pt_session, focus, last_result)
