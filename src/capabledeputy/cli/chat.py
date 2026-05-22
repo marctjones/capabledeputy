@@ -523,6 +523,11 @@ _HELP = """slash commands (user-only, never visible to the LLM):
   approval: /approvals  /approve <id>  /deny <id>  /submit
             /remember <ACTION> <target-pattern>  — auto-approve future
                                                    matching gates
+            /override request <KIND> <target>    — request operator
+                                                   override for a denied
+                                                   action (§10.11)
+            /override list                       — pending/active grants
+            /override show <id>                  — full grant detail
 
   declassify: /schemas               — list declassification schemas
               /extract <msg> <schema> — quarantined-LLM extraction
@@ -848,6 +853,136 @@ def _handle_tools(filter_substring: str = "") -> None:
             effect = t.get("effect_class") or ""
             effect_str = f"  [dim]({effect})[/dim]" if effect else ""
             console.print(f"  [bold]{name}[/bold]{effect_str}")
+
+
+def _handle_override(arg: str, session_id: str) -> None:
+    """/override [request|list|show] — surface the ApprovalQueue's
+    override path (§10.11) from the REPL.
+
+    Subcommands:
+      /override request <KIND> <target> [--floor F] [--justification "..."]
+      /override list
+      /override show <id>
+
+    Floor defaults to `integrity-floor` (the typical label-conflict
+    case — `untrusted-meets-egress` etc.). Operators who've set up
+    policies for other floors can specify with --floor.
+    """
+    import getpass
+
+    parts = arg.split()
+    if not parts:
+        _print_override_help()
+        return
+    sub = parts[0].lower()
+
+    if sub == "list":
+        try:
+            result = _call("override.list", {"session_id": session_id})
+        except Exception as e:
+            err_console.print(f"[red]override.list failed:[/red] {e}")
+            return
+        grants = result.get("grants", []) or []
+        if not grants:
+            console.print("[dim]no override grants on this session[/dim]")
+            return
+        for g in grants:
+            console.print(
+                f"  [bold]#{g.get('id', '?')[:8]}[/bold] "
+                f"{g.get('action_kind', '?')} → {g.get('target', '?')} "
+                f"[dim]state={g.get('state', '?')} "
+                f"expires={g.get('expires_at', '?')[:19]}[/dim]",
+            )
+        return
+
+    if sub == "show":
+        if len(parts) < 2:
+            err_console.print("[red]usage:[/red] /override show <id>")
+            return
+        try:
+            result = _call("override.show", {"id": parts[1]})
+        except Exception as e:
+            err_console.print(f"[red]override.show failed:[/red] {e}")
+            return
+        for k, v in result.items():
+            console.print(f"  [dim]{k}:[/dim] {v}")
+        return
+
+    if sub == "request":
+        if len(parts) < 3:
+            err_console.print(
+                "[red]usage:[/red] /override request <KIND> <target> "
+                "[--floor F] [--justification \"...\"]",
+            )
+            return
+        kind = parts[1].upper()
+        target = parts[2]
+        # Parse remaining flags
+        floor = "integrity-floor"
+        justification = ""
+        i = 3
+        while i < len(parts):
+            tok = parts[i]
+            if tok == "--floor" and i + 1 < len(parts):
+                floor = parts[i + 1]
+                i += 2
+            elif tok == "--justification" and i + 1 < len(parts):
+                # Join remaining as justification (quoted strings get
+                # split by shlex elsewhere; here we just join)
+                justification = " ".join(parts[i + 1 :])
+                break
+            else:
+                i += 1
+
+        params = {
+            "session_id": session_id,
+            "action_kind": kind,
+            "target": target,
+            "category": "unknown",
+            "tier": "restricted",
+            "floor": floor,
+            "invoker": getpass.getuser(),
+            "friction_confirmed": True,  # typing the command IS the friction
+        }
+        if justification:
+            params["justification"] = justification
+
+        try:
+            result = _call("override.request", params)
+        except Exception as e:
+            err_console.print(f"[red]override.request failed:[/red] {e}")
+            return
+        if result.get("refused"):
+            err_console.print(
+                f"[red]override REFUSED:[/red] {result.get('reason', '?')} "
+                f"{result.get('detail', '')}",
+            )
+            return
+        grant_id = result.get("id", "?")
+        state = result.get("state", "?")
+        console.print(
+            f"[green]✓ override grant[/green] #{str(grant_id)[:8]} "
+            f"[dim](state={state})[/dim]",
+        )
+        if state == "pending_attestation":
+            console.print(
+                "[yellow]→ dual-control attestation required.[/yellow] "
+                "An authorized second principal must run "
+                f"[bold]/override attest {grant_id}[/bold] before the "
+                "grant becomes active.",
+            )
+        return
+
+    _print_override_help()
+
+
+def _print_override_help() -> None:
+    console.print(
+        "[bold]/override[/bold] subcommands:\n"
+        "  /override request <KIND> <target> [--floor F] [--justification \"...\"]\n"
+        "  /override list                — pending/active grants on this session\n"
+        "  /override show <id>           — full detail of one grant",
+    )
 
 
 def _handle_schemas() -> None:
@@ -1254,6 +1389,9 @@ def _run_repl(
                 continue
             if cmd == "tools":
                 _handle_tools(arg.strip())
+                continue
+            if cmd == "override":
+                _handle_override(arg, focus["id"])
                 continue
             err_console.print(f"[red]unknown command:[/red] /{cmd}")
             continue
