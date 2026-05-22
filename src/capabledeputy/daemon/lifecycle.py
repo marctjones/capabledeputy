@@ -408,27 +408,100 @@ async def run_daemon(
     resolved = _resolve_daemon_config(config_path)
     upstream_configs = load_config_file(resolved) if resolved is not None else []
 
-    if upstream_configs:
-        async with UpstreamManager(upstream_configs, app.registry) as manager:
-            _report_admission(manager)
+    # Issue #1: record our PID so `daemon stop` can fall back to
+    # signal-based termination if the RPC shutdown path stalls (hung
+    # upstream subprocess, orphaned-by-parent-shell, etc.). Removal in
+    # the finally block — even an exception during serve() must not
+    # leave a stale pidfile pointing at a dead process.
+    #
+    # Tests pass an explicit `socket_path` so run_daemon runs inside
+    # the test process; writing the pidfile in that case would point
+    # at the test runner's PID, which `stop_daemon`'s
+    # signal-escalation path could end up sending SIGTERM to.
+    # Production (CLI `daemon start`) passes socket_path=None.
+    from capabledeputy.ipc.pidfile import remove_pidfile, write_pidfile
+
+    using_default_socket = socket_path is None
+    pidfile_written = False
+    if using_default_socket:
+        pidfile_path = write_pidfile()
+        pidfile_written = True
+        print(
+            f"[daemon] pid={os.getpid()} pidfile={pidfile_path}",
+            file=__import__("sys").stderr,
+        )
+
+    try:
+        if upstream_configs:
+            async with UpstreamManager(upstream_configs, app.registry) as manager:
+                _report_admission(manager)
+                await daemon.serve()
+        else:
             await daemon.serve()
-    else:
-        await daemon.serve()
+    finally:
+        if pidfile_written:
+            remove_pidfile()
 
 
 async def stop_daemon(socket_path: Path | None = None) -> bool:
+    """Stop the running daemon.
+
+    Issue #1 escalation: RPC shutdown is the preferred path because it
+    lets the daemon clean up cleanly. But the daemon may be hung on
+    upstream-subprocess teardown, orphaned by a parent shell, or just
+    not responding. In those cases the pidfile gives us a reliable
+    fallback: SIGTERM with a 5s grace, escalating to SIGKILL.
+    """
+    from capabledeputy.ipc.pidfile import (
+        read_pidfile,
+        remove_pidfile,
+        terminate_with_escalation,
+        wait_for_exit,
+    )
+
     client = DaemonClient(socket_path or default_socket_path())
+    target_pid = read_pidfile()
+
+    # 1. Try the polite RPC path first.
+    rpc_sent = False
     try:
         await client.call("shutdown")
-        return True
+        rpc_sent = True
     except DaemonNotRunningError:
-        return False
+        # Socket gone — either no daemon, or daemon is wedged with a
+        # stale socket. If the pidfile points at a live process, the
+        # signal-fallback below will handle it.
+        pass
+
+    # 2. If RPC succeeded and we know the PID, give the daemon a brief
+    #    moment to exit cleanly. If we don't have a PID, trust the RPC
+    #    return as success.
+    if target_pid is None:
+        return rpc_sent
+    if rpc_sent and wait_for_exit(target_pid, timeout_seconds=5.0):
+        remove_pidfile()
+        return True
+
+    # 3. Signal-based fallback. Either RPC failed, or the daemon
+    #    didn't exit within the grace window — escalate.
+    outcome = terminate_with_escalation(target_pid)
+    remove_pidfile()
+    # "already_gone" is success; the daemon exited between our checks.
+    return outcome in ("already_gone", "term", "kill")
 
 
 async def daemon_status(socket_path: Path | None = None) -> dict[str, Any]:
+    """Report daemon liveness. RPC ping is authoritative — if it
+    succeeds, the daemon is responsive. The pidfile reads as a
+    secondary signal: useful for diagnostics when the socket has
+    desynced from the actual process state (which is exactly the
+    failure mode Issue #1 fixed)."""
+    from capabledeputy.ipc.pidfile import read_pidfile
+
     client = DaemonClient(socket_path or default_socket_path())
+    pid = read_pidfile()  # already cleans up stale pidfiles
     try:
         result = await client.call("ping")
     except DaemonNotRunningError:
-        return {"running": False}
-    return {"running": True, "ping": result}
+        return {"running": False, "pid": pid}
+    return {"running": True, "ping": result, "pid": pid}
