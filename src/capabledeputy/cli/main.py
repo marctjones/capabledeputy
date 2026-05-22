@@ -173,9 +173,23 @@ def version() -> None:
 
 @app.command("tui")
 def tui_command() -> None:
-    """Launch the read-only Textual TUI for live monitoring and approvals."""
+    """[DEPRECATED] Launch the read-only Textual TUI.
+
+    The read-only-spectator role is being folded into `capdep chat --mode rich`
+    (Issue #15 Phase B already lands the dispatch). When the rich surface
+    reaches feature parity, this command will be removed. Use
+    `capdep chat --mode rich` for new workflows.
+    """
     from capabledeputy.tui.app import run
 
+    err_console.print(
+        "[yellow]warning:[/yellow] [bold]capdep tui[/bold] is deprecated. "
+        "Use [bold]capdep chat --mode rich[/bold] on a modern terminal "
+        "(Ghostty / kitty / iTerm2 / WezTerm / Alacritty) for the same "
+        "Textual surface with an active input box — full convergence per "
+        "Issue #15 / spec 007. This command will be removed once the rich "
+        "surface reaches feature parity.",
+    )
     run()
 
 
@@ -186,8 +200,20 @@ def console_command(
         typer.Argument(help="Session id to drive (see `capdep session list`)"),
     ],
 ) -> None:
-    """Unified TUI: drive the agent, monitor the live security state,
-    and grant approvals — one window, no second terminal."""
+    """[DEPRECATED] Unified TUI to drive + monitor.
+
+    Folded into `capdep chat --mode rich` (Issue #15 Phase B). The rich
+    surface auto-detects modern terminals and falls back to line mode
+    elsewhere. When feature parity is reached, this command will be
+    removed.
+    """
+    err_console.print(
+        "[yellow]warning:[/yellow] [bold]capdep console[/bold] is deprecated. "
+        "Use [bold]capdep chat --mode rich[/bold] (the rich surface scaffold "
+        "calls into the same Textual app per Issue #15 Phase B). The "
+        "convergence is in progress; this command will be removed once "
+        "the rich surface reaches feature parity.",
+    )
     client = DaemonClient(default_socket_path())
     try:
         anyio.run(client.call, "ping", {})
