@@ -97,7 +97,7 @@ def test_two_blocks_coexist(xdg_tmp: Path) -> None:
     write_managed_block(path, "imap", IMAP_BLOCK_BODY)
     gworkspace_body = (
         '  - name: gws\n'
-        '    command: ["gws", "mcp", "-s", "gmail"]\n'
+        '    command: ["npx", "gws-mcp-server", "--services", "gmail"]\n'
         "    strict: false\n"
     )
     write_managed_block(path, "gworkspace", gworkspace_body)
@@ -305,16 +305,18 @@ def test_gworkspace_block_writes_managed_section(xdg_tmp: Path) -> None:
     # The gws server is registered as a single upstream
     names = [s["name"] for s in parsed["upstream_servers"]]
     assert "gws" in names
-    # Verify the command is the official CLI invocation
+    # Verify the command invokes the community wrapper (`gws-mcp-server`)
     gws_entry = next(s for s in parsed["upstream_servers"] if s["name"] == "gws")
-    assert gws_entry["command"][0] == "gws"
-    assert gws_entry["command"][1] == "mcp"
-    assert "-s" in gws_entry["command"]
-    # Send/delete pinning is in the overrides
+    assert gws_entry["command"][0] == "npx"
+    assert gws_entry["command"][1] == "gws-mcp-server"
+    assert "--services" in gws_entry["command"]
+    # Destructive-op pinning is in the overrides — snake_case tool names
     overrides = gws_entry["tool_overrides"]
-    assert overrides["gmail.users.messages.send"]["capability_kind"] == "SEND_EMAIL"
-    assert overrides["calendar.events.delete"]["capability_kind"] == "DELETE_CAL"
-    assert overrides["drive.files.delete"]["capability_kind"] == "DELETE_FS"
+    assert overrides["drive_delete_file"]["capability_kind"] == "DELETE_FS"
+    assert overrides["calendar_delete_event"]["capability_kind"] == "DELETE_CAL"
+    assert overrides["calendar_update_event"]["capability_kind"] == "MODIFY_CAL"
+    assert overrides["drive_update_file"]["capability_kind"] == "MODIFY_FS"
+    assert overrides["drive_create_file"]["capability_kind"] == "CREATE_FS"
 
 
 def test_gworkspace_block_coexists_with_imap_and_bundled(xdg_tmp: Path) -> None:

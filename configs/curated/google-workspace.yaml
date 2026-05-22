@@ -1,51 +1,74 @@
-# Google Workspace via the Google Workspace CLI MCP server (`gws mcp`).
+# Google Workspace via `gws-mcp-server` (community wrapper around `gws`).
 #
-# Producer: GOOGLE (official). The Google Workspace CLI ships an
-# MCP-over-stdio server that exposes Drive / Gmail / Calendar / Docs /
-# Sheets via Discovery-API-derived tool names. Google maintains the
-# code + handles OAuth via OS keyring (AES-256-GCM at rest); we just
-# spawn the binary and proxy stdio.
+# Producer: COMMUNITY (conorbronsdon/gws-mcp-server). The official
+# Google Workspace CLI (`gws` from `@googleworkspace/cli`) does NOT
+# itself include an MCP server as of v0.22.5, despite blog-post
+# claims to the contrary. This community wrapper shells out to the
+# `gws` CLI for each tool call, reusing the OAuth tokens it caches
+# in the OS keyring via `gws auth login`.
 #
-# Operator setup (once, end-to-end):
-#   npm install -g @googleworkspace/cli       # install
+# Operator setup (once):
+#   npm install -g @googleworkspace/cli       # installs `gws`
 #   gws auth setup                            # one-time gcloud + OAuth client
 #   gws auth login -s drive,gmail,calendar    # browser consent
+#   npm install -g gws-mcp-server             # this server
 #
 # Then either:
 #   capdep daemon start --config configs/curated/google-workspace.yaml
 # or (recommended) `capdep gworkspace-setup` to wire the managed block
 # into your user-local daemon config so plain `capdep chat` picks it up.
+#
+# Gmail in this server is READ-ONLY by design — list/get messages +
+# threads, no send. Drive / Calendar / Sheets / Docs include both read
+# and write tools; the destructive ones are pinned to explicit
+# capability kinds below so the chokepoint refuses them unless the
+# session holds the matching cap.
 
 upstream_servers:
   - name: gws
-    command: ["gws", "mcp", "-s", "drive,gmail,calendar,docs,sheets"]
+    command: ["npx", "gws-mcp-server", "--services", "drive,sheets,calendar,docs,gmail"]
     inherent_labels:
       - confidential.personal
     tool_overrides:
-      # Tool names follow Google Discovery API method paths
-      # (e.g. `gmail.users.messages.send`). The adapter's name-based
-      # inference handles the obvious `send`/`delete`/`update`/`create`
-      # patterns; pin the highest-risk ones explicitly here so nothing
-      # depends on inference for outbound or destructive calls.
-      "gmail.users.messages.send":
-        capability_kind: SEND_EMAIL
-      "calendar.events.delete":
-        capability_kind: DELETE_CAL
-        additional_labels: ["confidential.personal"]
-      "calendar.events.update":
-        capability_kind: MODIFY_CAL
-        additional_labels: ["confidential.personal"]
-      "drive.files.delete":
+      # Drive — destructive ops pinned.
+      "drive_delete_file":
         capability_kind: DELETE_FS
         additional_labels: ["confidential.personal"]
-      "drive.files.update":
+      "drive_update_file":
         capability_kind: MODIFY_FS
         additional_labels: ["confidential.personal"]
+      "drive_create_file":
+        capability_kind: CREATE_FS
+      "drive_copy_file":
+        capability_kind: CREATE_FS
+      "drive_share_file":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      # Calendar — mutating events pinned.
+      "calendar_delete_event":
+        capability_kind: DELETE_CAL
+        additional_labels: ["confidential.personal"]
+      "calendar_update_event":
+        capability_kind: MODIFY_CAL
+        additional_labels: ["confidential.personal"]
+      "calendar_insert_event":
+        capability_kind: CREATE_CAL
+      # Sheets / Docs — writes through MODIFY_FS so the destructive
+      # gate runs (reads still allowed with bare READ_FS).
+      "sheets_write_values":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      "sheets_append_values":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      "docs_batch_update":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      "docs_create_document":
+        capability_kind: CREATE_FS
     # Strict mode: tools without an explicit override OR a confident
-    # name-based inference are REFUSED at registration. The adapter
-    # logs each rejected tool to stderr — copy the ones you actually
-    # need into the overrides above. This is the safe posture for a
-    # curated config; the user-managed block written by
-    # `capdep gworkspace-setup` is more permissive (strict: false) for
-    # personal exploration.
+    # name-based inference are REFUSED at registration. The shipped
+    # curated config locks down to known tools; the user-local block
+    # written by `capdep gworkspace-setup` is more permissive
+    # (strict: false) for personal exploration.
     strict: true

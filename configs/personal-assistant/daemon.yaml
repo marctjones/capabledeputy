@@ -74,38 +74,55 @@ upstream_servers:
         capability_kind: READ_FS
 
   # ---------------- Google Workspace ----------------
-  # Wired to `gws mcp` from `@googleworkspace/cli`. Google handles
-  # OAuth via OS keyring (AES-256-GCM at rest); we just spawn + proxy
-  # stdio through the policy chokepoint.
+  # Wired to `gws-mcp-server` (community wrapper around the `gws`
+  # Workspace CLI). Reuses OAuth tokens from `gws auth login` (cached
+  # in the OS keyring); no separate auth flow.
   #
   # Operator setup (once):
-  #   npm install -g @googleworkspace/cli
-  #   gws auth setup
+  #   npm install -g @googleworkspace/cli        # installs `gws`
+  #   gws auth setup                             # gcloud + OAuth client
   #   gws auth login -s drive,gmail,calendar,docs,sheets
+  #   npm install -g gws-mcp-server              # this server
   #
-  # See docs/gworkspace-setup.md for the full walkthrough.
+  # Gmail in this server is read-only by design. See
+  # docs/gworkspace-setup.md for the full walkthrough.
   # Comment this block out if you don't want Google integration.
 
   - name: gws
-    command: ["gws", "mcp", "-s", "drive,gmail,calendar,docs,sheets"]
+    command: ["npx", "gws-mcp-server", "--services", "drive,sheets,calendar,docs,gmail"]
     inherent_labels:
       - confidential.personal
     tool_overrides:
-      # Tools follow Google Discovery API method paths. The adapter's
-      # name-based inference covers most cases; pin the highest-risk
-      # ones explicitly so nothing destructive depends on inference.
-      "gmail.users.messages.send":
-        capability_kind: SEND_EMAIL
-      "calendar.events.delete":
-        capability_kind: DELETE_CAL
-        additional_labels: ["confidential.personal"]
-      "calendar.events.update":
-        capability_kind: MODIFY_CAL
-        additional_labels: ["confidential.personal"]
-      "drive.files.delete":
+      "drive_delete_file":
         capability_kind: DELETE_FS
         additional_labels: ["confidential.personal"]
-      "drive.files.update":
+      "drive_update_file":
         capability_kind: MODIFY_FS
         additional_labels: ["confidential.personal"]
+      "drive_create_file":
+        capability_kind: CREATE_FS
+      "drive_copy_file":
+        capability_kind: CREATE_FS
+      "drive_share_file":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      "calendar_delete_event":
+        capability_kind: DELETE_CAL
+        additional_labels: ["confidential.personal"]
+      "calendar_update_event":
+        capability_kind: MODIFY_CAL
+        additional_labels: ["confidential.personal"]
+      "calendar_insert_event":
+        capability_kind: CREATE_CAL
+      "sheets_write_values":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      "sheets_append_values":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      "docs_batch_update":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      "docs_create_document":
+        capability_kind: CREATE_FS
     strict: false

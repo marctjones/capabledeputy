@@ -424,41 +424,66 @@ DEFAULT_ASSISTANT_BUNDLED_BLOCKS: tuple[tuple[str, str], ...] = (
 )
 
 
-# ---- Google Workspace via `gws mcp` (Google Workspace CLI) ----
+# ---- Google Workspace via `gws-mcp-server` (community wrapper) ----
 #
-# Authoritative path for Drive/Gmail/Calendar/Docs/Sheets. Auth is
-# handled by `gws auth setup` + `gws auth login` — Google manages
-# OAuth tokens in the OS keyring (AES-256-GCM), not us.
+# `gws-mcp-server` is a community-maintained MCP server that shells
+# out to the `gws` Workspace CLI (which holds OAuth tokens in the
+# OS keyring after `gws auth login`). It exposes 24 curated tools
+# across Drive / Sheets / Calendar / Docs / Gmail and reuses the
+# existing keyring credentials — no second auth setup needed.
 #
-# Tool naming under `gws mcp` follows the Discovery API method names
-# (e.g. `gmail.users.messages.send`). The adapter's `_infer_capability_
-# kind` heuristic recognizes the obvious dangerous patterns (`send`,
-# `delete`, `update`) and tags them appropriately. `strict: false` lets
-# unrecognized tools fall back to READ_FS rather than refusing — once
-# the operator inspects `/tools gmail` in chat and decides which
-# specific calls need tighter overrides, they can append explicit
-# `tool_overrides` entries below the BEGIN/END markers (those edits
-# survive re-registration; only content between the markers is
-# regenerated).
+# Install (one-time): npm install -g gws-mcp-server
+# Auth (already done): gws auth setup + gws auth login -s ...
+#
+# Tool naming uses snake_case (`drive_list_files`, `gmail_list_messages`,
+# `calendar_list_events`, etc.). Exact names are visible via `/tools gws`
+# in chat. `strict: false` lets the adapter's name-based inference
+# handle most tools; we pin the clearly-destructive ones explicitly.
+# Gmail in this server is READ-ONLY by design (no send tool) — list/get
+# messages + threads only. That matches the user's read-only intent.
 
 GWORKSPACE_BLOCK_ID = "gworkspace"
 GWORKSPACE_BLOCK_BODY = """\
   - name: gws
-    command: ["gws", "mcp", "-s", "drive,gmail,calendar,docs,sheets"]
+    command: ["npx", "gws-mcp-server", "--services", "drive,sheets,calendar,docs,gmail"]
     inherent_labels: ["confidential.personal"]
     tool_overrides:
-      # Most-dangerous escapees from name-based inference get pinned
-      # to explicit kinds + labels. The adapter still infers for the
-      # rest; override anything that surprises you after auditing
-      # `/tools gws` in chat.
-      "gmail.users.messages.send":
-        capability_kind: SEND_EMAIL
-      "calendar.events.delete":
-        capability_kind: DELETE_CAL
-        additional_labels: ["confidential.personal"]
-      "drive.files.delete":
+      # Drive — destructive ops pinned explicitly.
+      "drive_delete_file":
         capability_kind: DELETE_FS
         additional_labels: ["confidential.personal"]
+      "drive_update_file":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      "drive_create_file":
+        capability_kind: CREATE_FS
+      "drive_copy_file":
+        capability_kind: CREATE_FS
+      "drive_share_file":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      # Calendar — events mutating ops are destructive.
+      "calendar_delete_event":
+        capability_kind: DELETE_CAL
+        additional_labels: ["confidential.personal"]
+      "calendar_update_event":
+        capability_kind: MODIFY_CAL
+        additional_labels: ["confidential.personal"]
+      "calendar_insert_event":
+        capability_kind: CREATE_CAL
+      # Sheets / Docs writes route through the MODIFY_FS gate so a
+      # read-only session can still read; only writes deny.
+      "sheets_write_values":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      "sheets_append_values":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      "docs_batch_update":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      "docs_create_document":
+        capability_kind: CREATE_FS
     strict: false
 """
 
@@ -483,6 +508,16 @@ def gws_cli_available() -> bool:
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+
+
+def gws_mcp_server_available() -> bool:
+    """True iff `gws-mcp-server` is installed (npm global or accessible
+    via `npx`). We check for the binary directly; if it's not there,
+    `npx` will fetch it on first run, but warning the operator up
+    front gives them a cleaner story."""
+    import shutil
+
+    return shutil.which("gws-mcp-server") is not None
 
 
 # ---- top-level `sandbox:` block ----
