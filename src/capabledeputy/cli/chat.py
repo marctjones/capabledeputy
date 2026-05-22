@@ -824,32 +824,82 @@ def _pending_approval_ids(outcomes: list[dict[str, Any]]) -> list[int]:
 
 
 def _handle_remember(arg: str) -> None:
-    """/remember <ACTION> <target-glob>  — install an auto-approval
-    pattern. Example: /remember QUEUE_PURCHASE amazon.com
+    """/remember <ACTION> <target-glob> [--label-includes L1,L2,...]
+                  [--tag TAG] [--ttl-hours N]
+
+    Install an auto-approval pattern (Issue #8). Example:
+      /remember QUEUE_PURCHASE amazon.com
+      /remember SEND_EMAIL marc@joneslaw.io --label-includes confidential.personal --tag self-forward
+
+    With --label-includes, the pattern auto-approves only when the
+    request's incoming labels include EVERY listed label. Lets you
+    declare 'self-forwarding tainted personal content is fine' as a
+    distinct rule from 'self-forwarding anything'.
     """
     parts = arg.split()
     if len(parts) < 2:
         err_console.print(
             "[red]usage:[/red] /remember <ACTION> <target-pattern> "
-            "(e.g. /remember QUEUE_PURCHASE amazon*)",
+            "[--label-includes L1,L2] [--tag TAG] [--ttl-hours N]\n"
+            "  e.g. /remember QUEUE_PURCHASE amazon*\n"
+            "       /remember SEND_EMAIL marc@joneslaw.io "
+            "--label-includes confidential.personal --tag self-forward",
         )
         return
     action, target_pattern = parts[0].upper(), parts[1]
+    labels_required: list[str] = []
+    audit_tag = ""
+    ttl_hours = 24
+    i = 2
+    while i < len(parts):
+        tok = parts[i]
+        if tok == "--label-includes" and i + 1 < len(parts):
+            labels_required = [s.strip() for s in parts[i + 1].split(",") if s.strip()]
+            i += 2
+        elif tok == "--tag" and i + 1 < len(parts):
+            audit_tag = parts[i + 1]
+            i += 2
+        elif tok == "--ttl-hours" and i + 1 < len(parts):
+            try:
+                ttl_hours = int(parts[i + 1])
+            except ValueError:
+                err_console.print(
+                    f"[red]--ttl-hours expects an integer; got {parts[i + 1]!r}[/red]",
+                )
+                return
+            i += 2
+        else:
+            err_console.print(f"[red]unknown /remember flag:[/red] {tok}")
+            return
+
+    params = {
+        "action": action,
+        "target_pattern": target_pattern,
+        "ttl_hours": ttl_hours,
+    }
+    if labels_required:
+        params["labels_required"] = labels_required
+    if audit_tag:
+        params["audit_tag"] = audit_tag
+
     try:
-        result = _call(
-            "pattern.create",
-            {
-                "action": action,
-                "target_pattern": target_pattern,
-                "max_amount": None,
-            },
-        )
+        # Issue #8 fix: the RPC is approval_pattern.create, not the
+        # `pattern.create` the prior code referenced (which never
+        # resolved — pre-existing bug fixed here).
+        result = _call("approval_pattern.create", params)
     except Exception as e:
         err_console.print(f"[red]pattern.create failed:[/red] {e}")
         return
-    pattern = result.get("pattern") or result
+    if result.get("error"):
+        err_console.print(f"[red]{result['error']}[/red]")
+        return
+    label_str = (
+        f" labels={','.join(labels_required)}" if labels_required else ""
+    )
+    tag_str = f" tag={audit_tag}" if audit_tag else ""
     console.print(
-        f"[green]✓ pattern[/green] {action} {target_pattern} → id={pattern.get('id', '?')}",
+        f"[green]✓ pattern[/green] {action} {target_pattern}{label_str}{tag_str} "
+        f"→ id={result.get('id', '?')[:8]}",
     )
 
 
