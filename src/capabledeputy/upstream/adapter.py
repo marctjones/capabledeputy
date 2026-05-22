@@ -30,6 +30,16 @@ from capabledeputy.upstream.config import UpstreamServerConfig
 if TYPE_CHECKING:
     from mcp import ClientSession
 
+    # The adapter accepts either a raw mcp ClientSession (older tests
+    # / standalone use) or a crash-recovering `LiveSession` wrapper
+    # (the production path through UpstreamManager). Both quack the
+    # same: list_tools/list_resources/read_resource/call_tool.
+    from capabledeputy.upstream.supervisor import LiveSession
+
+    SessionLike = ClientSession | LiveSession
+else:
+    SessionLike = object  # only for type hints
+
 
 _DELETE_TOKENS = ("delete", "remove", "unlink", "rmdir", "destroy", "purge")
 _MODIFY_TOKENS = ("write", "update", "modify", "edit", "patch", "replace", "set", "append")
@@ -110,7 +120,7 @@ class LabeledMcpAdapter:
     def __init__(
         self,
         config: UpstreamServerConfig,
-        session: ClientSession,
+        session: "SessionLike",
     ) -> None:
         self._config = config
         self._session = session
