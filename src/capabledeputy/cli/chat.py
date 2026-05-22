@@ -595,6 +595,12 @@ _HELP = """slash commands (user-only, never visible to the LLM):
                                   capability kind (optional substring
                                   filter, e.g. /tools gmail)
 
+  copy:    /copy recovery       — copy latest recovery commands
+           /copy approval <id>  — copy verbatim approval payload
+           /copy last           — copy last agent response
+           /copy trace <turn>   — copy turn's audit trace as JSON
+           /copy <literal>      — copy arbitrary text
+
   misc:    /help  /quit
 """
 
@@ -1002,6 +1008,145 @@ def _warn_on_daemon_drift() -> None:
             "Restart with [bold]capdep daemon stop && capdep chat[/bold] "
             "to pick up changes.",
         )
+
+
+def _handle_copy(
+    arg: str,
+    session_id: str,
+    last_result: dict[str, Any] | None,
+) -> None:
+    """/copy <what> — push capdep artifacts to the system clipboard
+    via OSC 52 on supporting terminals (Issue #20).
+
+    Subcommands:
+      /copy recovery        — most recent recovery-step sequence
+      /copy approval <id>   — verbatim payload of an approval
+      /copy last            — most recent agent response
+      /copy trace <turn>    — turn's full audit trace as JSON
+      /copy <text...>       — copy literal text (escape hatch)
+
+    Fallback when OSC 52 isn't supported: writes to a per-session
+    file under ~/.capdep/clipboard/ and tells the operator the path.
+    """
+    import base64
+    import json as _json
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    from capabledeputy.cli.terminal_caps import caps as _caps
+
+    parts = arg.split(maxsplit=1)
+    if not parts:
+        err_console.print(
+            "[red]usage:[/red] /copy recovery | /copy approval <id> | "
+            "/copy last | /copy trace <turn> | /copy <literal text>",
+        )
+        return
+    sub = parts[0].lower()
+    rest = parts[1] if len(parts) > 1 else ""
+
+    content: str = ""
+    label: str = ""
+
+    if sub == "recovery":
+        # Most recent recovery sequence — pull from last_result's
+        # tool_outcomes (denied or preview-deny rows carry the steps).
+        if not last_result:
+            err_console.print("[dim]no turn yet — nothing to copy[/dim]")
+            return
+        steps: list[str] = []
+        for o in last_result.get("tool_outcomes", []) or []:
+            outcome_steps = o.get("recovery_steps") or []
+            if not outcome_steps and isinstance(o.get("output"), dict):
+                outcome_steps = o["output"].get("recovery_steps") or []
+            for s in outcome_steps:
+                cmd = s.get("command", "")
+                args = s.get("args", [])
+                steps.append(f"{cmd} {' '.join(args)}".strip())
+        if not steps:
+            err_console.print("[dim]no recovery steps on the last turn[/dim]")
+            return
+        content = "\n".join(steps) + "\n"
+        label = f"recovery sequence ({len(steps)} step(s))"
+
+    elif sub == "approval":
+        if not rest.strip():
+            err_console.print("[red]usage:[/red] /copy approval <id>")
+            return
+        try:
+            show = _call("approval.show", {"id": int(rest.strip())})
+        except Exception as e:
+            err_console.print(f"[red]approval.show failed:[/red] {e}")
+            return
+        content = show.get("payload", "") or ""
+        label = f"approval #{rest.strip()} verbatim payload"
+
+    elif sub == "last":
+        if not last_result:
+            err_console.print("[dim]no turn yet — nothing to copy[/dim]")
+            return
+        content = last_result.get("content", "") or ""
+        label = "last agent response"
+
+    elif sub == "trace":
+        if not rest.strip().isdigit():
+            err_console.print("[red]usage:[/red] /copy trace <turn-number>")
+            return
+        try:
+            result = _call(
+                "audit.list",
+                {"session_id": session_id, "limit": 1000},
+            )
+        except Exception as e:
+            err_console.print(f"[red]audit.list failed:[/red] {e}")
+            return
+        turn = int(rest.strip())
+        events = [e for e in result.get("events", []) if e.get("turn_id") == turn]
+        if not events:
+            err_console.print(f"[dim]no events for turn {turn}[/dim]")
+            return
+        content = _json.dumps(events, indent=2, default=str)
+        label = f"trace for turn {turn} ({len(events)} event(s))"
+
+    else:
+        # Literal-text escape hatch
+        content = arg
+        label = f"literal text ({len(content)} chars)"
+
+    if not content:
+        err_console.print("[dim]nothing to copy[/dim]")
+        return
+
+    # OSC 52: ESC ] 52 ; c ; <base64> BEL  — c = clipboard selection.
+    # Length cap of ~100 KB on most terminals; if we're over, fall
+    # back to file-on-disk path.
+    encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
+    use_osc52 = _caps().clipboard and len(encoded) < 100_000
+
+    if use_osc52:
+        # Emit the escape directly to stdout so Rich doesn't escape it.
+        _sys.stdout.write(f"\033]52;c;{encoded}\007")
+        _sys.stdout.flush()
+        console.print(f"[green]✓ copied to clipboard:[/green] {label}")
+        return
+
+    # Fallback: write to ~/.capdep/clipboard/<timestamp>.txt
+    import datetime as _dt
+
+    fallback_dir = _Path.home() / ".capdep" / "clipboard"
+    fallback_dir.mkdir(parents=True, exist_ok=True)
+    ts = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    fallback_path = fallback_dir / f"{ts}-{sub}.txt"
+    fallback_path.write_text(content, encoding="utf-8")
+    reason = (
+        "terminal doesn't support OSC 52"
+        if not _caps().clipboard
+        else "content > 100KB (OSC 52 cap)"
+    )
+    console.print(
+        f"[yellow]wrote to file[/yellow] (clipboard unavailable: {reason}): "
+        f"{fallback_path}",
+    )
 
 
 def _handle_override(arg: str, session_id: str) -> None:
@@ -1682,6 +1827,9 @@ def _run_repl(
                 continue
             if cmd == "override":
                 _handle_override(arg, focus["id"])
+                continue
+            if cmd == "copy":
+                _handle_copy(arg, focus["id"], last_result)
                 continue
             err_console.print(f"[red]unknown command:[/red] /{cmd}")
             continue
