@@ -1337,8 +1337,9 @@ def chat_command(
             help=(
                 "When auto-creating a session, do NOT pre-grant the default "
                 "read-only capabilities. Operator must /grant explicitly. "
-                "(Default: auto-grant READ_FS, CALENDAR_READ, WEB_FETCH "
-                "wildcards so the agent can actually do work.)"
+                "(Default: scoped reads on ~/Documents, ~/Projects, "
+                "~/Downloads, ~/Desktop, /tmp; CALENDAR_READ; WEB_FETCH; "
+                "scratch sandbox. Anything outside requires explicit /grant.)"
             ),
         ),
     ] = False,
@@ -1398,11 +1399,27 @@ def _grant_default_read_caps(session_id: str) -> None:
     """
     from uuid import uuid4
 
+    # Issue #6 — Scope READ_FS away from system files. Previously this
+    # was `READ_FS *` which let the agent read /etc/passwd, ~/.ssh/*,
+    # ~/.aws/*, etc. The scoped set covers normal work dirs; the agent
+    # can still `/grant READ_FS <path>` for anything outside.
+    #
+    # ~ expansion is intentionally NOT done here — the daemon's pattern
+    # matcher does shell-style globbing and `~` is fine as a literal.
+    # If your home isn't /home/<you>, edit your auto-grant via /grant.
+    import os as _os
+
+    home = _os.path.expanduser("~")
     default_caps = (
-        ("READ_FS", "*"),
+        ("READ_FS", f"{home}/Documents/*"),
+        ("READ_FS", f"{home}/Projects/*"),
+        ("READ_FS", f"{home}/Downloads/*"),
+        ("READ_FS", f"{home}/Desktop/*"),
+        ("READ_FS", "/tmp/*"),
         ("CALENDAR_READ", "*"),
         ("WEB_FETCH", "*"),
-        ("CREATE_FS", "/tmp/*"),  # scratch writes
+        ("CREATE_FS", f"{home}/.capdep/work/*"),
+        ("CREATE_FS", "/tmp/*"),
         # Sandbox: granting scoped to the bundled `scratch` region.
         # If the daemon has no actuator wired, sandbox.run won't be in
         # the tool list anyway, so the cap is harmless.
