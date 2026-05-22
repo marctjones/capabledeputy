@@ -102,15 +102,32 @@ def registry() -> ToolRegistry:
 
 @pytest.fixture
 def gws_config() -> UpstreamServerConfig:
-    """Spawn config for `gws mcp -s drive,gmail,calendar,docs,sheets`.
-    Strict false — the adapter falls back to READ_FS for tools whose
-    capability we don't pin explicitly; combined with the read-only
-    cap set on the session, destructive tools would still be denied."""
+    """Spawn config for `gws-mcp-server` — the community MCP wrapper
+    around the gws Workspace CLI. Mirrors the managed block's overrides
+    so the live test exercises what production actually does. Without
+    the explicit gmail_* overrides the adapter's name-based inference
+    matches "gmail" → SEND_EMAIL, which would incorrectly tag a list
+    call as outbound."""
+    from capabledeputy.policy.labels import Label
+    from capabledeputy.upstream.config import UpstreamToolOverride
+
+    read_personal = UpstreamToolOverride(
+        capability_kind=CapabilityKind.READ_FS,
+        additional_labels=frozenset(
+            {Label.CONFIDENTIAL_PERSONAL, Label.UNTRUSTED_USER_INPUT},
+        ),
+    )
+    overrides = {
+        "gmail_messages_list": read_personal,
+        "gmail_messages_get": read_personal,
+        "gmail_threads_list": read_personal,
+        "gmail_threads_get": read_personal,
+    }
     return UpstreamServerConfig(
         name="gws",
-        command=("gws", "mcp", "-s", "drive,gmail,calendar,docs,sheets"),
+        command=("gws-mcp-server", "--services", "drive,sheets,calendar,docs,gmail"),
         inherent_labels=frozenset(),
-        tool_overrides={},
+        tool_overrides=overrides,
         isolation=None,
         env={},
         strict=False,

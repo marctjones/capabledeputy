@@ -484,6 +484,21 @@ GWORKSPACE_BLOCK_BODY = """\
         additional_labels: ["confidential.personal"]
       "docs_create_document":
         capability_kind: CREATE_FS
+      # Gmail read tools — pin explicitly because the adapter's name-
+      # based inference matches "gmail" → SEND_EMAIL, which would
+      # incorrectly tag a `_list` / `_get` call as outbound.
+      "gmail_messages_list":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "gmail_messages_get":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "gmail_threads_list":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "gmail_threads_get":
+        capability_kind: READ_FS
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
     strict: false
 """
 
