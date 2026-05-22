@@ -411,7 +411,9 @@ def _render_approvals(approvals: list[dict[str, Any]]) -> None:
         preview = a["payload"][:60]
         if len(a["payload"]) > 60:
             preview += "…"
-        table.add_row(str(a["id"]), a["action"], a["target"], preview)
+        # Issue #18 — click the approval id to paste /approve <id>
+        clickable_id = _paste_link(str(a["id"]), f"/approve {a['id']}")
+        table.add_row(clickable_id, a["action"], a["target"], preview)
     console.print(table)
 
 
@@ -487,6 +489,23 @@ def _handle_deny(arg: str) -> None:
     console.print(f"[yellow]denied[/yellow] approval #{approval_id}")
 
 
+def _paste_link(visible_text: str, command_to_paste: str) -> str:
+    """Issue #18 — wrap `visible_text` in an OSC 8 hyperlink whose URI
+    is `capdep://paste/<command>` on terminals that support OSC 8.
+    Falls back to plain text on basic terminals. Used across audit /
+    sessions / approvals / tools listings so operators can click
+    any reference to paste the corresponding slash command into
+    the input."""
+    from urllib.parse import quote
+
+    from capabledeputy.cli.terminal_caps import caps as _caps
+
+    if not _caps().hyperlinks:
+        return visible_text
+    uri = f"capdep://paste/{quote(command_to_paste)}"
+    return f"[link={uri}]{visible_text}[/link]"
+
+
 def _handle_sessions() -> None:
     result = _call("session.list")
     sessions = result.get("sessions", [])
@@ -499,8 +518,11 @@ def _handle_sessions() -> None:
     table.add_column("Intent")
     table.add_column("Labels")
     for s in sessions:
+        sid = s["id"]
+        # Issue #18 — click the session id to paste /switch into input
+        clickable_id = _paste_link(sid[:8], f"/switch {sid}")
         table.add_row(
-            s["id"][:8],
+            clickable_id,
             s["status"],
             (s.get("intent") or "")[:40],
             ", ".join(s.get("label_set", [])) or "-",
@@ -966,7 +988,9 @@ def _handle_tools(filter_substring: str = "") -> None:
             name = t.get("name", "?")
             effect = t.get("effect_class") or ""
             effect_str = f"  [dim]({effect})[/dim]" if effect else ""
-            console.print(f"  [bold]{name}[/bold]{effect_str}")
+            # Issue #18 — click the tool name to filter to it
+            clickable_name = _paste_link(name, f"/tools {name}")
+            console.print(f"  [bold]{clickable_name}[/bold]{effect_str}")
 
 
 def _warn_on_daemon_drift() -> None:
