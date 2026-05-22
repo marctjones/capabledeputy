@@ -1163,6 +1163,11 @@ def _run_repl(
             return
         if not line:
             continue
+        # Issue #12: accept bare `exit` / `quit` / `bye` as REPL exit.
+        # Without this they get sent as chat messages and produce
+        # confusing "daemon not running" errors if the socket has moved.
+        if line.strip().lower() in ("exit", "quit", "bye"):
+            return
         if line.startswith("/"):
             cmd, _, arg = line[1:].partition(" ")
             cmd = cmd.lower()
