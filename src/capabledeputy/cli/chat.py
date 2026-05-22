@@ -1948,6 +1948,20 @@ def chat_command(
             ),
         ),
     ] = False,
+    mode: Annotated[
+        str,
+        typer.Option(
+            "--mode",
+            help=(
+                "Surface selection (#15). `auto` (default) detects the "
+                "terminal — rich Textual surface on Ghostty / kitty / "
+                "iTerm2 / WezTerm / Alacritty, line mode elsewhere. "
+                "`line` forces the line-oriented prompt-toolkit REPL. "
+                "`rich` forces the Textual surface (errors if the "
+                "terminal doesn't support it). Defaults to `auto`."
+            ),
+        ),
+    ] = "auto",
 ) -> None:
     """Interactive REPL against a session.
 
@@ -1989,7 +2003,71 @@ def chat_command(
     if auto_created and not no_default_caps:
         _grant_default_read_caps(effective_id)
 
-    _repl_loop(effective_id)
+    # Issue #15 Phase B — surface dispatch.
+    # `--mode auto` (default) checks terminal capability detection
+    # from terminal_caps.caps() and picks rich for known-good
+    # families, line otherwise. Explicit `--mode line|rich` overrides.
+    _dispatch_surface(effective_id, mode)
+
+
+def _dispatch_surface(session_id: str, mode: str) -> None:
+    """Issue #15 — pick the chat surface based on `mode` + terminal
+    capabilities. Line mode is the current `_repl_loop`; rich mode
+    is the Textual surface in cli/rich_surface.py."""
+    from capabledeputy.cli.terminal_caps import caps as _caps
+
+    mode = (mode or "auto").lower()
+    if mode not in ("auto", "line", "rich"):
+        err_console.print(
+            f"[red]invalid --mode value:[/red] {mode!r}; expected "
+            "auto / line / rich",
+        )
+        raise typer.Exit(code=2)
+
+    if mode == "line":
+        _repl_loop(session_id)
+        return
+
+    c = _caps()
+    if mode == "rich":
+        # Forced rich — fail loudly if the terminal won't support it.
+        if not c.is_tty:
+            err_console.print(
+                "[red]--mode rich requires a TTY; falling through to "
+                "line mode would surprise scripts.[/red]",
+            )
+            raise typer.Exit(code=2)
+        _run_rich_surface(session_id)
+        return
+
+    # mode == "auto"
+    rich_families = ("ghostty", "kitty", "iterm2", "wezterm", "alacritty")
+    if c.family in rich_families and c.is_tty:
+        _run_rich_surface(session_id)
+    else:
+        _repl_loop(session_id)
+
+
+def _run_rich_surface(session_id: str) -> None:
+    """Phase B scaffold for the rich Textual surface (#15).
+
+    Currently a thin wrapper around the existing `tui/console.py`
+    CapDepConsole — the half-finished convergence attempt — promoted
+    to first-class entry point. Phase C will add the tabbed viewer
+    side-pane (#17). Phase D will add OSC 8 hyperlinks + sixel
+    graphics (#18, #19). Until feature parity with line mode is
+    reached, slash commands like /grant / /override are best run
+    from line mode; the rich surface focuses on conversation + live
+    label-state monitoring + verbatim approval review (the things
+    the existing CapDepConsole already implements).
+    """
+    from capabledeputy.tui.console import CapDepConsole
+
+    console.print(
+        "[dim]launching rich surface (Phase B scaffold; line mode "
+        "still has the full slash-command surface)[/dim]",
+    )
+    CapDepConsole(session_id).run()
 
 
 def _grant_default_read_caps(session_id: str) -> None:
