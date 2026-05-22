@@ -528,6 +528,9 @@ _HELP = """slash commands (user-only, never visible to the LLM):
               /extract <msg> <schema> — quarantined-LLM extraction
 
   trace:   /trace  /audit [N] [--full]
+           /tools [filter]      — list registered tools, grouped by
+                                  capability kind (optional substring
+                                  filter, e.g. /tools gmail)
 
   misc:    /help  /quit
 """
