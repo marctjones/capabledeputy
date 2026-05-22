@@ -143,15 +143,21 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
     # daemon with no key wired. The daemon will also log this, but
     # surfacing it before the user types a message saves a confusing
     # round-trip with the LLM rejecting an unauthenticated call.
+    # NB: don't use `Path` here — it's locally re-imported in the
+    # autostart branch below, which makes Python treat `Path` as a
+    # function-local name everywhere in this function. Use `pathlib`
+    # via a uniquely-named alias instead.
     import os as _os
+    from pathlib import Path as _PreflightPath
+
     from capabledeputy.secrets import DEFAULT_KEY_FILENAME
 
     has_env_key = bool(_os.environ.get("ANTHROPIC_API_KEY"))
-    has_file_key = Path.cwd().joinpath(DEFAULT_KEY_FILENAME).is_file()
+    has_file_key = _PreflightPath.cwd().joinpath(DEFAULT_KEY_FILENAME).is_file()
     if autostart and not has_env_key and not has_file_key:
         console.print(
             "[yellow]heads up:[/yellow] no ANTHROPIC_API_KEY in env and no "
-            f"{DEFAULT_KEY_FILENAME} in cwd ({Path.cwd()}). The agent's LLM "
+            f"{DEFAULT_KEY_FILENAME} in cwd ({_PreflightPath.cwd()}). The agent's LLM "
             "calls will fail. Either `export ANTHROPIC_API_KEY=...` first, "
             f"or place the key in ./{DEFAULT_KEY_FILENAME}.",
         )
