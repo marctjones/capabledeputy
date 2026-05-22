@@ -169,6 +169,11 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
                 f"[dim]daemon already running (config when started would have been "
                 f"{resolved_path} via {source})[/dim]",
             )
+        # Issue #10 — daemon version mismatch warning. If the running
+        # daemon was started with code older than what's now on disk,
+        # the operator may be debugging against stale behavior. Warn
+        # before the user types a message and gets confused.
+        _warn_on_daemon_drift()
         return
     except DaemonNotRunningError:
         if not autostart:
@@ -331,7 +336,15 @@ def _render_turn(result: dict[str, Any]) -> None:
         align="left",
         style="dim",
     )
-    console.print(f"[bold cyan]agent[/bold cyan]  {result['content']}")
+    # Issue #16 track 1: render agent output as markdown so headings,
+    # lists, code blocks render correctly. The agent's response often
+    # uses markdown structure for clarity; the plain-text fallback
+    # was visually noisy.
+    from rich.markdown import Markdown
+
+    content = result["content"]
+    console.print("[bold cyan]agent[/bold cyan]")
+    console.print(Markdown(content, code_theme="monokai"))
     _render_outcomes_table(result.get("tool_outcomes", []))
 
 
@@ -853,6 +866,47 @@ def _handle_tools(filter_substring: str = "") -> None:
             effect = t.get("effect_class") or ""
             effect_str = f"  [dim]({effect})[/dim]" if effect else ""
             console.print(f"  [bold]{name}[/bold]{effect_str}")
+
+
+def _warn_on_daemon_drift() -> None:
+    """Compare the running daemon's captured code version against
+    what's currently on disk; warn on drift. Best-effort — failures
+    here never block the chat flow."""
+    try:
+        daemon_version = _call("daemon.code_version", {})
+    except Exception:
+        return  # older daemons don't expose this RPC; skip silently
+
+    # Capture our current view of the source. Same logic as the
+    # daemon's _capture_code_version but called from this process.
+    from capabledeputy.daemon.handlers import _capture_code_version
+
+    on_disk = _capture_code_version()
+
+    daemon_hash = (daemon_version or {}).get("manifest_hash", "")
+    disk_hash = (on_disk or {}).get("manifest_hash", "")
+    daemon_rev = (daemon_version or {}).get("git_rev", "")
+    disk_rev = (on_disk or {}).get("git_rev", "")
+
+    if daemon_hash and disk_hash and daemon_hash != disk_hash:
+        # Drift detected.
+        details = []
+        if daemon_rev and disk_rev and daemon_rev != disk_rev:
+            details.append(
+                f"daemon git={daemon_rev[:8]} vs on-disk git={disk_rev[:8]}",
+            )
+        elif daemon_version.get("git_dirty") == "dirty" or on_disk.get("git_dirty") == "dirty":
+            details.append("uncommitted source changes detected")
+        details.append(
+            f"manifest {daemon_hash[:8]} vs {disk_hash[:8]}",
+        )
+        console.print(
+            "[yellow]heads up:[/yellow] running daemon was started with code "
+            "that differs from current source. "
+            f"({'; '.join(details)}) "
+            "Restart with [bold]capdep daemon stop && capdep chat[/bold] "
+            "to pick up changes.",
+        )
 
 
 def _handle_override(arg: str, session_id: str) -> None:
