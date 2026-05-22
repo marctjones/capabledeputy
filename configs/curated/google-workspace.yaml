@@ -1,82 +1,55 @@
-# Curated upstream config — Google Workspace (Gmail / Calendar / Tasks).
+# Google Workspace via the OFFICIAL Google CLI MCP server (`gws mcp`).
 #
-# Producer: COMMUNITY / PREVIEW. The official Google Workspace MCP is in
-# Developer Preview; the widely-used community implementation is
-# taylorwilsdon/google_workspace_mcp. This is NOT an official-tier
-# producer, so it carries supply-chain risk.
+# Producer: GOOGLE (official). The Google Workspace CLI ships an
+# MCP-over-stdio server that exposes Drive / Gmail / Calendar / Docs /
+# Sheets via Discovery-API-derived tool names. Google maintains the
+# code + handles OAuth via OS keyring (AES-256-GCM at rest); we just
+# spawn the binary and proxy stdio.
 #
-# That risk is exactly why this config is the strongest-locked one:
-#   - strict: true              -> unmapped tools refused (admission).
-#   - explicit overrides on     -> every send/create/modify/delete is
-#     every mutating/egress tool    pinned; nothing destructive relies
-#                                   on inference.
-#   - isolation network allowlist to Google API hosts only.
-#   - OAuth scoping is the producer's job; do it least-privilege.
+# Operator setup (once, end-to-end):
+#   npm install -g @googleworkspace/cli       # install
+#   gws auth setup                            # one-time gcloud + OAuth client
+#   gws auth login -s drive,gmail,calendar    # browser consent
 #
-# Inbound mail/calendar content originates from third parties ->
-# untrusted.external, so the engine blocks exfiltration of it and the
-# regulated-data conflict rules apply when it is personal/financial.
+# Then either:
+#   capdep daemon start --config configs/curated/google-workspace.yaml
+# or (recommended) `capdep gworkspace-setup` to wire the managed block
+# into your user-local daemon config so plain `capdep chat` picks it up.
 #
-# Verify `command:` and OAuth setup against the producer's current docs.
+# Replaces both:
+#   - the deprecated home-grown `capdep mcp-server-gworkspace`
+#   - the prior community `uvx workspace-mcp` invocation
 
 upstream_servers:
-  - name: gmail
-    command: ["uvx", "workspace-mcp", "--tools", "gmail"]
-    strict: true
-    inherent_labels:
-      - untrusted.external
-      - confidential.personal
-    tool_overrides:
-      search_gmail_messages: { capability_kind: READ_FS }
-      get_gmail_message:     { capability_kind: READ_FS }
-      list_gmail_labels:     { capability_kind: READ_FS }
-      send_gmail_message:    { capability_kind: SEND_EMAIL }
-      draft_gmail_message:   { capability_kind: MODIFY_FS }
-      modify_gmail_labels:   { capability_kind: MODIFY_FS }
-      trash_gmail_message:   { capability_kind: DELETE_FS }
-    isolation:
-      image: docker.io/library/python:3.12-slim
-      network: bridge
-      allowed_hosts:
-        - "gmail.googleapis.com:127.0.0.1"
-        - "oauth2.googleapis.com:127.0.0.1"
-      memory: "256m"
-
-  - name: gcal
-    command: ["uvx", "workspace-mcp", "--tools", "calendar"]
-    strict: true
+  - name: gws
+    command: ["gws", "mcp", "-s", "drive,gmail,calendar,docs,sheets"]
     inherent_labels:
       - confidential.personal
     tool_overrides:
-      list_calendars:   { capability_kind: CALENDAR_READ }
-      list_events:      { capability_kind: CALENDAR_READ }
-      get_event:        { capability_kind: CALENDAR_READ }
-      create_event:     { capability_kind: CREATE_CAL }
-      modify_event:     { capability_kind: MODIFY_CAL }
-      delete_event:     { capability_kind: DELETE_CAL }
-    isolation:
-      image: docker.io/library/python:3.12-slim
-      network: bridge
-      allowed_hosts:
-        - "www.googleapis.com:127.0.0.1"
-        - "oauth2.googleapis.com:127.0.0.1"
-      memory: "256m"
-
-  - name: gtasks
-    command: ["uvx", "workspace-mcp", "--tools", "tasks"]
+      # Tool names follow Google Discovery API method paths
+      # (e.g. `gmail.users.messages.send`). The adapter's name-based
+      # inference handles the obvious `send`/`delete`/`update`/`create`
+      # patterns; pin the highest-risk ones explicitly here so nothing
+      # depends on inference for outbound or destructive calls.
+      "gmail.users.messages.send":
+        capability_kind: SEND_EMAIL
+      "calendar.events.delete":
+        capability_kind: DELETE_CAL
+        additional_labels: ["confidential.personal"]
+      "calendar.events.update":
+        capability_kind: MODIFY_CAL
+        additional_labels: ["confidential.personal"]
+      "drive.files.delete":
+        capability_kind: DELETE_FS
+        additional_labels: ["confidential.personal"]
+      "drive.files.update":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+    # Strict mode: tools without an explicit override OR a confident
+    # name-based inference are REFUSED at registration. The adapter
+    # logs each rejected tool to stderr — copy the ones you actually
+    # need into the overrides above. This is the safe posture for a
+    # curated config; the user-managed block written by
+    # `capdep gworkspace-setup` is more permissive (strict: false) for
+    # personal exploration.
     strict: true
-    inherent_labels:
-      - confidential.personal
-    tool_overrides:
-      list_tasks:   { capability_kind: READ_FS }
-      get_task:     { capability_kind: READ_FS }
-      create_task:  { capability_kind: CREATE_FS }
-      update_task:  { capability_kind: MODIFY_FS }
-      delete_task:  { capability_kind: DELETE_FS }
-    isolation:
-      image: docker.io/library/python:3.12-slim
-      network: bridge
-      allowed_hosts:
-        - "tasks.googleapis.com:127.0.0.1"
-        - "oauth2.googleapis.com:127.0.0.1"
-      memory: "128m"

@@ -731,52 +731,125 @@ smtp:
 
 
 @app.command("gworkspace-setup")
-def gworkspace_setup() -> None:
-    """Run the one-time OAuth consent flow for Google Workspace.
+def gworkspace_setup(
+    register_only: Annotated[
+        bool,
+        typer.Option(
+            "--register-only",
+            help=(
+                "Skip the install/auth checklist; only add/refresh the "
+                "Google Workspace block in the user-local daemon config. "
+                "Use when `gws` is already installed and `gws auth login` "
+                "has succeeded."
+            ),
+        ),
+    ] = False,
+    services: Annotated[
+        str,
+        typer.Option(
+            "--services",
+            "-s",
+            help=(
+                "Comma-separated services to expose via `gws mcp`. "
+                "Default: drive,gmail,calendar,docs,sheets. Use `all` "
+                "to expose every Workspace surface (may exceed your "
+                "client's tool limit)."
+            ),
+        ),
+    ] = "drive,gmail,calendar,docs,sheets",
+) -> None:
+    """Wire up the OFFICIAL Google Workspace CLI MCP server (`gws mcp`).
 
-    Prerequisites:
-      1. Create a Google Cloud project + enable Gmail/Docs/Drive/Calendar APIs.
-      2. Create an OAuth 2.0 Client ID (type: Desktop application).
-      3. Download `credentials.json` and save it to:
-           ~/.config/capabledeputy/secrets/gworkspace-credentials.json
-           (mode 0600)
+    This replaces our home-grown `mcp-server-gworkspace` (deprecated)
+    with the Google-maintained CLI. Google handles OAuth token storage
+    (OS keyring, AES-256-GCM at rest) — no more home-rolled
+    credentials.json + token.json files on disk.
 
-    Then run this command. It opens a browser; you approve; the
-    refresh token is cached. Subsequent daemon spawns reuse it.
+    Three steps the operator does ONCE:
 
-    To revoke: delete
-      ~/.config/capabledeputy/secrets/gworkspace-token.json
-    and re-run setup.
+      1. npm install -g @googleworkspace/cli         # install
+      2. gws auth setup                              # one-time gcloud + OAuth client
+      3. gws auth login -s drive,gmail,calendar      # browser consent
+
+    Then run this command (or `--register-only` if creds are already
+    set up) to write a managed block into
+    `~/.config/capabledeputy/daemon.yaml`. After that, `capdep chat`
+    automatically loads the official Google Workspace tools alongside
+    your other upstreams.
+
+    Tool naming follows Google Discovery API method names (e.g.
+    `gws.gmail.users.messages.send`). The block ships with explicit
+    overrides for the obvious dangerous calls (send, delete); the
+    adapter's name-based inference handles the rest. Audit via
+    [bold]/tools gws[/bold] in chat and add overrides as needed —
+    user-edits OUTSIDE the managed markers are preserved across
+    re-registration.
     """
-    from capabledeputy.mcp_servers._gworkspace_auth import (
-        credentials_path,
-        run_consent_flow,
+    from capabledeputy.cli._managed_config import (
+        GWORKSPACE_BLOCK_BODY,
+        GWORKSPACE_BLOCK_ID,
+        gws_cli_available,
+        user_default_daemon_config_path,
+        write_managed_block,
     )
 
-    cp = credentials_path()
-    if not cp.is_file():
-        err_console.print(
-            f"[red]missing OAuth client credentials at {cp}[/red]\n"
-            "  Create a Desktop OAuth client in Google Cloud Console and\n"
-            "  save the downloaded credentials.json there (mode 0600).",
+    have_gws = gws_cli_available()
+
+    # Build the block body with the user's chosen services if non-default.
+    block_body = GWORKSPACE_BLOCK_BODY
+    if services != "drive,gmail,calendar,docs,sheets":
+        # Patch the -s argument in the command line.
+        block_body = block_body.replace(
+            'command: ["gws", "mcp", "-s", "drive,gmail,calendar,docs,sheets"]',
+            f'command: ["gws", "mcp", "-s", "{services}"]',
         )
-        raise typer.Exit(code=2)
 
-    console.print(
-        "[bold]starting OAuth consent flow[/bold] — a browser will open. "
-        "Approve the requested scopes.",
-    )
-    try:
-        tp = run_consent_flow()
-    except Exception as e:
-        err_console.print(f"[red]OAuth flow failed:[/red] {e}")
-        raise typer.Exit(code=1) from e
+    if not register_only:
+        # Walk-through mode: show the checklist + check what's done.
+        console.print("[bold]Google Workspace setup — official CLI path[/bold]\n")
+        if have_gws:
+            console.print("  [green]✓[/green] `gws` binary on PATH")
+        else:
+            console.print(
+                "  [yellow]·[/yellow] `gws` not found on PATH. Install with:\n"
+                "      [bold]npm install -g @googleworkspace/cli[/bold]",
+            )
+        console.print(
+            "  [yellow]·[/yellow] One-time auth setup (needs gcloud CLI):\n"
+            "      [bold]gws auth setup[/bold]",
+        )
+        console.print(
+            f"  [yellow]·[/yellow] Browser consent for the services you want:\n"
+            f"      [bold]gws auth login -s {services}[/bold]",
+        )
+        console.print(
+            "\nOnce all three steps are done, re-run [bold]capdep gworkspace-setup "
+            "--register-only[/bold] to wire the server into your daemon config "
+            "(or just continue — we'll write the block now and you can install/"
+            "auth afterwards; the daemon will report the missing `gws` binary on "
+            "first start until you do).\n",
+        )
 
-    console.print(f"[green]token cached to {tp}[/green]")
-    console.print(
-        "\n[bold]next:[/bold] add the gworkspace server to a daemon config and start the daemon.\n"
-        "  See [bold]configs/curated/google-workspace.yaml[/bold] for an example.",
-    )
+    daemon_yaml = user_default_daemon_config_path()
+    replaced, changed = write_managed_block(daemon_yaml, GWORKSPACE_BLOCK_ID, block_body)
+    if changed and replaced:
+        console.print(f"[green]refreshed gworkspace block in {daemon_yaml}[/green]")
+    elif changed:
+        console.print(f"[green]registered gworkspace block in {daemon_yaml}[/green]")
+    else:
+        console.print(f"[dim]gworkspace block in {daemon_yaml} already up to date[/dim]")
+
+    if have_gws:
+        console.print(
+            "\n[bold]next:[/bold] [bold]capdep chat[/bold] — Google Workspace "
+            f"tools ({services}) will be available automatically.",
+        )
+    else:
+        console.print(
+            "\n[bold]next:[/bold] install `gws` (see above) + run `gws auth login`, "
+            "then start the daemon. The managed block is in place — it activates "
+            "as soon as the binary is reachable.",
+        )
 
 
 @app.command("compliance-emit-ssp")

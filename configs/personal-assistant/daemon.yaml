@@ -73,40 +73,39 @@ upstream_servers:
       "git.branch_list":
         capability_kind: READ_FS
 
-  # ---------------- Google Workspace ----------------
-  # Comment out this block if you don't want / haven't set up Google
-  # integration. See docs/gworkspace-setup.md for the one-time OAuth
-  # consent flow.
+  # ---------------- Google Workspace (OFFICIAL CLI) ----------------
+  # Wired to `gws mcp` from `@googleworkspace/cli`. Replaces the
+  # deprecated home-grown `mcp-server-gworkspace`. Google handles OAuth
+  # via OS keyring; we just spawn + proxy stdio.
+  #
+  # Operator setup (once):
+  #   npm install -g @googleworkspace/cli
+  #   gws auth setup
+  #   gws auth login -s drive,gmail,calendar,docs,sheets
+  #
+  # See docs/gworkspace-setup.md for the full walkthrough.
+  # Comment this block out if you don't want Google integration.
 
-  - name: google
-    command: ["capdep", "mcp-server-gworkspace"]
-    inherent_labels: []
+  - name: gws
+    command: ["gws", "mcp", "-s", "drive,gmail,calendar,docs,sheets"]
+    inherent_labels:
+      - confidential.personal
     tool_overrides:
-      "gmail.list_threads":
-        capability_kind: READ_FS
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      "gmail.read_thread":
-        capability_kind: READ_FS
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      "gmail.send":
+      # Tools follow Google Discovery API method paths. The adapter's
+      # name-based inference covers most cases; pin the highest-risk
+      # ones explicitly so nothing destructive depends on inference.
+      "gmail.users.messages.send":
         capability_kind: SEND_EMAIL
-      "gmail.search":
-        capability_kind: READ_FS
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      "docs.read":
-        capability_kind: READ_FS
+      "calendar.events.delete":
+        capability_kind: DELETE_CAL
         additional_labels: ["confidential.personal"]
-      "docs.create":
-        capability_kind: CREATE_FS
-      "drive.list":
-        capability_kind: READ_FS
+      "calendar.events.update":
+        capability_kind: MODIFY_CAL
         additional_labels: ["confidential.personal"]
-      "drive.read_file_content":
-        capability_kind: READ_FS
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      "calendar.list_events":
-        capability_kind: CALENDAR_READ
+      "drive.files.delete":
+        capability_kind: DELETE_FS
         additional_labels: ["confidential.personal"]
-      "calendar.create_event":
-        capability_kind: CREATE_CAL
-    strict: true
+      "drive.files.update":
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+    strict: false

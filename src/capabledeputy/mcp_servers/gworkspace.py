@@ -1,4 +1,15 @@
-"""Bundled MCP server: Google Workspace (Gmail + Docs + Drive + Calendar).
+"""[DEPRECATED] Bundled MCP server: Google Workspace.
+
+Superseded by the official Google CLI MCP server (`gws mcp` from
+`@googleworkspace/cli`). New installs should run
+`capdep gworkspace-setup` to wire the official CLI — that's what
+the curated configs + the personal-assistant preset now ship.
+
+This module is kept around for back-compat with existing
+deployments that already wrote `command: ["capdep",
+"mcp-server-gworkspace"]` into their config. New code should NOT
+reference it. The module + its credentials helpers will be removed
+in a future release; check the CHANGELOG before relying on this.
 
 Pure Python; uses google-api-python-client. Operator runs
 `capdep gworkspace-setup` once to consent + cache a refresh token,

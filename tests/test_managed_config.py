@@ -283,3 +283,66 @@ def test_podman_available_falls_back_to_false(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr(shutil, "which", lambda _name: None)
     assert podman_available() is False
+
+
+# --- Google Workspace block via official `gws mcp` ----
+
+
+def test_gworkspace_block_writes_managed_section(xdg_tmp: Path) -> None:
+    from capabledeputy.cli._managed_config import (
+        GWORKSPACE_BLOCK_BODY,
+        GWORKSPACE_BLOCK_ID,
+    )
+
+    path = user_default_daemon_config_path()
+    replaced, changed = write_managed_block(path, GWORKSPACE_BLOCK_ID, GWORKSPACE_BLOCK_BODY)
+    assert replaced is False
+    assert changed is True
+    text = path.read_text(encoding="utf-8")
+    assert "# BEGIN capdep-managed: gworkspace" in text
+    assert "# END capdep-managed: gworkspace" in text
+    parsed = yaml.safe_load(text)
+    # The gws server is registered as a single upstream
+    names = [s["name"] for s in parsed["upstream_servers"]]
+    assert "gws" in names
+    # Verify the command is the official CLI invocation
+    gws_entry = next(s for s in parsed["upstream_servers"] if s["name"] == "gws")
+    assert gws_entry["command"][0] == "gws"
+    assert gws_entry["command"][1] == "mcp"
+    assert "-s" in gws_entry["command"]
+    # Send/delete pinning is in the overrides
+    overrides = gws_entry["tool_overrides"]
+    assert overrides["gmail.users.messages.send"]["capability_kind"] == "SEND_EMAIL"
+    assert overrides["calendar.events.delete"]["capability_kind"] == "DELETE_CAL"
+    assert overrides["drive.files.delete"]["capability_kind"] == "DELETE_FS"
+
+
+def test_gworkspace_block_coexists_with_imap_and_bundled(xdg_tmp: Path) -> None:
+    """All three setup commands write into the same daemon.yaml and
+    their managed blocks must not collide."""
+    from capabledeputy.cli._managed_config import (
+        GWORKSPACE_BLOCK_BODY,
+        GWORKSPACE_BLOCK_ID,
+        register_default_assistant_surface,
+    )
+
+    path = user_default_daemon_config_path()
+    write_managed_block(path, "imap", IMAP_BLOCK_BODY)
+    register_default_assistant_surface(path, include_sandbox=False)
+    write_managed_block(path, GWORKSPACE_BLOCK_ID, GWORKSPACE_BLOCK_BODY)
+
+    parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+    names = {s["name"] for s in parsed["upstream_servers"]}
+    # Bundled five + imap (named `mail`) + gworkspace (named `gws`)
+    assert {"mail", "bundled-fs", "bundled-memory", "bundled-git", "bundled-fetch", "bundled-search", "gws"}.issubset(names)
+
+
+def test_gws_cli_available_returns_false_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import shutil
+
+    from capabledeputy.cli._managed_config import gws_cli_available
+
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    assert gws_cli_available() is False

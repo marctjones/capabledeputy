@@ -424,6 +424,68 @@ DEFAULT_ASSISTANT_BUNDLED_BLOCKS: tuple[tuple[str, str], ...] = (
 )
 
 
+# ---- Google Workspace via the official `gws mcp` (Google Workspace CLI) ----
+#
+# Authoritative path for Drive/Gmail/Calendar/Docs/Sheets. Replaces our
+# previous home-grown `mcp-server-gworkspace` (kept around for back-compat
+# but deprecated). Auth is handled by `gws auth setup` + `gws auth login`
+# — Google manages OAuth tokens in the OS keyring (AES-256-GCM), not us.
+#
+# Tool naming under `gws mcp` follows the Discovery API method names
+# (e.g. `gmail.users.messages.send`). The adapter's `_infer_capability_
+# kind` heuristic recognizes the obvious dangerous patterns (`send`,
+# `delete`, `update`) and tags them appropriately. `strict: false` lets
+# unrecognized tools fall back to READ_FS rather than refusing — once
+# the operator inspects `/tools gmail` in chat and decides which
+# specific calls need tighter overrides, they can append explicit
+# `tool_overrides` entries below the BEGIN/END markers (those edits
+# survive re-registration; only content between the markers is
+# regenerated).
+
+GWORKSPACE_BLOCK_ID = "gworkspace"
+GWORKSPACE_BLOCK_BODY = """\
+  - name: gws
+    command: ["gws", "mcp", "-s", "drive,gmail,calendar,docs,sheets"]
+    inherent_labels: ["confidential.personal"]
+    tool_overrides:
+      # Most-dangerous escapees from name-based inference get pinned
+      # to explicit kinds + labels. The adapter still infers for the
+      # rest; override anything that surprises you after auditing
+      # `/tools gws` in chat.
+      "gmail.users.messages.send":
+        capability_kind: SEND_EMAIL
+      "calendar.events.delete":
+        capability_kind: DELETE_CAL
+        additional_labels: ["confidential.personal"]
+      "drive.files.delete":
+        capability_kind: DELETE_FS
+        additional_labels: ["confidential.personal"]
+    strict: false
+"""
+
+
+def gws_cli_available() -> bool:
+    """True iff the `gws` binary is on PATH. Used by the setup command
+    to refuse a register-only flow before the user has installed the
+    Workspace CLI."""
+    import shutil
+    import subprocess
+
+    bin_path = shutil.which("gws")
+    if bin_path is None:
+        return False
+    try:
+        result = subprocess.run(  # noqa: S603
+            [bin_path, "--version"],
+            capture_output=True,
+            timeout=3,
+            check=False,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
 # ---- top-level `sandbox:` block ----
 # This is NOT inside `upstream_servers:` — it's a peer YAML key. The
 # managed-block helper handles it via the `top_level=True` mode below.
