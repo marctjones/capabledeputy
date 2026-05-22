@@ -207,7 +207,7 @@ async def run_turn(
     graph: SessionGraph,
     audit: AuditWriter,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-    max_iterations: int = 10,
+    max_iterations: int = 50,
     force_mode: ExecutionMode | None = None,
 ) -> AgentTurnResult:
     session = graph.get(session_id)

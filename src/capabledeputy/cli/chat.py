@@ -255,6 +255,9 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
 
 
 _TURN_COUNTER = {"n": 0}
+# Per-process holder for the operator's `--max-iters` choice.
+# Read on every _send_message call so the daemon honors it.
+_SESSION_MAX_ITERS: dict[str, int] = {"value": 50}
 
 
 def _render_outcomes_table(outcomes: list[dict[str, Any]]) -> None:
@@ -621,8 +624,15 @@ def _handle_submit(session_id: str) -> None:
     console.print(f"[green]submitted[/green] approval #{result['id']}")
 
 
-def _send_message(session_id: str, message: str) -> dict[str, Any]:
-    return _call("session.send", {"session_id": session_id, "message": message})
+def _send_message(
+    session_id: str,
+    message: str,
+    max_iterations: int | None = None,
+) -> dict[str, Any]:
+    params: dict[str, Any] = {"session_id": session_id, "message": message}
+    if max_iterations is not None:
+        params["max_iterations"] = max_iterations
+    return _call("session.send", params)
 
 
 _HELP = """slash commands (user-only, never visible to the LLM):
@@ -2014,7 +2024,11 @@ def _run_repl(
         # invisible prompt-toolkit input).
         _render_user_message(line)
         try:
-            last_result = _send_message(focus["id"], line)
+            last_result = _send_message(
+                focus["id"],
+                line,
+                max_iterations=_SESSION_MAX_ITERS.get("value"),
+            )
         except Exception as e:
             err_console.print(f"[red]rpc error:[/red] {e}")
             if state is not None:
@@ -2137,6 +2151,19 @@ def chat_command(
             ),
         ),
     ] = "auto",
+    max_iters: Annotated[
+        int,
+        typer.Option(
+            "--max-iters",
+            help=(
+                "Max LLM iterations per turn. The agent loop will call "
+                "tools and feed results back until it hits this cap or "
+                "returns a final answer. Default 50 — multi-step tasks "
+                "(summarize-inbox, audit-codebase) often need 20+. Bump "
+                "for complex workflows; lower for cost control."
+            ),
+        ),
+    ] = 50,
 ) -> None:
     """Interactive REPL against a session.
 
@@ -2177,6 +2204,14 @@ def chat_command(
     # shouldn't have to chant /grant for safe reads.
     if auto_created and not no_default_caps:
         _grant_default_read_caps(effective_id)
+
+    # Store max_iters for the session so every send_message call
+    # uses it. Per-session override via env var if needed.
+    import os as _os_for_iters
+
+    env_override = _os_for_iters.environ.get("CAPDEP_MAX_ITERS")
+    effective_max_iters = int(env_override) if env_override else max_iters
+    _SESSION_MAX_ITERS["value"] = effective_max_iters
 
     # Issue #15 Phase B — surface dispatch.
     # `--mode auto` (default) checks terminal capability detection

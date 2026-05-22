@@ -62,7 +62,7 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
             registry=app.registry,
             graph=app.graph,
             audit=app.audit,
-            max_iterations=int(params.get("max_iterations", 10)),
+            max_iterations=int(params.get("max_iterations", 50)),
             force_mode=force_mode,
         )
         return {
