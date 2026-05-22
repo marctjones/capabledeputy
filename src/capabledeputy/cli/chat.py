@@ -329,9 +329,23 @@ def _render_outcomes_table(outcomes: list[dict[str, Any]]) -> None:
 
 def _render_recovery_steps(steps: Any, fallback_rule: str | None) -> None:
     """Render Issue #3 recovery steps as literal pasteable commands.
+
+    On terminals that support OSC 8 hyperlinks (Ghostty, kitty,
+    iTerm2, WezTerm, modern xterm — detected by `terminal_caps.caps()`),
+    each recovery command is wrapped in a `capdep://paste/<cmd>` URI
+    so the terminal can paste-on-click. Terminals without OSC 8
+    silently swallow the escape; the rendered text stays pasteable
+    via mouse-select-and-paste.
+
     Falls back to the static `DENY_RECOVERY` prose hint if the
     decision didn't carry structured steps (e.g. older audit events,
     or rules the synthesizer doesn't know yet)."""
+    from urllib.parse import quote
+
+    from capabledeputy.cli.terminal_caps import caps as _caps
+
+    use_hyperlinks = _caps().hyperlinks
+
     if steps:
         console.print("  [cyan]↳ recover:[/cyan]")
         for s in steps:
@@ -341,9 +355,17 @@ def _render_recovery_steps(steps: Any, fallback_rule: str | None) -> None:
                 s.get("rationale") if isinstance(s, dict) else getattr(s, "rationale", "")
             )
             arg_str = " ".join(args) if args else ""
-            console.print(
-                f"     [bold]{cmd} {arg_str}[/bold]  [dim]· {rationale}[/dim]",
-            )
+            command_line = f"{cmd} {arg_str}".strip()
+            if use_hyperlinks:
+                # Rich [link=...] emits OSC 8. capdep:// URI scheme is
+                # intercepted by future terminal-integration work; for
+                # now most terminals show it as a tooltip / context-menu
+                # copy target — which is the immediate UX win.
+                uri = f"capdep://paste/{quote(command_line)}"
+                rendered = f"[bold][link={uri}]{command_line}[/link][/bold]"
+            else:
+                rendered = f"[bold]{command_line}[/bold]"
+            console.print(f"     {rendered}  [dim]· {rationale}[/dim]")
         return
     # Fallback to legacy prose hint
     hint = _DENY_RECOVERY.get(fallback_rule or "")
