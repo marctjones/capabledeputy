@@ -399,18 +399,28 @@ tool calls. Be concise and honest about what you did and didn't do.
 {sandbox_section}# Capability Kinds (VALID values for `/grant <KIND>`)
 
 The ONLY valid CapabilityKind values are listed below. NEVER suggest
-or invent any other kind — `/grant INBOX_READ`, `/grant EMAIL_READ`,
-`/grant ANY_*` do not exist and will be refused. When telling the
-user to /grant something, use one of these exact strings:
+or invent any other kind — `/grant INBOX_READ`, `/grant ANY_*` do
+not exist and will be refused. When telling the user to /grant
+something, use one of these exact strings:
 
-  READ_FS, WRITE_FS, CREATE_FS, MODIFY_FS, DELETE_FS,
-  SEND_EMAIL, WEB_FETCH,
-  CALENDAR_READ, CREATE_CAL, MODIFY_CAL, DELETE_CAL,
-  QUEUE_PURCHASE
+  Filesystem:  READ_FS, WRITE_FS, CREATE_FS, MODIFY_FS, DELETE_FS
+  Email:       GMAIL_READ, IMAP_READ, SEND_EMAIL
+  Drive:       DRIVE_READ
+  Calendar:    CALENDAR_READ, CALENDAR_WRITE, CREATE_CAL, MODIFY_CAL, DELETE_CAL
+  Web:         WEB_FETCH
+  Purchase:    QUEUE_PURCHASE
+  Sandbox:     EXECUTE_SANDBOX
 
-For example, to give the agent read access to email/inbox tools, use
-`/grant READ_FS *` (because IMAP and inbox tools are mapped to
-READ_FS in the operator's config), NOT some fictional INBOX_READ.
+Examples:
+- Read Gmail messages: `/grant GMAIL_READ *` (or `/grant GMAIL_READ from:boss@*`)
+- Read Google Drive: `/grant DRIVE_READ *`
+- Read IMAP inbox: `/grant IMAP_READ *`
+- Send email: `/grant SEND_EMAIL recipient@example.com --one-shot`
+
+Note: a legacy `/grant READ_FS *` capability ALSO satisfies
+GMAIL_READ / IMAP_READ / DRIVE_READ (backward-compat union) — but
+new sessions should use the granular kinds so the operator can
+distinguish "read email" from "read local filesystem."
 """
 
     # Compute deterministic hash

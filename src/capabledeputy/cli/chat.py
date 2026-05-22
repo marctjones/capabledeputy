@@ -2304,13 +2304,24 @@ def _grant_default_read_caps(session_id: str) -> None:
 
     home = _os.path.expanduser("~")
     default_caps = (
+        # Filesystem reads — scoped to operator's work dirs (Issue #6).
         ("READ_FS", f"{home}/Documents/*"),
         ("READ_FS", f"{home}/Projects/*"),
         ("READ_FS", f"{home}/Downloads/*"),
         ("READ_FS", f"{home}/Desktop/*"),
         ("READ_FS", "/tmp/*"),
+        # Personal-assistant reads (Issue #33 partial fix) — granular
+        # kinds so the operator's email / drive access doesn't depend
+        # on a sketchy "READ_FS *" or "READ_FS gmail:*" hack. These are
+        # read-only and inherently safe to default-grant; sensitive
+        # operations like SEND_EMAIL / DELETE / share stay behind
+        # explicit /grant per the destructive-kinds rule.
+        ("GMAIL_READ", "*"),
+        ("IMAP_READ", "*"),
+        ("DRIVE_READ", "*"),
         ("CALENDAR_READ", "*"),
         ("WEB_FETCH", "*"),
+        # Sandbox + scratch workspace creation
         ("CREATE_FS", f"{home}/.capdep/work/*"),
         ("CREATE_FS", "/tmp/*"),
         # Sandbox: granting scoped to the bundled `scratch` region.

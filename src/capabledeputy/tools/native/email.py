@@ -240,7 +240,7 @@ def make_email_tools(outbox: EmailOutbox, drafts: DraftBox) -> list[ToolDefiniti
         ToolDefinition(
             name="email.draft_list",
             description="List saved drafts. Read-only.",
-            capability_kind=CapabilityKind.READ_FS,
+            capability_kind=CapabilityKind.IMAP_READ,
             handler=email_draft_list,
             effect_class="data.read_local",
             default_reversibility={"degree": "reversible", "agent": "system"},

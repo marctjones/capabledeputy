@@ -70,8 +70,59 @@ def _infer_capability_kind(
         False,
     )
 
-    if any(t in lowered for t in ("send", "email", "mail")):
+    # Read-operation tokens that disambiguate read vs. write/send for
+    # services where the service-name alone is ambiguous (a 'gmail'
+    # tool can be read OR send; a 'drive' tool can be read OR delete).
+    read_tokens = ("read", "get", "list", "search", "find", "view")
+    has_read_token = any(t in lowered for t in read_tokens)
+
+    # Service classification — first match wins. Each branch then
+    # picks the right read/write kind based on tokens + hints.
+
+    # Gmail (matches "gmail.*" but NOT just "mail" — otherwise
+    # "voicemail" / "mailbox" / etc. would be misclassified).
+    if "gmail" in lowered:
+        if "send" in lowered:
+            return CapabilityKind.SEND_EMAIL
+        if any(t in lowered for t in _DELETE_TOKENS):
+            return CapabilityKind.DELETE_FS  # email deletion — destructive
+        if read_only or has_read_token:
+            return CapabilityKind.GMAIL_READ
+        # Default Gmail tool with unclear hint: most-restrictive read.
+        return CapabilityKind.GMAIL_READ
+
+    # Generic email (IMAP, SMTP — not Gmail-specific). "email" /
+    # "imap" / "smtp" in the name.
+    if any(t in lowered for t in ("imap", "smtp")) or (
+        "email" in lowered and "gmail" not in lowered
+    ):
+        if "send" in lowered or "smtp" in lowered:
+            return CapabilityKind.SEND_EMAIL
+        # IMAP-specific read tokens. `fetch` is the IMAP read primitive.
+        if read_only or has_read_token or "fetch" in lowered:
+            return CapabilityKind.IMAP_READ
+        # IMAP tools without a clear hint default to read (most-
+        # restrictive); destructive operations should be explicitly
+        # marked via tool annotations.
+        return CapabilityKind.IMAP_READ
+
+    # Google Drive (matches "drive.*"). Read by default; create/
+    # modify/delete distinguished by tokens.
+    if "drive" in lowered:
+        if any(t in lowered for t in _DELETE_TOKENS):
+            return CapabilityKind.DELETE_FS
+        if any(t in lowered for t in _CREATE_TOKENS):
+            return CapabilityKind.CREATE_FS
+        if destructive or any(t in lowered for t in _MODIFY_TOKENS):
+            return CapabilityKind.MODIFY_FS
+        if read_only or has_read_token:
+            return CapabilityKind.DRIVE_READ
+        return CapabilityKind.DRIVE_READ
+
+    # "send" alone (no Gmail) is generic SEND_EMAIL.
+    if "send" in lowered:
         return CapabilityKind.SEND_EMAIL
+
     if any(t in lowered for t in ("fetch", "web", "http", "url", "browse")):
         return CapabilityKind.WEB_FETCH
     if any(t in lowered for t in ("purchase", "buy", "checkout", "order")):
@@ -94,7 +145,7 @@ def _infer_capability_kind(
         return CapabilityKind.CREATE_FS
     if destructive or any(t in lowered for t in _MODIFY_TOKENS):
         return CapabilityKind.MODIFY_FS
-    if read_only or any(t in lowered for t in ("read", "get", "list", "search", "find")):
+    if read_only or has_read_token:
         return CapabilityKind.READ_FS
     return None
 
@@ -221,11 +272,13 @@ class LabeledMcpAdapter:
                 # Not confidently classifiable and no explicit override.
                 if self._config.strict:
                     # Fail closed: refuse to register. An unmapped tool
-                    # is unavailable, never silently granted READ_FS.
+                    # is unavailable, never silently granted any read kind.
                     self._rejected_tools.append(upstream_tool.name)
                     continue
                 # Legacy/trusted server opted out of strict: most-
-                # restrictive fallback (read), not write/exec.
+                # restrictive fallback (READ_FS for back-compat — older
+                # grants might cover this tool. New deployments should
+                # use strict mode + explicit overrides).
                 kind = CapabilityKind.READ_FS
 
             additional = override.additional_labels if override else frozenset()

@@ -44,6 +44,22 @@ class CapabilityKind(StrEnum):
     # is wired (FR-042 fail-closed).
     EXECUTE_SANDBOX = "EXECUTE_SANDBOX"
 
+    # Granular read kinds for data sources that are NOT the local
+    # filesystem (Issue #33 partial — minimum-viable for "read my
+    # email by default"). Previously every read-shaped tool was
+    # mapped to READ_FS regardless of whether it actually read the
+    # filesystem; that was a category confusion that prevented
+    # operators from granting "read Gmail without granting
+    # read-local-files." These kinds let operators distinguish.
+    #
+    # Backward-compat: a `READ_FS *` capability still matches GMAIL_READ
+    # / IMAP_READ / DRIVE_READ actions (see _READ_UNION_MATCHES below).
+    # Existing /grant READ_FS * grants for legacy reasons keep working;
+    # new sessions get granular caps by default.
+    GMAIL_READ = "GMAIL_READ"
+    IMAP_READ = "IMAP_READ"
+    DRIVE_READ = "DRIVE_READ"
+
 
 # Action kinds the policy engine treats as "destructive" — modifying or
 # deleting existing state. New tools opt into stricter gating by setting
@@ -69,6 +85,13 @@ _WRITE_UNION_MATCHES: dict[CapabilityKind, frozenset[CapabilityKind]] = {
     ),
     CapabilityKind.CALENDAR_WRITE: frozenset(
         {CapabilityKind.CREATE_CAL, CapabilityKind.MODIFY_CAL, CapabilityKind.DELETE_CAL},
+    ),
+    # Issue #33 partial — a legacy `READ_FS` capability still satisfies
+    # the granular external-read kinds. Operators with existing
+    # `/grant READ_FS *` grants (or the prior default `READ_FS *`)
+    # keep working. New default grants use the granular kinds.
+    CapabilityKind.READ_FS: frozenset(
+        {CapabilityKind.GMAIL_READ, CapabilityKind.IMAP_READ, CapabilityKind.DRIVE_READ},
     ),
 }
 
