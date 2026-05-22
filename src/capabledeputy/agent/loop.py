@@ -210,6 +210,88 @@ async def run_turn(
     max_iterations: int = 50,
     force_mode: ExecutionMode | None = None,
 ) -> AgentTurnResult:
+    """Issue #21 — `run_turn` is now a thin wrapper around the
+    streaming generator `run_turn_streaming`. Existing callers
+    (daemon RPC, tests, programmatic_loop, etc.) keep working
+    unchanged: this consumes all events and returns the final
+    `AgentTurnResult`. New streaming consumers (chat REPL Rich
+    Live region, rich Textual surface) call `run_turn_streaming`
+    directly via `for await` and observe each event."""
+    from capabledeputy.agent.events import TurnCompleted, TurnInterrupted
+
+    final_result: AgentTurnResult | None = None
+    interrupt_reason: str | None = None
+    async for evt in run_turn_streaming(
+        session_id=session_id,
+        user_message=user_message,
+        llm=llm,
+        tool_client=tool_client,
+        registry=registry,
+        graph=graph,
+        audit=audit,
+        system_prompt=system_prompt,
+        max_iterations=max_iterations,
+        force_mode=force_mode,
+    ):
+        if isinstance(evt, TurnCompleted):
+            final_result = evt.result
+        elif isinstance(evt, TurnInterrupted):
+            interrupt_reason = evt.reason
+    if interrupt_reason == "max_iterations":
+        raise AgentLoopExceededError(
+            f"agent loop exceeded {max_iterations} iterations",
+        )
+    if final_result is None:
+        # Defensive: streaming generator must yield exactly one of
+        # TurnCompleted or TurnInterrupted before returning.
+        raise RuntimeError(
+            "run_turn_streaming exited without a terminal event",
+        )
+    return final_result
+
+
+async def run_turn_streaming(
+    *,
+    session_id: UUID,
+    user_message: str,
+    llm: LLMClient,
+    tool_client: LabeledToolClient,
+    registry: ToolRegistry,
+    graph: SessionGraph,
+    audit: AuditWriter,
+    system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+    max_iterations: int = 50,
+    force_mode: ExecutionMode | None = None,
+):
+    """Streaming variant of `run_turn` (Issue #21).
+
+    Yields `TurnEvent`s as the turn progresses:
+      - `IterationStarted` at the top of each loop iter
+      - `LLMRequestSent` before each LLM call
+      - `LLMResponseReceived` after each LLM call
+      - `ToolDispatched` before each tool dispatch
+      - `ToolReturned` after each tool returns
+      - `TurnCompleted` (terminal) when the LLM produces a final answer
+      - `TurnInterrupted` (terminal) when max_iterations exceeded
+        (with reason='max_iterations'). Future #23/#31/#32 work
+        will surface 'ctrl-c', 'surface-disconnect', and
+        'heartbeat-timeout' as additional reasons.
+
+    Token-level streaming (LLMTokenReceived) requires the LLM
+    client to support streaming — left as a future extension once
+    the underlying client gains that capability. The generator
+    structure is designed to accommodate it without further
+    architectural changes.
+    """
+    from capabledeputy.agent.events import (
+        IterationStarted,
+        LLMRequestSent,
+        LLMResponseReceived,
+        ToolDispatched,
+        ToolReturned,
+        TurnCompleted,
+        TurnInterrupted,
+    )
     session = graph.get(session_id)
     if session.is_terminal:
         raise SessionStateError(
@@ -238,7 +320,7 @@ async def run_turn(
                 payload={"mode": mode.value, "reason": mode_reason},
             ),
         )
-        return await run_programmatic_turn(
+        prog_result = await run_programmatic_turn(
             session_id=session_id,
             user_message=user_message,
             llm=llm,
@@ -247,6 +329,8 @@ async def run_turn(
             graph=graph,
             audit=audit,
         )
+        yield TurnCompleted(iteration=0, result=prog_result)
+        return
 
     user_turn = Turn(
         turn_id=len(session.history),
@@ -351,6 +435,9 @@ async def run_turn(
     last_response: LLMResponse | None = None
     while iteration < max_iterations:
         iteration += 1
+        # Issue #21 — yield IterationStarted before any work. Lets the
+        # REPL render "iter N/max" indicators in real time.
+        yield IterationStarted(iteration=iteration)
         await audit.write(
             Event(
                 event_type=EventType.LLM_REQUEST_SENT,
@@ -362,6 +449,11 @@ async def run_turn(
                     "n_tools": len(tool_descriptions),
                 },
             ),
+        )
+        yield LLMRequestSent(
+            iteration=iteration,
+            n_messages=len(messages),
+            n_tools=len(tool_descriptions),
         )
 
         response = await llm.respond(messages, tool_descriptions)
@@ -381,6 +473,13 @@ async def run_turn(
                 },
             ),
         )
+        yield LLMResponseReceived(
+            iteration=iteration,
+            content_length=len(response.content),
+            n_tool_calls=len(response.tool_calls),
+            finish_reason=response.finish_reason.value,
+            model=response.model,
+        )
 
         if not response.tool_calls:
             agent_turn = Turn(
@@ -389,12 +488,16 @@ async def run_turn(
                 content=response.content,
             )
             await graph.add_turn(session_id, agent_turn)
-            return AgentTurnResult(
-                content=response.content,
-                iterations=iteration,
-                finish_reason=response.finish_reason,
-                tool_outcomes=tuple(tool_outcomes),
+            yield TurnCompleted(
+                iteration=iteration,
+                result=AgentTurnResult(
+                    content=response.content,
+                    iterations=iteration,
+                    finish_reason=response.finish_reason,
+                    tool_outcomes=tuple(tool_outcomes),
+                ),
             )
+            return
 
         messages.append(
             Message(
@@ -410,6 +513,11 @@ async def run_turn(
             # name passes through untouched and ToolNotFoundError fires
             # below with the unmatched string in the message.
             real_name = reverse_map.get(tool_call.name, tool_call.name)
+            yield ToolDispatched(
+                iteration=iteration,
+                tool_name=real_name,
+                tool_args=tool_call.args,
+            )
             try:
                 outcome = await tool_client.call_tool(
                     session_id,
@@ -425,6 +533,7 @@ async def run_turn(
                 )
 
             tool_outcomes.append(outcome)
+            yield ToolReturned(iteration=iteration, outcome=outcome)
             messages.append(
                 Message(
                     role=Role.TOOL,
@@ -434,7 +543,14 @@ async def run_turn(
                 ),
             )
 
-    raise AgentLoopExceededError(
-        f"agent loop exceeded {max_iterations} iterations "
-        f"(last finish_reason: {last_response.finish_reason if last_response else 'none'})",
+    # Loop exceeded max_iterations. Yield the terminal TurnInterrupted
+    # so streaming consumers can render the partial state; run_turn
+    # wrapper detects this and raises AgentLoopExceededError for
+    # backwards compatibility.
+    partial_content = last_response.content if last_response else ""
+    yield TurnInterrupted(
+        iteration=iteration,
+        reason="max_iterations",
+        partial_content=partial_content,
+        partial_outcomes=tuple(tool_outcomes),
     )
