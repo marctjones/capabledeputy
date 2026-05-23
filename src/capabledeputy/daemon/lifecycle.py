@@ -408,6 +408,58 @@ async def run_daemon(
     resolved = _resolve_daemon_config(config_path)
     upstream_configs = load_config_file(resolved) if resolved is not None else []
 
+    # Issue #35 — load per-server YAML files from servers.d/ and
+    # register custom kinds globally so the chokepoint can match
+    # them. Layout: alongside daemon.yaml in `~/.config/capabledeputy/`.
+    # Loader is tolerant of missing directory (returns empty).
+    from capabledeputy.policy.capabilities import register_custom_kind_registry
+    from capabledeputy.upstream.server_yaml import (
+        KindCollisionError,
+        UnknownOverrideTargetError,
+        apply_overrides,
+        load_servers_d,
+    )
+
+    servers_d_dir = (
+        resolved.parent / "servers.d" if resolved is not None
+        else Path.home() / ".config" / "capabledeputy" / "servers.d"
+    )
+    try:
+        per_server_configs, override_files, kind_registry = load_servers_d(servers_d_dir)
+    except (KindCollisionError, UnknownOverrideTargetError) as e:
+        # Fail loudly. A misconfigured servers.d/ is an operator
+        # bug that needs to be visible, not silently ignored.
+        import sys as _sys
+
+        print(
+            f"[daemon] FATAL servers.d/ error: {e}",
+            file=_sys.stderr,
+        )
+        raise
+
+    if per_server_configs:
+        # Merge override files into their target server configs
+        merged = apply_overrides(per_server_configs, override_files)
+        # Promote per-server yamls' server_config to the upstream list
+        # so they get spawned alongside any legacy `upstream_servers:`
+        # entries. The kind registry is installed before any tool
+        # registration runs, so custom kinds are visible to the
+        # chokepoint from turn 1.
+        upstream_configs = upstream_configs + [c.server_config for c in merged]
+
+    # Always install the registry (even if empty) so policy code can
+    # consult it without a None check.
+    register_custom_kind_registry(kind_registry)
+
+    if kind_registry.all():
+        import sys as _sys
+
+        print(
+            f"[daemon] registered {len(kind_registry.all())} custom kind(s) "
+            f"from {servers_d_dir}",
+            file=_sys.stderr,
+        )
+
     # Issue #1: record our PID so `daemon stop` can fall back to
     # signal-based termination if the RPC shutdown path stalls (hung
     # upstream subprocess, orphaned-by-parent-shell, etc.). Removal in

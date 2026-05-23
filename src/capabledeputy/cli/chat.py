@@ -762,7 +762,13 @@ def _handle_grant(arg: str, session_id: str) -> None:
             "[--one-shot] [--destructive] [--max-amount N] [--ttl SECONDS]",
         )
         return
-    kind, pattern = parts[0].upper(), parts[1]
+    # Issue #35 — kind may be a built-in (uppercased) or a custom
+    # namespaced one like `slack:dm.send` (kept as typed). Detect
+    # the namespace form via the `:` separator and DON'T uppercase
+    # it — namespaced custom kinds are lowercase by convention.
+    raw_kind = parts[0]
+    kind = raw_kind if ":" in raw_kind else raw_kind.upper()
+    pattern = parts[1]
     rest = parts[2:]
     one_shot = "--one-shot" in rest
     allows_destructive = "--destructive" in rest

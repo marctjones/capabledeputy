@@ -96,6 +96,104 @@ _WRITE_UNION_MATCHES: dict[CapabilityKind, frozenset[CapabilityKind]] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Issue #35 — Extensibility for custom kinds from servers.d/*.yaml
+# ---------------------------------------------------------------------------
+#
+# Built-in kinds are members of the `CapabilityKind` enum. Custom kinds
+# (namespaced strings like `slack:dm.send`) live in a global registry
+# populated at daemon startup. The helpers below let policy code treat
+# either as a "kind" via a uniform interface:
+#
+#     resolve_kind(name) → CapabilityKind enum OR validated str
+#     is_destructive_kind(kind) → bool
+#     kind_add_labels(kind) → frozenset[Label] (custom kinds only;
+#         built-in label propagation lives in the policy engine)
+#
+# This is process-global mutable state. The daemon calls
+# `register_custom_kind_registry(reg)` once at startup. Tests that need
+# isolation use `reset_custom_kind_registry()` in a fixture.
+
+_CUSTOM_KIND_REGISTRY: Any = None  # type: ignore[assignment]
+
+
+class UnknownKindError(ValueError):
+    """A kind name was referenced that isn't a built-in enum member
+    and isn't in the custom-kind registry. Caller should report this
+    as a config error or a typo in a grant request."""
+
+
+def register_custom_kind_registry(registry: Any) -> None:
+    """Install the CustomKindRegistry (from upstream/server_yaml.py)
+    so policy code can consult it. Called once at daemon startup
+    after `load_servers_d()` has populated the registry."""
+    global _CUSTOM_KIND_REGISTRY
+    _CUSTOM_KIND_REGISTRY = registry
+
+
+def reset_custom_kind_registry() -> None:
+    """Clear the global registry. Used by tests; daemon callers
+    should use `register_custom_kind_registry(new_one)` instead."""
+    global _CUSTOM_KIND_REGISTRY
+    _CUSTOM_KIND_REGISTRY = None
+
+
+def resolve_kind(name: str) -> CapabilityKind | str:
+    """Resolve a kind name to either a built-in `CapabilityKind` enum
+    member or a validated custom-kind string. Raises
+    `UnknownKindError` if neither.
+
+    Used at deserialization time (Capability.from_dict, /grant CLI,
+    tool registration with custom kinds). The return value's str
+    equality semantics work the same for both — `CapabilityKind`
+    inherits from str, so `enum_member == "READ_FS"` is True.
+    """
+    # Built-in first — cheap, common path
+    try:
+        return CapabilityKind(name)
+    except ValueError:
+        pass
+    # Custom — only valid if a registry is installed AND it knows this name
+    if _CUSTOM_KIND_REGISTRY is not None and _CUSTOM_KIND_REGISTRY.get(name) is not None:
+        return name
+    # Unknown — caller decides how to surface
+    raise UnknownKindError(
+        f"Unknown capability kind {name!r}. Built-in kinds: "
+        f"{sorted(k.value for k in CapabilityKind)}. "
+        f"Custom kinds must be declared in servers.d/*.yaml.",
+    )
+
+
+def is_destructive_kind(kind: CapabilityKind | str) -> bool:
+    """True if this kind is gated by the destructive-action rule.
+    Combines the hardcoded DESTRUCTIVE_KINDS set (for built-ins)
+    with the registry's per-kind destructive flag (for custom)."""
+    # Built-in enum case
+    if isinstance(kind, CapabilityKind):
+        return kind in DESTRUCTIVE_KINDS
+    # Custom string — consult registry
+    if _CUSTOM_KIND_REGISTRY is not None:
+        return _CUSTOM_KIND_REGISTRY.is_destructive(kind)
+    return False
+
+
+def kind_add_labels(kind: CapabilityKind | str) -> frozenset:
+    """Labels declared by a custom kind's yaml `add_labels` field.
+    Built-in kinds get their label propagation from the policy
+    engine's hardcoded rules (this returns empty for them).
+
+    Returns an empty frozenset if no labels are declared.
+    """
+    if isinstance(kind, CapabilityKind):
+        return frozenset()
+    if _CUSTOM_KIND_REGISTRY is None:
+        return frozenset()
+    decl = _CUSTOM_KIND_REGISTRY.get(kind)
+    if decl is None:
+        return frozenset()
+    return decl.add_labels
+
+
 class CapabilityExpiry(StrEnum):
     ONE_SHOT = "one_shot"
     SESSION = "session"
@@ -247,8 +345,11 @@ class Capability:
         return amount is not None and amount <= self.max_amount
 
     def to_dict(self) -> dict[str, Any]:
+        # Issue #35 — self.kind can be a CapabilityKind enum or a
+        # custom-kind string. Both should serialize to the bare name.
+        kind_str = self.kind.value if isinstance(self.kind, CapabilityKind) else str(self.kind)
         return {
-            "kind": self.kind.value,
+            "kind": kind_str,
             "pattern": self.pattern,
             "expiry": self.expiry.value,
             "origin": self.origin.value,
@@ -267,14 +368,20 @@ class Capability:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Self:
+        # Issue #35 — kind can be a built-in enum member OR a custom
+        # namespaced string registered via servers.d/*.yaml.
+        # `resolve_kind` returns either; both compare correctly to str.
         return cls(
-            kind=CapabilityKind(d["kind"]),
+            kind=resolve_kind(d["kind"]),  # type: ignore[arg-type]
             pattern=d["pattern"],
             expiry=CapabilityExpiry(d["expiry"]),
             origin=CapabilityOrigin(d["origin"]),
             audit_id=UUID(d["audit_id"]),
             max_amount=d.get("max_amount"),
             allows_destructive=bool(d.get("allows_destructive", False)),
+            # Revoked-by stays enum-only for now — only built-ins can
+            # transitively revoke. If custom-kind revocation rules
+            # need this, extend the enum-coercion accordingly.
             revoked_by=frozenset(CapabilityKind(k) for k in d.get("revoked_by", ())),
             expires_at=(datetime.fromisoformat(d["expires_at"]) if d.get("expires_at") else None),
             rate_limit=(RateLimit.from_dict(d["rate_limit"]) if d.get("rate_limit") else None),

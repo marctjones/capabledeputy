@@ -182,6 +182,38 @@ def _format_recent_decisions(events: list[Event], max_count: int = 10) -> tuple[
     return "\n".join(lines), len(recent)
 
 
+def _format_custom_kinds_section() -> str:
+    """Issue #35 — enumerate custom kinds the global registry knows
+    about, so the LLM can suggest valid `/grant <plugin:kind>`
+    commands. Empty when no plugins have contributed.
+
+    Format:
+        Plugin kinds (from servers.d/*.yaml):
+          slack:dm.send (destructive — sends a Slack DM)
+          slack:read    (read-only — list/search Slack messages)
+          notion:read   (read-only — read Notion pages)
+    """
+    # Import the registry accessor lazily to avoid circular: capabilities
+    # imports nothing from agent, but agent imports both.
+    from capabledeputy.policy.capabilities import _CUSTOM_KIND_REGISTRY
+
+    if _CUSTOM_KIND_REGISTRY is None:
+        return ""
+    kinds = _CUSTOM_KIND_REGISTRY.all()
+    if not kinds:
+        return ""
+
+    lines = ["", "Plugin kinds (from servers.d/*.yaml):"]
+    for kind in kinds:
+        flag = "destructive" if kind.destructive else "read-only"
+        desc = kind.description or ""
+        if desc:
+            lines.append(f"  {kind.name:<28} ({flag} — {desc})")
+        else:
+            lines.append(f"  {kind.name:<28} ({flag})")
+    return "\n".join(lines)
+
+
 def build_llm_context(
     session: Session,
     available_tools: list[ToolDescription],
@@ -270,6 +302,13 @@ the guarantee.
         )
     else:
         sandbox_section = ""
+
+    # --- Custom kinds section (Issue #35) ---
+    # Enumerate any custom kinds registered from servers.d/*.yaml so
+    # the LLM knows what /grant <namespaced:kind> commands the
+    # operator might run. Empty section when no plugins have
+    # contributed custom kinds.
+    custom_kinds_section = _format_custom_kinds_section()
 
     # --- Assemble full system prompt ---
     system_prompt = f"""You are an AI assistant operating inside CapableDeputy.
@@ -410,6 +449,7 @@ something, use one of these exact strings:
   Web:         WEB_FETCH
   Purchase:    QUEUE_PURCHASE
   Sandbox:     EXECUTE_SANDBOX
+{custom_kinds_section}
 
 Examples:
 - Read Gmail messages: `/grant GMAIL_READ *` (or `/grant GMAIL_READ from:boss@*`)

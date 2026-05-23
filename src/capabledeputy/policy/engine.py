@@ -436,12 +436,20 @@ def _decide_legacy(
     # REQUIRE_APPROVAL so a human authorises it. This codifies the
     # Clark-Wilson well-formed-transaction principle: modifications are
     # deliberate, audited acts; never the implicit byproduct of a flow.
-    if action.kind in DESTRUCTIVE_KINDS and not cap.allows_destructive:
+    # Issue #35 — destructive check now consults both the built-in
+    # DESTRUCTIVE_KINDS set AND the CustomKindRegistry's per-kind flag,
+    # so a custom kind declared with `destructive: true` in servers.d/
+    # gets the same Clark-Wilson gating.
+    from capabledeputy.policy.capabilities import is_destructive_kind
+
+    if is_destructive_kind(action.kind) and not cap.allows_destructive:
+        # action.kind may be enum (has .value) or str (custom kinds).
+        kind_str = action.kind.value if hasattr(action.kind, "value") else str(action.kind)
         return PolicyDecision(
             decision=Decision.REQUIRE_APPROVAL,
             rule=DESTRUCTIVE_OP_RULE,
             reason=(
-                f"{action.kind.value} on '{action.target}' is a destructive "
+                f"{kind_str} on '{action.target}' is a destructive "
                 "operation and the matched capability does not have "
                 "allows_destructive=True"
             ),

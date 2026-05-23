@@ -259,9 +259,30 @@ class LabeledMcpAdapter:
             name = f"{self._config.name}.{upstream_tool.name}"
             override = self._config.tool_overrides.get(upstream_tool.name)
 
-            kind: CapabilityKind | None
+            kind: CapabilityKind | str | None
             if override and override.capability_kind:
                 kind = override.capability_kind
+            elif override is not None:
+                # Issue #35 — `_OverrideWithCustomKind` carries an
+                # unresolved custom-kind name (e.g. "slack:dm.send")
+                # that wasn't a built-in. Try to resolve via the
+                # global registry; if registered, use the string.
+                raw = getattr(override, "_custom_kind_name", None)
+                if raw:
+                    from capabledeputy.policy.capabilities import (
+                        UnknownKindError,
+                        resolve_kind,
+                    )
+
+                    try:
+                        kind = resolve_kind(raw)
+                    except UnknownKindError:
+                        kind = None
+                else:
+                    kind = _infer_capability_kind(
+                        upstream_tool.annotations,
+                        upstream_tool.name,
+                    )
             else:
                 kind = _infer_capability_kind(
                     upstream_tool.annotations,
