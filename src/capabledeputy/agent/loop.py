@@ -125,6 +125,67 @@ class AgentLoopExceededError(RuntimeError):
     pass
 
 
+class ContextOverflowError(RuntimeError):
+    """Issue #36 — raised when the assembled LLM context would exceed
+    the hard limit (default 90% of model window). Carries the
+    estimated token count + the model's window so callers can render
+    a clear "your context is too large; spawn a fresh session"
+    recovery message."""
+
+    def __init__(self, estimated_tokens: int, window: int) -> None:
+        super().__init__(
+            f"context size ~{estimated_tokens:,} tokens exceeds "
+            f"{int(window * 0.9):,} (90% of {window:,}-token window). "
+            f"Spawn a fresh session for a more targeted query.",
+        )
+        self.estimated_tokens = estimated_tokens
+        self.window = window
+
+
+# Issue #36 — model context windows. Heuristic table; values are the
+# documented max prompt tokens for common models. If a model isn't
+# listed, falls back to DEFAULT_CONTEXT_WINDOW. Operators can
+# override via the LLM client config; this is just the guardrail's
+# default knowledge.
+_MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    "claude-haiku-4-5-20251001": 200_000,
+    "claude-haiku-4-5": 200_000,
+    "claude-sonnet-4-6": 200_000,
+    "claude-opus-4-7": 200_000,
+    "gpt-4o": 128_000,
+    "gpt-4o-mini": 128_000,
+    "gpt-4-turbo": 128_000,
+    "gpt-4": 8192,
+}
+DEFAULT_CONTEXT_WINDOW = 100_000
+
+_SOFT_WARNING_THRESHOLD = 0.80
+_HARD_LIMIT_THRESHOLD = 0.90
+
+
+def _estimate_message_tokens(messages: list[Message]) -> int:
+    """Cheap chars/4 heuristic — Anthropic + OpenAI both produce
+    ~4 chars per token on English text. Off by ~10-30% on average
+    but fine for guardrail purposes (we only care about "approaching
+    the cliff"). For accurate counts, a model-specific tokenizer
+    would replace this; deferred to follow-on work."""
+    total_chars = 0
+    for msg in messages:
+        if msg.content:
+            total_chars += len(msg.content)
+        # tool_calls payloads count too
+        for tc in (msg.tool_calls or ()):
+            total_chars += len(tc.name) + len(str(tc.args or {}))
+    return total_chars // 4
+
+
+def _context_window_for(model: str | None) -> int:
+    """Look up the model's prompt-token window."""
+    if model is None:
+        return DEFAULT_CONTEXT_WINDOW
+    return _MODEL_CONTEXT_WINDOWS.get(model, DEFAULT_CONTEXT_WINDOW)
+
+
 @dataclass(frozen=True)
 class AgentTurnResult:
     content: str
@@ -433,11 +494,94 @@ async def run_turn_streaming(
 
     iteration = 0
     last_response: LLMResponse | None = None
+    # Issue #36 — context-window guardrail.
+    # We learn the model name on the first response; until then we
+    # use a conservative default. The soft warning fires at 80%, the
+    # hard limit at 90%. Once a warning fires for a given iteration,
+    # we don't re-fire on subsequent iterations of the same turn so
+    # the audit log stays scannable.
+    context_warning_emitted = False
+    last_model: str | None = None
+
     while iteration < max_iterations:
         iteration += 1
         # Issue #21 — yield IterationStarted before any work. Lets the
         # REPL render "iter N/max" indicators in real time.
         yield IterationStarted(iteration=iteration)
+
+        # Issue #36 — context-size preflight.
+        # Estimate the assembled context. If we're over the hard limit
+        # for the model we last saw, yield TurnInterrupted and return.
+        # If we're over the soft threshold (80%), audit a warning and
+        # append a system notice so the LLM knows to wrap up rather
+        # than fetching more.
+        window = _context_window_for(last_model)
+        estimated = _estimate_message_tokens(messages)
+        ratio = estimated / window if window else 0.0
+
+        if ratio >= _HARD_LIMIT_THRESHOLD:
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_ERROR,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    step_id=iteration,
+                    payload={
+                        "error_type": "ContextOverflowError",
+                        "message": (
+                            f"context ~{estimated:,} tokens >= 90% of "
+                            f"{window:,}-token window; refusing to send"
+                        ),
+                        "iteration": iteration,
+                        "context_tokens_estimate": estimated,
+                        "context_window": window,
+                        "ratio": round(ratio, 2),
+                        "model": last_model,
+                    },
+                ),
+            )
+            yield TurnInterrupted(
+                iteration=iteration,
+                reason="context_overflow",
+                partial_content=(last_response.content if last_response else ""),
+                partial_outcomes=tuple(tool_outcomes),
+            )
+            return
+
+        if ratio >= _SOFT_WARNING_THRESHOLD and not context_warning_emitted:
+            # Audit the warning + inject a system message so the LLM
+            # knows it's running out of room. The LLM should respond
+            # with a final summary rather than more tool calls.
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_CONTEXT_WARNING,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    step_id=iteration,
+                    payload={
+                        "iteration": iteration,
+                        "context_tokens_estimate": estimated,
+                        "context_window": window,
+                        "ratio": round(ratio, 2),
+                        "model": last_model,
+                    },
+                ),
+            )
+            messages.append(
+                Message(
+                    role=Role.SYSTEM,
+                    content=(
+                        f"NOTICE: your context size (~{estimated:,} tokens) "
+                        f"is approaching the {window:,}-token window. "
+                        f"STOP making new tool calls. Summarize what you "
+                        f"have found into a final answer for the user. "
+                        f"If you need more data, ask the user to /spawn "
+                        f"a fresh session with a more targeted query."
+                    ),
+                ),
+            )
+            context_warning_emitted = True
+
         await audit.write(
             Event(
                 event_type=EventType.LLM_REQUEST_SENT,
@@ -447,6 +591,7 @@ async def run_turn_streaming(
                 payload={
                     "n_messages": len(messages),
                     "n_tools": len(tool_descriptions),
+                    "context_tokens_estimate": estimated,
                 },
             ),
         )
@@ -456,7 +601,41 @@ async def run_turn_streaming(
             n_tools=len(tool_descriptions),
         )
 
-        response = await llm.respond(messages, tool_descriptions)
+        # Issue #36 — wrap llm.respond() so exceptions audit cleanly
+        # before propagating. Without this, LLM errors (rate limit,
+        # actual context overflow from the provider, network timeout,
+        # malformed response, etc.) propagated up to the daemon's RPC
+        # handler silently — operators saw a red "rpc error" in chat
+        # but the audit log had no trace.
+        try:
+            response = await llm.respond(messages, tool_descriptions)
+        except Exception as e:
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_ERROR,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    step_id=iteration,
+                    payload={
+                        "error_type": type(e).__name__,
+                        "message": str(e)[:500],
+                        "iteration": iteration,
+                        "context_tokens_estimate": estimated,
+                        "context_window": window,
+                        "model": last_model,
+                    },
+                ),
+            )
+            # Emit a streaming TurnErrored for surfaces consuming the
+            # generator (chat REPL Live region, future rich surface).
+            yield TurnInterrupted(
+                iteration=iteration,
+                reason=f"llm_error:{type(e).__name__}",
+                partial_content=(last_response.content if last_response else ""),
+                partial_outcomes=tuple(tool_outcomes),
+            )
+            return
+        last_model = response.model
         last_response = response
 
         await audit.write(

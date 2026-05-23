@@ -74,6 +74,9 @@ def test_event_type_taxonomy_matches_design() -> None:
         "llm.request_sent",
         "llm.response_received",
         "llm.response_parsed",
+        # Issue #36 — LLM error + context-window warning audit events.
+        "llm.error",
+        "llm.context_warning",
         "mode.selected",
         "policy.decided",
         "label.propagated",

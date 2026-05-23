@@ -28,6 +28,16 @@ class EventType(StrEnum):
     LLM_REQUEST_SENT = "llm.request_sent"
     LLM_RESPONSE_RECEIVED = "llm.response_received"
     LLM_RESPONSE_PARSED = "llm.response_parsed"
+    # Issue #36 — LLM call failed with an exception (context overflow,
+    # rate limit, timeout, network, etc.). Payload carries error_type,
+    # message, iteration, approximate context_size. Closes the audit
+    # gap where exceptions silently propagated up without trace.
+    LLM_ERROR = "llm.error"
+    # Issue #36 — context size approaching the model's window. Soft
+    # signal emitted when estimate exceeds 80% of the window so the
+    # operator/agent can see proactively that the turn is about to
+    # outgrow its budget.
+    LLM_CONTEXT_WARNING = "llm.context_warning"
 
     MODE_SELECTED = "mode.selected"
     POLICY_DECIDED = "policy.decided"
