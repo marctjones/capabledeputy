@@ -188,6 +188,11 @@ class LabeledMcpAdapter:
         (unclassifiable, no override). Surfaced for audit/observability."""
         return list(self._rejected_tools)
 
+    @property
+    def registered_names(self) -> list[str]:
+        """Tools that registered successfully (with capdep's `<server>.<tool>` prefix)."""
+        return list(self._registered_names)
+
     async def list_upstream_resources(self) -> list[dict[str, Any]]:
         """Spec 004 P1 — discover the upstream server's resources catalog.
 

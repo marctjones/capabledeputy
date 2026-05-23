@@ -491,6 +491,10 @@ async def run_daemon(
     try:
         if upstream_configs:
             async with UpstreamManager(upstream_configs, app.registry) as manager:
+                # Stash manager on app so /server (daemon.info RPC) can
+                # read per-upstream-server status. App doesn't strongly
+                # depend on the manager type — duck-typed `server_status`.
+                app.upstream_manager = manager  # type: ignore[attr-defined]
                 _report_admission(manager)
                 await daemon.serve()
         else:

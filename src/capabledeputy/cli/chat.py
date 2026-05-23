@@ -1173,6 +1173,46 @@ def _handle_server_info() -> None:
     if rss_mb:
         console.print(f"  [dim]memory[/dim]    RSS {rss_mb:,} MB")
 
+    # Upstream MCP servers — per-server status (registered ok vs failed)
+    upstream_servers = info.get("upstream_servers", [])
+    if upstream_servers:
+        console.print()
+        n_ok = sum(1 for s in upstream_servers if s.get("state") == "registered")
+        n_failed = sum(1 for s in upstream_servers if s.get("state") == "failed")
+        header_bits = [f"{len(upstream_servers)} upstream server(s)"]
+        if n_failed:
+            header_bits.append(f"[red]{n_failed} failed[/red]")
+        if n_ok:
+            header_bits.append(f"[green]{n_ok} ok[/green]")
+        console.print(f"  [dim]servers[/dim]   {' · '.join(header_bits)}")
+        for srv in upstream_servers:
+            name = srv.get("name", "?")
+            state = srv.get("state", "?")
+            n_tools = srv.get("registered_tool_count", 0)
+            n_rej = srv.get("rejected_tool_count", 0)
+            if state == "registered":
+                line = f"            [green]✓[/green] [bold]{name}[/bold]  {n_tools} tool(s)"
+                if n_rej:
+                    line += f"  [yellow]({n_rej} rejected)[/yellow]"
+                console.print(line)
+                # Show rejected tool names for strict-mode classifier failures
+                rej_names = srv.get("rejected_tool_names", [])
+                if rej_names:
+                    for rn in rej_names[:5]:
+                        console.print(f"              [dim]·[/dim] rejected: [yellow]{rn}[/yellow] [dim](unclassifiable; add to tool_mappings/tool_overrides)[/dim]")
+                    if len(rej_names) > 5:
+                        console.print(f"              [dim]· ... +{len(rej_names) - 5} more rejections[/dim]")
+            else:  # failed
+                err = srv.get("error", "")
+                console.print(f"            [red]✗[/red] [bold]{name}[/bold]  [red]FAILED[/red]")
+                if err:
+                    # Indent + word-wrap-friendly truncation
+                    err_short = err if len(err) <= 100 else err[:100] + "…"
+                    console.print(f"              [dim]error:[/dim] [red]{err_short}[/red]")
+                cmd = srv.get("command", [])
+                if cmd:
+                    console.print(f"              [dim]command:[/dim] {' '.join(cmd[:3])}{'...' if len(cmd) > 3 else ''}")
+
     # Tools
     tool_count = info.get("tool_count", 0)
     by_kind = info.get("tools_by_kind", {})

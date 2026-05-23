@@ -16,6 +16,8 @@ Use as an async context manager:
 from __future__ import annotations
 
 import sys
+import time
+from dataclasses import dataclass, field
 from types import TracebackType
 
 from capabledeputy.tools.registry import ToolRegistry
@@ -28,6 +30,26 @@ def _stderr_logger(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
+@dataclass(frozen=True)
+class UpstreamServerStatus:
+    """Per-upstream-server runtime status — what /server surfaces.
+
+    Captured at startup. The supervisor's per-call respawn machinery
+    keeps the underlying LiveSession alive, so a server's `state`
+    here reflects "did it register successfully at daemon start";
+    real-time health monitoring is a separate concern (LiveSession
+    handles it transparently)."""
+
+    name: str
+    state: str  # "registered" | "failed"
+    registered_at_epoch: int
+    registered_tool_count: int = 0
+    rejected_tool_count: int = 0
+    rejected_tool_names: tuple[str, ...] = field(default_factory=tuple)
+    error: str = ""
+    command: tuple[str, ...] = field(default_factory=tuple)
+
+
 class UpstreamManager:
     def __init__(
         self,
@@ -38,11 +60,26 @@ class UpstreamManager:
         self._registry = registry
         self._sessions: list[LiveSession] = []
         self._adapters: list[LabeledMcpAdapter] = []
+        # Per-server status tracker (operator visibility via /server).
+        self._status: dict[str, UpstreamServerStatus] = {}
 
     async def __aenter__(self) -> UpstreamManager:
         for config in self._configs:
             try:
                 await self._connect_and_register(config)
+                # Status capture happens after _connect_and_register
+                # so the adapter's registered_names + rejected_tools
+                # lists are populated.
+                adapter = self._adapters[-1]
+                self._status[config.name] = UpstreamServerStatus(
+                    name=config.name,
+                    state="registered",
+                    registered_at_epoch=int(time.time()),
+                    registered_tool_count=len(adapter.registered_names),
+                    rejected_tool_count=len(adapter.rejected_tools),
+                    rejected_tool_names=tuple(adapter.rejected_tools),
+                    command=tuple(config.command),
+                )
             except Exception as e:
                 # One bad upstream must not nuke the daemon. Log loudly
                 # and continue with the rest — the operator can fix the
@@ -52,6 +89,15 @@ class UpstreamManager:
                     "this upstream's tools will not be registered. Restart the "
                     "daemon after fixing the config.",
                     file=sys.stderr,
+                )
+                # Record the failure so /server surfaces it. Truncate
+                # the error to keep the RPC payload sane.
+                self._status[config.name] = UpstreamServerStatus(
+                    name=config.name,
+                    state="failed",
+                    registered_at_epoch=int(time.time()),
+                    error=str(e)[:500],
+                    command=tuple(config.command),
                 )
         return self
 
@@ -84,3 +130,8 @@ class UpstreamManager:
     @property
     def sessions(self) -> list[LiveSession]:
         return list(self._sessions)
+
+    @property
+    def server_status(self) -> dict[str, UpstreamServerStatus]:
+        """Per-upstream-server status snapshot for /server display."""
+        return dict(self._status)

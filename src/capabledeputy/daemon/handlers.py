@@ -197,6 +197,25 @@ def make_info_handler(app: Any) -> Handler:
             except (ImportError, AttributeError):
                 pass
 
+        # Upstream MCP server status (Issue: operator visibility into
+        # which servers came up and which failed). Per #35 / preset
+        # configs / daemon.yaml legacy block, each upstream MCP server
+        # gets a row showing state + registered/rejected tool counts.
+        upstream_servers_status: list[dict[str, Any]] = []
+        mgr = getattr(app, "upstream_manager", None)
+        if mgr is not None and hasattr(mgr, "server_status"):
+            for status in sorted(mgr.server_status.values(), key=lambda s: s.name):
+                upstream_servers_status.append({
+                    "name": status.name,
+                    "state": status.state,
+                    "registered_at_epoch": status.registered_at_epoch,
+                    "registered_tool_count": status.registered_tool_count,
+                    "rejected_tool_count": status.rejected_tool_count,
+                    "rejected_tool_names": list(status.rejected_tool_names),
+                    "error": status.error,
+                    "command": list(status.command),
+                })
+
         # Python + OS info — small + useful for "what's actually running"
         import platform
         import sys
@@ -217,6 +236,7 @@ def make_info_handler(app: Any) -> Handler:
             "custom_kinds": custom_kinds_list,
             "audit_path": audit_path_str,
             "audit_size_bytes": audit_size_bytes,
+            "upstream_servers": upstream_servers_status,
         }
 
     return handle_info
