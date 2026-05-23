@@ -19,6 +19,7 @@ from capabledeputy.policy.capabilities import (
     DESTRUCTIVE_KINDS,
     Capability,
     CapabilityKind,
+    kind_name,
 )
 from capabledeputy.policy.decision_rules import (
     DecisionRules,
@@ -325,7 +326,7 @@ def _decide_legacy(
                 decision=Decision.DENY,
                 rule=CAPABILITY_EXPIRED_RULE,
                 reason=(
-                    f"capability for {action.kind.value}({action.target}) "
+                    f"capability for {kind_name(action.kind)}({action.target}) "
                     f"expired at {deadline.isoformat()} "
                     f"(decision time {eff_now.isoformat()})"
                 ),
@@ -354,7 +355,7 @@ def _decide_legacy(
                 decision=Decision.DENY,
                 rule=RATE_LIMIT_EXCEEDED_RULE,
                 reason=(
-                    f"capability for {action.kind.value}({action.target}) "
+                    f"capability for {kind_name(action.kind)}({action.target}) "
                     f"rate limit exceeded: {rl.max_uses} uses per "
                     f"{rl.window_seconds}s (decision time "
                     f"{eff_now.isoformat()})"
@@ -364,7 +365,7 @@ def _decide_legacy(
             )
         return PolicyDecision(
             decision=Decision.DENY,
-            reason=f"no matching capability for {action.kind.value}({action.target})",
+            reason=f"no matching capability for {kind_name(action.kind)}({action.target})",
             effective_labels=label_set,
         )
 
@@ -387,7 +388,7 @@ def _decide_legacy(
             decision=Decision.DENY,
             rule=CAPABILITY_CASCADED_RULE,
             reason=(
-                f"capability for {action.kind.value}({action.target}) "
+                f"capability for {kind_name(action.kind)}({action.target}) "
                 f"is cascaded-inert: originating ancestor "
                 f"audit_id={originator_id} (revoked/expired/exhausted)"
             ),
@@ -405,7 +406,7 @@ def _decide_legacy(
             decision=Decision.DENY,
             rule=REVOKED_BY_PRIOR_USE_RULE,
             reason=(
-                f"capability for {action.kind.value} was revoked by prior use of "
+                f"capability for {kind_name(action.kind)} was revoked by prior use of "
                 f"{sorted(k.value for k in revoking)}"
             ),
             matched_capability=cap,
@@ -444,7 +445,7 @@ def _decide_legacy(
 
     if is_destructive_kind(action.kind) and not cap.allows_destructive:
         # action.kind may be enum (has .value) or str (custom kinds).
-        kind_str = action.kind.value if hasattr(action.kind, "value") else str(action.kind)
+        kind_str = kind_name(action.kind)
         return PolicyDecision(
             decision=Decision.REQUIRE_APPROVAL,
             rule=DESTRUCTIVE_OP_RULE,
@@ -484,7 +485,7 @@ def _synthesize_recovery_steps(
     if decision is Decision.ALLOW:
         return ()
 
-    kind = action.kind.value if action.kind else "READ_FS"
+    kind = kind_name(action.kind) if action.kind else "READ_FS"
     target = action.target or "*"
 
     # Reason-based fallback: the legacy "no matching capability" path
@@ -690,7 +691,7 @@ def _decide_impl(
                     rule="override-grant-active",
                     reason=(
                         f"override grant {active.id} authorizes "
-                        f"{action.kind.value}({action.target}) until "
+                        f"{kind_name(action.kind)}({action.target}) until "
                         f"{active.expires_at.isoformat()}"
                     ),
                     matched_capability=mint_result,

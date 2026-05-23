@@ -491,7 +491,23 @@ class LabeledToolClient:
         # confidential.personal" without painting EVERY email send
         # call regardless of body content.
         per_arg_labels = tool.extract_arg_inherent_labels(args)
-        labels_to_add = tool_inherent_for_propagation | result.additional_labels | per_arg_labels
+
+        # Issue #35 — Custom-kind add_labels from servers.d/*.yaml.
+        # When a tool with a custom CapabilityKind fires, the labels
+        # declared in the yaml's `add_labels:` for that kind propagate
+        # into the session. This closes the IFC story for plugin
+        # kinds: declared destructiveness gates the call; declared
+        # add_labels color the session afterward.
+        from capabledeputy.policy.capabilities import kind_add_labels as _kind_labels
+
+        custom_kind_labels = _kind_labels(tool.capability_kind)
+
+        labels_to_add = (
+            tool_inherent_for_propagation
+            | result.additional_labels
+            | per_arg_labels
+            | custom_kind_labels
+        )
         labels_added: frozenset[Label] = frozenset()
         if labels_to_add:
             before = session.label_set
@@ -997,12 +1013,14 @@ class LabeledToolClient:
         action: Action,
         decision: PolicyDecision,
     ) -> None:
+        from capabledeputy.policy.capabilities import kind_name
+
         await self._audit.write(
             Event(
                 event_type=EventType.CAPABILITY_CHECKED,
                 session_id=session_id,
                 payload={
-                    "kind": action.kind.value,
+                    "kind": kind_name(action.kind),
                     "target": action.target,
                     "amount": action.amount,
                     "matched": decision.matched_capability is not None,

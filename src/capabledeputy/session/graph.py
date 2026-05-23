@@ -390,12 +390,19 @@ class SessionGraph:
         await self._save(updated)
         self._sessions[session_id] = updated
         if self._audit is not None:
+            # Issue #35 — capability.kind may be an enum OR a custom-kind
+            # string. Both serialize to the bare name for audit events.
+            _kind_str = (
+                capability.kind.value
+                if hasattr(capability.kind, "value")
+                else str(capability.kind)
+            )
             await self._audit.write(
                 Event(
                     event_type=EventType.CAPABILITY_GRANTED,
                     session_id=session_id,
                     payload={
-                        "kind": capability.kind.value,
+                        "kind": _kind_str,
                         "pattern": capability.pattern,
                         "expiry": capability.expiry.value,
                         "origin": capability.origin.value,

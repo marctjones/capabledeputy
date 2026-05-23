@@ -138,6 +138,15 @@ def reset_custom_kind_registry() -> None:
     _CUSTOM_KIND_REGISTRY = None
 
 
+def kind_name(kind: CapabilityKind | str) -> str:
+    """Return the bare name of a capability kind, whether it's a
+    built-in enum member or a custom-kind string. Use this anywhere
+    you need the string form for audit / display / error messages."""
+    if isinstance(kind, CapabilityKind):
+        return kind.value
+    return str(kind)
+
+
 def resolve_kind(name: str) -> CapabilityKind | str:
     """Resolve a kind name to either a built-in `CapabilityKind` enum
     member or a validated custom-kind string. Raises

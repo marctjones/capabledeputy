@@ -212,6 +212,83 @@ def test_capability_matches_custom_kind() -> None:
     assert not cap.matches("slack:dm.send", "channel-abc")  # type: ignore[arg-type]
 
 
+async def test_custom_kind_add_labels_propagate_to_session(tmp_path) -> None:
+    """End-to-end: a tool registered with a custom CapabilityKind
+    whose yaml declares `add_labels: [untrusted.external]` causes
+    that label to land in the session's label_set after a successful
+    call. This closes the IFC story for plugin kinds — destructiveness
+    gates the call; declared add_labels color the session afterward."""
+    from capabledeputy.audit.writer import AuditWriter
+    from capabledeputy.session.graph import SessionGraph
+    from capabledeputy.tools.client import LabeledToolClient
+    from capabledeputy.tools.registry import (
+        ToolDefinition,
+        ToolRegistry,
+        ToolResult,
+    )
+
+    reg = _make_registry(
+        CustomKindDecl(
+            name="slack:read",
+            destructive=False,
+            add_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+            declared_by_file="slack.yaml",
+        ),
+    )
+    register_custom_kind_registry(reg)
+
+    audit = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(audit=audit)
+    session = await graph.new(intent="test-ifc")
+
+    # Grant the custom capability so the call is allowed
+    await graph.grant_capability(
+        session.id,
+        Capability(
+            kind="slack:read",  # type: ignore[arg-type]
+            pattern="*",
+            expiry=CapabilityExpiry.SESSION,
+            origin=CapabilityOrigin.USER_APPROVED,
+            audit_id=uuid4(),
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        ),
+    )
+
+    registry = ToolRegistry()
+
+    async def slack_read_handler(args, context):
+        return ToolResult(output={"messages": []})
+
+    registry.register(
+        ToolDefinition(
+            name="slack.search_messages",
+            description="Read Slack messages",
+            capability_kind="slack:read",  # custom-kind string
+            handler=slack_read_handler,
+            target_arg="query",
+            parameters_schema={
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+            },
+        ),
+    )
+
+    client = LabeledToolClient(registry=registry, graph=graph, audit=audit)
+
+    # Before the call: session has no labels
+    session_before = graph.get(session.id)
+    assert Label.UNTRUSTED_EXTERNAL not in session_before.label_set
+
+    outcome = await client.call_tool(session.id, "slack.search_messages", {"query": "hello"})
+
+    # Call should have succeeded (ALLOW), and the custom kind's
+    # add_labels should now be in the session's label_set.
+    from capabledeputy.policy.rules import Decision
+    assert outcome.decision == Decision.ALLOW, f"Expected ALLOW, got: {outcome}"
+    session_after = graph.get(session.id)
+    assert Label.UNTRUSTED_EXTERNAL in session_after.label_set
+
+
 def test_built_in_kind_does_not_satisfy_custom_kind() -> None:
     """A READ_FS capability does NOT satisfy a custom-kind action.
     Operators who grant READ_FS aren't accidentally granting custom
