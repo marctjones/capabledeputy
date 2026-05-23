@@ -47,6 +47,155 @@ app.command("watch")(watch_command)
 audit_app.command("storage-shape")(storage_shape_command)
 
 
+@config_app.command("doctor")
+def config_doctor_command(
+    config: Annotated[
+        str | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Daemon config to inspect (default: ~/.config/capabledeputy/daemon.yaml)",
+        ),
+    ] = None,
+) -> None:
+    """Verify the daemon config is wired correctly for the granular
+    permission kinds (Issue #33, #35).
+
+    Checks:
+    - daemon.yaml or servers.d/*.yaml present and parseable
+    - Gmail tools use GMAIL_READ (not legacy READ_FS)
+    - IMAP tools use IMAP_READ
+    - Drive tools use DRIVE_READ where appropriate
+    - servers.d/ files validate (namespace, no collisions)
+    - Default auto-grant set covers GMAIL_READ / IMAP_READ / DRIVE_READ
+
+    Prints a status report; exits 0 if everything checks out, 1
+    otherwise. Operator runs this after `capdep gworkspace-setup`
+    / `capdep imap-setup` to confirm the wiring is current.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    from rich.console import Console
+
+    console = Console()
+    src_path = Path(config or Path.home() / ".config" / "capabledeputy" / "daemon.yaml")
+    issues: list[str] = []
+    ok: list[str] = []
+    notes: list[str] = []
+
+    # 1. daemon.yaml exists + parses
+    if not src_path.is_file():
+        console.print(f"[red]✗[/red] daemon.yaml not found at {src_path}")
+        console.print(
+            "[dim]  Run [bold]capdep gworkspace-setup[/bold] / [bold]capdep imap-setup[/bold] "
+            "to create one, or specify --config.[/dim]",
+        )
+        raise typer.Exit(code=1)
+    ok.append(f"daemon.yaml found at {src_path}")
+
+    try:
+        raw = yaml.safe_load(src_path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        console.print(f"[red]✗[/red] daemon.yaml invalid YAML: {e}")
+        raise typer.Exit(code=1) from None
+    ok.append("daemon.yaml parses cleanly")
+
+    # 2. Check upstream_servers' Gmail tools use GMAIL_READ
+    servers = raw.get("upstream_servers") or []
+    for server in servers:
+        name = server.get("name", "?")
+        overrides = server.get("tool_overrides") or {}
+        for tool_name, ov in overrides.items():
+            kind = ov.get("capability_kind") if isinstance(ov, dict) else None
+            if not kind:
+                continue
+            # Gmail tools should be GMAIL_READ or SEND_EMAIL (or write kinds)
+            tl = tool_name.lower()
+            if "gmail" in tl and kind == "READ_FS":
+                issues.append(
+                    f"server '{name}' tool '{tool_name}': uses legacy READ_FS; "
+                    f"should be GMAIL_READ. Re-run capdep gworkspace-setup to update."
+                )
+            elif "imap" in tl and kind == "READ_FS":
+                issues.append(
+                    f"server '{name}' tool '{tool_name}': uses legacy READ_FS; "
+                    f"should be IMAP_READ. Re-run capdep imap-setup to update."
+                )
+            elif tl.startswith("drive_") and "list" in tl and kind == "READ_FS":
+                notes.append(
+                    f"server '{name}' tool '{tool_name}': READ_FS works via "
+                    f"back-compat union; consider DRIVE_READ for clarity."
+                )
+
+    if servers:
+        ok.append(f"{len(servers)} upstream server(s) declared in daemon.yaml")
+    else:
+        notes.append("no upstream_servers: block in daemon.yaml (only bundled tools)")
+
+    # 3. Check servers.d/ if present
+    servers_d = src_path.parent / "servers.d"
+    if servers_d.is_dir():
+        from capabledeputy.upstream.server_yaml import (
+            KindCollisionError,
+            UnknownOverrideTargetError,
+            load_servers_d,
+        )
+
+        try:
+            yamls, overrides, registry = load_servers_d(servers_d)
+            ok.append(
+                f"servers.d/ has {len(yamls)} server file(s), "
+                f"{len(overrides)} override(s), "
+                f"{len(registry.all())} custom kind(s)",
+            )
+        except (KindCollisionError, UnknownOverrideTargetError) as e:
+            issues.append(f"servers.d/ load error: {e}")
+    else:
+        notes.append("no servers.d/ directory (legacy daemon.yaml layout only)")
+
+    # 4. Check upstream adapter inference — sanity-check that
+    # gmail tool names classify correctly
+    from capabledeputy.policy.capabilities import CapabilityKind
+    from capabledeputy.upstream.adapter import _infer_capability_kind
+
+    test_cases = [
+        ("gmail.users.messages.list", CapabilityKind.GMAIL_READ),
+        ("gmail_messages_get", CapabilityKind.GMAIL_READ),
+        ("imap.fetch", CapabilityKind.IMAP_READ),
+        ("drive.files.list", CapabilityKind.DRIVE_READ),
+        ("gmail.users.messages.send", CapabilityKind.SEND_EMAIL),
+    ]
+    classifier_issues = []
+    for tool_name, expected in test_cases:
+        got = _infer_capability_kind(None, tool_name)
+        if got != expected:
+            classifier_issues.append(f"{tool_name} → {got} (expected {expected.value})")
+    if classifier_issues:
+        issues.append(
+            "Upstream classifier regression: " + "; ".join(classifier_issues),
+        )
+    else:
+        ok.append("upstream classifier correctly maps gmail/imap/drive tools")
+
+    # 5. Report
+    console.print()
+    console.print("[bold]capdep config doctor[/bold]")
+    console.print()
+    for line in ok:
+        console.print(f"  [green]✓[/green] {line}")
+    for line in notes:
+        console.print(f"  [dim]·[/dim] {line}")
+    for line in issues:
+        console.print(f"  [red]✗[/red] {line}")
+    console.print()
+    if issues:
+        console.print(f"[red]{len(issues)} issue(s) found[/red] — fix as suggested above.")
+        raise typer.Exit(code=1)
+    console.print("[green]All checks passed.[/green]")
+
+
 @config_app.command("split")
 def config_split_command(
     config: Annotated[

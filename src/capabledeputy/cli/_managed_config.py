@@ -309,19 +309,22 @@ IMAP_BLOCK_BODY = """\
     command: ["capdep", "mcp-server-imap"]
     inherent_labels: []
     tool_overrides:
+      # Issue #33 — IMAP read tools use IMAP_READ kind, not READ_FS.
+      # Operators with legacy `/grant READ_FS *` keep working
+      # (back-compat union); new grants should be `IMAP_READ *`.
       "imap.list_threads":
-        capability_kind: READ_FS
+        capability_kind: IMAP_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
       "imap.read_message":
-        capability_kind: READ_FS
+        capability_kind: IMAP_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
       "imap.search":
-        capability_kind: READ_FS
+        capability_kind: IMAP_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
       "imap.send":
         capability_kind: SEND_EMAIL
       "imap.list_folders":
-        capability_kind: READ_FS
+        capability_kind: IMAP_READ
       "imap.mark_read":
         capability_kind: MODIFY_FS
       "imap.archive":
@@ -448,7 +451,9 @@ GWORKSPACE_BLOCK_BODY = """\
     command: ["npx", "gws-mcp-server", "--services", "drive,sheets,calendar,docs,gmail"]
     inherent_labels: ["confidential.personal"]
     tool_overrides:
-      # Drive — destructive ops pinned explicitly.
+      # Drive — granular kinds (Issue #33).
+      # Read tools auto-classify as DRIVE_READ via the upstream adapter;
+      # destructive ops pinned explicitly here.
       "drive_delete_file":
         capability_kind: DELETE_FS
         additional_labels: ["confidential.personal"]
@@ -484,20 +489,23 @@ GWORKSPACE_BLOCK_BODY = """\
         additional_labels: ["confidential.personal"]
       "docs_create_document":
         capability_kind: CREATE_FS
-      # Gmail read tools — pin explicitly because the adapter's name-
-      # based inference matches "gmail" → SEND_EMAIL, which would
-      # incorrectly tag a `_list` / `_get` call as outbound.
+      # Gmail read tools — pinned to GMAIL_READ (Issue #33). The
+      # upstream adapter's classifier now distinguishes gmail.list/get
+      # (→ GMAIL_READ) from gmail.send (→ SEND_EMAIL), but we still
+      # pin to avoid relying on inference for sensitive surface.
+      # Default sessions auto-grant GMAIL_READ * so read-only Gmail
+      # workflows work out of the box.
       "gmail_messages_list":
-        capability_kind: READ_FS
+        capability_kind: GMAIL_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
       "gmail_messages_get":
-        capability_kind: READ_FS
+        capability_kind: GMAIL_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
       "gmail_threads_list":
-        capability_kind: READ_FS
+        capability_kind: GMAIL_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
       "gmail_threads_get":
-        capability_kind: READ_FS
+        capability_kind: GMAIL_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
     strict: false
 """
