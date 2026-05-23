@@ -39,10 +39,183 @@ app.add_typer(tool_app, name="tool")
 app.add_typer(approval_app, name="approval")
 app.add_typer(override_app, name="override")
 app.add_typer(demo_app, name="demo")
+config_app = typer.Typer(help="Manage CapableDeputy config files.", no_args_is_help=True)
+app.add_typer(config_app, name="config")
 app.command("chat")(chat_command)
 app.command("init")(init_command)
 app.command("watch")(watch_command)
 audit_app.command("storage-shape")(storage_shape_command)
+
+
+@config_app.command("split")
+def config_split_command(
+    config: Annotated[
+        str | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Source daemon.yaml (default: ~/.config/capabledeputy/daemon.yaml)",
+        ),
+    ] = None,
+    output_dir: Annotated[
+        str | None,
+        typer.Option(
+            "--output-dir",
+            "-o",
+            help=(
+                "Target servers.d/ directory (default: alongside the source "
+                "config). Files written: <name>.yaml per upstream server. "
+                "Dry-run prints what would be written."
+            ),
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Print extracted yaml to stdout instead of writing files.",
+        ),
+    ] = False,
+) -> None:
+    """Migrate a legacy daemon.yaml `servers:` block into per-server
+    files in `servers.d/` (Issue #35).
+
+    For each server entry in the source `upstream_servers` list, writes
+    a `servers.d/<name>.yaml` containing connection details + isolation
+    + per-tool overrides. The new file uses schema_version: 1 and the
+    short-form `tool_mappings` syntax where possible.
+
+    The source file itself is updated: the `upstream_servers` block is
+    commented out (preserved for rollback) and a `servers_dir:`
+    reference added.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    src_path = Path(config or Path.home() / ".config" / "capabledeputy" / "daemon.yaml")
+    if not src_path.is_file():
+        err_console.print(f"[red]source config not found:[/red] {src_path}")
+        raise typer.Exit(code=2)
+
+    src_text = src_path.read_text(encoding="utf-8")
+    src_raw = yaml.safe_load(src_text) or {}
+    servers_raw = src_raw.get("upstream_servers") or []
+    if not servers_raw:
+        err_console.print(
+            f"[yellow]no `upstream_servers:` block found in {src_path}[/yellow] "
+            "— nothing to split. If you already have a servers.d/ layout, "
+            "this command isn't needed.",
+        )
+        raise typer.Exit(code=0)
+
+    target_dir = Path(output_dir or src_path.parent / "servers.d")
+    if not dry_run:
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+    written: list[str] = []
+    for entry in servers_raw:
+        name = str(entry.get("name") or "").strip()
+        if not name:
+            err_console.print("[yellow]skipping unnamed server entry[/yellow]")
+            continue
+        # Shape into new schema
+        out_doc: dict[str, Any] = {"schema_version": 1, "name": name}
+        if "command" in entry:
+            out_doc["command"] = list(entry["command"])
+        if entry.get("transport"):
+            out_doc["transport"] = entry["transport"]
+        if entry.get("env"):
+            out_doc["env"] = entry["env"]
+        if entry.get("inherent_labels"):
+            out_doc["inherent_labels"] = entry["inherent_labels"]
+        if entry.get("strict") is not None:
+            out_doc["strict"] = bool(entry["strict"])
+        if entry.get("isolation"):
+            out_doc["isolation"] = entry["isolation"]
+
+        # Convert tool_overrides → short form tool_mappings where every
+        # entry is just `{capability_kind: <K>}` with no additional labels.
+        overrides = entry.get("tool_overrides") or {}
+        mappings: dict[str, str] = {}
+        complex_overrides: dict[str, dict[str, Any]] = {}
+        for tool_name, ov in overrides.items():
+            if isinstance(ov, dict) and len(ov) == 1 and "capability_kind" in ov:
+                mappings[str(tool_name)] = str(ov["capability_kind"])
+            else:
+                complex_overrides[str(tool_name)] = ov
+        if mappings:
+            out_doc["tool_mappings"] = mappings
+        if complex_overrides:
+            out_doc["tool_overrides"] = complex_overrides
+
+        out_yaml = yaml.safe_dump(out_doc, sort_keys=False, default_flow_style=False)
+
+        if dry_run:
+            console = _make_console()
+            console.print(f"[bold cyan]--- would write: {target_dir / f'{name}.yaml'} ---[/bold cyan]")
+            console.print(out_yaml)
+        else:
+            target_file = target_dir / f"{name}.yaml"
+            target_file.write_text(out_yaml, encoding="utf-8")
+            written.append(str(target_file))
+
+    if dry_run:
+        err_console.print(f"[dim](dry-run; would write {len(servers_raw)} files)[/dim]")
+        return
+
+    # Mutate source: comment out the upstream_servers block.
+    # Conservative approach — line-based replacement that preserves
+    # surrounding YAML structure. The user can recover by uncommenting
+    # the original block.
+    new_lines: list[str] = []
+    in_block = False
+    block_indent = -1
+    for line in src_text.splitlines():
+        stripped = line.lstrip()
+        cur_indent = len(line) - len(stripped)
+        if stripped.startswith("upstream_servers:") and not in_block:
+            in_block = True
+            block_indent = cur_indent
+            new_lines.append(f"# MIGRATED to servers.d/ on {_now_iso()} via `capdep config split`")
+            new_lines.append(f"# {line}")
+            continue
+        if in_block:
+            # In-block until we hit a line at <= block_indent that's not blank
+            if stripped and cur_indent <= block_indent:
+                in_block = False
+                # Add servers_dir reference at this insertion point
+                new_lines.append(f"servers_dir: ./servers.d/")
+                new_lines.append("")
+                new_lines.append(line)
+                continue
+            new_lines.append(f"# {line}")
+        else:
+            new_lines.append(line)
+    # If block ran to EOF
+    if in_block:
+        new_lines.append("servers_dir: ./servers.d/")
+
+    src_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    err_console.print(
+        f"[green]✓ wrote {len(written)} server file(s) to {target_dir}[/green]",
+    )
+    err_console.print(
+        f"[dim]source updated: legacy `upstream_servers:` block commented out, "
+        f"`servers_dir: ./servers.d/` added.[/dim]",
+    )
+
+
+def _now_iso() -> str:
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _make_console():
+    from rich.console import Console
+
+    return Console()
 
 
 @app.command("go")

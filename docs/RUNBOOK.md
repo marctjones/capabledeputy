@@ -21,6 +21,38 @@ uv run capdep chat
 The daemon auto-starts if not running. `~/.config/capabledeputy/daemon.yaml`
 is loaded by default (`imap-setup` / `gworkspace-setup` populate it).
 
+## Configuration layout (#35)
+
+Capdep loads per-server config from `~/.config/capabledeputy/servers.d/*.yaml`:
+
+```
+~/.config/capabledeputy/
+├── daemon.yaml                   # global: socket, defaults
+└── servers.d/                    # one file per MCP server
+    ├── gws.yaml                  # vendor file — kept pristine
+    ├── slack.yaml                # ditto
+    └── 99-slack-overrides.yaml   # operator's tweaks (loaded last)
+```
+
+Each server file contains:
+- Connection details (`command`, `transport`, `env`)
+- Custom permission kinds the server introduces (must be namespaced: `<plugin>:<path>`)
+- Tool → kind mappings
+- Isolation settings
+
+**Custom kinds**: any kind a server introduces beyond capdep's built-ins
+(READ_FS, GMAIL_READ, SEND_EMAIL, etc.) must use namespace format
+(e.g., `slack:dm.send`, `notion:page.read`). Built-in flat names
+are reserved for capdep core.
+
+**Override files** (`99-*.yaml`) patch an existing server's kinds /
+mappings without modifying the vendor's file — useful when you want
+to add a label or adjust destructiveness without losing sync on plugin
+updates.
+
+**Migration**: legacy `daemon.yaml` with an `upstream_servers:` block
+still works. Run `capdep config split` to migrate to the new layout.
+
 ---
 
 ## Surface selection — `--mode`
