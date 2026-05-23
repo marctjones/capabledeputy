@@ -56,6 +56,10 @@ SLASH_COMMANDS: tuple[str, ...] = (
     "/tools",
     # clipboard
     "/copy",
+    # daemon info
+    "/server",
+    "/info",
+    "/daemon",
     # misc
     "/help",
     "/quit",

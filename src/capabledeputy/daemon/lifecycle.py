@@ -363,6 +363,11 @@ async def run_daemon(
     await app.startup()
 
     handlers = default_handlers()
+    # Operator stats: register daemon.info so /server slash command
+    # can show version + uptime + tool/session counts.
+    from capabledeputy.daemon.handlers import make_info_handler
+
+    handlers["daemon.info"] = make_info_handler(app)
     handlers.update(make_session_handlers(app.graph))
     handlers.update(make_audit_handlers(app.audit))
     handlers.update(make_policy_handlers())

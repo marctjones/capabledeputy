@@ -98,3 +98,125 @@ def default_handlers() -> dict[str, Handler]:
         "ping": handle_ping,
         "daemon.code_version": handle_code_version,
     }
+
+
+# Daemon startup timestamp — captured at module import (which is
+# effectively daemon-startup for the daemon process). Used by
+# daemon.info to compute uptime.
+import os as _os
+import time as _time
+
+_DAEMON_STARTED_AT = _time.time()
+_DAEMON_PID = _os.getpid()
+
+
+def make_info_handler(app: Any) -> Handler:
+    """Issue (operator-stats) — return a comprehensive daemon snapshot.
+
+    Powers the `/server` slash command in chat. Operator runs this
+    locally; daemon is single-tenant; no privacy concern with the
+    detailed output. Returns version, uptime, PID, socket path,
+    upstream server status, tool count by kind, session count,
+    custom kind count, audit log size, memory if available.
+    """
+
+    async def handle_info(params: dict[str, Any]) -> dict[str, Any]:
+        uptime_seconds = int(_time.time() - _DAEMON_STARTED_AT)
+
+        # Tool counts by capability kind
+        tools = app.registry.list() if hasattr(app, "registry") else []
+        by_kind: dict[str, int] = {}
+        for t in tools:
+            kind = t.capability_kind
+            kind_str = kind.value if hasattr(kind, "value") else str(kind)
+            by_kind[kind_str] = by_kind.get(kind_str, 0) + 1
+
+        # Session count (active vs all)
+        sessions = []
+        if hasattr(app, "graph") and app.graph is not None:
+            try:
+                sessions = list(app.graph._sessions.values())  # internal access
+            except (AttributeError, TypeError):
+                sessions = []
+        active_sessions = sum(
+            1 for s in sessions if getattr(s, "status", None) and str(s.status) == "active"
+        )
+
+        # Custom kinds (from servers.d/*.yaml — Issue #35)
+        from capabledeputy.policy.capabilities import _CUSTOM_KIND_REGISTRY
+
+        custom_kinds_count = 0
+        custom_kinds_list: list[dict[str, Any]] = []
+        if _CUSTOM_KIND_REGISTRY is not None:
+            kinds = _CUSTOM_KIND_REGISTRY.all()
+            custom_kinds_count = len(kinds)
+            custom_kinds_list = [
+                {
+                    "name": k.name,
+                    "destructive": k.destructive,
+                    "description": k.description,
+                }
+                for k in kinds[:50]  # Truncate for response sanity
+            ]
+
+        # Audit log size (best effort — depends on whether audit
+        # writer exposes its path)
+        audit_size_bytes = 0
+        audit_path_str = ""
+        try:
+            audit_path = getattr(app.audit, "_path", None) or getattr(
+                app.audit, "path", None,
+            )
+            if audit_path is not None:
+                p = Path(audit_path)
+                if p.is_file():
+                    audit_size_bytes = p.stat().st_size
+                    audit_path_str = str(p)
+        except (AttributeError, OSError):
+            pass
+
+        # Memory: best-effort RSS. Linux /proc/self/status, else
+        # resource.getrusage. Skip if neither.
+        rss_mb = 0
+        try:
+            status_path = Path("/proc/self/status")
+            if status_path.is_file():
+                for line in status_path.read_text().splitlines():
+                    if line.startswith("VmRSS:"):
+                        # "VmRSS:    123456 kB"
+                        kb = int(line.split()[1])
+                        rss_mb = kb // 1024
+                        break
+        except (OSError, ValueError):
+            try:
+                import resource
+
+                ru = resource.getrusage(resource.RUSAGE_SELF)
+                # ru_maxrss is KB on Linux, bytes on macOS
+                rss_mb = ru.ru_maxrss // 1024
+            except (ImportError, AttributeError):
+                pass
+
+        # Python + OS info — small + useful for "what's actually running"
+        import platform
+        import sys
+
+        return {
+            **dict(_CODE_VERSION),  # version, git_rev, git_dirty, manifest_hash
+            "pid": _DAEMON_PID,
+            "uptime_seconds": uptime_seconds,
+            "started_at_epoch": int(_DAEMON_STARTED_AT),
+            "python_version": sys.version.split()[0],
+            "platform": platform.platform(),
+            "rss_mb": rss_mb,
+            "tool_count": len(tools),
+            "tools_by_kind": by_kind,
+            "session_count": len(sessions),
+            "session_count_active": active_sessions,
+            "custom_kind_count": custom_kinds_count,
+            "custom_kinds": custom_kinds_list,
+            "audit_path": audit_path_str,
+            "audit_size_bytes": audit_size_bytes,
+        }
+
+    return handle_info

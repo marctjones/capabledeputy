@@ -667,6 +667,10 @@ _HELP = """slash commands (user-only, never visible to the LLM):
            /copy trace <turn>   — copy turn's audit trace as JSON
            /copy <literal>      — copy arbitrary text
 
+  daemon:  /server  /info  /daemon  — running daemon: version,
+                                       uptime, tool count, sessions,
+                                       custom kinds, drift detection
+
   misc:    /help  /quit
 """
 
@@ -1082,6 +1086,149 @@ def _warn_on_daemon_drift() -> None:
             "Restart with [bold]capdep daemon stop && capdep chat[/bold] "
             "to pick up changes.",
         )
+
+
+def _handle_server_info() -> None:
+    """/server — daemon version + uptime + tool/session/kind counts.
+
+    This is the operator-facing 'what's actually running' view.
+    Useful when debugging stale-daemon issues (#10) or just
+    confirming the daemon is current with source. Renders as a
+    compact transcript-style block, not a heavy table — matches
+    the chat conversation aesthetic established at 3db6828."""
+    try:
+        info = _call("daemon.info")
+    except Exception as e:
+        err_console.print(f"[red]daemon.info failed:[/red] {e}")
+        return
+
+    # Header
+    version = info.get("version", "?")
+    git_rev = (info.get("git_rev") or "")[:7]
+    git_dirty = info.get("git_dirty", "")
+    manifest = (info.get("manifest_hash") or "")[:8]
+    pid = info.get("pid", "?")
+    uptime_s = info.get("uptime_seconds", 0)
+    uptime_str = _format_uptime(uptime_s)
+    python_v = info.get("python_version", "?")
+
+    git_label = f"git {git_rev}" if git_rev else "no-git"
+    if git_dirty == "dirty":
+        git_label += " [yellow](dirty)[/yellow]"
+
+    console.print()
+    console.print(f"[bold cyan]capdep daemon[/bold cyan]  [dim]/server[/dim]")
+    console.print(f"  [dim]version[/dim]   capdep {version}  {git_label}  manifest {manifest}")
+    console.print(f"  [dim]runtime[/dim]   PID {pid}  uptime {uptime_str}  python {python_v}")
+    rss_mb = info.get("rss_mb", 0)
+    if rss_mb:
+        console.print(f"  [dim]memory[/dim]    RSS {rss_mb:,} MB")
+
+    # Tools
+    tool_count = info.get("tool_count", 0)
+    by_kind = info.get("tools_by_kind", {})
+    console.print()
+    console.print(f"  [dim]tools[/dim]     {tool_count} registered")
+    if by_kind:
+        # Show top kinds compactly
+        sorted_kinds = sorted(by_kind.items(), key=lambda x: -x[1])
+        kind_summary = ", ".join(f"{n} {k}" for k, n in sorted_kinds[:6])
+        if len(sorted_kinds) > 6:
+            kind_summary += f", +{len(sorted_kinds) - 6} more kinds"
+        console.print(f"            [dim]{kind_summary}[/dim]")
+
+    # Sessions
+    n_sessions = info.get("session_count", 0)
+    n_active = info.get("session_count_active", 0)
+    console.print(f"  [dim]sessions[/dim]  {n_sessions} total, {n_active} active")
+
+    # Custom kinds (Issue #35)
+    n_custom = info.get("custom_kind_count", 0)
+    if n_custom:
+        console.print(f"  [dim]plugins[/dim]   {n_custom} custom kind(s) from servers.d/")
+        for k in info.get("custom_kinds", [])[:8]:
+            flag = "[yellow]destructive[/yellow]" if k.get("destructive") else "read-only"
+            desc = k.get("description", "")
+            line = f"            [bold]{k['name']}[/bold] ({flag})"
+            if desc:
+                line += f"  [dim]— {desc}[/dim]"
+            console.print(line)
+    else:
+        console.print(f"  [dim]plugins[/dim]   none (no custom kinds loaded from servers.d/)")
+
+    # Audit log
+    audit_size = info.get("audit_size_bytes", 0)
+    audit_path = info.get("audit_path", "")
+    if audit_path:
+        console.print(
+            f"  [dim]audit[/dim]     {_format_bytes(audit_size)} at {audit_path}",
+        )
+
+    # Drift check
+    try:
+        code_version = _call("daemon.code_version")
+        local_manifest = _local_manifest_hash()
+        running_manifest = code_version.get("manifest_hash", "")
+        if local_manifest and running_manifest and local_manifest != running_manifest:
+            console.print()
+            console.print(
+                f"  [yellow]⚠ drift:[/yellow] running manifest "
+                f"[red]{running_manifest[:8]}[/red] differs from source "
+                f"[green]{local_manifest[:8]}[/green]",
+            )
+            console.print(
+                "  [dim]restart with [bold]capdep daemon stop[/bold] && "
+                "[bold]capdep chat[/bold] to pick up local changes.[/dim]",
+            )
+    except Exception:
+        pass
+
+
+def _format_uptime(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m {seconds % 60}s"
+    if seconds < 86400:
+        h, rem = divmod(seconds, 3600)
+        m = rem // 60
+        return f"{h}h {m}m"
+    d, rem = divmod(seconds, 86400)
+    h = rem // 3600
+    return f"{d}d {h}h"
+
+
+def _format_bytes(n: int) -> str:
+    """Human-readable byte count (KB/MB/GB)."""
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024:
+            return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
+def _local_manifest_hash() -> str:
+    """Recompute the manifest hash against the current source tree.
+    Mirrors the daemon's _capture_code_version logic so drift
+    detection compares apples-to-apples."""
+    import hashlib
+
+    try:
+        from pathlib import Path as _Path
+
+        from capabledeputy import __file__ as cap_init
+
+        src_root = _Path(cap_init).resolve().parent
+        h = hashlib.sha256()
+        for py in sorted(src_root.rglob("*.py")):
+            try:
+                stat = py.stat()
+                h.update(f"{py.relative_to(src_root)}:{stat.st_mtime_ns}:{stat.st_size}".encode())
+            except OSError:
+                continue
+        return h.hexdigest()[:16]
+    except Exception:
+        return ""
 
 
 def _handle_copy(
@@ -1871,13 +2018,33 @@ def _repl_loop(session_id: str) -> None:
     )
 
     console.print()
+    # Operator-stats banner — fetch once at startup so the user
+    # sees what they're actually talking to. Falls back gracefully
+    # if daemon.info isn't available (e.g. running an older daemon).
+    daemon_blurb = ""
+    try:
+        info = _call("daemon.info")
+        version = info.get("version", "?")
+        git_rev = (info.get("git_rev") or "")[:7]
+        dirty = " (dirty)" if info.get("git_dirty") == "dirty" else ""
+        n_tools = info.get("tool_count", 0)
+        n_custom = info.get("custom_kind_count", 0)
+        daemon_blurb = (
+            f"capdep {version}"
+            + (f" · git {git_rev}{dirty}" if git_rev else "")
+            + f" · {n_tools} tool{'s' if n_tools != 1 else ''}"
+            + (f" · {n_custom} plugin kind{'s' if n_custom != 1 else ''}" if n_custom else "")
+        )
+    except Exception:
+        daemon_blurb = "capdep daemon (info unavailable)"
+    console.print(f"[dim]{daemon_blurb}[/dim]")
     console.print(
         f"[bold]capdep chat[/bold]  [dim]session {focus['id'][:8]}[/dim]",
     )
     console.print(
         "[dim]Type a message to chat, or use a slash command. "
         "Try [bold]/help[/bold] for commands, [bold]/tools[/bold] to see what "
-        "the agent can do, [bold]/grant[/bold] to add capabilities.[/dim]",
+        "the agent can do, [bold]/server[/bold] for daemon details.[/dim]",
     )
     console.print(
         "[dim]Shortcuts: TAB completion · ↑/↓ history · Alt-Enter newline · "
@@ -2021,6 +2188,9 @@ def _run_repl(
                 continue
             if cmd == "copy":
                 _handle_copy(arg, focus["id"], last_result)
+                continue
+            if cmd in ("server", "info", "daemon"):
+                _handle_server_info()
                 continue
             err_console.print(f"[red]unknown command:[/red] /{cmd}")
             continue
