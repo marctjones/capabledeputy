@@ -256,7 +256,49 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - [ ] T114 [P] Update `docs/llm-flow-patterns.md` selector documentation reflecting `REFERENCE` / `SEALED` additions and the `restricted`-tier floor.
 - [ ] T115 [P] Update `README.md` illustrative-risks list mentioning relationship-scoped sharing + reversibility + disposable isolation (subtle, demoted-prompt-injection, keep lean per `feedback_positioning`).
 - [ ] T116 [P] Update `ROADMAP.md`: mark v0.9 in-flight; add a v0.10 / spec-004 placeholder for SandboxActuator + provider adapters.
-- [ ] T117 Final: run `uv run ruff check && uv run ruff format --check && uv run pyright && uv run pytest`; confirm SC-001..022 all green; tag a `v0.9.0-rc.1` candidate (pre-release) once the user requests it.
+
+---
+
+## Phase 10: Clarification Addendum (2026-05-25 — Q1–Q5)
+
+**Purpose**: Implement the 5 new clarifications recorded in `spec.md` §Clarifications / Session 2026-05-25 and the corresponding D12–D16 design decisions in `research.md`. Each task is labeled to the user story it extends.
+
+### Q1: Per-Purpose risk-preference dial (FR-030 / FR-046)
+
+- [ ] T118 [P] [US6] Extend `configs/purposes.yaml` schema: each Purpose entry MUST carry a `risk_preference_dial` field valued in `cautious | balanced | permissive`. Update the Purpose loader in `src/capabledeputy/policy/purposes.py` to read and expose the per-purpose dial value. (D12, Q1)
+- [ ] T119 [US6] Modify session-spawn path in `src/capabledeputy/session/graph.py` `SessionGraph.new()` so `risk_preference_at_spawn` is resolved from the session's Purpose entry's `risk_preference_dial`, not from a standalone config file. On `fork`, child inherits the parent's resolved dial. (D12, Q1)
+- [ ] T120 [P] [US6] Migration task: extend `src/capabledeputy/store/migrations/v6.py` — read legacy `configs/risk_preference.json` (if present), apply its value as default `risk_preference_dial` to every Purpose entry that doesn't declare one, then archive the legacy file (`configs/risk_preference.json.migrated`). (D12, Q1)
+- [ ] T121 [P] [US6] Test `tests/test_dial_per_purpose.py` — verify Session inherits dial from its Purpose at spawn; verify fork inherits parent's dial; verify session cannot mutate its own dial at runtime; verify per-purpose values differentiate (`tax-prep: cautious` vs `daily-briefing: balanced`) (FR-030, Q1, SC-010 extension).
+
+### Q2: Override Grant default expiry (FR-032)
+
+- [ ] T122 [P] [US4] Update `src/capabledeputy/override/policy.py` `OverridePolicyEntry` validator: `expiry_seconds` defaults to `900` (15 min) when unset; entries with `expiry_seconds > 3600` are refused at policy authoring time with a clear error pointing at FR-032's hard cap. (D13, Q2)
+- [ ] T123 [P] [US4] Test `tests/test_override_grant_expiry.py` — verify default expiry = 900s; verify a configured entry with expiry_seconds=600 is honored; verify expiry_seconds=3601 is refused with FR-032 reference; verify the granted Override Grant's `expires_at` = `created_at + min(expiry_seconds, 3600)` (FR-032, Q2, SC-014 extension).
+
+### Q3: Ratification Authorization (FR-014)
+
+- [ ] T124 [US4] New module `src/capabledeputy/policy/ratification.py`: implement `RatificationPolicy` + `RatificationAuthorization` state machine valued in `{single-authorized | dual-control}` per affected severity. Reuse `src/capabledeputy/override/authorization.py` infrastructure (operator MAY declare role mappings identical-to or distinct-from Override Authorization). Hard-floor-touching ratifications default to `dual-control`; non-hard-floor ratifications default to `single-authorized`. AI MUST NEVER be authorized to ratify. (D14, Q3)
+- [ ] T125 [P] [US4] Add `configs/ratification_policy.yaml` (operator-edited, AI-read-only) declaring per-severity `{single-authorized | dual-control}` + per-severity Ratification Authorization role mapping. Daemon loads at startup; CI-lint refuses invalid configurations. (D14, Q3)
+- [ ] T126 [P] [US4] Test `tests/test_ratification_authorization.py` — verify hard-floor ratifications default to dual-control; verify non-hard-floor default to single-authorized; verify invoker MUST NOT equal attester; verify unauthorized principal refused + audited; verify AI principal refused (FR-014, Q3).
+- [ ] T127 [P] [US4] Add audit event `EventType.RATIFICATION_APPLIED` to `src/capabledeputy/audit/events.py` carrying `{ratification_id, target_kind: label|profile|rule, invoker, attester?, severity, audit_id}`. Update `tests/test_audit_events.py` taxonomy assertion. (D14, Q3)
+
+### Q4: Decision-latency SLO (SC-023)
+
+- [ ] T128 [P] New module `src/capabledeputy/policy/latency.py`: in-process histogram tracking per-`decide()` latency; on every Nth dispatch (configurable, default 100), checks recent window's p95 / p99.9 against thresholds (50ms / 250ms) and emits `decision.latency_degraded` audit event when exceeded. (D15, Q4)
+- [ ] T129 [P] Add `EventType.DECISION_LATENCY_DEGRADED` to `src/capabledeputy/audit/events.py`. Payload: `{latency_ms, rule, fixture_size, threshold_crossed: "p95"|"p99.9"}`. Update `tests/test_audit_events.py` taxonomy assertion. (D15, Q4)
+- [ ] T130 [P] Benchmark test `tests/test_decision_latency.py` — build standard rule-set fixture (≥1k rules, ≥100 categories, ≥50 expectation bindings); run `decide()` 10,000× ; assert p95 ≤ 50ms AND p99.9 ≤ 250ms. Skip-by-default in CI when running in resource-constrained environments via `pytest.mark.benchmark` (SC-023, Q4).
+
+### Q5: Per-Risk-Register-Entry residual-risk thresholds (FR-016 / FR-028)
+
+- [ ] T131 [P] [US4] Extend `configs/risk_register.json` schema: every entry MUST declare a `threshold` field shaped per its framework reference (FAIR `{framework, magnitude_band_min}`; NIST AI RMF `{framework, impact_tier_min}`; EU AI Act `{framework, risk_class_min}`; etc.). Update the documented schema in `docs/risk-register.md`. (D16, Q5)
+- [ ] T132 [US4] New module `src/capabledeputy/policy/risk_register.py`: load + cache the risk register at daemon startup; expose `get_threshold(risk_id) -> Threshold` + `threshold_crossed(risk_id, decision_residual) -> bool`. (D16, Q5)
+- [ ] T133 [US4] Update `src/capabledeputy/policy/engine.py` `decide()` — when a residual-risk threshold is crossed but the decision is allowed (FR-016), the emitted residual-risk exception payload MUST list the specific risk-id(s) crossed (not "a threshold"). Adds `crossed_risk_ids: list[str]` to the exception object. (D16, Q5)
+- [ ] T134 [P] [US4] CI-lint test `tests/invariants/test_risk_register_thresholds.py` — refuses to ship a `risk_register.json` whose entries cite a quantification-required framework but omit the `threshold` field. Extends existing SC-001 lint. (D16, Q5)
+- [ ] T135 [P] [US4] Test `tests/test_risk_register_thresholds.py` — verify a decision that crosses an entry's threshold produces a residual-risk exception whose `crossed_risk_ids` list contains that entry's id; verify multi-risk crossings name all crossed ids; verify entries without thresholds never produce silent exceptions (FR-016, Q5, SC-007 extension).
+
+---
+
+- [ ] T117 Final: run `uv run ruff check && uv run ruff format --check && uv run pyright && uv run pytest`; confirm SC-001..023 all green (extended by Q4 / SC-023); tag a `v0.9.0-rc.1` candidate (pre-release) once the user requests it.
 
 ---
 
@@ -273,6 +315,13 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - **US4 (P4, Phase 7)** — depends on Foundational + US1 + US2.
 - **US5 (P5, Phase 8)** — depends on Foundational + US1 + US2 + US3 (purpose surface) + US6 (reversibility for the integrity-floor semantics).
 - **Polish (Phase 9)** — depends on all desired user stories.
+- **Clarification Addendum (Phase 10, 2026-05-25)** — depends on the user story each task extends:
+  - Q1 tasks (T118–T121) extend US6 — depend on US6 (envelope + dial scaffolding).
+  - Q2 tasks (T122–T123) extend US4 — depend on US4 (Override Grant / Policy scaffolding).
+  - Q3 tasks (T124–T127) extend US4 — depend on US4 (Override Authorization infrastructure they share).
+  - Q4 tasks (T128–T130) extend Polish — depend on Foundational + US1 (latency benchmark needs the engine wired).
+  - Q5 tasks (T131–T135) extend US4 — depend on US4 (risk register + residual-risk exception path).
+  - Phase 10 finishes before T117's final-validation gate.
 
 ### Within Each User Story
 

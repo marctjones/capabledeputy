@@ -69,7 +69,7 @@ Note: Axis C (effect class) is **not** on the Session. It lives on `Capability.k
 | `policy` | TEXT NOT NULL | `disallowed` \| `single-authorized` \| `dual-control`. |
 | `authorized_principal_ids` | TEXT NOT NULL (JSON list) | (FR-036). |
 | `attester_principal_ids` | TEXT NULL (JSON list) | Required if `dual-control`. |
-| `expiry_seconds` | INTEGER NOT NULL | Friction-scaled to severity. |
+| `expiry_seconds` | INTEGER NOT NULL | Friction-scaled to severity. **Default 900 (15 min) per Q2 / FR-032.** **Absolute spec-enforced cap: 3600 (60 min)**; registry validation refuses any entry with `expiry_seconds > 3600`. |
 
 #### `override_grants`
 | Column | Type | Notes |
@@ -94,10 +94,45 @@ Capabilities issued from an Override Grant set `Capability.origin = override_gra
 Stored as **config file** (`configs/envelopes.yaml`) rather than a DB table; loaded into an in-memory map at daemon startup. Cell key = `(category, effect, decision_context_canonical, reversibility)`; value = `{strictest, loosest}`.
 
 #### `risk_register`
-Stored as **config file** (`configs/risk_register.json`); loaded at startup. Entry `{id, summary, framework_refs[]}`. CI-lint enforces SC-001.
+Stored as **config file** (`configs/risk_register.json`); loaded at startup. Entry shape (post-Q5 / FR-016 / FR-028):
 
-#### `risk_preference`
-Stored as **config file** (`configs/risk_preference.json`); one value (`cautious|balanced|permissive`), owner-set, AI-read-only. Frozen snapshot copied into `sessions.risk_preference_at_spawn` at spawn for replayability.
+```json
+{
+  "id": "FAIR-2",
+  "summary": "Financial loss exceeding $10,000",
+  "framework_refs": ["FAIR/loss-magnitude/M3", "NIST-AI-RMF/Manage/2.3"],
+  "threshold": {
+    "framework": "FAIR",
+    "magnitude_band_min": "M3"
+  }
+}
+```
+
+Each entry MUST declare a `threshold` field scoped to its framework reference. CI-lint enforces:
+- SC-001 (every label cites ≥1 entry; every entry has ≥1 external ref)
+- Q5 (`threshold` field present + framework-appropriate for any entry citing a framework that requires quantification)
+
+#### `risk_preference` — moved to per-purpose (Q1, FR-030)
+
+**No longer a standalone config file.** The dial value (`cautious | balanced | permissive`) is now declared **per Purpose** in `configs/purposes.yaml`:
+
+```yaml
+- purpose_id: inbox
+  label: "Email triage and summarization"
+  admissible_categories: [personal, work, email, public]
+  risk_preference_dial: balanced     # NEW per Q1
+  default_capabilities: [...]
+  ...
+- purpose_id: tax-prep
+  label: "Annual tax preparation"
+  admissible_categories: [financial, personal]
+  risk_preference_dial: cautious     # different purposes carry different dials
+  ...
+```
+
+The `sessions.risk_preference_at_spawn` column captures the dial value resolved from the session's purpose at spawn (and inherited on `fork`) for replayability (SC-002). A session cannot mutate its own dial at runtime — changes go through the FR-014 ratification path (Q3).
+
+Migration: existing `configs/risk_preference.json` (if present) is read once during v5→v6 migration and its value applied as a default to every purpose without an explicit `risk_preference_dial`; the legacy file is then removed.
 
 ## Entities (logical, beyond what's already in spec.md §Key Entities)
 
@@ -116,9 +151,10 @@ The spec's Key Entities list is the authoritative semantic catalog. This data-mo
 | Residual-Risk Exception | new event in audit log + a derived view (no separate table required) | Runtime |
 | Label-Assignment Record | inlined as `assignment_provenance` on each label/binding | Runtime |
 | Outcome Envelope | `configs/envelopes.yaml` | Operator |
-| Risk-Preference Profile | `configs/risk_preference.json` (+ snapshot in `sessions.risk_preference_at_spawn`) | Owner |
+| Risk-Preference Profile | **per-purpose** field in `configs/purposes.yaml` (+ snapshot in `sessions.risk_preference_at_spawn`) — Q1 | Owner |
 | Override Policy | `override_policies` table (sourced from `configs/override_policy.yaml`) | Owner |
 | Override Authorization | `override_policies.authorized_principal_ids` / `attester_principal_ids` | Owner |
+| Ratification Authorization (Q3, FR-014) | `ratification_policies` table (sourced from `configs/ratification_policy.yaml`); reuses the same per-severity `{single-authorized | dual-control}` shape as Override Policy; operator MAY declare role-mapping identical-to or distinct-from Override Authorization. | Owner |
 | Override Grant | `override_grants` table | Runtime (issued on human-attested grant) |
 | Relationship Group | `relationship_groups` table (sourced from `configs/relationship_groups.yaml`) | Operator |
 | Expectation Binding | `expectation_bindings` table (sourced from `configs/expectations.yaml`) | Operator |

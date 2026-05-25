@@ -127,6 +127,81 @@
 
 ---
 
+## D12. Risk-preference dial scope (Q1, 2026-05-25 — FR-030 / FR-046)
+
+**Decision**: The dial is **bound to the Purpose Handle**, not global, not per-session. Each entry in the operator-declared Purpose registry (`configs/purposes.yaml`) carries its own `risk_preference_dial` value (one of `cautious | balanced | permissive`). Sessions inherit their purpose's dial value at spawn and on `fork`. A session MUST NOT mutate its own dial value at runtime — any change is a control-plane operation routed through the standard ratification path (FR-014).
+
+**Rationale**: Aligns the operator's risk knob with the structural admissibility boundary (FR-009 / FR-046). A `daily-briefing` purpose can stay `permissive` while `tax-prep` is `cautious` without the operator swapping per session. Per-session would invite drift and AI-side nudging; global is too coarse. Inheriting on `fork` matches existing Session inheritance for caps + intent.
+
+**Alternatives considered**:
+- *Global single dial value* — too coarse; same dial for `daily-briefing` and `tax-prep` forces choosing the strict one and tolerating the friction always.
+- *Per-session, set at spawn* — invites drift and the AI proposing dial changes mid-session; eliminated by the Principle-IV least-authority constraint.
+- *Hierarchical (global → purpose → session)* — overengineered for v0.9; revisit only if real configurations show per-purpose is insufficient.
+
+---
+
+## D13. Override Grant default expiry (Q2, 2026-05-25 — FR-032)
+
+**Decision**: Override Grant expiry is configurable per Override Policy entry; absent an explicit value the system defaults to **15 minutes**; the spec enforces an absolute **60-minute hard cap** that no Override Policy entry, even misconfigured, may exceed. Configuration values above 60 min are refused at policy authoring time (Principle VI fail-closed).
+
+**Rationale**: 15 min is long enough for a routine ad-hoc admin task without forcing repeated re-justification (Principle V usability); short enough that an operator who walks away mid-task doesn't leave a bypass hot. Matches `sudo`'s 5-minute cache pattern but biased longer because capdep's Override Grants are explicitly less ambient (must be invoked per scope, not implicitly cached). The 60-min absolute cap prevents misconfiguration from yielding an all-day bypass.
+
+**Alternatives considered**:
+- *Global 60-second expiry* — too short; operators would re-justify every minute under interactive workflows.
+- *Global 5-minute expiry* — usable but doesn't accommodate multi-step administrative tasks (e.g., correcting a registry mistake).
+- *Configurable with no cap* — rejected: a single misconfigured policy entry could disable enforcement permanently, violating Principle VI fail-closed.
+
+---
+
+## D14. Ratification authorization model (Q3, 2026-05-25 — FR-014 / FR-036)
+
+**Decision**: Ratification of suggested labels / profiles / rules reuses the **Override Policy state machine** (FR-036), valued in `{single-authorized | dual-control}` per affected severity. Hard-floor-touching ratifications default to `dual-control`; non-hard-floor ratifications default to `single-authorized`. The named role mapping is a **Ratification Authorization** entity, separate from (but using the same infrastructure as) **Override Authorization**; an operator MAY declare them identical or distinct. Invoker MUST NOT be the dual-control attester. The AI is NEVER authorized to ratify.
+
+**Rationale**: Ratification is a control-plane operation (FR-018); reusing the existing severity-tiered authorization model means no new authorization vocabulary and operationalizes Principle V (deterministic state machine). Distinct entity (Ratification Authorization) preserves the operator's option to grant ratification authority to a different role than override authority (e.g., a team lead reviews rule additions; only the operator themselves overrides hard floors).
+
+**Alternatives considered**:
+- *Any-human-with-control-plane-access* — too permissive: a small team with several control-plane principals would have no separation-of-duty for hard-floor rule changes.
+- *Dual-control always* — too heavy for routine adds (e.g., a benign new email-sender label); friction would push operators toward bypass-shaped behavior.
+- *Dedicated `RatificationAuthority` capability with its own authorization vocabulary* — adds a new mechanism to learn and audit; reusing Override Policy keeps the operator's mental model unified.
+
+---
+
+## D15. Decision-latency target + monitoring (Q4, 2026-05-25 — SC-023)
+
+**Decision**: Per-decision latency target is **p95 ≤ 50 ms / p99.9 ≤ 250 ms** for a single chokepoint dispatch (axes A-D evaluation + baseline-and-bounded-relax composition + rule lookup + capability match + audit emission). Measured against a standard rule-set fixture of ≥1k rules, ≥100 categories, ≥50 expectation bindings. When steady-state exceeds the target the engine MUST emit a `decision.latency_degraded` audit event so the operator sees the regression rather than discovering it via subjective sluggishness in chat.
+
+Implementation:
+- `tests/test_decision_latency.py` runs the standard fixture through `decide()` 10,000 times and asserts the p95 / p99.9 percentiles.
+- A new audit event type `decision.latency_degraded` (added to `audit/events.py`) carries `{latency_ms, rule, fixture_size, threshold_crossed: "p95"|"p99.9"}`.
+- A new lightweight in-process histogram (`policy/latency.py`) counts each dispatch; on every Nth dispatch the engine checks the recent window's p95 against the target and emits the event if exceeded.
+
+**Rationale**: A latency budget keeps implementations honest and audits operator-visible degradation rather than letting it manifest as subjective chat sluggishness. The chosen budget (50 ms p95) matches today's measured behavior and leaves enough headroom for the new composition machinery (envelope dial, baseline-and-bounded-relax, source-binding canonicalization) without requiring premature optimization.
+
+**Alternatives considered**:
+- *p95 ≤ 10 ms* — aggressive; forces hashed indexes and complicates the rule-lookup code; not justified by interactive needs.
+- *p95 ≤ 200 ms* — feels slow inside a tight REPL loop where many tool calls fire per turn; operator would notice.
+- *Defer — no SC* — leaves the engine free to silently regress and discovery falls back to operator subjective complaints; rejected per Principle VIII (latency is an observable property).
+
+---
+
+## D16. Risk-threshold configuration scope (Q5, 2026-05-25 — FR-016 / FR-028)
+
+**Decision**: Residual-risk thresholds (the value FR-016 references) are declared **per Risk Register Entry** (FR-028), not globally and not per-category. Each entry in `configs/risk_register.json` carries a `threshold` field scoped to its framework reference (FAIR magnitude band, NIST AI RMF impact tier, EU AI Act risk class, FIPS 199 category-impact, etc.). A decision crosses a threshold iff any cited risk-id's declared threshold is exceeded; the residual-risk exception object names the specific risk-id(s) crossed. A Risk Register Entry without a declared threshold (where the framework reference requires quantification) MUST be refused at registry validation.
+
+Implementation:
+- `policy/risk_register.py` loads `configs/risk_register.json` at daemon startup; caches the `id → {framework_refs[], threshold}` map.
+- `decide()` consults the cache when emitting the residual-risk exception object (FR-016); the exception payload lists exactly which risk-ids' thresholds were crossed.
+- A new CI lint (`tests/invariants/test_risk_register_thresholds.py`) refuses to ship a `risk_register.json` whose entries cite a quantification-required framework but omit `threshold`.
+
+**Rationale**: Reuses the existing risk register (single in-repo file, operator-editable). Per-entry thresholds let the operator tune severity per framework dimension without an explosion of cells. The residual-risk exception object is more actionable when it cites the specific risk crossed — operator reads "FAIR-2 (financial loss > $10k)" instead of "some threshold crossed."
+
+**Alternatives considered**:
+- *Global single threshold* — too coarse; financial and health risks have different magnitudes.
+- *Per axis-A data category* — misses cross-category risks (e.g., the OWASP LLM01 "prompt injection" risk isn't a category at all).
+- *Per Outcome Envelope cell (FR-030 cell)* — highest fidelity, combinatorially heavy; operator config burden dominates the value.
+
+---
+
 ## Out-of-Scope (spec 004) — recorded here so this plan is honest
 
 - `SandboxActuator` implementation (FR-040 substrate); the **port** is in 003.
