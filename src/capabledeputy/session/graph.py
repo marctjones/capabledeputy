@@ -205,10 +205,20 @@ class SessionGraph:
         # /grant flow per session. The purposes registry is fail-
         # closed: unknown or UNSET purpose contributes no defaults.
         default_caps: frozenset[Capability] = frozenset()
+        # Issue 003 / Q1 (FR-030, 2026-05-25): the session's
+        # risk_preference_at_spawn is resolved from its Purpose's
+        # `risk_preference_dial` field. Different purposes carry
+        # different defaults (tax-prep: cautious vs daily-briefing:
+        # balanced). UNSET / unknown purpose falls back to the safety
+        # default "cautious" — consistent with the Purpose dataclass
+        # default + Constitution VI fail-closed.
+        risk_preference_at_spawn = "cautious"
         if self._purposes is not None and purpose_handle != UNSET_PURPOSE_HANDLE:
             purpose = self._purposes.get(purpose_handle)
-            if purpose is not None and purpose.default_capabilities:
-                default_caps = frozenset(purpose.default_capabilities)
+            if purpose is not None:
+                if purpose.default_capabilities:
+                    default_caps = frozenset(purpose.default_capabilities)
+                risk_preference_at_spawn = purpose.risk_preference_dial
         session = Session.new(
             owner=owner,
             intent=intent,
@@ -217,6 +227,7 @@ class SessionGraph:
             parent=parent,
             purpose_handle=purpose_handle,
             capability_set=default_caps,
+            risk_preference_at_spawn=risk_preference_at_spawn,
         )
         await self._save(session)
         self._sessions[session.id] = session
@@ -260,6 +271,13 @@ class SessionGraph:
         # parent's purpose_handle so capabilities admissible in the
         # parent stay admissible in the child (and inadmissible ones
         # remain refused).
+        # Q1 (FR-030, 2026-05-25): the child also inherits the
+        # parent's resolved risk_preference_at_spawn. The dial is
+        # bound to the Purpose at spawn time, not re-resolved on
+        # fork — that way an operator who flipped the dial on the
+        # parent's purpose mid-life doesn't accidentally apply the
+        # new value to active child sessions (replayability per
+        # SC-002).
         child = Session.new(
             parent=parent_id,
             owner=parent.owner,
@@ -269,6 +287,7 @@ class SessionGraph:
             history=parent.history,
             declassification_log=parent.declassification_log,
             purpose_handle=parent.purpose_handle,
+            risk_preference_at_spawn=parent.risk_preference_at_spawn,
         )
         await self._save(child)
         self._sessions[child.id] = child

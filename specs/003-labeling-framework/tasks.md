@@ -266,10 +266,10 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ### Q1: Per-Purpose risk-preference dial (FR-030 / FR-046)
 
-- [ ] T118 [P] [US6] Extend `configs/purposes.yaml` schema: each Purpose entry MUST carry a `risk_preference_dial` field valued in `cautious | balanced | permissive`. Update the Purpose loader in `src/capabledeputy/policy/purposes.py` to read and expose the per-purpose dial value. (D12, Q1)
-- [ ] T119 [US6] Modify session-spawn path in `src/capabledeputy/session/graph.py` `SessionGraph.new()` so `risk_preference_at_spawn` is resolved from the session's Purpose entry's `risk_preference_dial`, not from a standalone config file. On `fork`, child inherits the parent's resolved dial. (D12, Q1)
-- [ ] T120 [P] [US6] Migration task: extend `src/capabledeputy/store/migrations/v6.py` — read legacy `configs/risk_preference.json` (if present), apply its value as default `risk_preference_dial` to every Purpose entry that doesn't declare one, then archive the legacy file (`configs/risk_preference.json.migrated`). (D12, Q1)
-- [ ] T121 [P] [US6] Test `tests/test_dial_per_purpose.py` — verify Session inherits dial from its Purpose at spawn; verify fork inherits parent's dial; verify session cannot mutate its own dial at runtime; verify per-purpose values differentiate (`tax-prep: cautious` vs `daily-briefing: balanced`) (FR-030, Q1, SC-010 extension).
+- [X] T118 [P] [US6] Extend `configs/purposes.yaml` schema: each Purpose entry MUST carry a `risk_preference_dial` field valued in `cautious | balanced | permissive`. Update the Purpose loader in `src/capabledeputy/policy/purposes.py` to read and expose the per-purpose dial value. (D12, Q1)
+- [X] T119 [US6] Modify session-spawn path in `src/capabledeputy/session/graph.py` `SessionGraph.new()` so `risk_preference_at_spawn` is resolved from the session's Purpose entry's `risk_preference_dial`, not from a standalone config file. On `fork`, child inherits the parent's resolved dial. (D12, Q1)
+- [X] T120 [P] [US6] Migration task: extend `src/capabledeputy/store/migrations/v6.py` — read legacy `configs/risk_preference.json` (if present), apply its value as default `risk_preference_dial` to every Purpose entry that doesn't declare one, then archive the legacy file (`configs/risk_preference.json.migrated`). (D12, Q1)
+- [X] T121 [P] [US6] Test `tests/test_dial_per_purpose.py` — verify Session inherits dial from its Purpose at spawn; verify fork inherits parent's dial; verify session cannot mutate its own dial at runtime; verify per-purpose values differentiate (`tax-prep: cautious` vs `daily-briefing: balanced`) (FR-030, Q1, SC-010 extension).
 
 ### Q2: Override Grant default expiry (FR-032)
 

@@ -228,7 +228,18 @@ def build_policy_context_from_configs(
     envelope_set = load_envelopes(base / "envelopes.yaml")
     risk_pref = load_risk_preference(base / "risk_preference.json")
     purposes_path = base / "purposes.yaml"
-    purposes = load_purposes(purposes_path) if purposes_path.is_file() else None
+    # Q1 (FR-030, 2026-05-25): pass the legacy risk_preference.json
+    # path so purposes that omit `risk_preference_dial` fall back
+    # to the legacy global value (transitional). Operator-visible
+    # warning fires once if the legacy file is consulted.
+    purposes = (
+        load_purposes(
+            purposes_path,
+            legacy_risk_preference_path=base / "risk_preference.json",
+        )
+        if purposes_path.is_file()
+        else None
+    )
 
     # 003 — handle store + override grant store live in-process; no
     # disk-backed read here. Persistence layered on top later.

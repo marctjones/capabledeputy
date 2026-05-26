@@ -45,6 +45,16 @@ class PurposeError(RuntimeError):
 UNSET_PURPOSE_HANDLE = "unset"
 
 
+# Issue 003 / Q1 (FR-030, 2026-05-25): valid dial values for the
+# per-Purpose risk-preference. The dial is operator-declared per
+# Purpose entry (no global, no per-session at runtime) and inherited
+# by Sessions at spawn / fork.
+_VALID_DIAL_VALUES: frozenset[str] = frozenset(
+    {"cautious", "balanced", "permissive"},
+)
+_DEFAULT_DIAL_VALUE: str = "cautious"
+
+
 @dataclass(frozen=True)
 class Purpose:
     purpose_id: str
@@ -65,6 +75,13 @@ class Purpose:
     # Use case: "research sessions see ~/research/** as research/none;
     # tax-prep sessions see ~/finance/tax-2026/** as finance/restricted."
     bindings: tuple[SourceLocationLabelBinding, ...] = field(default_factory=tuple)
+    # Issue 003 / Q1 (FR-030, 2026-05-25): per-Purpose risk-preference
+    # dial. Sessions spawned with this purpose inherit it as
+    # `risk_preference_at_spawn`. A child session on `fork` inherits
+    # the parent's resolved dial. Different purposes naturally carry
+    # different defaults: `tax-prep: cautious` vs `daily-briefing:
+    # balanced`. The dial is human-declared and AI-read-only.
+    risk_preference_dial: str = _DEFAULT_DIAL_VALUE
 
     def admits(self, category: str) -> bool:
         """True iff this purpose admits the given data category for
@@ -97,10 +114,53 @@ class Purposes:
         return purpose.admits(category)
 
 
-def load(path: Path) -> Purposes:
+def _legacy_global_dial(legacy_path: Path | None) -> str | None:
+    """Issue 003 / Q1 (FR-030, 2026-05-25): transitional migration.
+
+    The legacy `configs/risk_preference.json` holds a single global
+    dial value from before Q1 moved the setting per-Purpose. When
+    loading purposes that omit `risk_preference_dial`, fall back to
+    this file's value (if present) so existing operator configs
+    don't silently jump from the legacy global to the safest default.
+
+    Returns the legacy value or None if the file is absent /
+    unreadable. Emits a one-time stderr warning the first time it's
+    consulted so the operator knows to copy values per-purpose and
+    archive the legacy file.
+    """
+    if legacy_path is None or not legacy_path.is_file():
+        return None
+    try:
+        import json
+        raw = json.loads(legacy_path.read_text(encoding="utf-8"))
+        value = raw.get("value") if isinstance(raw, dict) else None
+        if isinstance(value, str) and value in _VALID_DIAL_VALUES:
+            import sys
+            print(
+                f"[purposes] legacy {legacy_path} consulted for default "
+                f"risk_preference_dial={value!r}. Copy that value into each "
+                f"`purposes:` entry's `risk_preference_dial` field, then "
+                f"archive the file (Q1 / FR-030 migration).",
+                file=sys.stderr,
+            )
+            return value
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def load(path: Path, *, legacy_risk_preference_path: Path | None = None) -> Purposes:
     """Load configs/purposes.yaml. Missing file ⇒ PurposeError.
     Empty `purposes:` permitted — yields an empty registry that
-    admits nothing for any handle (FR-046 fail-closed)."""
+    admits nothing for any handle (FR-046 fail-closed).
+
+    `legacy_risk_preference_path` (Q1 transitional, FR-030): when a
+    purpose omits `risk_preference_dial`, the loader falls back to the
+    value in this legacy file (if present and parseable), else to
+    `_DEFAULT_DIAL_VALUE`. Production code passes the path of
+    `configs/risk_preference.json`; tests pass None to skip the
+    legacy lookup.
+    """
     if not path.is_file():
         raise PurposeError(f"purposes config missing: {path}")
     try:
@@ -112,6 +172,12 @@ def load(path: Path) -> Purposes:
     raw = data.get("purposes") or []
     if not isinstance(raw, list):
         raise PurposeError(f"'purposes' must be a list: {path}")
+
+    # Resolve the fallback dial once; it's expensive (file read) and
+    # used for any purpose that doesn't declare its own.
+    legacy_dial = _legacy_global_dial(legacy_risk_preference_path)
+    fallback_dial = legacy_dial if legacy_dial is not None else _DEFAULT_DIAL_VALUE
+
     out: dict[str, Purpose] = {}
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
@@ -148,6 +214,19 @@ def load(path: Path) -> Purposes:
         bindings = tuple(
             _parse_purpose_binding(b_raw, i, j) for j, b_raw in enumerate(bindings_raw)
         )
+        # Issue 003 / Q1 (FR-030): per-purpose dial. Explicit value
+        # wins over legacy fallback; legacy fallback wins over the
+        # safety default.
+        if "risk_preference_dial" in item:
+            dial = str(item["risk_preference_dial"])
+            if dial not in _VALID_DIAL_VALUES:
+                raise PurposeError(
+                    f"purposes[{i}].risk_preference_dial={dial!r} invalid; "
+                    f"must be one of {sorted(_VALID_DIAL_VALUES)} (FR-030)",
+                )
+        else:
+            dial = fallback_dial
+
         out[pid] = Purpose(
             purpose_id=pid,
             label=str(item.get("label", "")),
@@ -156,6 +235,7 @@ def load(path: Path) -> Purposes:
             recommended_pattern=item.get("recommended_pattern"),
             default_capabilities=default_capabilities,
             bindings=bindings,
+            risk_preference_dial=dial,
         )
     return Purposes(purposes=out)
 
