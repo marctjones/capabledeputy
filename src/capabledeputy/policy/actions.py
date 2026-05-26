@@ -14,6 +14,10 @@ from capabledeputy.policy.capabilities import CapabilityKind
 
 @dataclass(frozen=True)
 class Action:
-    kind: CapabilityKind
+    # Issue #35 / #37 — Action.kind accepts both built-in CapabilityKind
+    # enum members AND custom-kind strings registered via servers.d/*.yaml.
+    # Both compare correctly to str at the engine; downstream
+    # serialization uses `kind_name()` for the bare name.
+    kind: CapabilityKind | str
     target: str
     amount: int | None = None

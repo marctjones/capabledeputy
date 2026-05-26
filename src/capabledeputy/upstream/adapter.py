@@ -171,7 +171,7 @@ class LabeledMcpAdapter:
     def __init__(
         self,
         config: UpstreamServerConfig,
-        session: "SessionLike",
+        session: SessionLike,
     ) -> None:
         self._config = config
         self._session = session

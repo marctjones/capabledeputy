@@ -213,7 +213,7 @@ class PodmanSandboxActuator(SandboxActuator):
         We don't pin a minimum version here — operators run wildly
         different distros. Detection failures are fatal at __init__."""
         try:
-            result = subprocess.run(  # noqa: S603 - safe; argv list, no shell
+            result = subprocess.run(
                 [self._podman_bin, "--version"],
                 capture_output=True,
                 timeout=5,
@@ -278,7 +278,7 @@ class PodmanSandboxActuator(SandboxActuator):
         # already exited the kill is a no-op (idempotent). We then
         # let the Popen.communicate() side observe the exit.
         try:
-            subprocess.run(  # noqa: S603
+            subprocess.run(
                 [self._podman_bin, "kill", region.container_name],
                 capture_output=True,
                 timeout=5,
@@ -351,7 +351,7 @@ class PodmanSandboxActuator(SandboxActuator):
         exit_code = -1
 
         try:
-            proc = subprocess.Popen(  # noqa: S603 - safe argv list, no shell
+            proc = subprocess.Popen(
                 run_argv,
                 stdin=subprocess.PIPE if stdin_bytes is not None else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
@@ -597,7 +597,7 @@ class PodmanSandboxActuator(SandboxActuator):
         gone (race with `--rm`)."""
         for sub in (["kill", container_name], ["rm", "-f", container_name]):
             try:
-                subprocess.run(  # noqa: S603
+                subprocess.run(
                     [self._podman_bin, *sub],
                     capture_output=True,
                     timeout=5,

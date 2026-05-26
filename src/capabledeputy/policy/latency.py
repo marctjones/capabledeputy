@@ -25,9 +25,8 @@ Spec lineage:
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
-
 
 # Spec targets — Q4 2026-05-25 / SC-023.
 SC023_P95_TARGET_MS = 50.0
@@ -99,7 +98,7 @@ class LatencyTracker:
         ):
             self._check()
 
-    def measure(self) -> "_LatencyMeasure":
+    def measure(self) -> _LatencyMeasure:
         """Context manager that records the elapsed wall-clock of its
         body. Use as ``with tracker.measure(): outcome = decide(...)``."""
         return _LatencyMeasure(self)
@@ -150,13 +149,13 @@ class LatencyTracker:
 class _LatencyMeasure:
     """Context manager helper for `LatencyTracker.measure()`."""
 
-    __slots__ = ("_tracker", "_start_ms")
+    __slots__ = ("_start_ms", "_tracker")
 
     def __init__(self, tracker: LatencyTracker) -> None:
         self._tracker = tracker
         self._start_ms: float = 0.0
 
-    def __enter__(self) -> "_LatencyMeasure":
+    def __enter__(self) -> _LatencyMeasure:
         import time
 
         self._start_ms = time.perf_counter() * 1000.0

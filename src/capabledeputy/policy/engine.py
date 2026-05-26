@@ -16,7 +16,6 @@ from capabledeputy.policy.actions import Action
 from capabledeputy.policy.assurance import EffectGate, reversibility_gate
 from capabledeputy.policy.bindings import BindingError, BindingSet
 from capabledeputy.policy.capabilities import (
-    DESTRUCTIVE_KINDS,
     Capability,
     CapabilityKind,
     kind_name,
@@ -192,7 +191,12 @@ def _compose_with_v2(legacy: PolicyDecision, v2: EvaluationResult) -> PolicyDeci
     )
 
 
-def egress_label_for(kind: CapabilityKind) -> Label | None:
+def egress_label_for(kind: CapabilityKind | str) -> Label | None:
+    # Custom-kind strings don't appear in the egress map — only the
+    # built-in enum kinds (SEND_EMAIL, QUEUE_PURCHASE, etc.) do, so a
+    # str-typed kind safely yields None via the lookup.
+    if not isinstance(kind, CapabilityKind):
+        return None
     return _EGRESS_LABEL_FOR_KIND.get(kind)
 
 

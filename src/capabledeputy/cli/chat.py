@@ -119,11 +119,10 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
     load.
     """
     from capabledeputy.cli._managed_config import (
-        imap_credentials_present,
-        has_managed_block,
         IMAP_BLOCK_ID,
+        has_managed_block,
+        imap_credentials_present,
         resolve_daemon_config_with_source,
-        user_default_daemon_config_path,
     )
 
     resolved_path, source = resolve_daemon_config_with_source(config)
@@ -1166,7 +1165,7 @@ def _handle_server_info() -> None:
         git_label += " [yellow](dirty)[/yellow]"
 
     console.print()
-    console.print(f"[bold cyan]capdep daemon[/bold cyan]  [dim]/server[/dim]")
+    console.print("[bold cyan]capdep daemon[/bold cyan]  [dim]/server[/dim]")
     console.print(f"  [dim]version[/dim]   capdep {version}  {git_label}  manifest {manifest}")
     console.print(f"  [dim]runtime[/dim]   PID {pid}  uptime {uptime_str}  python {python_v}")
     rss_mb = info.get("rss_mb", 0)
@@ -1243,7 +1242,7 @@ def _handle_server_info() -> None:
                 line += f"  [dim]— {desc}[/dim]"
             console.print(line)
     else:
-        console.print(f"  [dim]plugins[/dim]   none (no custom kinds loaded from servers.d/)")
+        console.print("  [dim]plugins[/dim]   none (no custom kinds loaded from servers.d/)")
 
     # Audit log
     audit_size = info.get("audit_size_bytes", 0)
@@ -1289,11 +1288,12 @@ def _format_uptime(seconds: int) -> str:
 
 def _format_bytes(n: int) -> str:
     """Human-readable byte count (KB/MB/GB)."""
+    size: float = float(n)
     for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024:
-            return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
-        n /= 1024
-    return f"{n:.1f} TB"
+        if size < 1024:
+            return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
+        size /= 1024
+    return f"{size:.1f} TB"
 
 
 def _local_manifest_hash() -> str:
@@ -1950,7 +1950,7 @@ def _inline_approval_review(approval_ids: list[int]) -> None:
                 f.write(show["payload"])
                 tmp_path = f.name
             try:
-                subprocess.run(  # noqa: S603
+                subprocess.run(
                     [editor, tmp_path],
                     check=False,
                 )
@@ -2051,8 +2051,8 @@ def _repl_loop(session_id: str) -> None:
     # default when supported) means pasted content with internal
     # newlines is treated as text, not as multiple commands — also a
     # win for safety.
-    from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.filters import Condition
+    from prompt_toolkit.key_binding import KeyBindings
 
     kb = KeyBindings()
 
@@ -2555,8 +2555,6 @@ def _grant_default_read_caps(session_id: str) -> None:
     action is generally permitted for this session", not "let
     everything through".
     """
-    from uuid import uuid4
-
     # Issue #6 — Scope READ_FS away from system files. Previously this
     # was `READ_FS *` which let the agent read /etc/passwd, ~/.ssh/*,
     # ~/.aws/*, etc. The scoped set covers normal work dirs; the agent
@@ -2566,6 +2564,7 @@ def _grant_default_read_caps(session_id: str) -> None:
     # matcher does shell-style globbing and `~` is fine as a literal.
     # If your home isn't /home/<you>, edit your auto-grant via /grant.
     import os as _os
+    from uuid import uuid4
 
     home = _os.path.expanduser("~")
     default_caps = (

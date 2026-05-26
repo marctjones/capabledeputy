@@ -30,7 +30,7 @@ def _capture_code_version() -> dict[str, str]:
     git_rev: str | None = None
     git_dirty: bool | None = None
     try:
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(
             ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
             capture_output=True,
             text=True,
@@ -39,7 +39,7 @@ def _capture_code_version() -> dict[str, str]:
         )
         if result.returncode == 0:
             git_rev = result.stdout.strip()
-            dirty_result = subprocess.run(  # noqa: S603
+            dirty_result = subprocess.run(
                 ["git", "-C", str(repo_root), "status", "--porcelain"],
                 capture_output=True,
                 text=True,

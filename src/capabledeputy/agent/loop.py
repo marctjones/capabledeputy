@@ -657,7 +657,7 @@ async def run_turn_streaming(
             content_length=len(response.content),
             n_tool_calls=len(response.tool_calls),
             finish_reason=response.finish_reason.value,
-            model=response.model,
+            model=response.model or "unknown",
         )
 
         if not response.tool_calls:

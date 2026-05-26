@@ -522,7 +522,7 @@ def gws_cli_available() -> bool:
     if bin_path is None:
         return False
     try:
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(
             [bin_path, "--version"],
             capture_output=True,
             timeout=3,
@@ -575,7 +575,7 @@ def podman_available() -> bool:
     if bin_path is None:
         return False
     try:
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(
             [bin_path, "--version"],
             capture_output=True,
             timeout=3,

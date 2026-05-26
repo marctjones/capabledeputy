@@ -62,7 +62,7 @@ class BundleMismatchError(RuntimeError):
 
 def _hypothetical_decide(
     label_set: frozenset[Label],
-    kind: CapabilityKind,
+    kind: CapabilityKind | str,
 ) -> tuple[Decision, str | None, str | None]:
     """Information-flow-only bundle prediction. Same scoped boundary as
     `runner._hypothetical_decide`: models the label CONFLICT_RULES, NOT
@@ -355,7 +355,7 @@ async def _dispatch_via_purpose_session(
     tool_client: LabeledToolClient,
     tool_name: str,
     args: dict[str, Any],
-    tool_kind: CapabilityKind,
+    tool_kind: CapabilityKind | str,
     target: str,
     origin_session: UUID,
     bundle_id: str,

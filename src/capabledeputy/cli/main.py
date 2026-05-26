@@ -76,7 +76,6 @@ def config_doctor_command(
     from pathlib import Path
 
     import yaml
-
     from rich.console import Console
 
     console = Console()
@@ -334,7 +333,7 @@ def config_split_command(
             if stripped and cur_indent <= block_indent:
                 in_block = False
                 # Add servers_dir reference at this insertion point
-                new_lines.append(f"servers_dir: ./servers.d/")
+                new_lines.append("servers_dir: ./servers.d/")
                 new_lines.append("")
                 new_lines.append(line)
                 continue
@@ -350,8 +349,8 @@ def config_split_command(
         f"[green]✓ wrote {len(written)} server file(s) to {target_dir}[/green]",
     )
     err_console.print(
-        f"[dim]source updated: legacy `upstream_servers:` block commented out, "
-        f"`servers_dir: ./servers.d/` added.[/dim]",
+        "[dim]source updated: legacy `upstream_servers:` block commented out, "
+        "`servers_dir: ./servers.d/` added.[/dim]",
     )
 
 

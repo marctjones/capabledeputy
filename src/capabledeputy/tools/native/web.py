@@ -150,7 +150,7 @@ def make_web_tools(mock: WebMock) -> list[ToolDefinition]:
             )
         except Exception as e:
             return ToolResult(
-                output={"ok": False, "error": f"search failed: {str(e)}"},
+                output={"ok": False, "error": f"search failed: {e!s}"},
                 additional_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
             )
 

@@ -83,9 +83,11 @@ async def _list_threads(args: dict[str, Any]) -> dict[str, Any]:
             # Gmail X-GM-RAW lets us use Gmail's search syntax verbatim
             typ, data = client.uid("SEARCH", "X-GM-RAW", f'"{query}"')
         elif query:
-            typ, data = client.uid("SEARCH", None, query)
+            # imaplib.uid accepts None as the optional charset arg (no charset);
+            # imaplib stubs disagree, hence the type: ignore.
+            typ, data = client.uid("SEARCH", None, query)  # type: ignore[arg-type]
         else:
-            typ, data = client.uid("SEARCH", None, "ALL")
+            typ, data = client.uid("SEARCH", None, "ALL")  # type: ignore[arg-type]
         if typ != "OK":
             return {"folder": folder, "query": query, "count": 0, "messages": []}
         uids = data[0].split() if data and data[0] else []

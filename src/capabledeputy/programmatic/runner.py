@@ -70,7 +70,7 @@ def _starting_label_set(initial_scope: dict[str, LabeledValue] | None) -> frozen
 
 def _hypothetical_decide(
     label_set: frozenset[Label],
-    kind: CapabilityKind,
+    kind: CapabilityKind | str,
 ) -> tuple[Decision, str | None, str | None]:
     """Predict the *information-flow* outcome of a tool call from the
     effective label set. This is a deliberately scoped second decision

@@ -253,7 +253,10 @@ class RateLimit:
 
 @dataclass(frozen=True)
 class Capability:
-    kind: CapabilityKind
+    # Issue #35 / #37 — `kind` accepts CapabilityKind enum OR custom-kind
+    # string registered via servers.d/*.yaml. `kind_name()` and the
+    # matches() machinery both handle both cases.
+    kind: CapabilityKind | str
     pattern: str
     expiry: CapabilityExpiry = CapabilityExpiry.SESSION
     origin: CapabilityOrigin = CapabilityOrigin.SYSTEM_DEFAULT
@@ -337,15 +340,19 @@ class Capability:
 
     def matches(
         self,
-        kind: CapabilityKind,
+        kind: CapabilityKind | str,
         target: str,
         amount: int | None = None,
     ) -> bool:
         if self.kind != kind:
             # Backward-compat: WRITE_FS / CALENDAR_WRITE capabilities
-            # match the granular create/modify/delete variants.
-            covered = _WRITE_UNION_MATCHES.get(self.kind, frozenset())
-            if kind not in covered:
+            # match the granular create/modify/delete variants. Custom
+            # kinds (str, not in enum) participate via string equality
+            # only — they never trigger the union match.
+            covered: frozenset[CapabilityKind] = frozenset()
+            if isinstance(self.kind, CapabilityKind):
+                covered = _WRITE_UNION_MATCHES.get(self.kind, frozenset())
+            if not isinstance(kind, CapabilityKind) or kind not in covered:
                 return False
         if not fnmatch.fnmatchcase(target, self.pattern):
             return False

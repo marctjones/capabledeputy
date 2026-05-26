@@ -7,6 +7,7 @@ from uuid import UUID
 
 from capabledeputy.daemon.handlers import Handler
 from capabledeputy.policy.actions import Action
+from capabledeputy.policy.capabilities import kind_name
 from capabledeputy.policy.engine import decide
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient
@@ -17,7 +18,7 @@ def _tool_to_dict(tool: ToolDefinition) -> dict[str, Any]:
     return {
         "name": tool.name,
         "description": tool.description,
-        "capability_kind": tool.capability_kind.value,
+        "capability_kind": kind_name(tool.capability_kind),
         "target_arg": tool.target_arg,
         "amount_arg": tool.amount_arg,
         "inherent_labels": sorted(label.value for label in tool.inherent_labels),
@@ -63,7 +64,7 @@ def make_tool_handlers(
             "effective_labels": sorted(label.value for label in decision.effective_labels),
             "tool": _tool_to_dict(tool),
             "action": {
-                "kind": action.kind.value,
+                "kind": kind_name(action.kind),
                 "target": action.target,
                 "amount": action.amount,
             },

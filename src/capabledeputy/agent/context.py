@@ -20,6 +20,7 @@ from datetime import datetime
 
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.llm.types import ToolDescription
+from capabledeputy.policy.capabilities import kind_name
 from capabledeputy.policy.labels import Label
 from capabledeputy.session.model import Session
 from capabledeputy.tools.registry import ToolDefinition
@@ -79,8 +80,8 @@ def _session_caps_str(session: Session) -> str:
     if not session.capability_set:
         return "(none — agent has zero capabilities; tell user to /grant)"
     parts = []
-    for cap in sorted(session.capability_set, key=lambda c: (c.kind.value, c.pattern)):
-        parts.append(f"{cap.kind.value}({cap.pattern})")
+    for cap in sorted(session.capability_set, key=lambda c: (kind_name(c.kind), c.pattern)):
+        parts.append(f"{kind_name(cap.kind)}({cap.pattern})")
     return ", ".join(parts)
 
 
@@ -110,7 +111,7 @@ def _likely_outcome_for_tool(
     if (
         Label.CONFIDENTIAL_FINANCIAL in label_set
         and Label.EGRESS_EMAIL in label_set
-        and tool.capability_kind.value == "SEND_EMAIL"
+        and kind_name(tool.capability_kind) == "SEND_EMAIL"
     ):
         return "likely DENY (financial-meets-email)"
 
@@ -118,7 +119,7 @@ def _likely_outcome_for_tool(
     if (
         Label.CONFIDENTIAL_FINANCIAL in label_set
         and Label.EGRESS_PURCHASE in label_set
-        and tool.capability_kind.value == "QUEUE_PURCHASE"
+        and kind_name(tool.capability_kind) == "QUEUE_PURCHASE"
     ):
         return "likely REQUIRE_APPROVAL (financial-meets-purchase)"
 
@@ -149,7 +150,7 @@ def _format_tool_line(
         hint = _likely_outcome_for_tool(tool_def, label_set)
 
     # Tool line format: name [CAPABILITY_KIND] hint
-    kind = tool_def.capability_kind.value if tool_def else "UNKNOWN"
+    kind = kind_name(tool_def.capability_kind) if tool_def else "UNKNOWN"
     return f"- {tool_desc.name:<25} [{kind:<20}] {hint}"
 
 

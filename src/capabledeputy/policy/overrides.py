@@ -41,6 +41,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityExpiry,
     CapabilityKind,
     CapabilityOrigin,
+    kind_name,
 )
 
 
@@ -173,7 +174,7 @@ class OverrideGrant:
 
     id: UUID
     session_id: UUID
-    action_kind: CapabilityKind
+    action_kind: CapabilityKind | str
     target: str
     target_category_tier: tuple[str, str]
     hard_floor_crossed: HardFloor
@@ -189,7 +190,7 @@ class OverrideGrant:
     def is_expired(self, now: datetime) -> bool:
         return now >= self.expires_at
 
-    def is_for(self, *, action_kind: CapabilityKind, target: str) -> bool:
+    def is_for(self, *, action_kind: CapabilityKind | str, target: str) -> bool:
         return self.action_kind == action_kind and self.target == target
 
 
@@ -211,7 +212,7 @@ def request_override(
     *,
     policies: OverridePolicies,
     session_id: UUID,
-    action_kind: CapabilityKind,
+    action_kind: CapabilityKind | str,
     target: str,
     target_category_tier: tuple[str, str],
     floor: HardFloor,
@@ -327,7 +328,7 @@ def attest_override(
 def use_override(
     grant: OverrideGrant,
     *,
-    action_kind: CapabilityKind,
+    action_kind: CapabilityKind | str,
     target: str,
     now: datetime | None = None,
 ) -> Capability | OverrideRefusal:
@@ -497,7 +498,7 @@ class OverrideGrantStore:
                 (
                     str(grant.id),
                     str(grant.session_id),
-                    grant.action_kind.value,
+                    kind_name(grant.action_kind),
                     grant.target,
                     json.dumps(tier_payload),
                     grant.hard_floor_crossed.value,
@@ -531,7 +532,7 @@ class OverrideGrantStore:
         self,
         *,
         session_id: UUID,
-        action_kind: CapabilityKind,
+        action_kind: CapabilityKind | str,
         target: str,
         now: datetime,
     ) -> OverrideGrant | None:

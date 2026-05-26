@@ -20,6 +20,7 @@ from capabledeputy.policy.capabilities import (
     DelegationRefusalReason,
     DelegationRequest,
     derive_delegated_capability,
+    kind_name as _kind_name_of,
 )
 from capabledeputy.policy.labels import Label
 from capabledeputy.policy.purposes import (
@@ -248,7 +249,7 @@ class SessionGraph:
             await self._emit(
                 EventType.CAPABILITY_GRANTED,
                 session,
-                kind=cap.kind.value,
+                kind=_kind_name_of(cap.kind),
                 pattern=cap.pattern,
                 origin=cap.origin.value,
                 source="purpose-default",
@@ -332,7 +333,7 @@ class SessionGraph:
     async def record_used_kind(
         self,
         session_id: UUID,
-        kind: CapabilityKind,
+        kind: CapabilityKind | str,
     ) -> Session:
         session = self.get(session_id)
         if kind in session.used_kinds:
@@ -412,7 +413,7 @@ class SessionGraph:
             # Issue #35 — capability.kind may be an enum OR a custom-kind
             # string. Both serialize to the bare name for audit events.
             _kind_str = (
-                capability.kind.value
+                _kind_name_of(capability.kind)
                 if hasattr(capability.kind, "value")
                 else str(capability.kind)
             )
@@ -574,7 +575,7 @@ class SessionGraph:
             parent_session=str(parent_session_id),
             parent_audit_id=str(live[0].audit_id),
             child_audit_id=str(result.audit_id),
-            kind=result.kind.value,
+            kind=_kind_name_of(result.kind),
             depth=result.depth,
         )
         return result

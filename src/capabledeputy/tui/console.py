@@ -1,3 +1,10 @@
+# pyright: reportUnusedCoroutine=false
+# Textual's handler API accepts async functions that the framework
+# fires-and-forgets via run_worker / call_after; pyright reads these
+# as bare-coroutine-never-awaited. These are intentional per the
+# framework contract, so we silence the rule at file scope rather
+# than tagging every call site. This file is also slated for removal
+# once `capdep chat --mode rich` reaches feature parity (#15 Phase C).
 """capdep console: a single window that drives the agent, monitors
 the security model live, and grants approvals.
 
