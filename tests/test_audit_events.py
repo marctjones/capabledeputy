@@ -45,6 +45,7 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         # 003 v0.9 labeling framework (T014).
         "binding",
         "override",
+        "ratification",  # FR-014 Q3 ratification authorization
         "pattern3",
         "isolation_region",
         "envelope",
@@ -104,6 +105,7 @@ def test_event_type_taxonomy_matches_design() -> None:
         "override.refused",
         "override.expired",
         "override.use_refused",
+        "ratification.applied",
         "pattern3.handle_bind",
         "isolation_region.created",
         "isolation_region.discarded",

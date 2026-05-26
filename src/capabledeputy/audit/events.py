@@ -73,6 +73,7 @@ class EventType(StrEnum):
     OVERRIDE_REFUSED = "override.refused"  # FR-036
     OVERRIDE_EXPIRED = "override.expired"  # FR-036
     OVERRIDE_USE_REFUSED = "override.use_refused"  # FR-038
+    RATIFICATION_APPLIED = "ratification.applied"  # FR-014 Q3
     PATTERN3_HANDLE_BIND = "pattern3.handle_bind"  # FR-047 Reference Handle
     ISOLATION_REGION_CREATED = "isolation_region.created"  # FR-040
     ISOLATION_REGION_DISCARDED = "isolation_region.discarded"  # FR-040
