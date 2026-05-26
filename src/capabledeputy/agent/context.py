@@ -450,8 +450,12 @@ Operational guidance for batch reads:
   full bodies are rarely needed for every item.
 - **For email summarization specifically**: `gmail_messages_list`
   returns subjects + snippets. Use those to compose the summary.
-  Only fetch full bodies (`gmail_messages_get`) for the 2-3
-  messages you genuinely need to quote or analyze.
+  If you must call `gmail_messages_get`, pass `format="metadata"`
+  (headers + snippet only, ~2 KB) — the default `format="full"`
+  returns the entire RFC-822 message with HTML body + DKIM/ARC
+  headers, which can exceed 100 KB per message and blow context
+  in 2-3 parallel calls. Only escalate to `format="full"` for the
+  ONE message you genuinely need to quote or analyze in detail.
 - **Batch in small groups.** If you must process N items, fetch 5
   at a time and summarize each batch into a brief before fetching
   the next batch. Don't fetch 20 in parallel and try to summarize

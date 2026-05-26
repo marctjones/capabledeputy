@@ -46,6 +46,54 @@ _MODIFY_TOKENS = ("write", "update", "modify", "edit", "patch", "replace", "set"
 _CREATE_TOKENS = ("create", "new", "add", "mkdir")
 
 
+# Per-tool-response output cap. A single oversized response from an
+# upstream MCP server (e.g. a 100 KB gmail message with full HTML
+# body + DKIM/ARC headers) can blow the LLM context window in a few
+# parallel calls — see the email-summary failure mode where 5
+# parallel gmail_messages_get calls pushed the prompt to 202k tokens
+# against a 200k cap. Native tools (fs, fetch, git) already truncate;
+# the upstream adapter is the missing piece.
+#
+# 32 KB caps a single response to ~8k tokens, so even 8 parallel
+# oversized calls stay under 64k tokens of tool output — well within
+# any modern context window. The LLM gets a `truncated: true` marker
+# + `original_size_bytes` so it knows to re-request a narrower view
+# (e.g. format=metadata) rather than treat the truncated text as
+# complete.
+MAX_UPSTREAM_TOOL_OUTPUT_BYTES = 32 * 1024
+
+
+def _maybe_truncate_output(output: dict[str, Any]) -> dict[str, Any]:
+    """Cap the `text` field of an upstream tool result to keep a
+    single response from blowing the context window. Structured
+    outputs without a `text` field pass through untouched (they're
+    typically small dicts that the LLM consumes wholesale).
+
+    When truncating, replace `text` with the head of the original
+    plus a hint, and set `truncated=True` + `original_size_bytes` so
+    the LLM has the signal to take a different approach next call.
+    """
+    text = output.get("text")
+    if not isinstance(text, str):
+        return output
+    raw = text.encode("utf-8")
+    if len(raw) <= MAX_UPSTREAM_TOOL_OUTPUT_BYTES:
+        return output
+    head = raw[:MAX_UPSTREAM_TOOL_OUTPUT_BYTES].decode("utf-8", errors="ignore")
+    hint = (
+        f"\n\n[truncated: response was {len(raw):,} bytes; "
+        f"capped at {MAX_UPSTREAM_TOOL_OUTPUT_BYTES:,}. "
+        "If you need the full payload, request a single item at a "
+        "time or use a list/metadata variant of this tool.]"
+    )
+    return {
+        **output,
+        "text": head + hint,
+        "truncated": True,
+        "original_size_bytes": len(raw),
+    }
+
+
 def _infer_capability_kind(
     annotations: Any | None,
     name: str,
@@ -345,6 +393,7 @@ class LabeledMcpAdapter:
             if getattr(result, "isError", False):
                 output = {"upstream_error": True, **output}
 
+            output = _maybe_truncate_output(output)
             return ToolResult(output=output, additional_labels=additional)
 
         return handler

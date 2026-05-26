@@ -17,7 +17,12 @@ from mcp.shared.memory import create_connected_server_and_client_session
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import ToolContext, ToolRegistry
-from capabledeputy.upstream.adapter import LabeledMcpAdapter, _infer_capability_kind
+from capabledeputy.upstream.adapter import (
+    MAX_UPSTREAM_TOOL_OUTPUT_BYTES,
+    LabeledMcpAdapter,
+    _infer_capability_kind,
+    _maybe_truncate_output,
+)
 from capabledeputy.upstream.config import UpstreamServerConfig, UpstreamToolOverride
 
 
@@ -274,6 +279,47 @@ async def test_strict_mode_keeps_explicit_override() -> None:
 
     assert registry.get("mystery.do_stuff").capability_kind == CapabilityKind.READ_FS
     assert adapter.rejected_tools == []
+
+
+def test_truncate_output_small_text_passes_through() -> None:
+    """Small responses are untouched — no truncation, no added flags."""
+    output = {"text": "hello world"}
+    result = _maybe_truncate_output(output)
+    assert result == {"text": "hello world"}
+    assert "truncated" not in result
+
+
+def test_truncate_output_oversized_text_capped_with_marker() -> None:
+    """Oversized text gets capped to the cap, and the result carries
+    `truncated=True` + `original_size_bytes` so the LLM can react."""
+    big = "x" * (MAX_UPSTREAM_TOOL_OUTPUT_BYTES * 3)
+    output = {"text": big}
+    result = _maybe_truncate_output(output)
+    assert result["truncated"] is True
+    assert result["original_size_bytes"] == len(big)
+    # Capped head + truncation hint; total should not exceed cap +
+    # a small constant for the hint message.
+    assert len(result["text"].encode("utf-8")) <= MAX_UPSTREAM_TOOL_OUTPUT_BYTES + 500
+    assert "truncated" in result["text"]
+
+
+def test_truncate_output_preserves_other_fields() -> None:
+    """Non-text fields on the output dict (e.g. upstream_error,
+    structured payload keys) survive truncation."""
+    big = "y" * (MAX_UPSTREAM_TOOL_OUTPUT_BYTES * 2)
+    output = {"text": big, "upstream_error": True, "extra": {"k": 1}}
+    result = _maybe_truncate_output(output)
+    assert result["upstream_error"] is True
+    assert result["extra"] == {"k": 1}
+    assert result["truncated"] is True
+
+
+def test_truncate_output_structured_only_no_text_passes_through() -> None:
+    """When the upstream returns structuredContent without a text
+    field, there's nothing to cap — pass through untouched."""
+    output = {"name": "thing", "args": {"id": "abc"}}
+    result = _maybe_truncate_output(output)
+    assert result == output
 
 
 def test_parse_config_round_trip() -> None:

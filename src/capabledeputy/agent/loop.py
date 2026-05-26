@@ -163,20 +163,54 @@ _SOFT_WARNING_THRESHOLD = 0.80
 _HARD_LIMIT_THRESHOLD = 0.90
 
 
-def _estimate_message_tokens(messages: list[Message]) -> int:
-    """Cheap chars/4 heuristic — Anthropic + OpenAI both produce
-    ~4 chars per token on English text. Off by ~10-30% on average
-    but fine for guardrail purposes (we only care about "approaching
-    the cliff"). For accurate counts, a model-specific tokenizer
-    would replace this; deferred to follow-on work."""
+def _estimate_message_tokens(
+    messages: list[Message],
+    tool_descriptions: list[ToolDescription] | tuple[ToolDescription, ...] | None = None,
+) -> int:
+    """Cheap chars-per-token heuristic. Anthropic + OpenAI tokenize
+    English prose at ~4 chars/token, but JSON-heavy content (tool
+    schemas, structured tool results) tokenizes denser — closer to
+    3 chars/token because of `{`, `}`, `"`, and many short keys. We
+    use 3 to stay safe and pad an additional ~10% for per-message
+    framing overhead (role markers, tool_use/tool_result block
+    metadata in the Anthropic envelope).
+
+    Before this fix, the estimator counted only message content +
+    inline tool_call args. It missed two large contributors that
+    actually ship to the model on every iteration:
+
+      1. The `tools` array — every ToolDescription's name,
+         description, and JSON schema is serialized to the wire.
+         With 50+ upstream tools this can be 30k+ tokens by itself.
+      2. Tool result content shipped via `Role.TOOL` messages —
+         these *were* counted (they live in `msg.content`) but the
+         char/token ratio undercounted JSON-heavy outputs.
+
+    Empirical case: a real email-summarization turn estimated as
+    64k tokens actually weighed 202k tokens at the provider
+    boundary — a 3.2x undercount. Adding tool schemas + tightening
+    the ratio closes most of that gap; the rest is provider
+    tokenizer quirks (BPE merges) we don't model.
+    """
     total_chars = 0
     for msg in messages:
         if msg.content:
             total_chars += len(msg.content)
+        # Per-message framing overhead — role marker, tool_call_id,
+        # tool_use envelope. ~20 chars is conservative.
+        total_chars += 20
         # tool_calls payloads count too
         for tc in (msg.tool_calls or ()):
             total_chars += len(tc.name) + len(str(tc.args or {}))
-    return total_chars // 4
+    # Tool schemas ship with every request — these are huge and
+    # were previously uncounted.
+    if tool_descriptions:
+        for td in tool_descriptions:
+            total_chars += len(td.name) + len(td.description)
+            # JSON schema serialized roughly as str(dict) — close
+            # enough to the wire size for a heuristic.
+            total_chars += len(str(td.parameters_schema))
+    return total_chars // 3
 
 
 def _context_window_for(model: str | None) -> int:
@@ -516,7 +550,7 @@ async def run_turn_streaming(
         # append a system notice so the LLM knows to wrap up rather
         # than fetching more.
         window = _context_window_for(last_model)
-        estimated = _estimate_message_tokens(messages)
+        estimated = _estimate_message_tokens(messages, tool_descriptions)
         ratio = estimated / window if window else 0.0
 
         if ratio >= _HARD_LIMIT_THRESHOLD:

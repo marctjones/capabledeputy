@@ -71,18 +71,43 @@ async def session_setup(tmp_path: Path):
 
 
 def test_estimate_message_tokens_heuristic() -> None:
-    """chars/4 heuristic for context size."""
+    """chars/3 heuristic + 20-char per-message envelope overhead.
+    Previously chars/4 with no overhead; bumped after a real
+    202k-token request was estimated as 64k tokens (3.2x undercount)."""
     msgs = [
-        Message(role=Role.USER, content="hello world"),  # 11 chars → 2 tokens
-        Message(role=Role.ASSISTANT, content="hi there"),  # 8 chars → 2 tokens
+        Message(role=Role.USER, content="hello world"),  # 11 chars + 20 envelope
+        Message(role=Role.ASSISTANT, content="hi there"),  # 8 chars + 20 envelope
     ]
     est = _estimate_message_tokens(msgs)
-    # 19 chars / 4 = 4 tokens
-    assert est == 4
+    # (11 + 20) + (8 + 20) = 59 chars / 3 = 19 tokens
+    assert est == 19
 
 
 def test_estimate_message_tokens_empty() -> None:
     assert _estimate_message_tokens([]) == 0
+
+
+def test_estimate_message_tokens_counts_tool_schemas() -> None:
+    """Tool descriptions ship with every request — must be counted.
+    Previously uncounted; with 50+ upstream tools this was the
+    largest contributor to the estimator undercount."""
+    from capabledeputy.llm.types import ToolDescription
+
+    msgs = [Message(role=Role.USER, content="")]
+    tools = [
+        ToolDescription(
+            name="big_tool",
+            description="x" * 500,  # 500 char description
+            parameters_schema={"type": "object", "properties": {"a": {"type": "string"}}},
+        ),
+    ]
+    base = _estimate_message_tokens(msgs)
+    with_tools = _estimate_message_tokens(msgs, tools)
+    # Adding tool schemas must grow the estimate.
+    assert with_tools > base
+    # 'big_tool' (8) + description (500) + schema repr (~60) ~ 568 chars
+    # → ~189 tokens added; verify it's in the right ballpark.
+    assert with_tools - base > 150
 
 
 def test_context_window_known_model() -> None:
@@ -259,7 +284,7 @@ async def test_soft_warning_fires_and_injects_system_notice(
     # Use a window where 0 tokens / window >= 0.80 — set window to 0 hits div-by-zero.
     # Better: stub the estimator to return a known value.
     monkeypatch.setattr(loop_mod, "_context_window_for", lambda m: 100)
-    monkeypatch.setattr(loop_mod, "_estimate_message_tokens", lambda msgs: 85)
+    monkeypatch.setattr(loop_mod, "_estimate_message_tokens", lambda msgs, tools=None: 85)
 
     received_messages: list[list[Message]] = []
 
