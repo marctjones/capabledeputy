@@ -38,6 +38,14 @@ class EventType(StrEnum):
     # operator/agent can see proactively that the turn is about to
     # outgrow its budget.
     LLM_CONTEXT_WARNING = "llm.context_warning"
+    # Issue 003 / Q4 (spec.md §Clarifications 2026-05-25, SC-023):
+    # decide() latency exceeded the p95 ≤ 50 ms OR p99.9 ≤ 250 ms
+    # target over the recent window. Payload carries:
+    #   latency_ms, threshold_crossed: "p95"|"p99.9",
+    #   window_size, observed_p95_ms, observed_p99_9_ms, rule_count.
+    # Operator-visible signal so latency regressions are caught
+    # before they manifest as subjective REPL sluggishness.
+    DECISION_LATENCY_DEGRADED = "decision.latency_degraded"
 
     MODE_SELECTED = "mode.selected"
     POLICY_DECIDED = "policy.decided"

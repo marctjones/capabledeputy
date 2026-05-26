@@ -273,8 +273,8 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ### Q2: Override Grant default expiry (FR-032)
 
-- [ ] T122 [P] [US4] Update `src/capabledeputy/override/policy.py` `OverridePolicyEntry` validator: `expiry_seconds` defaults to `900` (15 min) when unset; entries with `expiry_seconds > 3600` are refused at policy authoring time with a clear error pointing at FR-032's hard cap. (D13, Q2)
-- [ ] T123 [P] [US4] Test `tests/test_override_grant_expiry.py` — verify default expiry = 900s; verify a configured entry with expiry_seconds=600 is honored; verify expiry_seconds=3601 is refused with FR-032 reference; verify the granted Override Grant's `expires_at` = `created_at + min(expiry_seconds, 3600)` (FR-032, Q2, SC-014 extension).
+- [X] T122 [P] [US4] Update `src/capabledeputy/override/policy.py` `OverridePolicyEntry` validator: `expiry_seconds` defaults to `900` (15 min) when unset; entries with `expiry_seconds > 3600` are refused at policy authoring time with a clear error pointing at FR-032's hard cap. (D13, Q2)
+- [X] T123 [P] [US4] Test `tests/test_override_grant_expiry.py` — verify default expiry = 900s; verify a configured entry with expiry_seconds=600 is honored; verify expiry_seconds=3601 is refused with FR-032 reference; verify the granted Override Grant's `expires_at` = `created_at + min(expiry_seconds, 3600)` (FR-032, Q2, SC-014 extension).
 
 ### Q3: Ratification Authorization (FR-014)
 
@@ -285,9 +285,9 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ### Q4: Decision-latency SLO (SC-023)
 
-- [ ] T128 [P] New module `src/capabledeputy/policy/latency.py`: in-process histogram tracking per-`decide()` latency; on every Nth dispatch (configurable, default 100), checks recent window's p95 / p99.9 against thresholds (50ms / 250ms) and emits `decision.latency_degraded` audit event when exceeded. (D15, Q4)
-- [ ] T129 [P] Add `EventType.DECISION_LATENCY_DEGRADED` to `src/capabledeputy/audit/events.py`. Payload: `{latency_ms, rule, fixture_size, threshold_crossed: "p95"|"p99.9"}`. Update `tests/test_audit_events.py` taxonomy assertion. (D15, Q4)
-- [ ] T130 [P] Benchmark test `tests/test_decision_latency.py` — build standard rule-set fixture (≥1k rules, ≥100 categories, ≥50 expectation bindings); run `decide()` 10,000× ; assert p95 ≤ 50ms AND p99.9 ≤ 250ms. Skip-by-default in CI when running in resource-constrained environments via `pytest.mark.benchmark` (SC-023, Q4).
+- [X] T128 [P] New module `src/capabledeputy/policy/latency.py`: in-process histogram tracking per-`decide()` latency; on every Nth dispatch (configurable, default 100), checks recent window's p95 / p99.9 against thresholds (50ms / 250ms) and emits `decision.latency_degraded` audit event when exceeded. (D15, Q4)
+- [X] T129 [P] Add `EventType.DECISION_LATENCY_DEGRADED` to `src/capabledeputy/audit/events.py`. Payload: `{latency_ms, rule, fixture_size, threshold_crossed: "p95"|"p99.9"}`. Update `tests/test_audit_events.py` taxonomy assertion. (D15, Q4)
+- [X] T130 [P] Benchmark test `tests/test_decision_latency.py` — build standard rule-set fixture (≥1k rules, ≥100 categories, ≥50 expectation bindings); run `decide()` 10,000× ; assert p95 ≤ 50ms AND p99.9 ≤ 250ms. Skip-by-default in CI when running in resource-constrained environments via `pytest.mark.benchmark` (SC-023, Q4).
 
 ### Q5: Per-Risk-Register-Entry residual-risk thresholds (FR-016 / FR-028)
 

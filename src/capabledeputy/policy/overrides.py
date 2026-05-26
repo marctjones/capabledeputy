@@ -94,6 +94,20 @@ class OverrideRefusalReason(StrEnum):
     UNKNOWN_GRANT = "unknown_grant"
 
 
+# Issue 003 / Q2 (spec.md §Clarifications 2026-05-25, FR-032):
+# Default Override Grant expiry is 15 minutes (900s); absolute spec-enforced
+# cap is 60 minutes (3600s). No operator configuration, even misconfigured,
+# may produce an Override Grant whose expiry exceeds 3600s — the validator
+# in OverridePolicyEntry.__post_init__ refuses such entries at load time.
+OVERRIDE_EXPIRY_DEFAULT_SECONDS = 900
+OVERRIDE_EXPIRY_MAX_SECONDS = 3600
+
+
+class OverridePolicyValidationError(ValueError):
+    """Raised when an OverridePolicyEntry violates the spec's hard caps
+    (e.g., expiry_seconds > OVERRIDE_EXPIRY_MAX_SECONDS per FR-032)."""
+
+
 @dataclass(frozen=True)
 class OverridePolicyEntry:
     """One operator-declared entry: how the override mechanism behaves
@@ -103,8 +117,26 @@ class OverridePolicyEntry:
     policy: OverridePolicy
     authorized_principal_ids: frozenset[str] = field(default_factory=frozenset)
     attester_principal_ids: frozenset[str] = field(default_factory=frozenset)
-    expiry_seconds: int = 300  # 5 min default; operator scales by severity
+    expiry_seconds: int = OVERRIDE_EXPIRY_DEFAULT_SECONDS  # 15 min — Q2 / FR-032
     friction_level: FrictionLevel | None = None  # None ⇒ use _DEFAULT_FRICTION
+
+    def __post_init__(self) -> None:
+        # FR-032 / Q2 (2026-05-25): the spec enforces a 3600s absolute cap.
+        # An expiry above that is refused at policy authoring / load time,
+        # so a misconfiguration can't yield an all-day bypass.
+        if self.expiry_seconds <= 0:
+            raise OverridePolicyValidationError(
+                f"OverridePolicyEntry expiry_seconds must be positive "
+                f"(got {self.expiry_seconds})",
+            )
+        if self.expiry_seconds > OVERRIDE_EXPIRY_MAX_SECONDS:
+            raise OverridePolicyValidationError(
+                f"OverridePolicyEntry expiry_seconds={self.expiry_seconds} "
+                f"exceeds the FR-032 hard cap of "
+                f"{OVERRIDE_EXPIRY_MAX_SECONDS}s "
+                f"({OVERRIDE_EXPIRY_MAX_SECONDS // 60} min). Operators "
+                f"cannot grant longer bypasses than this by configuration.",
+            )
 
     def effective_friction(self) -> FrictionLevel:
         return self.friction_level or _DEFAULT_FRICTION[self.floor]
@@ -397,7 +429,7 @@ class OverrideGrantStore:
                     attester_principal_ids=frozenset(
                         entry_raw.get("attester_principal_ids", []),
                     ),
-                    expiry_seconds=int(entry_raw.get("expiry_seconds", 300)),
+                    expiry_seconds=int(entry_raw.get("expiry_seconds", OVERRIDE_EXPIRY_DEFAULT_SECONDS)),
                     friction_level=(
                         FrictionLevel(entry_raw["friction_level"])
                         if entry_raw.get("friction_level")
@@ -558,7 +590,7 @@ def load(path: Path) -> OverridePolicies:
             attester_principal_ids=frozenset(
                 str(p) for p in item.get("attester_principal_ids", [])
             ),
-            expiry_seconds=int(item.get("expiry_seconds", 300)),
+            expiry_seconds=int(item.get("expiry_seconds", OVERRIDE_EXPIRY_DEFAULT_SECONDS)),
             friction_level=(
                 FrictionLevel(str(item["friction_level"])) if "friction_level" in item else None
             ),
