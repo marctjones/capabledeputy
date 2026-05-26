@@ -25,15 +25,43 @@ from __future__ import annotations
 import base64
 from typing import Any
 
+from capabledeputy.audit.events import Event, EventType
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
 
-def make_sandbox_tools(policy_context) -> list[ToolDefinition]:
+async def _emit_region_event(
+    audit,
+    event_type: EventType,
+    *,
+    session_id,
+    payload: dict[str, Any],
+) -> None:
+    """Helper for emitting ISOLATION_REGION_* events when an audit
+    writer is wired. No-op when audit is None (e.g. tests that
+    don't care about the event trail). FR-040 / Pattern ⑤ audit."""
+    if audit is None:
+        return
+    await audit.write(
+        Event(
+            event_type=event_type,
+            session_id=session_id,
+            payload=payload,
+        ),
+    )
+
+
+def make_sandbox_tools(policy_context, audit=None) -> list[ToolDefinition]:
     """Build the `sandbox.run` tool if a SandboxActuator is wired on
     `policy_context`. Returns an empty list otherwise so the tool
     never appears in the agent's list when there's no provider —
     cleaner than registering a tool that always denies.
+
+    `audit`: optional AuditWriter. When provided, every region
+    lifecycle transition emits an `isolation_region.created` /
+    `isolation_region.discarded` audit event (FR-040). Pattern ⑤'s
+    audit trail requires the lifecycle to be visible: a contained
+    run that proceeds without an event pair is a reviewable defect.
     """
     if policy_context is None or policy_context.sandbox_actuator is None:
         return []
@@ -99,6 +127,21 @@ def make_sandbox_tools(policy_context) -> list[ToolDefinition]:
         except Exception as e:
             return ToolResult(output={"error": f"create_region failed: {e}"})
 
+        # FR-040 — emit ISOLATION_REGION_CREATED so audit/replay can
+        # reconstruct the region lifecycle for SC-017 / SC-021.
+        # Closes the "events defined but never emitted" gap.
+        await _emit_region_event(
+            audit,
+            EventType.ISOLATION_REGION_CREATED,
+            session_id=ctx.session_id,
+            payload={
+                "region_id": region_id,
+                "spec_id": spec_id,
+                "argv": list(argv),
+                "timeout_seconds": timeout_seconds,
+            },
+        )
+
         try:
             result = actuator.execute(
                 region_id=region_id,
@@ -113,6 +156,17 @@ def make_sandbox_tools(policy_context) -> list[ToolDefinition]:
                 actuator.discard_region(region_id)
             except Exception:
                 pass
+            await _emit_region_event(
+                audit,
+                EventType.ISOLATION_REGION_DISCARDED,
+                session_id=ctx.session_id,
+                payload={
+                    "region_id": region_id,
+                    "spec_id": spec_id,
+                    "reason": "execute_failed",
+                    "error": str(e)[:200],
+                },
+            )
             return ToolResult(output={"error": f"execute failed: {e}"})
 
         output_payload = {
@@ -137,6 +191,20 @@ def make_sandbox_tools(policy_context) -> list[ToolDefinition]:
             actuator.discard_region(region_id)
         except Exception:
             pass
+
+        await _emit_region_event(
+            audit,
+            EventType.ISOLATION_REGION_DISCARDED,
+            session_id=ctx.session_id,
+            payload={
+                "region_id": region_id,
+                "spec_id": spec_id,
+                "reason": "run_completed",
+                "exit_code": result.exit_code,
+                "cancelled": result.cancelled,
+                "timed_out": result.timed_out,
+            },
+        )
 
         return ToolResult(output=output_payload)
 

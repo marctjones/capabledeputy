@@ -123,7 +123,10 @@ class App:
         # without Podman.
         from capabledeputy.tools.native.sandbox import make_sandbox_tools
 
-        for tool in make_sandbox_tools(self.policy_context):
+        # Pass the audit writer so the sandbox tool emits
+        # ISOLATION_REGION_CREATED / ISOLATION_REGION_DISCARDED events
+        # for region lifecycle (FR-040, Pattern ⑤ audit trail).
+        for tool in make_sandbox_tools(self.policy_context, audit=self.audit):
             self.registry.register(tool)
         if self.quarantined_llm is not None:
             for tool in make_extract_tools(self.memory, self.quarantined_llm):

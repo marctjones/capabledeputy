@@ -42,7 +42,7 @@ schema-validated projection. The schema *is* the declassifier.
 - **Use when:** the planner needs *facts derived from* sensitive data,
   not the data itself (briefings, triage, summaries).
 
-### 3. Reference / placeholder substitution (data-blind planning) — 🔶 rule first-class (spec 003 FR-047); impl pending
+### 3. Reference / placeholder substitution (data-blind planning) — ✅ implemented (spec 003 FR-047)
 
 The planner manipulates only **opaque handles/placeholders**. The
 deterministic runtime binds the real labeled value at a controlled
@@ -51,17 +51,20 @@ value at any point.
 
 - **Planner sees:** references only (`<doc#3>`, capability/tool
   aliases) — never the value, not even a projection.
-- **Guarantee (target):** the planner is *structurally incapable* of
-  leaking what it never holds; insertion is explicit, auditable, and
-  the destination of each secret is tracked.
-- **Status — honest:** the **rule is now first-class in spec 003**
-  (FR-047) — pattern ③ is selectable by `select_mode` and is *required*
-  for `restricted`-tier sessions (no fallback to ② intransitive
-  declassification). The building blocks (per-session unforgeable
-  tool/capability tokens v0.3, programmatic variable-binding) exist;
-  **implementation pending** is the controlled-re-insertion bind point
-  + the "where-the-secret-landed" destination provenance recorded per
-  Reference Handle. Tracked through `/speckit-plan` for 003.
+- **Guarantee:** the planner is *structurally incapable* of leaking
+  what it never holds; insertion is explicit, auditable, and the
+  destination of each secret is tracked.
+- **Status:** fully shipped in 003. `src/capabledeputy/patterns/reference_handle.py`
+  defines `ReferenceHandle` (no `value` field on the dataclass — the
+  planner can never read it) + `ReferenceHandleStore` with `bind()`
+  that emits the `pattern3.handle_bind` audit event recording the
+  canonical destination id. Tools declare `accepts_handles=True` +
+  `handle_arg_names=(...)`; the dispatcher in `tools/client.py`
+  substitutes handle args with bound values only AFTER `decide()`
+  approves. `ExecutionMode.REFERENCE` is selectable via
+  `select_mode_for_restricted` and is required (not optional) for
+  any `restricted`-tier session — no fallback to ② intransitive
+  declassification.
 - **Model lineage:** object-capability handles; CaMeL ("defeat prompt
   injection by design").
 - **Use when:** the planner must *route/orchestrate* sensitive data it
@@ -83,7 +86,7 @@ deterministic interpreter, never the model's context.
 - **Use when:** the work is mechanical transformation/processing of
   sensitive data at volume.
 
-### 5. Sealed-effect via disposable isolation — 🔶 design (rule: spec 003; impl: spec 004)
+### 5. Sealed-effect via disposable isolation — ✅ implemented (rule: spec 003 FR-040/041/042; substrate: in tree)
 
 Deterministic code transforms labeled data **inside a disposable,
 egress-free isolation region** (no network, no host mounts except
@@ -98,11 +101,22 @@ gate; the gate is placed only where an output crosses the boundary.
   contained data.
 - **Guarantee:** in-region effects are reversible by construction;
   autonomous execution is safe up to the boundary.
+- **Status:** shipped. `src/capabledeputy/substrate/sandbox_actuator.py`
+  defines the port; `substrate/podman_sandbox.py` is the Linux Podman
+  provider (rootless, no-network by default); `substrate/in_process_sandbox.py`
+  is the test/dev double. The agent-callable `sandbox.run` tool lives
+  at `tools/native/sandbox.py` and is gated by the `EXECUTE_SANDBOX`
+  capability kind. Region lifecycle is audited via
+  `isolation_region.created` / `isolation_region.discarded` events
+  (FR-040 audit pair). `ExecutionMode.SEALED` is selectable through
+  `select_mode_for_restricted` as the fallback when no `accepts_handles`
+  tool exists.
 - **Model lineage:** Reference-Monitor assurance + intransitive-NI
-  *declassification* at the boundary (`security-models.md`). It is the
-  concrete realization of the previously-speculated "sealed-effect".
+  *declassification* at the boundary (`security-models.md`).
 - **Critical non-property:** the region is **not** a declassifier
-  (invariant #7 below).
+  (invariant #7 below) — enforced in `tools/client.py` label
+  propagation: sandbox outputs retain source labels exactly as
+  uncontained tools would.
 - **Use when:** mechanical transform/aggregation of sensitive data at
   volume where the planner needs only the result.
 
