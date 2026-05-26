@@ -46,6 +46,7 @@ message — the only path through the LLM is the non-slash one.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -1957,10 +1958,8 @@ def _inline_approval_review(approval_ids: list[int]) -> None:
                 with open(tmp_path, encoding="utf-8") as f:
                     edited_payload = f.read()
             finally:
-                try:
+                with contextlib.suppress(OSError):
                     os.unlink(tmp_path)
-                except OSError:
-                    pass
 
             if edited_payload == show["payload"]:
                 console.print(

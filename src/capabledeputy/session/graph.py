@@ -20,6 +20,8 @@ from capabledeputy.policy.capabilities import (
     DelegationRefusalReason,
     DelegationRequest,
     derive_delegated_capability,
+)
+from capabledeputy.policy.capabilities import (
     kind_name as _kind_name_of,
 )
 from capabledeputy.policy.labels import Label

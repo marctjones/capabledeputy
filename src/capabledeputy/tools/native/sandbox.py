@@ -23,6 +23,7 @@ declassify (FR-041).
 from __future__ import annotations
 
 import base64
+import contextlib
 from typing import Any
 
 from capabledeputy.audit.events import Event, EventType
@@ -152,10 +153,8 @@ def make_sandbox_tools(policy_context, audit=None) -> list[ToolDefinition]:
                 inputs=inputs or None,
             )
         except Exception as e:
-            try:
+            with contextlib.suppress(Exception):
                 actuator.discard_region(region_id)
-            except Exception:
-                pass
             await _emit_region_event(
                 audit,
                 EventType.ISOLATION_REGION_DISCARDED,
@@ -187,10 +186,8 @@ def make_sandbox_tools(policy_context, audit=None) -> list[ToolDefinition]:
             ],
         }
 
-        try:
+        with contextlib.suppress(Exception):
             actuator.discard_region(region_id)
-        except Exception:
-            pass
 
         await _emit_region_event(
             audit,

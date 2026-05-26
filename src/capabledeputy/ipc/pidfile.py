@@ -11,6 +11,7 @@ Lives next to the socket in `$XDG_RUNTIME_DIR` (or `/tmp/`).
 
 from __future__ import annotations
 
+import contextlib
 import os
 import time
 from pathlib import Path
@@ -50,19 +51,15 @@ def read_pidfile() -> int | None:
         return None
     if not is_process_alive(pid):
         # Stale — clean it up so we don't keep returning it.
-        try:
+        with contextlib.suppress(OSError):
             p.unlink(missing_ok=True)
-        except OSError:
-            pass
         return None
     return pid
 
 
 def remove_pidfile() -> None:
-    try:
+    with contextlib.suppress(OSError):
         default_pidfile_path().unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 def is_process_alive(pid: int) -> bool:

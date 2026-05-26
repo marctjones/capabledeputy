@@ -39,6 +39,7 @@ at startup, never silently.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import secrets
@@ -277,15 +278,13 @@ class PodmanSandboxActuator(SandboxActuator):
         # `podman kill` is the cleanest path; if the container has
         # already exited the kill is a no-op (idempotent). We then
         # let the Popen.communicate() side observe the exit.
-        try:
+        with contextlib.suppress(FileNotFoundError, subprocess.TimeoutExpired):
             subprocess.run(
                 [self._podman_bin, "kill", region.container_name],
                 capture_output=True,
                 timeout=5,
                 check=False,
             )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
         return True
 
     # ---- execution ----
@@ -596,15 +595,13 @@ class PodmanSandboxActuator(SandboxActuator):
         paths. Errors are swallowed: the container may already be
         gone (race with `--rm`)."""
         for sub in (["kill", container_name], ["rm", "-f", container_name]):
-            try:
+            with contextlib.suppress(FileNotFoundError, subprocess.TimeoutExpired):
                 subprocess.run(
                     [self._podman_bin, *sub],
                     capture_output=True,
                     timeout=5,
                     check=False,
                 )
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                pass
 
 
 def parse_sandbox_config(raw: dict) -> tuple[PodmanRegionSpec, ...]:
@@ -766,9 +763,7 @@ def _safe_emit(cb: ProgressCallback | None):
     def _emit(event: SandboxProgress) -> None:
         if cb is None:
             return
-        try:
+        with contextlib.suppress(Exception):
             cb(event)
-        except Exception:
-            pass
 
     return _emit
