@@ -11,6 +11,7 @@ the inheritance.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -304,6 +305,7 @@ async def run_turn(
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     max_iterations: int = 50,
     force_mode: ExecutionMode | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> AgentTurnResult:
     """Issue #21 — `run_turn` is now a thin wrapper around the
     streaming generator `run_turn_streaming`. Existing callers
@@ -311,11 +313,21 @@ async def run_turn(
     unchanged: this consumes all events and returns the final
     `AgentTurnResult`. New streaming consumers (chat REPL Rich
     Live region, rich Textual surface) call `run_turn_streaming`
-    directly via `for await` and observe each event."""
+    directly via `for await` and observe each event.
+
+    Issue #23 — `cancel_check` is an optional zero-arg callable
+    polled between iterations. When it returns True, the loop
+    yields TurnInterrupted(reason="user_cancelled") and returns the
+    partial result. The daemon's session.cancel RPC flips a flag
+    that this callable observes; from `run_turn`'s perspective the
+    cancellation surfaces as a regular early return with an
+    interrupted finish_reason.
+    """
     from capabledeputy.agent.events import TurnCompleted, TurnInterrupted
 
     final_result: AgentTurnResult | None = None
     interrupt_reason: str | None = None
+    interrupt_event: TurnInterrupted | None = None
     async for evt in run_turn_streaming(
         session_id=session_id,
         user_message=user_message,
@@ -327,14 +339,28 @@ async def run_turn(
         system_prompt=system_prompt,
         max_iterations=max_iterations,
         force_mode=force_mode,
+        cancel_check=cancel_check,
     ):
         if isinstance(evt, TurnCompleted):
             final_result = evt.result
         elif isinstance(evt, TurnInterrupted):
             interrupt_reason = evt.reason
+            interrupt_event = evt
     if interrupt_reason == "max_iterations":
         raise AgentLoopExceededError(
             f"agent loop exceeded {max_iterations} iterations",
+        )
+    if interrupt_reason == "user_cancelled" and interrupt_event is not None:
+        # Issue #23 — synthesize an AgentTurnResult so the daemon RPC
+        # response shape stays consistent. Caller (chat REPL) sees a
+        # normal turn return with finish_reason=interrupted and any
+        # partial content/outcomes captured before cancellation.
+        return AgentTurnResult(
+            content=interrupt_event.partial_content
+            or "[turn cancelled by user]",
+            iterations=interrupt_event.iteration,
+            finish_reason=FinishReason.LENGTH,
+            tool_outcomes=interrupt_event.partial_outcomes,
         )
     if final_result is None:
         # Defensive: streaming generator must yield exactly one of
@@ -357,6 +383,7 @@ async def run_turn_streaming(
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     max_iterations: int = 50,
     force_mode: ExecutionMode | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ):
     """Streaming variant of `run_turn` (Issue #21).
 
@@ -539,6 +566,35 @@ async def run_turn_streaming(
 
     while iteration < max_iterations:
         iteration += 1
+        # Issue #23 — user cancellation. Checked at the top of every
+        # iteration (before any LLM/tool work) so a cancel arriving
+        # while we were awaiting the previous tool result is honored
+        # immediately. The cancel_check polls a daemon-side flag that
+        # the session.cancel RPC flips. Partial output produced so far
+        # is preserved in `last_response`/`tool_outcomes` and surfaced
+        # in the TurnInterrupted event.
+        if cancel_check is not None and cancel_check():
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_ERROR,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    step_id=iteration,
+                    payload={
+                        "error_type": "UserCancelled",
+                        "message": "turn cancelled by user (Ctrl-C)",
+                        "iteration": iteration,
+                    },
+                ),
+            )
+            yield TurnInterrupted(
+                iteration=iteration,
+                reason="user_cancelled",
+                partial_content=(last_response.content if last_response else ""),
+                partial_outcomes=tuple(tool_outcomes),
+            )
+            return
+
         # Issue #21 — yield IterationStarted before any work. Lets the
         # REPL render "iter N/max" indicators in real time.
         yield IterationStarted(iteration=iteration)

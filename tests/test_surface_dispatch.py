@@ -45,7 +45,7 @@ def test_mode_line_always_picks_line() -> None:
         chat_module, "_run_rich_surface",
     ) as rich:
         chat_module._dispatch_surface("sid", "line")
-    line.assert_called_once_with("sid")
+    line.assert_called_once_with("sid", no_stream=False)
     rich.assert_not_called()
 
 
@@ -90,7 +90,7 @@ def test_mode_auto_picks_line_on_basic_terminal(
         chat_module, "_run_rich_surface",
     ) as rich:
         chat_module._dispatch_surface("sid", "auto")
-    line.assert_called_once_with("sid")
+    line.assert_called_once_with("sid", no_stream=False)
     rich.assert_not_called()
 
 
@@ -102,7 +102,7 @@ def test_mode_auto_picks_line_on_dumb_terminal(
         chat_module, "_run_rich_surface",
     ) as rich:
         chat_module._dispatch_surface("sid", "auto")
-    line.assert_called_once_with("sid")
+    line.assert_called_once_with("sid", no_stream=False)
     rich.assert_not_called()
 
 
@@ -118,7 +118,7 @@ def test_mode_auto_picks_line_when_not_a_tty(
         chat_module, "_run_rich_surface",
     ) as rich:
         chat_module._dispatch_surface("sid", "auto")
-    line.assert_called_once_with("sid")
+    line.assert_called_once_with("sid", no_stream=False)
     rich.assert_not_called()
 
 
@@ -149,5 +149,5 @@ def test_unknown_terminal_picks_line(monkeypatch: pytest.MonkeyPatch) -> None:
         chat_module, "_run_rich_surface",
     ) as rich:
         chat_module._dispatch_surface("sid", "auto")
-    line.assert_called_once_with("sid")
+    line.assert_called_once_with("sid", no_stream=False)
     rich.assert_not_called()

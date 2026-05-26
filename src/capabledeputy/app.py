@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import UUID
 
 from capabledeputy.approval.queue import ApprovalQueue
 from capabledeputy.audit.writer import AuditWriter
@@ -83,6 +84,13 @@ class App:
         )
         self.llm_client: LLMClient | None = llm_client
         self.quarantined_llm: LLMClient | None = quarantined_llm or llm_client
+        # Issue #23 — per-session cancellation flags. session.send sets
+        # the entry to False at turn start; session.cancel flips it
+        # True; the agent loop polls between iterations and yields
+        # TurnInterrupted(reason="user_cancelled") when it sees True.
+        # Dict-of-bools is sufficient — we don't need anyio.Event since
+        # we only care about a tripwire that's checked, not awaited.
+        self.cancellation_flags: dict[UUID, bool] = {}
         self._skills_dir = skills_dir
         self._enable_policy_preview = enable_policy_preview
         self._register_native_tools()

@@ -54,23 +54,50 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
             from capabledeputy.mode.dispatcher import ExecutionMode
 
             force_mode = ExecutionMode(force_mode_str)
-        result = await run_turn(
-            session_id=UUID(params["session_id"]),
-            user_message=str(params["message"]),
-            llm=app.llm_client,
-            tool_client=app.tool_client,
-            registry=app.registry,
-            graph=app.graph,
-            audit=app.audit,
-            max_iterations=int(params.get("max_iterations", 50)),
-            force_mode=force_mode,
-        )
+        session_uuid = UUID(params["session_id"])
+        # Issue #23 — register the cancellation flag so session.cancel
+        # (issued from a different RPC connection) can flip it. Clear
+        # in `finally` so the entry doesn't outlive the turn — a stale
+        # flag would otherwise cancel the *next* turn before it
+        # started.
+        app.cancellation_flags[session_uuid] = False
+        try:
+            result = await run_turn(
+                session_id=session_uuid,
+                user_message=str(params["message"]),
+                llm=app.llm_client,
+                tool_client=app.tool_client,
+                registry=app.registry,
+                graph=app.graph,
+                audit=app.audit,
+                max_iterations=int(params.get("max_iterations", 50)),
+                force_mode=force_mode,
+                cancel_check=lambda sid=session_uuid: app.cancellation_flags.get(
+                    sid, False,
+                ),
+            )
+        finally:
+            app.cancellation_flags.pop(session_uuid, None)
         return {
             "content": result.content,
             "iterations": result.iterations,
             "finish_reason": result.finish_reason.value,
             "tool_outcomes": [_outcome_to_dict(o) for o in result.tool_outcomes],
         }
+
+    async def session_cancel(params: dict[str, Any]) -> dict[str, Any]:
+        """Issue #23 — flip the cancellation flag for `session_id`'s
+        active turn. The agent loop polls the flag at iteration
+        boundaries and yields TurnInterrupted(reason="user_cancelled")
+        on the next check. Idempotent: cancelling a session with no
+        active turn returns `{cancelled: False}` rather than erroring,
+        so the CLI's "send cancel on every Ctrl-C" pattern is safe.
+        """
+        session_uuid = UUID(params["session_id"])
+        if session_uuid not in app.cancellation_flags:
+            return {"cancelled": False, "reason": "no active turn"}
+        app.cancellation_flags[session_uuid] = True
+        return {"cancelled": True}
 
     async def session_grant_capability(params: dict[str, Any]) -> dict[str, Any]:
         from capabledeputy.policy.capabilities import Capability
@@ -81,5 +108,6 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
 
     return {
         "session.send": session_send,
+        "session.cancel": session_cancel,
         "session.grant_capability": session_grant_capability,
     }

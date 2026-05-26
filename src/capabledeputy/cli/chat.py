@@ -684,6 +684,170 @@ def _send_message(
     return _call("session.send", params)
 
 
+def _send_message_streaming(
+    session_id: str,
+    message: str,
+    max_iterations: int | None = None,
+    no_stream: bool = False,
+) -> dict[str, Any]:
+    """Issue #22 — send a message and render per-iteration progress
+    via Rich Live while the daemon's session.send RPC runs.
+
+    Mechanism: subscribe to the daemon's audit stream and consume
+    events for *this session* as they arrive, rendering a spinner
+    + activity line in a Rich Live region above the prompt. When
+    session.send returns, the Live region exits cleanly and the
+    final turn renders normally (via _render_turn).
+
+    Falls back to the non-streaming path when:
+    - `no_stream=True` is forced by the operator
+    - terminal isn't a TTY (scripts / pipes)
+    - the daemon doesn't support the audit subscribe stream
+
+    This is the MVP version of #22: per-iteration progress (one event
+    per LLM call + tool dispatch). True token-by-token streaming
+    requires the LLM client + daemon RPC protocol to also stream;
+    that's a separate follow-on.
+    """
+    if no_stream or not console.is_terminal:
+        return _send_message(session_id, message, max_iterations)
+
+    params: dict[str, Any] = {"session_id": session_id, "message": message}
+    if max_iterations is not None:
+        params["max_iterations"] = max_iterations
+
+    # Run subscribe + RPC concurrently inside one anyio event loop.
+    # The Live region runs in the main thread; events arrive via the
+    # subscriber task; the RPC runs in a separate task and posts the
+    # final result to a shared holder dict.
+    result_holder: dict[str, Any] = {}
+
+    async def _run() -> None:
+        from rich.live import Live
+        from rich.spinner import Spinner
+        from rich.text import Text
+
+        # Most-recent activity line; updated by the audit consumer.
+        state = {"line": "thinking...", "iter": 0, "n_tools": 0}
+
+        def _render() -> Any:
+            from rich.console import Group
+
+            spinner = Spinner("dots", text=Text(state["line"], style="dim cyan"))
+            return Group(spinner)
+
+        rpc_client = _client()
+
+        async def _drain_audit(scope: Any) -> None:
+            """Consume audit events for our session_id; update state."""
+            try:
+                async for evt in await rpc_client.subscribe(["audit"]):
+                    if scope.cancel_called:
+                        return
+                    data = evt.get("data") or {}
+                    if str(data.get("session_id", "")) != str(session_id):
+                        continue
+                    et = data.get("event_type", "")
+                    payload = data.get("payload") or {}
+                    if et == "llm.request_sent":
+                        state["iter"] = payload.get("n_messages", state["iter"])
+                        n_tools = payload.get("n_tools", state["n_tools"])
+                        state["n_tools"] = n_tools
+                        state["line"] = (
+                            f"asking LLM ({state['n_tools']} tools available)..."
+                        )
+                    elif et == "llm.response_received":
+                        clen = payload.get("content_length", 0)
+                        n_tc = payload.get("n_tool_calls", 0)
+                        state["line"] = (
+                            f"received {clen}-char response · {n_tc} tool call(s)"
+                        )
+                    elif et == "tool.dispatched":
+                        tn = payload.get("tool_name", "?")
+                        state["line"] = f"→ calling {tn}"
+                    elif et == "tool.returned":
+                        tn = payload.get("tool", "?")
+                        out = payload.get("output", "")
+                        out_len = len(str(out))
+                        state["line"] = f"← {tn} returned ({out_len} bytes)"
+                    elif et == "policy.decided":
+                        d = (payload.get("decision") or "").upper()
+                        if d == "DENY":
+                            state["line"] = "[policy denied — finalizing]"
+                        elif d == "REQUIRE_APPROVAL":
+                            state["line"] = "[approval queued — finalizing]"
+                    elif et == "llm.context_warning":
+                        ratio = payload.get("ratio", 0.0)
+                        state["line"] = (
+                            f"⚠ context {int(ratio * 100)}% of window; "
+                            "summarizing soon"
+                        )
+            except Exception:
+                return  # subscriber died; live keeps showing last line
+
+        async def _send_rpc() -> None:
+            try:
+                result_holder["result"] = await rpc_client.call("session.send", params)
+            except Exception as e:
+                result_holder["error"] = e
+
+        # Issue #23 — convert SIGINT (Ctrl-C) into a session.cancel
+        # RPC so the operator can stop a runaway turn without killing
+        # the REPL. First press cancels cleanly; second press
+        # re-raises so the operator can still escape if cancel is
+        # wedged (slow RPC, daemon hung, etc.).
+        sigint_count = {"n": 0}
+
+        async def _watch_sigint() -> None:
+            import signal as _sig
+
+            with anyio.open_signal_receiver(_sig.SIGINT) as signals:
+                async for _ in signals:
+                    sigint_count["n"] += 1
+                    if sigint_count["n"] == 1:
+                        state["line"] = "⊘ cancelling…"
+                        # Best-effort. If cancel RPC fails, the
+                        # second Ctrl-C still escapes.
+                        with contextlib.suppress(Exception):
+                            await rpc_client.call(
+                                "session.cancel",
+                                {"session_id": session_id},
+                            )
+                    else:
+                        raise KeyboardInterrupt
+
+        # Drive subscriber + RPC + signal watcher concurrently. anyio
+        # task group cancels everything when the RPC completes.
+        import anyio
+
+        async with anyio.create_task_group() as tg:
+            with Live(_render(), console=console, refresh_per_second=4, transient=True) as live:
+                tg.start_soon(_drain_audit, tg.cancel_scope)
+                tg.start_soon(_send_rpc)
+                tg.start_soon(_watch_sigint)
+                # Re-render until RPC settles
+                while "result" not in result_holder and "error" not in result_holder:
+                    live.update(_render())
+                    await anyio.sleep(0.25)
+                live.update(_render())
+                # Cancel the audit subscriber + signal watcher now
+                # that the RPC is done
+                tg.cancel_scope.cancel()
+
+    try:
+        anyio.run(_run)
+    except Exception:
+        # Anything goes wrong with streaming → fall back to non-streaming
+        # to preserve the operator's ability to actually complete the
+        # turn. Audit-emitted events still made it to the log.
+        result_holder.pop("error", None)
+        return _send_message(session_id, message, max_iterations)
+
+    if "error" in result_holder:
+        raise result_holder["error"]
+    return result_holder.get("result", {})
+
+
 _HELP = """slash commands (user-only, never visible to the LLM):
 
   session: /sessions /session [id] /switch <id> /whoami
@@ -2026,7 +2190,7 @@ def _inline_approval_review(approval_ids: list[int]) -> None:
             )
 
 
-def _repl_loop(session_id: str) -> None:
+def _repl_loop(session_id: str, no_stream: bool = False) -> None:
     # Mutable focus: /switch rebinds these to retarget session.send.
     focus = {"id": session_id, "label": _short_label(session_id)}
     last_result: dict[str, Any] | None = None
@@ -2139,7 +2303,7 @@ def _repl_loop(session_id: str) -> None:
         "F1-3 run recovery commands · /quit to exit[/dim]",
     )
     try:
-        _run_repl(pt_session, focus, last_result, state)
+        _run_repl(pt_session, focus, last_result, state, no_stream=no_stream)
     finally:
         cache.stop()
 
@@ -2149,6 +2313,7 @@ def _run_repl(
     focus: dict[str, str],
     last_result: dict[str, Any] | None,
     state: dict[str, Any] | None = None,
+    no_stream: bool = False,
 ) -> None:
     while True:
         # Issue #25 — lifecycle state glyph on the prompt.
@@ -2170,7 +2335,13 @@ def _run_repl(
                     f"<ansicyan><b>{focus['label']}</b></ansicyan>{glyph_str}> ",
                 ),
             ).rstrip()
-        except (EOFError, KeyboardInterrupt):
+        except KeyboardInterrupt:
+            # Issue #23 — Ctrl-C at idle prompt clears the line buffer
+            # (prompt-toolkit already did that before raising) and
+            # stays in the REPL. Modern AI-chat UX: Ctrl-C cancels,
+            # never exits. Ctrl-D / `/quit` / `exit` / `bye` exit.
+            continue
+        except EOFError:
             console.print("\n[dim]bye[/dim]")
             return
         # Issue #25 — clear transient state glyphs once the operator
@@ -2288,10 +2459,11 @@ def _run_repl(
         # invisible prompt-toolkit input).
         _render_user_message(line)
         try:
-            last_result = _send_message(
+            last_result = _send_message_streaming(
                 focus["id"],
                 line,
                 max_iterations=_SESSION_MAX_ITERS.get("value"),
+                no_stream=no_stream,
             )
         except Exception as e:
             err_console.print(f"[red]rpc error:[/red] {e}")
@@ -2428,6 +2600,21 @@ def chat_command(
             ),
         ),
     ] = 50,
+    no_stream: Annotated[
+        bool,
+        typer.Option(
+            "--no-stream",
+            help=(
+                "Issue #22: disable the inline progress region during a "
+                "turn. By default chat subscribes to the daemon audit "
+                "stream and renders a spinner + most-recent activity "
+                "line (calling X, received Y) while the turn runs. "
+                "Pass --no-stream to fall back to the legacy "
+                "block-on-rpc-then-print behavior (or when piping "
+                "output)."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Interactive REPL against a session.
 
@@ -2481,10 +2668,10 @@ def chat_command(
     # `--mode auto` (default) checks terminal capability detection
     # from terminal_caps.caps() and picks rich for known-good
     # families, line otherwise. Explicit `--mode line|rich` overrides.
-    _dispatch_surface(effective_id, mode)
+    _dispatch_surface(effective_id, mode, no_stream=no_stream)
 
 
-def _dispatch_surface(session_id: str, mode: str) -> None:
+def _dispatch_surface(session_id: str, mode: str, no_stream: bool = False) -> None:
     """Issue #15 — pick the chat surface based on `mode` + terminal
     capabilities. Line mode is the current `_repl_loop`; rich mode
     is the Textual surface in cli/rich_surface.py."""
@@ -2499,7 +2686,7 @@ def _dispatch_surface(session_id: str, mode: str) -> None:
         raise typer.Exit(code=2)
 
     if mode == "line":
-        _repl_loop(session_id)
+        _repl_loop(session_id, no_stream=no_stream)
         return
 
     c = _caps()
@@ -2519,7 +2706,7 @@ def _dispatch_surface(session_id: str, mode: str) -> None:
     if c.family in rich_families and c.is_tty:
         _run_rich_surface(session_id)
     else:
-        _repl_loop(session_id)
+        _repl_loop(session_id, no_stream=no_stream)
 
 
 def _run_rich_surface(session_id: str) -> None:
