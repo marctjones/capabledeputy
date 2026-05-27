@@ -305,42 +305,176 @@ _TURN_COUNTER = {"n": 0}
 _SESSION_MAX_ITERS: dict[str, int] = {"value": 50}
 
 
+_TOOL_ICONS: tuple[tuple[str, str], ...] = (
+    # Ordered prefix→icon map. Longer prefixes first so `gws.gmail_*`
+    # wins over `gws.*`. The point isn't taxonomic correctness — it's
+    # that the icon gives a one-glance read on what kind of work the
+    # agent just did.
+    ("gws.gmail", "📧"),
+    ("gws.drive", "📂"),
+    ("gws.calendar", "📅"),
+    ("gws.docs", "📄"),
+    ("gws.sheets", "📊"),
+    ("mail.", "📧"),
+    ("email.", "✉️"),
+    ("calendar.", "📅"),
+    ("fs.", "📁"),
+    ("filesystem.", "📁"),
+    ("fetch.", "🌐"),
+    ("bundled-fetch", "🌐"),
+    ("web.", "🌐"),
+    ("bundled-search", "🔎"),
+    ("search.", "🔎"),
+    ("extract.", "🔎"),
+    ("git.", "🔱"),
+    ("bundled-git", "🔱"),
+    ("memory.", "🧠"),
+    ("inbox.", "📥"),
+    ("approval.", "⚖️"),
+    ("policy.", "⚖️"),
+    ("sandbox.", "📦"),
+    ("tasks.", "✅"),
+    ("purchase.", "💳"),
+)
+
+
+def _tool_icon(tool_name: str | None) -> str:
+    """Map a tool name to a one-character/emoji icon. Default `🔧`
+    when no prefix matches — at-a-glance signal that a tool ran,
+    even if we don't know its category."""
+    if not tool_name:
+        return "🔧"
+    for prefix, icon in _TOOL_ICONS:
+        if tool_name.startswith(prefix):
+            return icon
+    return "🔧"
+
+
+def _summarize_tool_args(args: Any) -> str:
+    """Compact `(k=v, k=v)` summary of tool args. Picks the
+    most-meaningful keys (q/path/url/id) first, truncates long
+    values, and caps total length so a multi-tool turn stays on one
+    line per call. Empty when args are absent or unparseable."""
+    if not args or not isinstance(args, dict):
+        return ""
+    priority = ("q", "query", "path", "url", "id", "key", "name", "subject", "to", "spec_id")
+    seen: set[str] = set()
+    chosen: list[tuple[str, Any]] = []
+    for k in priority:
+        if k in args:
+            chosen.append((k, args[k]))
+            seen.add(k)
+        if len(chosen) >= 2:
+            break
+    if len(chosen) < 2:
+        for k in args:
+            if k not in seen:
+                chosen.append((k, args[k]))
+                if len(chosen) >= 2:
+                    break
+    parts: list[str] = []
+    for k, v in chosen:
+        vs = str(v).replace("\n", " ")
+        if len(vs) > 24:
+            vs = vs[:21] + "…"
+        parts.append(f"{k}={vs}")
+    return ", ".join(parts)
+
+
+def _summarize_tool_output(outcome: dict[str, Any]) -> str:
+    """One-line preview of what the tool returned. Picks a useful
+    shape: a denial rule, an error head, a byte count for text
+    payloads, an item count for list-shaped responses, or a field
+    count as a last resort. Always returns Rich markup ready for
+    console.print (may include color tags for errors/denials)."""
+    decision = outcome.get("decision")
+    if decision == "deny":
+        rule = outcome.get("rule") or "policy"
+        return f"[{ERROR_COLOR}]DENIED by {rule}[/{ERROR_COLOR}]"
+    if decision == "require_approval":
+        return f"[{WARNING_COLOR}]queued for approval[/{WARNING_COLOR}]"
+    if outcome.get("error"):
+        err = str(outcome["error"]).replace("\n", " ")
+        if len(err) > 60:
+            err = err[:57] + "…"
+        return f"[{ERROR_COLOR}]✗ {err}[/{ERROR_COLOR}]"
+    output = outcome.get("output")
+    if output is None:
+        return ""
+    if isinstance(output, dict):
+        if output.get("upstream_error"):
+            text = str(output.get("text", "")).replace("\n", " ")[:60]
+            return f"[{ERROR_COLOR}]upstream error: {text}[/{ERROR_COLOR}]"
+        if output.get("truncated"):
+            orig = output.get("original_size_bytes", 0)
+            return f"[dim]{orig:,} bytes (truncated)[/dim]"
+        if "text" in output and isinstance(output["text"], str):
+            n = len(output["text"])
+            return f"[dim]{n:,} chars[/dim]"
+        for k in ("messages", "items", "results", "files", "events", "rows", "approvals"):
+            v = output.get(k)
+            if isinstance(v, list):
+                return f"[dim]{len(v)} {k}[/dim]"
+        if output:
+            return f"[dim]{len(output)} fields[/dim]"
+        return ""
+    if isinstance(output, list):
+        return f"[dim]{len(output)} items[/dim]"
+    s = str(output).replace("\n", " ")
+    if len(s) > 60:
+        s = s[:57] + "…"
+    return f"[dim]{s}[/dim]"
+
+
 def _render_outcomes_table(outcomes: list[dict[str, Any]]) -> None:
-    """Compact aligned table instead of loose lines, so a multi-tool
-    turn stays scannable. DENY/approval reasons + recovery hints are
-    rendered under the table where they won't be missed."""
+    """Per-tool-call inline cards (Claude-Code-style) instead of a
+    full Rich Table. Each call renders as:
+
+        📧 gws.gmail_messages_list(q=after:..., maxResults=20)
+                 → 8 messages
+
+    where the icon comes from the tool prefix, the args are an
+    abbreviated `(k=v, k=v)` summary, and the result preview is a
+    byte count / item count / denial rule. Denials render with `⊘`
+    in red instead of the tool icon, so they pop visually in a
+    sea of allows.
+
+    DENY/approval reasons + recovery hints render below the card
+    where they won't be missed."""
     if not outcomes:
         return
-    table = Table(show_header=True, header_style="dim", box=None, pad_edge=False)
-    table.add_column("", width=2)
-    table.add_column("decision")
-    table.add_column("tool")
-    table.add_column("rule / labels", overflow="fold")
     for o in outcomes:
-        decision = o["decision"]
-        color = _DECISION_COLOR.get(decision, "white")
-        glyph = {"allow": "✓", "deny": "✗", "require_approval": "⚠"}.get(
-            decision,
-            "·",
+        decision = o.get("decision", "")
+        tool_name = o.get("tool_name") or "?"
+        args_summary = _summarize_tool_args(o.get("tool_args"))
+        output_summary = _summarize_tool_output(o)
+
+        if decision == "deny":
+            icon = f"[{ERROR_COLOR}]⊘[/{ERROR_COLOR}]"
+        elif decision == "require_approval":
+            icon = f"[{WARNING_COLOR}]⚠[/{WARNING_COLOR}]"
+        else:
+            icon = _tool_icon(tool_name)
+
+        call_str = (
+            f"[bold]{tool_name}[/bold]([dim]{args_summary}[/dim])"
+            if args_summary
+            else f"[bold]{tool_name}[/bold]"
         )
-        detail = ""
-        if o.get("rule"):
-            detail = f"rule={o['rule']}"
+        line = f"  {icon} {call_str}"
+        if output_summary:
+            line += f" [dim]→[/dim] {output_summary}"
+        # Labels-added is rare-but-useful; render inline when present
+        # rather than burying it in a "rule / labels" column.
         if o.get("labels_added"):
             added = " ".join(
                 f"[{_label_rich_style(lbl)}]+{lbl}[/{_label_rich_style(lbl)}]"
                 for lbl in o["labels_added"]
             )
-            detail = f"{detail}  {added}" if detail else added
-        table.add_row(
-            f"[{color}]{glyph}[/{color}]",
-            f"[{color}]{decision}[/{color}]",
-            f"[bold]{o.get('tool_name') or '?'}[/bold]",
-            detail,
-        )
-    console.print(table)
+            line += f"  {added}"
+        console.print(line)
 
-    # Per-outcome detail lines below the table: reasons + actionable
+    # Per-outcome detail lines below the cards: reasons + actionable
     # recovery for denials, errors for failed dispatches.
     for o in outcomes:
         decision = o["decision"]
@@ -737,6 +871,7 @@ def _send_message_streaming(
     message: str,
     max_iterations: int | None = None,
     no_stream: bool = False,
+    shared_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Issue #22 — send a message and render per-iteration progress
     via Rich Live while the daemon's session.send RPC runs.
@@ -804,6 +939,17 @@ def _send_message_streaming(
                         state["line"] = (
                             f"asking LLM ({state['n_tools']} tools available)..."
                         )
+                        # Surface the freshly-computed context estimate
+                        # into the toolbar's state dict so the bottom
+                        # band can render `ctx 24k/200k 12%` in real
+                        # time. Stale until the next turn fires — but
+                        # the post-turn value is still informative.
+                        ct = payload.get("context_tokens_estimate")
+                        cw = payload.get("context_window")
+                        if shared_state is not None and ct is not None:
+                            shared_state["context_tokens"] = int(ct)
+                            if cw is not None:
+                                shared_state["context_window"] = int(cw)
                     elif et == "llm.response_received":
                         clen = payload.get("content_length", 0)
                         n_tc = payload.get("n_tool_calls", 0)
@@ -1969,6 +2115,40 @@ def _toolbar_label_ansi(label: str) -> str:
     return label
 
 
+def _toolbar_context_segment(
+    tokens: int | None,
+    window: int | None,
+) -> str:
+    """Render `│ ctx 24k/200k 12%` for the bottom toolbar. Color
+    escalates from gray (cool, <60%) → yellow (warn, 60-80%) →
+    red (cliff, >80%) so the operator gets a peripheral-vision cue
+    long before the agent hits the wall. Returns empty when no turn
+    has fired yet (tokens/window not yet populated)."""
+    if tokens is None or window is None or window <= 0:
+        return ""
+    ratio = tokens / window
+    pct = int(ratio * 100)
+    if ratio >= 0.80:
+        color = "ansired"
+    elif ratio >= 0.60:
+        color = "ansiyellow"
+    else:
+        color = "ansigray"
+    # Compact `k` suffix — full numbers are scanline noise at the
+    # bottom of the screen. 12,345 → 12k; 4,500 → 4.5k.
+    def _short(n: int) -> str:
+        if n >= 10_000:
+            return f"{n // 1000}k"
+        if n >= 1000:
+            return f"{n / 1000:.1f}k"
+        return str(n)
+
+    return (
+        f" │ <{color}>ctx {_short(tokens)}/{_short(window)} "
+        f"{pct}%</{color}>"
+    )
+
+
 def _make_bottom_toolbar(
     cache: CompletionCache,
     focus: dict[str, str],
@@ -2031,11 +2211,21 @@ def _make_bottom_toolbar(
             comp = "<ansigreen>—</ansigreen>"
         pending_seg = f" │ <ansiyellow><b>⚠ {npending} pending</b></ansiyellow>" if npending else ""
 
+        # Context-window usage from the most-recent turn (updated by
+        # the streaming audit consumer in _send_message_streaming).
+        # Renders as `ctx 24k/200k 12%` with color escalating from
+        # gray → yellow → red as the ratio approaches the cliff.
+        ctx_seg = _toolbar_context_segment(
+            state.get("context_tokens"),
+            state.get("context_window"),
+        )
+
         # Line 1 — identity + IFC state
         line1 = (
             f" session <b>{short}</b> "
             f"│ compartment {word_tag}: {comp} "
-            f"│ caps {ncaps}{ttl_seg}{pending_seg} "
+            f"│ caps {ncaps}{ttl_seg}{pending_seg}"
+            f"{ctx_seg} "
         )
 
         # Line 2 — bindings hint, contextual
@@ -2512,6 +2702,7 @@ def _run_repl(
                 line,
                 max_iterations=_SESSION_MAX_ITERS.get("value"),
                 no_stream=no_stream,
+                shared_state=state,
             )
         except Exception as e:
             err_console.print(f"[red]rpc error:[/red] {e}")

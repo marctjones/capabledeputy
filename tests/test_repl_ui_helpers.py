@@ -19,6 +19,9 @@ from capabledeputy.cli.chat import (
     _make_bottom_toolbar,
     _render_labels_rich,
     _render_outcomes_table,
+    _summarize_tool_args,
+    _summarize_tool_output,
+    _tool_icon,
     console,
 )
 
@@ -266,3 +269,185 @@ def test_toolbar_shows_time_bound_marker() -> None:
     txt = _toolbar_text(cache, sid)
     # one of two caps is time-bounded → toolbar surfaces it
     assert "ttl" in txt or "⏳" in txt
+
+
+# --- Tool-card formatting (Issue #?? style pass) -------------------------
+
+
+def test_tool_icon_known_prefixes() -> None:
+    assert _tool_icon("gws.gmail_messages_list") == "📧"
+    assert _tool_icon("gws.drive_files_list") == "📂"
+    assert _tool_icon("fs.read") == "📁"
+    assert _tool_icon("fetch.get") == "🌐"
+    assert _tool_icon("memory.write") == "🧠"
+
+
+def test_tool_icon_fallback() -> None:
+    """Unknown tools get the generic wrench so the visual cue
+    'a tool ran here' still lands even when we don't know the category."""
+    assert _tool_icon("unknown.tool") == "🔧"
+    assert _tool_icon(None) == "🔧"
+    assert _tool_icon("") == "🔧"
+
+
+def test_summarize_tool_args_prefers_meaningful_keys() -> None:
+    """`q`/`path`/`id` win over noisy keys when both are present."""
+    out = _summarize_tool_args({"q": "after:2026-05-22", "userId": "me", "maxResults": 20})
+    assert "q=after:2026-05-22" in out
+    # userId is not in the priority list, so it should NOT lead
+    assert out.startswith("q=")
+
+
+def test_summarize_tool_args_truncates_long_values() -> None:
+    out = _summarize_tool_args({"path": "/very/long/path/" + "x" * 50})
+    assert "…" in out
+    assert len(out) < 80  # capped, not multi-line
+
+
+def test_summarize_tool_args_empty() -> None:
+    assert _summarize_tool_args(None) == ""
+    assert _summarize_tool_args({}) == ""
+    assert _summarize_tool_args("not a dict") == ""
+
+
+def test_summarize_tool_output_deny() -> None:
+    out = _summarize_tool_output({"decision": "deny", "rule": "no-egress"})
+    assert "DENIED by no-egress" in out
+
+
+def test_summarize_tool_output_approval() -> None:
+    out = _summarize_tool_output({"decision": "require_approval"})
+    assert "queued for approval" in out
+
+
+def test_summarize_tool_output_error() -> None:
+    out = _summarize_tool_output({"decision": "allow", "error": "timeout"})
+    assert "timeout" in out
+    assert "✗" in out
+
+
+def test_summarize_tool_output_text_byte_count() -> None:
+    out = _summarize_tool_output(
+        {"decision": "allow", "output": {"text": "x" * 1234}},
+    )
+    assert "1,234 chars" in out
+
+
+def test_summarize_tool_output_list_count() -> None:
+    out = _summarize_tool_output(
+        {"decision": "allow", "output": {"messages": [1, 2, 3, 4, 5]}},
+    )
+    assert "5 messages" in out
+
+
+def test_summarize_tool_output_truncation_marker() -> None:
+    """When upstream adapter truncated the response, surface the
+    ORIGINAL size with a (truncated) marker so the operator knows the
+    LLM saw less than was available."""
+    out = _summarize_tool_output(
+        {
+            "decision": "allow",
+            "output": {"text": "x" * 32000, "truncated": True, "original_size_bytes": 105_000},
+        },
+    )
+    assert "105,000 bytes" in out
+    assert "truncated" in out
+
+
+def test_render_outcome_includes_icon_and_args() -> None:
+    """End-to-end: the rendered card has the email icon, the tool
+    name, the args summary, and the result preview — all on one line."""
+    with console.capture() as cap:
+        _render_outcomes_table(
+            [
+                {
+                    "decision": "allow",
+                    "tool_name": "gws.gmail_messages_list",
+                    "tool_args": {"q": "after:2026-05-22", "maxResults": 20},
+                    "output": {"messages": [{"id": "a"}, {"id": "b"}]},
+                },
+            ],
+        )
+    out = cap.get()
+    assert "📧" in out
+    assert "gws.gmail_messages_list" in out
+    assert "after:2026-05-22" in out
+    assert "2 messages" in out
+
+
+def test_render_outcome_deny_uses_warning_icon() -> None:
+    """Denials swap the tool icon for `⊘` so they pop visually in a
+    multi-call turn."""
+    with console.capture() as cap:
+        _render_outcomes_table(
+            [
+                {
+                    "decision": "deny",
+                    "tool_name": "email.send",
+                    "tool_args": {"to": "x@y.com"},
+                    "rule": "no-egress",
+                },
+            ],
+        )
+    out = cap.get()
+    assert "⊘" in out
+    assert "DENIED by no-egress" in out
+
+
+# --- Token-counter segment in the bottom toolbar -------------------------
+
+
+from capabledeputy.cli.chat import _toolbar_context_segment  # noqa: E402
+
+
+def test_toolbar_context_segment_hidden_before_first_turn() -> None:
+    """No turn has fired yet → don't pretend we know the context size."""
+    assert _toolbar_context_segment(None, None) == ""
+    assert _toolbar_context_segment(0, None) == ""
+    assert _toolbar_context_segment(None, 200_000) == ""
+
+
+def test_toolbar_context_segment_low_usage_is_gray() -> None:
+    seg = _toolbar_context_segment(12_000, 200_000)
+    assert "ansigray" in seg
+    assert "6%" in seg
+    assert "12k/200k" in seg
+
+
+def test_toolbar_context_segment_warn_threshold_is_yellow() -> None:
+    seg = _toolbar_context_segment(140_000, 200_000)
+    assert "ansiyellow" in seg
+    assert "70%" in seg
+
+
+def test_toolbar_context_segment_cliff_is_red() -> None:
+    seg = _toolbar_context_segment(180_000, 200_000)
+    assert "ansired" in seg
+    assert "90%" in seg
+
+
+def test_toolbar_picks_up_context_from_state() -> None:
+    """End-to-end via _make_bottom_toolbar: when state carries
+    context_tokens + context_window, the toolbar string contains the
+    `ctx N/M P%` segment. Pre-turn (no state keys) it's absent."""
+    sid = "abcd1234-0000-0000-0000-00000000ccc1"
+    cache = _FakeCache(
+        [{"id": sid, "label_set": [], "capability_set": []}],
+        [],
+    )
+    focus = {"id": sid, "label": sid[:8]}
+
+    # Without context state — no segment
+    render_off = _make_bottom_toolbar(cache, focus, state={})
+    assert "ctx " not in to_plain_text(render_off())
+
+    # With context state — segment present
+    render_on = _make_bottom_toolbar(
+        cache,
+        focus,
+        state={"context_tokens": 50_000, "context_window": 200_000},
+    )
+    out = to_plain_text(render_on())
+    assert "ctx" in out
+    assert "50k/200k" in out
+    assert "25%" in out

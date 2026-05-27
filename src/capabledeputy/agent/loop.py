@@ -682,6 +682,13 @@ async def run_turn_streaming(
                     "n_messages": len(messages),
                     "n_tools": len(tool_descriptions),
                     "context_tokens_estimate": estimated,
+                    # Surfacing the window lets the chat REPL render a
+                    # `N / M (P%)` token counter in the bottom toolbar
+                    # without having to know the model→window table on
+                    # the client side. The streaming audit consumer in
+                    # `cli/chat.py:_send_message_streaming` reads this
+                    # alongside the estimate.
+                    "context_window": window,
                 },
             ),
         )
