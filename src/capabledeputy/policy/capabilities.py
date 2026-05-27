@@ -354,11 +354,40 @@ class Capability:
                 covered = _WRITE_UNION_MATCHES.get(self.kind, frozenset())
             if not isinstance(kind, CapabilityKind) or kind not in covered:
                 return False
-        if not fnmatch.fnmatchcase(target, self.pattern):
+        if not self._pattern_matches(target):
             return False
         if self.max_amount is None:
             return True
         return amount is not None and amount <= self.max_amount
+
+    def _pattern_matches(self, target: str) -> bool:
+        """Glob match with one usability fix: a pattern ending in
+        `/*` also matches the bare parent directory entry, not just
+        its contents. Without this, granting `READ_FS /foo/*` lets
+        the agent read `/foo/a.txt` but DENIES `fs.list /foo` —
+        which is the prerequisite for finding `a.txt` in the first
+        place. Operators consistently hit this footgun; the
+        semantic intent of `/foo/*` is "the foo subtree" including
+        the entry that names it.
+
+        Examples (pattern → target):
+          `/foo/*` matches `/foo`       (special case: bare parent)
+          `/foo/*` matches `/foo/`      (fnmatch: trailing slash)
+          `/foo/*` matches `/foo/bar`   (fnmatch: child)
+          `/foo/*` matches `/foo/bar/x` (fnmatch: deeper child)
+          `*`      matches anything     (fnmatch: catch-all unchanged)
+          `/foo`   matches `/foo`       (fnmatch: exact, unchanged)
+        """
+        if fnmatch.fnmatchcase(target, self.pattern):
+            return True
+        # Bare-parent escape hatch — only when the pattern literally
+        # ends in `/*`. Conservative: doesn't fire for `/foo/*.txt`
+        # or `/foo/*/bar`, where the wildcard isn't the suffix.
+        if self.pattern.endswith("/*"):
+            prefix = self.pattern[:-2]
+            if target == prefix:
+                return True
+        return False
 
     def to_dict(self) -> dict[str, Any]:
         # Issue #35 — self.kind can be a CapabilityKind enum or a

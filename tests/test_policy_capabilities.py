@@ -433,3 +433,65 @@ def test_fr016_lifetime_extended_refused() -> None:
         depth_limit=3,
     )
     assert out == DelegationRefusal(DelegationRefusalReason.LIFETIME_EXTENDED)
+
+
+# --- Bare-parent escape hatch for `/path/*` patterns -----------------------
+# When a grant says `READ_FS /home/marc/Projects/*` and the agent calls
+# `fs.list /home/marc/Projects` (no trailing content), fnmatch rejects it.
+# The semantic intent of `/foo/*` includes the entry that names the
+# subtree — denying `fs.list` of that entry while permitting reads under
+# it is a footgun every operator hits. Real audit-log instance:
+#   policy.decided deny tool=bundled-fs.fs.list args.path=/home/marc/Projects
+#                       reason="no matching capability for READ_FS()"
+# despite a granted `READ_FS /home/marc/Projects/*`.
+
+
+def test_glob_pattern_matches_bare_parent_directory() -> None:
+    """`/foo/*` grants READ on `/foo` itself (the directory entry),
+    not just its contents. This is the prerequisite for any
+    list/enumerate operation."""
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="/home/marc/Projects/*")
+    assert cap.matches(CapabilityKind.READ_FS, "/home/marc/Projects")
+
+
+def test_glob_pattern_still_matches_children() -> None:
+    """Existing behavior preserved: `/foo/*` matches children too."""
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="/home/marc/Projects/*")
+    assert cap.matches(CapabilityKind.READ_FS, "/home/marc/Projects/weightscan")
+    assert cap.matches(CapabilityKind.READ_FS, "/home/marc/Projects/weightscan/src/x.py")
+
+
+def test_glob_pattern_does_not_match_sibling_directory() -> None:
+    """The fix doesn't open up siblings — `/foo/*` matches `/foo` but
+    NOT `/foobar` (which is a different directory whose name happens
+    to share a prefix)."""
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="/home/marc/Projects/*")
+    assert not cap.matches(CapabilityKind.READ_FS, "/home/marc/Projectsleak")
+    assert not cap.matches(CapabilityKind.READ_FS, "/home/marc/ProjectsX/y")
+    assert not cap.matches(CapabilityKind.READ_FS, "/home/marc")
+
+
+def test_bare_parent_only_triggers_when_pattern_ends_in_slash_star() -> None:
+    """Conservative: `/foo/*.txt` is NOT a `/foo/*` pattern — the
+    suffix isn't a bare `*`, so the escape hatch doesn't fire and
+    `/foo` is NOT matched."""
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="/foo/*.txt")
+    assert not cap.matches(CapabilityKind.READ_FS, "/foo")
+    # Children still gated by the literal pattern:
+    assert cap.matches(CapabilityKind.READ_FS, "/foo/notes.txt")
+    assert not cap.matches(CapabilityKind.READ_FS, "/foo/notes.md")
+
+
+def test_bare_parent_does_not_fire_for_mid_pattern_wildcard() -> None:
+    """Pattern `/foo/*/bar` has a wildcard in the middle, not the
+    suffix. The escape hatch doesn't apply — `/foo` is NOT matched."""
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="/foo/*/bar")
+    assert not cap.matches(CapabilityKind.READ_FS, "/foo")
+
+
+def test_catch_all_star_pattern_unchanged() -> None:
+    """Pattern `*` already matches everything via fnmatch. The
+    escape hatch is irrelevant; verify the catch-all behavior holds."""
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    assert cap.matches(CapabilityKind.READ_FS, "/home/marc/Projects")
+    assert cap.matches(CapabilityKind.READ_FS, "anything-at-all")
