@@ -381,12 +381,157 @@ def _summarize_tool_args(args: Any) -> str:
     return ", ".join(parts)
 
 
+def _parse_json_text(output: Any) -> Any:
+    """Upstream MCP tools wrap structured payloads as
+    `{"text": "<json blob>"}`. Try to parse the inner JSON so
+    per-tool formatters can read fields. Returns None when output
+    isn't a dict, isn't text-shaped, or the inner blob isn't valid
+    JSON. Cheap to call — formatters that don't need the parsed
+    form just won't invoke this."""
+    import json
+
+    if not isinstance(output, dict):
+        return None
+    text = output.get("text")
+    if not isinstance(text, str):
+        return None
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def _fmt_gmail_messages_get(output: Any) -> str | None:
+    """Gmail message → `From: <sender> · Subject: <subject>`.
+
+    Pulls the canonical headers (From, Subject) out of the
+    `payload.headers` array. Common case: a substack newsletter
+    renders as `From: The Capitalist · "Legendary automaker..."`,
+    which is much more useful than a 30k-char byte count."""
+    parsed = _parse_json_text(output)
+    if not isinstance(parsed, dict):
+        return None
+    headers = (parsed.get("payload") or {}).get("headers") or []
+    if not isinstance(headers, list):
+        return None
+    h: dict[str, str] = {}
+    for entry in headers:
+        if isinstance(entry, dict):
+            name = entry.get("name", "")
+            value = entry.get("value", "")
+            if isinstance(name, str) and isinstance(value, str):
+                h[name.lower()] = value
+    sender_raw = h.get("from") or "?"
+    sender = sender_raw.split("<")[0].strip().strip('"') or sender_raw[:40]
+    if len(sender) > 30:
+        sender = sender[:27] + "…"
+    subj = h.get("subject") or "(no subject)"
+    if len(subj) > 50:
+        subj = subj[:47] + "…"
+    return f"[dim]From: {sender} · \"{subj}\"[/dim]"
+
+
+def _fmt_gmail_messages_list(output: Any) -> str | None:
+    """Gmail thread/message list → `N messages`. The bare list
+    response carries only ids + threadIds (no subjects), so we
+    can't do better without a follow-up fetch. Keep the count and
+    let the agent supply the narrative."""
+    parsed = _parse_json_text(output)
+    if not isinstance(parsed, dict):
+        return None
+    msgs = parsed.get("messages")
+    if isinstance(msgs, list):
+        return f"[dim]{len(msgs)} messages[/dim]"
+    return None
+
+
+def _fmt_drive_files_list(output: Any) -> str | None:
+    """Drive file list → `3 files: report.pdf, notes.md, slides.key…`."""
+    parsed = _parse_json_text(output)
+    if not isinstance(parsed, dict):
+        return None
+    files = parsed.get("files")
+    if not isinstance(files, list):
+        return None
+    names: list[str] = []
+    for f in files[:3]:
+        if isinstance(f, dict):
+            n = f.get("name")
+            if isinstance(n, str):
+                names.append(n)
+    if not names:
+        return f"[dim]{len(files)} files[/dim]"
+    suffix = ", …" if len(files) > 3 else ""
+    joined = ", ".join(names)
+    if len(joined) > 60:
+        joined = joined[:57] + "…"
+    return f"[dim]{len(files)} files: {joined}{suffix}[/dim]"
+
+
+def _fmt_fs_read(output: Any) -> str | None:
+    """File read → `<N> lines · <bytes>`. Counts newlines in the
+    returned content; bytes shown from explicit length or string len."""
+    if not isinstance(output, dict):
+        return None
+    content = output.get("content")
+    if not isinstance(content, str):
+        content = output.get("text")
+    if not isinstance(content, str):
+        return None
+    n_lines = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
+    n_bytes = len(content.encode("utf-8"))
+    if output.get("truncated"):
+        return f"[dim]{n_lines} lines · {n_bytes:,} bytes (truncated)[/dim]"
+    return f"[dim]{n_lines} lines · {n_bytes:,} bytes[/dim]"
+
+
+def _fmt_fetch(output: Any) -> str | None:
+    """HTTP fetch → `<status> · <bytes>`. Pulls status + body length
+    from the canonical {status, body, url} shape produced by the
+    bundled fetch server."""
+    if not isinstance(output, dict):
+        return None
+    status = output.get("status")
+    body = output.get("body") or output.get("text")
+    if status is None and not isinstance(body, str):
+        return None
+    parts: list[str] = []
+    if status is not None:
+        parts.append(str(status))
+    if isinstance(body, str):
+        parts.append(f"{len(body):,} bytes")
+    return f"[dim]{' · '.join(parts)}[/dim]" if parts else None
+
+
+# Per-tool result formatters. Keyed by exact tool name. Formatters
+# return None when they can't extract a useful preview, in which
+# case `_summarize_tool_output` falls through to the generic
+# byte-count/item-count rendering. The point: a 30k-char gmail
+# message renders as `From: ... · "Subject..."` not
+# `30,054 chars`, which is what a human actually wants to scan.
+_TOOL_RESULT_FORMATTERS: dict[str, Any] = {
+    "gws.gmail_messages_get": _fmt_gmail_messages_get,
+    "gws.gmail_messages_list": _fmt_gmail_messages_list,
+    "gws.drive_files_list": _fmt_drive_files_list,
+    "fs.read": _fmt_fs_read,
+    "bundled-fetch.fetch": _fmt_fetch,
+    "fetch.fetch": _fmt_fetch,
+}
+
+
 def _summarize_tool_output(outcome: dict[str, Any]) -> str:
-    """One-line preview of what the tool returned. Picks a useful
-    shape: a denial rule, an error head, a byte count for text
-    payloads, an item count for list-shaped responses, or a field
-    count as a last resort. Always returns Rich markup ready for
-    console.print (may include color tags for errors/denials)."""
+    """One-line preview of what the tool returned. Order of attempts:
+
+    1. Decision short-circuits (deny / require_approval / error).
+    2. Per-tool formatter from `_TOOL_RESULT_FORMATTERS` — pulls
+       domain-specific fields (gmail Subject, drive filenames,
+       fs line count, fetch status).
+    3. Truncation marker if the upstream adapter capped the output.
+    4. Generic shape-based fallback (byte count for text, item count
+       for list-keyed dicts, field count as a last resort).
+
+    Always returns Rich markup ready for `console.print` (may
+    include color tags for errors/denials)."""
     decision = outcome.get("decision")
     if decision == "deny":
         rule = outcome.get("rule") or "policy"
@@ -401,6 +546,25 @@ def _summarize_tool_output(outcome: dict[str, Any]) -> str:
     output = outcome.get("output")
     if output is None:
         return ""
+    # Per-tool formatter wins when applicable. Try the exact name
+    # first; formatters return None to fall through to the generic
+    # path.
+    tool_name = outcome.get("tool_name") or ""
+    formatter = _TOOL_RESULT_FORMATTERS.get(tool_name)
+    if formatter is not None:
+        try:
+            specific = formatter(output)
+        except Exception:
+            specific = None  # bad data → fall through, never crash render
+        if specific:
+            # Decorate with the truncation marker if the upstream
+            # output was capped — the formatter sees the truncated
+            # content but the operator should know there was more.
+            if isinstance(output, dict) and output.get("truncated"):
+                orig = output.get("original_size_bytes", 0)
+                return f"{specific} [dim](truncated · {orig:,} bytes total)[/dim]"
+            return specific
+
     if isinstance(output, dict):
         if output.get("upstream_error"):
             text = str(output.get("text", "")).replace("\n", " ")[:60]
@@ -950,6 +1114,12 @@ def _send_message_streaming(
                             shared_state["context_tokens"] = int(ct)
                             if cw is not None:
                                 shared_state["context_window"] = int(cw)
+                            # Timestamp lets the toolbar fade the
+                            # segment to `(stale)` after 5 minutes —
+                            # the value is from the LAST turn, not now,
+                            # and stays accurate only as long as
+                            # nothing else changed.
+                            shared_state["context_tokens_at"] = datetime.now(UTC)
                     elif et == "llm.response_received":
                         clen = payload.get("content_length", 0)
                         n_tc = payload.get("n_tool_calls", 0)
@@ -2115,25 +2285,55 @@ def _toolbar_label_ansi(label: str) -> str:
     return label
 
 
+# How long until the toolbar's context segment is considered stale.
+# Chosen to roughly match the Anthropic prompt cache TTL (5 min) — if
+# nothing has happened in 5 minutes, the most-recent context estimate
+# is unlikely to still reflect what the agent would send NOW.
+CONTEXT_STALENESS_THRESHOLD = timedelta(minutes=5)
+
+
 def _toolbar_context_segment(
     tokens: int | None,
     window: int | None,
+    measured_at: datetime | None = None,
+    *,
+    now: datetime | None = None,
 ) -> str:
     """Render `│ ctx 24k/200k 12%` for the bottom toolbar. Color
     escalates from gray (cool, <60%) → yellow (warn, 60-80%) →
     red (cliff, >80%) so the operator gets a peripheral-vision cue
-    long before the agent hits the wall. Returns empty when no turn
-    has fired yet (tokens/window not yet populated)."""
+    long before the agent hits the wall.
+
+    When `measured_at` is older than CONTEXT_STALENESS_THRESHOLD,
+    the segment dims to gray regardless of the percentage and
+    appends `(stale)` — the post-turn estimate doesn't reflect the
+    current state, so it shouldn't shout warning colors at the
+    operator. `now` is injectable so tests don't have to mock time.
+
+    Returns empty when no turn has fired yet (tokens/window not
+    yet populated)."""
     if tokens is None or window is None or window <= 0:
         return ""
     ratio = tokens / window
     pct = int(ratio * 100)
-    if ratio >= 0.80:
+
+    # Staleness check first — overrides the color escalation so a
+    # stale 90% reading doesn't look like an active emergency.
+    stale = False
+    if measured_at is not None:
+        ts_now = now if now is not None else datetime.now(UTC)
+        if ts_now - measured_at >= CONTEXT_STALENESS_THRESHOLD:
+            stale = True
+
+    if stale:
+        color = "ansigray"
+    elif ratio >= 0.80:
         color = "ansired"
     elif ratio >= 0.60:
         color = "ansiyellow"
     else:
         color = "ansigray"
+
     # Compact `k` suffix — full numbers are scanline noise at the
     # bottom of the screen. 12,345 → 12k; 4,500 → 4.5k.
     def _short(n: int) -> str:
@@ -2143,9 +2343,10 @@ def _toolbar_context_segment(
             return f"{n / 1000:.1f}k"
         return str(n)
 
+    stale_suffix = " (stale)" if stale else ""
     return (
         f" │ <{color}>ctx {_short(tokens)}/{_short(window)} "
-        f"{pct}%</{color}>"
+        f"{pct}%{stale_suffix}</{color}>"
     )
 
 
@@ -2214,10 +2415,12 @@ def _make_bottom_toolbar(
         # Context-window usage from the most-recent turn (updated by
         # the streaming audit consumer in _send_message_streaming).
         # Renders as `ctx 24k/200k 12%` with color escalating from
-        # gray → yellow → red as the ratio approaches the cliff.
+        # gray → yellow → red as the ratio approaches the cliff;
+        # fades to `(stale)` after 5 minutes idle.
         ctx_seg = _toolbar_context_segment(
             state.get("context_tokens"),
             state.get("context_window"),
+            state.get("context_tokens_at"),
         )
 
         # Line 1 — identity + IFC state

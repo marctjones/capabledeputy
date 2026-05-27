@@ -451,3 +451,198 @@ def test_toolbar_picks_up_context_from_state() -> None:
     assert "ctx" in out
     assert "50k/200k" in out
     assert "25%" in out
+
+
+# --- Per-tool result formatters ------------------------------------------
+
+
+def test_gmail_get_formatter_extracts_subject_and_from() -> None:
+    """The 30k-char gmail message renders as `From: X · "Subject"`,
+    not a byte count. Subject is the actually-useful preview."""
+    import json
+    text = json.dumps(
+        {
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": '"The Capitalist" <news@substack.com>'},
+                    {"name": "Subject", "value": "Legendary automaker tanks"},
+                    {"name": "To", "value": "marc@example.com"},
+                ],
+            },
+            "snippet": "...",
+        },
+    )
+    out = _summarize_tool_output(
+        {
+            "decision": "allow",
+            "tool_name": "gws.gmail_messages_get",
+            "output": {"text": text},
+        },
+    )
+    assert "The Capitalist" in out
+    assert "Legendary automaker tanks" in out
+    # Old generic preview would have shown "X chars" — the new one
+    # should NOT, because we matched the per-tool formatter.
+    assert "chars" not in out
+
+
+def test_gmail_get_formatter_handles_no_subject_gracefully() -> None:
+    """An email with no Subject header still renders something
+    useful — `(no subject)` placeholder rather than crashing."""
+    import json
+    text = json.dumps(
+        {
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "x@y.com"},
+                ],
+            },
+        },
+    )
+    out = _summarize_tool_output(
+        {
+            "decision": "allow",
+            "tool_name": "gws.gmail_messages_get",
+            "output": {"text": text},
+        },
+    )
+    assert "no subject" in out
+
+
+def test_gmail_list_formatter_counts_messages() -> None:
+    import json
+    text = json.dumps(
+        {"messages": [{"id": f"id-{i}", "threadId": f"t-{i}"} for i in range(5)]},
+    )
+    out = _summarize_tool_output(
+        {
+            "decision": "allow",
+            "tool_name": "gws.gmail_messages_list",
+            "output": {"text": text},
+        },
+    )
+    assert "5 messages" in out
+
+
+def test_drive_list_formatter_includes_filenames() -> None:
+    import json
+    text = json.dumps(
+        {"files": [{"name": "report.pdf"}, {"name": "notes.md"}, {"name": "slides.key"}]},
+    )
+    out = _summarize_tool_output(
+        {
+            "decision": "allow",
+            "tool_name": "gws.drive_files_list",
+            "output": {"text": text},
+        },
+    )
+    assert "3 files" in out
+    assert "report.pdf" in out
+    assert "notes.md" in out
+
+
+def test_drive_list_formatter_truncates_with_ellipsis() -> None:
+    import json
+    text = json.dumps({"files": [{"name": f"f{i}.txt"} for i in range(10)]})
+    out = _summarize_tool_output(
+        {
+            "decision": "allow",
+            "tool_name": "gws.drive_files_list",
+            "output": {"text": text},
+        },
+    )
+    assert "10 files" in out
+    assert "…" in out  # truncation marker — only first 3 shown
+
+
+def test_fs_read_formatter_reports_lines_and_bytes() -> None:
+    content = "line1\nline2\nline3\n"
+    out = _summarize_tool_output(
+        {
+            "decision": "allow",
+            "tool_name": "fs.read",
+            "output": {"content": content, "path": "/x"},
+        },
+    )
+    assert "3 lines" in out
+    assert "bytes" in out
+
+
+def test_specific_formatter_falls_through_on_bad_json() -> None:
+    """If the upstream returned malformed JSON in text, the
+    formatter returns None and the generic byte-count fallback
+    fires — never a render crash."""
+    out = _summarize_tool_output(
+        {
+            "decision": "allow",
+            "tool_name": "gws.gmail_messages_get",
+            "output": {"text": "not even close to JSON"},
+        },
+    )
+    # generic fallback engages
+    assert "chars" in out
+
+
+def test_formatter_carries_truncation_marker() -> None:
+    """When the upstream output was capped (truncated=True), the
+    per-tool preview still wins but appends the original-size
+    marker so the operator knows the LLM saw less than was
+    available."""
+    import json
+    text = json.dumps(
+        {
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "x@y.com"},
+                    {"name": "Subject", "value": "Hello"},
+                ],
+            },
+        },
+    )
+    out = _summarize_tool_output(
+        {
+            "decision": "allow",
+            "tool_name": "gws.gmail_messages_get",
+            "output": {
+                "text": text,
+                "truncated": True,
+                "original_size_bytes": 105_000,
+            },
+        },
+    )
+    assert "Hello" in out
+    assert "105,000" in out
+    assert "truncated" in out
+
+
+# --- Stale-after-5-minutes badge for the ctx segment ---------------------
+
+
+def test_ctx_segment_not_stale_when_recent() -> None:
+    """Just-measured ctx → no stale marker, normal coloring."""
+    now = datetime(2026, 5, 26, 12, 0, 0, tzinfo=UTC)
+    measured_at = now - timedelta(seconds=30)
+    seg = _toolbar_context_segment(50_000, 200_000, measured_at, now=now)
+    assert "stale" not in seg
+    assert "25%" in seg
+
+
+def test_ctx_segment_stale_after_threshold() -> None:
+    """6-minute-old reading → `(stale)` suffix + dim gray regardless
+    of percentage. A stale 90% reading shouldn't trigger red panic."""
+    now = datetime(2026, 5, 26, 12, 6, 0, tzinfo=UTC)
+    measured_at = now - timedelta(minutes=6)
+    seg = _toolbar_context_segment(180_000, 200_000, measured_at, now=now)
+    assert "(stale)" in seg
+    assert "ansigray" in seg
+    # The cliff color should NOT fire when stale
+    assert "ansired" not in seg
+
+
+def test_ctx_segment_no_timestamp_uses_normal_coloring() -> None:
+    """Back-compat: when `measured_at` is None (e.g. an older
+    audit-less code path), the segment renders normally with
+    threshold coloring — no stale marker."""
+    seg = _toolbar_context_segment(180_000, 200_000, None)
+    assert "stale" not in seg
+    assert "ansired" in seg  # 90% triggers red, no staleness override
