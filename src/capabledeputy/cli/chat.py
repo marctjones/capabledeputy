@@ -83,6 +83,51 @@ _DECISION_COLOR = {
 }
 
 
+# ---- visual palette ---------------------------------------------------
+# Centralized so every render path uses the same vocabulary. Before
+# this, surfaces sprinkled cyan/bold/dim ad-hoc and the result read
+# "developer terminal" instead of "polished product." Three brand
+# tokens (assistant / user / dim) plus the three semantic tokens
+# (error / success / warning). Everything else either uses these or
+# `[dim]` for de-emphasized prose.
+#
+# `orange3` is a 256-color name that maps to a warm amber on Rich's
+# default theme — close enough to Claude's brand color on truecolor
+# terminals (Ghostty/kitty/iTerm2) while degrading cleanly on basic
+# xterms that only have the 256-color palette.
+ASSISTANT_COLOR = "orange3"
+USER_COLOR = "cyan"
+DIM_COLOR = "dim"
+ERROR_COLOR = "red"
+SUCCESS_COLOR = "green"
+WARNING_COLOR = "yellow"
+
+# Speaker glyph — the colored `●` that prefixes each turn header.
+# Claude Code, Cursor, Aider, and friends all use a colored dot
+# convention; it's the single highest-signal "this app feels like
+# Claude Code" cue and costs one character per turn.
+SPEAKER_GLYPH = "●"
+
+
+def _speaker_line(
+    name: str,
+    color: str,
+    *,
+    timestamp: str | None = None,
+    suffix: str | None = None,
+) -> str:
+    """Format the `●  name  HH:MM  · extra` header line. The dot
+    carries the speaker's brand color, the name is bold, and
+    timestamp/suffix render dim so the eye lands on the colored dot
+    first. Returns a Rich-markup string ready for `console.print`."""
+    parts = [f"[{color}]{SPEAKER_GLYPH}[/{color}] [bold]{name}[/bold]"]
+    if timestamp:
+        parts.append(f"[dim]{timestamp}[/dim]")
+    if suffix:
+        parts.append(f"[dim]{suffix}[/dim]")
+    return "  ".join(parts)
+
+
 # ---- label palette ------------------------------------------------------
 # Single source of truth lives in capabledeputy.presentation so the
 # REPL and the TUI render the security model identically. These module
@@ -382,21 +427,22 @@ def _render_user_message(message: str) -> None:
     Enter — prompt-toolkit clears the prompt line — and the
     conversation reads as one-sided in scrollback.
 
-    Header style is intentionally minimal: 'you  HH:MM' followed by
-    a thin rule. The message body has no border, no panel — just
-    plain text indented for visual separation from agent output."""
+    Style: `● you  HH:MM` with a cyan dot, matching the agent's
+    `●` header so the conversation reads as a turn-taking transcript.
+    No border, no panel — just the speaker prefix and the message."""
     from datetime import datetime
 
     ts = datetime.now().strftime("%H:%M")
     console.print()
-    console.print(f"[bold]you[/bold]  [dim]{ts}[/dim]")
+    console.print(_speaker_line("you", USER_COLOR, timestamp=ts))
     console.print(message)
 
 
 def _render_turn(result: dict[str, Any]) -> None:
-    """Render the agent's turn. Chat-style: a header line, compact
-    tool-call summaries, then the agent's markdown response. No
-    panels, no thick borders — flows like a chat transcript.
+    """Render the agent's turn. Chat-style: `● agent  turn N  · 3 iters`
+    header, compact tool-call summaries, then the agent's markdown
+    response. No panels, no thick borders — flows like a chat
+    transcript.
 
     Tool outcomes render BEFORE the agent's prose (#30) so the
     chronology of "agent called tools → agent composed response" is
@@ -406,17 +452,19 @@ def _render_turn(result: dict[str, Any]) -> None:
     finish = result.get("finish_reason", "stop")
     n_tools = len(result.get("tool_outcomes", []) or [])
 
-    console.print()
-    # Subtle header — no heavy rule, no boxes. Pattern matches the
-    # `you` header from `_render_user_message` for visual symmetry.
-    header_bits = [f"[bold cyan]agent[/bold cyan]  [dim]turn {_TURN_COUNTER['n']}"]
+    # Compose the dim suffix: `turn N · 3 iters · 2 tool calls · stop`.
+    # Order picked so the most session-stable bits come first.
+    suffix_bits = [f"turn {_TURN_COUNTER['n']}"]
     if iters > 1:
-        header_bits.append(f"{iters} iters")
+        suffix_bits.append(f"{iters} iters")
     if n_tools:
-        header_bits.append(f"{n_tools} tool call{'s' if n_tools != 1 else ''}")
+        suffix_bits.append(f"{n_tools} tool call{'s' if n_tools != 1 else ''}")
     if finish != "stop":
-        header_bits.append(finish)
-    console.print(" · ".join(header_bits) + "[/dim]")
+        suffix_bits.append(finish)
+    suffix = " · ".join(suffix_bits)
+
+    console.print()
+    console.print(_speaker_line("agent", ASSISTANT_COLOR, suffix=suffix))
 
     # Issue #30 — tool outcomes before agent prose so reading
     # top-to-bottom preserves chronology.
