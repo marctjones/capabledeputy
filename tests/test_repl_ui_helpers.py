@@ -177,6 +177,7 @@ def test_preview_allow_shows_no_hint() -> None:
 # --- Time-bounded capability rendering (feature 001, US3) ----------------
 
 from datetime import UTC, datetime, timedelta  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 from capabledeputy.cli.chat import _expiry_marker  # noqa: E402
 
@@ -460,6 +461,7 @@ def test_gmail_get_formatter_extracts_subject_and_from() -> None:
     """The 30k-char gmail message renders as `From: X · "Subject"`,
     not a byte count. Subject is the actually-useful preview."""
     import json
+
     text = json.dumps(
         {
             "payload": {
@@ -490,6 +492,7 @@ def test_gmail_get_formatter_handles_no_subject_gracefully() -> None:
     """An email with no Subject header still renders something
     useful — `(no subject)` placeholder rather than crashing."""
     import json
+
     text = json.dumps(
         {
             "payload": {
@@ -511,6 +514,7 @@ def test_gmail_get_formatter_handles_no_subject_gracefully() -> None:
 
 def test_gmail_list_formatter_counts_messages() -> None:
     import json
+
     text = json.dumps(
         {"messages": [{"id": f"id-{i}", "threadId": f"t-{i}"} for i in range(5)]},
     )
@@ -526,6 +530,7 @@ def test_gmail_list_formatter_counts_messages() -> None:
 
 def test_drive_list_formatter_includes_filenames() -> None:
     import json
+
     text = json.dumps(
         {"files": [{"name": "report.pdf"}, {"name": "notes.md"}, {"name": "slides.key"}]},
     )
@@ -543,6 +548,7 @@ def test_drive_list_formatter_includes_filenames() -> None:
 
 def test_drive_list_formatter_truncates_with_ellipsis() -> None:
     import json
+
     text = json.dumps({"files": [{"name": f"f{i}.txt"} for i in range(10)]})
     out = _summarize_tool_output(
         {
@@ -589,6 +595,7 @@ def test_formatter_carries_truncation_marker() -> None:
     marker so the operator knows the LLM saw less than was
     available."""
     import json
+
     text = json.dumps(
         {
             "payload": {
@@ -646,3 +653,186 @@ def test_ctx_segment_no_timestamp_uses_normal_coloring() -> None:
     seg = _toolbar_context_segment(180_000, 200_000, None)
     assert "stale" not in seg
     assert "ansired" in seg  # 90% triggers red, no staleness override
+
+
+# --- Token spend indicator: session + month-to-date ----------------------
+
+
+from capabledeputy.cli.chat import (  # noqa: E402
+    _read_mtd_usage,
+    _toolbar_usage_segment,
+)
+
+
+def test_usage_segment_hidden_before_first_turn() -> None:
+    """All four counters at zero → segment collapses. A brand-new
+    session with no audit history should not show `tok 0/0 · mtd 0/0`
+    in the toolbar; that's just noise until something actually fires."""
+    assert _toolbar_usage_segment(0, 0, 0, 0) == ""
+    assert _toolbar_usage_segment(None, None, None, None) == ""
+
+
+def test_usage_segment_shows_session_and_mtd() -> None:
+    """Session = (1.2k, 340), mtd = (87k, 12k) → both columns render
+    with the up/down arrows and compact `k` suffixes."""
+    seg = _toolbar_usage_segment(1234, 340, 87_000, 12_500)
+    assert "tok 1.2k↑/340↓" in seg
+    assert "mtd 87k↑/12k↓" in seg
+    assert "ansigray" in seg
+
+
+def test_usage_segment_renders_with_zero_session_when_mtd_present() -> None:
+    """Fresh REPL launched after prior usage this month — session
+    counters are zero but mtd is non-zero, so the segment should
+    still render rather than collapse."""
+    seg = _toolbar_usage_segment(0, 0, 5_000, 1_200)
+    assert "tok 0↑/0↓" in seg
+    assert "mtd 5.0k↑/1.2k↓" in seg
+
+
+def test_read_mtd_usage_missing_file_returns_zeros(tmp_path: Path) -> None:
+    """No audit log yet → don't blow up REPL startup; return zeros so
+    the toolbar just shows session-only counts."""
+    assert _read_mtd_usage(tmp_path / "nope.jsonl") == (0, 0)
+    assert _read_mtd_usage(None) == (0, 0)
+    assert _read_mtd_usage("") == (0, 0)
+
+
+def test_read_mtd_usage_sums_only_current_month(tmp_path: Path) -> None:
+    """Events from prior months are excluded — operator-facing
+    metric should track the calendar month, not a rolling window.
+    Three events seeded: one in the prior month (skipped), two in
+    the current month (summed)."""
+    import json
+
+    audit = tmp_path / "audit.jsonl"
+    now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=UTC)
+    prior = datetime(2026, 4, 30, 23, 59, 59, tzinfo=UTC)
+    in_month_a = datetime(2026, 5, 1, 0, 0, 1, tzinfo=UTC)
+    in_month_b = datetime(2026, 5, 10, 9, 0, 0, tzinfo=UTC)
+
+    def _event(ts: datetime, prompt: int, completion: int) -> str:
+        return json.dumps(
+            {
+                "event_type": "llm.response_received",
+                "timestamp": ts.isoformat(),
+                "payload": {
+                    "prompt_tokens": prompt,
+                    "completion_tokens": completion,
+                },
+            },
+        )
+
+    audit.write_text(
+        "\n".join(
+            [
+                _event(prior, 999, 888),  # skipped — prior month
+                _event(in_month_a, 1000, 200),
+                _event(in_month_b, 500, 100),
+            ],
+        )
+        + "\n",
+    )
+    p, c = _read_mtd_usage(audit, now=now)
+    assert p == 1500
+    assert c == 300
+
+
+def test_read_mtd_usage_ignores_non_llm_response_events(tmp_path: Path) -> None:
+    """Other event types in the same log must not bleed into the
+    spend total — only `llm.response_received` carries the
+    provider-reported usage."""
+    import json
+
+    audit = tmp_path / "audit.jsonl"
+    now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=UTC)
+    in_month = datetime(2026, 5, 10, 9, 0, 0, tzinfo=UTC)
+
+    audit.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "event_type": "tool.dispatched",
+                        "timestamp": in_month.isoformat(),
+                        "payload": {"prompt_tokens": 9999},
+                    },
+                ),
+                json.dumps(
+                    {
+                        "event_type": "llm.response_received",
+                        "timestamp": in_month.isoformat(),
+                        "payload": {
+                            "prompt_tokens": 100,
+                            "completion_tokens": 50,
+                        },
+                    },
+                ),
+            ],
+        )
+        + "\n",
+    )
+    assert _read_mtd_usage(audit, now=now) == (100, 50)
+
+
+def test_read_mtd_usage_skips_malformed_lines(tmp_path: Path) -> None:
+    """Partial writes / log rotation crumbs shouldn't crash startup —
+    skip the bad line, sum the good ones."""
+    import json
+
+    audit = tmp_path / "audit.jsonl"
+    now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=UTC)
+    in_month = datetime(2026, 5, 10, 9, 0, 0, tzinfo=UTC)
+
+    audit.write_text(
+        "\n".join(
+            [
+                "{not valid json",
+                "",
+                json.dumps(
+                    {
+                        "event_type": "llm.response_received",
+                        "timestamp": in_month.isoformat(),
+                        "payload": {
+                            "prompt_tokens": 7,
+                            "completion_tokens": 3,
+                        },
+                    },
+                ),
+                json.dumps(
+                    {
+                        "event_type": "llm.response_received",
+                        "timestamp": "not-a-date",
+                        "payload": {"prompt_tokens": 5, "completion_tokens": 5},
+                    },
+                ),
+            ],
+        )
+        + "\n",
+    )
+    assert _read_mtd_usage(audit, now=now) == (7, 3)
+
+
+def test_make_bottom_toolbar_renders_usage_when_state_populated() -> None:
+    """End-to-end via _make_bottom_toolbar: when state carries the
+    four usage counters, the `tok N↑/M↓ · mtd P↑/Q↓` segment appears
+    in the toolbar string."""
+    sid = "abcd1234-0000-0000-0000-00000000ddd2"
+    cache = _FakeCache(
+        [{"id": sid, "label_set": [], "capability_set": []}],
+        [],
+    )
+    focus = {"id": sid, "label": sid[:8]}
+    render = _make_bottom_toolbar(
+        cache,
+        focus,
+        state={
+            "session_prompt_tokens": 1200,
+            "session_completion_tokens": 340,
+            "mtd_prompt_tokens": 87_000,
+            "mtd_completion_tokens": 12_500,
+        },
+    )
+    out = to_plain_text(render())
+    assert "tok 1.2k↑/340↓" in out
+    assert "mtd 87k↑/12k↓" in out

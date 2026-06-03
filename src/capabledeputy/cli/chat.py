@@ -241,9 +241,7 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
 
     console.print("[green]starting daemon in background...[/green]")
     if resolved_path is not None:
-        label = (
-            "user default" if source == "user-default" else source
-        )
+        label = "user default" if source == "user-default" else source
         console.print(f"[dim]using daemon config: {resolved_path} ({label})[/dim]")
     else:
         console.print(
@@ -428,7 +426,7 @@ def _fmt_gmail_messages_get(output: Any) -> str | None:
     subj = h.get("subject") or "(no subject)"
     if len(subj) > 50:
         subj = subj[:47] + "…"
-    return f"[dim]From: {sender} · \"{subj}\"[/dim]"
+    return f'[dim]From: {sender} · "{subj}"[/dim]'
 
 
 def _fmt_gmail_messages_list(output: Any) -> str | None:
@@ -697,9 +695,7 @@ def _render_recovery_steps(steps: Any, fallback_rule: str | None) -> None:
         for s in steps:
             cmd = s.get("command") if isinstance(s, dict) else getattr(s, "command", "")
             args = s.get("args") if isinstance(s, dict) else getattr(s, "args", ())
-            rationale = (
-                s.get("rationale") if isinstance(s, dict) else getattr(s, "rationale", "")
-            )
+            rationale = s.get("rationale") if isinstance(s, dict) else getattr(s, "rationale", "")
             arg_str = " ".join(args) if args else ""
             command_line = f"{cmd} {arg_str}".strip()
             if use_hyperlinks:
@@ -1100,9 +1096,7 @@ def _send_message_streaming(
                         state["iter"] = payload.get("n_messages", state["iter"])
                         n_tools = payload.get("n_tools", state["n_tools"])
                         state["n_tools"] = n_tools
-                        state["line"] = (
-                            f"asking LLM ({state['n_tools']} tools available)..."
-                        )
+                        state["line"] = f"asking LLM ({state['n_tools']} tools available)..."
                         # Surface the freshly-computed context estimate
                         # into the toolbar's state dict so the bottom
                         # band can render `ctx 24k/200k 12%` in real
@@ -1123,9 +1117,28 @@ def _send_message_streaming(
                     elif et == "llm.response_received":
                         clen = payload.get("content_length", 0)
                         n_tc = payload.get("n_tool_calls", 0)
-                        state["line"] = (
-                            f"received {clen}-char response · {n_tc} tool call(s)"
-                        )
+                        state["line"] = f"received {clen}-char response · {n_tc} tool call(s)"
+                        # Real provider usage — accumulate into both
+                        # session and month-to-date totals so the
+                        # toolbar's usage segment updates live as the
+                        # turn progresses. Fakes / providers that
+                        # don't report usage emit zeros, which leave
+                        # the counters untouched.
+                        pt = int(payload.get("prompt_tokens", 0) or 0)
+                        ct_tok = int(payload.get("completion_tokens", 0) or 0)
+                        if shared_state is not None and (pt or ct_tok):
+                            shared_state["session_prompt_tokens"] = (
+                                int(shared_state.get("session_prompt_tokens", 0)) + pt
+                            )
+                            shared_state["session_completion_tokens"] = (
+                                int(shared_state.get("session_completion_tokens", 0)) + ct_tok
+                            )
+                            shared_state["mtd_prompt_tokens"] = (
+                                int(shared_state.get("mtd_prompt_tokens", 0)) + pt
+                            )
+                            shared_state["mtd_completion_tokens"] = (
+                                int(shared_state.get("mtd_completion_tokens", 0)) + ct_tok
+                            )
                     elif et == "tool.dispatched":
                         tn = payload.get("tool_name", "?")
                         state["line"] = f"→ calling {tn}"
@@ -1142,10 +1155,7 @@ def _send_message_streaming(
                             state["line"] = "[approval queued — finalizing]"
                     elif et == "llm.context_warning":
                         ratio = payload.get("ratio", 0.0)
-                        state["line"] = (
-                            f"⚠ context {int(ratio * 100)}% of window; "
-                            "summarizing soon"
-                        )
+                        state["line"] = f"⚠ context {int(ratio * 100)}% of window; summarizing soon"
             except Exception:
                 return  # subscriber died; live keeps showing last line
 
@@ -1574,9 +1584,7 @@ def _handle_remember(arg: str) -> None:
     if result.get("error"):
         err_console.print(f"[red]{result['error']}[/red]")
         return
-    label_str = (
-        f" labels={','.join(labels_required)}" if labels_required else ""
-    )
+    label_str = f" labels={','.join(labels_required)}" if labels_required else ""
     tag_str = f" tag={audit_tag}" if audit_tag else ""
     console.print(
         f"[green]✓ pattern[/green] {action} {target_pattern}{label_str}{tag_str} "
@@ -1727,9 +1735,13 @@ def _handle_server_info() -> None:
                 rej_names = srv.get("rejected_tool_names", [])
                 if rej_names:
                     for rn in rej_names[:5]:
-                        console.print(f"              [dim]·[/dim] rejected: [yellow]{rn}[/yellow] [dim](unclassifiable; add to tool_mappings/tool_overrides)[/dim]")
+                        console.print(
+                            f"              [dim]·[/dim] rejected: [yellow]{rn}[/yellow] [dim](unclassifiable; add to tool_mappings/tool_overrides)[/dim]"
+                        )
                     if len(rej_names) > 5:
-                        console.print(f"              [dim]· ... +{len(rej_names) - 5} more rejections[/dim]")
+                        console.print(
+                            f"              [dim]· ... +{len(rej_names) - 5} more rejections[/dim]"
+                        )
             else:  # failed
                 err = srv.get("error", "")
                 console.print(f"            [red]✗[/red] [bold]{name}[/bold]  [red]FAILED[/red]")
@@ -1739,7 +1751,9 @@ def _handle_server_info() -> None:
                     console.print(f"              [dim]error:[/dim] [red]{err_short}[/red]")
                 cmd = srv.get("command", [])
                 if cmd:
-                    console.print(f"              [dim]command:[/dim] {' '.join(cmd[:3])}{'...' if len(cmd) > 3 else ''}")
+                    console.print(
+                        f"              [dim]command:[/dim] {' '.join(cmd[:3])}{'...' if len(cmd) > 3 else ''}"
+                    )
 
     # Tools
     tool_count = info.get("tool_count", 0)
@@ -1983,8 +1997,7 @@ def _handle_copy(
         else "content > 100KB (OSC 52 cap)"
     )
     console.print(
-        f"[yellow]wrote to file[/yellow] (clipboard unavailable: {reason}): "
-        f"{fallback_path}",
+        f"[yellow]wrote to file[/yellow] (clipboard unavailable: {reason}): {fallback_path}",
     )
 
 
@@ -2045,7 +2058,7 @@ def _handle_override(arg: str, session_id: str) -> None:
         if len(parts) < 3:
             err_console.print(
                 "[red]usage:[/red] /override request <KIND> <target> "
-                "[--floor F] [--justification \"...\"]",
+                '[--floor F] [--justification "..."]',
             )
             return
         kind = parts[1].upper()
@@ -2094,8 +2107,7 @@ def _handle_override(arg: str, session_id: str) -> None:
         grant_id = result.get("id", "?")
         state = result.get("state", "?")
         console.print(
-            f"[green]✓ override grant[/green] #{str(grant_id)[:8]} "
-            f"[dim](state={state})[/dim]",
+            f"[green]✓ override grant[/green] #{str(grant_id)[:8]} [dim](state={state})[/dim]",
         )
         if state == "pending_attestation":
             console.print(
@@ -2112,7 +2124,7 @@ def _handle_override(arg: str, session_id: str) -> None:
 def _print_override_help() -> None:
     console.print(
         "[bold]/override[/bold] subcommands:\n"
-        "  /override request <KIND> <target> [--floor F] [--justification \"...\"]\n"
+        '  /override request <KIND> <target> [--floor F] [--justification "..."]\n'
         "  /override list                — pending/active grants on this session\n"
         "  /override show <id>           — full detail of one grant",
     )
@@ -2334,20 +2346,110 @@ def _toolbar_context_segment(
     else:
         color = "ansigray"
 
-    # Compact `k` suffix — full numbers are scanline noise at the
-    # bottom of the screen. 12,345 → 12k; 4,500 → 4.5k.
-    def _short(n: int) -> str:
-        if n >= 10_000:
-            return f"{n // 1000}k"
-        if n >= 1000:
-            return f"{n / 1000:.1f}k"
-        return str(n)
-
     stale_suffix = " (stale)" if stale else ""
     return (
-        f" │ <{color}>ctx {_short(tokens)}/{_short(window)} "
+        f" │ <{color}>ctx {_short_tokens(tokens)}/{_short_tokens(window)} "
         f"{pct}%{stale_suffix}</{color}>"
     )
+
+
+def _short_tokens(n: int) -> str:
+    """Compact token counts for the bottom toolbar: 12,345→12k,
+    4,500→4.5k, 0→0. Shared by the context and usage segments so
+    both columns line up."""
+    if n >= 10_000:
+        return f"{n // 1000}k"
+    if n >= 1000:
+        return f"{n / 1000:.1f}k"
+    return str(n)
+
+
+def _toolbar_usage_segment(
+    session_prompt: int | None,
+    session_completion: int | None,
+    mtd_prompt: int | None,
+    mtd_completion: int | None,
+) -> str:
+    """Render `│ tok 1.2k↑/340↓ · mtd 87k↑/12k↓` for the bottom
+    toolbar. Sums real provider usage from `llm.response_received`
+    events — the streaming consumer accumulates `session_*` per
+    REPL session, and `_read_mtd_usage` seeds `mtd_*` at startup
+    from `audit.jsonl`.
+
+    Returns empty when no usage has been recorded yet, so the
+    toolbar collapses cleanly on a brand-new session before the
+    first turn fires."""
+    sp = session_prompt or 0
+    sc = session_completion or 0
+    mp = mtd_prompt or 0
+    mc = mtd_completion or 0
+    if sp == 0 and sc == 0 and mp == 0 and mc == 0:
+        return ""
+    return (
+        f" │ <ansigray>tok {_short_tokens(sp)}↑/{_short_tokens(sc)}↓ "
+        f"· mtd {_short_tokens(mp)}↑/{_short_tokens(mc)}↓</ansigray>"
+    )
+
+
+def _read_mtd_usage(
+    audit_path: Path | str | None,
+    *,
+    now: datetime | None = None,
+) -> tuple[int, int]:
+    """Scan `audit.jsonl` once and sum prompt/completion tokens from
+    every `llm.response_received` event whose timestamp falls in the
+    current calendar month.
+
+    Cheap enough at typical log sizes (~MB) to do synchronously at
+    REPL startup; if the file is missing or unparseable, returns
+    (0, 0) so the toolbar just shows the session-only counts. `now`
+    is injectable so tests don't have to mock the clock."""
+    import json
+
+    if not audit_path:
+        return (0, 0)
+    path = Path(audit_path)
+    if not path.exists():
+        return (0, 0)
+    ts_now = now if now is not None else datetime.now(UTC)
+    month_start = ts_now.replace(
+        day=1,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    prompt_total = 0
+    completion_total = 0
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return (0, 0)
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("event_type") != "llm.response_received":
+            continue
+        ts_str = event.get("timestamp")
+        if not ts_str:
+            continue
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        if ts < month_start:
+            continue
+        payload = event.get("payload") or {}
+        prompt_total += int(payload.get("prompt_tokens", 0) or 0)
+        completion_total += int(payload.get("completion_tokens", 0) or 0)
+    return (prompt_total, completion_total)
 
 
 def _make_bottom_toolbar(
@@ -2423,12 +2525,25 @@ def _make_bottom_toolbar(
             state.get("context_tokens_at"),
         )
 
+        # Session + month-to-date token spend. `session_*` is
+        # accumulated by the streaming consumer in
+        # _send_message_streaming as `llm.response_received` events
+        # land; `mtd_*` is seeded at REPL startup by
+        # _read_mtd_usage and bumped by the same consumer so the
+        # number stays current within a session.
+        usage_seg = _toolbar_usage_segment(
+            state.get("session_prompt_tokens"),
+            state.get("session_completion_tokens"),
+            state.get("mtd_prompt_tokens"),
+            state.get("mtd_completion_tokens"),
+        )
+
         # Line 1 — identity + IFC state
         line1 = (
             f" session <b>{short}</b> "
             f"│ compartment {word_tag}: {comp} "
             f"│ caps {ncaps}{ttl_seg}{pending_seg}"
-            f"{ctx_seg} "
+            f"{ctx_seg}{usage_seg} "
         )
 
         # Line 2 — bindings hint, contextual
@@ -2440,14 +2555,20 @@ def _make_bottom_toolbar(
         if recovery_steps:
             f_keys = []
             for i, step in enumerate(recovery_steps[:3], start=1):
-                cmd = step.get("command", "") if isinstance(step, dict) else getattr(step, "command", "")
+                cmd = (
+                    step.get("command", "")
+                    if isinstance(step, dict)
+                    else getattr(step, "command", "")
+                )
                 f_keys.append(f"<ansicyan><b>F{i}</b></ansicyan> {cmd}")
             hints.append(" · ".join(f_keys))
         if npending:
             hints.append("<ansiyellow><b>a</b></ansiyellow> review approval")
         # Always-visible shortcut reminders
         if not hints:
-            hints.append("<ansigray>Tab complete · Alt-Enter newline · ? help · /quit to exit</ansigray>")
+            hints.append(
+                "<ansigray>Tab complete · Alt-Enter newline · ? help · /quit to exit</ansigray>"
+            )
         else:
             # When contextual hints are present, append a minimal reminder
             hints.append("<ansigray>Tab · ? help</ansigray>")
@@ -2587,7 +2708,7 @@ def _inline_approval_review(approval_ids: list[int]) -> None:
                         "labels_in": labels_in,
                         "labels_out": labels_out,
                         "justification": (
-                            justification + " (edited from approval " f"#{aid})"
+                            justification + f" (edited from approval #{aid})"
                             if justification
                             else f"edited from approval #{aid}"
                         ),
@@ -2643,7 +2764,29 @@ def _repl_loop(session_id: str, no_stream: bool = False) -> None:
     state: dict[str, Any] = {
         "recovery_steps": [],
         "lifecycle": "idle",
+        # Session-local token spend, accumulated by the streaming
+        # consumer as `llm.response_received` audit events arrive.
+        # Both default to 0 so the toolbar segment formats cleanly
+        # on a brand-new session before the first turn lands.
+        "session_prompt_tokens": 0,
+        "session_completion_tokens": 0,
+        # Month-to-date spend, seeded from audit.jsonl at startup.
+        # `daemon.info` is the source of truth for the audit path;
+        # if it's unavailable (offline daemon, older build) the
+        # toolbar just shows session-only counts.
+        "mtd_prompt_tokens": 0,
+        "mtd_completion_tokens": 0,
     }
+    try:
+        _info_for_mtd = _call("daemon.info")
+        _audit_path = _info_for_mtd.get("audit_path", "")
+        _mp, _mc = _read_mtd_usage(_audit_path)
+        state["mtd_prompt_tokens"] = _mp
+        state["mtd_completion_tokens"] = _mc
+    except Exception:
+        # MTD is decorative — don't block REPL startup if the
+        # daemon or audit log is unreachable.
+        pass
 
     cache = CompletionCache(daemon_call=_call)
     cache.start()
@@ -2763,10 +2906,10 @@ def _run_repl(
         # 'sending' and 'streaming' transitions during a turn.
         lifecycle = (state or {}).get("lifecycle", "idle")
         glyph_map = {
-            "idle":      "",
-            "sending":   "<ansiyellow>⏳</ansiyellow>",
+            "idle": "",
+            "sending": "<ansiyellow>⏳</ansiyellow>",
             "streaming": "<ansicyan>📡</ansicyan>",
-            "failed":    "<ansired>✗</ansired>",
+            "failed": "<ansired>✗</ansired>",
         }
         glyph = glyph_map.get(lifecycle, "")
         glyph_str = f"{glyph} " if glyph else ""
@@ -3122,8 +3265,7 @@ def _dispatch_surface(session_id: str, mode: str, no_stream: bool = False) -> No
     mode = (mode or "auto").lower()
     if mode not in ("auto", "line", "rich"):
         err_console.print(
-            f"[red]invalid --mode value:[/red] {mode!r}; expected "
-            "auto / line / rich",
+            f"[red]invalid --mode value:[/red] {mode!r}; expected auto / line / rich",
         )
         raise typer.Exit(code=2)
 

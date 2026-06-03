@@ -201,7 +201,7 @@ def _estimate_message_tokens(
         # tool_use envelope. ~20 chars is conservative.
         total_chars += 20
         # tool_calls payloads count too
-        for tc in (msg.tool_calls or ()):
+        for tc in msg.tool_calls or ():
             total_chars += len(tc.name) + len(str(tc.args or {}))
     # Tool schemas ship with every request — these are huge and
     # were previously uncounted.
@@ -356,8 +356,7 @@ async def run_turn(
         # normal turn return with finish_reason=interrupted and any
         # partial content/outcomes captured before cancellation.
         return AgentTurnResult(
-            content=interrupt_event.partial_content
-            or "[turn cancelled by user]",
+            content=interrupt_event.partial_content or "[turn cancelled by user]",
             iterations=interrupt_event.iteration,
             finish_reason=FinishReason.LENGTH,
             tool_outcomes=interrupt_event.partial_outcomes,
@@ -414,6 +413,7 @@ async def run_turn_streaming(
         TurnCompleted,
         TurnInterrupted,
     )
+
     session = graph.get(session_id)
     if session.is_terminal:
         raise SessionStateError(
@@ -746,6 +746,15 @@ async def run_turn_streaming(
                     "n_tool_calls": len(response.tool_calls),
                     "finish_reason": response.finish_reason.value,
                     "model": response.model,
+                    # Real provider usage (may be empty for fakes or
+                    # if the provider didn't surface it). The toolbar's
+                    # usage segment sums these across the session and
+                    # the calendar month — toolbar reads via the
+                    # streaming consumer in cli/chat.py.
+                    "prompt_tokens": int(response.usage.get("prompt_tokens", 0)),
+                    "completion_tokens": int(
+                        response.usage.get("completion_tokens", 0),
+                    ),
                 },
             ),
         )

@@ -166,6 +166,27 @@ async def test_e2e_audit_event_carries_context_window(memory_write_turn) -> None
     # specific value.
 
 
+async def test_e2e_audit_event_carries_provider_usage(memory_write_turn) -> None:
+    """The `llm.response_received` audit event now carries
+    `prompt_tokens` / `completion_tokens` — the toolbar's usage
+    segment sums these for session + month-to-date. FakeLLMClient
+    reports usage={}, so the values are 0, but the keys MUST be
+    present so the consumer's int() coercion is exercised end-to-end
+    and the drift detector catches a regression."""
+    events = _read_audit(memory_write_turn["audit_path"])
+    response_events = [
+        e for e in events if e.get("event_type") == "llm.response_received"
+    ]
+    assert response_events, "expected at least one llm.response_received event"
+    payload = response_events[0]["payload"]
+    assert "prompt_tokens" in payload
+    assert "completion_tokens" in payload
+    # Fake client doesn't supply usage — values default to 0 but the
+    # plumbing is still exercised.
+    assert payload["prompt_tokens"] == 0
+    assert payload["completion_tokens"] == 0
+
+
 async def test_e2e_audit_event_sequence_for_tool_turn(memory_write_turn) -> None:
     """Verifies the canonical audit-event sequence for a one-tool
     turn: request → response → policy → dispatch → returned →
