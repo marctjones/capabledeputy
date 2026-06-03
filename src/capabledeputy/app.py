@@ -136,6 +136,14 @@ class App:
         # for region lifecycle (FR-040, Pattern ⑤ audit trail).
         for tool in make_sandbox_tools(self.policy_context, audit=self.audit):
             self.registry.register(tool)
+        # Persistent dev containers — same Podman provider, long-lived
+        # per-(session, spec) lifetime. Tool list is empty when no
+        # PodmanDevbox is wired on the policy context (no provider →
+        # no tools, mirroring the sandbox.run pattern).
+        from capabledeputy.tools.native.devbox import make_devbox_tools
+
+        for tool in make_devbox_tools(self.policy_context):
+            self.registry.register(tool)
         if self.quarantined_llm is not None:
             for tool in make_extract_tools(self.memory, self.quarantined_llm):
                 self.registry.register(tool)

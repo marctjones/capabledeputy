@@ -44,6 +44,15 @@ class CapabilityKind(StrEnum):
     # is wired (FR-042 fail-closed).
     EXECUTE_SANDBOX = "EXECUTE_SANDBOX"
 
+    # Persistent devbox execution. Same spec_id keying as
+    # EXECUTE_SANDBOX, but addresses a long-lived container that
+    # outlives a single tool call: the LLM can `devbox.start` a
+    # workspace, `devbox.exec` into it across many turns, and the
+    # /work volume persists. Granted independently of EXECUTE_SANDBOX
+    # so operators can allow disposable one-shots without granting
+    # the longer-lived surface, or vice versa.
+    EXECUTE_DEVBOX = "EXECUTE_DEVBOX"
+
     # Granular read kinds for data sources that are NOT the local
     # filesystem (Issue #33 partial — minimum-viable for "read my
     # email by default"). Previously every read-shaped tool was

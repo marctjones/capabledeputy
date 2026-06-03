@@ -89,6 +89,12 @@ class PolicyContext:
     # derived property below — kept for callers that only need the
     # presence check (e.g. the policy engine's fail-closed gate).
     sandbox_actuator: Any = None  # SandboxActuator | None — Any to avoid import cycle
+    # PodmanDevbox manager — None when no provider is configured.
+    # Long-lived counterpart to sandbox_actuator: same PodmanRegionSpec
+    # set, separate registry of live per-session containers. The
+    # devbox.* tools read this field; absence collapses the tool list
+    # cleanly so installs without Podman don't surface dead tools.
+    devbox_manager: Any = None  # PodmanDevbox | None — Any to avoid import cycle
     # FR-025 raise-only inspectors. Run on every tool return so any
     # taint the inspector identifies is added to the session's axes.
     # Composition is monotone (most_restrictive_inherit); inspectors

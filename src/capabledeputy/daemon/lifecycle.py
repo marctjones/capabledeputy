@@ -309,12 +309,20 @@ async def run_daemon(
             # Fail-closed: misconfigured sandbox is a hard error, never
             # a silent fall-through to the demo actuator.
             actuator = PodmanSandboxActuator(specs)
+            # Same spec set drives the persistent devbox manager.
+            # Both wire onto PolicyContext so the corresponding tool
+            # makers can find them. PodmanNotAvailable from either
+            # surfaces as a hard daemon-start failure.
+            from capabledeputy.substrate.podman_devbox import PodmanDevbox
+
+            devbox = PodmanDevbox(specs)
             policy_context = dataclasses.replace(
                 policy_context,
                 sandbox_actuator=actuator,
+                devbox_manager=devbox,
             )
             print(
-                f"[sandbox] PodmanSandboxActuator wired with "
+                f"[sandbox] PodmanSandboxActuator + PodmanDevbox wired with "
                 f"{len(specs)} region spec(s): "
                 f"{', '.join(s.spec_id for s in specs)}",
                 file=_sys.stderr,
@@ -437,7 +445,8 @@ async def run_daemon(
     )
 
     servers_d_dir = (
-        resolved.parent / "servers.d" if resolved is not None
+        resolved.parent / "servers.d"
+        if resolved is not None
         else Path.home() / ".config" / "capabledeputy" / "servers.d"
     )
     try:
@@ -471,8 +480,7 @@ async def run_daemon(
         import sys as _sys
 
         print(
-            f"[daemon] registered {len(kind_registry.all())} custom kind(s) "
-            f"from {servers_d_dir}",
+            f"[daemon] registered {len(kind_registry.all())} custom kind(s) from {servers_d_dir}",
             file=_sys.stderr,
         )
 
