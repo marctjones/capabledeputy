@@ -31,9 +31,10 @@ def test_repo_rules_yaml_loads() -> None:
     rules = load(_RULES_YAML)
     rule_ids = sorted(r.rule_id for r in rules.rules)
     assert rule_ids == [
-        "block-personal-email",
         "cron-backup-auto",
+        "family-personal-email-suggest",
         "proprietary-share-to-project-p",
+        "work-team-email-suggest",
     ]
 
 
@@ -131,9 +132,12 @@ def test_share_to_non_member_falls_to_suggest() -> None:
     assert result.outcome == RuleOutcome.SUGGEST
 
 
-def test_block_personal_email_kill_switch_denies() -> None:
-    """The DENY rule fires for any personal-data email egress;
-    composes most-restrictive with anything else that might match."""
+def test_personal_email_to_family_member_resolves_to_suggest() -> None:
+    """Personal mail summary forwarded to a family-group recipient
+    matches the `family-personal-email-suggest` rule. Outcome is
+    SUGGEST — irreversible egress still requires an approval card,
+    but the rule marks the counterparty as recognized rather than
+    falling to the default unknown."""
     rules = load(_RULES_YAML)
     axis_a = AxisA(
         categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
@@ -142,6 +146,7 @@ def test_block_personal_email_kill_switch_denies() -> None:
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
+        relationship_group_ids=("family",),
         expectedness="expected",
     )
     result = evaluate(
@@ -150,7 +155,90 @@ def test_block_personal_email_kill_switch_denies() -> None:
         axis_b=axis_b,
         axis_d=axis_d,
         effect_class="send_email",
-        target="alice@example.com",
+        target="spouse@example.com",
     )
-    assert result.outcome == RuleOutcome.DENY
-    assert "block-personal-email" in result.matched_rule_ids
+    assert result.outcome == RuleOutcome.SUGGEST
+    assert "family-personal-email-suggest" in result.matched_rule_ids
+
+
+def test_personal_email_to_non_family_falls_to_default_suggest() -> None:
+    """Personal mail to a non-family recipient finds no rule; the
+    default fail-closed SUGGEST cell holds. Distinguishable from the
+    family case by the empty matched_rule_ids — the approval card UX
+    can use that to surface the counterparty as unknown rather than
+    recognized."""
+    rules = load(_RULES_YAML)
+    axis_a = AxisA(
+        categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
+    )
+    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_d = AxisD(
+        initiator="principal:alice",
+        authentication="device-bound",
+        relationship_group_ids=(),
+        expectedness="expected",
+    )
+    result = evaluate(
+        rules=rules,
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="send_email",
+        target="stranger@example.com",
+    )
+    assert result.outcome == RuleOutcome.SUGGEST
+    assert result.matched_rule_ids == ()
+
+
+def test_work_email_to_workteam_member_resolves_to_suggest() -> None:
+    """Symmetric to the family-personal rule but for work content
+    forwarded to a recognized work-team member."""
+    rules = load(_RULES_YAML)
+    axis_a = AxisA(
+        categories=(AxisACategory(category="proprietary_work", tier=Tier.SENSITIVE),),
+    )
+    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_d = AxisD(
+        initiator="principal:alice",
+        authentication="device-bound",
+        relationship_group_ids=("work-team",),
+        expectedness="expected",
+    )
+    result = evaluate(
+        rules=rules,
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="send_email",
+        target="coworker@example.com",
+    )
+    assert result.outcome == RuleOutcome.SUGGEST
+    assert "work-team-email-suggest" in result.matched_rule_ids
+
+
+def test_work_email_to_family_member_falls_to_default_suggest() -> None:
+    """Cross-compartment send (work content → family recipient) does
+    NOT match work-team-email-suggest because the counterparty group
+    differs. Falls to default SUGGEST — operator approval card will
+    surface this as an unrecognized counterparty for the work axis."""
+    rules = load(_RULES_YAML)
+    axis_a = AxisA(
+        categories=(AxisACategory(category="proprietary_work", tier=Tier.SENSITIVE),),
+    )
+    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_d = AxisD(
+        initiator="principal:alice",
+        authentication="device-bound",
+        relationship_group_ids=("family",),
+        expectedness="expected",
+    )
+    result = evaluate(
+        rules=rules,
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="send_email",
+        target="spouse@example.com",
+    )
+    assert result.outcome == RuleOutcome.SUGGEST
+    assert result.matched_rule_ids == ()

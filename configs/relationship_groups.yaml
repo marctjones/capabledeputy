@@ -8,5 +8,36 @@
 #   groups:
 #     - group_id: <slug>
 #       member_principal_ids: [<principal-id>, ...]
+#
+# Edit the email addresses below to match real recipients. The
+# rules in configs/rules.yaml reference these groups by id, so any
+# address added here automatically becomes an allowed counterparty
+# for the matching rule.
 
-groups: []
+groups:
+  # Personal/family circle. Members participate in the
+  # `family-personal-email-suggest` rule in rules.yaml — sending
+  # personal content to one of these addresses is recognized as an
+  # expected counterparty (still requires approval; rules don't
+  # auto-allow irreversible egress).
+  #
+  # REPLACE the placeholder addresses with real ones. Each member is
+  # a Google account email; matching is exact-string against the `to`
+  # arg of the send action.
+  - group_id: family
+    member_principal_ids:
+      - spouse@example.com
+      # - parent@example.com
+      # - sibling@example.com
+
+  # Work team. Members participate in the `work-team-email-suggest`
+  # rule — sending proprietary_work content to one of these
+  # addresses is recognized as an expected counterparty. Adding a
+  # member here does NOT grant them anything else; it just keeps
+  # work-content forwarding within a known boundary instead of
+  # falling to the default fail-closed cell.
+  - group_id: work-team
+    member_principal_ids:
+      - coworker@example.com
+      # - manager@example.com
+      # - teammate@example.com
