@@ -322,6 +322,14 @@ class LabeledToolClient:
             now=dispatch_now,
             cap_uses=session.cap_uses,
             revoked_audit_ids=getattr(session, "revoked_audit_ids", frozenset()),
+            # Cookbook §4 #6 — opt-in first-action-of-kind prompt.
+            # The session carries the flag; the engine fires the
+            # REQUIRE_APPROVAL escalation only when on.
+            first_use_prompt_enabled=getattr(
+                session,
+                "first_use_prompt_enabled",
+                False,
+            ),
             **v2_kwargs,
         )
 

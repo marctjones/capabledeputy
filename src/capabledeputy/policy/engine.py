@@ -62,6 +62,31 @@ INTEGRITY_FLOOR_REFUSED_RULE = "integrity-floor-refused"
 SANDBOX_NO_ACTUATOR_RULE = "sandbox-no-actuator"
 DEVBOX_NO_MANAGER_RULE = "devbox-no-manager"
 ORPHAN_RISK_CITATION_RULE = "orphan-risk-citation"
+FIRST_USE_OF_KIND_RULE = "first-use-of-kind"
+
+# Cookbook §4 #6 — capability kinds that fire a first-use prompt
+# when `Session.first_use_prompt_enabled` is on. Reads are excluded
+# (they don't change state and would create approval fatigue from
+# every new mailbox label / file path). The set covers everything
+# with egress, purchase, destructive, or execute semantics — the
+# operator's first use of the authority is the right approval
+# moment for confirming intent.
+_PROMPTABLE_FIRST_USE_KINDS: frozenset[CapabilityKind] = frozenset(
+    {
+        CapabilityKind.SEND_EMAIL,
+        CapabilityKind.QUEUE_PURCHASE,
+        CapabilityKind.WRITE_FS,
+        CapabilityKind.CREATE_FS,
+        CapabilityKind.MODIFY_FS,
+        CapabilityKind.DELETE_FS,
+        CapabilityKind.CALENDAR_WRITE,
+        CapabilityKind.CREATE_CAL,
+        CapabilityKind.MODIFY_CAL,
+        CapabilityKind.DELETE_CAL,
+        CapabilityKind.EXECUTE_SANDBOX,
+        CapabilityKind.EXECUTE_DEVBOX,
+    },
+)
 
 # Effect-class substrings that mark an egressing action. Egress crosses
 # the containment boundary; even reversible/system loses optimistic
@@ -653,6 +678,7 @@ def _decide_impl(
     sandbox_actuator_wired: bool = False,
     devbox_manager_wired: bool = False,
     revoked_audit_ids: frozenset[UUID] = frozenset(),
+    first_use_prompt_enabled: bool = False,
 ) -> PolicyDecision:
     """Internal decision impl. The public `decide()` wraps this and
     adds recovery-step synthesis (Issue #3) on the resulting
@@ -1016,7 +1042,12 @@ def _decide_impl(
                 envelope_rule=envelope_rule,
                 envelope_reason=envelope_reason,
             )
-        return result
+        return _maybe_first_use_escalation(
+            result,
+            action=action,
+            used_kinds=used_kinds,
+            first_use_prompt_enabled=first_use_prompt_enabled,
+        )
     # Thread the engine's effective clock into the v2 evaluator so
     # time-window rules (e.g. send-after-hours-require-approval) can
     # actually fire. RulePredicate.matches fails-closed when a
@@ -1048,13 +1079,53 @@ def _decide_impl(
             envelope_rule=envelope_rule,
             envelope_reason=envelope_reason,
         )
-    return replace(
+    final = replace(
         composed,
         axis_a_snapshot=axis_a,
         axis_b_snapshot=axis_b,
         axis_d_snapshot=axis_d,
         effect_class=effect_class,
     )
+    return _maybe_first_use_escalation(
+        final,
+        action=action,
+        used_kinds=used_kinds,
+        first_use_prompt_enabled=first_use_prompt_enabled,
+    )
+
+
+def _maybe_first_use_escalation(
+    result: PolicyDecision,
+    *,
+    action: Action,
+    used_kinds: frozenset[CapabilityKind],
+    first_use_prompt_enabled: bool,
+) -> PolicyDecision:
+    """Cookbook §4 #6 — escalate an ALLOW outcome to REQUIRE_APPROVAL
+    the FIRST time a session uses a promptable kind. Only touches
+    ALLOWs — non-ALLOW results already gate, so the first-use
+    prompt would add nothing. Reads are excluded (would be too
+    noisy); the promptable set covers egress/destructive/execute.
+
+    Once the operator approves and the action dispatches, the kind
+    enters `session.used_kinds` and subsequent decisions pass through
+    here unchanged."""
+    if (
+        first_use_prompt_enabled
+        and result.decision == Decision.ALLOW
+        and action.kind in _PROMPTABLE_FIRST_USE_KINDS
+        and action.kind not in used_kinds
+    ):
+        return replace(
+            result,
+            decision=Decision.REQUIRE_APPROVAL,
+            rule=FIRST_USE_OF_KIND_RULE,
+            reason=(
+                f"first use of {action.kind.value} in this session — "
+                "operator confirmation required (cookbook §4 #6)"
+            ),
+        )
+    return result
 
 
 def decide(*args, **kwargs) -> PolicyDecision:

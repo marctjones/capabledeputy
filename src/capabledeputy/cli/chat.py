@@ -24,6 +24,7 @@ equivalent `capdep` subcommands):
     /labels                 just labels for current
     /caps                   just capabilities for current
     /enforce shadow|strict  flip enforcement (Pattern ⑥ shadow mode)
+    /first-use on|off       toggle first-action-of-kind prompt
 
   Approvals:
     /approvals              list pending approvals (grouped siblings shown together)
@@ -1715,6 +1716,58 @@ def _constraint_markers(cap: dict[str, Any]) -> str:
     return f"{_expiry_marker(cap)}{_rate_marker(cap)}"
 
 
+def _handle_first_use(arg: str, session_id: str) -> None:
+    """`/first-use on | off | status` — flip the per-session first-
+    action-of-kind prompt flag (cookbook §4 #6).
+
+    ON: the FIRST dispatch of any promptable kind (SEND_EMAIL,
+    QUEUE_PURCHASE, MODIFY_FS/DELETE_FS, MODIFY_CAL/DELETE_CAL,
+    EXECUTE_SANDBOX/DEVBOX) in this session escalates to
+    REQUIRE_APPROVAL even when a standing capability exists. Once
+    approved, subsequent dispatches of the same kind sail through.
+    Reads are excluded (would create approval fatigue from every
+    new mailbox label / file path).
+
+    OFF (default): every dispatch passes through whatever the rule
+    composition produced. Sessions spawned from a `cautious`
+    purpose auto-enable this; the operator can flip it later."""
+    mode = arg.strip().lower()
+    if mode in ("", "status"):
+        info = _call("session.get", {"session_id": session_id})
+        enabled = bool(info.get("first_use_prompt_enabled", False))
+        if enabled:
+            console.print(
+                "  first-use prompts: [yellow]on[/yellow]  "
+                "[dim](first dispatch of each promptable kind "
+                "requires approval)[/dim]",
+            )
+        else:
+            console.print(
+                "  first-use prompts: [dim]off[/dim]  "
+                "[dim](dispatches gated only by standing rules)[/dim]",
+            )
+        return
+    if mode in ("on", "true", "enable", "yes"):
+        enabled = True
+    elif mode in ("off", "false", "disable", "no"):
+        enabled = False
+    else:
+        err_console.print(
+            f"[red]usage:[/red] /first-use on | off | status  (got {arg!r})",
+        )
+        return
+    try:
+        result = _call(
+            "session.set_first_use_prompts",
+            {"session_id": session_id, "enabled": enabled},
+        )
+    except Exception as e:
+        err_console.print(f"[red]set_first_use_prompts failed:[/red] {e}")
+        return
+    state = "[yellow]on[/yellow]" if result.get("first_use_prompt_enabled") else "[dim]off[/dim]"
+    console.print(f"[green]✓[/green] first-use prompts now {state}")
+
+
 def _handle_enforce(arg: str, session_id: str) -> None:
     """`/enforce shadow | strict | status` — flip the session's
     enforcement mode (cookbook Pattern ⑥).
@@ -3303,6 +3356,9 @@ def _run_repl(
                 continue
             if cmd == "enforce":
                 _handle_enforce(arg, focus["id"])
+                continue
+            if cmd in ("first-use", "first_use"):
+                _handle_first_use(arg, focus["id"])
                 continue
             if cmd == "audit":
                 _handle_audit(arg, focus["id"])

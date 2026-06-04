@@ -262,6 +262,19 @@ class SessionGraph:
                     raise QuarantinedLLMUnavailableError(
                         purpose_handle=purpose_handle,
                     )
+        # Cookbook §4 #6 — cautious purposes get first-use prompts
+        # automatically. The operator can still flip the flag later
+        # via session.set_first_use_prompts. We only enable when the
+        # operator EXPLICITLY picked a cautious purpose — the
+        # fallback "cautious" dial for sessions without a purpose
+        # is silent (preserves back-compat for /chat without
+        # --persona). Non-cautious purposes leave the flag off so
+        # balanced/aggressive sessions retain friction-free behavior.
+        first_use_prompt_enabled = False
+        if self._purposes is not None and purpose_handle != UNSET_PURPOSE_HANDLE:
+            picked = self._purposes.get(purpose_handle)
+            if picked is not None and picked.risk_preference_dial == "cautious":
+                first_use_prompt_enabled = True
         session = Session.new(
             owner=owner,
             intent=intent,
@@ -271,6 +284,7 @@ class SessionGraph:
             purpose_handle=purpose_handle,
             capability_set=default_caps,
             risk_preference_at_spawn=risk_preference_at_spawn,
+            first_use_prompt_enabled=first_use_prompt_enabled,
         )
         await self._save(session)
         self._sessions[session.id] = session
@@ -357,6 +371,28 @@ class SessionGraph:
             to=SessionStatus.ACTIVE,
             event=EventType.SESSION_RESUMED,
         )
+
+    async def set_first_use_prompts(
+        self,
+        session_id: UUID,
+        enabled: bool,
+    ) -> Session:
+        """Cookbook §4 #6 — flip the per-session first-action-of-kind
+        prompt flag. Idempotent (no-op when already in the target
+        state). No special audit event today: the next decide() that
+        either fires or skips the FIRST_USE_OF_KIND_RULE is the
+        evidence in the audit trail."""
+        session = self.get(session_id)
+        if session.first_use_prompt_enabled == enabled:
+            return session
+        updated = replace(
+            session,
+            first_use_prompt_enabled=enabled,
+            updated_at=datetime.now(UTC),
+        )
+        await self._save(updated)
+        self._sessions[session_id] = updated
+        return updated
 
     async def set_enforcement_mode(
         self,

@@ -157,6 +157,16 @@ class Session:
     # session and every test fixture is preserved. SHADOW is the
     # operator-opt-in mode for new-rule validation.
     enforcement_mode: EnforcementMode = EnforcementMode.STRICT
+    # Cookbook §4 #6 — first-action-of-kind prompt. When True, the
+    # engine returns SUGGEST instead of ALLOW the FIRST time this
+    # session exercises any promptable capability kind (sends,
+    # purchases, destructive ops, sandbox/devbox execution). After
+    # the operator approves, the kind enters `used_kinds` and
+    # subsequent dispatches pass through normally. Default False
+    # for back-compat — sessions opt in via the Purpose template
+    # (cautious dial → True) or the session.set_first_use_prompts
+    # RPC.
+    first_use_prompt_enabled: bool = False
 
     @classmethod
     def new(
@@ -182,6 +192,7 @@ class Session:
         risk_preference_at_spawn: str = "cautious",
         effective_isolation_region_id: str | None = None,
         clearance_profile_id: str | None = None,
+        first_use_prompt_enabled: bool = False,
     ) -> Self:
         now = _utcnow()
         return cls(
@@ -209,6 +220,7 @@ class Session:
             risk_preference_at_spawn=risk_preference_at_spawn,
             effective_isolation_region_id=effective_isolation_region_id,
             clearance_profile_id=clearance_profile_id,
+            first_use_prompt_enabled=first_use_prompt_enabled,
         )
 
     @property
@@ -251,6 +263,7 @@ class Session:
             "effective_isolation_region_id": self.effective_isolation_region_id,
             "clearance_profile_id": self.clearance_profile_id,
             "enforcement_mode": self.enforcement_mode.value,
+            "first_use_prompt_enabled": self.first_use_prompt_enabled,
         }
 
     @classmethod
@@ -291,5 +304,8 @@ class Session:
             # in the state DB load as STRICT (current behavior).
             enforcement_mode=EnforcementMode(
                 d.get("enforcement_mode", EnforcementMode.STRICT.value),
+            ),
+            first_use_prompt_enabled=bool(
+                d.get("first_use_prompt_enabled", False),
             ),
         )
