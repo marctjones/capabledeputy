@@ -15,6 +15,7 @@ from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.daemon.audit_handlers import make_audit_handlers
 from capabledeputy.daemon.bundle_handlers import make_bundle_handlers
 from capabledeputy.daemon.demo_handlers import make_demo_handlers
+from capabledeputy.daemon.devbox_handlers import make_devbox_handlers
 from capabledeputy.daemon.extract_handlers import make_extract_handlers
 from capabledeputy.daemon.handlers import default_handlers
 from capabledeputy.daemon.memory_handlers import make_memory_handlers
@@ -388,6 +389,7 @@ async def run_daemon(
 
     handlers["daemon.info"] = make_info_handler(app)
     handlers.update(make_session_handlers(app.graph))
+    handlers.update(make_devbox_handlers(app))
     handlers.update(make_audit_handlers(app.audit))
     handlers.update(make_policy_handlers())
     handlers.update(make_tool_handlers(app.registry, app.graph, app.tool_client))

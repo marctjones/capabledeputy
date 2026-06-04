@@ -13,6 +13,7 @@ from capabledeputy.cli.audit import audit_app, watch_command
 from capabledeputy.cli.audit_cmd import storage_shape_command
 from capabledeputy.cli.chat import chat_command, demo_app
 from capabledeputy.cli.init_cmd import init_command
+from capabledeputy.cli.maintenance import maintenance_app
 from capabledeputy.cli.override_cmd import override_app
 from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.session import session_app
@@ -39,6 +40,7 @@ app.add_typer(tool_app, name="tool")
 app.add_typer(approval_app, name="approval")
 app.add_typer(override_app, name="override")
 app.add_typer(demo_app, name="demo")
+app.add_typer(maintenance_app, name="maintenance")
 config_app = typer.Typer(help="Manage CapableDeputy config files.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 app.command("chat")(chat_command)
@@ -301,7 +303,9 @@ def config_split_command(
 
         if dry_run:
             console = _make_console()
-            console.print(f"[bold cyan]--- would write: {target_dir / f'{name}.yaml'} ---[/bold cyan]")
+            console.print(
+                f"[bold cyan]--- would write: {target_dir / f'{name}.yaml'} ---[/bold cyan]"
+            )
             console.print(out_yaml)
         else:
             target_file = target_dir / f"{name}.yaml"
@@ -914,12 +918,11 @@ def setup_command(
         raise typer.Exit(code=2)
 
     daemon_yaml = user_default_daemon_config_path()
-    include_sandbox = (
-        False if no_sandbox else True if force_sandbox else None
-    )
+    include_sandbox = False if no_sandbox else True if force_sandbox else None
     console.print("[bold]registering bundled assistant tools:[/bold]")
     for msg in register_default_assistant_surface(
-        daemon_yaml, include_sandbox=include_sandbox,
+        daemon_yaml,
+        include_sandbox=include_sandbox,
     ):
         console.print(f"  [dim]·[/dim] {msg}")
     console.print(

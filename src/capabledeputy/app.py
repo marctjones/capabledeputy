@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from capabledeputy.approval.queue import ApprovalQueue
@@ -93,6 +94,11 @@ class App:
         self.cancellation_flags: dict[UUID, bool] = {}
         self._skills_dir = skills_dir
         self._enable_policy_preview = enable_policy_preview
+        # Background devbox idle-reaper task, started by `startup()`
+        # when a PodmanDevbox is wired. Held here so `shutdown()` (and
+        # tests) can cancel it cleanly. None when no devbox manager is
+        # wired or before startup.
+        self._devbox_reaper_task: Any = None
         self._register_native_tools()
         self._maybe_load_skills()
 
@@ -166,3 +172,87 @@ class App:
     async def startup(self) -> None:
         await self.store.initialize()
         await self.graph.load()
+        self._maybe_start_devbox_reaper()
+
+    def _maybe_start_devbox_reaper(self) -> None:
+        """Spawn the periodic devbox idle-reaper if a PodmanDevbox is
+        wired. Off by default for installs without Podman.
+
+        Cadence + threshold are env-tunable:
+          CAPDEP_DEVBOX_REAP_INTERVAL_SECONDS — how often to wake
+            up and scan (default 300 = 5 minutes).
+          CAPDEP_DEVBOX_IDLE_SECONDS — a devbox is "idle" when its
+            last_exec_at is older than this (default 3600 = 1 hour).
+          CAPDEP_DEVBOX_IDLE_REAPER — set to "off" to disable the
+            background reaper entirely (operator still has
+            `capdep maintenance containers --apply`).
+        """
+        import os
+        import sys
+
+        if self.policy_context is None or self.policy_context.devbox_manager is None:
+            return
+        if os.environ.get("CAPDEP_DEVBOX_IDLE_REAPER", "").lower() in {
+            "off",
+            "false",
+            "0",
+            "no",
+        }:
+            print(
+                "[devbox] idle reaper disabled via CAPDEP_DEVBOX_IDLE_REAPER",
+                file=sys.stderr,
+            )
+            return
+        interval = int(
+            os.environ.get("CAPDEP_DEVBOX_REAP_INTERVAL_SECONDS", "300"),
+        )
+        idle = int(os.environ.get("CAPDEP_DEVBOX_IDLE_SECONDS", "3600"))
+        manager = self.policy_context.devbox_manager
+        print(
+            f"[devbox] idle reaper started: scan every {interval}s, reap containers idle > {idle}s",
+            file=sys.stderr,
+        )
+
+        async def _reaper_loop() -> None:
+            import asyncio
+
+            try:
+                while True:
+                    await asyncio.sleep(interval)
+                    try:
+                        reaped = manager.reap_idle(idle_seconds=idle)
+                    except Exception as e:
+                        print(
+                            f"[devbox] reaper error (will retry): {e}",
+                            file=sys.stderr,
+                        )
+                        continue
+                    if reaped:
+                        names = [f"{s}/{spec}" for s, spec in reaped]
+                        print(
+                            f"[devbox] reaped {len(reaped)} idle container(s): {', '.join(names)}",
+                            file=sys.stderr,
+                        )
+            except asyncio.CancelledError:
+                return
+
+        import asyncio
+
+        self._devbox_reaper_task = asyncio.create_task(
+            _reaper_loop(),
+            name="devbox-idle-reaper",
+        )
+
+    async def shutdown(self) -> None:
+        """Cancel background tasks on daemon shutdown. Idempotent.
+
+        Today this is just the devbox reaper. Future cleanup
+        (audit-log flush, session-end devbox teardown) hangs off
+        here too."""
+        if self._devbox_reaper_task is not None:
+            import contextlib
+
+            self._devbox_reaper_task.cancel()
+            with contextlib.suppress(Exception):
+                await self._devbox_reaper_task
+            self._devbox_reaper_task = None

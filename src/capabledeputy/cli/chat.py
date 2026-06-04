@@ -940,22 +940,57 @@ def _handle_sessions() -> None:
     if not sessions:
         console.print("[dim]no sessions[/dim]")
         return
+    # Devbox enrichment — best-effort so older daemons w/o the handler
+    # still get a plain (empty-column) view.
+    devbox_summary: dict[str, dict[str, Any]] = {}
+    try:
+        devbox_summary = _call("devbox.summary_for_all").get("sessions", {})
+    except Exception:
+        devbox_summary = {}
     table = Table(title=f"Sessions ({len(sessions)})")
     table.add_column("ID")
     table.add_column("Status")
     table.add_column("Intent")
     table.add_column("Labels")
+    table.add_column("Devbox", justify="right")
     for s in sessions:
         sid = s["id"]
         # Issue #18 — click the session id to paste /switch into input
         clickable_id = _paste_link(sid[:8], f"/switch {sid}")
+        devbox_info = devbox_summary.get(sid, {})
+        devbox_cell = _format_devbox_cell(devbox_info)
         table.add_row(
             clickable_id,
             s["status"],
             (s.get("intent") or "")[:40],
             ", ".join(s.get("label_set", [])) or "-",
+            devbox_cell,
         )
     console.print(table)
+
+
+def _format_devbox_cell(info: dict[str, Any]) -> str:
+    """One short line summarizing a session's devbox state. Empty
+    when the session has no devbox state at all. Three pieces:
+    live count + workspace size + (when live) spec list.
+
+    Examples:
+      ""                          — no state, no row noise
+      "[dim]0/1[/dim] 124 KiB"    — workspace dir exists, no live container
+      "[green]1/1[/green] 38 MiB py-dev" — live container + workspace
+    """
+    if not info:
+        return ""
+    n_live = info.get("n_live", 0)
+    n_dirs = info.get("n_workspace_dirs", 0)
+    size = info.get("total_workspace_bytes", 0)
+    specs = info.get("spec_ids") or []
+    if n_live == 0 and n_dirs == 0 and size == 0:
+        return ""
+    size_text = _format_bytes(size) if size else "—"
+    live_seg = f"[green]{n_live}/{n_dirs}[/green]" if n_live else f"[dim]0/{n_dirs}[/dim]"
+    spec_seg = (" " + ", ".join(specs)) if specs else ""
+    return f"{live_seg} {size_text}{spec_seg}"
 
 
 def _handle_session_show(target_id: str) -> None:

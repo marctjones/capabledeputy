@@ -76,6 +76,11 @@ class _LiveDevbox:
     container_name: str
     workspace_host_path: Path
     started_at: float
+    # Wall-clock time of the most recent activity against this
+    # container — bumped by start_or_get and exec. The idle reaper
+    # uses this to decide whether to tear the container down
+    # (`now - last_exec_at >= idle_seconds`).
+    last_exec_at: float = 0.0
     # Currently executing `podman exec` subprocess, if any. Used by
     # the future cancel path; today the field is set/cleared on
     # entry/exit of `exec()` for visibility in `list_session()`.
@@ -206,12 +211,14 @@ class PodmanDevbox:
                 f"podman run -d failed for spec {spec_id!r}: "
                 f"exit={result.returncode} stderr={result.stderr.decode(errors='replace')!r}",
             )
+        now = time.time()
         live = _LiveDevbox(
             session_id=session_id,
             spec=spec,
             container_name=container_name,
             workspace_host_path=workspace,
-            started_at=time.time(),
+            started_at=now,
+            last_exec_at=now,
         )
         with self._lock:
             self._live[key] = live
@@ -327,6 +334,11 @@ class PodmanDevbox:
 
         with live.lock:
             live.current_exec = None
+            # Idle clock resets at the END of the exec, not the
+            # start — a long-running build doesn't make the
+            # container look "idle" until N seconds AFTER it
+            # finishes. The reaper sees the most recent activity.
+            live.last_exec_at = time.time()
 
         # 137 / 143 from `podman exec` mean the exec process was
         # signalled — treat as a cancel UNLESS we just timed out
@@ -380,6 +392,38 @@ class PodmanDevbox:
             if self.stop(session_id, spec_id, purge_workspace=purge_workspace):
                 n += 1
         return n
+
+    def reap_idle(
+        self,
+        idle_seconds: float,
+        *,
+        now: float | None = None,
+    ) -> list[tuple[UUID, str]]:
+        """Stop every devbox whose `last_exec_at` is older than
+        `idle_seconds`. Returns the list of (session_id, spec_id)
+        that were stopped — useful for logging from the daemon's
+        reaper task.
+
+        Workspace dirs are preserved (purge_workspace=False) so a
+        reaped container can be restarted later at the cost of one
+        `podman run -d` — the user's work survives. To also free
+        the host-side dir, the operator runs
+        `capdep maintenance workspaces --apply`.
+
+        `now` is injectable for testing without touching the clock.
+        """
+        cutoff = (now if now is not None else time.time()) - idle_seconds
+        with self._lock:
+            stale = [
+                (sid, spec_id)
+                for (sid, spec_id), live in self._live.items()
+                if live.last_exec_at <= cutoff
+            ]
+        reaped: list[tuple[UUID, str]] = []
+        for sid, spec_id in stale:
+            if self.stop(sid, spec_id, purge_workspace=False):
+                reaped.append((sid, spec_id))
+        return reaped
 
     # ---- internals ----
 

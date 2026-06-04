@@ -399,3 +399,75 @@ def test_list_session_returns_workspace_path(devbox: PodmanDevbox) -> None:
 
 def test_list_specs_returns_all_declared(devbox: PodmanDevbox) -> None:
     assert devbox.list_specs() == ("dev",)
+
+
+# --- reap_idle -----------------------------------------------------------
+
+
+def test_reap_idle_skips_recent(devbox: PodmanDevbox) -> None:
+    """A container started/exec'd within the threshold is NOT
+    reaped. start_or_get sets last_exec_at, so even a never-exec'd
+    container counts as fresh."""
+    sid = uuid4()
+    devbox.start_or_get(sid, "dev")
+    reaped = devbox.reap_idle(idle_seconds=3600)
+    assert reaped == []
+    assert len(devbox.list_session(sid)) == 1
+
+
+def test_reap_idle_kills_stale(devbox: PodmanDevbox) -> None:
+    """A container whose last_exec_at is older than the threshold
+    gets `podman rm -f`'d. The injectable `now` lets us simulate
+    time passing without sleeping."""
+    sid = uuid4()
+    live = devbox.start_or_get(sid, "dev")
+    # Pretend the container was last touched two hours ago.
+    live.last_exec_at -= 7200
+    reaped = devbox.reap_idle(idle_seconds=3600)
+    assert reaped == [(sid, "dev")]
+    assert devbox.list_session(sid) == ()
+
+
+def test_reap_idle_uses_injected_clock(devbox: PodmanDevbox) -> None:
+    """The `now` arg lets the reaper run against a deterministic
+    timestamp rather than wall-clock — important so tests don't
+    flake on slow machines."""
+    sid = uuid4()
+    live = devbox.start_or_get(sid, "dev")
+    # `now` two hours after start → effective idle = 7200
+    future = live.last_exec_at + 7200
+    reaped = devbox.reap_idle(idle_seconds=3600, now=future)
+    assert reaped == [(sid, "dev")]
+
+
+def test_reap_idle_preserves_workspace(devbox: PodmanDevbox) -> None:
+    """A reaped container's workspace is intentionally kept so the
+    operator (or a later restart of the same session) can recover
+    work. Use `capdep maintenance workspaces --apply` to free that
+    space deliberately."""
+    sid = uuid4()
+    live = devbox.start_or_get(sid, "dev")
+    (live.workspace_host_path / "build.log").write_text("don't delete me")
+    live.last_exec_at -= 7200
+    devbox.reap_idle(idle_seconds=3600)
+    assert (live.workspace_host_path / "build.log").exists()
+
+
+def test_reap_idle_resets_on_exec(devbox: PodmanDevbox) -> None:
+    """exec() bumps last_exec_at, so a long-running build that
+    finishes 50 minutes in still gives the operator their full
+    idle window from finish time. Without this fix, `last_exec_at`
+    could lag and the reaper could kill an active workspace."""
+    sid = uuid4()
+    live = devbox.start_or_get(sid, "dev")
+    # Push start back 50 minutes
+    live.last_exec_at -= 3000
+    # exec() resets last_exec_at to "now". After exec returns, the
+    # idle window starts over.
+    devbox.exec(sid, "dev", argv=("true",), timeout_seconds=5)
+    # 30 minutes idle from now — should NOT reap (threshold 1 hour)
+    reaped = devbox.reap_idle(
+        idle_seconds=3600,
+        now=devbox._live[(sid, "dev")].last_exec_at + 1800,
+    )
+    assert reaped == []
