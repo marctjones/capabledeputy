@@ -134,3 +134,82 @@ rules:
   #   risk_ids: []
   #   human_ratified_by: marc@example.com
   #   human_ratified_at: 2026-05-19T00:00:00Z
+
+  # === Cookbook §9 stanzas — daily-life-management policy =============
+  #
+  # These three rules operationalize the policy cookbook (see
+  # docs/personal-workflow-policy-cookbook.md §9). Composed with the
+  # purposes registry, they target the daily-life-management session
+  # at ~3-5 approval cards per day for a typical workflow mix:
+  #
+  #   Profile A reads → AUTO via purpose default_capabilities
+  #   Profile B local writes → AUTO via purpose + FR-034
+  #   Profile C egress → still REQUIRE_APPROVAL with relationship-group
+  #                      enrichment from the family/work-team rules
+  #                      above, narrowed further by the after-hours
+  #                      rule below
+  #   Profile D devbox internals → AUTO via EXECUTE_DEVBOX grant
+  #   Profile E plan-then-act → AUTO plan, bundle approval at execute
+  #   Profile F PHI/finance → blocked at egress by the phi-egress-deny
+  #                           rule below; finance via the
+  #                           narrow-purpose mechanism
+
+  # Small reversible purchases (returnable consumables, < $cap) are
+  # the only AUTO-egress carve-out in this base policy. The
+  # `max_amount` field on the QUEUE_PURCHASE grant determines what
+  # counts as small — the rule fires only when the deterministic
+  # reversibility resolver returns "reversible/system" (e.g. amazon
+  # purchase with the operator's standing return window). Any
+  # purchase whose reversibility resolves to irreversible/external
+  # (concert tickets, custom builds, second-hand goods) falls back
+  # to the FR-011 SUGGEST default.
+  - rule_id: purchases-under-threshold-auto
+    when:
+      axis_c:
+        effect_class: queue_purchase
+      axis_d:
+        reversibility: reversible
+    outcome: auto
+    rationale: small reversible purchases (returnable consumables) auto under operator-set cap
+    risk_ids: []
+    human_ratified_by: marc@example.com
+    human_ratified_at: 2026-06-03T00:00:00Z
+
+  # Send actions during night hours (22:00–06:00 UTC) fall to
+  # REQUIRE_APPROVAL even when a relationship-group rule would
+  # otherwise SUGGEST. Defense against late-night autonomous loops
+  # and time-pressure manipulation (Threat T10/T11 in the cookbook
+  # §6 catalogue). Composes most-restrictive with
+  # family-personal-email-suggest and work-team-email-suggest —
+  # both targets still get the approval card, but the rationale
+  # surfaces the after-hours marker so the operator notices.
+  - rule_id: send-after-hours-require-approval
+    when:
+      axis_c:
+        effect_class: send_email
+      axis_d:
+        time_window: [22, 6]
+    outcome: require-approval
+    rationale: night-time sends fall to manual approval even for recognized counterparties (T11 runaway-loop defense)
+    risk_ids: []
+    human_ratified_by: marc@example.com
+    human_ratified_at: 2026-06-03T00:00:00Z
+
+  # PHI never leaves the device without an explicit declassification
+  # override (FR-038 OverrideGrant flow). This is the hard floor on
+  # health data. Composes most-restrictive with any other rule that
+  # might match phi+send_email — even a family-group recipient is
+  # denied, preventing accidental disclosure to a spouse who isn't
+  # the patient. Operator can still mint an override grant for a
+  # specific destination + payload kind via the override mechanism.
+  - rule_id: phi-egress-deny
+    when:
+      axis_a:
+        category: phi
+      axis_c:
+        effect_class: send_email
+    outcome: deny
+    rationale: PHI never egresses without explicit OverrideGrant declassification (FR-038)
+    risk_ids: []
+    human_ratified_by: marc@example.com
+    human_ratified_at: 2026-06-03T00:00:00Z
