@@ -25,6 +25,8 @@ equivalent `capdep` subcommands):
     /caps                   just capabilities for current
     /enforce shadow|strict  flip enforcement (Pattern ⑥ shadow mode)
     /first-use on|off       toggle first-action-of-kind prompt
+    /promote <princ>        show per-counterparty audit aggregate
+    /promote <grp> <princ>  step up reputation tier (unproven → well-tested → trusted)
 
   Approvals:
     /approvals              list pending approvals (grouped siblings shown together)
@@ -917,14 +919,70 @@ def _render_approvals(approvals: list[dict[str, Any]]) -> None:
         table.add_column("ID")
         table.add_column("Action")
         table.add_column("Target")
+        table.add_column("Tier")
         table.add_column("Payload preview")
         for a in solos:
-            preview = a["payload"][:60]
-            if len(a["payload"]) > 60:
-                preview += "…"
+            # Roadmap v2 #4 — tier-aware preview length. SEND_EMAIL
+            # to a recognized counterparty gets the lighter card
+            # treatment ("trusted" → subject + recipient only;
+            # "well-tested" → subject + 200 chars; "unproven" →
+            # full preview at 60 chars per the old behavior). Tier
+            # lookup is best-effort: an unknown target / missing
+            # daemon endpoint silently falls back to "unproven".
+            tier = _effective_tier_for(a)
+            preview = _tier_payload_preview(a["payload"], tier)
             clickable_id = _paste_link(str(a["id"]), f"/approve {a['id']}")
-            table.add_row(clickable_id, a["action"], a["target"], preview)
+            tier_label = {
+                "trusted": "[green]trusted[/green]",
+                "well-tested": "[yellow]well-tested[/yellow]",
+                "unproven": "[dim]unproven[/dim]",
+            }.get(tier, "[dim]-[/dim]")
+            table.add_row(
+                clickable_id,
+                a["action"],
+                a["target"],
+                tier_label,
+                preview,
+            )
         console.print(table)
+
+
+def _effective_tier_for(approval: dict[str, Any]) -> str:
+    """Resolve the reputation tier for the approval's target.
+    Returns "unproven" when the daemon doesn't surface the tier
+    endpoint (older daemons) or the principal is unknown. This
+    keeps the v2-aware REPL safe against legacy daemons."""
+    if approval.get("action") != "SEND_EMAIL":
+        return "unproven"
+    target = approval.get("target")
+    if not target:
+        return "unproven"
+    try:
+        info = _call(
+            "relationship_group.effective_tier",
+            {"principal_id": target},
+        )
+    except Exception:
+        return "unproven"
+    return str(info.get("tier", "unproven"))
+
+
+def _tier_payload_preview(payload: str, tier: str) -> str:
+    """Render the payload at the operator-visible length that
+    matches the tier ladder: trusted shows nothing beyond a
+    'subject + recipient only' hint; well-tested shows ~200
+    chars; unproven keeps the original 60-char preview."""
+    if tier == "trusted":
+        # Subject is encoded as the first line of payload in the
+        # email schema. Show only that — the body is taken on
+        # faith for trusted recipients (still REQUIRE_APPROVAL).
+        first_line = payload.split("\n", 1)[0]
+        return first_line[:60] + ("…" if len(first_line) > 60 else "")
+    if tier == "well-tested":
+        truncated = payload[:200]
+        return truncated + ("…" if len(payload) > 200 else "")
+    # unproven (default)
+    return payload[:60] + ("…" if len(payload) > 60 else "")
 
 
 def _handle_approve(arg: str) -> None:
@@ -1772,6 +1830,88 @@ def _rate_marker(cap: dict[str, Any]) -> str:
 
 def _constraint_markers(cap: dict[str, Any]) -> str:
     return f"{_expiry_marker(cap)}{_rate_marker(cap)}"
+
+
+def _handle_promote(arg: str) -> None:
+    """`/promote <group> <principal> [tier]` — set the reputation
+    tier of `<principal>` within `<group>`. `tier` defaults to the
+    next rung up the ladder: unproven → well-tested → trusted.
+
+    Promotion is operator-only and informed by the per-counterparty
+    audit aggregate (see /promote with one arg to view counts
+    before deciding). After promotion, the approval card UX in
+    this session lightens for that recipient: well-tested shows
+    subject + first 200 chars; trusted shows subject only.
+    """
+    parts = arg.strip().split()
+    if len(parts) == 1:
+        # `/promote <principal>` → show the audit aggregate so the
+        # operator can decide whether to promote
+        principal_id = parts[0]
+        try:
+            info = _call(
+                "relationship_group.aggregate_audit",
+                {"principal_id": principal_id},
+            )
+        except Exception as e:
+            err_console.print(f"[red]aggregate_audit failed:[/red] {e}")
+            return
+        console.print(
+            f"  {principal_id}: "
+            f"approved [green]{info['approved']}[/green] / "
+            f"denied [red]{info['denied']}[/red]",
+        )
+        return
+    if len(parts) not in (2, 3):
+        err_console.print(
+            "[red]usage:[/red] /promote <principal>  "
+            "(audit aggregate)  OR  /promote <group> <principal> [tier]",
+        )
+        return
+    group_id, principal_id = parts[0], parts[1]
+    if len(parts) == 3:
+        tier = parts[2]
+    else:
+        # Auto-step up one tier
+        try:
+            current = _call(
+                "relationship_group.tier",
+                {"group_id": group_id, "principal_id": principal_id},
+            )["tier"]
+        except Exception as e:
+            err_console.print(f"[red]tier lookup failed:[/red] {e}")
+            return
+        ladder = ["unproven", "well-tested", "trusted"]
+        if current not in ladder or current == "trusted":
+            err_console.print(
+                f"[yellow]{principal_id}[/yellow] in group "
+                f"[bold]{group_id}[/bold] is already at the top tier "
+                f"([dim]{current}[/dim]); pass tier explicitly to demote.",
+            )
+            return
+        tier = ladder[ladder.index(current) + 1]
+    try:
+        result = _call(
+            "relationship_group.promote",
+            {
+                "group_id": group_id,
+                "principal_id": principal_id,
+                "tier": tier,
+            },
+        )
+    except Exception as e:
+        err_console.print(f"[red]promote failed:[/red] {e}")
+        return
+    if "error" in result:
+        err_console.print(f"[red]promote failed:[/red] {result['error']}")
+        return
+    persisted = "✓ persisted" if result.get("persisted") else "⚠ in-memory only"
+    console.print(
+        f"[green]✓[/green] {principal_id} in "
+        f"[bold]{group_id}[/bold]: "
+        f"[dim]{result['previous_tier']}[/dim] → "
+        f"[yellow]{result['tier']}[/yellow]  [dim]{persisted}[/dim]",
+    )
 
 
 def _handle_first_use(arg: str, session_id: str) -> None:
@@ -3417,6 +3557,9 @@ def _run_repl(
                 continue
             if cmd in ("first-use", "first_use"):
                 _handle_first_use(arg, focus["id"])
+                continue
+            if cmd == "promote":
+                _handle_promote(arg)
                 continue
             if cmd == "audit":
                 _handle_audit(arg, focus["id"])

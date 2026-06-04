@@ -8,14 +8,39 @@ identity alone.
 Loaded from configs/relationship_groups.yaml. Empty registry is valid
 (no groups declared yet); is_member() returns False for any principal
 in that case.
+
+Roadmap v2 #4 — per-(group, principal) reputation tier. After N
+approved sends to a counterparty, the operator can promote them
+from `unproven` → `well-tested` → `trusted`. The chat REPL renders
+approval cards differently per tier (full body for unproven,
+subject + 200ch for well-tested, subject only for trusted),
+reducing the operator-visible friction on safe-by-history
+counterparties. Tier is operator-set only.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 import yaml
+
+# Roadmap v2 #4 — three-tier reputation ladder. The order is
+# meaningful: TIER_ORDER ranks them low → high so
+# effective_tier_for() can pick the most-trusted membership when
+# a principal is in multiple groups with differing tiers.
+ReputationTier = Literal["unproven", "well-tested", "trusted"]
+TIER_ORDER: tuple[ReputationTier, ...] = ("unproven", "well-tested", "trusted")
+DEFAULT_TIER: ReputationTier = "unproven"
+
+
+def _validate_tier(value: str) -> ReputationTier:
+    if value not in TIER_ORDER:
+        raise RelationshipGroupError(
+            f"invalid reputation tier {value!r}; must be one of {TIER_ORDER}",
+        )
+    return value  # type: ignore[return-value]
 
 
 class RelationshipGroupError(RuntimeError):
@@ -43,6 +68,12 @@ class RelationshipGroups:
     remove_member."""
 
     groups: dict[str, RelationshipGroup]
+    # Roadmap v2 #4 — per-(group_id, principal_id) reputation tier.
+    # Keys not present resolve to DEFAULT_TIER ("unproven"). The
+    # tier is independent of group membership; promote() requires
+    # the principal to already be a member of the group. Operator-
+    # set only — flipped via relationship_group.promote RPC.
+    tiers: dict[tuple[str, str], ReputationTier] = field(default_factory=dict)
 
     def get(self, group_id: str) -> RelationshipGroup | None:
         return self.groups.get(group_id)
@@ -90,6 +121,51 @@ class RelationshipGroups:
         )
         return True
 
+    def tier_for(self, group_id: str, principal_id: str) -> ReputationTier:
+        """Return the reputation tier of `principal_id` within
+        `group_id`. Unset → DEFAULT_TIER ("unproven"). Unknown
+        group or non-member still returns DEFAULT_TIER — the
+        caller decides whether membership matters."""
+        return self.tiers.get((group_id, principal_id), DEFAULT_TIER)
+
+    def effective_tier_for(self, principal_id: str) -> ReputationTier:
+        """Highest tier across every group `principal_id` belongs
+        to. When the recipient is in multiple groups, the operator
+        already trusted them at each tier separately — taking the
+        max means promotion in any group lightens the UX globally
+        for that principal. Default ("unproven") when the
+        principal isn't a member anywhere."""
+        groups = self.resolve(principal_id)
+        if not groups:
+            return DEFAULT_TIER
+        ranked = [self.tier_for(gid, principal_id) for gid in groups]
+        return max(ranked, key=TIER_ORDER.index)
+
+    def set_tier(
+        self,
+        group_id: str,
+        principal_id: str,
+        tier: str,
+    ) -> ReputationTier:
+        """Set (or change) the reputation tier of `principal_id`
+        within `group_id`. Requires the principal to already be a
+        member — promotion of a non-member is a programming error
+        (the operator should add_member first). Returns the new
+        tier; raises RelationshipGroupError on invalid tier value
+        or non-membership."""
+        validated = _validate_tier(tier)
+        if not self.is_member(principal_id, group_id):
+            raise RelationshipGroupError(
+                f"cannot set tier for {principal_id!r} in group {group_id!r}: not a member",
+            )
+        if validated == DEFAULT_TIER:
+            # Storing the default explicitly bloats the registry
+            # without changing behavior — clear instead.
+            self.tiers.pop((group_id, principal_id), None)
+        else:
+            self.tiers[(group_id, principal_id)] = validated
+        return validated
+
     def remove_member(self, group_id: str, principal_id: str) -> bool:
         """Remove `principal_id` from `group_id`. Returns True if the
         principal was present (membership changed), False otherwise.
@@ -104,6 +180,10 @@ class RelationshipGroups:
             group_id=group_id,
             member_principal_ids=group.member_principal_ids - {principal_id},
         )
+        # Drop any tier override — the principal no longer has
+        # standing in this group, so a lingering tier would
+        # mislead a re-add later.
+        self.tiers.pop((group_id, principal_id), None)
         return True
 
 
@@ -148,6 +228,17 @@ def save(groups: RelationshipGroups, path: Path) -> None:
             body_parts.append("    member_principal_ids:")
             for member in sorted(g.member_principal_ids):
                 body_parts.append(f"      - {member}")
+            # Roadmap v2 #4 — emit non-default tiers per member.
+            # Members at DEFAULT_TIER are omitted to keep the file
+            # readable for the operator (default-tier rows would
+            # bloat it).
+            tier_entries = sorted(
+                (pid, t) for (g_id, pid), t in groups.tiers.items() if g_id == gid
+            )
+            if tier_entries:
+                body_parts.append("    member_tiers:")
+                for pid, t in tier_entries:
+                    body_parts.append(f"      {pid}: {t}")
     new_text = "\n".join(header_lines + body_parts) + "\n"
     try:
         path.write_text(new_text, encoding="utf-8")
@@ -172,6 +263,7 @@ def load(path: Path) -> RelationshipGroups:
     if not isinstance(raw, list):
         raise RelationshipGroupError(f"'groups' must be a list: {path}")
     out: dict[str, RelationshipGroup] = {}
+    tiers: dict[tuple[str, str], ReputationTier] = {}
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
             raise RelationshipGroupError(f"groups[{i}] is not an object")
@@ -188,4 +280,20 @@ def load(path: Path) -> RelationshipGroups:
             group_id=gid,
             member_principal_ids=frozenset(str(m) for m in members),
         )
-    return RelationshipGroups(groups=out)
+        # Roadmap v2 #4 — optional member_tiers map. Validate each
+        # tier string; bad values fail-closed per Principle VI.
+        # Tiers for non-members are dropped at load (we can't
+        # promote a non-member; keeping the tier would be a
+        # phantom state).
+        raw_tiers = item.get("member_tiers") or {}
+        if not isinstance(raw_tiers, dict):
+            raise RelationshipGroupError(
+                f"groups[{i}].member_tiers must be a mapping",
+            )
+        member_set = frozenset(str(m) for m in members)
+        for raw_pid, raw_tier in raw_tiers.items():
+            pid = str(raw_pid)
+            if pid not in member_set:
+                continue
+            tiers[(gid, pid)] = _validate_tier(str(raw_tier))
+    return RelationshipGroups(groups=out, tiers=tiers)

@@ -46,6 +46,12 @@ def make_relationship_handlers(app: Any) -> dict[str, Handler]:
                     "member_principal_ids": sorted(
                         registry.groups[gid].member_principal_ids,
                     ),
+                    # Roadmap v2 #4 — surface per-member tier inline
+                    # so the operator sees promotions at a glance.
+                    "member_tiers": {
+                        pid: registry.tier_for(gid, pid)
+                        for pid in sorted(registry.groups[gid].member_principal_ids)
+                    },
                 }
                 for gid in sorted(registry.groups)
             ],
@@ -122,8 +128,145 @@ def make_relationship_handlers(app: Any) -> dict[str, Handler]:
             result["persisted"] = True
         return result
 
+    async def relationship_group_tier(params: dict[str, Any]) -> dict[str, Any]:
+        """Roadmap v2 #4 — return the reputation tier for
+        (group_id, principal_id). Defaults to "unproven" when no
+        explicit promotion has happened. Tier informs approval-
+        card UX in the REPL (subject-only vs full-body)."""
+        group_id = str(params["group_id"]).strip()
+        principal_id = str(params["principal_id"]).strip()
+        return {
+            "group_id": group_id,
+            "principal_id": principal_id,
+            "tier": registry.tier_for(group_id, principal_id),
+        }
+
+    async def relationship_group_effective_tier(
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Highest tier across every group `principal_id` belongs
+        to. The REPL uses this for the approval card when the
+        agent's send target is a principal, not a group — one
+        tier value applies regardless of which group surfaced it."""
+        principal_id = str(params["principal_id"]).strip()
+        return {
+            "principal_id": principal_id,
+            "tier": registry.effective_tier_for(principal_id),
+            "groups": sorted(registry.resolve(principal_id)),
+        }
+
+    async def relationship_group_promote(
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Operator-only tier promotion / demotion. Requires the
+        principal to already be a member of the group (the
+        operator can add_member separately). Persists to YAML so
+        the change survives restart.
+
+        Per Principle VI, the AI must NEVER reach this RPC. The
+        chat REPL's `/promote` command is the canonical surface.
+
+        Returns:
+          tier: str            — the new tier
+          previous_tier: str   — the tier before this call
+          group_id, principal_id, persisted: bool
+        """
+        group_id = str(params["group_id"]).strip()
+        principal_id = str(params["principal_id"]).strip()
+        tier = str(params["tier"]).strip()
+        previous = registry.tier_for(group_id, principal_id)
+        try:
+            new_tier = registry.set_tier(group_id, principal_id, tier)
+        except Exception as e:
+            return {
+                "group_id": group_id,
+                "principal_id": principal_id,
+                "error": str(e),
+                "persisted": False,
+            }
+        result: dict[str, Any] = {
+            "group_id": group_id,
+            "principal_id": principal_id,
+            "previous_tier": previous,
+            "tier": new_tier,
+            "persisted": False,
+        }
+        if path is not None:
+            try:
+                from capabledeputy.policy.relationships import save
+
+                save(registry, Path(path))
+                result["persisted"] = True
+            except Exception as e:
+                result["persist_error"] = str(e)
+        return result
+
+    async def relationship_group_aggregate_audit(
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Aggregate per-principal audit counts so the operator
+        can decide whether to promote. Counts SEND_EMAIL approval
+        outcomes where target == principal_id. Defensive against
+        an audit log without query support — returns zero counts
+        when the daemon has no audit reader.
+
+        Returns:
+          principal_id: str
+          approved: int
+          denied: int
+        """
+        principal_id = str(params["principal_id"]).strip()
+        approved = 0
+        denied = 0
+        audit_obj = getattr(app, "audit", None)
+        read_all = getattr(audit_obj, "read_all", None)
+        if read_all is not None:
+            try:
+                events = await read_all()
+            except Exception:
+                events = []
+            # APPROVAL_APPROVED / DENIED events only carry the
+            # approval_id, so first walk APPROVAL_REQUESTED to
+            # build the set of approval ids whose target matches
+            # this principal. Then tally the decisions against
+            # that set.
+            target_ids: set[int] = set()
+            for ev in events:
+                etype = getattr(ev.event_type, "value", None) if hasattr(ev, "event_type") else None
+                payload = getattr(ev, "payload", None) or {}
+                if not isinstance(payload, dict):
+                    continue
+                if etype == "approval.requested" and payload.get("target") == principal_id:
+                    aid = payload.get("approval_id")
+                    if isinstance(aid, int):
+                        target_ids.add(aid)
+            if target_ids:
+                for ev in events:
+                    etype = (
+                        getattr(ev.event_type, "value", None) if hasattr(ev, "event_type") else None
+                    )
+                    payload = getattr(ev, "payload", None) or {}
+                    if not isinstance(payload, dict):
+                        continue
+                    aid = payload.get("approval_id")
+                    if aid not in target_ids:
+                        continue
+                    if etype == "approval.approved":
+                        approved += 1
+                    elif etype == "approval.denied":
+                        denied += 1
+        return {
+            "principal_id": principal_id,
+            "approved": approved,
+            "denied": denied,
+        }
+
     return {
         "relationship_group.list": relationship_group_list,
         "relationship_group.add_member": relationship_group_add_member,
         "relationship_group.remove_member": relationship_group_remove_member,
+        "relationship_group.tier": relationship_group_tier,
+        "relationship_group.effective_tier": relationship_group_effective_tier,
+        "relationship_group.promote": relationship_group_promote,
+        "relationship_group.aggregate_audit": relationship_group_aggregate_audit,
     }
