@@ -140,6 +140,18 @@ def verify_command(
             ),
         ),
     ] = None,
+    include_rotated: Annotated[
+        bool,
+        typer.Option(
+            "--include-rotated",
+            help=(
+                "Walk rotated archives (.1 .2 ...) in chronological "
+                "order, threading prev_hash across rotation boundaries. "
+                "Slower on large archives but completes the audit-"
+                "integrity story for operators using rotation."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Walk the audit log's hash chain and report tampering (cookbook P1.6).
 
@@ -171,12 +183,16 @@ def verify_command(
         except Exception:
             resolved = default_audit_log_path()
 
-    result = verify_audit_chain(resolved)
+    result = verify_audit_chain(resolved, include_rotated=include_rotated)
     if result.ok:
         console.print(
             f"[green]✓ verified[/green]  {result.reason}",
         )
         console.print(f"  path: [dim]{result.path}[/dim]")
+        if len(result.files_walked) > 1:
+            console.print(
+                f"  files walked: [dim]{', '.join(p.name for p in result.files_walked)}[/dim]",
+            )
         console.print(
             f"  total lines: {result.n_lines}  "
             f"chained: {result.n_chained}  "
@@ -187,9 +203,14 @@ def verify_command(
         f"[red]✗ tampered[/red]  {result.reason}",
     )
     console.print(f"  path: [dim]{result.path}[/dim]")
+    if result.tampered_at_file is not None:
+        console.print(
+            f"  break in file: [bold]{result.tampered_at_file.name}[/bold] "
+            f"at line {result.tampered_at_line}",
+        )
+    else:
+        console.print(f"  break at line: {result.tampered_at_line}")
     console.print(
-        f"  break at line: {result.tampered_at_line}  "
-        f"verified before break: {result.n_chained} chained / "
-        f"{result.n_legacy_prefix} legacy",
+        f"  verified before break: {result.n_chained} chained / {result.n_legacy_prefix} legacy",
     )
     raise typer.Exit(code=1)
