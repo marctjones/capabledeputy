@@ -836,3 +836,105 @@ def test_make_bottom_toolbar_renders_usage_when_state_populated() -> None:
     out = to_plain_text(render())
     assert "tok 1.2k↑/340↓" in out
     assert "mtd 87k↑/12k↓" in out
+
+
+# --- Cookbook P2.1 — /approvals sibling-group rendering ----------------
+
+
+from capabledeputy.cli.chat import _render_approvals  # noqa: E402
+
+
+def _make_request_dict(
+    rid: int,
+    *,
+    action: str = "send_email",
+    target: str = "spouse@example.com",
+    payload: str = "hi",
+    sibling_group_id: str | None = None,
+) -> dict:
+    """Minimal shape matching ApprovalRequest.to_dict() — only the
+    fields _render_approvals reads."""
+    return {
+        "id": rid,
+        "action": action,
+        "target": target,
+        "payload": payload,
+        "sibling_group_id": sibling_group_id,
+    }
+
+
+def test_render_approvals_groups_siblings_under_one_header() -> None:
+    """Three sibling requests render as a `Sibling group` table with
+    an `approve-all (3)` paste link in the title."""
+    gid = "11111111-1111-1111-1111-111111111111"
+    approvals = [
+        _make_request_dict(1, sibling_group_id=gid, payload="body 1"),
+        _make_request_dict(2, sibling_group_id=gid, payload="body 2"),
+        _make_request_dict(3, sibling_group_id=gid, payload="body 3"),
+    ]
+    from capabledeputy.cli import chat as _chat
+
+    with _chat.console.capture() as cap:
+        _render_approvals(approvals)
+    out = cap.get()
+    assert "Sibling group" in out
+    # Title text may wrap across rich's panel width — assert both
+    # markers appear, not that they're contiguous.
+    assert "approve-all" in out
+    assert "(3)" in out
+    assert "send_email" in out
+    assert "spouse@example.com" in out
+
+
+def test_render_approvals_promotes_single_member_group_to_solo() -> None:
+    """A group_id with one member is conceptually a solo — the
+    renderer should drop the group framing and show it in the
+    regular table to avoid pointless visual noise."""
+    gid = "22222222-2222-2222-2222-222222222222"
+    approvals = [
+        _make_request_dict(7, sibling_group_id=gid),
+    ]
+    from capabledeputy.cli import chat as _chat
+
+    with _chat.console.capture() as cap:
+        _render_approvals(approvals)
+    out = cap.get()
+    assert "Sibling group" not in out
+    assert "Pending approvals" in out
+
+
+def test_render_approvals_mixes_grouped_and_solo() -> None:
+    """Mixed view: one sibling group of two plus one solo. Both
+    sections appear in the output."""
+    gid = "33333333-3333-3333-3333-333333333333"
+    approvals = [
+        _make_request_dict(10, sibling_group_id=gid, payload="g1"),
+        _make_request_dict(11, sibling_group_id=gid, payload="g2"),
+        _make_request_dict(20, sibling_group_id=None, payload="solo"),
+    ]
+    from capabledeputy.cli import chat as _chat
+
+    with _chat.console.capture() as cap:
+        _render_approvals(approvals)
+    out = cap.get()
+    assert "Sibling group" in out
+    assert "approve-all" in out
+    assert "(2)" in out
+    assert "Pending approvals (1 solo)" in out
+
+
+def test_render_approvals_no_groups_no_header_change() -> None:
+    """The pre-P2.1 happy path: a list of solo approvals renders
+    exactly as before — `Pending approvals (N)` table, no group
+    sections."""
+    approvals = [
+        _make_request_dict(1, sibling_group_id=None),
+        _make_request_dict(2, sibling_group_id=None, target="boss@example.com"),
+    ]
+    from capabledeputy.cli import chat as _chat
+
+    with _chat.console.capture() as cap:
+        _render_approvals(approvals)
+    out = cap.get()
+    assert "Sibling group" not in out
+    assert "Pending approvals" in out

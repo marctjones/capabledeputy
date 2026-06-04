@@ -25,8 +25,9 @@ equivalent `capdep` subcommands):
     /caps                   just capabilities for current
 
   Approvals:
-    /approvals              list pending approvals
+    /approvals              list pending approvals (grouped siblings shown together)
     /approve <id>           verbatim payload → y/N → approve
+    /approve-group <gid>    approve every sibling in a group at once
     /deny <id>              deny a pending approval
     /submit                 interactively submit an approval
 
@@ -827,22 +828,70 @@ def _list_approvals(status: str = "pending") -> list[dict[str, Any]]:
 
 
 def _render_approvals(approvals: list[dict[str, Any]]) -> None:
+    """Two-section view: grouped siblings first (each group as a
+    sub-table headed by the shared (action, target) + approve-group
+    paste link), then solo approvals as the regular table.
+
+    The sibling group is the cookbook P2.1 mechanism: N requests
+    sharing (session, action, target) within a 5-second window get
+    a shared `sibling_group_id`. The operator can approve all at
+    once via `/approve-group <gid>` (paste link in the group
+    header), or use `/approve <id>` / `/deny <id>` on individual
+    members."""
     if not approvals:
         console.print("[dim]no pending approvals[/dim]")
         return
-    table = Table(title=f"Pending approvals ({len(approvals)})")
-    table.add_column("ID")
-    table.add_column("Action")
-    table.add_column("Target")
-    table.add_column("Payload preview")
+
+    # Split into groups vs solos.
+    groups: dict[str, list[dict[str, Any]]] = {}
+    solos: list[dict[str, Any]] = []
     for a in approvals:
-        preview = a["payload"][:60]
-        if len(a["payload"]) > 60:
-            preview += "…"
-        # Issue #18 — click the approval id to paste /approve <id>
-        clickable_id = _paste_link(str(a["id"]), f"/approve {a['id']}")
-        table.add_row(clickable_id, a["action"], a["target"], preview)
-    console.print(table)
+        gid = a.get("sibling_group_id")
+        if gid:
+            groups.setdefault(gid, []).append(a)
+        else:
+            solos.append(a)
+    # A "group" with one member is conceptually a solo — promote it.
+    for gid, members in list(groups.items()):
+        if len(members) == 1:
+            solos.append(members[0])
+            del groups[gid]
+
+    for gid, members in groups.items():
+        action = members[0]["action"]
+        target = members[0]["target"]
+        approve_group_link = _paste_link(
+            f"approve-all ({len(members)})",
+            f"/approve-group {gid}",
+        )
+        title = (
+            f"[bold]Sibling group[/bold] {action} → {target}  "
+            f"· {len(members)} pending  · {approve_group_link}"
+        )
+        gtable = Table(title=title, show_header=True)
+        gtable.add_column("ID")
+        gtable.add_column("Payload preview")
+        for m in members:
+            preview = m["payload"][:60]
+            if len(m["payload"]) > 60:
+                preview += "…"
+            clickable_id = _paste_link(str(m["id"]), f"/approve {m['id']}")
+            gtable.add_row(clickable_id, preview)
+        console.print(gtable)
+
+    if solos:
+        table = Table(title=f"Pending approvals ({len(solos)} solo)")
+        table.add_column("ID")
+        table.add_column("Action")
+        table.add_column("Target")
+        table.add_column("Payload preview")
+        for a in solos:
+            preview = a["payload"][:60]
+            if len(a["payload"]) > 60:
+                preview += "…"
+            clickable_id = _paste_link(str(a["id"]), f"/approve {a['id']}")
+            table.add_row(clickable_id, a["action"], a["target"], preview)
+        console.print(table)
 
 
 def _handle_approve(arg: str) -> None:
@@ -902,6 +951,69 @@ def _handle_approve(arg: str) -> None:
             console.print(f"  [red]dispatch error:[/red] {dispatch['error']}")
         else:
             console.print(f"  [green]dispatch decision:[/green] {dispatch.get('decision')}")
+
+
+def _handle_approve_group(arg: str) -> None:
+    """`/approve-group <gid>` — approve every PENDING sibling in the
+    given group. Shows the full per-member preview first so the
+    operator can confirm what's about to fire as a batch.
+
+    Already-decided members are skipped (the operator may have
+    denied one individually first). Failures on individual sends
+    don't roll back the others; each result is surfaced inline."""
+    gid = arg.strip()
+    if not gid:
+        err_console.print(
+            "[red]usage:[/red] /approve-group <gid> "
+            "— paste from the [bold]approve-all (N)[/bold] link in /approvals",
+        )
+        return
+    pending = _list_approvals()
+    members = [p for p in pending if p.get("sibling_group_id") == gid]
+    if not members:
+        err_console.print(
+            f"[red]no pending siblings in group[/red] {gid}",
+        )
+        return
+    # Preview every member before firing.
+    console.print(
+        Panel(
+            "\n\n".join(
+                f"[bold]#{m['id']}[/bold] {m['action']} → {m['target']}\n{m['payload']}"
+                for m in members
+            ),
+            title=f"approve-group {gid} — {len(members)} sibling(s)",
+            border_style="yellow",
+        ),
+    )
+    confirm = Prompt.ask(f"approve all {len(members)}? [y/N]", default="N").strip().lower()
+    if confirm not in ("y", "yes"):
+        console.print("[dim]not approving[/dim]")
+        return
+    result = _call("approval.approve_group", {"group_id": gid})
+    n_ok = result.get("n_approved", 0)
+    n_skip = result.get("n_skipped", 0)
+    n_fail = result.get("n_failed", 0)
+    console.print(
+        f"[green]✓ approved {n_ok}[/green]"
+        + (f"  [dim]{n_skip} skipped (already decided)[/dim]" if n_skip else "")
+        + (f"  [red]{n_fail} failed[/red]" if n_fail else ""),
+    )
+    # Per-member dispatch summary so failures don't get lost.
+    for r in result.get("results", []):
+        if r.get("error"):
+            console.print(
+                f"  [red]#{r.get('id')} error:[/red] {r['error']}",
+            )
+        elif r.get("skipped"):
+            console.print(
+                f"  [dim]#{r.get('id')} skipped:[/dim] {r.get('reason')}",
+            )
+        elif r.get("executed_in_session"):
+            sid = str(r["executed_in_session"])[:8]
+            console.print(
+                f"  [green]#{r.get('id')}[/green] dispatched in {sid}",
+            )
 
 
 def _handle_deny(arg: str) -> None:
@@ -1266,7 +1378,7 @@ _HELP = """slash commands (user-only, never visible to the LLM):
            /grant <KIND> <pattern> [--one-shot --destructive --max-amount N]
            /status /labels /caps
 
-  approval: /approvals  /approve <id>  /deny <id>  /submit
+  approval: /approvals  /approve <id>  /approve-group <gid>  /deny <id>  /submit
             /remember <ACTION> <target-pattern>  — auto-approve future
                                                    matching gates
             /override request <KIND> <target>    — request operator
@@ -3045,6 +3157,9 @@ def _run_repl(
                 continue
             if cmd == "approve":
                 _handle_approve(arg)
+                continue
+            if cmd in ("approve-group", "approve_group"):
+                _handle_approve_group(arg)
                 continue
             if cmd == "deny":
                 _handle_deny(arg)

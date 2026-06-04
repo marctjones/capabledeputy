@@ -127,11 +127,66 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
 
         return {"approval": approved.to_dict()}
 
+    async def approval_approve_group(params: dict[str, Any]) -> dict[str, Any]:
+        """Approve every PENDING sibling in `group_id`. Each approved
+        sibling runs the same per-action dispatch logic as a solo
+        approve (send → declassified send-mail session, purchase →
+        declassified queue, destructive → declassified destructive
+        path). Already-decided siblings are skipped — the operator
+        may have denied one individually before clicking approve-all.
+
+        Returns a list of per-sibling results in id order. Errors on
+        any single sibling don't stop the group; the failing one
+        ends up with `error` set in its result dict."""
+        group_id = UUID(params["group_id"])
+        decided_by = str(params.get("decided_by", "user"))
+        members = app.approval_queue.siblings(group_id)
+        results: list[dict[str, Any]] = []
+        for m in members:
+            if m.status != ApprovalStatus.PENDING:
+                # Skip already-decided siblings; surface their state
+                # so the operator can see why this one didn't go
+                # through the approve path.
+                results.append(
+                    {
+                        "id": m.id,
+                        "skipped": True,
+                        "reason": f"status={m.status.value}",
+                        "approval": m.to_dict(),
+                    },
+                )
+                continue
+            try:
+                # Route per-id through the regular approve handler so
+                # the per-action dispatch behavior is identical (no
+                # second copy of the send/purchase/destructive logic).
+                result = await approval_approve(
+                    {"id": m.id, "decided_by": decided_by},
+                )
+                result["id"] = m.id
+                results.append(result)
+            except Exception as e:
+                results.append(
+                    {
+                        "id": m.id,
+                        "error": str(e),
+                    },
+                )
+        return {
+            "group_id": str(group_id),
+            "results": results,
+            "n_total": len(members),
+            "n_approved": sum(1 for r in results if not r.get("skipped") and not r.get("error")),
+            "n_skipped": sum(1 for r in results if r.get("skipped")),
+            "n_failed": sum(1 for r in results if r.get("error")),
+        }
+
     return {
         "approval.list": approval_list,
         "approval.show": approval_show,
         "approval.submit": approval_submit,
         "approval.approve": approval_approve,
+        "approval.approve_group": approval_approve_group,
         "approval.deny": approval_deny,
         "approval.defer": approval_defer,
     }
