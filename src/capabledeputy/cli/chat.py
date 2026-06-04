@@ -1615,6 +1615,33 @@ def _handle_grant(arg: str, session_id: str) -> None:
     kind = raw_kind if ":" in raw_kind else raw_kind.upper()
     pattern = parts[1]
     rest = parts[2:]
+
+    # Improvement roadmap #8 — surface warnings for patterns that
+    # don't match the kind's target shape (e.g. `/grant SEND_EMAIL
+    # spouse` quietly succeeds today but never fires). We don't
+    # block: operators may have legitimate unusual conventions, and
+    # a hard reject would force them to bypass the warning system.
+    # `--no-warn` suppresses (script-mode for tests / automation).
+    if "--no-warn" not in rest:
+        from capabledeputy.policy.grant_validation import (
+            validate_grant_pattern,
+        )
+
+        warnings = validate_grant_pattern(kind, pattern)
+        if warnings:
+            for w in warnings:
+                err_console.print(f"[yellow]warning:[/yellow] {w}")
+            confirm = (
+                Prompt.ask(
+                    "proceed with this grant anyway? [y/N]",
+                    default="N",
+                )
+                .strip()
+                .lower()
+            )
+            if confirm not in ("y", "yes"):
+                console.print("[dim]grant cancelled[/dim]")
+                return
     one_shot = "--one-shot" in rest
     allows_destructive = "--destructive" in rest
     max_amount: int | None = None
