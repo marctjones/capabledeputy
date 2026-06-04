@@ -15,12 +15,14 @@ Three methods:
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from capabledeputy.app import App
 from capabledeputy.approval.bundle import (
     BundledApproval,
+    BundleExpiredError,
     GateState,
     WorkflowImpact,
     WorkflowStep,
@@ -34,10 +36,27 @@ from capabledeputy.programmatic import (
 
 
 def _impact_from_dict(d: dict[str, Any]) -> WorkflowImpact:
-    """Reconstruct an WorkflowImpact from its to_dict() form."""
+    """Reconstruct an WorkflowImpact from its to_dict() form.
+
+    Roadmap v2 #6 — `expires_at` round-trips so dispatch can
+    refuse stale bundles. Missing key → None (legacy bundle from
+    pre-v2 daemon), which leaves the post-init TTL alone. To keep
+    a deserialized bundle truly immortal, the caller would supply
+    `expires_at: null` from a daemon that ran with TTL=0.
+    """
+    expires_at_raw = d.get("expires_at")
+    expires_at = datetime.fromisoformat(expires_at_raw) if expires_at_raw else None
+    created_at_raw = d.get("created_at")
+    impact_kwargs: dict[str, Any] = {
+        "bundle_id": UUID(d["bundle_id"]),
+        "program_hash": str(d["program_hash"]),
+    }
+    if created_at_raw is not None:
+        impact_kwargs["created_at"] = datetime.fromisoformat(created_at_raw)
+    if expires_at is not None:
+        impact_kwargs["expires_at"] = expires_at
     return WorkflowImpact(
-        bundle_id=UUID(d["bundle_id"]),
-        program_hash=str(d["program_hash"]),
+        **impact_kwargs,
         steps=[
             WorkflowStep(
                 step_index=s["step_index"],
@@ -81,6 +100,17 @@ def make_bundle_handlers(app: App) -> dict[str, Handler]:
         source = str(params["source"])
         session_id = UUID(params["session_id"])
         impact = _impact_from_dict(params["impact"])
+        if impact.is_expired():
+            err = BundleExpiredError(impact.bundle_id, impact.expires_at)
+            return {
+                "ok": False,
+                "error": str(err),
+                "error_code": "bundle_expired",
+                "bundle_id": str(impact.bundle_id),
+                "expires_at": impact.expires_at.isoformat() if impact.expires_at else None,
+                "n_steps": 0,
+                "return_value": None,
+            }
         result = await execute_with_approved_bundle(
             source,
             impact,
