@@ -398,6 +398,7 @@ class LabeledToolClient:
                         session_id,
                         session.label_set,
                         approval_submission,
+                        rule=policy_decision.rule,
                     )
             return ToolCallOutcome(
                 decision=policy_decision.decision,
@@ -1080,6 +1081,7 @@ class LabeledToolClient:
         session_id: UUID,
         labels_in: frozenset[Label],
         submission: dict[str, Any],
+        rule: str | None = None,
     ) -> int:
         """Submit the resolved approval to the queue and return its id.
 
@@ -1110,6 +1112,7 @@ class LabeledToolClient:
             target=target,
             labels_in=labels_in,
             justification=submission.get("justification", ""),
+            rule=rule,
         )
         return request.id
 

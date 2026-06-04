@@ -64,6 +64,15 @@ class ApprovalRequest:
     # default_ttl_seconds OR the caller's explicit ttl_seconds; the
     # caller passing ttl_seconds=0 produces None (never expires).
     expires_at: datetime | None = None
+    # Roadmap v2 #7 — the engine rule that triggered the gate (e.g.
+    # `first-use-of-kind`, `untrusted-meets-egress`, or the operator
+    # rule that escalated to REQUIRE_APPROVAL). Lets the REPL render
+    # mechanism-specific cards: a first-use card looks different from
+    # a rule-driven approval, since the question being asked of the
+    # operator is fundamentally different ("intend to ever do this?"
+    # vs "this matches the rule you wrote — proceed?"). None when the
+    # caller didn't supply a rule (legacy / out-of-band approvals).
+    rule: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -89,4 +98,5 @@ class ApprovalRequest:
                 str(self.sibling_group_id) if self.sibling_group_id is not None else None
             ),
             "expires_at": (self.expires_at.isoformat() if self.expires_at is not None else None),
+            "rule": self.rule,
         }

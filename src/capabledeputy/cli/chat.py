@@ -830,9 +830,11 @@ def _list_approvals(status: str = "pending") -> list[dict[str, Any]]:
 
 
 def _render_approvals(approvals: list[dict[str, Any]]) -> None:
-    """Two-section view: grouped siblings first (each group as a
-    sub-table headed by the shared (action, target) + approve-group
-    paste link), then solo approvals as the regular table.
+    """Three-section view: first-use banners first (each FIRST_USE
+    approval gets its own ⚠ banner with friendlier copy because
+    it asks a different question — "intend to ever do this in
+    this session?" — than rule-driven gates), then grouped
+    siblings, then solo approvals as the regular table.
 
     The sibling group is the cookbook P2.1 mechanism: N requests
     sharing (session, action, target) within a 5-second window get
@@ -844,10 +846,39 @@ def _render_approvals(approvals: list[dict[str, Any]]) -> None:
         console.print("[dim]no pending approvals[/dim]")
         return
 
-    # Split into groups vs solos.
+    # Roadmap v2 #7 — split first-use prompts (cookbook §4 #6) out
+    # of the standard queue display. They look like ordinary
+    # REQUIRE_APPROVAL on the wire but ask a fundamentally
+    # different question of the operator, so render them with a
+    # distinct banner above the standard table.
+    first_use: list[dict[str, Any]] = []
+    standard: list[dict[str, Any]] = []
+    for a in approvals:
+        if a.get("rule") == "first-use-of-kind":
+            first_use.append(a)
+        else:
+            standard.append(a)
+    for a in first_use:
+        clickable_id = _paste_link(str(a["id"]), f"/approve {a['id']}")
+        deny_id = _paste_link("deny", f"/deny {a['id']}")
+        console.print(
+            f"[yellow]⚠ first use of [bold]{a['action']}[/bold] in this "
+            f"session[/yellow] — confirm intent",
+        )
+        console.print(
+            f"  target: [dim]{a['target']}[/dim]  "
+            f"approval {clickable_id}  ·  {deny_id}",
+        )
+        console.print(
+            "  [dim]This kind of capability hasn't been exercised yet. "
+            "Approving teaches the session this is intended; subsequent "
+            "uses won't re-prompt unless a policy rule fires.[/dim]",
+        )
+
+    # Split standard requests into groups vs solos.
     groups: dict[str, list[dict[str, Any]]] = {}
     solos: list[dict[str, Any]] = []
-    for a in approvals:
+    for a in standard:
         gid = a.get("sibling_group_id")
         if gid:
             groups.setdefault(gid, []).append(a)

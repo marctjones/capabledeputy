@@ -259,6 +259,7 @@ class ApprovalQueue:
         capability_requested: Capability | None = None,
         justification: str = "",
         ttl_seconds: int | None = None,
+        rule: str | None = None,
     ) -> ApprovalRequest:
         sibling_group_id = self._find_sibling_group(
             from_session=from_session,
@@ -285,6 +286,7 @@ class ApprovalQueue:
             justification=justification,
             sibling_group_id=sibling_group_id,
             expires_at=expires_at,
+            rule=rule,
         )
         self._next_id += 1
         self._requests[request.id] = request
