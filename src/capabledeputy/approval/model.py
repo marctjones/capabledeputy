@@ -51,6 +51,12 @@ class ApprovalRequest:
     decided_by: str | None = None
     decision_scope: dict[str, Any] = field(default_factory=dict)
     new_audit_id: UUID = field(default_factory=uuid4)
+    # Cookbook P2.1 — sibling grouping. Two pending requests within a
+    # short window with the same (session, action, target) carry the
+    # same sibling_group_id, so the approval UI can render one card
+    # with `approve-all + per-item toggles` instead of N separate
+    # cards. None when the request stands alone.
+    sibling_group_id: UUID | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -72,4 +78,7 @@ class ApprovalRequest:
             "decision_at": (self.decision_at.isoformat() if self.decision_at else None),
             "decided_by": self.decided_by,
             "decision_scope": self.decision_scope,
+            "sibling_group_id": (
+                str(self.sibling_group_id) if self.sibling_group_id is not None else None
+            ),
         }

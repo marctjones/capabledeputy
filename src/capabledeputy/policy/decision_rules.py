@@ -121,7 +121,16 @@ class RulePredicate:
             for req in required_categories:
                 if req not in present:
                     return False
-        if self.axis_d_time_window is not None and now_hour is not None:
+        if self.axis_d_time_window is not None:
+            # Fail-closed per Principle VI: a rule that declares a time
+            # window MUST receive a `now_hour` from the caller. If the
+            # caller omits it we don't know whether we're inside the
+            # window, so the rule does NOT match — its outcome doesn't
+            # compose into the decision. The dispatcher SHOULD always
+            # supply now_hour; failure to is a caller bug worth
+            # surfacing.
+            if now_hour is None:
+                return False
             start_h, end_h = self.axis_d_time_window
             if start_h <= end_h:
                 if not (start_h <= now_hour <= end_h):

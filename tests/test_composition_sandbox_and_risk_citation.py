@@ -122,6 +122,81 @@ def test_non_sandbox_effect_unaffected() -> None:
     assert result.rule != SANDBOX_NO_ACTUATOR_RULE
 
 
+# --- Devbox-without-manager — parallel gate for EXECUTE.devbox -----
+
+
+def test_execute_devbox_without_manager_returns_override_required() -> None:
+    """Mirror of the sandbox gate for the persistent-container effect
+    class. Defense-in-depth: even if a devbox-shaped tool slips through
+    registration (custom kind, operator misconfig), the engine refuses
+    when no manager is wired."""
+    from capabledeputy.policy.engine import DEVBOX_NO_MANAGER_RULE
+
+    axis_a, axis_b, axis_d = _axes()
+    result = decide(
+        frozenset(),
+        frozenset({_wide_cap()}),
+        Action(kind=CapabilityKind.WRITE_FS, target="py-dev"),
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="EXECUTE.devbox",
+        rules_v2=DecisionRules(rules=()),
+        sandbox_actuator_wired=False,
+        devbox_manager_wired=False,
+        now=_NOW,
+    )
+    assert result.decision == Decision.OVERRIDE_REQUIRED
+    assert result.rule == DEVBOX_NO_MANAGER_RULE
+
+
+def test_execute_devbox_with_manager_runs_normal_path() -> None:
+    """When the manager is wired, EXECUTE.devbox falls through to the
+    normal v2 pipeline (here REQUIRE_APPROVAL on the never-auto
+    default)."""
+    from capabledeputy.policy.engine import DEVBOX_NO_MANAGER_RULE
+
+    axis_a, axis_b, axis_d = _axes()
+    result = decide(
+        frozenset(),
+        frozenset({_wide_cap()}),
+        Action(kind=CapabilityKind.WRITE_FS, target="py-dev"),
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="EXECUTE.devbox",
+        rules_v2=DecisionRules(rules=()),
+        sandbox_actuator_wired=False,
+        devbox_manager_wired=True,
+        now=_NOW,
+    )
+    assert result.rule != DEVBOX_NO_MANAGER_RULE
+
+
+def test_devbox_gate_does_not_fire_for_sandbox_effect() -> None:
+    """The devbox gate keys on `execute.devbox` prefix; an
+    `execute.sandbox` action with the sandbox actuator unwired hits
+    the sandbox rule, not the devbox rule."""
+    from capabledeputy.policy.engine import DEVBOX_NO_MANAGER_RULE
+
+    axis_a, axis_b, axis_d = _axes()
+    result = decide(
+        frozenset(),
+        frozenset({_wide_cap()}),
+        Action(kind=CapabilityKind.WRITE_FS, target="/x"),
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="EXECUTE.sandbox",
+        rules_v2=DecisionRules(rules=()),
+        sandbox_actuator_wired=False,
+        devbox_manager_wired=False,
+        now=_NOW,
+    )
+    assert result.rule == SANDBOX_NO_ACTUATOR_RULE
+    assert result.rule != DEVBOX_NO_MANAGER_RULE
+
+
 # --- Orphan risk-id citation (#8) -----------------------------------
 
 

@@ -137,6 +137,14 @@ class PolicyContext:
         actuator itself read `sandbox_actuator`."""
         return self.sandbox_actuator is not None
 
+    @property
+    def devbox_manager_wired(self) -> bool:
+        """Parallel to sandbox_actuator_wired. Engine's fail-closed
+        gate on EXECUTE.devbox keys on this. Belt-and-suspenders with
+        the tool-registration check that already collapses the
+        devbox.* tool list when no manager is wired."""
+        return self.devbox_manager is not None
+
 
 def build_policy_decided_payload(
     tool_name: str,
@@ -839,6 +847,7 @@ class LabeledToolClient:
         if self._policy_context.risk_register is not None:
             kwargs["risk_register"] = self._policy_context.risk_register
         kwargs["sandbox_actuator_wired"] = self._policy_context.sandbox_actuator_wired
+        kwargs["devbox_manager_wired"] = self._policy_context.devbox_manager_wired
         return kwargs
 
     async def _bind_reference_handles(

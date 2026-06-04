@@ -277,3 +277,81 @@ def test_refuse_non_deterministic_relax_input_curated_ok() -> None:
     refuse_non_deterministic_relax_input(input_origin="curated-mcp")
     refuse_non_deterministic_relax_input(input_origin="operator-config")
     refuse_non_deterministic_relax_input(input_origin="human-ratified-rule")
+
+
+# --- Time-window predicate fail-closed (Principle VI) -------------------
+
+
+def _time_window_rule(window: tuple[int, int]) -> DecisionRules:
+    """Helper: minimal rule that fires only inside `window`."""
+    return DecisionRules(
+        rules=(
+            DecisionRule(
+                rule_id="time-bound-test",
+                predicate=RulePredicate(
+                    effect_class="send_email",
+                    axis_d_time_window=window,
+                ),
+                outcome=RuleOutcome.REQUIRE_APPROVAL,
+                rationale="time-window test",
+                human_ratified_by="op",
+            ),
+        ),
+    )
+
+
+def test_time_window_rule_does_not_fire_without_now_hour() -> None:
+    """Principle VI fail-closed: a rule that declares a time window
+    MUST receive a now_hour. When the caller omits it the rule does
+    NOT match — composition falls to the default SUGGEST. Without
+    this fix the rule would silently match regardless of time, which
+    is fail-OPEN for any AUTO time-window rule."""
+    rules = _time_window_rule((22, 6))
+    a, b, d = _empty_axes()
+    result = evaluate(
+        rules=rules,
+        axis_a=a,
+        axis_b=b,
+        axis_d=d,
+        effect_class="send_email",
+        target="x@example.com",
+        # now_hour omitted — fail-closed
+    )
+    assert result.outcome == RuleOutcome.SUGGEST  # default
+    assert result.matched_rule_ids == ()
+
+
+def test_time_window_rule_fires_inside_window() -> None:
+    """At 23:00 the wrap-midnight window 22..6 matches and the rule's
+    REQUIRE_APPROVAL composes."""
+    rules = _time_window_rule((22, 6))
+    a, b, d = _empty_axes()
+    result = evaluate(
+        rules=rules,
+        axis_a=a,
+        axis_b=b,
+        axis_d=d,
+        effect_class="send_email",
+        target="x@example.com",
+        now_hour=23,
+    )
+    assert result.outcome == RuleOutcome.REQUIRE_APPROVAL
+    assert "time-bound-test" in result.matched_rule_ids
+
+
+def test_time_window_rule_silent_outside_window() -> None:
+    """At 14:00 (well outside 22..6) the rule does not match;
+    composition falls through to default SUGGEST."""
+    rules = _time_window_rule((22, 6))
+    a, b, d = _empty_axes()
+    result = evaluate(
+        rules=rules,
+        axis_a=a,
+        axis_b=b,
+        axis_d=d,
+        effect_class="send_email",
+        target="x@example.com",
+        now_hour=14,
+    )
+    assert result.outcome == RuleOutcome.SUGGEST
+    assert result.matched_rule_ids == ()

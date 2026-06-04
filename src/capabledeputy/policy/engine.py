@@ -60,6 +60,7 @@ CONTROL_PLANE_TAINTED_RULE = "control-plane-tainted-session"
 CLEARANCE_REFUSED_RULE = "clearance-refused"
 INTEGRITY_FLOOR_REFUSED_RULE = "integrity-floor-refused"
 SANDBOX_NO_ACTUATOR_RULE = "sandbox-no-actuator"
+DEVBOX_NO_MANAGER_RULE = "devbox-no-manager"
 ORPHAN_RISK_CITATION_RULE = "orphan-risk-citation"
 
 # Effect-class substrings that mark an egressing action. Egress crosses
@@ -591,7 +592,13 @@ def _synthesize_recovery_steps(
             ),
             RecoveryStep(
                 command="/override",
-                args=("request", kind, target, "--justification", f'"explicit user authorization for {kind} on {target}"'),
+                args=(
+                    "request",
+                    kind,
+                    target,
+                    "--justification",
+                    f'"explicit user authorization for {kind} on {target}"',
+                ),
                 rationale="Alternative: request operator override to bypass the label conflict in this session.",
             ),
         )
@@ -603,7 +610,13 @@ def _synthesize_recovery_steps(
         return (
             RecoveryStep(
                 command="/override",
-                args=("request", kind, target, "--justification", '"operator-floor relaxation needed"'),
+                args=(
+                    "request",
+                    kind,
+                    target,
+                    "--justification",
+                    '"operator-floor relaxation needed"',
+                ),
                 rationale="A v2 rule refused to relax to ALLOW; operator override is the only path.",
             ),
         )
@@ -638,6 +651,7 @@ def _decide_impl(
     integrity_floor_level: str | None = None,
     risk_register: Any = None,
     sandbox_actuator_wired: bool = False,
+    devbox_manager_wired: bool = False,
     revoked_audit_ids: frozenset[UUID] = frozenset(),
 ) -> PolicyDecision:
     """Internal decision impl. The public `decide()` wraps this and
@@ -800,6 +814,33 @@ def _decide_impl(
             reason=(
                 f"FR-042/SC-017: {effect_class!r} requires a SandboxActuator "
                 f"port; none wired (spec 004 provider impl)"
+            ),
+            effective_labels=label_set,
+            axis_a_snapshot=axis_a,
+            axis_b_snapshot=axis_b,
+            axis_d_snapshot=axis_d,
+            effect_class=effect_class,
+        )
+
+    # Devbox-without-manager — same fail-closed shape for the
+    # persistent-container effect class. Defense-in-depth: the
+    # tool-registration check in tools/native/devbox.py already
+    # collapses the tool list when no manager is wired, but if a
+    # devbox-shaped tool exists through other paths (custom kind,
+    # operator misconfig) the engine refuses here. Parallels the
+    # SANDBOX_NO_ACTUATOR_RULE gate above.
+    if (
+        effect_class is not None
+        and effect_class.lower().startswith("execute.devbox")
+        and not devbox_manager_wired
+    ):
+        return PolicyDecision(
+            decision=Decision.OVERRIDE_REQUIRED,
+            rule=DEVBOX_NO_MANAGER_RULE,
+            reason=(
+                f"{effect_class!r} requires a PodmanDevbox manager; "
+                "none wired. Declare a sandbox.regions block in "
+                "daemon.yaml and ensure Podman is installed."
             ),
             effective_labels=label_set,
             axis_a_snapshot=axis_a,
@@ -976,6 +1017,12 @@ def _decide_impl(
                 envelope_reason=envelope_reason,
             )
         return result
+    # Thread the engine's effective clock into the v2 evaluator so
+    # time-window rules (e.g. send-after-hours-require-approval) can
+    # actually fire. RulePredicate.matches fails-closed when a
+    # time-window rule is asked to match without a now_hour, so the
+    # rule's intent is silently ignored if we omit this argument.
+    _eff_now_for_v2 = now if now is not None else datetime.now(UTC)
     v2 = _evaluate_v2(
         rules=rules_v2,
         axis_a=axis_a,
@@ -984,6 +1031,7 @@ def _decide_impl(
         effect_class=effect_class,
         target=canonical_target if canonical_target is not None else action.target,
         default_when_no_match=default_v2_outcome,
+        now_hour=_eff_now_for_v2.hour,
     )
     composed = _compose_with_v2(legacy, v2)
     if reversibility_outcome is not None:

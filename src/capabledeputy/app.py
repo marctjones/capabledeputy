@@ -44,12 +44,20 @@ class App:
     ) -> None:
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(state_db_path or default_state_db_path())
+        # Resolve quarantined LLM first so we can signal availability
+        # to SessionGraph. Falls back to the main llm_client when no
+        # separate quarantined client was provided — the same model
+        # plays both roles (a single-LLM deployment).
+        _quarantined_resolved: LLMClient | None = quarantined_llm or llm_client
         # 003 runtime activation — SessionGraph receives the Purposes
         # registry so spawn/grant/delegate enforce FR-009 admissibility.
+        # The `quarantined_available` flag enables the FR-047-style
+        # fail-closed check at spawn for pattern_2_dual_llm purposes.
         self.graph = SessionGraph(
             audit=self.audit,
             store=self.store,
             purposes=purposes,
+            quarantined_available=_quarantined_resolved is not None,
         )
         self.memory = LabeledMemoryStore()
         self.purchase_queue = PurchaseQueue()
@@ -84,7 +92,7 @@ class App:
             policy_context=policy_context,
         )
         self.llm_client: LLMClient | None = llm_client
-        self.quarantined_llm: LLMClient | None = quarantined_llm or llm_client
+        self.quarantined_llm: LLMClient | None = _quarantined_resolved
         # Issue #23 — per-session cancellation flags. session.send sets
         # the entry to False at turn start; session.cancel flips it
         # True; the agent loop polls between iterations and yields

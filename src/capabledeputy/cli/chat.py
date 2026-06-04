@@ -3127,6 +3127,17 @@ def _run_repl(
                 )
 
 
+# Cookbook P2.4 — persona shortcuts. Map a friendly --persona flag
+# to a configs/purposes.yaml purpose_id. Custom purpose ids may be
+# passed directly via --persona <id> when not one of the built-ins.
+PERSONA_TO_PURPOSE: dict[str, str] = {
+    "daily-life": "daily-life-management",
+    "finance": "personal-finance",
+    "health": "phi-management",
+    "dev": "software-dev",
+}
+
+
 def chat_command(
     session_id: Annotated[
         str | None,
@@ -3235,6 +3246,21 @@ def chat_command(
             ),
         ),
     ] = False,
+    persona: Annotated[
+        str | None,
+        typer.Option(
+            "--persona",
+            help=(
+                "Cookbook persona for an auto-created session. Maps to "
+                "a Purpose in configs/purposes.yaml. Built-in personas: "
+                "`daily-life` → daily-life-management, `finance` → "
+                "personal-finance, `health` → phi-management, `dev` → "
+                "software-dev. Loads the purpose's default capabilities "
+                "as standing grants at spawn (no per-call /grant). "
+                "Ignored when resuming an existing session."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Interactive REPL against a session.
 
@@ -3259,21 +3285,48 @@ def chat_command(
     """
     _ensure_daemon(autostart=not no_autostart, config=config)
 
+    # Persona → purpose_handle mapping (see PERSONA_TO_PURPOSE at
+    # module scope). Custom personas can be passed as the literal
+    # purpose_id when the alias isn't one of the built-ins.
+    purpose_handle: str | None = None
+    if persona is not None:
+        purpose_handle = PERSONA_TO_PURPOSE.get(persona, persona)
+
     effective_id: str | None = None if new else session_id
     auto_created = False
     if effective_id is None:
         params: dict[str, Any] = {"intent": intent or "chat"}
-        s = _call("session.new", params)
+        if purpose_handle is not None:
+            params["purpose_handle"] = purpose_handle
+        try:
+            s = _call("session.new", params)
+        except Exception as e:
+            # Surface QuarantinedLLMUnavailableError + admissibility
+            # errors as readable CLI output rather than tracebacks.
+            err_console.print(
+                f"[red]session.new failed:[/red] {e}",
+            )
+            raise typer.Exit(code=1) from None
         effective_id = str(s["id"])
         auto_created = True
-        console.print(
-            f"[green]new session:[/green] {effective_id}  intent={intent or 'chat'}",
-        )
+        if purpose_handle is not None:
+            console.print(
+                f"[green]new session:[/green] {effective_id}  "
+                f"intent={intent or 'chat'}  "
+                f"[dim]purpose={purpose_handle}[/dim]",
+            )
+        else:
+            console.print(
+                f"[green]new session:[/green] {effective_id}  intent={intent or 'chat'}",
+            )
 
     # Pre-grant useful read-only caps on auto-created sessions so the
     # agent doesn't fail at "I have no tools available" — the user
     # shouldn't have to chant /grant for safe reads.
-    if auto_created and not no_default_caps:
+    # Skip when a persona was used: the purpose's default_capabilities
+    # already covered the standing-grant story, and double-granting
+    # would clutter the cap list.
+    if auto_created and not no_default_caps and purpose_handle is None:
         _grant_default_read_caps(effective_id)
 
     # Store max_iters for the session so every send_message call

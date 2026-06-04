@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from capabledeputy.approval.model import ApprovalAction, ApprovalRequest, ApprovalStatus
 from capabledeputy.approval.pattern import ApprovalPatternRegistry
@@ -19,6 +19,13 @@ from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.capabilities import Capability
 from capabledeputy.policy.labels import Label
+
+# Cookbook P2.1 — window during which two requests with the same
+# (session, action, target) are considered siblings. 5 seconds is
+# tuned for typical agent burst behavior (sequential send/draft
+# fires within ~1 sec, occasional plan-then-act bursts within 2-3).
+# Outside this window we treat the requests as independent decisions.
+SIBLING_GROUPING_WINDOW = timedelta(seconds=5)
 
 
 class ApprovalNotFoundError(KeyError):
@@ -64,6 +71,83 @@ class ApprovalQueue:
             return [r for r in requests if r.status == status]
         return requests
 
+    def siblings(self, group_id: UUID) -> list[ApprovalRequest]:
+        """Every request belonging to a sibling group. Includes both
+        pending and decided members so the audit UI can show the
+        full grouping history. Sorted by id for stable display."""
+        return sorted(
+            (r for r in self._requests.values() if r.sibling_group_id == group_id),
+            key=lambda r: r.id,
+        )
+
+    def _find_sibling_group(
+        self,
+        *,
+        from_session,
+        action: ApprovalAction,
+        target: str,
+    ) -> UUID | None:
+        """Look for a pending request within the grouping window that
+        shares (session, action, target) with the incoming request.
+
+        Two cases:
+          - matching request already has a sibling_group_id → reuse it
+            (the third sibling joins an existing group).
+          - matching request has no group yet → mint a fresh group_id,
+            stamp it on the prior request via `replace`, return it.
+
+        Returns None when no candidate sibling exists; the new request
+        stands alone.
+        """
+        now = datetime.now(UTC)
+        cutoff = now - SIBLING_GROUPING_WINDOW
+        candidates = [
+            r
+            for r in self._requests.values()
+            if r.status == ApprovalStatus.PENDING
+            and r.from_session == from_session
+            and r.action == action
+            and r.target == target
+            and r.requested_at >= cutoff
+        ]
+        if not candidates:
+            return None
+        # Use the most recent matching pending request as the anchor.
+        anchor = max(candidates, key=lambda r: r.requested_at)
+        if anchor.sibling_group_id is not None:
+            return anchor.sibling_group_id
+        new_group_id = uuid4()
+        self._requests[anchor.id] = replace(
+            anchor,
+            sibling_group_id=new_group_id,
+        )
+        return new_group_id
+
+    async def approve_group(
+        self,
+        group_id: UUID,
+        *,
+        decided_by: str = "user",
+        decision_scope: dict[str, Any] | None = None,
+    ) -> list[ApprovalRequest]:
+        """Approve every PENDING member of `group_id`. Already-decided
+        members are skipped. Returns the list of newly-approved
+        requests in id order. The UI's `approve-all` button calls
+        this; per-item rejection uses the standard `deny(id)` on each
+        skipped member before calling this."""
+        members = self.siblings(group_id)
+        approved: list[ApprovalRequest] = []
+        for m in members:
+            if m.status == ApprovalStatus.PENDING:
+                approved.append(
+                    await self.approve(
+                        m.id,
+                        decided_by=decided_by,
+                        decision_scope=decision_scope,
+                    ),
+                )
+        return approved
+
     async def submit(
         self,
         *,
@@ -76,6 +160,11 @@ class ApprovalQueue:
         capability_requested: Capability | None = None,
         justification: str = "",
     ) -> ApprovalRequest:
+        sibling_group_id = self._find_sibling_group(
+            from_session=from_session,
+            action=action,
+            target=target,
+        )
         request = ApprovalRequest(
             id=self._next_id,
             audit_id=uuid4(),
@@ -87,6 +176,7 @@ class ApprovalQueue:
             labels_out=labels_out,
             capability_requested=capability_requested,
             justification=justification,
+            sibling_group_id=sibling_group_id,
         )
         self._next_id += 1
         self._requests[request.id] = request

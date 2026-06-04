@@ -64,6 +64,24 @@ class PurposeAdmissibilityError(RuntimeError):
         self.inadmissible_categories = inadmissible_categories
 
 
+class QuarantinedLLMUnavailableError(RuntimeError):
+    """A Purpose declares recommended_pattern=pattern_2_dual_llm but
+    no quarantined LLM is wired on the App. Principle VI fail-closed:
+    we refuse the spawn rather than silently fall through to Pattern
+    ① (which would expose the planner to adversarial content the
+    operator declared inadmissible). The operator's fix is to either
+    wire a quarantined LLM at daemon start or change the Purpose's
+    recommended_pattern to ① + cope with the relaxed safety."""
+
+    def __init__(self, *, purpose_handle: str) -> None:
+        super().__init__(
+            f"purpose {purpose_handle!r} recommends pattern_2_dual_llm "
+            "but no quarantined LLM is wired on the App. Wire one at "
+            "daemon start or change the Purpose's recommended_pattern.",
+        )
+        self.purpose_handle = purpose_handle
+
+
 class SessionGraph:
     def __init__(
         self,
@@ -71,11 +89,19 @@ class SessionGraph:
         audit: AuditWriter | None = None,
         store: SessionStore | None = None,
         purposes: Purposes | None = None,
+        quarantined_available: bool = True,
     ) -> None:
         self._sessions: dict[UUID, Session] = {}
         self._audit = audit
         self._store = store
         self._purposes = purposes
+        # True when App.quarantined_llm is wired. Used by .new() to
+        # fail-closed when a Purpose recommends Pattern ② DUAL_LLM but
+        # no quarantined LLM is available — Principle VI requires we
+        # refuse the spawn rather than silently fall through to
+        # Pattern ① (which would expose the planner to adversarial
+        # content the operator explicitly declared inadmissible).
+        self._quarantined_available = quarantined_available
 
     def _has_restricted_candidates(self, categories: frozenset[str]) -> bool:
         """Heuristic for FR-047 spawn-refusal: if any candidate category
@@ -222,6 +248,19 @@ class SessionGraph:
                 if purpose.default_capabilities:
                     default_caps = frozenset(purpose.default_capabilities)
                 risk_preference_at_spawn = purpose.risk_preference_dial
+                # Pattern ② precondition (Principle VI fail-closed): a
+                # Purpose that recommends pattern_2_dual_llm requires
+                # the quarantined LLM. Without it, the planner would
+                # see raw adversarial content the operator declared
+                # inadmissible. Refuse the spawn rather than silently
+                # fall through to Pattern ①.
+                if (
+                    purpose.recommended_pattern == "pattern_2_dual_llm"
+                    and not self._quarantined_available
+                ):
+                    raise QuarantinedLLMUnavailableError(
+                        purpose_handle=purpose_handle,
+                    )
         session = Session.new(
             owner=owner,
             intent=intent,
