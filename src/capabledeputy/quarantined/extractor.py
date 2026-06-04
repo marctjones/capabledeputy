@@ -81,6 +81,19 @@ async def extract(
         ) from e
 
     try:
-        return schema_cls.model_validate(parsed)
+        validated = schema_cls.model_validate(parsed)
     except ValidationError as e:
         raise ExtractionError(f"output failed schema validation: {e}") from e
+
+    # Cookbook P1.7 — defense-in-depth constraint pass. After Pydantic
+    # accepts the structural shape (types + length caps + ranges), we
+    # additionally run character-class / entropy / Trojan-source
+    # checks on every string field. A compromised quarantined LLM
+    # that emits 'valid' but covertly-encoded content is rejected
+    # here. Import is local so callers that don't care about Pattern
+    # ② (or that opt out via EXTRACTION_CONSTRAINTS_DISABLED on the
+    # schema) don't pay for the import.
+    from capabledeputy.quarantined.constraints import validate_extracted_value
+
+    validate_extracted_value(validated)
+    return validated
