@@ -27,6 +27,15 @@ from capabledeputy.policy.labels import Label
 # Outside this window we treat the requests as independent decisions.
 SIBLING_GROUPING_WINDOW = timedelta(seconds=5)
 
+# Cookbook P2.7 — default approval TTL. After this many seconds in
+# the PENDING state, the queue auto-flips the request to EXPIRED and
+# emits APPROVAL_EXPIRED so the agent gets a typed signal (instead
+# of waiting on a 3-day-old card forever). 300 seconds (5 min) is
+# the default for operator attention windows; can be overridden per
+# ApprovalQueue construction (constructor arg) or per request
+# (submit's ttl_seconds kwarg). ttl_seconds=0 ⇒ no expiry.
+DEFAULT_APPROVAL_TTL_SECONDS = 300
+
 
 class ApprovalNotFoundError(KeyError):
     pass
@@ -46,26 +55,44 @@ class ApprovalQueue:
         audit: AuditWriter | None = None,
         pattern_registry: ApprovalPatternRegistry | None = None,
         graph: Any = None,
+        default_ttl_seconds: int = DEFAULT_APPROVAL_TTL_SECONDS,
     ) -> None:
         self._next_id = 1
         self._requests: dict[int, ApprovalRequest] = {}
         self._audit = audit
         self._graph = graph
         self.patterns = pattern_registry or ApprovalPatternRegistry()
+        # Cookbook P2.7 — default TTL applied to new submissions when
+        # the caller doesn't pass an explicit ttl_seconds. 0 ⇒
+        # no auto-expiry (legacy / explicit immortal behavior).
+        self._default_ttl_seconds = max(0, default_ttl_seconds)
 
     def __len__(self) -> int:
         return len(self._requests)
 
     def get(self, request_id: int) -> ApprovalRequest:
         try:
-            return self._requests[request_id]
+            request = self._requests[request_id]
         except KeyError as e:
             raise ApprovalNotFoundError(request_id) from e
+        # Cookbook P2.7 — opportunistic stale-approval expiry. Every
+        # queue access checks the requested entry's TTL and flips
+        # PENDING → EXPIRED if it elapsed. Cheap enough to do in-
+        # line; avoids a background sweeper task.
+        return self._maybe_expire_sync(request)
 
     def list(
         self,
         status: ApprovalStatus | None = None,
     ) -> list[ApprovalRequest]:
+        # Sweep stale entries before answering — list() is the
+        # primary surface for the chat REPL `/approvals` and the
+        # `capdep approval` CLI, so expiry needs to surface here.
+        # Each PENDING entry past its TTL is flipped + emits
+        # APPROVAL_EXPIRED. We schedule the audit writes on the
+        # event loop so list() can stay sync (most callers don't
+        # await).
+        self._sweep_expired_sync()
         requests = list(self._requests.values())
         if status is not None:
             return [r for r in requests if r.status == status]
@@ -75,10 +102,82 @@ class ApprovalQueue:
         """Every request belonging to a sibling group. Includes both
         pending and decided members so the audit UI can show the
         full grouping history. Sorted by id for stable display."""
+        self._sweep_expired_sync()
         return sorted(
             (r for r in self._requests.values() if r.sibling_group_id == group_id),
             key=lambda r: r.id,
         )
+
+    # --- TTL expiry helpers (cookbook P2.7) ------------------------------
+
+    def _maybe_expire_sync(
+        self,
+        request: ApprovalRequest,
+        *,
+        now: datetime | None = None,
+    ) -> ApprovalRequest:
+        """If `request` is PENDING and past its expires_at, flip it
+        to EXPIRED in place and schedule an APPROVAL_EXPIRED audit.
+        Returns the (possibly updated) request. No-op on non-pending
+        or no-TTL requests."""
+        if request.status != ApprovalStatus.PENDING:
+            return request
+        if request.expires_at is None:
+            return request
+        now = now or datetime.now(UTC)
+        if now < request.expires_at:
+            return request
+        expired = replace(
+            request,
+            status=ApprovalStatus.EXPIRED,
+            decision_at=now,
+            decided_by="ttl",
+        )
+        self._requests[expired.id] = expired
+        self._schedule_expired_audit(expired)
+        return expired
+
+    def _sweep_expired_sync(self, *, now: datetime | None = None) -> None:
+        """Walk every PENDING entry once and call _maybe_expire_sync.
+        Linear in queue size; the queue is small in practice (active
+        approvals at any one time are sparse)."""
+        now = now or datetime.now(UTC)
+        for r in list(self._requests.values()):
+            if r.status == ApprovalStatus.PENDING:
+                self._maybe_expire_sync(r, now=now)
+
+    def _schedule_expired_audit(self, request: ApprovalRequest) -> None:
+        """Schedule the APPROVAL_EXPIRED audit write without blocking
+        the sync call path. When there's no running event loop
+        (tests calling list() outside an async context), the audit
+        is dropped silently — the queue state itself is the
+        durable record. When there IS a loop, the write is queued
+        via asyncio.create_task and runs concurrently."""
+        if self._audit is None:
+            return
+        import asyncio
+        import contextlib
+
+        async def _write() -> None:
+            if self._audit is None:
+                return
+            await self._audit.write(
+                Event(
+                    event_type=EventType.APPROVAL_EXPIRED,
+                    session_id=request.from_session,
+                    payload={
+                        "approval_id": request.id,
+                        "action": request.action.value,
+                        "target": request.target,
+                        "expired_at": (
+                            request.decision_at.isoformat() if request.decision_at else None
+                        ),
+                    },
+                ),
+            )
+
+        with contextlib.suppress(RuntimeError):
+            asyncio.get_running_loop().create_task(_write())
 
     def _find_sibling_group(
         self,
@@ -159,12 +258,20 @@ class ApprovalQueue:
         labels_out: frozenset[Label] = frozenset(),
         capability_requested: Capability | None = None,
         justification: str = "",
+        ttl_seconds: int | None = None,
     ) -> ApprovalRequest:
         sibling_group_id = self._find_sibling_group(
             from_session=from_session,
             action=action,
             target=target,
         )
+        # Cookbook P2.7 — resolve TTL: explicit caller > queue
+        # default. ttl_seconds=0 ⇒ immortal request (None on the
+        # field); otherwise expires_at = now + ttl.
+        effective_ttl = self._default_ttl_seconds if ttl_seconds is None else max(0, ttl_seconds)
+        expires_at: datetime | None = None
+        if effective_ttl > 0:
+            expires_at = datetime.now(UTC) + timedelta(seconds=effective_ttl)
         request = ApprovalRequest(
             id=self._next_id,
             audit_id=uuid4(),
@@ -177,6 +284,7 @@ class ApprovalQueue:
             capability_requested=capability_requested,
             justification=justification,
             sibling_group_id=sibling_group_id,
+            expires_at=expires_at,
         )
         self._next_id += 1
         self._requests[request.id] = request

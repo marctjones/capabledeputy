@@ -57,6 +57,13 @@ class ApprovalRequest:
     # with `approve-all + per-item toggles` instead of N separate
     # cards. None when the request stands alone.
     sibling_group_id: UUID | None = None
+    # Cookbook P2.7 — stale-approval TTL. PENDING requests that pass
+    # their expires_at flip to EXPIRED on the next queue access and
+    # emit APPROVAL_EXPIRED. None ⇒ no TTL (legacy / explicit
+    # immortal). Computed at submit time from the queue's
+    # default_ttl_seconds OR the caller's explicit ttl_seconds; the
+    # caller passing ttl_seconds=0 produces None (never expires).
+    expires_at: datetime | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -81,4 +88,5 @@ class ApprovalRequest:
             "sibling_group_id": (
                 str(self.sibling_group_id) if self.sibling_group_id is not None else None
             ),
+            "expires_at": (self.expires_at.isoformat() if self.expires_at is not None else None),
         }
