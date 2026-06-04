@@ -23,6 +23,7 @@ equivalent `capdep` subcommands):
     /status                 labels + caps + used_kinds for current
     /labels                 just labels for current
     /caps                   just capabilities for current
+    /enforce shadow|strict  flip enforcement (Pattern ⑥ shadow mode)
 
   Approvals:
     /approvals              list pending approvals (grouped siblings shown together)
@@ -1714,6 +1715,64 @@ def _constraint_markers(cap: dict[str, Any]) -> str:
     return f"{_expiry_marker(cap)}{_rate_marker(cap)}"
 
 
+def _handle_enforce(arg: str, session_id: str) -> None:
+    """`/enforce shadow | strict | status` — flip the session's
+    enforcement mode (cookbook Pattern ⑥).
+
+    SHADOW: every non-ALLOW decision becomes ALLOW + audit; rule
+    outcomes are observed but don't disrupt the agent. Use this
+    for K turns of new-rule validation before flipping to STRICT.
+
+    STRICT (default): every decision fires as authored — DENY
+    blocks, REQUIRE_APPROVAL routes to approval, AUTO proceeds.
+
+    `status` shows the current mode without changing it."""
+    mode = arg.strip().lower()
+    if mode in ("", "status"):
+        info = _call("session.get", {"session_id": session_id})
+        current = info.get("enforcement_mode", "strict")
+        if current == "shadow":
+            console.print(
+                "  enforcement: [yellow]shadow[/yellow]  "
+                "[dim](non-ALLOW outcomes silenced + audited)[/dim]",
+            )
+            console.print(
+                "  [dim]Run [bold]/enforce strict[/bold] to flip to production enforcement.[/dim]",
+            )
+        else:
+            console.print(
+                "  enforcement: [green]strict[/green]  [dim](outcomes fire as authored)[/dim]",
+            )
+            console.print(
+                "  [dim]Run [bold]/enforce shadow[/bold] to silence "
+                "non-ALLOW outcomes and observe via the audit log.[/dim]",
+            )
+        return
+    if mode not in ("shadow", "strict"):
+        err_console.print(
+            f"[red]usage:[/red] /enforce shadow | strict | status  (got {arg!r})",
+        )
+        return
+    try:
+        result = _call(
+            "session.set_enforcement",
+            {"session_id": session_id, "mode": mode},
+        )
+    except Exception as e:
+        err_console.print(f"[red]set_enforcement failed:[/red] {e}")
+        return
+    new_mode = result.get("enforcement_mode", mode)
+    style = "yellow" if new_mode == "shadow" else "green"
+    console.print(
+        f"[green]✓[/green] enforcement now [{style}]{new_mode}[/{style}]",
+    )
+    if new_mode == "shadow":
+        console.print(
+            "  [dim]non-ALLOW outcomes will be silenced; review via "
+            "[bold]/audit[/bold] before flipping back to strict.[/dim]",
+        )
+
+
 def _handle_status(session_id: str, *, only: str | None = None) -> None:
     info = _call("session.get", {"session_id": session_id})
     if only != "caps":
@@ -3241,6 +3300,9 @@ def _run_repl(
                 continue
             if cmd == "caps":
                 _handle_status(focus["id"], only="caps")
+                continue
+            if cmd == "enforce":
+                _handle_enforce(arg, focus["id"])
                 continue
             if cmd == "audit":
                 _handle_audit(arg, focus["id"])

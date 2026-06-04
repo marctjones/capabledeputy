@@ -49,6 +49,16 @@ class EventType(StrEnum):
 
     MODE_SELECTED = "mode.selected"
     POLICY_DECIDED = "policy.decided"
+    # Cookbook Pattern ⑥ — session in SHADOW enforcement mode and the
+    # engine returned a non-ALLOW outcome. The dispatcher rewrites to
+    # ALLOW and emits this event with the original decision so audit
+    # replay can answer "what would have happened under STRICT?"
+    POLICY_SHADOWED = "policy.shadowed"
+    # The operator (or a programmatic caller) flipped a session's
+    # enforcement_mode. Payload carries old + new mode so the audit
+    # log distinguishes shadow-time from strict-time decisions for
+    # the same session.
+    ENFORCEMENT_MODE_CHANGED = "enforcement.mode_changed"
     # Spec 004 P0 — programmatic primitive applications.
     # INSPECTOR_APPLIED: a RaiseOnlyInspector raised session axes
     # DECISION_INSPECTOR_APPLIED: a DecisionInspector relaxed/tightened

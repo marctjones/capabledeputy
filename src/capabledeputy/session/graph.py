@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from capabledeputy.audit.events import Event, EventType
@@ -356,6 +357,41 @@ class SessionGraph:
             to=SessionStatus.ACTIVE,
             event=EventType.SESSION_RESUMED,
         )
+
+    async def set_enforcement_mode(
+        self,
+        session_id: UUID,
+        mode: Any,
+    ) -> Session:
+        """Pattern ⑥ — flip the session's enforcement posture. The
+        change is auditable (ENFORCEMENT_MODE_CHANGED event with
+        old + new mode) so decisions before and after the flip can
+        be unambiguously distinguished in a replay.
+
+        No-op when the requested mode matches the current mode
+        (still returns the session unchanged; no audit event)."""
+        from capabledeputy.session.model import EnforcementMode
+
+        if not isinstance(mode, EnforcementMode):
+            mode = EnforcementMode(str(mode))
+        session = self.get(session_id)
+        if session.enforcement_mode == mode:
+            return session
+        old_mode = session.enforcement_mode
+        updated = replace(
+            session,
+            enforcement_mode=mode,
+            updated_at=datetime.now(UTC),
+        )
+        await self._save(updated)
+        self._sessions[session_id] = updated
+        await self._emit(
+            EventType.ENFORCEMENT_MODE_CHANGED,
+            updated,
+            old_mode=old_mode.value,
+            new_mode=mode.value,
+        )
+        return updated
 
     async def add_labels(
         self,

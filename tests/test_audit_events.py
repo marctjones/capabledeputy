@@ -57,6 +57,8 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         "declassifier",
         # Issue 003 / Q4 — decide() latency tracking (SC-023).
         "decision",
+        # Cookbook Pattern ⑥ — shadow mode.
+        "enforcement",
     }
     for et in EventType:
         head, sep, _ = et.value.partition(".")
@@ -118,6 +120,9 @@ def test_event_type_taxonomy_matches_design() -> None:
         "inspector.applied",
         "decision_inspector.applied",
         "declassifier.applied",
+        # Cookbook Pattern ⑥ — shadow mode.
+        "policy.shadowed",
+        "enforcement.mode_changed",
     }
     actual = {et.value for et in EventType}
     assert actual == expected, f"missing: {expected - actual}, extra: {actual - expected}"

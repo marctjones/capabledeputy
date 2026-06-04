@@ -337,6 +337,23 @@ class LabeledToolClient:
             policy_decision,
         )
 
+        # Cookbook Pattern ⑥ — shadow-mode rewrite. When the session
+        # is in SHADOW enforcement, non-ALLOW outcomes are rewritten
+        # to ALLOW and a POLICY_SHADOWED audit event is emitted
+        # carrying the original decision so the operator can review
+        # what STRICT would have done. Capability-structural denies
+        # (no matching cap) are NOT rewritten — those are missing
+        # authority, not contested rule outcomes. The check is the
+        # rule field: any policy_decision with a real rule attached
+        # but a non-ALLOW outcome is shadow-eligible.
+        policy_decision = await self._maybe_shadow_rewrite(
+            session_id,
+            session,
+            tool_name,
+            action,
+            policy_decision,
+        )
+
         await self._emit_policy_decision(session_id, tool_name, args, policy_decision, tool)
         await self._emit_capability_checked(session_id, action, policy_decision)
 
@@ -562,6 +579,68 @@ class LabeledToolClient:
             tool_args=args,
             rule=policy_decision.rule,
             reason=policy_decision.reason,
+        )
+
+    async def _maybe_shadow_rewrite(
+        self,
+        session_id: Any,
+        session: Any,
+        tool_name: str,
+        action: Any,
+        proposed: Any,
+    ) -> Any:
+        """Pattern ⑥ shadow-mode rewrite. When the session is in
+        SHADOW enforcement and the proposed decision is non-ALLOW,
+        rewrite to ALLOW + emit POLICY_SHADOWED audit carrying the
+        original decision.
+
+        Capability-structural denies (no matching capability,
+        cascade-revoked) are NOT rewritten. Shadow mode is for
+        rule-outcome validation, not for granting unmitigated
+        access. The discriminator is `policy_decision.rule`: rule-
+        driven outcomes have a rule attached; the "no matching
+        capability" path returns rule=None and is left alone.
+        """
+        from capabledeputy.audit.events import Event, EventType
+        from capabledeputy.policy.rules import Decision
+        from capabledeputy.session.model import EnforcementMode
+
+        mode = getattr(session, "enforcement_mode", EnforcementMode.STRICT)
+        if mode != EnforcementMode.SHADOW:
+            return proposed
+        if proposed.decision == Decision.ALLOW:
+            return proposed
+        # Don't shadow structural capability denies — those are
+        # missing-authority cases, not contestable rule outcomes.
+        if not proposed.rule or "no matching capability" in (proposed.reason or "").lower():
+            return proposed
+        if self._audit is not None:
+            await self._audit.write(
+                Event(
+                    event_type=EventType.POLICY_SHADOWED,
+                    session_id=session_id,
+                    payload={
+                        "tool": tool_name,
+                        "would_be_decision": proposed.decision.value,
+                        "rule": proposed.rule,
+                        "reason": proposed.reason,
+                        "target": getattr(action, "target", None),
+                    },
+                ),
+            )
+        # Replace the decision with ALLOW; preserve everything else
+        # so downstream emission still records the rule/reason. The
+        # `decision` field is what gates dispatch; the surrounding
+        # detail is informational for the audit replay.
+        from dataclasses import replace as _dc_replace
+
+        return _dc_replace(
+            proposed,
+            decision=Decision.ALLOW,
+            reason=(
+                f"shadowed: would have been {proposed.decision.value} "
+                f"under STRICT (rule={proposed.rule})"
+            ),
         )
 
     async def _apply_decision_inspectors(

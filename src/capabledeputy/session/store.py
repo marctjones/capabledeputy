@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     reference_handles TEXT NOT NULL DEFAULT '{}',
     risk_preference_at_spawn TEXT NOT NULL DEFAULT 'cautious',
     effective_isolation_region_id TEXT NULL,
+    -- Cookbook Pattern ⑥ — STRICT (default) | SHADOW.
+    enforcement_mode TEXT NOT NULL DEFAULT 'strict',
     FOREIGN KEY (parent_id) REFERENCES sessions(id)
 );
 
@@ -345,9 +347,9 @@ class SessionStore:
                     revoked_audit_ids,
                     axis_a, axis_b, axis_d, purpose_handle,
                     reference_handles, risk_preference_at_spawn,
-                    effective_isolation_region_id
+                    effective_isolation_region_id, enforcement_mode
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          ?, ?, ?, ?, ?, ?, ?)
+                          ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status = excluded.status,
                     intent = excluded.intent,
@@ -368,7 +370,8 @@ class SessionStore:
                     purpose_handle = excluded.purpose_handle,
                     reference_handles = excluded.reference_handles,
                     risk_preference_at_spawn = excluded.risk_preference_at_spawn,
-                    effective_isolation_region_id = excluded.effective_isolation_region_id
+                    effective_isolation_region_id = excluded.effective_isolation_region_id,
+                    enforcement_mode = excluded.enforcement_mode
                 """,
                 (
                     d["id"],
@@ -394,6 +397,7 @@ class SessionStore:
                     json.dumps(d["reference_handles"]),
                     d["risk_preference_at_spawn"],
                     d["effective_isolation_region_id"],
+                    d.get("enforcement_mode", "strict"),
                 ),
             )
 
@@ -458,6 +462,7 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "reference_handles": json.loads(str(_col("reference_handles", "{}"))),
             "risk_preference_at_spawn": _col("risk_preference_at_spawn", "cautious"),
             "effective_isolation_region_id": _col("effective_isolation_region_id", None),
+            "enforcement_mode": _col("enforcement_mode", "strict"),
         },
     )
 
@@ -500,6 +505,16 @@ def _apply_v6_idempotent_alters(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError as e:
             if "duplicate column" not in str(e).lower():
                 raise
+    # Cookbook Pattern ⑥ — enforcement_mode is per-session and the
+    # idempotent-ALTER pattern lets legacy sessions deserialize as
+    # STRICT (matching pre-Pattern-⑥ behavior).
+    try:
+        conn.execute(
+            "ALTER TABLE sessions ADD COLUMN enforcement_mode TEXT NOT NULL DEFAULT 'strict'",
+        )
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
     try:
         conn.execute(
             "ALTER TABLE override_grants ADD COLUMN state TEXT NOT NULL DEFAULT 'active'",
