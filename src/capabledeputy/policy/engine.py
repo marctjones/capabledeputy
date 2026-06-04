@@ -321,6 +321,7 @@ def _decide_legacy(
     now: datetime | None = None,
     cap_uses: dict[str, tuple[datetime, ...]] | None = None,
     revoked_audit_ids: frozenset[UUID] = frozenset(),
+    rate_limit_escalation: bool = False,
 ) -> PolicyDecision:
     # Single decision clock: resolve once so every time-sensitive
     # check in this decision agrees. Deterministic and injectable —
@@ -381,12 +382,25 @@ def _decide_legacy(
         )
         if rate_match is not None and rate_match.rate_limit is not None:
             rl = rate_match.rate_limit
+            # Cookbook P2.6 — rate-limit-as-friction. When the
+            # operator's risk dial is balanced/aggressive, a rate-
+            # exceeded match escalates to REQUIRE_APPROVAL instead
+            # of DENY: the operator can vouch mid-stream (approve
+            # the Nth send) instead of losing the session to a
+            # hard deny. Cautious sessions keep the hard floor —
+            # the cap is a non-negotiable limit, not a tripwire.
+            outcome = Decision.REQUIRE_APPROVAL if rate_limit_escalation else Decision.DENY
+            reason_prefix = (
+                "rate limit exceeded — operator approval required"
+                if rate_limit_escalation
+                else "rate limit exceeded"
+            )
             return PolicyDecision(
-                decision=Decision.DENY,
+                decision=outcome,
                 rule=RATE_LIMIT_EXCEEDED_RULE,
                 reason=(
                     f"capability for {kind_name(action.kind)}({action.target}) "
-                    f"rate limit exceeded: {rl.max_uses} uses per "
+                    f"{reason_prefix}: {rl.max_uses} uses per "
                     f"{rl.window_seconds}s (decision time "
                     f"{eff_now.isoformat()})"
                 ),
@@ -679,6 +693,7 @@ def _decide_impl(
     devbox_manager_wired: bool = False,
     revoked_audit_ids: frozenset[UUID] = frozenset(),
     first_use_prompt_enabled: bool = False,
+    rate_limit_escalation: bool = False,
 ) -> PolicyDecision:
     """Internal decision impl. The public `decide()` wraps this and
     adds recovery-step synthesis (Issue #3) on the resulting
@@ -1017,6 +1032,7 @@ def _decide_impl(
         now,
         cap_uses,
         revoked_audit_ids,
+        rate_limit_escalation=rate_limit_escalation,
     )
     if (
         axis_a is None

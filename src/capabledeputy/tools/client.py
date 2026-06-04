@@ -330,6 +330,18 @@ class LabeledToolClient:
                 "first_use_prompt_enabled",
                 False,
             ),
+            # Cookbook P2.6 — rate-limit-as-friction. Cautious
+            # sessions keep the hard DENY (rate limit is a non-
+            # negotiable floor). Balanced/aggressive sessions get
+            # REQUIRE_APPROVAL on overflow so the operator can vouch
+            # mid-stream and catch runaway loops. The session's
+            # risk_preference_at_spawn drives the toggle.
+            rate_limit_escalation=getattr(
+                session,
+                "risk_preference_at_spawn",
+                "cautious",
+            )
+            != "cautious",
             **v2_kwargs,
         )
 
