@@ -16,13 +16,13 @@ from capabledeputy.daemon.audit_handlers import make_audit_handlers
 from capabledeputy.daemon.bundle_handlers import make_bundle_handlers
 from capabledeputy.daemon.demo_handlers import make_demo_handlers
 from capabledeputy.daemon.devbox_handlers import make_devbox_handlers
-from capabledeputy.daemon.relationship_handlers import make_relationship_handlers
 from capabledeputy.daemon.extract_handlers import make_extract_handlers
 from capabledeputy.daemon.handlers import default_handlers
 from capabledeputy.daemon.memory_handlers import make_memory_handlers
 from capabledeputy.daemon.pattern_handlers import make_pattern_handlers
 from capabledeputy.daemon.policy_handlers import make_policy_handlers
 from capabledeputy.daemon.programmatic_handlers import make_programmatic_handlers
+from capabledeputy.daemon.relationship_handlers import make_relationship_handlers
 from capabledeputy.daemon.server import Daemon
 from capabledeputy.daemon.session_handlers import make_session_handlers
 from capabledeputy.daemon.tool_handlers import make_tool_handlers
@@ -534,6 +534,20 @@ async def run_daemon(
         else:
             await daemon.serve()
     finally:
+        # Roadmap v2 #1 — drive App.shutdown so live devboxes get
+        # torn down + background tasks cancelled before the process
+        # exits. The serve() call returns when the shutdown event
+        # fires (RPC) or when the task group is cancelled (signal).
+        # Either way we want a clean App shutdown here.
+        try:
+            await app.shutdown()
+        except Exception as _shutdown_err:
+            import sys
+
+            print(
+                f"[shutdown] App.shutdown raised: {_shutdown_err}",
+                file=sys.stderr,
+            )
         if pidfile_written:
             remove_pidfile()
 

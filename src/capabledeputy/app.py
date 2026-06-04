@@ -252,15 +252,46 @@ class App:
         )
 
     async def shutdown(self) -> None:
-        """Cancel background tasks on daemon shutdown. Idempotent.
+        """Cancel background tasks + tear down live devboxes on
+        daemon shutdown. Idempotent.
 
-        Today this is just the devbox reaper. Future cleanup
-        (audit-log flush, session-end devbox teardown) hangs off
-        here too."""
+        Roadmap v2 #1 — devbox teardown. Without this, live
+        containers leak past daemon death and the idle reaper only
+        catches them after the next process picks up. We walk every
+        live (session, spec) and call stop_session so the operator
+        running `capdep daemon stop` sees a clean state.
+        Workspaces are preserved (the operator's work survives);
+        purging is operator-explicit via the maintenance CLI."""
         if self._devbox_reaper_task is not None:
+            import asyncio
             import contextlib
 
             self._devbox_reaper_task.cancel()
-            with contextlib.suppress(Exception):
+            # CancelledError is BaseException, not Exception — needs
+            # explicit suppression.
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._devbox_reaper_task
             self._devbox_reaper_task = None
+
+        # Devbox teardown — best-effort, never raises into the
+        # daemon's shutdown path. A failed teardown leaves the
+        # workspace intact for the operator to clean up via
+        # `capdep maintenance containers --apply`.
+        if self.policy_context is not None and self.policy_context.devbox_manager is not None:
+            import contextlib
+            import sys
+
+            manager = self.policy_context.devbox_manager
+            # Collect distinct session ids without acquiring the
+            # manager's lock for an extended time: snapshot the
+            # keys, release, then iterate.
+            session_ids = {sid for sid, _ in list(manager._live.keys())}
+            total = 0
+            for sid in session_ids:
+                with contextlib.suppress(Exception):
+                    total += manager.stop_session(sid)
+            if total:
+                print(
+                    f"[devbox] shutdown reaped {total} live container(s)",
+                    file=sys.stderr,
+                )
