@@ -145,6 +145,21 @@ class PolicyContext:
         devbox.* tool list when no manager is wired."""
         return self.devbox_manager is not None
 
+    # Cookbook P2.3 — RelationshipGroups registry. When wired, the
+    # tool client resolves the action's target (counterparty) into
+    # the set of group_ids it belongs to BEFORE calling decide().
+    # That set composes into axis_d.relationship_group_ids so the
+    # family-personal-email-suggest rule (and any other
+    # relationship-keyed rule) actually fires for known
+    # counterparties. Without this wiring the rules are dormant.
+    # Mutated by the relationship_group.add_member RPC handler
+    # (operator-authorized auto-narrowing).
+    relationship_groups: Any = None  # RelationshipGroups | None — Any to avoid import cycle
+    # Path the registry was loaded from. add_member RPC persists
+    # back to this file. None when the registry was constructed
+    # in-memory (e.g. tests).
+    relationship_groups_path: Any = None  # Path | None
+
 
 def build_policy_decided_payload(
     tool_name: str,
@@ -294,7 +309,7 @@ class LabeledToolClient:
         # at the chokepoint, threaded into decide() AND reused as the
         # recorded use timestamp so the rate-limit window is consistent.
         dispatch_now = datetime.now(UTC)
-        v2_kwargs = self._build_v2_decide_kwargs(session, tool)
+        v2_kwargs = self._build_v2_decide_kwargs(session, tool, action=action)
         # 002 US2: pass the session's revoked_audit_ids so any
         # capability inert under cascade is denied at decide time.
         # Default-tolerant: pre-002 sessions deserialize with the
@@ -768,10 +783,38 @@ class LabeledToolClient:
             await self._graph._save(updated)
             self._graph._sessions[session.id] = updated
 
+    def _resolve_action_axis_d(self, session_axis_d: Any, *, action: Any) -> Any:
+        """Compose the action-time axis_d by resolving the action's
+        target against the wired RelationshipGroups. The session's
+        existing axis_d is preserved; only `relationship_group_ids`
+        is widened by the resolution.
+
+        No-op when no RelationshipGroups is wired or the action has
+        no target — returns `session_axis_d` unchanged."""
+        if self._policy_context is None or self._policy_context.relationship_groups is None:
+            return session_axis_d
+        target = getattr(action, "target", None)
+        if not target:
+            return session_axis_d
+        resolved = self._policy_context.relationship_groups.resolve(str(target))
+        if not resolved:
+            return session_axis_d
+        # Merge with whatever the session already carries — don't
+        # drop existing memberships, only widen.
+        existing = getattr(session_axis_d, "relationship_group_ids", frozenset())
+        merged = frozenset(existing) | resolved
+        if merged == existing:
+            return session_axis_d
+        from dataclasses import replace as _dc_replace
+
+        return _dc_replace(session_axis_d, relationship_group_ids=merged)
+
     def _build_v2_decide_kwargs(
         self,
         session: Any,
         tool: ToolDefinition,
+        *,
+        action: Any | None = None,
     ) -> dict[str, Any]:
         """Build the kw-only v2 args for engine.decide() from the
         session axes + tool definition + policy context. When the
@@ -785,7 +828,19 @@ class LabeledToolClient:
         if tool.effect_class is not None:
             kwargs["axis_a"] = session.axis_a
             kwargs["axis_b"] = session.axis_b
-            kwargs["axis_d"] = session.axis_d
+            # Cookbook P2.3 — merge resolved counterparty groups into
+            # axis_d.relationship_group_ids when a RelationshipGroups
+            # registry is wired. Without this, even an explicit
+            # `family` group containing spouse@x.com would not affect
+            # decisions about sends to spouse@x.com — the rules check
+            # axis_d.relationship_group_ids, which is session-wide by
+            # default. The per-action resolution gives the
+            # family-personal-email-suggest rule (and similar) the
+            # signal it actually needs.
+            kwargs["axis_d"] = self._resolve_action_axis_d(
+                session.axis_d,
+                action=action,
+            )
             kwargs["effect_class"] = tool.effect_class
             kwargs["rules_v2"] = self._policy_context.rules_v2
         if self._policy_context.override_grants is not None:

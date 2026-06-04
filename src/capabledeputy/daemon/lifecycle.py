@@ -16,6 +16,7 @@ from capabledeputy.daemon.audit_handlers import make_audit_handlers
 from capabledeputy.daemon.bundle_handlers import make_bundle_handlers
 from capabledeputy.daemon.demo_handlers import make_demo_handlers
 from capabledeputy.daemon.devbox_handlers import make_devbox_handlers
+from capabledeputy.daemon.relationship_handlers import make_relationship_handlers
 from capabledeputy.daemon.extract_handlers import make_extract_handlers
 from capabledeputy.daemon.handlers import default_handlers
 from capabledeputy.daemon.memory_handlers import make_memory_handlers
@@ -206,6 +207,7 @@ def build_policy_context_from_configs(
         load as load_overrides,
     )
     from capabledeputy.policy.purposes import load as load_purposes
+    from capabledeputy.policy.relationships import load as load_relationship_groups
     from capabledeputy.policy.resolution import load_profiles
     from capabledeputy.tools.client import PolicyContext
 
@@ -242,6 +244,14 @@ def build_policy_context_from_configs(
         else None
     )
 
+    # Cookbook P2.3 — load the RelationshipGroups registry. The
+    # tool client uses it to resolve action targets (counterparties)
+    # to group memberships at decide() time so the family/work-team
+    # rules actually fire for known recipients. The path is kept
+    # alongside the registry so add_member can persist back to it.
+    rg_path = base / "relationship_groups.yaml"
+    relationship_groups = load_relationship_groups(rg_path)
+
     # 003 — handle store + override grant store live in-process; no
     # disk-backed read here. Persistence layered on top later.
     from capabledeputy.patterns.reference_handle import ReferenceHandleStore
@@ -262,6 +272,8 @@ def build_policy_context_from_configs(
         envelope_set=envelope_set,
         risk_preference=risk_pref.value,
         profiles=profiles,
+        relationship_groups=relationship_groups,
+        relationship_groups_path=rg_path,
     ), purposes
 
 
@@ -390,6 +402,7 @@ async def run_daemon(
     handlers["daemon.info"] = make_info_handler(app)
     handlers.update(make_session_handlers(app.graph))
     handlers.update(make_devbox_handlers(app))
+    handlers.update(make_relationship_handlers(app))
     handlers.update(make_audit_handlers(app.audit))
     handlers.update(make_policy_handlers())
     handlers.update(make_tool_handlers(app.registry, app.graph, app.tool_client))

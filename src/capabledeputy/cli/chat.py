@@ -951,6 +951,106 @@ def _handle_approve(arg: str) -> None:
             console.print(f"  [red]dispatch error:[/red] {dispatch['error']}")
         else:
             console.print(f"  [green]dispatch decision:[/green] {dispatch.get('decision')}")
+    # Cookbook P2.3 — auto-narrowing. Offer to add the approved
+    # counterparty to a relationship group so the next send to the
+    # same identity surfaces as a recognized counterparty.
+    _offer_relationship_capture(show.get("action"), show.get("target"))
+
+
+def _offer_relationship_capture(action: str | None, target: str | None) -> None:
+    """If the approved action is send-shaped and target is a real
+    identity, prompt the operator to add it to a relationship group.
+    Skips when relationship_groups isn't wired or the target is
+    already in a group."""
+    if not action or not target:
+        return
+    if action not in ("send_email", "queue_purchase", "execute_destructive"):
+        return
+    try:
+        groups_resp = _call("relationship_group.list")
+    except Exception:
+        # No relationship_groups wired or daemon mismatch — silently
+        # skip. The auto-narrowing is a convenience, not a guarantee.
+        return
+    groups = groups_resp.get("groups", [])
+    # Check whether target is already a member of any group.
+    already_in = sorted(
+        g["group_id"] for g in groups if target in g.get("member_principal_ids", [])
+    )
+    if already_in:
+        console.print(
+            f"  [dim]{target} already in: {', '.join(already_in)}[/dim]",
+        )
+        return
+    if not groups:
+        console.print(
+            f"  [dim]no relationship groups declared yet.[/dim] "
+            f"[dim]Add `{target}` to a new group? [y/N][/dim]",
+            end=" ",
+        )
+        confirm = Prompt.ask("", default="N").strip().lower()
+        if confirm not in ("y", "yes"):
+            return
+        new_group = Prompt.ask("  new group_id").strip()
+        if not new_group:
+            return
+        _call_add_member(new_group, target)
+        return
+    # Build the picker: numbered group list + n for new + s to skip.
+    console.print(
+        f"  [bold]Remember[/bold] [cyan]{target}[/cyan] in a relationship group?",
+    )
+    for i, g in enumerate(groups, start=1):
+        console.print(
+            f"    {i}. {g['group_id']} "
+            f"[dim]({len(g.get('member_principal_ids', []))} members)[/dim]",
+        )
+    console.print(
+        "    n. new group   s. skip",
+    )
+    pick = Prompt.ask("  pick", default="s").strip().lower()
+    if pick in ("s", "skip", ""):
+        return
+    if pick in ("n", "new"):
+        new_group = Prompt.ask("  new group_id").strip()
+        if not new_group:
+            return
+        _call_add_member(new_group, target)
+        return
+    try:
+        idx = int(pick)
+    except ValueError:
+        console.print(f"  [yellow]not a choice:[/yellow] {pick!r}")
+        return
+    if not (1 <= idx <= len(groups)):
+        console.print(f"  [yellow]out of range:[/yellow] {pick!r}")
+        return
+    _call_add_member(groups[idx - 1]["group_id"], target)
+
+
+def _call_add_member(group_id: str, principal_id: str) -> None:
+    try:
+        result = _call(
+            "relationship_group.add_member",
+            {"group_id": group_id, "principal_id": principal_id},
+        )
+    except Exception as e:
+        err_console.print(f"  [red]add_member failed:[/red] {e}")
+        return
+    if result.get("added"):
+        if result.get("persisted"):
+            console.print(
+                f"  [green]✓ added[/green] {principal_id} → [bold]{group_id}[/bold] (persisted)",
+            )
+        else:
+            err = result.get("persist_error", "unknown")
+            console.print(
+                f"  [yellow]added in-memory but persist failed:[/yellow] {err}",
+            )
+    else:
+        console.print(
+            f"  [dim]already member of {group_id}[/dim]",
+        )
 
 
 def _handle_approve_group(arg: str) -> None:
@@ -1014,6 +1114,11 @@ def _handle_approve_group(arg: str) -> None:
             console.print(
                 f"  [green]#{r.get('id')}[/green] dispatched in {sid}",
             )
+    # Cookbook P2.3 — every sibling shares (action, target) by
+    # construction, so we offer the auto-narrowing prompt ONCE using
+    # the first member's action+target rather than N times.
+    if members and result.get("n_approved", 0) > 0:
+        _offer_relationship_capture(members[0]["action"], members[0]["target"])
 
 
 def _handle_deny(arg: str) -> None:
