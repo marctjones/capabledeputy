@@ -155,7 +155,7 @@ wheels = [
 
 [[package]]
 name = "capabledeputy"
-version = "0.0.1"
+version = "0.13.0"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
