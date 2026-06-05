@@ -4,6 +4,24 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [0.13.1] — 2026-06-05
+
+### Security (dependency patches)
+
+Bumped transitive dependencies to clear three medium Dependabot/GHSA alerts.
+Both packages are transitive and not imported directly; capdep exposes no
+HTTP/TCP endpoint (daemon IPC is a Unix domain socket, MCP uses stdio):
+
+- `starlette` 1.0.0 → 1.2.1 — GHSA-86qp-5c8j-p5mr (Host-header path
+  poisoning). Not reachable here (capdep never runs a starlette server),
+  patched regardless.
+- `aiohttp` 3.13.4 → 3.14.0 — GHSA-hg6j-4rv6-33pg (cross-origin redirect
+  cookie leak) and GHSA-jg22-mg44-37j8 (untrusted deserialization).
+  Client-side, used by litellm for outbound LLM API calls.
+- `litellm` 1.83.14 → 1.87.1 — required to lift the `aiohttp < 3.14` cap.
+
+Full test suite green (2041 passed). No source changes.
+
 ## [0.13.0] — 2026-06-05
 
 First release promoted to `main`. Consolidates the development line previously
@@ -49,4 +67,5 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.13.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.13.1
 [0.13.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.13.0

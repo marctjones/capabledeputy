@@ -1,6 +1,6 @@
 [project]
 name = "capabledeputy"
-version = "0.13.0"
+version = "0.13.1"
 description = "Structurally secure runtime for personal AI agents — a capable deputy, never a confused one."
 readme = "README.md"
 requires-python = ">=3.12"
