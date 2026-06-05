@@ -39,6 +39,7 @@ Why all three at once: a running agent collapses what were three mostly *design-
 - [docs/security-models.md](docs/security-models.md) — theoretical model lineage, faithful-vs-approximate intent, deliberate deviations (the yardstick)
 - [docs/llm-flow-patterns.md](docs/llm-flow-patterns.md) — the named planner↔labeled-data flow patterns and their selector
 - [docs/trust-model.md](docs/trust-model.md) — decision layer: who authorizes, and the adaptive-context / Contextual Integrity grounding
+- [docs/responsible-ai-frameworks.md](docs/responsible-ai-frameworks.md) — **the actionable core of responsible AI: keeping the human in control of the agent's actions, not policing model correctness** — the eight enforced principles, the human in/on/over-the-loop ladder, and what is deliberately out of scope
 
 - [docs/SURFACES.md](docs/SURFACES.md) — **which command do I use?** (chat vs console vs tui vs demo vs …) — start here
 - [DESIGN.md](DESIGN.md) — full design specification

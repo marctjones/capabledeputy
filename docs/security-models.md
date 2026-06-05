@@ -228,3 +228,12 @@ above) — no multistep trick changes this.
   decision-layer analogue of this map, tracing §2/§6 to recognized
   privacy theory and binding the flow-pattern strength dial to
   context-resolved privacy norms.
+- Framework-alignment companion: `docs/responsible-ai-frameworks.md` —
+  maps these mechanisms onto the responsible-AI / agentic-security
+  frameworks (Meta's *Agents Rule of Two*, the lethal trifecta, OWASP
+  Agentic/LLM Top 10, NIST AI RMF) and the data/privacy principles
+  (Contextual Integrity, GDPR Art 5, FIPPs, Privacy by Design, NIST
+  Privacy Framework). It is an *alignment map, not a formal model*:
+  every row there points back to a model row here, and its Out-of-scope
+  tier is bound by `governance-scope.md`. Overclaiming an alignment is a
+  reviewable defect there, as an undocumented deviation is here.
