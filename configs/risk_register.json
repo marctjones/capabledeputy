@@ -88,6 +88,112 @@
         "framework": "NIST-AI-RMF",
         "impact_tier_min": "tier-1"
       }
+    },
+    {
+      "id": "RISK-EXCESSIVE-AGENCY",
+      "summary": "Agent granted more autonomy, permissions, or capability than its task needs.",
+      "framework_refs": [
+        "OWASP-LLM06:2025-ExcessiveAgency",
+        "OWASP-ASI04",
+        "NIST-AI-RMF",
+        "ModelMonster-R-1530"
+      ],
+      "threshold": {
+        "framework": "OWASP-RiskRating",
+        "severity_min": "high"
+      }
+    },
+    {
+      "id": "RISK-INDIRECT-INJECTION",
+      "summary": "Untrusted content reached via a data source (RAG/email/file) steers agent behavior.",
+      "framework_refs": [
+        "OWASP-LLM01:2025",
+        "OWASP-ASI01",
+        "MITRE-ATLAS-AML.T0051",
+        "ModelMonster-R-1100"
+      ],
+      "threshold": {
+        "framework": "OWASP-RiskRating",
+        "severity_min": "high"
+      }
+    },
+    {
+      "id": "RISK-DATA-EXFIL-AGENT-TOOLS",
+      "summary": "Sensitive data exfiltrated through an agent's legitimate tool/egress access.",
+      "framework_refs": [
+        "OWASP-LLM06:2025",
+        "OWASP-ASI",
+        "MITRE-ATLAS-AML.T0024",
+        "ModelMonster-R-1450"
+      ],
+      "threshold": {
+        "framework": "OWASP-RiskRating",
+        "severity_min": "high"
+      }
+    },
+    {
+      "id": "RISK-TOOL-POISONING",
+      "summary": "Malicious or substituted tool/MCP server returns corrupted output or shadows a legitimate tool.",
+      "framework_refs": [
+        "OWASP-ASI",
+        "MITRE-ATLAS-AML.T0010",
+        "ModelMonster-R-1500"
+      ],
+      "threshold": {
+        "framework": "OWASP-RiskRating",
+        "severity_min": "high"
+      }
+    },
+    {
+      "id": "RISK-PRIVILEGE-ESCALATION",
+      "summary": "Authority widened beyond grant via delegation or capability inflation.",
+      "framework_refs": [
+        "OWASP-ASI04",
+        "MITRE-ATLAS-AML.T0054",
+        "ModelMonster-R-1530"
+      ],
+      "threshold": {
+        "framework": "OWASP-RiskRating",
+        "severity_min": "high"
+      }
+    },
+    {
+      "id": "RISK-MEMORY-POISONING",
+      "summary": "Injected content persists into long/short-term memory and biases later decisions.",
+      "framework_refs": [
+        "OWASP-ASI06",
+        "ModelMonster-R-1300"
+      ],
+      "threshold": {
+        "framework": "OWASP-RiskRating",
+        "severity_min": "medium"
+      }
+    },
+    {
+      "id": "RISK-UNSAFE-CODE-EXEC",
+      "summary": "Arbitrary code execution via interpreter or tool with host/network reach.",
+      "framework_refs": [
+        "OWASP-ASI05",
+        "MITRE-ATLAS-AML.T0050",
+        "ModelMonster-R-1500"
+      ],
+      "threshold": {
+        "framework": "OWASP-RiskRating",
+        "severity_min": "critical"
+      }
+    },
+    {
+      "id": "RISK-PURPOSE-CONTAMINATION",
+      "summary": "Admissible data, no egress, but it inappropriately influences a permitted automated decision (known structural gap; FR-009).",
+      "framework_refs": [
+        "EU-AI-Act-Art5",
+        "GDPR-Art5-PurposeLimitation",
+        "ModelMonster-R-2000"
+      ],
+      "threshold": {
+        "framework": "OWASP-RiskRating",
+        "severity_min": "medium"
+      }
     }
   ]
 }
