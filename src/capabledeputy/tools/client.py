@@ -84,7 +84,17 @@ class PolicyContext:
     integrity_floor_level: str | None = None
     residual_risk_thresholds: ResidualRiskThresholds | None = None
     risk_register: Any = None
-    sandbox_actuator_wired: bool = False
+    # SandboxActuator (substrate port): None when no provider is
+    # configured. The legacy `sandbox_actuator_wired` bool is now a
+    # derived property below — kept for callers that only need the
+    # presence check (e.g. the policy engine's fail-closed gate).
+    sandbox_actuator: Any = None  # SandboxActuator | None — Any to avoid import cycle
+    # PodmanDevbox manager — None when no provider is configured.
+    # Long-lived counterpart to sandbox_actuator: same PodmanRegionSpec
+    # set, separate registry of live per-session containers. The
+    # devbox.* tools read this field; absence collapses the tool list
+    # cleanly so installs without Podman don't surface dead tools.
+    devbox_manager: Any = None  # PodmanDevbox | None — Any to avoid import cycle
     # FR-025 raise-only inspectors. Run on every tool return so any
     # taint the inspector identifies is added to the session's axes.
     # Composition is monotone (most_restrictive_inherit); inspectors
@@ -118,6 +128,37 @@ class PolicyContext:
     # None ⇒ no per-purpose binding composition; global bindings
     # only.
     purposes: Any = None
+
+    @property
+    def sandbox_actuator_wired(self) -> bool:
+        """Back-compat shim: True iff a SandboxActuator provider is
+        plugged in. The policy engine's fail-closed gate on
+        EXECUTE.sandbox uses just this bool; callers that need the
+        actuator itself read `sandbox_actuator`."""
+        return self.sandbox_actuator is not None
+
+    @property
+    def devbox_manager_wired(self) -> bool:
+        """Parallel to sandbox_actuator_wired. Engine's fail-closed
+        gate on EXECUTE.devbox keys on this. Belt-and-suspenders with
+        the tool-registration check that already collapses the
+        devbox.* tool list when no manager is wired."""
+        return self.devbox_manager is not None
+
+    # Cookbook P2.3 — RelationshipGroups registry. When wired, the
+    # tool client resolves the action's target (counterparty) into
+    # the set of group_ids it belongs to BEFORE calling decide().
+    # That set composes into axis_d.relationship_group_ids so the
+    # family-personal-email-suggest rule (and any other
+    # relationship-keyed rule) actually fires for known
+    # counterparties. Without this wiring the rules are dormant.
+    # Mutated by the relationship_group.add_member RPC handler
+    # (operator-authorized auto-narrowing).
+    relationship_groups: Any = None  # RelationshipGroups | None — Any to avoid import cycle
+    # Path the registry was loaded from. add_member RPC persists
+    # back to this file. None when the registry was constructed
+    # in-memory (e.g. tests).
+    relationship_groups_path: Any = None  # Path | None
 
 
 def build_policy_decided_payload(
@@ -215,6 +256,11 @@ class ToolCallOutcome:
     # the approval themselves. None if no queue is wired (unit tests)
     # or the tool declares no approval_route.
     approval_id: int | None = None
+    # Issue #3 — Recovery-step sequence from `engine.decide()`. Empty
+    # for ALLOW outcomes and for rules without slash-command recovery.
+    # Renders in the REPL via `_render_recovery_steps`; the agent
+    # quotes these literally instead of inventing commands.
+    recovery_steps: tuple[Any, ...] = field(default_factory=tuple)
 
 
 class LabeledToolClient:
@@ -239,6 +285,12 @@ class LabeledToolClient:
         # exactly as v0.7 (back-compat).
         self._policy_context = policy_context
 
+    @property
+    def policy_context(self) -> PolicyContext | None:
+        """Read-only accessor so callers (e.g. the agent loop building
+        an LLM-context summary) don't have to reach into a private."""
+        return self._policy_context
+
     async def call_tool(
         self,
         session_id: UUID,
@@ -257,7 +309,7 @@ class LabeledToolClient:
         # at the chokepoint, threaded into decide() AND reused as the
         # recorded use timestamp so the rate-limit window is consistent.
         dispatch_now = datetime.now(UTC)
-        v2_kwargs = self._build_v2_decide_kwargs(session, tool)
+        v2_kwargs = self._build_v2_decide_kwargs(session, tool, action=action)
         # 002 US2: pass the session's revoked_audit_ids so any
         # capability inert under cascade is denied at decide time.
         # Default-tolerant: pre-002 sessions deserialize with the
@@ -270,6 +322,26 @@ class LabeledToolClient:
             now=dispatch_now,
             cap_uses=session.cap_uses,
             revoked_audit_ids=getattr(session, "revoked_audit_ids", frozenset()),
+            # Cookbook §4 #6 — opt-in first-action-of-kind prompt.
+            # The session carries the flag; the engine fires the
+            # REQUIRE_APPROVAL escalation only when on.
+            first_use_prompt_enabled=getattr(
+                session,
+                "first_use_prompt_enabled",
+                False,
+            ),
+            # Cookbook P2.6 — rate-limit-as-friction. Cautious
+            # sessions keep the hard DENY (rate limit is a non-
+            # negotiable floor). Balanced/aggressive sessions get
+            # REQUIRE_APPROVAL on overflow so the operator can vouch
+            # mid-stream and catch runaway loops. The session's
+            # risk_preference_at_spawn drives the toggle.
+            rate_limit_escalation=getattr(
+                session,
+                "risk_preference_at_spawn",
+                "cautious",
+            )
+            != "cautious",
             **v2_kwargs,
         )
 
@@ -282,6 +354,23 @@ class LabeledToolClient:
             session,
             action,
             tool_name,
+            policy_decision,
+        )
+
+        # Cookbook Pattern ⑥ — shadow-mode rewrite. When the session
+        # is in SHADOW enforcement, non-ALLOW outcomes are rewritten
+        # to ALLOW and a POLICY_SHADOWED audit event is emitted
+        # carrying the original decision so the operator can review
+        # what STRICT would have done. Capability-structural denies
+        # (no matching cap) are NOT rewritten — those are missing
+        # authority, not contested rule outcomes. The check is the
+        # rule field: any policy_decision with a real rule attached
+        # but a non-ALLOW outcome is shadow-eligible.
+        policy_decision = await self._maybe_shadow_rewrite(
+            session_id,
+            session,
+            tool_name,
+            action,
             policy_decision,
         )
 
@@ -309,6 +398,7 @@ class LabeledToolClient:
                         session_id,
                         session.label_set,
                         approval_submission,
+                        rule=policy_decision.rule,
                     )
             return ToolCallOutcome(
                 decision=policy_decision.decision,
@@ -318,6 +408,7 @@ class LabeledToolClient:
                 tool_args=args,
                 approval_submission=approval_submission,
                 approval_id=approval_id,
+                recovery_steps=policy_decision.recovery_steps,
             )
 
         await self._audit.write(
@@ -467,7 +558,23 @@ class LabeledToolClient:
         # confidential.personal" without painting EVERY email send
         # call regardless of body content.
         per_arg_labels = tool.extract_arg_inherent_labels(args)
-        labels_to_add = tool_inherent_for_propagation | result.additional_labels | per_arg_labels
+
+        # Issue #35 — Custom-kind add_labels from servers.d/*.yaml.
+        # When a tool with a custom CapabilityKind fires, the labels
+        # declared in the yaml's `add_labels:` for that kind propagate
+        # into the session. This closes the IFC story for plugin
+        # kinds: declared destructiveness gates the call; declared
+        # add_labels color the session afterward.
+        from capabledeputy.policy.capabilities import kind_add_labels as _kind_labels
+
+        custom_kind_labels = _kind_labels(tool.capability_kind)
+
+        labels_to_add = (
+            tool_inherent_for_propagation
+            | result.additional_labels
+            | per_arg_labels
+            | custom_kind_labels
+        )
         labels_added: frozenset[Label] = frozenset()
         if labels_to_add:
             before = session.label_set
@@ -493,6 +600,68 @@ class LabeledToolClient:
             tool_args=args,
             rule=policy_decision.rule,
             reason=policy_decision.reason,
+        )
+
+    async def _maybe_shadow_rewrite(
+        self,
+        session_id: Any,
+        session: Any,
+        tool_name: str,
+        action: Any,
+        proposed: Any,
+    ) -> Any:
+        """Pattern ⑥ shadow-mode rewrite. When the session is in
+        SHADOW enforcement and the proposed decision is non-ALLOW,
+        rewrite to ALLOW + emit POLICY_SHADOWED audit carrying the
+        original decision.
+
+        Capability-structural denies (no matching capability,
+        cascade-revoked) are NOT rewritten. Shadow mode is for
+        rule-outcome validation, not for granting unmitigated
+        access. The discriminator is `policy_decision.rule`: rule-
+        driven outcomes have a rule attached; the "no matching
+        capability" path returns rule=None and is left alone.
+        """
+        from capabledeputy.audit.events import Event, EventType
+        from capabledeputy.policy.rules import Decision
+        from capabledeputy.session.model import EnforcementMode
+
+        mode = getattr(session, "enforcement_mode", EnforcementMode.STRICT)
+        if mode != EnforcementMode.SHADOW:
+            return proposed
+        if proposed.decision == Decision.ALLOW:
+            return proposed
+        # Don't shadow structural capability denies — those are
+        # missing-authority cases, not contestable rule outcomes.
+        if not proposed.rule or "no matching capability" in (proposed.reason or "").lower():
+            return proposed
+        if self._audit is not None:
+            await self._audit.write(
+                Event(
+                    event_type=EventType.POLICY_SHADOWED,
+                    session_id=session_id,
+                    payload={
+                        "tool": tool_name,
+                        "would_be_decision": proposed.decision.value,
+                        "rule": proposed.rule,
+                        "reason": proposed.reason,
+                        "target": getattr(action, "target", None),
+                    },
+                ),
+            )
+        # Replace the decision with ALLOW; preserve everything else
+        # so downstream emission still records the rule/reason. The
+        # `decision` field is what gates dispatch; the surrounding
+        # detail is informational for the audit replay.
+        from dataclasses import replace as _dc_replace
+
+        return _dc_replace(
+            proposed,
+            decision=Decision.ALLOW,
+            reason=(
+                f"shadowed: would have been {proposed.decision.value} "
+                f"under STRICT (rule={proposed.rule})"
+            ),
         )
 
     async def _apply_decision_inspectors(
@@ -714,10 +883,38 @@ class LabeledToolClient:
             await self._graph._save(updated)
             self._graph._sessions[session.id] = updated
 
+    def _resolve_action_axis_d(self, session_axis_d: Any, *, action: Any) -> Any:
+        """Compose the action-time axis_d by resolving the action's
+        target against the wired RelationshipGroups. The session's
+        existing axis_d is preserved; only `relationship_group_ids`
+        is widened by the resolution.
+
+        No-op when no RelationshipGroups is wired or the action has
+        no target — returns `session_axis_d` unchanged."""
+        if self._policy_context is None or self._policy_context.relationship_groups is None:
+            return session_axis_d
+        target = getattr(action, "target", None)
+        if not target:
+            return session_axis_d
+        resolved = self._policy_context.relationship_groups.resolve(str(target))
+        if not resolved:
+            return session_axis_d
+        # Merge with whatever the session already carries — don't
+        # drop existing memberships, only widen.
+        existing = getattr(session_axis_d, "relationship_group_ids", frozenset())
+        merged = frozenset(existing) | resolved
+        if merged == existing:
+            return session_axis_d
+        from dataclasses import replace as _dc_replace
+
+        return _dc_replace(session_axis_d, relationship_group_ids=merged)
+
     def _build_v2_decide_kwargs(
         self,
         session: Any,
         tool: ToolDefinition,
+        *,
+        action: Any | None = None,
     ) -> dict[str, Any]:
         """Build the kw-only v2 args for engine.decide() from the
         session axes + tool definition + policy context. When the
@@ -731,7 +928,19 @@ class LabeledToolClient:
         if tool.effect_class is not None:
             kwargs["axis_a"] = session.axis_a
             kwargs["axis_b"] = session.axis_b
-            kwargs["axis_d"] = session.axis_d
+            # Cookbook P2.3 — merge resolved counterparty groups into
+            # axis_d.relationship_group_ids when a RelationshipGroups
+            # registry is wired. Without this, even an explicit
+            # `family` group containing spouse@x.com would not affect
+            # decisions about sends to spouse@x.com — the rules check
+            # axis_d.relationship_group_ids, which is session-wide by
+            # default. The per-action resolution gives the
+            # family-personal-email-suggest rule (and similar) the
+            # signal it actually needs.
+            kwargs["axis_d"] = self._resolve_action_axis_d(
+                session.axis_d,
+                action=action,
+            )
             kwargs["effect_class"] = tool.effect_class
             kwargs["rules_v2"] = self._policy_context.rules_v2
         if self._policy_context.override_grants is not None:
@@ -793,6 +1002,7 @@ class LabeledToolClient:
         if self._policy_context.risk_register is not None:
             kwargs["risk_register"] = self._policy_context.risk_register
         kwargs["sandbox_actuator_wired"] = self._policy_context.sandbox_actuator_wired
+        kwargs["devbox_manager_wired"] = self._policy_context.devbox_manager_wired
         return kwargs
 
     async def _bind_reference_handles(
@@ -871,6 +1081,7 @@ class LabeledToolClient:
         session_id: UUID,
         labels_in: frozenset[Label],
         submission: dict[str, Any],
+        rule: str | None = None,
     ) -> int:
         """Submit the resolved approval to the queue and return its id.
 
@@ -901,6 +1112,7 @@ class LabeledToolClient:
             target=target,
             labels_in=labels_in,
             justification=submission.get("justification", ""),
+            rule=rule,
         )
         return request.id
 
@@ -973,12 +1185,14 @@ class LabeledToolClient:
         action: Action,
         decision: PolicyDecision,
     ) -> None:
+        from capabledeputy.policy.capabilities import kind_name
+
         await self._audit.write(
             Event(
                 event_type=EventType.CAPABILITY_CHECKED,
                 session_id=session_id,
                 payload={
-                    "kind": action.kind.value,
+                    "kind": kind_name(action.kind),
                     "target": action.target,
                     "amount": action.amount,
                     "matched": decision.matched_capability is not None,

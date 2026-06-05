@@ -1,3 +1,8 @@
+# pyright: reportUnusedCoroutine=false
+# Textual handler-API: fire-and-forget coroutines triggered via the
+# framework's call_after / run_worker plumbing are intentional. Slated
+# for removal once `capdep chat --mode rich` reaches feature parity
+# (#15 Phase C deprecates this surface).
 """capdep tui: live monitoring and approval interface (DESIGN.md §10.3).
 
 Connects to a running daemon via the existing JSON-RPC client. Subscribes

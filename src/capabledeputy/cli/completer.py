@@ -46,16 +46,25 @@ SLASH_COMMANDS: tuple[str, ...] = (
     "/deny",
     "/submit",
     "/remember",
+    "/override",
     # declassification
     "/schemas",
     "/extract",
     # trace
     "/trace",
     "/audit",
+    "/tools",
+    # clipboard
+    "/copy",
+    # daemon info
+    "/server",
+    "/info",
+    "/daemon",
     # misc
     "/help",
     "/quit",
     "/exit",
+    "/bye",
 )
 
 
@@ -67,6 +76,23 @@ _SESSION_ARG_CMDS: frozenset[str] = frozenset(
 )
 _APPROVAL_ARG_CMDS: frozenset[str] = frozenset({"/approve", "/deny"})
 _KIND_ARG_CMDS: frozenset[str] = frozenset({"/grant"})
+_OVERRIDE_SUBCOMMANDS: tuple[str, ...] = ("request", "list", "show", "approve", "deny")
+_COPY_SUBCOMMANDS: tuple[str, ...] = ("recovery", "approval", "last", "trace")
+_REMEMBER_FLAGS: tuple[str, ...] = (
+    "--label-includes",
+    "--tag",
+    "--ttl-hours",
+)
+_LABELS: tuple[str, ...] = (
+    "confidential.health",
+    "confidential.financial",
+    "confidential.personal",
+    "untrusted.external",
+    "untrusted.user_input",
+    "trusted.user_direct",
+    "egress.email",
+    "egress.purchase",
+)
 _APPROVAL_ACTIONS: tuple[str, ...] = (
     "SEND_EMAIL",
     "QUEUE_PURCHASE",
@@ -98,6 +124,7 @@ class CompletionCache:
         self._approvals: list[dict[str, Any]] = []
         self._schemas: list[str] = []
         self._inbox: list[dict[str, Any]] = []
+        self._tools: list[str] = []
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -126,11 +153,14 @@ class CompletionCache:
         ).get("approvals", [])
         schemas = self._safe_call("extract.schemas", {}).get("schemas", [])
         inbox = self._safe_call("extract.inbox_ids", {}).get("messages", [])
+        tools_raw = self._safe_call("tool.list", {}).get("tools", [])
+        tool_names = sorted(t.get("name", "") for t in tools_raw if t.get("name"))
         with self._lock:
             self._sessions = sessions
             self._approvals = approvals
             self._schemas = schemas
             self._inbox = inbox
+            self._tools = tool_names
 
     def _safe_call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -152,6 +182,11 @@ class CompletionCache:
     def schemas(self) -> list[str]:
         with self._lock:
             return list(self._schemas)
+
+    @property
+    def tool_names(self) -> list[str]:
+        with self._lock:
+            return list(self._tools)
 
     @property
     def inbox_messages(self) -> list[dict[str, Any]]:
@@ -265,4 +300,66 @@ class CapDepCompleter(Completer):
             for action in _APPROVAL_ACTIONS:
                 if action.startswith(up):
                     yield Completion(action, start_position=-len(current))
+            return
+
+        if cmd == "/remember" and arg_index >= 2 and current.startswith("--"):
+            for flag in _REMEMBER_FLAGS:
+                if flag.startswith(current):
+                    yield Completion(flag, start_position=-len(current))
+            return
+
+        # Issue #16 track 5 — contextual completion for newer commands.
+        if cmd == "/tools" and arg_index == 0:
+            # Complete substring from existing tool names so /tools <filter>
+            # narrows correctly. Cheap pull from the registry.
+            for tool_name in self._cache.tool_names:
+                if current.lower() in tool_name.lower():
+                    yield Completion(tool_name, start_position=-len(current))
+            return
+
+        if cmd == "/override" and arg_index == 0:
+            for sub in _OVERRIDE_SUBCOMMANDS:
+                if sub.startswith(current):
+                    yield Completion(sub, start_position=-len(current))
+            return
+
+        if cmd == "/override" and arg_index == 1:
+            # /override request <KIND> | /override show <id>
+            sub = "request"
+            # If we can introspect previously-typed args, we'd dispatch
+            # by subcommand; the prompt-toolkit Completer API only
+            # gives us argv (which we already split). For now complete
+            # KIND values for `request`/`approve`/`deny`, approval-ish
+            # ids for `show`. argv is in scope earlier — we'd need to
+            # extend the signature; keep simple by offering both.
+            up = current.upper()
+            for kind in CapabilityKind:
+                if kind.value.startswith(up):
+                    yield Completion(kind.value, start_position=-len(current))
+            return
+
+        if cmd == "/copy" and arg_index == 0:
+            for sub in _COPY_SUBCOMMANDS:
+                if sub.startswith(current):
+                    yield Completion(sub, start_position=-len(current))
+            return
+
+        if cmd == "/copy" and arg_index == 1:
+            # /copy approval <id> — complete approval ids
+            for aid in self._cache.approval_ids:
+                s = str(aid)
+                if s.startswith(current):
+                    yield Completion(s, start_position=-len(current))
+            return
+
+        # Label completion for `--label-includes` arg (next token after the flag).
+        # Approximate: if any previous arg matches the flag name, the next
+        # current value should complete labels. We can't easily look back
+        # in the current Completer signature, so as a soft-completion
+        # fallback, when `current` looks like a label prefix (contains '.'),
+        # offer the label list.
+        if "." in current or any(current.lower() in lbl for lbl in _LABELS):
+            for lbl in _LABELS:
+                if lbl.startswith(current.lower()):
+                    yield Completion(lbl, start_position=-len(current))
             return

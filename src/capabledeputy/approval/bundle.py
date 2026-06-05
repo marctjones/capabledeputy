@@ -1,5 +1,12 @@
 """Approval bundle — collect every gate in a workflow into one decision.
 
+Roadmap v2 #6 — bundles carry an `expires_at` so a ratified
+bundle can't sit on disk and fire stale weeks later. Default 24h,
+configurable via `CAPDEP_BUNDLE_TTL_SECONDS`. `BundleExpiredError`
+is the typed refusal raised at dispatch when execution arrives
+after the deadline. Set CAPDEP_BUNDLE_TTL_SECONDS=0 for legacy /
+explicit immortal bundles.
+
 A bundle is the output of dry-running a programmatic workflow with the
 collector that defers REQUIRE_APPROVAL gates instead of halting. The
 user reviews the bundle as a unit:
@@ -23,11 +30,52 @@ something they didn't see).
 from __future__ import annotations
 
 import hashlib
+import os
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
+
+# Roadmap v2 #6 — default bundle TTL in seconds. 24 hours unless
+# overridden. Set to 0 (or empty string) to produce immortal
+# bundles (back-compat / explicit operator choice).
+_DEFAULT_BUNDLE_TTL_SECONDS = 86400
+
+
+def _resolved_bundle_ttl_seconds() -> int:
+    """Resolve the effective bundle TTL from env. We call this at
+    bundle-creation time (not module import) so tests can override
+    the env between runs without re-importing."""
+    raw = os.environ.get("CAPDEP_BUNDLE_TTL_SECONDS")
+    if raw is None or raw == "":
+        return _DEFAULT_BUNDLE_TTL_SECONDS
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return _DEFAULT_BUNDLE_TTL_SECONDS
+
+
+class BundleExpiredError(RuntimeError):
+    """Raised when execute_with_approved_bundle is invoked after
+    the bundle's `expires_at`. The operator should re-run dry_run
+    to get a fresh bundle and re-approve — the policy / source
+    may have shifted between ratification and execution, and the
+    bundle's labels-in-scope snapshot is no longer authoritative.
+
+    Carries the bundle id and the deadline so the operator can
+    distinguish a stale bundle from a malformed one in the audit
+    trail. Typed exception (not ValueError) so the daemon's RPC
+    layer can surface a clean `bundle_expired` error code.
+    """
+
+    def __init__(self, bundle_id: UUID, expires_at: datetime) -> None:
+        super().__init__(
+            f"bundle {str(bundle_id)[:8]} expired at "
+            f"{expires_at.isoformat()} — re-run dry_run for a fresh bundle",
+        )
+        self.bundle_id = bundle_id
+        self.expires_at = expires_at
 
 
 class GateState(StrEnum):
@@ -93,6 +141,32 @@ class WorkflowImpact:
     gates: list[BundledApproval] = field(default_factory=list)
     parse_error: str | None = None
     runtime_error: str | None = None
+    # Roadmap v2 #6 — stale-bundle TTL (cookbook §6 T14). Computed
+    # at dry-run time as created_at + CAPDEP_BUNDLE_TTL_SECONDS
+    # when the env var is unset / non-zero. None ⇒ immortal
+    # (legacy / explicit operator opt-out via env=0). Dispatch
+    # raises BundleExpiredError when execution arrives past the
+    # deadline.
+    expires_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        """Populate expires_at from the resolved TTL when the
+        caller didn't supply one. Skipped when expires_at is
+        explicitly None AND the env disables TTL (TTL=0)."""
+        if self.expires_at is not None:
+            return
+        ttl = _resolved_bundle_ttl_seconds()
+        if ttl > 0:
+            object.__setattr__(self, "expires_at", self.created_at + timedelta(seconds=ttl))
+
+    def is_expired(self, *, now: datetime | None = None) -> bool:
+        """True when the bundle's deadline has passed. `now`
+        injectable so the dispatcher and tests can pin the clock.
+        An immortal bundle (expires_at is None) is never expired."""
+        if self.expires_at is None:
+            return False
+        check = now if now is not None else datetime.now(UTC)
+        return check >= self.expires_at
 
     @property
     def has_blocking_deny(self) -> bool:
@@ -122,6 +196,7 @@ class WorkflowImpact:
             created_at=self.created_at,
             steps=self.steps,
             gates=new_gates,
+            expires_at=self.expires_at,
         )
 
     def deny_all(self) -> WorkflowImpact:
@@ -135,6 +210,7 @@ class WorkflowImpact:
             created_at=self.created_at,
             steps=self.steps,
             gates=new_gates,
+            expires_at=self.expires_at,
         )
 
     def gate_for(self, step_index: int, tool_name: str) -> BundledApproval | None:
@@ -148,6 +224,7 @@ class WorkflowImpact:
             "bundle_id": str(self.bundle_id),
             "program_hash": self.program_hash,
             "created_at": self.created_at.isoformat(),
+            "expires_at": (self.expires_at.isoformat() if self.expires_at is not None else None),
             "steps": [
                 {
                     "step_index": s.step_index,
@@ -189,7 +266,10 @@ def render_impact_tree(impact: WorkflowImpact) -> str:
     if not impact.steps:
         return "(empty workflow)"
 
-    lines = [f"Bundle {str(impact.bundle_id)[:8]} ({len(impact.steps)} step(s)):"]
+    header = f"Bundle {str(impact.bundle_id)[:8]} ({len(impact.steps)} step(s))"
+    if impact.expires_at is not None:
+        header += f"  expires {impact.expires_at.isoformat()}"
+    lines = [header + ":"]
     for s in impact.steps:
         symbol = {
             "allow": "✓",

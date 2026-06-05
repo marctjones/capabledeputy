@@ -28,9 +28,37 @@ class EventType(StrEnum):
     LLM_REQUEST_SENT = "llm.request_sent"
     LLM_RESPONSE_RECEIVED = "llm.response_received"
     LLM_RESPONSE_PARSED = "llm.response_parsed"
+    # Issue #36 — LLM call failed with an exception (context overflow,
+    # rate limit, timeout, network, etc.). Payload carries error_type,
+    # message, iteration, approximate context_size. Closes the audit
+    # gap where exceptions silently propagated up without trace.
+    LLM_ERROR = "llm.error"
+    # Issue #36 — context size approaching the model's window. Soft
+    # signal emitted when estimate exceeds 80% of the window so the
+    # operator/agent can see proactively that the turn is about to
+    # outgrow its budget.
+    LLM_CONTEXT_WARNING = "llm.context_warning"
+    # Issue 003 / Q4 (spec.md §Clarifications 2026-05-25, SC-023):
+    # decide() latency exceeded the p95 ≤ 50 ms OR p99.9 ≤ 250 ms
+    # target over the recent window. Payload carries:
+    #   latency_ms, threshold_crossed: "p95"|"p99.9",
+    #   window_size, observed_p95_ms, observed_p99_9_ms, rule_count.
+    # Operator-visible signal so latency regressions are caught
+    # before they manifest as subjective REPL sluggishness.
+    DECISION_LATENCY_DEGRADED = "decision.latency_degraded"
 
     MODE_SELECTED = "mode.selected"
     POLICY_DECIDED = "policy.decided"
+    # Cookbook Pattern ⑥ — session in SHADOW enforcement mode and the
+    # engine returned a non-ALLOW outcome. The dispatcher rewrites to
+    # ALLOW and emits this event with the original decision so audit
+    # replay can answer "what would have happened under STRICT?"
+    POLICY_SHADOWED = "policy.shadowed"
+    # The operator (or a programmatic caller) flipped a session's
+    # enforcement_mode. Payload carries old + new mode so the audit
+    # log distinguishes shadow-time from strict-time decisions for
+    # the same session.
+    ENFORCEMENT_MODE_CHANGED = "enforcement.mode_changed"
     # Spec 004 P0 — programmatic primitive applications.
     # INSPECTOR_APPLIED: a RaiseOnlyInspector raised session axes
     # DECISION_INSPECTOR_APPLIED: a DecisionInspector relaxed/tightened
@@ -55,6 +83,7 @@ class EventType(StrEnum):
     OVERRIDE_REFUSED = "override.refused"  # FR-036
     OVERRIDE_EXPIRED = "override.expired"  # FR-036
     OVERRIDE_USE_REFUSED = "override.use_refused"  # FR-038
+    RATIFICATION_APPLIED = "ratification.applied"  # FR-014 Q3
     PATTERN3_HANDLE_BIND = "pattern3.handle_bind"  # FR-047 Reference Handle
     ISOLATION_REGION_CREATED = "isolation_region.created"  # FR-040
     ISOLATION_REGION_DISCARDED = "isolation_region.discarded"  # FR-040

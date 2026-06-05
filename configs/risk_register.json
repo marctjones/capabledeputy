@@ -9,7 +9,11 @@
         "NIST-CSF-PR.DS-1",
         "ISO-27001-A.8.10",
         "OWASP-API3:2023"
-      ]
+      ],
+      "threshold": {
+        "framework": "NIST-AI-RMF",
+        "impact_tier_min": "tier-2"
+      }
     },
     {
       "id": "RISK-FIN-LEAK",
@@ -18,7 +22,11 @@
         "PCI-DSS-3.3",
         "NIST-CSF-PR.DS-5",
         "ISO-27001-A.8.10"
-      ]
+      ],
+      "threshold": {
+        "framework": "NIST-AI-RMF",
+        "impact_tier_min": "tier-3"
+      }
     },
     {
       "id": "RISK-HEALTH-LEAK",
@@ -27,7 +35,11 @@
         "HIPAA-164.502",
         "NIST-CSF-PR.DS-5",
         "ISO-27001-A.8.10"
-      ]
+      ],
+      "threshold": {
+        "framework": "NIST-AI-RMF",
+        "impact_tier_min": "tier-3"
+      }
     },
     {
       "id": "RISK-PROP-LEAK",
@@ -35,7 +47,11 @@
       "framework_refs": [
         "ISO-27001-A.8.10",
         "NIST-CSF-PR.AC-4"
-      ]
+      ],
+      "threshold": {
+        "framework": "FAIR",
+        "magnitude_band_min": "M4"
+      }
     },
     {
       "id": "RISK-PROMPT-INJECTION",
@@ -43,7 +59,11 @@
       "framework_refs": [
         "OWASP-LLM01:2025",
         "NIST-CSF-PR.IP-6"
-      ]
+      ],
+      "threshold": {
+        "framework": "NIST-AI-RMF",
+        "impact_tier_min": "tier-2"
+      }
     },
     {
       "id": "RISK-IRREVERSIBLE-SEND",
@@ -51,7 +71,11 @@
       "framework_refs": [
         "NIST-CSF-PR.AC-4",
         "ISO-27001-A.8.10"
-      ]
+      ],
+      "threshold": {
+        "framework": "FAIR",
+        "magnitude_band_min": "M2"
+      }
     },
     {
       "id": "RISK-DESTRUCTIVE-WRITE",
@@ -59,7 +83,11 @@
       "framework_refs": [
         "NIST-CSF-PR.IP-4",
         "ISO-27001-A.8.14"
-      ]
+      ],
+      "threshold": {
+        "framework": "NIST-AI-RMF",
+        "impact_tier_min": "tier-1"
+      }
     }
   ]
 }

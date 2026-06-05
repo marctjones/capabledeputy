@@ -51,6 +51,28 @@ class ApprovalRequest:
     decided_by: str | None = None
     decision_scope: dict[str, Any] = field(default_factory=dict)
     new_audit_id: UUID = field(default_factory=uuid4)
+    # Cookbook P2.1 — sibling grouping. Two pending requests within a
+    # short window with the same (session, action, target) carry the
+    # same sibling_group_id, so the approval UI can render one card
+    # with `approve-all + per-item toggles` instead of N separate
+    # cards. None when the request stands alone.
+    sibling_group_id: UUID | None = None
+    # Cookbook P2.7 — stale-approval TTL. PENDING requests that pass
+    # their expires_at flip to EXPIRED on the next queue access and
+    # emit APPROVAL_EXPIRED. None ⇒ no TTL (legacy / explicit
+    # immortal). Computed at submit time from the queue's
+    # default_ttl_seconds OR the caller's explicit ttl_seconds; the
+    # caller passing ttl_seconds=0 produces None (never expires).
+    expires_at: datetime | None = None
+    # Roadmap v2 #7 — the engine rule that triggered the gate (e.g.
+    # `first-use-of-kind`, `untrusted-meets-egress`, or the operator
+    # rule that escalated to REQUIRE_APPROVAL). Lets the REPL render
+    # mechanism-specific cards: a first-use card looks different from
+    # a rule-driven approval, since the question being asked of the
+    # operator is fundamentally different ("intend to ever do this?"
+    # vs "this matches the rule you wrote — proceed?"). None when the
+    # caller didn't supply a rule (legacy / out-of-band approvals).
+    rule: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -72,4 +94,9 @@ class ApprovalRequest:
             "decision_at": (self.decision_at.isoformat() if self.decision_at else None),
             "decided_by": self.decided_by,
             "decision_scope": self.decision_scope,
+            "sibling_group_id": (
+                str(self.sibling_group_id) if self.sibling_group_id is not None else None
+            ),
+            "expires_at": (self.expires_at.isoformat() if self.expires_at is not None else None),
+            "rule": self.rule,
         }

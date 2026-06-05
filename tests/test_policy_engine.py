@@ -42,6 +42,8 @@ _GLOB_CAPABILITIES: frozenset[Capability] = frozenset(
             pattern="*",
             max_amount=10_000,
         ),
+        Capability(kind=CapabilityKind.EXECUTE_SANDBOX, pattern="*"),
+        Capability(kind=CapabilityKind.EXECUTE_DEVBOX, pattern="*"),
     },
 )
 

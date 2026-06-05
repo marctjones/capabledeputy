@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 from typing import Any
@@ -14,12 +15,14 @@ from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.daemon.audit_handlers import make_audit_handlers
 from capabledeputy.daemon.bundle_handlers import make_bundle_handlers
 from capabledeputy.daemon.demo_handlers import make_demo_handlers
+from capabledeputy.daemon.devbox_handlers import make_devbox_handlers
 from capabledeputy.daemon.extract_handlers import make_extract_handlers
 from capabledeputy.daemon.handlers import default_handlers
 from capabledeputy.daemon.memory_handlers import make_memory_handlers
 from capabledeputy.daemon.pattern_handlers import make_pattern_handlers
 from capabledeputy.daemon.policy_handlers import make_policy_handlers
 from capabledeputy.daemon.programmatic_handlers import make_programmatic_handlers
+from capabledeputy.daemon.relationship_handlers import make_relationship_handlers
 from capabledeputy.daemon.server import Daemon
 from capabledeputy.daemon.session_handlers import make_session_handlers
 from capabledeputy.daemon.tool_handlers import make_tool_handlers
@@ -130,18 +133,32 @@ def load_v09_configs(configs_dir: Path | None = None) -> dict[str, Any]:
 def _resolve_daemon_config(config_path: Path | None) -> Path | None:
     """Daemon config file resolution (opt-in, fail-soft).
 
-    Precedence: explicit arg > CAPDEP_CONFIG env. Returns the path only
-    if it exists; loading external MCP servers is a deliberate operator
-    action, never implicit, so an absent/unset config is silently no-op.
+    Precedence:
+      1. explicit `config_path` arg
+      2. CAPDEP_CONFIG env var
+      3. `~/.config/capabledeputy/daemon.yaml` (the user-local default,
+         populated by `capdep imap-setup` and friends — opt-in because
+         the file only exists once the operator has registered something)
+
+    Returns the path only if it exists; loading external MCP servers is
+    a deliberate operator action, never implicit, so when no source
+    yields a file this returns None.
     """
     import os
 
     raw = config_path or (
         Path(os.environ["CAPDEP_CONFIG"]) if os.environ.get("CAPDEP_CONFIG") else None
     )
-    if raw is None or not raw.is_file():
-        return None
-    return raw
+    if raw is not None:
+        return raw if raw.is_file() else None
+
+    # User-local default — present iff a setup command has registered.
+    from capabledeputy.cli._managed_config import user_default_daemon_config_path
+
+    user_default = user_default_daemon_config_path()
+    if user_default.is_file():
+        return user_default
+    return None
 
 
 def _report_admission(manager: UpstreamManager) -> None:
@@ -190,6 +207,7 @@ def build_policy_context_from_configs(
         load as load_overrides,
     )
     from capabledeputy.policy.purposes import load as load_purposes
+    from capabledeputy.policy.relationships import load as load_relationship_groups
     from capabledeputy.policy.resolution import load_profiles
     from capabledeputy.tools.client import PolicyContext
 
@@ -213,7 +231,26 @@ def build_policy_context_from_configs(
     envelope_set = load_envelopes(base / "envelopes.yaml")
     risk_pref = load_risk_preference(base / "risk_preference.json")
     purposes_path = base / "purposes.yaml"
-    purposes = load_purposes(purposes_path) if purposes_path.is_file() else None
+    # Q1 (FR-030, 2026-05-25): pass the legacy risk_preference.json
+    # path so purposes that omit `risk_preference_dial` fall back
+    # to the legacy global value (transitional). Operator-visible
+    # warning fires once if the legacy file is consulted.
+    purposes = (
+        load_purposes(
+            purposes_path,
+            legacy_risk_preference_path=base / "risk_preference.json",
+        )
+        if purposes_path.is_file()
+        else None
+    )
+
+    # Cookbook P2.3 — load the RelationshipGroups registry. The
+    # tool client uses it to resolve action targets (counterparties)
+    # to group memberships at decide() time so the family/work-team
+    # rules actually fire for known recipients. The path is kept
+    # alongside the registry so add_member can persist back to it.
+    rg_path = base / "relationship_groups.yaml"
+    relationship_groups = load_relationship_groups(rg_path)
 
     # 003 — handle store + override grant store live in-process; no
     # disk-backed read here. Persistence layered on top later.
@@ -235,6 +272,8 @@ def build_policy_context_from_configs(
         envelope_set=envelope_set,
         risk_preference=risk_pref.value,
         profiles=profiles,
+        relationship_groups=relationship_groups,
+        relationship_groups_path=rg_path,
     ), purposes
 
 
@@ -264,9 +303,65 @@ async def run_daemon(
         state_db_path=effective_db,
     )
 
+    # 004 U034/U035: same config can declare a `sandbox:` block with
+    # region specs for the Podman provider. Construct the actuator
+    # BEFORE the App so it threads through PolicyContext into the
+    # tool client (the EXECUTE.sandbox fail-closed gate reads
+    # policy_context.sandbox_actuator_wired downstream).
+    resolved_pre_app = _resolve_daemon_config(config_path)
+    if resolved_pre_app is not None and policy_context is not None:
+        import sys as _sys
+
+        from capabledeputy.substrate.podman_sandbox import (
+            PodmanSandboxActuator,
+            load_sandbox_specs_from_file,
+        )
+
+        specs = load_sandbox_specs_from_file(resolved_pre_app)
+        if specs:
+            # Fail-closed: misconfigured sandbox is a hard error, never
+            # a silent fall-through to the demo actuator.
+            actuator = PodmanSandboxActuator(specs)
+            # Same spec set drives the persistent devbox manager.
+            # Both wire onto PolicyContext so the corresponding tool
+            # makers can find them. PodmanNotAvailable from either
+            # surfaces as a hard daemon-start failure.
+            from capabledeputy.substrate.podman_devbox import PodmanDevbox
+
+            devbox = PodmanDevbox(specs)
+            policy_context = dataclasses.replace(
+                policy_context,
+                sandbox_actuator=actuator,
+                devbox_manager=devbox,
+            )
+            print(
+                f"[sandbox] PodmanSandboxActuator + PodmanDevbox wired with "
+                f"{len(specs)} region spec(s): "
+                f"{', '.join(s.spec_id for s in specs)}",
+                file=_sys.stderr,
+            )
+
     # Populate ANTHROPIC_API_KEY from CLAUDEAPI.KEY in the cwd if it isn't
     # already set, so users don't need to re-export the env var each shell.
-    load_anthropic_api_key()
+    import sys as _sys_for_key
+
+    pre_existing = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    loaded = load_anthropic_api_key()
+    if pre_existing:
+        print("[llm] ANTHROPIC_API_KEY found in environment", file=_sys_for_key.stderr)
+    elif loaded:
+        print(
+            "[llm] ANTHROPIC_API_KEY loaded from ./CLAUDEAPI.KEY",
+            file=_sys_for_key.stderr,
+        )
+    else:
+        print(
+            "[llm] WARNING: no ANTHROPIC_API_KEY in env and no CLAUDEAPI.KEY "
+            "file in cwd — LLM calls will fail until you set one. "
+            "Either `export ANTHROPIC_API_KEY=...` or drop the key in "
+            "./CLAUDEAPI.KEY (will be auto-loaded next start).",
+            file=_sys_for_key.stderr,
+        )
 
     # Precedence: explicit arg (CLI flag) > CAPDEP_POLICY_PREVIEW env >
     # default on. The env var is off only for explicit falsey values.
@@ -300,7 +395,14 @@ async def run_daemon(
     await app.startup()
 
     handlers = default_handlers()
+    # Operator stats: register daemon.info so /server slash command
+    # can show version + uptime + tool/session counts.
+    from capabledeputy.daemon.handlers import make_info_handler
+
+    handlers["daemon.info"] = make_info_handler(app)
     handlers.update(make_session_handlers(app.graph))
+    handlers.update(make_devbox_handlers(app))
+    handlers.update(make_relationship_handlers(app))
     handlers.update(make_audit_handlers(app.audit))
     handlers.update(make_policy_handlers())
     handlers.update(make_tool_handlers(app.registry, app.graph, app.tool_client))
@@ -345,27 +447,170 @@ async def run_daemon(
     resolved = _resolve_daemon_config(config_path)
     upstream_configs = load_config_file(resolved) if resolved is not None else []
 
-    if upstream_configs:
-        async with UpstreamManager(upstream_configs, app.registry) as manager:
-            _report_admission(manager)
+    # Issue #35 — load per-server YAML files from servers.d/ and
+    # register custom kinds globally so the chokepoint can match
+    # them. Layout: alongside daemon.yaml in `~/.config/capabledeputy/`.
+    # Loader is tolerant of missing directory (returns empty).
+    from capabledeputy.policy.capabilities import register_custom_kind_registry
+    from capabledeputy.upstream.server_yaml import (
+        KindCollisionError,
+        UnknownOverrideTargetError,
+        apply_overrides,
+        load_servers_d,
+    )
+
+    servers_d_dir = (
+        resolved.parent / "servers.d"
+        if resolved is not None
+        else Path.home() / ".config" / "capabledeputy" / "servers.d"
+    )
+    try:
+        per_server_configs, override_files, kind_registry = load_servers_d(servers_d_dir)
+    except (KindCollisionError, UnknownOverrideTargetError) as e:
+        # Fail loudly. A misconfigured servers.d/ is an operator
+        # bug that needs to be visible, not silently ignored.
+        import sys as _sys
+
+        print(
+            f"[daemon] FATAL servers.d/ error: {e}",
+            file=_sys.stderr,
+        )
+        raise
+
+    if per_server_configs:
+        # Merge override files into their target server configs
+        merged = apply_overrides(per_server_configs, override_files)
+        # Promote per-server yamls' server_config to the upstream list
+        # so they get spawned alongside any legacy `upstream_servers:`
+        # entries. The kind registry is installed before any tool
+        # registration runs, so custom kinds are visible to the
+        # chokepoint from turn 1.
+        upstream_configs = upstream_configs + [c.server_config for c in merged]
+
+    # Always install the registry (even if empty) so policy code can
+    # consult it without a None check.
+    register_custom_kind_registry(kind_registry)
+
+    if kind_registry.all():
+        import sys as _sys
+
+        print(
+            f"[daemon] registered {len(kind_registry.all())} custom kind(s) from {servers_d_dir}",
+            file=_sys.stderr,
+        )
+
+    # Issue #1: record our PID so `daemon stop` can fall back to
+    # signal-based termination if the RPC shutdown path stalls (hung
+    # upstream subprocess, orphaned-by-parent-shell, etc.). Removal in
+    # the finally block — even an exception during serve() must not
+    # leave a stale pidfile pointing at a dead process.
+    #
+    # Tests pass an explicit `socket_path` so run_daemon runs inside
+    # the test process; writing the pidfile in that case would point
+    # at the test runner's PID, which `stop_daemon`'s
+    # signal-escalation path could end up sending SIGTERM to.
+    # Production (CLI `daemon start`) passes socket_path=None.
+    from capabledeputy.ipc.pidfile import remove_pidfile, write_pidfile
+
+    using_default_socket = socket_path is None
+    pidfile_written = False
+    if using_default_socket:
+        pidfile_path = write_pidfile()
+        pidfile_written = True
+        print(
+            f"[daemon] pid={os.getpid()} pidfile={pidfile_path}",
+            file=__import__("sys").stderr,
+        )
+
+    try:
+        if upstream_configs:
+            async with UpstreamManager(upstream_configs, app.registry) as manager:
+                # Stash manager on app so /server (daemon.info RPC) can
+                # read per-upstream-server status. App doesn't strongly
+                # depend on the manager type — duck-typed `server_status`.
+                app.upstream_manager = manager  # type: ignore[attr-defined]
+                _report_admission(manager)
+                await daemon.serve()
+        else:
             await daemon.serve()
-    else:
-        await daemon.serve()
+    finally:
+        # Roadmap v2 #1 — drive App.shutdown so live devboxes get
+        # torn down + background tasks cancelled before the process
+        # exits. The serve() call returns when the shutdown event
+        # fires (RPC) or when the task group is cancelled (signal).
+        # Either way we want a clean App shutdown here.
+        try:
+            await app.shutdown()
+        except Exception as _shutdown_err:
+            import sys
+
+            print(
+                f"[shutdown] App.shutdown raised: {_shutdown_err}",
+                file=sys.stderr,
+            )
+        if pidfile_written:
+            remove_pidfile()
 
 
 async def stop_daemon(socket_path: Path | None = None) -> bool:
+    """Stop the running daemon.
+
+    Issue #1 escalation: RPC shutdown is the preferred path because it
+    lets the daemon clean up cleanly. But the daemon may be hung on
+    upstream-subprocess teardown, orphaned by a parent shell, or just
+    not responding. In those cases the pidfile gives us a reliable
+    fallback: SIGTERM with a 5s grace, escalating to SIGKILL.
+    """
+    from capabledeputy.ipc.pidfile import (
+        read_pidfile,
+        remove_pidfile,
+        terminate_with_escalation,
+        wait_for_exit,
+    )
+
     client = DaemonClient(socket_path or default_socket_path())
+    target_pid = read_pidfile()
+
+    # 1. Try the polite RPC path first.
+    rpc_sent = False
     try:
         await client.call("shutdown")
-        return True
+        rpc_sent = True
     except DaemonNotRunningError:
-        return False
+        # Socket gone — either no daemon, or daemon is wedged with a
+        # stale socket. If the pidfile points at a live process, the
+        # signal-fallback below will handle it.
+        pass
+
+    # 2. If RPC succeeded and we know the PID, give the daemon a brief
+    #    moment to exit cleanly. If we don't have a PID, trust the RPC
+    #    return as success.
+    if target_pid is None:
+        return rpc_sent
+    if rpc_sent and wait_for_exit(target_pid, timeout_seconds=5.0):
+        remove_pidfile()
+        return True
+
+    # 3. Signal-based fallback. Either RPC failed, or the daemon
+    #    didn't exit within the grace window — escalate.
+    outcome = terminate_with_escalation(target_pid)
+    remove_pidfile()
+    # "already_gone" is success; the daemon exited between our checks.
+    return outcome in ("already_gone", "term", "kill")
 
 
 async def daemon_status(socket_path: Path | None = None) -> dict[str, Any]:
+    """Report daemon liveness. RPC ping is authoritative — if it
+    succeeds, the daemon is responsive. The pidfile reads as a
+    secondary signal: useful for diagnostics when the socket has
+    desynced from the actual process state (which is exactly the
+    failure mode Issue #1 fixed)."""
+    from capabledeputy.ipc.pidfile import read_pidfile
+
     client = DaemonClient(socket_path or default_socket_path())
+    pid = read_pidfile()  # already cleans up stale pidfiles
     try:
         result = await client.call("ping")
     except DaemonNotRunningError:
-        return {"running": False}
-    return {"running": True, "ping": result}
+        return {"running": False, "pid": pid}
+    return {"running": True, "ping": result, "pid": pid}

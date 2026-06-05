@@ -36,8 +36,15 @@ def test_resolve_missing_path_is_none(tmp_path: Path) -> None:
     assert _resolve_daemon_config(tmp_path / "nope.yaml") is None
 
 
-def test_resolve_none_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_none_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Redirect XDG_CONFIG_HOME so the user-local default at
+    # ~/.config/capabledeputy/daemon.yaml (if the developer has run
+    # `imap-setup` on their workstation) doesn't leak into this test.
     monkeypatch.delenv("CAPDEP_CONFIG", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     assert _resolve_daemon_config(None) is None
 
 
@@ -45,6 +52,7 @@ def test_resolve_env_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     cfg = tmp_path / "env.yaml"
     cfg.write_text("upstream_servers: []\n", encoding="utf-8")
     monkeypatch.setenv("CAPDEP_CONFIG", str(cfg))

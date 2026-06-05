@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
+from uuid import UUID
 
 from capabledeputy.approval.queue import ApprovalQueue
 from capabledeputy.audit.writer import AuditWriter
@@ -42,12 +44,20 @@ class App:
     ) -> None:
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(state_db_path or default_state_db_path())
+        # Resolve quarantined LLM first so we can signal availability
+        # to SessionGraph. Falls back to the main llm_client when no
+        # separate quarantined client was provided — the same model
+        # plays both roles (a single-LLM deployment).
+        _quarantined_resolved: LLMClient | None = quarantined_llm or llm_client
         # 003 runtime activation — SessionGraph receives the Purposes
         # registry so spawn/grant/delegate enforce FR-009 admissibility.
+        # The `quarantined_available` flag enables the FR-047-style
+        # fail-closed check at spawn for pattern_2_dual_llm purposes.
         self.graph = SessionGraph(
             audit=self.audit,
             store=self.store,
             purposes=purposes,
+            quarantined_available=_quarantined_resolved is not None,
         )
         self.memory = LabeledMemoryStore()
         self.purchase_queue = PurchaseQueue()
@@ -82,9 +92,21 @@ class App:
             policy_context=policy_context,
         )
         self.llm_client: LLMClient | None = llm_client
-        self.quarantined_llm: LLMClient | None = quarantined_llm or llm_client
+        self.quarantined_llm: LLMClient | None = _quarantined_resolved
+        # Issue #23 — per-session cancellation flags. session.send sets
+        # the entry to False at turn start; session.cancel flips it
+        # True; the agent loop polls between iterations and yields
+        # TurnInterrupted(reason="user_cancelled") when it sees True.
+        # Dict-of-bools is sufficient — we don't need anyio.Event since
+        # we only care about a tripwire that's checked, not awaited.
+        self.cancellation_flags: dict[UUID, bool] = {}
         self._skills_dir = skills_dir
         self._enable_policy_preview = enable_policy_preview
+        # Background devbox idle-reaper task, started by `startup()`
+        # when a PodmanDevbox is wired. Held here so `shutdown()` (and
+        # tests) can cancel it cleanly. None when no devbox manager is
+        # wired or before startup.
+        self._devbox_reaper_task: Any = None
         self._register_native_tools()
         self._maybe_load_skills()
 
@@ -117,6 +139,25 @@ class App:
         if self._enable_policy_preview:
             for tool in make_policy_preview_tools(self.graph):
                 self.registry.register(tool)
+        # 004 U036: agent-callable sandbox.run tool when an actuator
+        # is wired. Returns an empty list when the policy context has
+        # no sandbox_actuator, so the tool list stays clean on installs
+        # without Podman.
+        from capabledeputy.tools.native.sandbox import make_sandbox_tools
+
+        # Pass the audit writer so the sandbox tool emits
+        # ISOLATION_REGION_CREATED / ISOLATION_REGION_DISCARDED events
+        # for region lifecycle (FR-040, Pattern ⑤ audit trail).
+        for tool in make_sandbox_tools(self.policy_context, audit=self.audit):
+            self.registry.register(tool)
+        # Persistent dev containers — same Podman provider, long-lived
+        # per-(session, spec) lifetime. Tool list is empty when no
+        # PodmanDevbox is wired on the policy context (no provider →
+        # no tools, mirroring the sandbox.run pattern).
+        from capabledeputy.tools.native.devbox import make_devbox_tools
+
+        for tool in make_devbox_tools(self.policy_context):
+            self.registry.register(tool)
         if self.quarantined_llm is not None:
             for tool in make_extract_tools(self.memory, self.quarantined_llm):
                 self.registry.register(tool)
@@ -139,3 +180,118 @@ class App:
     async def startup(self) -> None:
         await self.store.initialize()
         await self.graph.load()
+        self._maybe_start_devbox_reaper()
+
+    def _maybe_start_devbox_reaper(self) -> None:
+        """Spawn the periodic devbox idle-reaper if a PodmanDevbox is
+        wired. Off by default for installs without Podman.
+
+        Cadence + threshold are env-tunable:
+          CAPDEP_DEVBOX_REAP_INTERVAL_SECONDS — how often to wake
+            up and scan (default 300 = 5 minutes).
+          CAPDEP_DEVBOX_IDLE_SECONDS — a devbox is "idle" when its
+            last_exec_at is older than this (default 3600 = 1 hour).
+          CAPDEP_DEVBOX_IDLE_REAPER — set to "off" to disable the
+            background reaper entirely (operator still has
+            `capdep maintenance containers --apply`).
+        """
+        import os
+        import sys
+
+        if self.policy_context is None or self.policy_context.devbox_manager is None:
+            return
+        if os.environ.get("CAPDEP_DEVBOX_IDLE_REAPER", "").lower() in {
+            "off",
+            "false",
+            "0",
+            "no",
+        }:
+            print(
+                "[devbox] idle reaper disabled via CAPDEP_DEVBOX_IDLE_REAPER",
+                file=sys.stderr,
+            )
+            return
+        interval = int(
+            os.environ.get("CAPDEP_DEVBOX_REAP_INTERVAL_SECONDS", "300"),
+        )
+        idle = int(os.environ.get("CAPDEP_DEVBOX_IDLE_SECONDS", "3600"))
+        manager = self.policy_context.devbox_manager
+        print(
+            f"[devbox] idle reaper started: scan every {interval}s, reap containers idle > {idle}s",
+            file=sys.stderr,
+        )
+
+        async def _reaper_loop() -> None:
+            import asyncio
+
+            try:
+                while True:
+                    await asyncio.sleep(interval)
+                    try:
+                        reaped = manager.reap_idle(idle_seconds=idle)
+                    except Exception as e:
+                        print(
+                            f"[devbox] reaper error (will retry): {e}",
+                            file=sys.stderr,
+                        )
+                        continue
+                    if reaped:
+                        names = [f"{s}/{spec}" for s, spec in reaped]
+                        print(
+                            f"[devbox] reaped {len(reaped)} idle container(s): {', '.join(names)}",
+                            file=sys.stderr,
+                        )
+            except asyncio.CancelledError:
+                return
+
+        import asyncio
+
+        self._devbox_reaper_task = asyncio.create_task(
+            _reaper_loop(),
+            name="devbox-idle-reaper",
+        )
+
+    async def shutdown(self) -> None:
+        """Cancel background tasks + tear down live devboxes on
+        daemon shutdown. Idempotent.
+
+        Roadmap v2 #1 — devbox teardown. Without this, live
+        containers leak past daemon death and the idle reaper only
+        catches them after the next process picks up. We walk every
+        live (session, spec) and call stop_session so the operator
+        running `capdep daemon stop` sees a clean state.
+        Workspaces are preserved (the operator's work survives);
+        purging is operator-explicit via the maintenance CLI."""
+        if self._devbox_reaper_task is not None:
+            import asyncio
+            import contextlib
+
+            self._devbox_reaper_task.cancel()
+            # CancelledError is BaseException, not Exception — needs
+            # explicit suppression.
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._devbox_reaper_task
+            self._devbox_reaper_task = None
+
+        # Devbox teardown — best-effort, never raises into the
+        # daemon's shutdown path. A failed teardown leaves the
+        # workspace intact for the operator to clean up via
+        # `capdep maintenance containers --apply`.
+        if self.policy_context is not None and self.policy_context.devbox_manager is not None:
+            import contextlib
+            import sys
+
+            manager = self.policy_context.devbox_manager
+            # Collect distinct session ids without acquiring the
+            # manager's lock for an extended time: snapshot the
+            # keys, release, then iterate.
+            session_ids = {sid for sid, _ in list(manager._live.keys())}
+            total = 0
+            for sid in session_ids:
+                with contextlib.suppress(Exception):
+                    total += manager.stop_session(sid)
+            if total:
+                print(
+                    f"[devbox] shutdown reaped {total} live container(s)",
+                    file=sys.stderr,
+                )

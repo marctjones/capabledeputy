@@ -63,6 +63,29 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
         children = graph.children(UUID(params["session_id"]))
         return {"sessions": [s.to_dict() for s in children]}
 
+    async def session_set_first_use_prompts(
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Cookbook §4 #6 — flip first-action-of-kind prompts.
+        Operator-only (chat REPL /first-use or direct CLI)."""
+        s = await graph.set_first_use_prompts(
+            UUID(params["session_id"]),
+            bool(params["enabled"]),
+        )
+        return s.to_dict()
+
+    async def session_set_enforcement(params: dict[str, Any]) -> dict[str, Any]:
+        """Pattern ⑥ — flip the session's enforcement posture.
+        Operator-only (chat REPL /enforce or direct CLI). The chat
+        REPL handles the affordance; the AI cannot self-shadow."""
+        from capabledeputy.session.model import EnforcementMode
+
+        s = await graph.set_enforcement_mode(
+            UUID(params["session_id"]),
+            EnforcementMode(str(params["mode"])),
+        )
+        return s.to_dict()
+
     async def session_add_labels(params: dict[str, Any]) -> dict[str, Any]:
         labels = frozenset(Label(s) for s in params.get("labels", []))
         s = await graph.add_labels(UUID(params["session_id"]), labels)
@@ -123,6 +146,8 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
         "session.get": session_get,
         "session.children": session_children,
         "session.add_labels": session_add_labels,
+        "session.set_enforcement": session_set_enforcement,
+        "session.set_first_use_prompts": session_set_first_use_prompts,
         "session.delegate": session_delegate,
         "capability.revoke": capability_revoke,
     }

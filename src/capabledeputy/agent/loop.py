@@ -11,6 +11,7 @@ the inheritance.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -125,6 +126,101 @@ class AgentLoopExceededError(RuntimeError):
     pass
 
 
+class ContextOverflowError(RuntimeError):
+    """Issue #36 — raised when the assembled LLM context would exceed
+    the hard limit (default 90% of model window). Carries the
+    estimated token count + the model's window so callers can render
+    a clear "your context is too large; spawn a fresh session"
+    recovery message."""
+
+    def __init__(self, estimated_tokens: int, window: int) -> None:
+        super().__init__(
+            f"context size ~{estimated_tokens:,} tokens exceeds "
+            f"{int(window * 0.9):,} (90% of {window:,}-token window). "
+            f"Spawn a fresh session for a more targeted query.",
+        )
+        self.estimated_tokens = estimated_tokens
+        self.window = window
+
+
+# Issue #36 — model context windows. Heuristic table; values are the
+# documented max prompt tokens for common models. If a model isn't
+# listed, falls back to DEFAULT_CONTEXT_WINDOW. Operators can
+# override via the LLM client config; this is just the guardrail's
+# default knowledge.
+_MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    "claude-haiku-4-5-20251001": 200_000,
+    "claude-haiku-4-5": 200_000,
+    "claude-sonnet-4-6": 200_000,
+    "claude-opus-4-7": 200_000,
+    "gpt-4o": 128_000,
+    "gpt-4o-mini": 128_000,
+    "gpt-4-turbo": 128_000,
+    "gpt-4": 8192,
+}
+DEFAULT_CONTEXT_WINDOW = 100_000
+
+_SOFT_WARNING_THRESHOLD = 0.80
+_HARD_LIMIT_THRESHOLD = 0.90
+
+
+def _estimate_message_tokens(
+    messages: list[Message],
+    tool_descriptions: list[ToolDescription] | tuple[ToolDescription, ...] | None = None,
+) -> int:
+    """Cheap chars-per-token heuristic. Anthropic + OpenAI tokenize
+    English prose at ~4 chars/token, but JSON-heavy content (tool
+    schemas, structured tool results) tokenizes denser — closer to
+    3 chars/token because of `{`, `}`, `"`, and many short keys. We
+    use 3 to stay safe and pad an additional ~10% for per-message
+    framing overhead (role markers, tool_use/tool_result block
+    metadata in the Anthropic envelope).
+
+    Before this fix, the estimator counted only message content +
+    inline tool_call args. It missed two large contributors that
+    actually ship to the model on every iteration:
+
+      1. The `tools` array — every ToolDescription's name,
+         description, and JSON schema is serialized to the wire.
+         With 50+ upstream tools this can be 30k+ tokens by itself.
+      2. Tool result content shipped via `Role.TOOL` messages —
+         these *were* counted (they live in `msg.content`) but the
+         char/token ratio undercounted JSON-heavy outputs.
+
+    Empirical case: a real email-summarization turn estimated as
+    64k tokens actually weighed 202k tokens at the provider
+    boundary — a 3.2x undercount. Adding tool schemas + tightening
+    the ratio closes most of that gap; the rest is provider
+    tokenizer quirks (BPE merges) we don't model.
+    """
+    total_chars = 0
+    for msg in messages:
+        if msg.content:
+            total_chars += len(msg.content)
+        # Per-message framing overhead — role marker, tool_call_id,
+        # tool_use envelope. ~20 chars is conservative.
+        total_chars += 20
+        # tool_calls payloads count too
+        for tc in msg.tool_calls or ():
+            total_chars += len(tc.name) + len(str(tc.args or {}))
+    # Tool schemas ship with every request — these are huge and
+    # were previously uncounted.
+    if tool_descriptions:
+        for td in tool_descriptions:
+            total_chars += len(td.name) + len(td.description)
+            # JSON schema serialized roughly as str(dict) — close
+            # enough to the wire size for a heuristic.
+            total_chars += len(str(td.parameters_schema))
+    return total_chars // 3
+
+
+def _context_window_for(model: str | None) -> int:
+    """Look up the model's prompt-token window."""
+    if model is None:
+        return DEFAULT_CONTEXT_WINDOW
+    return _MODEL_CONTEXT_WINDOWS.get(model, DEFAULT_CONTEXT_WINDOW)
+
+
 @dataclass(frozen=True)
 class AgentTurnResult:
     content: str
@@ -207,9 +303,117 @@ async def run_turn(
     graph: SessionGraph,
     audit: AuditWriter,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-    max_iterations: int = 10,
+    max_iterations: int = 50,
     force_mode: ExecutionMode | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> AgentTurnResult:
+    """Issue #21 — `run_turn` is now a thin wrapper around the
+    streaming generator `run_turn_streaming`. Existing callers
+    (daemon RPC, tests, programmatic_loop, etc.) keep working
+    unchanged: this consumes all events and returns the final
+    `AgentTurnResult`. New streaming consumers (chat REPL Rich
+    Live region, rich Textual surface) call `run_turn_streaming`
+    directly via `for await` and observe each event.
+
+    Issue #23 — `cancel_check` is an optional zero-arg callable
+    polled between iterations. When it returns True, the loop
+    yields TurnInterrupted(reason="user_cancelled") and returns the
+    partial result. The daemon's session.cancel RPC flips a flag
+    that this callable observes; from `run_turn`'s perspective the
+    cancellation surfaces as a regular early return with an
+    interrupted finish_reason.
+    """
+    from capabledeputy.agent.events import TurnCompleted, TurnInterrupted
+
+    final_result: AgentTurnResult | None = None
+    interrupt_reason: str | None = None
+    interrupt_event: TurnInterrupted | None = None
+    async for evt in run_turn_streaming(
+        session_id=session_id,
+        user_message=user_message,
+        llm=llm,
+        tool_client=tool_client,
+        registry=registry,
+        graph=graph,
+        audit=audit,
+        system_prompt=system_prompt,
+        max_iterations=max_iterations,
+        force_mode=force_mode,
+        cancel_check=cancel_check,
+    ):
+        if isinstance(evt, TurnCompleted):
+            final_result = evt.result
+        elif isinstance(evt, TurnInterrupted):
+            interrupt_reason = evt.reason
+            interrupt_event = evt
+    if interrupt_reason == "max_iterations":
+        raise AgentLoopExceededError(
+            f"agent loop exceeded {max_iterations} iterations",
+        )
+    if interrupt_reason == "user_cancelled" and interrupt_event is not None:
+        # Issue #23 — synthesize an AgentTurnResult so the daemon RPC
+        # response shape stays consistent. Caller (chat REPL) sees a
+        # normal turn return with finish_reason=interrupted and any
+        # partial content/outcomes captured before cancellation.
+        return AgentTurnResult(
+            content=interrupt_event.partial_content or "[turn cancelled by user]",
+            iterations=interrupt_event.iteration,
+            finish_reason=FinishReason.LENGTH,
+            tool_outcomes=interrupt_event.partial_outcomes,
+        )
+    if final_result is None:
+        # Defensive: streaming generator must yield exactly one of
+        # TurnCompleted or TurnInterrupted before returning.
+        raise RuntimeError(
+            "run_turn_streaming exited without a terminal event",
+        )
+    return final_result
+
+
+async def run_turn_streaming(
+    *,
+    session_id: UUID,
+    user_message: str,
+    llm: LLMClient,
+    tool_client: LabeledToolClient,
+    registry: ToolRegistry,
+    graph: SessionGraph,
+    audit: AuditWriter,
+    system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+    max_iterations: int = 50,
+    force_mode: ExecutionMode | None = None,
+    cancel_check: Callable[[], bool] | None = None,
+):
+    """Streaming variant of `run_turn` (Issue #21).
+
+    Yields `TurnEvent`s as the turn progresses:
+      - `IterationStarted` at the top of each loop iter
+      - `LLMRequestSent` before each LLM call
+      - `LLMResponseReceived` after each LLM call
+      - `ToolDispatched` before each tool dispatch
+      - `ToolReturned` after each tool returns
+      - `TurnCompleted` (terminal) when the LLM produces a final answer
+      - `TurnInterrupted` (terminal) when max_iterations exceeded
+        (with reason='max_iterations'). Future #23/#31/#32 work
+        will surface 'ctrl-c', 'surface-disconnect', and
+        'heartbeat-timeout' as additional reasons.
+
+    Token-level streaming (LLMTokenReceived) requires the LLM
+    client to support streaming — left as a future extension once
+    the underlying client gains that capability. The generator
+    structure is designed to accommodate it without further
+    architectural changes.
+    """
+    from capabledeputy.agent.events import (
+        IterationStarted,
+        LLMRequestSent,
+        LLMResponseReceived,
+        ToolDispatched,
+        ToolReturned,
+        TurnCompleted,
+        TurnInterrupted,
+    )
+
     session = graph.get(session_id)
     if session.is_terminal:
         raise SessionStateError(
@@ -238,7 +442,7 @@ async def run_turn(
                 payload={"mode": mode.value, "reason": mode_reason},
             ),
         )
-        return await run_programmatic_turn(
+        prog_result = await run_programmatic_turn(
             session_id=session_id,
             user_message=user_message,
             llm=llm,
@@ -247,6 +451,8 @@ async def run_turn(
             graph=graph,
             audit=audit,
         )
+        yield TurnCompleted(iteration=0, result=prog_result)
+        return
 
     user_turn = Turn(
         turn_id=len(session.history),
@@ -271,12 +477,32 @@ async def run_turn(
     # Create tool registry dict for context builder
     tool_registry_dict = {tool.name: registry.get(tool.name) for tool in registry.list()}
 
+    # Surface available sandbox regions to the agent (Phase A: agent
+    # context plumbing for the Podman provider). Empty/None when no
+    # actuator is wired so the system prompt skips the section.
+    sandbox_summary: str | None = None
+    pc = tool_client.policy_context
+    if pc is not None and pc.sandbox_actuator is not None:
+        actuator = pc.sandbox_actuator
+        # Best-effort: actuator may not expose its specs (e.g. demo).
+        specs = getattr(actuator, "_specs", None)
+        if specs:
+            lines = ["Available disposable regions:"]
+            for spec_id, spec in specs.items():
+                net = getattr(spec, "network", "?")
+                img = getattr(spec, "image", "?")
+                lines.append(f"  - {spec_id}: image={img}, network={net}")
+            sandbox_summary = "\n".join(lines)
+        else:
+            sandbox_summary = "A SandboxActuator is wired (provider details unavailable)."
+
     llm_context = build_llm_context(
         session,
         tool_descriptions,
         tool_registry_dict,
         recent_events,
         max_recent_decisions=10,
+        sandbox_summary=sandbox_summary,
     )
 
     # Audit the context for replay purposes
@@ -329,8 +555,123 @@ async def run_turn(
 
     iteration = 0
     last_response: LLMResponse | None = None
+    # Issue #36 — context-window guardrail.
+    # We learn the model name on the first response; until then we
+    # use a conservative default. The soft warning fires at 80%, the
+    # hard limit at 90%. Once a warning fires for a given iteration,
+    # we don't re-fire on subsequent iterations of the same turn so
+    # the audit log stays scannable.
+    context_warning_emitted = False
+    last_model: str | None = None
+
     while iteration < max_iterations:
         iteration += 1
+        # Issue #23 — user cancellation. Checked at the top of every
+        # iteration (before any LLM/tool work) so a cancel arriving
+        # while we were awaiting the previous tool result is honored
+        # immediately. The cancel_check polls a daemon-side flag that
+        # the session.cancel RPC flips. Partial output produced so far
+        # is preserved in `last_response`/`tool_outcomes` and surfaced
+        # in the TurnInterrupted event.
+        if cancel_check is not None and cancel_check():
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_ERROR,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    step_id=iteration,
+                    payload={
+                        "error_type": "UserCancelled",
+                        "message": "turn cancelled by user (Ctrl-C)",
+                        "iteration": iteration,
+                    },
+                ),
+            )
+            yield TurnInterrupted(
+                iteration=iteration,
+                reason="user_cancelled",
+                partial_content=(last_response.content if last_response else ""),
+                partial_outcomes=tuple(tool_outcomes),
+            )
+            return
+
+        # Issue #21 — yield IterationStarted before any work. Lets the
+        # REPL render "iter N/max" indicators in real time.
+        yield IterationStarted(iteration=iteration)
+
+        # Issue #36 — context-size preflight.
+        # Estimate the assembled context. If we're over the hard limit
+        # for the model we last saw, yield TurnInterrupted and return.
+        # If we're over the soft threshold (80%), audit a warning and
+        # append a system notice so the LLM knows to wrap up rather
+        # than fetching more.
+        window = _context_window_for(last_model)
+        estimated = _estimate_message_tokens(messages, tool_descriptions)
+        ratio = estimated / window if window else 0.0
+
+        if ratio >= _HARD_LIMIT_THRESHOLD:
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_ERROR,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    step_id=iteration,
+                    payload={
+                        "error_type": "ContextOverflowError",
+                        "message": (
+                            f"context ~{estimated:,} tokens >= 90% of "
+                            f"{window:,}-token window; refusing to send"
+                        ),
+                        "iteration": iteration,
+                        "context_tokens_estimate": estimated,
+                        "context_window": window,
+                        "ratio": round(ratio, 2),
+                        "model": last_model,
+                    },
+                ),
+            )
+            yield TurnInterrupted(
+                iteration=iteration,
+                reason="context_overflow",
+                partial_content=(last_response.content if last_response else ""),
+                partial_outcomes=tuple(tool_outcomes),
+            )
+            return
+
+        if ratio >= _SOFT_WARNING_THRESHOLD and not context_warning_emitted:
+            # Audit the warning + inject a system message so the LLM
+            # knows it's running out of room. The LLM should respond
+            # with a final summary rather than more tool calls.
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_CONTEXT_WARNING,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    step_id=iteration,
+                    payload={
+                        "iteration": iteration,
+                        "context_tokens_estimate": estimated,
+                        "context_window": window,
+                        "ratio": round(ratio, 2),
+                        "model": last_model,
+                    },
+                ),
+            )
+            messages.append(
+                Message(
+                    role=Role.SYSTEM,
+                    content=(
+                        f"NOTICE: your context size (~{estimated:,} tokens) "
+                        f"is approaching the {window:,}-token window. "
+                        f"STOP making new tool calls. Summarize what you "
+                        f"have found into a final answer for the user. "
+                        f"If you need more data, ask the user to /spawn "
+                        f"a fresh session with a more targeted query."
+                    ),
+                ),
+            )
+            context_warning_emitted = True
+
         await audit.write(
             Event(
                 event_type=EventType.LLM_REQUEST_SENT,
@@ -340,11 +681,58 @@ async def run_turn(
                 payload={
                     "n_messages": len(messages),
                     "n_tools": len(tool_descriptions),
+                    "context_tokens_estimate": estimated,
+                    # Surfacing the window lets the chat REPL render a
+                    # `N / M (P%)` token counter in the bottom toolbar
+                    # without having to know the model→window table on
+                    # the client side. The streaming audit consumer in
+                    # `cli/chat.py:_send_message_streaming` reads this
+                    # alongside the estimate.
+                    "context_window": window,
                 },
             ),
         )
+        yield LLMRequestSent(
+            iteration=iteration,
+            n_messages=len(messages),
+            n_tools=len(tool_descriptions),
+        )
 
-        response = await llm.respond(messages, tool_descriptions)
+        # Issue #36 — wrap llm.respond() so exceptions audit cleanly
+        # before propagating. Without this, LLM errors (rate limit,
+        # actual context overflow from the provider, network timeout,
+        # malformed response, etc.) propagated up to the daemon's RPC
+        # handler silently — operators saw a red "rpc error" in chat
+        # but the audit log had no trace.
+        try:
+            response = await llm.respond(messages, tool_descriptions)
+        except Exception as e:
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_ERROR,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    step_id=iteration,
+                    payload={
+                        "error_type": type(e).__name__,
+                        "message": str(e)[:500],
+                        "iteration": iteration,
+                        "context_tokens_estimate": estimated,
+                        "context_window": window,
+                        "model": last_model,
+                    },
+                ),
+            )
+            # Emit a streaming TurnErrored for surfaces consuming the
+            # generator (chat REPL Live region, future rich surface).
+            yield TurnInterrupted(
+                iteration=iteration,
+                reason=f"llm_error:{type(e).__name__}",
+                partial_content=(last_response.content if last_response else ""),
+                partial_outcomes=tuple(tool_outcomes),
+            )
+            return
+        last_model = response.model
         last_response = response
 
         await audit.write(
@@ -358,8 +746,24 @@ async def run_turn(
                     "n_tool_calls": len(response.tool_calls),
                     "finish_reason": response.finish_reason.value,
                     "model": response.model,
+                    # Real provider usage (may be empty for fakes or
+                    # if the provider didn't surface it). The toolbar's
+                    # usage segment sums these across the session and
+                    # the calendar month — toolbar reads via the
+                    # streaming consumer in cli/chat.py.
+                    "prompt_tokens": int(response.usage.get("prompt_tokens", 0)),
+                    "completion_tokens": int(
+                        response.usage.get("completion_tokens", 0),
+                    ),
                 },
             ),
+        )
+        yield LLMResponseReceived(
+            iteration=iteration,
+            content_length=len(response.content),
+            n_tool_calls=len(response.tool_calls),
+            finish_reason=response.finish_reason.value,
+            model=response.model or "unknown",
         )
 
         if not response.tool_calls:
@@ -369,12 +773,16 @@ async def run_turn(
                 content=response.content,
             )
             await graph.add_turn(session_id, agent_turn)
-            return AgentTurnResult(
-                content=response.content,
-                iterations=iteration,
-                finish_reason=response.finish_reason,
-                tool_outcomes=tuple(tool_outcomes),
+            yield TurnCompleted(
+                iteration=iteration,
+                result=AgentTurnResult(
+                    content=response.content,
+                    iterations=iteration,
+                    finish_reason=response.finish_reason,
+                    tool_outcomes=tuple(tool_outcomes),
+                ),
             )
+            return
 
         messages.append(
             Message(
@@ -390,6 +798,11 @@ async def run_turn(
             # name passes through untouched and ToolNotFoundError fires
             # below with the unmatched string in the message.
             real_name = reverse_map.get(tool_call.name, tool_call.name)
+            yield ToolDispatched(
+                iteration=iteration,
+                tool_name=real_name,
+                tool_args=tool_call.args,
+            )
             try:
                 outcome = await tool_client.call_tool(
                     session_id,
@@ -405,6 +818,7 @@ async def run_turn(
                 )
 
             tool_outcomes.append(outcome)
+            yield ToolReturned(iteration=iteration, outcome=outcome)
             messages.append(
                 Message(
                     role=Role.TOOL,
@@ -414,7 +828,14 @@ async def run_turn(
                 ),
             )
 
-    raise AgentLoopExceededError(
-        f"agent loop exceeded {max_iterations} iterations "
-        f"(last finish_reason: {last_response.finish_reason if last_response else 'none'})",
+    # Loop exceeded max_iterations. Yield the terminal TurnInterrupted
+    # so streaming consumers can render the partial state; run_turn
+    # wrapper detects this and raises AgentLoopExceededError for
+    # backwards compatibility.
+    partial_content = last_response.content if last_response else ""
+    yield TurnInterrupted(
+        iteration=iteration,
+        reason="max_iterations",
+        partial_content=partial_content,
+        partial_outcomes=tuple(tool_outcomes),
     )

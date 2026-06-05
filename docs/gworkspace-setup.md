@@ -1,129 +1,149 @@
 # Google Workspace setup
 
-The bundled `mcp-server-gworkspace` exposes Gmail + Docs + Drive +
-Calendar to the agent under the policy chokepoint. Operator does
-the OAuth dance once; subsequent daemon spawns reuse the cached
-refresh token.
+CapableDeputy wires Google Workspace (Gmail / Drive / Docs / Sheets /
+Calendar) via **`gws-mcp-server`** — a community MCP server that
+shells out to the `gws` Workspace CLI. `gws auth login` caches OAuth
+tokens in your OS keyring (AES-256-GCM at rest); `gws-mcp-server`
+reuses those tokens for every API call. No second consent flow, no
+plaintext credentials in `~/.config`.
+
+> **Why not the "official" Google MCP server?** As of `@googleworkspace/cli`
+> v0.22.5 (May 2026), the `gws` CLI itself does NOT include an MCP
+> server subcommand — only a Discovery-API command surface for
+> Drive/Gmail/etc. Blog posts from early 2026 announced MCP support,
+> but the feature hasn't shipped. `gws-mcp-server` is the working
+> bridge until that lands.
 
 ## Prerequisites
 
-1. **Create a Google Cloud project**
-   <https://console.cloud.google.com/projectcreate>
+- **Node.js / npm** (`node --version` ≥ 18).
+- **gcloud CLI** — required by `gws auth setup`. Install per
+  <https://cloud.google.com/sdk/docs/install>.
 
-2. **Enable the APIs you want** (in the Cloud Console — APIs & Services — Library):
-   - Gmail API
-   - Google Docs API
-   - Google Drive API
-   - Google Calendar API
+## Install + authenticate (once)
 
-3. **Create an OAuth 2.0 Client ID**
-   APIs & Services — Credentials — Create Credentials — OAuth client ID
-   - Application type: **Desktop application**
-   - Name: anything (e.g., "capdep-local")
+```bash
+# 1. Install the Workspace CLI.
+npm install -g @googleworkspace/cli
 
-4. **Configure the OAuth consent screen** (one-time)
-   - User type: External (for personal Gmail) or Internal (for Workspace)
-   - Add yourself as a test user if External + unverified
-   - Add the scopes the server requests, or accept whatever pops up at runtime
+# 2. One-time gcloud + OAuth client setup.
+gws auth setup
 
-5. **Download the credentials JSON**
-   Click the download icon next to your new OAuth client. Save the file as:
+# 3. Browser consent for the services you want.
+gws auth login -s drive,gmail,calendar,docs,sheets
 
-   ```
-   ~/.config/capabledeputy/secrets/gworkspace-credentials.json
-   ```
+# 4. The MCP server that wraps the CLI.
+npm install -g gws-mcp-server
+```
 
-   Set tight permissions:
+That's it. Tokens are encrypted in your OS keyring; nothing
+sensitive lands in a plaintext file under `~/.config`.
 
-   ```bash
-   chmod 600 ~/.config/capabledeputy/secrets/gworkspace-credentials.json
-   ```
-
-## Run the consent flow
+## Wire into CapableDeputy
 
 ```bash
 capdep gworkspace-setup
 ```
 
-This:
-- Opens a browser to Google's consent page
-- Captures the redirect on `http://localhost:<ephemeral-port>`
-- Exchanges the code for a refresh token
-- Writes the cached token to `~/.config/capabledeputy/secrets/gworkspace-token.json` (mode 0o600)
+This adds a managed `# BEGIN/END capdep-managed: gworkspace` block
+to `~/.config/capabledeputy/daemon.yaml` that spawns
+`npx gws-mcp-server --services drive,sheets,calendar,docs,gmail`
+as an upstream MCP server. Subsequent `capdep chat` runs load
+Workspace tools automatically — no `--config` needed.
 
-Approve the requested scopes. When the browser shows "The
-authentication flow has completed", you're done.
+To narrow services:
+
+```bash
+capdep gworkspace-setup -s drive,gmail
+```
+
+To re-register only (e.g. after editing the managed block by hand
+to add `tool_overrides`):
+
+```bash
+capdep gworkspace-setup --register-only
+```
 
 ## Verify
 
 ```bash
-capdep daemon start --config configs/curated/google-workspace.yaml
-capdep tool list | grep "^google\."
+capdep daemon stop   # if already running
+capdep chat
+# inside the REPL:
+/tools gws
 ```
 
-You should see ten tools registered under the `google.*` prefix:
-`google.gmail.list_threads`, `google.gmail.send`, `google.docs.read`,
-`google.calendar.list_events`, etc.
+You should see 24 tools listed:
+
+- **Drive** (8): `drive_list_files`, `drive_get_file`,
+  `drive_create_file`, `drive_copy_file`, `drive_update_file`,
+  `drive_delete_file`, `drive_export_file`, `drive_share_file`
+- **Sheets** (4): `sheets_get_metadata`, `sheets_read_values`,
+  `sheets_write_values`, `sheets_append_values`
+- **Calendar** (5): `calendar_list_events`, `calendar_get_event`,
+  `calendar_insert_event`, `calendar_update_event`,
+  `calendar_delete_event`
+- **Docs** (3): `docs_get_document`, `docs_create_document`,
+  `docs_batch_update`
+- **Gmail** (4 — READ-ONLY): `gmail_list_messages`,
+  `gmail_get_message`, `gmail_list_threads`, `gmail_get_thread`
+
+Note that Gmail in `gws-mcp-server` is read-only by design — no
+`send`/`delete`/`label` tools. If you need to send mail, use the
+bundled `mcp-server-imap` (separate path; see `docs/imap-setup.md`).
+
+## Labels, capability gates, and what the agent can do
+
+The managed block applies these defaults:
+
+- **Inherent label** `confidential.personal` on every Workspace tool.
+- **Explicit capability overrides** on every mutating tool so nothing
+  destructive depends on inference:
+
+  | Tool | Capability |
+  |------|------------|
+  | `drive_delete_file` | `DELETE_FS` |
+  | `drive_update_file` / `drive_share_file` | `MODIFY_FS` |
+  | `drive_create_file` / `drive_copy_file` | `CREATE_FS` |
+  | `calendar_delete_event` | `DELETE_CAL` |
+  | `calendar_update_event` | `MODIFY_CAL` |
+  | `calendar_insert_event` | `CREATE_CAL` |
+  | `sheets_write_values` / `sheets_append_values` | `MODIFY_FS` |
+  | `docs_batch_update` | `MODIFY_FS` |
+  | `docs_create_document` | `CREATE_FS` |
+
+- **Read tools** (`*_list_*`, `*_get_*`, `*_read_*`) fall through to
+  the adapter's name-based inference → `READ_FS` / `CALENDAR_READ`.
+
+To audit what was assigned: `/tools gws` in chat. To override
+anything that surprises you, edit the daemon config OUTSIDE the
+`# BEGIN/END capdep-managed: gworkspace` markers — those edits
+survive `gworkspace-setup --register-only`.
 
 ## Use
 
 ```bash
-capdep session new --intent "morning briefing"
 capdep chat
 ```
 
 Try:
-- "Summarize my unread email from this morning."
-- "Read the Google Doc with id <DOC_ID> and pull out the action items."
-- "What's on my calendar tomorrow?"
-- "Search Drive for files named 'budget'."
 
-Each call goes through the chokepoint. Gmail content carries
-`confidential.personal` + `untrusted.user_input` labels —
-session-tainted reads can't egress without explicit override.
-`gmail.send` is destructive + social-commitment, so it goes through
-REQUIRE_APPROVAL.
+- "Summarize my unread email from this morning." (`gmail_list_messages`)
+- "Read the Google Doc with id <DOC_ID> and pull out the action items." (`docs_get_document`)
+- "What's on my calendar tomorrow?" (`calendar_list_events`)
+- "Search Drive for files named 'budget'." (`drive_list_files`)
 
-## Revoke / re-do the OAuth flow
+Each call goes through the chokepoint. Gmail/Drive/Calendar content
+carries `confidential.personal` labels — once your session has read
+Workspace data, it can't egress to an untrusted destination without
+an explicit override.
 
-Delete the token file:
+## Revoke / re-do consent
 
 ```bash
-rm ~/.config/capabledeputy/secrets/gworkspace-token.json
+gws auth logout       # clears keyring tokens
+gws auth login -s ... # browser consent again
 ```
 
-Re-run `capdep gworkspace-setup`. Or revoke the OAuth client at
+Or revoke the OAuth client entirely at
 <https://myaccount.google.com/permissions>.
-
-## Scope tuning
-
-The default scopes (see `src/capabledeputy/mcp_servers/_gworkspace_auth.py`):
-
-```
-gmail.modify       (read + label; required for label_thread + send)
-gmail.send         (send messages)
-documents          (read + write Docs)
-drive.file         (manage files created by capdep)
-drive.readonly     (read other Drive content)
-calendar           (read + write Calendar events)
-```
-
-Narrow for least-privilege deployments by editing `DEFAULT_SCOPES`
-before running setup.
-
-## Troubleshooting
-
-**"missing OAuth client credentials at ..."**
-You haven't saved `credentials.json` yet. See step 5 above.
-
-**"No cached Google token at ..."**
-You haven't run `capdep gworkspace-setup` yet.
-
-**Browser opens but says "this app isn't verified"**
-Your OAuth consent screen is in "Testing" mode. Add yourself as a
-test user (Cloud Console — OAuth consent screen — Test users).
-
-**`refresh_token` is missing after consent**
-Google only issues a `refresh_token` on the first consent. If you
-already approved this client before, revoke the grant at
-<https://myaccount.google.com/permissions>, then re-run setup.

@@ -1,0 +1,18 @@
+# Ratification Authorization (Q3, FR-014).
+# Per-severity policy for ratifying suggested labels/profiles/rules.
+# Reuses the Override Policy state machine shape (FR-036).
+# Operator MUST declare authorized_principal_ids for each severity to
+# enable ratification; absent declaration ⇒ fail-closed.
+policies:
+  - severity: hard-floor
+    policy: dual-control
+    authorized_principal_ids: []
+    attester_principal_ids: []
+  - severity: high-impact
+    policy: single-authorized
+    authorized_principal_ids: []
+    attester_principal_ids: []
+  - severity: routine
+    policy: single-authorized
+    authorized_principal_ids: []
+    attester_principal_ids: []

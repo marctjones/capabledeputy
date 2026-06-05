@@ -24,6 +24,32 @@ class SessionStatus(StrEnum):
     ABORTED = "aborted"
 
 
+class EnforcementMode(StrEnum):
+    """Per-session enforcement posture (cookbook Pattern ⑥).
+
+    STRICT (default) — every decide() result fires as authored.
+    DENY blocks, SUGGEST/REQUIRE_APPROVAL routes to the approval
+    queue, AUTO proceeds. Production behavior; back-compat with
+    every pre-Pattern-⑥ session.
+
+    SHADOW — the engine still computes the decision normally, but
+    non-ALLOW outcomes are REWRITTEN to ALLOW for the dispatcher
+    while a POLICY_SHADOWED audit event records what would have
+    happened. Capability checks are NOT bypassed (a missing
+    capability still denies — that's a structural check, not a
+    rule outcome). Operator uses SHADOW for K turns of new-rule
+    validation, reviews the audit log, then flips to STRICT.
+
+    The mode is a per-session attribute, mutable via /enforce
+    in the chat REPL or session.set_enforcement RPC. Toggling
+    emits its own audit event so the log answers "what was the
+    enforcement posture when this decision fired?" deterministically.
+    """
+
+    STRICT = "strict"
+    SHADOW = "shadow"
+
+
 _TERMINAL_STATUSES: frozenset[SessionStatus] = frozenset(
     {SessionStatus.DONE, SessionStatus.ABORTED},
 )
@@ -126,6 +152,21 @@ class Session:
     # registry resolves it; the engine derives clearance_max_tier
     # and integrity_floor_level from the profile (FR-008 / FR-004).
     clearance_profile_id: str | None = None
+    # Cookbook Pattern ⑥ — per-session enforcement posture.
+    # Default STRICT so back-compat with every pre-Pattern-⑥
+    # session and every test fixture is preserved. SHADOW is the
+    # operator-opt-in mode for new-rule validation.
+    enforcement_mode: EnforcementMode = EnforcementMode.STRICT
+    # Cookbook §4 #6 — first-action-of-kind prompt. When True, the
+    # engine returns SUGGEST instead of ALLOW the FIRST time this
+    # session exercises any promptable capability kind (sends,
+    # purchases, destructive ops, sandbox/devbox execution). After
+    # the operator approves, the kind enters `used_kinds` and
+    # subsequent dispatches pass through normally. Default False
+    # for back-compat — sessions opt in via the Purpose template
+    # (cautious dial → True) or the session.set_first_use_prompts
+    # RPC.
+    first_use_prompt_enabled: bool = False
 
     @classmethod
     def new(
@@ -151,6 +192,7 @@ class Session:
         risk_preference_at_spawn: str = "cautious",
         effective_isolation_region_id: str | None = None,
         clearance_profile_id: str | None = None,
+        first_use_prompt_enabled: bool = False,
     ) -> Self:
         now = _utcnow()
         return cls(
@@ -178,6 +220,7 @@ class Session:
             risk_preference_at_spawn=risk_preference_at_spawn,
             effective_isolation_region_id=effective_isolation_region_id,
             clearance_profile_id=clearance_profile_id,
+            first_use_prompt_enabled=first_use_prompt_enabled,
         )
 
     @property
@@ -219,6 +262,8 @@ class Session:
             "risk_preference_at_spawn": self.risk_preference_at_spawn,
             "effective_isolation_region_id": self.effective_isolation_region_id,
             "clearance_profile_id": self.clearance_profile_id,
+            "enforcement_mode": self.enforcement_mode.value,
+            "first_use_prompt_enabled": self.first_use_prompt_enabled,
         }
 
     @classmethod
@@ -255,4 +300,12 @@ class Session:
             risk_preference_at_spawn=str(d.get("risk_preference_at_spawn", "cautious")),
             effective_isolation_region_id=d.get("effective_isolation_region_id"),
             clearance_profile_id=d.get("clearance_profile_id"),
+            # Default-tolerant on read so pre-Pattern-⑥ sessions
+            # in the state DB load as STRICT (current behavior).
+            enforcement_mode=EnforcementMode(
+                d.get("enforcement_mode", EnforcementMode.STRICT.value),
+            ),
+            first_use_prompt_enabled=bool(
+                d.get("first_use_prompt_enabled", False),
+            ),
         )

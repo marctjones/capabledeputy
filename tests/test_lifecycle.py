@@ -26,7 +26,10 @@ async def _wait_for_socket(path: Path, timeout: float = 2.0) -> None:
 async def test_status_reports_not_running_when_no_daemon(tmp_path: Path) -> None:
     socket_path = tmp_path / "no-daemon.sock"
     status = await daemon_status(socket_path)
-    assert status == {"running": False}
+    # Issue #1 broadened daemon_status to also report the pid from
+    # the pidfile (None when no daemon is running). Don't pin the
+    # whole dict shape; just the running flag.
+    assert status["running"] is False
 
 
 async def test_stop_returns_false_when_no_daemon(tmp_path: Path) -> None:

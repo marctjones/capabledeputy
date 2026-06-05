@@ -36,8 +36,14 @@ purposes:
     label: "Email triage and summarization"
     admissible_categories: [personal, work, email, public]
     default_capabilities:
-      - kind: READ_FS
-        pattern: "*"  # gmail.list_threads / read_thread are READ_FS
+      # Issue #33 — granular email/drive kinds replace the blanket
+      # `READ_FS *` that conflated filesystem reads with email reads.
+      - kind: GMAIL_READ
+        pattern: "*"
+      - kind: IMAP_READ
+        pattern: "*"
+      - kind: DRIVE_READ
+        pattern: "*"
       - kind: CALENDAR_READ
         pattern: "*"
       - kind: CREATE_FS

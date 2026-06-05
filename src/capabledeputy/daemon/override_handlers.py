@@ -15,7 +15,7 @@ from typing import Any
 from uuid import UUID
 
 from capabledeputy.daemon.handlers import Handler
-from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.capabilities import CapabilityKind, kind_name
 from capabledeputy.policy.overrides import (
     GrantState,
     HardFloor,
@@ -32,7 +32,7 @@ def _serialize_grant(grant: OverrideGrant) -> dict[str, Any]:
     return {
         "id": str(grant.id),
         "session_id": str(grant.session_id),
-        "action_kind": grant.action_kind.value,
+        "action_kind": kind_name(grant.action_kind),
         "target": grant.target,
         "target_category_tier": list(grant.target_category_tier),
         "hard_floor_crossed": grant.hard_floor_crossed.value,

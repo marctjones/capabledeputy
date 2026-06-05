@@ -48,13 +48,13 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - [X] T009 Add new tables to `src/capabledeputy/session/store.py`: `source_location_bindings`, `relationship_groups`, `expectation_bindings`, `purposes`, `override_policies`, `override_grants` per data-model.md §Persistence shape; CREATE TABLE IF NOT EXISTS + indices on parent/session.
 - [X] T010 Extend `Session` dataclass in `src/capabledeputy/session/model.py` with new fields (axis_a, axis_b, axis_d, purpose_handle, reference_handles, risk_preference_at_spawn, effective_isolation_region_id); `Session.new()` accepts them with safe defaults; `to_dict`/`from_dict` default-tolerant (Constitution §Sec. Constraints: backward-tolerant on read).
 - [X] T011 Implement one-time legacy `label_set` converter in `src/capabledeputy/session/store.py` migration path: each legacy enum value maps into axis-correct slot at the most-restrictive position (FR-024 forward-only); legacy column retained read-only (drop scheduled at v7).
-- [ ] T012 [P] Extend `ToolDefinition` in `src/capabledeputy/tools/registry.py` with new required fields per `contracts/tool_definition.md` (effect_class, default_reversibility, default_mutability_target_facets, social_commitment, tool_provenance, accepts_handles, handle_arg_names, surfaces_destination_id, risk_ids); registry-load validation refuses a `ToolDefinition` missing any new required field (Principle VI fail-closed).
+- [ ] T012 [P] Extend `ToolDefinition` in `src/capabledeputy/tools/registry.py` with new required fields per `contracts/tool_definition.md` (effect_class, default_reversibility, default_mutability_target_facets, social_commitment, tool_provenance, accepts_handles, handle_arg_names, surfaces_destination_id, risk_ids); registry-load validation refuses a `ToolDefinition` missing any new required field (FR-005, FR-039, Principle VI fail-closed).
 - [X] T013 [P] Create `src/capabledeputy/policy/risk_register.py`: load `configs/risk_register.json` at daemon start; expose `get(id)`/`exists(id)`/`audit_orphans()` (FR-015/028).
 - [X] T014 [P] Extend `src/capabledeputy/audit/events.py` with new event constants and types: `binding.applied`, `override.granted`, `override.attested`, `override.refused`, `override.expired`, `override.use_refused`, `pattern3.handle_bind`, `isolation_region.created`, `isolation_region.discarded`, `envelope.dial_changed`, `risk_register.audit`, `residual_risk.exception`.
 - [X] T015 [P] Create invariant-test scaffold: `tests/invariants/__init__.py`; pytest marker `@pytest.mark.invariant`; new `tests/invariants/conftest.py` with shared fixtures (in-memory daemon, frozen clock).
 - [X] T016 [P] Test `tests/invariants/test_storage_shape.py` asserting every `sessions` row populates the four axis fields (no flat-legacy rows post-migration) (SC-019); also exposes `audit_storage_shape()` helper used by the CLI (T004).
-- [ ] T017 [P] Test `tests/invariants/test_failclosed.py` — parametric over every new resolver path (T021/T027/T039/T053/T063/T077/T099): every unmapped/non-canonicalizable input refuses, not best-effort-allows (Principle VI; SC-003/SC-019/SC-020/SC-022).
-- [ ] T018 [P] Test `tests/invariants/test_enforcement_llm_independence_v2.py` extending the existing `test_enforcement_llm_independence` to cover `resolution.py`, `bindings.py`, `envelope.py`, `overrides.py` (Principle I CI invariant).
+- [ ] T017 [P] Test `tests/invariants/test_failclosed.py` — parametric over every new resolver path (T021/T027/T039/T053/T063/T077/T099): every unmapped/non-canonicalizable input refuses, not best-effort-allows (FR-023, Principle VI; SC-003/SC-019/SC-020/SC-022).
+- [ ] T018 [P] Test `tests/invariants/test_enforcement_llm_independence_v2.py` extending the existing `test_enforcement_llm_independence` to cover `resolution.py`, `bindings.py`, `envelope.py`, `overrides.py` (FR-012 AI-read-only invariants, Principle I CI invariant).
 - [ ] T019 Extend `Capability` serialization in `src/capabledeputy/policy/capabilities.py`: add `CapabilityOrigin.OVERRIDE_GRANTED`, optional `override_grant_id: UUID | None = None`; default-tolerant `to_dict`/`from_dict` (FR-038).
 - [X] T020 Wire new audit-event constants into the audit-event registry; back-compat test `tests/test_audit_events.py` updated for the new namespaces.
 
@@ -101,18 +101,19 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ### Tests for User Story 2
 
-- [ ] T036 [P] [US2] Test `tests/policy/test_never_auto.py`: empty rule set ⇒ 0 `auto` outcomes (SC-003).
-- [ ] T037 [P] [US2] Test `tests/policy/test_asymmetry.py`: any non-deterministic input that attempts to relax is refused and audited (FR-031).
-- [ ] T038 [P] [US2] Test `tests/policy/test_relationship_groups.py`: share `proprietary_work` allowed to `project-P` members; denied to non-members (US2 scenario 5).
-- [ ] T039 [P] [US2] Test `tests/policy/test_axis_d_integration.py`: backup-cron-at-2am → `auto`; same effect via unauth inbound → `deny` (US2 scenario 2).
-- [ ] T040 [P] [US2] Test `tests/policy/test_expectation_bindings.py`: matching registered (initiator+effect+window) → `expected`; non-match → `anomalous` (FR-029).
-- [ ] T041 [P] [US2] Test `tests/policy/test_audit_reconstruction.py`: replay decision from logged inputs yields identical outcome+rationale (SC-002).
+- [X] T036 [P] [US2] Test `tests/policy/test_never_auto.py`: empty rule set ⇒ 0 `auto` outcomes (SC-003).
+- [X] T037 [P] [US2] Test `tests/policy/test_asymmetry.py`: any non-deterministic input that attempts to relax is refused and audited (FR-031).
+- [X] T038 [P] [US2] Test `tests/policy/test_relationship_groups.py`: share `proprietary_work` allowed to `project-P` members; denied to non-members (US2 scenario 5).
+- [X] T039 [P] [US2] Test `tests/policy/test_axis_d_integration.py`: backup-cron-at-2am → `auto`; same effect via unauth inbound → `deny` (US2 scenario 2).
+- [X] T040 [P] [US2] Test `tests/policy/test_expectation_bindings.py`: matching registered (initiator+effect+window) → `expected`; non-match → `anomalous` (FR-029).
+- [X] T041 [P] [US2] Test `tests/policy/test_audit_reconstruction.py`: replay decision from logged inputs yields identical outcome+rationale (SC-002).
 
 ### Implementation for User Story 2
 
-- [ ] T042 [P] [US2] Create `src/capabledeputy/policy/relationships.py`: `RelationshipGroup` registry loading `configs/relationship_groups.yaml`; `is_member(principal, group_id)`; human-declared, AI-read-only (FR-033).
-- [ ] T043 [P] [US2] Create `src/capabledeputy/policy/expectations.py`: `ExpectationBinding` registry loading `configs/expectations.yaml`; deterministic `match(initiator, effect, params, now)` (FR-029); no heuristic anomaly inference allowed.
-- [ ] T044 [US2] Extend `src/capabledeputy/policy/decide.py` with `DecisionRule` evaluation: load `configs/rules.yaml`; rules are predicates over axes A–D + target; ratchet-stricter only relative to baseline (FR-010/026(b–c)).
+- [X] T136 [US2] Create the **Axis D first-class type** in `src/capabledeputy/policy/axis_d.py`: `DecisionContext(initiator: PrincipalRef, initiator_authentication: AuthLevel, counterparty: PrincipalRef | None, relationship_group_ids: frozenset[str], expectedness: Literal["expected","anomalous"], reversibility: ReversibilityLabel)`. Implement `Session.axis_d` storage shape per FR-045; derive from authentication adapter at request time. Mark every constructor as runtime-built from the deterministic adapter chain — no AI path may construct one (FR-006, FR-012, FR-045). Resolves analyzer finding A1.
+- [X] T042 [P] [US2] Create `src/capabledeputy/policy/relationships.py`: `RelationshipGroup` registry loading `configs/relationship_groups.yaml`; `is_member(principal, group_id)`; human-declared, AI-read-only (FR-033).
+- [X] T043 [P] [US2] Create `src/capabledeputy/policy/expectations.py`: `ExpectationBinding` registry loading `configs/expectations.yaml`; deterministic `match(initiator, effect, params, now)` (FR-029); no heuristic anomaly inference allowed.
+- [ ] T044 [US2] Extend `src/capabledeputy/policy/decide.py` with `DecisionRule` evaluation: load `configs/rules.yaml`; rules are predicates over axes A–D + target (FR-001 four-axis input shape; FR-002 axis A categories drive the rule lookup); ratchet-stricter only relative to baseline (FR-010/026(b–c)).
 - [ ] T045 [US2] Implement never-auto default in `decide.py` (FR-011): absent matching rule ⇒ `suggest` or `deny` per the cell's default; never `auto`.
 - [ ] T046 [US2] Implement baseline + bounded-relax composition full algorithm in `decide.py` (FR-026); reject any relax input that originates from a non-deterministic source (FR-031) and emit `audit: relaxation_refused`.
 - [ ] T047 [US2] Derive Axis-D `initiator+authentication` from the existing trust prefix on legacy `label_set` reads during migration (T011); going forward, set it from the authentication adapter at request time.
@@ -131,15 +132,15 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ### Tests for User Story 3
 
-- [ ] T050 [P] [US3] Test `tests/policy/test_purpose_admissibility.py`: `health ⊄ inputs(employee-evaluation)` excluded at spawn; admissible category passes (US3 scenarios).
-- [ ] T051 [P] [US3] Test `tests/policy/test_no_purpose_failclosed.py`: session without `purpose_handle` refuses consequential effects (SC-020).
-- [ ] T052 [P] [US3] Test `tests/policy/test_purpose_fork.py`: `SessionGraph.fork()` preserves parent `purpose_handle`.
-- [ ] T053 [P] [US3] Test `tests/policy/test_purpose_delegation_refusal.py`: delegation that would introduce an inadmissible category is refused (extends 002 US1; cross-ref `tests/test_session_graph.py::T018`).
+- [X] T050 [P] [US3] Test `tests/policy/test_purpose_admissibility.py`: `health ⊄ inputs(employee-evaluation)` excluded at spawn; admissible category passes (US3 scenarios).
+- [X] T051 [P] [US3] Test `tests/policy/test_no_purpose_failclosed.py`: session without `purpose_handle` refuses consequential effects (SC-020).
+- [X] T052 [P] [US3] Test `tests/policy/test_purpose_fork.py`: `SessionGraph.fork()` preserves parent `purpose_handle`.
+- [X] T053 [P] [US3] Test `tests/policy/test_purpose_delegation_refusal.py`: delegation that would introduce an inadmissible category is refused (extends 002 US1; cross-ref `tests/test_session_graph.py::T018`).
 
 ### Implementation for User Story 3
 
-- [ ] T054 [P] [US3] Create `src/capabledeputy/policy/purposes.py`: `Purpose` entity + registry loader (`configs/purposes.yaml`); `admissibility(purpose_id, category) → bool` (FR-046/FR-009).
-- [ ] T055 [US3] Add `purpose_handle` argument to `session.new` RPC handler in `src/capabledeputy/daemon/session_handlers.py` and CLI subcommand `capdep session new --purpose <id>` in `src/capabledeputy/cli/session.py`.
+- [X] T054 [P] [US3] Create `src/capabledeputy/policy/purposes.py`: `Purpose` entity + registry loader (`configs/purposes.yaml`); `admissibility(purpose_id, category) → bool` (FR-046/FR-009).
+- [X] T055 [US3] Add `purpose_handle` argument to `session.new` RPC handler in `src/capabledeputy/daemon/session_handlers.py` and CLI subcommand `capdep session new --purpose <id>` in `src/capabledeputy/cli/session.py`.
 - [ ] T056 [US3] Implement admissibility check at spawn in `src/capabledeputy/session/graph.py::SessionGraph.new`: refuse if any candidate capability has read scope over an inadmissible category for the requested purpose (FR-009).
 - [ ] T057 [US3] Implement no-purpose ⇒ fail-closed: `session.new` without `purpose_handle` either uses `unset` (which admits no consequential effects) or refuses outright per `configs/purposes.yaml` policy (FR-046).
 - [ ] T058 [US3] Extend `SessionGraph.fork()` to copy `purpose_handle` from parent (purpose-preserving fork); document on the method.
@@ -158,34 +159,34 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ### Tests for User Story 6
 
-- [ ] T061 [P] [US6] Test `tests/policy/test_reversibility.py`: degree×agent composition; `version-preserving` verified retention ⇒ reversible/system; unverified or `in-place` ⇒ irreversible (SC-015).
-- [ ] T062 [P] [US6] Test `tests/policy/test_mutability.py`: effects exceeding effective mutability deterministically refused; planner-prune signal surfaced; create/append into immutable/append-only composes into reversibility=irreversible (SC-016).
-- [ ] T063 [P] [US6] Test `tests/policy/test_bindings.py`: `HR-folder → TeamSharePoint` deny via named binding (Quickstart §1, SC-018); unbound location fail-closed; overlapping bindings most-restrictive.
-- [ ] T064 [P] [US6] Test `tests/policy/test_destination_id.py`: unidentifiable destination ⇒ deny/escalate, never "no rule matched" (SC-022).
-- [ ] T065 [P] [US6] Test `tests/policy/test_envelope_dial.py`: preference change keeps every outcome within envelope; hard-floor cells immovable by the dial (SC-010).
-- [ ] T066 [P] [US6] Test `tests/policy/test_override_policy.py`: `disallowed` refuses authorized invoker; `dual-control` requires distinct attester; `single-authorized` works; unauthorized refused (SC-014, SC-011, Quickstart §4).
-- [ ] T067 [P] [US6] Test `tests/policy/test_override_distinct_from_approval.py`: `Override Grant` produces capability with `origin=override_granted`; audit object distinct from ordinary approval (FR-038).
-- [ ] T068 [P] [US6] Test `tests/policy/test_no_terminal_unlock.py`: no rule/dial/AI/ordinary-approval can produce or unlock `prohibited` (SC-006).
-- [ ] T069 [P] [US6] Test `tests/policy/test_optimistic_execution.py`: reversible/non-egressing work runs without prompts; category-mixed artifact flagged + rollback offered (SC-013, Quickstart §2).
-- [ ] T070 [P] [US6] Test `tests/policy/test_write_discipline.py`: verified version-preserving ⇒ reversible/system; unverifiable ⇒ irreversible (SC-015).
-- [ ] T071 [P] [US6] Test `tests/policy/test_approval_grouping.py`: 500 homogeneous actions with 2 rationales ⇒ exactly 2 approval groups; per-step prompting forbidden (SC-012).
-- [ ] T072 [P] [US6] Test `tests/patterns/test_isolation_posture.py`: contained + egress-free ⇒ effective reversibility `reversible/system`; containment ≠ declassification (source label retained on output); `EXECUTE.sandbox` without actuator ⇒ `OverrideRequired` (FR-040/041/042 + SC-017 caveat).
+- [X] T061 [P] [US6] Test `tests/policy/test_reversibility.py`: degree×agent composition; `version-preserving` verified retention ⇒ reversible/system; unverified or `in-place` ⇒ irreversible (SC-015).
+- [X] T062 [P] [US6] Test `tests/policy/test_mutability.py`: effects exceeding effective mutability deterministically refused; planner-prune signal surfaced; create/append into immutable/append-only composes into reversibility=irreversible (FR-039 Mutability Label; SC-016).
+- [X] T063 [P] [US6] Test `tests/policy/test_bindings.py`: `HR-folder → TeamSharePoint` deny via named binding (Quickstart §1, SC-018); unbound location fail-closed; overlapping bindings most-restrictive.
+- [X] T064 [P] [US6] Test `tests/policy/test_destination_id.py`: unidentifiable destination ⇒ deny/escalate, never "no rule matched" (SC-022).
+- [X] T065 [P] [US6] Test `tests/policy/test_envelope_dial.py`: preference change keeps every outcome within envelope; hard-floor cells immovable by the dial (SC-010).
+- [X] T066 [P] [US6] Test `tests/policy/test_override_policy.py`: `disallowed` refuses authorized invoker; `dual-control` requires distinct attester; `single-authorized` works; unauthorized refused (SC-014, SC-011, Quickstart §4).
+- [X] T067 [P] [US6] Test `tests/policy/test_override_distinct_from_approval.py`: `Override Grant` produces capability with `origin=override_granted`; audit object distinct from ordinary approval (FR-038).
+- [X] T068 [P] [US6] Test `tests/policy/test_no_terminal_unlock.py`: no rule/dial/AI/ordinary-approval can produce or unlock `prohibited` (FR-017 prohibited tier unreachable by automatic path; SC-006).
+- [X] T069 [P] [US6] Test `tests/policy/test_optimistic_execution.py`: reversible/non-egressing work runs without prompts; category-mixed artifact flagged + rollback offered (SC-013, Quickstart §2).
+- [X] T070 [P] [US6] Test `tests/policy/test_write_discipline.py`: verified version-preserving ⇒ reversible/system; unverifiable ⇒ irreversible (SC-015).
+- [X] T071 [P] [US6] Test `tests/policy/test_approval_grouping.py`: 500 homogeneous actions with 2 rationales ⇒ exactly 2 approval groups; per-step prompting forbidden (SC-012).
+- [X] T072 [P] [US6] Test `tests/patterns/test_isolation_posture.py`: contained + egress-free ⇒ effective reversibility `reversible/system`; containment ≠ declassification (source label retained on output); `EXECUTE.sandbox` without actuator ⇒ `OverrideRequired` (FR-040/041/042 + SC-017 caveat).
 
 ### Implementation for User Story 6
 
-- [ ] T073 [P] [US6] Create `src/capabledeputy/policy/reversibility.py`: `ReversibilityLabel(degree, agent)`, `MutabilityLabel(degree, agent)`, composition most-restrictive across (effect default × target × channel) (FR-037/039); registry loader from labels declared in `configs/labels.yaml`.
-- [ ] T074 [P] [US6] Create `src/capabledeputy/policy/bindings.py`: `SourceLocationLabelBinding` + resolver — load `configs/source_bindings.yaml`; canonicalize via per-scheme canonicalizers (`file://`, `unc://`, `https://...`, `mcp:...`); subtree-inheritance; most-restrictive composition; unbound/non-canonicalizable ⇒ fail-closed (FR-043).
-- [ ] T075 [US6] Create `src/capabledeputy/substrate/source_port.py` and `src/capabledeputy/substrate/version_write_port.py` (port-only interfaces per Constitution VII; **no provider impl** — that's spec 004); document the `canonical_resource_handle`/`canonical_destination_id`/`surfaces_destination_id` contract (FR-048) and `VersionedWritePort.write` returning `{prior_version_handle, post_state_hash, attestation}` (FR-044).
-- [ ] T076 [US6] Create `src/capabledeputy/policy/envelope.py`: `OutcomeEnvelope` loader (`configs/envelopes.yaml`); `RiskPreferenceProfile` loader (`configs/risk_preference.json`); `select_outcome(envelope, dial_value) → Decision` (FR-030); hard-floor cells have degenerate envelopes.
+- [X] T073 [P] [US6] Create `src/capabledeputy/policy/reversibility.py`: `ReversibilityLabel(degree, agent)`, `MutabilityLabel(degree, agent)`, composition most-restrictive across (effect default × target × channel) (FR-037/039); registry loader from labels declared in `configs/labels.yaml`.
+- [X] T074 [P] [US6] Create `src/capabledeputy/policy/bindings.py`: `SourceLocationLabelBinding` + resolver — load `configs/source_bindings.yaml`; canonicalize via per-scheme canonicalizers (`file://`, `unc://`, `https://...`, `mcp:...`); subtree-inheritance; most-restrictive composition; unbound/non-canonicalizable ⇒ fail-closed (FR-043).
+- [X] T075 [US6] Create `src/capabledeputy/substrate/source_port.py` and `src/capabledeputy/substrate/version_write_port.py` (port-only interfaces per Constitution VII; **no provider impl** — that's spec 004); document the `canonical_resource_handle`/`canonical_destination_id`/`surfaces_destination_id` contract (FR-048) and `VersionedWritePort.write` returning `{prior_version_handle, post_state_hash, attestation}` (FR-044).
+- [X] T076 [US6] Create `src/capabledeputy/policy/envelope.py`: `OutcomeEnvelope` loader (`configs/envelopes.yaml`); `RiskPreferenceProfile` loader (`configs/risk_preference.json`); `select_outcome(envelope, dial_value) → Decision` (FR-030); hard-floor cells have degenerate envelopes.
 - [ ] T077 [US6] Wire envelope dial into `src/capabledeputy/policy/decide.py`: after baseline + bounded-relax, the dial picks the envelope point; refuses to cross any hard floor (FR-026(d) + FR-030).
-- [ ] T078 [US6] Create `src/capabledeputy/policy/overrides.py`: `OverridePolicy`, `OverrideAuthorization`, `OverrideGrant` types + FSM per `contracts/override.md`; persisted in `override_grants` table; auto-expiry enforced at every `decide()` call (SC-011).
+- [X] T078 [US6] Create `src/capabledeputy/policy/overrides.py`: `OverridePolicy`, `OverrideAuthorization`, `OverrideGrant` types + FSM per `contracts/override.md`; persisted in `override_grants` table; auto-expiry enforced at every `decide()` call (SC-011).
 - [ ] T079 [US6] Implement `OverrideRequired` distinct return path in `src/capabledeputy/policy/decide.py` (replaces collapsing into `require-approval` for floor crossings) (FR-038); audit `decision.override_required`.
-- [ ] T080 [US6] Add `capdep override request/attest/list/show/refuse` CLI in new `src/capabledeputy/cli/override_cmd.py`; the planner has no path to invoke any of these (Principle I + V).
+- [X] T080 [US6] Add `capdep override request/attest/list/show/refuse` CLI in new `src/capabledeputy/cli/override_cmd.py`; the planner has no path to invoke any of these (Principle I + V).
 - [ ] T081 [US6] Implement optimistic execution boundary in `src/capabledeputy/policy/decide.py` (FR-034): if effective reversibility is degree-low + agent=`system` + non-egressing, return `auto` without prompt; reversal-agent=`human` work surfaces/gates; carve-out for purpose-contamination (FR-009) — pre-excluded at spawn, not act-then-flag.
 - [ ] T082 [US6] Implement semantic approval grouping in `src/capabledeputy/policy/approval_grouping.py` (FR-035): group homogeneous actions by rationale; aggregate impact presented; per-step prompting refused.
 - [ ] T083 [US6] Implement write-discipline verification in `src/capabledeputy/policy/reversibility.py` (FR-044): given a `VersionedWritePort.WriteResult`, verify prior-version retention by reading the prior-version handle and matching the pre-write state hash; only on success label the write `reversible/system`.
 - [ ] T084 [US6] Implement isolation-posture rules in `src/capabledeputy/patterns/isolation_posture.py` (FR-040/041/042): a session running in a Disposable Isolation Region composes effective reversibility to `reversible/system`; "containment ≠ declassification" (output retains source category labels); `EXECUTE.sandbox` invocation without the actuator port satisfied ⇒ `OverrideRequired` (Principle VI fail-closed; SC-017).
-- [ ] T085 [US6] Add `src/capabledeputy/substrate/sandbox_actuator.py` (port-only stub) declaring the `SandboxActuator` interface used by spec 004; importing without an impl raises `NotImplementedError` at first call.
+- [X] T085 [US6] Add `src/capabledeputy/substrate/sandbox_actuator.py` (port-only stub) declaring the `SandboxActuator` interface used by spec 004; importing without an impl raises `NotImplementedError` at first call.
 - [ ] T086 [US6] US6 checkpoint: SC-010, SC-012, SC-013, SC-014, SC-015, SC-016, SC-018, SC-022 green; Quickstart §1, §2, §4 e2e pass.
 
 **Checkpoint**: US6 functional — the practical adoption layer (dial, override policy, optimistic exec, grouping, bindings, reversibility/mutability, isolation posture) lands without weakening the security model.
@@ -200,10 +201,10 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ### Tests for User Story 4
 
-- [ ] T087 [P] [US4] Test `tests/policy/test_risk_register.py`: orphan label refused; orphan register entry refused (SC-001).
-- [ ] T088 [P] [US4] Test `tests/policy/test_residual_risk.py`: every threshold-crossing allow produces exactly one Residual-Risk Exception event (SC-007).
-- [ ] T089 [P] [US4] Test `tests/policy/test_control_plane_reflexivity.py`: ADMINISTER attempt from untrusted-tainted session refused (SC-005).
-- [ ] T090 [P] [US4] Test `tests/policy/test_reversibility_gating.py`: graded thresholds; social-commitment effect always treated `irreversible` regardless of mechanical recoverability (FR-019).
+- [X] T087 [P] [US4] Test `tests/policy/test_risk_register.py`: orphan label refused; orphan register entry refused (SC-001).
+- [X] T088 [P] [US4] Test `tests/policy/test_residual_risk.py`: every threshold-crossing allow produces exactly one Residual-Risk Exception event (SC-007).
+- [X] T089 [P] [US4] Test `tests/policy/test_control_plane_reflexivity.py`: ADMINISTER attempt from untrusted-tainted session refused (SC-005).
+- [X] T090 [P] [US4] Test `tests/policy/test_reversibility_gating.py`: graded thresholds; social-commitment effect always treated `irreversible` regardless of mechanical recoverability (FR-019).
 
 ### Implementation for User Story 4
 
@@ -225,20 +226,20 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ### Tests for User Story 5
 
-- [ ] T096 [P] [US5] Test `tests/policy/test_max_tier_clearance.py`: profile clearance `regulated` + datum `restricted` ⇒ refused (FR-008, US5 scenario 1).
-- [ ] T097 [P] [US5] Test `tests/policy/test_integrity_floor.py`: integrity-floored step refuses an input below the floor (FR-004, US5 scenario 2).
-- [ ] T098 [P] [US5] Test `tests/patterns/test_reference_handle.py`: unforgeable per-session handles; planner `history` contains 0 raw values; bind only after `decide` passes; `pattern3.handle_bind` audit event records destination canonical id (SC-021; Quickstart §3).
-- [ ] T099 [P] [US5] Test `tests/patterns/test_restricted_requires_3_or_5.py`: spawning a `restricted` session whose tool surface offers neither ③ (`accepts_handles=true`) nor ⑤ (SandboxActuator) is refused at spawn (FR-047).
-- [ ] T100 [P] [US5] Test `tests/mode/test_dispatcher_v0_9.py`: `select_mode` returns `REFERENCE` or `SEALED` for `restricted`; never falls back to `DUAL_LLM`; never auto-de-escalates.
+- [X] T096 [P] [US5] Test `tests/policy/test_max_tier_clearance.py`: profile clearance `regulated` + datum `restricted` ⇒ refused (FR-008, US5 scenario 1).
+- [X] T097 [P] [US5] Test `tests/policy/test_integrity_floor.py`: integrity-floored step refuses an input below the floor (FR-004, US5 scenario 2).
+- [X] T098 [P] [US5] Test `tests/patterns/test_reference_handle.py`: unforgeable per-session handles; planner `history` contains 0 raw values; bind only after `decide` passes; `pattern3.handle_bind` audit event records destination canonical id (SC-021; Quickstart §3).
+- [X] T099 [P] [US5] Test `tests/patterns/test_restricted_requires_3_or_5.py`: spawning a `restricted` session whose tool surface offers neither ③ (`accepts_handles=true`) nor ⑤ (SandboxActuator) is refused at spawn (FR-047).
+- [X] T100 [P] [US5] Test `tests/mode/test_dispatcher_v0_9.py`: `select_mode` returns `REFERENCE` or `SEALED` for `restricted`; never falls back to `DUAL_LLM`; never auto-de-escalates.
 
 ### Implementation for User Story 5
 
 - [ ] T101 [P] [US5] Implement max-tier clearance + read-up refusal in `src/capabledeputy/policy/resolution.py` (FR-008): every context profile carries `max_tier`; reads above it refused.
 - [ ] T102 [P] [US5] Implement integrity-floor + no-read-down within a step in `src/capabledeputy/policy/decide.py` (FR-004 Biba direction): integrity-floored steps refuse `external-untrusted` provenance inputs.
-- [ ] T103 [US5] Create `src/capabledeputy/patterns/__init__.py` and `src/capabledeputy/patterns/reference_handle.py` per `contracts/reference_handle.md`: `ReferenceHandle`, `ReferenceHandleStore.issue/bind/destroy/bind_trail`; per-session in-memory; persisted into `sessions.reference_handles`.
+- [X] T103 [US5] Create `src/capabledeputy/patterns/__init__.py` and `src/capabledeputy/patterns/reference_handle.py` per `contracts/reference_handle.md`: `ReferenceHandle`, `ReferenceHandleStore.issue/bind/destroy/bind_trail`; per-session in-memory; persisted into `sessions.reference_handles`.
 - [ ] T104 [US5] Wire handle issue/bind into the dispatcher: only the dispatcher (post-`decide`-allow) may bind; tools with `accepts_handles=true` receive handles in declared `handle_arg_names`; `pattern3.handle_bind` audit per insertion (FR-047).
 - [ ] T105 [US5] Extend `src/capabledeputy/mode/dispatcher.py::select_mode` to include `REFERENCE` and `SEALED` outputs; deterministic floor: effective tier `restricted` ⇒ `REFERENCE` (if any session tool `accepts_handles=true`) or `SEALED` (if SandboxActuator port satisfied); else fail-closed at spawn (FR-047).
-- [ ] T106 [US5] Create `src/capabledeputy/patterns/isolation_posture.py` (continued from T084) — formalize the sealed-effect rule and the `effective_isolation_region_id` accounting on the Session; impl of region creation/discard remains in 004.
+- [X] T106 [US5] Create `src/capabledeputy/patterns/isolation_posture.py` (continued from T084) — formalize the sealed-effect rule and the `effective_isolation_region_id` accounting on the Session; impl of region creation/discard remains in 004.
 - [ ] T107 [US5] US5 checkpoint: SC-008 and SC-021 green; Quickstart §3 e2e passes.
 
 **Checkpoint**: All P1–P5 user stories functional and tested; v0.9 labeling framework substantively complete except the 004 substrate (SandboxActuator + provider adapters).
@@ -256,7 +257,49 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - [ ] T114 [P] Update `docs/llm-flow-patterns.md` selector documentation reflecting `REFERENCE` / `SEALED` additions and the `restricted`-tier floor.
 - [ ] T115 [P] Update `README.md` illustrative-risks list mentioning relationship-scoped sharing + reversibility + disposable isolation (subtle, demoted-prompt-injection, keep lean per `feedback_positioning`).
 - [ ] T116 [P] Update `ROADMAP.md`: mark v0.9 in-flight; add a v0.10 / spec-004 placeholder for SandboxActuator + provider adapters.
-- [ ] T117 Final: run `uv run ruff check && uv run ruff format --check && uv run pyright && uv run pytest`; confirm SC-001..022 all green; tag a `v0.9.0-rc.1` candidate (pre-release) once the user requests it.
+
+---
+
+## Phase 10: Clarification Addendum (2026-05-25 — Q1–Q5)
+
+**Purpose**: Implement the 5 new clarifications recorded in `spec.md` §Clarifications / Session 2026-05-25 and the corresponding D12–D16 design decisions in `research.md`. Each task is labeled to the user story it extends.
+
+### Q1: Per-Purpose risk-preference dial (FR-030 / FR-046)
+
+- [X] T118 [P] [US6] Extend `configs/purposes.yaml` schema: each Purpose entry MUST carry a `risk_preference_dial` field valued in `cautious | balanced | permissive`. Update the Purpose loader in `src/capabledeputy/policy/purposes.py` to read and expose the per-purpose dial value. (D12, Q1)
+- [X] T119 [US6] Modify session-spawn path in `src/capabledeputy/session/graph.py` `SessionGraph.new()` so `risk_preference_at_spawn` is resolved from the session's Purpose entry's `risk_preference_dial`, not from a standalone config file. On `fork`, child inherits the parent's resolved dial. (D12, Q1)
+- [X] T120 [P] [US6] Migration task: extend `src/capabledeputy/store/migrations/v6.py` — read legacy `configs/risk_preference.json` (if present), apply its value as default `risk_preference_dial` to every Purpose entry that doesn't declare one, then archive the legacy file (`configs/risk_preference.json.migrated`). (D12, Q1)
+- [X] T121 [P] [US6] Test `tests/test_dial_per_purpose.py` — verify Session inherits dial from its Purpose at spawn; verify fork inherits parent's dial; verify session cannot mutate its own dial at runtime; verify per-purpose values differentiate (`tax-prep: cautious` vs `daily-briefing: balanced`) (FR-030, Q1, SC-010 extension).
+
+### Q2: Override Grant default expiry (FR-032)
+
+- [X] T122 [P] [US4] Update `src/capabledeputy/override/policy.py` `OverridePolicyEntry` validator: `expiry_seconds` defaults to `900` (15 min) when unset; entries with `expiry_seconds > 3600` are refused at policy authoring time with a clear error pointing at FR-032's hard cap. (D13, Q2)
+- [X] T123 [P] [US4] Test `tests/test_override_grant_expiry.py` — verify default expiry = 900s; verify a configured entry with expiry_seconds=600 is honored; verify expiry_seconds=3601 is refused with FR-032 reference; verify the granted Override Grant's `expires_at` = `created_at + min(expiry_seconds, 3600)` (FR-032, Q2, SC-014 extension).
+
+### Q3: Ratification Authorization (FR-014)
+
+- [X] T124 [US4] New module `src/capabledeputy/policy/ratification.py`: implement `RatificationPolicy` + `RatificationAuthorization` state machine valued in `{single-authorized | dual-control}` per affected severity. Reuse `src/capabledeputy/override/authorization.py` infrastructure (operator MAY declare role mappings identical-to or distinct-from Override Authorization). Hard-floor-touching ratifications default to `dual-control`; non-hard-floor ratifications default to `single-authorized`. AI MUST NEVER be authorized to ratify. (D14, Q3)
+- [X] T125 [P] [US4] Add `configs/ratification_policy.yaml` (operator-edited, AI-read-only) declaring per-severity `{single-authorized | dual-control}` + per-severity Ratification Authorization role mapping. Daemon loads at startup; CI-lint refuses invalid configurations. (D14, Q3)
+- [X] T126 [P] [US4] Test `tests/test_ratification_authorization.py` — verify hard-floor ratifications default to dual-control; verify non-hard-floor default to single-authorized; verify invoker MUST NOT equal attester; verify unauthorized principal refused + audited; verify AI principal refused (FR-014, Q3).
+- [X] T127 [P] [US4] Add audit event `EventType.RATIFICATION_APPLIED` to `src/capabledeputy/audit/events.py` carrying `{ratification_id, target_kind: label|profile|rule, invoker, attester?, severity, audit_id}`. Update `tests/test_audit_events.py` taxonomy assertion. (D14, Q3)
+
+### Q4: Decision-latency SLO (SC-023)
+
+- [X] T128 [P] New module `src/capabledeputy/policy/latency.py`: in-process histogram tracking per-`decide()` latency; on every Nth dispatch (configurable, default 100), checks recent window's p95 / p99.9 against thresholds (50ms / 250ms) and emits `decision.latency_degraded` audit event when exceeded. (D15, Q4)
+- [X] T129 [P] Add `EventType.DECISION_LATENCY_DEGRADED` to `src/capabledeputy/audit/events.py`. Payload: `{latency_ms, rule, fixture_size, threshold_crossed: "p95"|"p99.9"}`. Update `tests/test_audit_events.py` taxonomy assertion. (D15, Q4)
+- [X] T130 [P] Benchmark test `tests/test_decision_latency.py` — build standard rule-set fixture (≥1k rules, ≥100 categories, ≥50 expectation bindings); run `decide()` 10,000× ; assert p95 ≤ 50ms AND p99.9 ≤ 250ms. Skip-by-default in CI when running in resource-constrained environments via `pytest.mark.benchmark` (SC-023, Q4).
+
+### Q5: Per-Risk-Register-Entry residual-risk thresholds (FR-016 / FR-028)
+
+- [X] T131 [P] [US4] Extend `configs/risk_register.json` schema: every entry MUST declare a `threshold` field shaped per its framework reference (FAIR `{framework, magnitude_band_min}`; NIST AI RMF `{framework, impact_tier_min}`; EU AI Act `{framework, risk_class_min}`; etc.). Update the documented schema in `docs/risk-register.md`. (D16, Q5)
+- [X] T132 [US4] New module `src/capabledeputy/policy/risk_register.py`: load + cache the risk register at daemon startup; expose `get_threshold(risk_id) -> Threshold` + `threshold_crossed(risk_id, decision_residual) -> bool`. (D16, Q5)
+- [X] T133 [US4] Update `src/capabledeputy/policy/engine.py` `decide()` — when a residual-risk threshold is crossed but the decision is allowed (FR-016), the emitted residual-risk exception payload MUST list the specific risk-id(s) crossed (not "a threshold"). Adds `crossed_risk_ids: list[str]` to the exception object. (D16, Q5)
+- [X] T134 [P] [US4] CI-lint test `tests/invariants/test_risk_register_thresholds.py` — refuses to ship a `risk_register.json` whose entries cite a quantification-required framework but omit the `threshold` field. Extends existing SC-001 lint. (D16, Q5)
+- [X] T135 [P] [US4] Test `tests/test_risk_register_thresholds.py` — verify a decision that crosses an entry's threshold produces a residual-risk exception whose `crossed_risk_ids` list contains that entry's id; verify multi-risk crossings name all crossed ids; verify entries without thresholds never produce silent exceptions (FR-016, Q5, SC-007 extension).
+
+---
+
+- [ ] T117 Final: run `uv run ruff check && uv run ruff format --check && uv run pyright && uv run pytest`; confirm SC-001..023 all green (extended by Q4 / SC-023); tag a `v0.9.0-rc.1` candidate (pre-release) once the user requests it.
 
 ---
 
@@ -273,6 +316,13 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - **US4 (P4, Phase 7)** — depends on Foundational + US1 + US2.
 - **US5 (P5, Phase 8)** — depends on Foundational + US1 + US2 + US3 (purpose surface) + US6 (reversibility for the integrity-floor semantics).
 - **Polish (Phase 9)** — depends on all desired user stories.
+- **Clarification Addendum (Phase 10, 2026-05-25)** — depends on the user story each task extends:
+  - Q1 tasks (T118–T121) extend US6 — depend on US6 (envelope + dial scaffolding).
+  - Q2 tasks (T122–T123) extend US4 — depend on US4 (Override Grant / Policy scaffolding).
+  - Q3 tasks (T124–T127) extend US4 — depend on US4 (Override Authorization infrastructure they share).
+  - Q4 tasks (T128–T130) extend Polish — depend on Foundational + US1 (latency benchmark needs the engine wired).
+  - Q5 tasks (T131–T135) extend US4 — depend on US4 (risk register + residual-risk exception path).
+  - Phase 10 finishes before T117's final-validation gate.
 
 ### Within Each User Story
 

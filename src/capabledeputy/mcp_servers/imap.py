@@ -30,6 +30,7 @@ Run via:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import email
 import email.message
 import email.utils
@@ -83,9 +84,11 @@ async def _list_threads(args: dict[str, Any]) -> dict[str, Any]:
             # Gmail X-GM-RAW lets us use Gmail's search syntax verbatim
             typ, data = client.uid("SEARCH", "X-GM-RAW", f'"{query}"')
         elif query:
-            typ, data = client.uid("SEARCH", None, query)
+            # imaplib.uid accepts None as the optional charset arg (no charset);
+            # imaplib stubs disagree, hence the type: ignore.
+            typ, data = client.uid("SEARCH", None, query)  # type: ignore[arg-type]
         else:
-            typ, data = client.uid("SEARCH", None, "ALL")
+            typ, data = client.uid("SEARCH", None, "ALL")  # type: ignore[arg-type]
         if typ != "OK":
             return {"folder": folder, "query": query, "count": 0, "messages": []}
         uids = data[0].split() if data and data[0] else []
@@ -124,10 +127,8 @@ async def _list_threads(args: dict[str, Any]) -> dict[str, Any]:
             "messages": messages,
         }
     finally:
-        try:
+        with contextlib.suppress(Exception):
             client.logout()
-        except Exception:
-            pass
 
 
 # ---------- imap.read_message ----------
@@ -164,10 +165,8 @@ async def _read_message(args: dict[str, Any]) -> dict[str, Any]:
             }
         return {"found": False, "uid": uid, "folder": folder}
     finally:
-        try:
+        with contextlib.suppress(Exception):
             client.logout()
-        except Exception:
-            pass
 
 
 def _extract_body(msg: email.message.Message) -> str:
@@ -279,10 +278,8 @@ async def _list_folders(args: dict[str, Any]) -> dict[str, Any]:
                     folders.append(parts[-2])
         return {"count": len(folders), "folders": folders}
     finally:
-        try:
+        with contextlib.suppress(Exception):
             client.logout()
-        except Exception:
-            pass
 
 
 # ---------- imap.mark_read ----------
@@ -297,10 +294,8 @@ async def _mark_read(args: dict[str, Any]) -> dict[str, Any]:
         typ, _ = client.uid("STORE", uid, "+FLAGS", "(\\Seen)")
         return {"uid": uid, "folder": folder, "marked_read": typ == "OK"}
     finally:
-        try:
+        with contextlib.suppress(Exception):
             client.logout()
-        except Exception:
-            pass
 
 
 # ---------- imap.archive ----------
@@ -340,10 +335,8 @@ async def _archive(args: dict[str, Any]) -> dict[str, Any]:
             "error": "no archive folder found; tried Archive / [Gmail]/All Mail / ARCHIVE",
         }
     finally:
-        try:
+        with contextlib.suppress(Exception):
             client.logout()
-        except Exception:
-            pass
 
 
 def tools() -> list[ToolDescriptor]:

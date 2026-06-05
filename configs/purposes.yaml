@@ -13,5 +13,141 @@
 #       admissible_categories: [<category>, ...]   # whitelist; optional
 #       inadmissible_categories: [<category>, ...] # blacklist; optional
 #       recommended_pattern: <pattern>             # hint, not authoritative
+#       risk_preference_dial: <cautious|balanced|aggressive>
+#       default_capabilities:                      # standing grants
+#         - kind: <CapabilityKind>
+#           pattern: <glob>
 
-purposes: []
+purposes:
+  # Daily personal-life management — the workflow corpus in
+  # docs/personal-workflow-coverage.md. This purpose preloads the
+  # standing capabilities from the cookbook's profile A (reads),
+  # profile B (local writes in scoped paths), and profile D (devbox
+  # specs). Profile C (egress) is intentionally NOT preloaded —
+  # every send/purchase still goes through the approval card.
+  #
+  # REPLACE `/home/marc/` path prefixes with your own home before
+  # spawning a session with this purpose; the glob is exact-prefix
+  # matched against `target`. To use:
+  #
+  #   capdep session new --purpose daily-life-management \
+  #       --intent "morning briefing"
+  - purpose_id: daily-life-management
+    label: "Daily personal-life management"
+    admissible_categories:
+      - personal
+      - work-research      # reading work mail for triage is allowed
+    inadmissible_categories:
+      - phi                # health requires the dedicated purpose
+      - personal-finance   # finance requires the dedicated purpose
+    recommended_pattern: pattern_2_dual_llm
+    risk_preference_dial: balanced
+    default_capabilities:
+      # --- Profile A: pure reads, auto ---
+      - kind: GMAIL_READ
+        pattern: "*"
+      - kind: CALENDAR_READ
+        pattern: "*"
+      - kind: DRIVE_READ
+        pattern: "*"
+      - kind: WEB_FETCH
+        pattern: "*"
+      - kind: READ_FS
+        pattern: "/home/marc/Documents/*"
+      - kind: READ_FS
+        pattern: "/home/marc/Projects/*"
+
+      # --- Profile B: local-write, scoped paths, auto via FR-034 ---
+      - kind: CREATE_FS
+        pattern: "/home/marc/Documents/inbox/*"
+      - kind: CREATE_FS
+        pattern: "/home/marc/Documents/journal/*"
+      - kind: MODIFY_FS
+        pattern: "/home/marc/Projects/journal/*"
+      - kind: CREATE_CAL
+        pattern: "*"
+
+      # --- Profile D: sandboxed dev work ---
+      - kind: EXECUTE_DEVBOX
+        pattern: "*"      # any operator-declared spec; pattern fails closed if no spec
+
+      # Profile C (egress) is intentionally absent. SEND_EMAIL,
+      # QUEUE_PURCHASE, MODIFY_CAL on shared calendars, DELETE_FS
+      # all flow through the approval card per the cookbook §3.
+
+  # Personal-finance — banking, subscriptions, tax. Compartment-
+  # isolated from daily-life via the inadmissible_categories list
+  # on this purpose AND the personal one. A session spawned here
+  # cannot read personal email (no GMAIL_READ); a daily-life
+  # session cannot read finance.
+  - purpose_id: personal-finance
+    label: "Personal finance — banking, subscriptions, tax"
+    admissible_categories:
+      - personal-finance
+    inadmissible_categories:
+      - phi
+      - personal
+      - work-research
+    recommended_pattern: pattern_2_dual_llm
+    risk_preference_dial: cautious
+    default_capabilities:
+      # Reads only — financial-write is purpose-gated separately.
+      - kind: GMAIL_READ
+        pattern: "from:*@bank.example.com"   # narrow to known financial senders
+      - kind: GMAIL_READ
+        pattern: "from:*@statements.example.com"
+      - kind: READ_FS
+        pattern: "/home/marc/Documents/Finance/*"
+      - kind: WEB_FETCH
+        pattern: "https://*.bank.example.com/*"
+      - kind: CREATE_FS
+        pattern: "/home/marc/Documents/Finance/Statements/*"
+
+  # PHI / health — narrowest purpose. Read-only by default; any
+  # write or egress goes through approval. PHI never crosses into
+  # personal or work compartments without explicit declassification.
+  - purpose_id: phi-management
+    label: "Health / PHI management"
+    admissible_categories:
+      - phi
+    inadmissible_categories:
+      - personal
+      - personal-finance
+      - work-research
+    recommended_pattern: pattern_3_handle    # PHI fields as handles
+    risk_preference_dial: cautious
+    default_capabilities:
+      - kind: GMAIL_READ
+        pattern: "from:*@clinic.example.com"
+      - kind: GMAIL_READ
+        pattern: "from:*@insurance.example.com"
+      - kind: READ_FS
+        pattern: "/home/marc/Documents/Health/*"
+
+  # Software-development — pattern ⑤ centric. Wide local-write,
+  # devbox-heavy. No egress preloaded (push/publish gated).
+  - purpose_id: software-dev
+    label: "Personal software development"
+    admissible_categories:
+      - work-research
+      - personal
+    inadmissible_categories:
+      - phi
+      - personal-finance
+    recommended_pattern: pattern_5_sandbox
+    risk_preference_dial: balanced
+    default_capabilities:
+      - kind: READ_FS
+        pattern: "/home/marc/Projects/*"
+      - kind: CREATE_FS
+        pattern: "/home/marc/Projects/*"
+      - kind: MODIFY_FS
+        pattern: "/home/marc/Projects/*"
+      - kind: WEB_FETCH
+        pattern: "https://github.com/*"
+      - kind: WEB_FETCH
+        pattern: "https://pypi.org/*"
+      - kind: WEB_FETCH
+        pattern: "https://registry.npmjs.org/*"
+      - kind: EXECUTE_DEVBOX
+        pattern: "*"

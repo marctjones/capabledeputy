@@ -56,18 +56,160 @@ rules:
     human_ratified_by: marc@example.com
     human_ratified_at: 2026-05-19T00:00:00Z
 
-  # Kill-switch ratchet — DENY all personal-data email egress until
-  # the operator removes this rule. Demonstrates a stricter-by-rule
-  # composition: this DENY composes most-restrictive with any AUTO
-  # rule that might also match (the DENY wins).
-  - rule_id: block-personal-email
+  # === Personal mail → family (email summary forwarding) ===============
+  #
+  # Scenario: agent reads gmail (auto-tainted with confidential.personal),
+  # composes a summary of personal items (health, travel), and forwards
+  # to a family-group recipient. Reached via send_gmail_message,
+  # send_gmail_draft, or the native email.send tool — all classify as
+  # effect_class=send_email.
+  #
+  # Outcome SUGGEST (not AUTO): SEND_EMAIL is irreversible + carries a
+  # social-commitment flag, so even with a recognized counterparty the
+  # operator still sees the approval card with full to/subject/body
+  # preview. The rule's job is to MARK the counterparty as expected so
+  # the approval card surfaces it as a green/familiar recipient rather
+  # than a fall-to-default unknown. Composes most-restrictive with the
+  # `unknown-personal-send-deny` rule below: family hit → SUGGEST wins
+  # (DENY does not match since counterparty is family). Non-family hit
+  # → DENY (kill switch retained, narrowed).
+  - rule_id: family-personal-email-suggest
     when:
       axis_a:
         category: personal
       axis_c:
         effect_class: send_email
-    outcome: deny
-    rationale: operator-configured kill switch for personal-data egress
+      axis_d:
+        relationship_group_id: family
+    outcome: suggest
+    rationale: forwarding personal mail summaries to family is recognized; still gates on operator approval
     risk_ids: []
     human_ratified_by: marc@example.com
-    human_ratified_at: 2026-05-19T00:00:00Z
+    human_ratified_at: 2026-06-03T00:00:00Z
+
+  # === Work mail → work-team (email summary forwarding) ================
+  #
+  # Symmetric to the family rule but for proprietary_work axis_a
+  # categorization. Forwarding work summaries to a work-team member
+  # is recognized; non-members fall through to the default fail-closed
+  # SUGGEST cell, which still requires approval but flags the
+  # counterparty as unknown rather than expected.
+  - rule_id: work-team-email-suggest
+    when:
+      axis_a:
+        category: proprietary_work
+      axis_c:
+        effect_class: send_email
+      axis_d:
+        relationship_group_id: work-team
+    outcome: suggest
+    rationale: forwarding proprietary_work summaries to a work-team member is recognized; still gates on operator approval
+    risk_ids: []
+    human_ratified_by: marc@example.com
+    human_ratified_at: 2026-06-03T00:00:00Z
+
+  # === Kill-switch: deny personal send to anyone NOT in a family group =
+  #
+  # Predicates can't express NOT, so we structure this as a deny rule
+  # that fires ONLY when no recognizing rule matches. Implementation:
+  # we leave the broad-deny effect_class=send_email + category=personal
+  # rule below disabled by default (commented out). The previous
+  # default-DENY here is REMOVED because it composes most-restrictive
+  # with the family-suggest rule above and would always win — making
+  # the family path unreachable.
+  #
+  # If you want a hard kill-switch back, uncomment the block below.
+  # While it's active, every personal+send_email — including family —
+  # is denied; the family-suggest rule has no effect. You'd disable it
+  # whenever you want the LLM to actually forward personal summaries.
+  #
+  # - rule_id: block-personal-email
+  #   when:
+  #     axis_a:
+  #       category: personal
+  #     axis_c:
+  #       effect_class: send_email
+  #   outcome: deny
+  #   rationale: kill switch — every personal-data egress requires manual override
+  #   risk_ids: []
+  #   human_ratified_by: marc@example.com
+  #   human_ratified_at: 2026-05-19T00:00:00Z
+
+  # === Cookbook §9 stanzas — daily-life-management policy =============
+  #
+  # These three rules operationalize the policy cookbook (see
+  # docs/personal-workflow-policy-cookbook.md §9). Composed with the
+  # purposes registry, they target the daily-life-management session
+  # at ~3-5 approval cards per day for a typical workflow mix:
+  #
+  #   Profile A reads → AUTO via purpose default_capabilities
+  #   Profile B local writes → AUTO via purpose + FR-034
+  #   Profile C egress → still REQUIRE_APPROVAL with relationship-group
+  #                      enrichment from the family/work-team rules
+  #                      above, narrowed further by the after-hours
+  #                      rule below
+  #   Profile D devbox internals → AUTO via EXECUTE_DEVBOX grant
+  #   Profile E plan-then-act → AUTO plan, bundle approval at execute
+  #   Profile F PHI/finance → blocked at egress by the phi-egress-deny
+  #                           rule below; finance via the
+  #                           narrow-purpose mechanism
+
+  # Small reversible purchases (returnable consumables, < $cap) are
+  # the only AUTO-egress carve-out in this base policy. The
+  # `max_amount` field on the QUEUE_PURCHASE grant determines what
+  # counts as small — the rule fires only when the deterministic
+  # reversibility resolver returns "reversible/system" (e.g. amazon
+  # purchase with the operator's standing return window). Any
+  # purchase whose reversibility resolves to irreversible/external
+  # (concert tickets, custom builds, second-hand goods) falls back
+  # to the FR-011 SUGGEST default.
+  - rule_id: purchases-under-threshold-auto
+    when:
+      axis_c:
+        effect_class: queue_purchase
+      axis_d:
+        reversibility: reversible
+    outcome: auto
+    rationale: small reversible purchases (returnable consumables) auto under operator-set cap
+    risk_ids: []
+    human_ratified_by: marc@example.com
+    human_ratified_at: 2026-06-03T00:00:00Z
+
+  # Send actions during night hours (22:00–06:00 UTC) fall to
+  # REQUIRE_APPROVAL even when a relationship-group rule would
+  # otherwise SUGGEST. Defense against late-night autonomous loops
+  # and time-pressure manipulation (Threat T10/T11 in the cookbook
+  # §6 catalogue). Composes most-restrictive with
+  # family-personal-email-suggest and work-team-email-suggest —
+  # both targets still get the approval card, but the rationale
+  # surfaces the after-hours marker so the operator notices.
+  - rule_id: send-after-hours-require-approval
+    when:
+      axis_c:
+        effect_class: send_email
+      axis_d:
+        time_window: [22, 6]
+    outcome: require-approval
+    rationale: night-time sends fall to manual approval even for recognized counterparties (T11 runaway-loop defense)
+    risk_ids: []
+    human_ratified_by: marc@example.com
+    human_ratified_at: 2026-06-03T00:00:00Z
+
+  # PHI never leaves the device without an explicit declassification
+  # override (FR-038 OverrideGrant flow). This is the hard floor on
+  # health data. Composes most-restrictive with any other rule that
+  # might match phi+send_email — even a family-group recipient is
+  # denied, preventing accidental disclosure to a spouse who isn't
+  # the patient. Operator can still mint an override grant for a
+  # specific destination + payload kind via the override mechanism.
+  - rule_id: phi-egress-deny
+    when:
+      axis_a:
+        category: phi
+      axis_c:
+        effect_class: send_email
+    outcome: deny
+    rationale: PHI never egresses without explicit OverrideGrant declassification (FR-038)
+    risk_ids: []
+    human_ratified_by: marc@example.com
+    human_ratified_at: 2026-06-03T00:00:00Z

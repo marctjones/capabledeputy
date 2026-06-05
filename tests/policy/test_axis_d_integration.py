@@ -66,12 +66,12 @@ def _common_axes() -> tuple[AxisA, AxisB]:
 
 def test_cron_initiated_backup_resolves_to_auto() -> None:
     axis_a, axis_b = _common_axes()
-    axis_d = AxisD(
-        initiator="cron:backup-job",
-        authentication="device-bound",
-        expectedness="expected",
-        reversibility={"degree": "reversible", "agent": "system"},
-    )
+    axis_d = AxisD.from_dict({
+        "initiator": "cron:backup-job",
+        "authentication": "device-bound",
+        "expectedness": "expected",
+        "reversibility": {"degree": "reversible", "agent": "system"},
+    })
     rules = DecisionRules(rules=(_cron_backup_rule(),))
     result = evaluate(
         rules=rules,
@@ -90,12 +90,12 @@ def test_unauth_inbound_same_effect_does_not_match_cron_rule() -> None:
     diverge. The cron rule does not match — the never-auto default
     (SUGGEST) holds."""
     axis_a, axis_b = _common_axes()
-    axis_d = AxisD(
-        initiator="inbound:unauthenticated",
-        authentication="none",
-        expectedness="anomalous",
-        reversibility={"degree": "reversible", "agent": "system"},
-    )
+    axis_d = AxisD.from_dict({
+        "initiator": "inbound:unauthenticated",
+        "authentication": "none",
+        "expectedness": "anomalous",
+        "reversibility": {"degree": "reversible", "agent": "system"},
+    })
     rules = DecisionRules(rules=(_cron_backup_rule(),))
     result = evaluate(
         rules=rules,
@@ -114,12 +114,12 @@ def test_cron_initiated_but_unexpected_does_not_match() -> None:
     `expected` (an ExpectationBinding match). Cron that fires at the
     wrong window is `anomalous` and the rule does not match."""
     axis_a, axis_b = _common_axes()
-    axis_d = AxisD(
-        initiator="cron:backup-job",
-        authentication="device-bound",
-        expectedness="anomalous",  # window mismatch upstream
-        reversibility={"degree": "reversible", "agent": "system"},
-    )
+    axis_d = AxisD.from_dict({
+        "initiator": "cron:backup-job",
+        "authentication": "device-bound",
+        "expectedness": "anomalous",  # window mismatch upstream
+        "reversibility": {"degree": "reversible", "agent": "system"},
+    })
     rules = DecisionRules(rules=(_cron_backup_rule(),))
     result = evaluate(
         rules=rules,
@@ -139,12 +139,12 @@ def test_authenticated_inbound_principal_is_not_cron() -> None:
     `principal:alice` would be needed to grant her AUTO; that's the
     whole point of FR-031 asymmetry (per-cell rules, not heuristic)."""
     axis_a, axis_b = _common_axes()
-    axis_d = AxisD(
-        initiator="principal:alice",
-        authentication="device-bound",
-        expectedness="expected",
-        reversibility={"degree": "reversible", "agent": "system"},
-    )
+    axis_d = AxisD.from_dict({
+        "initiator": "principal:alice",
+        "authentication": "device-bound",
+        "expectedness": "expected",
+        "reversibility": {"degree": "reversible", "agent": "system"},
+    })
     rules = DecisionRules(rules=(_cron_backup_rule(),))
     result = evaluate(
         rules=rules,

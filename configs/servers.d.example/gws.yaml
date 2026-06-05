@@ -1,0 +1,95 @@
+# Google Workspace MCP server config (Issue #35 layout).
+#
+# To use: copy this file to `~/.config/capabledeputy/servers.d/gws.yaml`
+# and restart the daemon. The daemon discovers it automatically.
+#
+# Prerequisites:
+#   npm install -g @googleworkspace/cli
+#   gws auth setup
+#   gws auth login -s drive,gmail,calendar,docs,sheets
+#   npm install -g gws-mcp-server
+#
+# Gmail in this server is read-only by design (the gws-mcp-server wrapper
+# doesn't expose send-mail tools). For sending, see imap.yaml.
+
+schema_version: 1
+name: gws
+
+transport: stdio
+command: ["npx", "gws-mcp-server", "--services", "drive,sheets,calendar,docs,gmail"]
+
+# Every result from this server is tagged confidential.personal — content
+# from your Workspace account is your personal data and shouldn't flow
+# untracked into other contexts.
+inherent_labels:
+  - confidential.personal
+
+# Strict OFF: rely on the upstream adapter's name-based classifier for
+# most tools (gmail_* → GMAIL_READ, drive_* → DRIVE_READ, etc.). We pin
+# the clearly-destructive ones explicitly below.
+strict: false
+
+tool_mappings:
+  # Gmail — read-only, GMAIL_READ kind. Default sessions auto-grant
+  # GMAIL_READ * so these work without /grant ceremony.
+  gmail_messages_list: GMAIL_READ
+  gmail_messages_get: GMAIL_READ
+  gmail_threads_list: GMAIL_READ
+  gmail_threads_get: GMAIL_READ
+  gmail_search: GMAIL_READ
+
+  # Drive — read kind. Default sessions auto-grant DRIVE_READ *.
+  # Destructive write/delete pinned in `tool_overrides:` below.
+  drive_list_files: DRIVE_READ
+  drive_get_file: DRIVE_READ
+  drive_search_files: DRIVE_READ
+  drive_get_file_metadata: DRIVE_READ
+
+  # Docs / Sheets reads route through DRIVE_READ (they're Drive files).
+  docs_get_document: DRIVE_READ
+  sheets_get_values: DRIVE_READ
+
+  # Calendar reads — built-in kind, default-granted.
+  calendar_list_events: CALENDAR_READ
+  calendar_get_event: CALENDAR_READ
+  calendar_list_calendars: CALENDAR_READ
+
+# Long-form for tools that need additional_labels or destructive kinds.
+tool_overrides:
+  # Drive destructive ops (require /grant ... --destructive)
+  drive_delete_file:
+    capability_kind: DELETE_FS
+    additional_labels: [confidential.personal]
+  drive_update_file:
+    capability_kind: MODIFY_FS
+    additional_labels: [confidential.personal]
+  drive_create_file:
+    capability_kind: CREATE_FS
+  drive_copy_file:
+    capability_kind: CREATE_FS
+  drive_share_file:
+    capability_kind: MODIFY_FS
+    additional_labels: [confidential.personal]
+
+  # Calendar mutating ops
+  calendar_delete_event:
+    capability_kind: DELETE_CAL
+    additional_labels: [confidential.personal]
+  calendar_update_event:
+    capability_kind: MODIFY_CAL
+    additional_labels: [confidential.personal]
+  calendar_insert_event:
+    capability_kind: CREATE_CAL
+
+  # Sheets / Docs writes
+  sheets_write_values:
+    capability_kind: MODIFY_FS
+    additional_labels: [confidential.personal]
+  sheets_append_values:
+    capability_kind: MODIFY_FS
+    additional_labels: [confidential.personal]
+  docs_batch_update:
+    capability_kind: MODIFY_FS
+    additional_labels: [confidential.personal]
+  docs_create_document:
+    capability_kind: CREATE_FS

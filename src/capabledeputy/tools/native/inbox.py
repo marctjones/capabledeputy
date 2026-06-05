@@ -103,7 +103,7 @@ def make_inbox_tools(inbox: Inbox) -> list[ToolDefinition]:
                 "List inbound messages. Returns untrusted.external-labeled "
                 "metadata. Required args: unread_only (bool, default true)."
             ),
-            capability_kind=CapabilityKind.READ_FS,
+            capability_kind=CapabilityKind.IMAP_READ,
             handler=inbox_list,
             target_arg="folder",
             inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
@@ -124,7 +124,7 @@ def make_inbox_tools(inbox: Inbox) -> list[ToolDefinition]:
                 "untrusted.external; reading propagates that label into "
                 "the calling session. Required args: id (string)."
             ),
-            capability_kind=CapabilityKind.READ_FS,
+            capability_kind=CapabilityKind.IMAP_READ,
             handler=inbox_read,
             target_arg="id",
             inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),

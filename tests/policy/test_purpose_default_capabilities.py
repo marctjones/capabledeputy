@@ -223,3 +223,86 @@ async def test_no_purposes_registry_no_default_caps(tmp_path: Path) -> None:
 
     s = await graph.new(purpose_handle="research")
     assert s.capability_set == frozenset()
+
+
+# --- Pattern ② precondition (Principle VI fail-closed) ---------------
+
+
+@pytest.mark.asyncio
+async def test_pattern_2_purpose_refuses_spawn_without_quarantined(
+    tmp_path: Path,
+) -> None:
+    """A Purpose with recommended_pattern=pattern_2_dual_llm requires
+    a quarantined LLM. When the App reports none is wired
+    (quarantined_available=False), spawn fails-closed rather than
+    silently falling through to Pattern ①."""
+    from capabledeputy.session.graph import QuarantinedLLMUnavailableError
+
+    purposes = Purposes(
+        purposes={
+            "dual-llm-required": Purpose(
+                purpose_id="dual-llm-required",
+                admissible_categories=frozenset({"personal"}),
+                recommended_pattern="pattern_2_dual_llm",
+            ),
+        },
+    )
+    writer = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(
+        audit=writer,
+        purposes=purposes,
+        quarantined_available=False,
+    )
+    with pytest.raises(QuarantinedLLMUnavailableError) as ei:
+        await graph.new(purpose_handle="dual-llm-required")
+    assert ei.value.purpose_handle == "dual-llm-required"
+
+
+@pytest.mark.asyncio
+async def test_pattern_2_purpose_spawns_when_quarantined_available(
+    tmp_path: Path,
+) -> None:
+    """Same purpose, quarantined wired → spawn succeeds normally."""
+    purposes = Purposes(
+        purposes={
+            "dual-llm-required": Purpose(
+                purpose_id="dual-llm-required",
+                admissible_categories=frozenset({"personal"}),
+                recommended_pattern="pattern_2_dual_llm",
+            ),
+        },
+    )
+    writer = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(
+        audit=writer,
+        purposes=purposes,
+        quarantined_available=True,
+    )
+    s = await graph.new(purpose_handle="dual-llm-required")
+    assert s.purpose_handle == "dual-llm-required"
+
+
+@pytest.mark.asyncio
+async def test_non_pattern_2_purpose_unaffected_by_quarantined_flag(
+    tmp_path: Path,
+) -> None:
+    """A purpose with recommended_pattern=None or any non-② value
+    doesn't trigger the check — spawn succeeds even without the
+    quarantined LLM. The check is targeted at ② specifically."""
+    purposes = Purposes(
+        purposes={
+            "pattern-1-ok": Purpose(
+                purpose_id="pattern-1-ok",
+                admissible_categories=frozenset({"personal"}),
+                recommended_pattern=None,
+            ),
+        },
+    )
+    writer = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(
+        audit=writer,
+        purposes=purposes,
+        quarantined_available=False,  # explicitly missing
+    )
+    s = await graph.new(purpose_handle="pattern-1-ok")
+    assert s.purpose_handle == "pattern-1-ok"

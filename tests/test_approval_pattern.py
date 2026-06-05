@@ -14,7 +14,11 @@ from capabledeputy.approval.queue import ApprovalQueue
 from capabledeputy.audit.writer import AuditWriter
 
 
-def _request(target: str = "wife@example.com", payload: str = "x") -> ApprovalRequest:
+def _request(
+    target: str = "wife@example.com",
+    payload: str = "x",
+    labels_in: frozenset | None = None,
+) -> ApprovalRequest:
     return ApprovalRequest(
         id=1,
         audit_id=uuid4(),
@@ -22,7 +26,7 @@ def _request(target: str = "wife@example.com", payload: str = "x") -> ApprovalRe
         action=ApprovalAction.SEND_EMAIL,
         payload=payload,
         target=target,
-        labels_in=frozenset(),
+        labels_in=labels_in or frozenset(),
         labels_out=frozenset(),
         capability_requested=None,
         justification="",
@@ -220,3 +224,113 @@ async def test_queue_increments_use_count(tmp_path: Path) -> None:
 
     after = next(r for r in registry.list() if r.id == rule.id)
     assert after.auto_approval_count == 3
+
+
+# --- Issue #8: label-subset matching ---------------------------------------
+
+
+def test_labels_required_empty_acts_like_no_filter() -> None:
+    """Default labels_required (empty) means no label gate — behaves
+    exactly like the prior single-axis matching."""
+    rule = ApprovalPatternRule.create(
+        action=ApprovalAction.SEND_EMAIL,
+        target_pattern="marc@joneslaw.io",
+        ttl=timedelta(hours=24),
+    )
+    from capabledeputy.policy.labels import Label
+
+    assert rule.matches(_request(target="marc@joneslaw.io"))
+    assert rule.matches(
+        _request(
+            target="marc@joneslaw.io",
+            labels_in=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        ),
+    )
+
+
+def test_labels_required_must_be_present_to_match() -> None:
+    """Pattern with labels_required={X} fires only when X is in
+    the request's labels_in."""
+    from capabledeputy.policy.labels import Label
+
+    rule = ApprovalPatternRule.create(
+        action=ApprovalAction.SEND_EMAIL,
+        target_pattern="marc@joneslaw.io",
+        ttl=timedelta(hours=24),
+        labels_required=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+    )
+    # No labels → no match
+    assert not rule.matches(_request(target="marc@joneslaw.io"))
+    # Required label present → match
+    assert rule.matches(
+        _request(
+            target="marc@joneslaw.io",
+            labels_in=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        ),
+    )
+    # Required label + extras → match (subset, not equality)
+    assert rule.matches(
+        _request(
+            target="marc@joneslaw.io",
+            labels_in=frozenset(
+                {Label.CONFIDENTIAL_PERSONAL, Label.UNTRUSTED_EXTERNAL},
+            ),
+        ),
+    )
+
+
+def test_labels_required_multiple_all_must_be_present() -> None:
+    """Multi-label gate: every required label must be in labels_in."""
+    from capabledeputy.policy.labels import Label
+
+    rule = ApprovalPatternRule.create(
+        action=ApprovalAction.SEND_EMAIL,
+        target_pattern="marc@joneslaw.io",
+        ttl=timedelta(hours=24),
+        labels_required=frozenset(
+            {Label.CONFIDENTIAL_PERSONAL, Label.UNTRUSTED_EXTERNAL},
+        ),
+    )
+    # Only one of two → no match
+    assert not rule.matches(
+        _request(
+            target="marc@joneslaw.io",
+            labels_in=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        ),
+    )
+    # Both present → match
+    assert rule.matches(
+        _request(
+            target="marc@joneslaw.io",
+            labels_in=frozenset(
+                {Label.CONFIDENTIAL_PERSONAL, Label.UNTRUSTED_EXTERNAL},
+            ),
+        ),
+    )
+
+
+def test_audit_tag_surfaces_in_to_dict() -> None:
+    rule = ApprovalPatternRule.create(
+        action=ApprovalAction.SEND_EMAIL,
+        target_pattern="marc@joneslaw.io",
+        ttl=timedelta(hours=24),
+        audit_tag="self-forward",
+    )
+    d = rule.to_dict()
+    assert d["audit_tag"] == "self-forward"
+
+
+def test_labels_required_surfaces_in_to_dict() -> None:
+    from capabledeputy.policy.labels import Label
+
+    rule = ApprovalPatternRule.create(
+        action=ApprovalAction.SEND_EMAIL,
+        target_pattern="marc@joneslaw.io",
+        ttl=timedelta(hours=24),
+        labels_required=frozenset(
+            {Label.CONFIDENTIAL_PERSONAL, Label.UNTRUSTED_EXTERNAL},
+        ),
+    )
+    d = rule.to_dict()
+    assert "confidential.personal" in d["labels_required"]
+    assert "untrusted.external" in d["labels_required"]

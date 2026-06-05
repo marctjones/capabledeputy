@@ -13,6 +13,7 @@ from capabledeputy.cli.audit import audit_app, watch_command
 from capabledeputy.cli.audit_cmd import storage_shape_command
 from capabledeputy.cli.chat import chat_command, demo_app
 from capabledeputy.cli.init_cmd import init_command
+from capabledeputy.cli.maintenance import maintenance_app
 from capabledeputy.cli.override_cmd import override_app
 from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.session import session_app
@@ -39,10 +40,334 @@ app.add_typer(tool_app, name="tool")
 app.add_typer(approval_app, name="approval")
 app.add_typer(override_app, name="override")
 app.add_typer(demo_app, name="demo")
+app.add_typer(maintenance_app, name="maintenance")
+config_app = typer.Typer(help="Manage CapableDeputy config files.", no_args_is_help=True)
+app.add_typer(config_app, name="config")
 app.command("chat")(chat_command)
 app.command("init")(init_command)
 app.command("watch")(watch_command)
 audit_app.command("storage-shape")(storage_shape_command)
+
+
+@config_app.command("doctor")
+def config_doctor_command(
+    config: Annotated[
+        str | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Daemon config to inspect (default: ~/.config/capabledeputy/daemon.yaml)",
+        ),
+    ] = None,
+) -> None:
+    """Verify the daemon config is wired correctly for the granular
+    permission kinds (Issue #33, #35).
+
+    Checks:
+    - daemon.yaml or servers.d/*.yaml present and parseable
+    - Gmail tools use GMAIL_READ (not legacy READ_FS)
+    - IMAP tools use IMAP_READ
+    - Drive tools use DRIVE_READ where appropriate
+    - servers.d/ files validate (namespace, no collisions)
+    - Default auto-grant set covers GMAIL_READ / IMAP_READ / DRIVE_READ
+
+    Prints a status report; exits 0 if everything checks out, 1
+    otherwise. Operator runs this after `capdep gworkspace-setup`
+    / `capdep imap-setup` to confirm the wiring is current.
+    """
+    from pathlib import Path
+
+    import yaml
+    from rich.console import Console
+
+    console = Console()
+    src_path = Path(config or Path.home() / ".config" / "capabledeputy" / "daemon.yaml")
+    issues: list[str] = []
+    ok: list[str] = []
+    notes: list[str] = []
+
+    # 1. daemon.yaml exists + parses
+    if not src_path.is_file():
+        console.print(f"[red]✗[/red] daemon.yaml not found at {src_path}")
+        console.print(
+            "[dim]  Run [bold]capdep gworkspace-setup[/bold] / [bold]capdep imap-setup[/bold] "
+            "to create one, or specify --config.[/dim]",
+        )
+        raise typer.Exit(code=1)
+    ok.append(f"daemon.yaml found at {src_path}")
+
+    try:
+        raw = yaml.safe_load(src_path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        console.print(f"[red]✗[/red] daemon.yaml invalid YAML: {e}")
+        raise typer.Exit(code=1) from None
+    ok.append("daemon.yaml parses cleanly")
+
+    # 2. Check upstream_servers' Gmail tools use GMAIL_READ
+    servers = raw.get("upstream_servers") or []
+    for server in servers:
+        name = server.get("name", "?")
+        overrides = server.get("tool_overrides") or {}
+        for tool_name, ov in overrides.items():
+            kind = ov.get("capability_kind") if isinstance(ov, dict) else None
+            if not kind:
+                continue
+            # Gmail tools should be GMAIL_READ or SEND_EMAIL (or write kinds)
+            tl = tool_name.lower()
+            if "gmail" in tl and kind == "READ_FS":
+                issues.append(
+                    f"server '{name}' tool '{tool_name}': uses legacy READ_FS; "
+                    f"should be GMAIL_READ. Re-run capdep gworkspace-setup to update."
+                )
+            elif "imap" in tl and kind == "READ_FS":
+                issues.append(
+                    f"server '{name}' tool '{tool_name}': uses legacy READ_FS; "
+                    f"should be IMAP_READ. Re-run capdep imap-setup to update."
+                )
+            elif tl.startswith("drive_") and "list" in tl and kind == "READ_FS":
+                notes.append(
+                    f"server '{name}' tool '{tool_name}': READ_FS works via "
+                    f"back-compat union; consider DRIVE_READ for clarity."
+                )
+
+    if servers:
+        ok.append(f"{len(servers)} upstream server(s) declared in daemon.yaml")
+    else:
+        notes.append("no upstream_servers: block in daemon.yaml (only bundled tools)")
+
+    # 3. Check servers.d/ if present
+    servers_d = src_path.parent / "servers.d"
+    if servers_d.is_dir():
+        from capabledeputy.upstream.server_yaml import (
+            KindCollisionError,
+            UnknownOverrideTargetError,
+            load_servers_d,
+        )
+
+        try:
+            yamls, overrides, registry = load_servers_d(servers_d)
+            ok.append(
+                f"servers.d/ has {len(yamls)} server file(s), "
+                f"{len(overrides)} override(s), "
+                f"{len(registry.all())} custom kind(s)",
+            )
+        except (KindCollisionError, UnknownOverrideTargetError) as e:
+            issues.append(f"servers.d/ load error: {e}")
+    else:
+        notes.append("no servers.d/ directory (legacy daemon.yaml layout only)")
+
+    # 4. Check upstream adapter inference — sanity-check that
+    # gmail tool names classify correctly
+    from capabledeputy.policy.capabilities import CapabilityKind
+    from capabledeputy.upstream.adapter import _infer_capability_kind
+
+    test_cases = [
+        ("gmail.users.messages.list", CapabilityKind.GMAIL_READ),
+        ("gmail_messages_get", CapabilityKind.GMAIL_READ),
+        ("imap.fetch", CapabilityKind.IMAP_READ),
+        ("drive.files.list", CapabilityKind.DRIVE_READ),
+        ("gmail.users.messages.send", CapabilityKind.SEND_EMAIL),
+    ]
+    classifier_issues = []
+    for tool_name, expected in test_cases:
+        got = _infer_capability_kind(None, tool_name)
+        if got != expected:
+            classifier_issues.append(f"{tool_name} → {got} (expected {expected.value})")
+    if classifier_issues:
+        issues.append(
+            "Upstream classifier regression: " + "; ".join(classifier_issues),
+        )
+    else:
+        ok.append("upstream classifier correctly maps gmail/imap/drive tools")
+
+    # 5. Report
+    console.print()
+    console.print("[bold]capdep config doctor[/bold]")
+    console.print()
+    for line in ok:
+        console.print(f"  [green]✓[/green] {line}")
+    for line in notes:
+        console.print(f"  [dim]·[/dim] {line}")
+    for line in issues:
+        console.print(f"  [red]✗[/red] {line}")
+    console.print()
+    if issues:
+        console.print(f"[red]{len(issues)} issue(s) found[/red] — fix as suggested above.")
+        raise typer.Exit(code=1)
+    console.print("[green]All checks passed.[/green]")
+
+
+@config_app.command("split")
+def config_split_command(
+    config: Annotated[
+        str | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Source daemon.yaml (default: ~/.config/capabledeputy/daemon.yaml)",
+        ),
+    ] = None,
+    output_dir: Annotated[
+        str | None,
+        typer.Option(
+            "--output-dir",
+            "-o",
+            help=(
+                "Target servers.d/ directory (default: alongside the source "
+                "config). Files written: <name>.yaml per upstream server. "
+                "Dry-run prints what would be written."
+            ),
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Print extracted yaml to stdout instead of writing files.",
+        ),
+    ] = False,
+) -> None:
+    """Migrate a legacy daemon.yaml `servers:` block into per-server
+    files in `servers.d/` (Issue #35).
+
+    For each server entry in the source `upstream_servers` list, writes
+    a `servers.d/<name>.yaml` containing connection details + isolation
+    + per-tool overrides. The new file uses schema_version: 1 and the
+    short-form `tool_mappings` syntax where possible.
+
+    The source file itself is updated: the `upstream_servers` block is
+    commented out (preserved for rollback) and a `servers_dir:`
+    reference added.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    src_path = Path(config or Path.home() / ".config" / "capabledeputy" / "daemon.yaml")
+    if not src_path.is_file():
+        err_console.print(f"[red]source config not found:[/red] {src_path}")
+        raise typer.Exit(code=2)
+
+    src_text = src_path.read_text(encoding="utf-8")
+    src_raw = yaml.safe_load(src_text) or {}
+    servers_raw = src_raw.get("upstream_servers") or []
+    if not servers_raw:
+        err_console.print(
+            f"[yellow]no `upstream_servers:` block found in {src_path}[/yellow] "
+            "— nothing to split. If you already have a servers.d/ layout, "
+            "this command isn't needed.",
+        )
+        raise typer.Exit(code=0)
+
+    target_dir = Path(output_dir or src_path.parent / "servers.d")
+    if not dry_run:
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+    written: list[str] = []
+    for entry in servers_raw:
+        name = str(entry.get("name") or "").strip()
+        if not name:
+            err_console.print("[yellow]skipping unnamed server entry[/yellow]")
+            continue
+        # Shape into new schema
+        out_doc: dict[str, Any] = {"schema_version": 1, "name": name}
+        if "command" in entry:
+            out_doc["command"] = list(entry["command"])
+        if entry.get("transport"):
+            out_doc["transport"] = entry["transport"]
+        if entry.get("env"):
+            out_doc["env"] = entry["env"]
+        if entry.get("inherent_labels"):
+            out_doc["inherent_labels"] = entry["inherent_labels"]
+        if entry.get("strict") is not None:
+            out_doc["strict"] = bool(entry["strict"])
+        if entry.get("isolation"):
+            out_doc["isolation"] = entry["isolation"]
+
+        # Convert tool_overrides → short form tool_mappings where every
+        # entry is just `{capability_kind: <K>}` with no additional labels.
+        overrides = entry.get("tool_overrides") or {}
+        mappings: dict[str, str] = {}
+        complex_overrides: dict[str, dict[str, Any]] = {}
+        for tool_name, ov in overrides.items():
+            if isinstance(ov, dict) and len(ov) == 1 and "capability_kind" in ov:
+                mappings[str(tool_name)] = str(ov["capability_kind"])
+            else:
+                complex_overrides[str(tool_name)] = ov
+        if mappings:
+            out_doc["tool_mappings"] = mappings
+        if complex_overrides:
+            out_doc["tool_overrides"] = complex_overrides
+
+        out_yaml = yaml.safe_dump(out_doc, sort_keys=False, default_flow_style=False)
+
+        if dry_run:
+            console = _make_console()
+            console.print(
+                f"[bold cyan]--- would write: {target_dir / f'{name}.yaml'} ---[/bold cyan]"
+            )
+            console.print(out_yaml)
+        else:
+            target_file = target_dir / f"{name}.yaml"
+            target_file.write_text(out_yaml, encoding="utf-8")
+            written.append(str(target_file))
+
+    if dry_run:
+        err_console.print(f"[dim](dry-run; would write {len(servers_raw)} files)[/dim]")
+        return
+
+    # Mutate source: comment out the upstream_servers block.
+    # Conservative approach — line-based replacement that preserves
+    # surrounding YAML structure. The user can recover by uncommenting
+    # the original block.
+    new_lines: list[str] = []
+    in_block = False
+    block_indent = -1
+    for line in src_text.splitlines():
+        stripped = line.lstrip()
+        cur_indent = len(line) - len(stripped)
+        if stripped.startswith("upstream_servers:") and not in_block:
+            in_block = True
+            block_indent = cur_indent
+            new_lines.append(f"# MIGRATED to servers.d/ on {_now_iso()} via `capdep config split`")
+            new_lines.append(f"# {line}")
+            continue
+        if in_block:
+            # In-block until we hit a line at <= block_indent that's not blank
+            if stripped and cur_indent <= block_indent:
+                in_block = False
+                # Add servers_dir reference at this insertion point
+                new_lines.append("servers_dir: ./servers.d/")
+                new_lines.append("")
+                new_lines.append(line)
+                continue
+            new_lines.append(f"# {line}")
+        else:
+            new_lines.append(line)
+    # If block ran to EOF
+    if in_block:
+        new_lines.append("servers_dir: ./servers.d/")
+
+    src_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    err_console.print(
+        f"[green]✓ wrote {len(written)} server file(s) to {target_dir}[/green]",
+    )
+    err_console.print(
+        "[dim]source updated: legacy `upstream_servers:` block commented out, "
+        "`servers_dir: ./servers.d/` added.[/dim]",
+    )
+
+
+def _now_iso() -> str:
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _make_console():
+    from rich.console import Console
+
+    return Console()
 
 
 @app.command("go")
@@ -173,9 +498,23 @@ def version() -> None:
 
 @app.command("tui")
 def tui_command() -> None:
-    """Launch the read-only Textual TUI for live monitoring and approvals."""
+    """[DEPRECATED] Launch the read-only Textual TUI.
+
+    The read-only-spectator role is being folded into `capdep chat --mode rich`
+    (Issue #15 Phase B already lands the dispatch). When the rich surface
+    reaches feature parity, this command will be removed. Use
+    `capdep chat --mode rich` for new workflows.
+    """
     from capabledeputy.tui.app import run
 
+    err_console.print(
+        "[yellow]warning:[/yellow] [bold]capdep tui[/bold] is deprecated. "
+        "Use [bold]capdep chat --mode rich[/bold] on a modern terminal "
+        "(Ghostty / kitty / iTerm2 / WezTerm / Alacritty) for the same "
+        "Textual surface with an active input box — full convergence per "
+        "Issue #15 / spec 007. This command will be removed once the rich "
+        "surface reaches feature parity.",
+    )
     run()
 
 
@@ -186,8 +525,20 @@ def console_command(
         typer.Argument(help="Session id to drive (see `capdep session list`)"),
     ],
 ) -> None:
-    """Unified TUI: drive the agent, monitor the live security state,
-    and grant approvals — one window, no second terminal."""
+    """[DEPRECATED] Unified TUI to drive + monitor.
+
+    Folded into `capdep chat --mode rich` (Issue #15 Phase B). The rich
+    surface auto-detects modern terminals and falls back to line mode
+    elsewhere. When feature parity is reached, this command will be
+    removed.
+    """
+    err_console.print(
+        "[yellow]warning:[/yellow] [bold]capdep console[/bold] is deprecated. "
+        "Use [bold]capdep chat --mode rich[/bold] (the rich surface scaffold "
+        "calls into the same Textual app per Issue #15 Phase B). The "
+        "convergence is in progress; this command will be removed once "
+        "the rich surface reaches feature parity.",
+    )
     client = DaemonClient(default_socket_path())
     try:
         anyio.run(client.call, "ping", {})
@@ -523,8 +874,62 @@ app.command("mcp-server-fetch")(_make_bundled_mcp_command("fetch"))
 app.command("mcp-server-search")(_make_bundled_mcp_command("search"))
 app.command("mcp-server-memory")(_make_bundled_mcp_command("memory"))
 app.command("mcp-server-git")(_make_bundled_mcp_command("git"))
-app.command("mcp-server-gworkspace")(_make_bundled_mcp_command("gworkspace"))
 app.command("mcp-server-imap")(_make_bundled_mcp_command("imap"))
+
+
+@app.command("setup")
+def setup_command(
+    no_sandbox: Annotated[
+        bool,
+        typer.Option(
+            "--no-sandbox",
+            help="Don't register a Podman sandbox region even if podman is detected.",
+        ),
+    ] = False,
+    force_sandbox: Annotated[
+        bool,
+        typer.Option(
+            "--force-sandbox",
+            help="Register the sandbox block even if podman isn't on PATH (you'll install it later).",
+        ),
+    ] = False,
+) -> None:
+    """Register the standard bundled-server assistant surface — fs,
+    memory, git, fetch, search — plus a Podman sandbox region if
+    available.
+
+    Writes managed blocks under `~/.config/capabledeputy/daemon.yaml`.
+    Re-running is safe and idempotent: existing blocks are refreshed,
+    user-authored content between managed markers is preserved.
+
+    Use this instead of `imap-setup` when you don't want Gmail wired
+    up. Run both if you want both — they update different managed
+    blocks in the same file.
+    """
+    from capabledeputy.cli._managed_config import (
+        register_default_assistant_surface,
+        user_default_daemon_config_path,
+    )
+
+    if no_sandbox and force_sandbox:
+        err_console.print(
+            "[red]--no-sandbox and --force-sandbox are mutually exclusive[/red]",
+        )
+        raise typer.Exit(code=2)
+
+    daemon_yaml = user_default_daemon_config_path()
+    include_sandbox = False if no_sandbox else True if force_sandbox else None
+    console.print("[bold]registering bundled assistant tools:[/bold]")
+    for msg in register_default_assistant_surface(
+        daemon_yaml,
+        include_sandbox=include_sandbox,
+    ):
+        console.print(f"  [dim]·[/dim] {msg}")
+    console.print(
+        f"\n[green]daemon config: {daemon_yaml}[/green]\n"
+        "[bold]next:[/bold] [bold]capdep chat[/bold] — tools available "
+        "automatically.",
+    )
 
 
 @app.command("imap-setup")
@@ -534,12 +939,35 @@ def imap_setup(
         typer.Option(help="IMAP host (default: imap.gmail.com)"),
     ] = "imap.gmail.com",
     port: Annotated[int, typer.Option(help="IMAP port (default: 993)")] = 993,
-    username: Annotated[str, typer.Option(prompt=True, help="Email address")] = "",
+    username: Annotated[str, typer.Option(help="Email address (prompted if omitted)")] = "",
     smtp_host: Annotated[
         str,
         typer.Option(help="SMTP host (default: smtp.gmail.com)"),
     ] = "smtp.gmail.com",
     smtp_port: Annotated[int, typer.Option(help="SMTP port (default: 465)")] = 465,
+    register_only: Annotated[
+        bool,
+        typer.Option(
+            "--register-only",
+            help=(
+                "Skip credential prompts; only add/refresh the IMAP block "
+                "in the user-local daemon config. Use when credentials are "
+                "already written and you just want `capdep chat` to pick "
+                "the server up."
+            ),
+        ),
+    ] = False,
+    no_register: Annotated[
+        bool,
+        typer.Option(
+            "--no-register",
+            help=(
+                "Write only the credentials, NOT the daemon-config managed "
+                "block. The IMAP server won't load until you add it to "
+                "your daemon config by hand or run --register-only."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Set up the IMAP + SMTP config for the bundled imap MCP server.
 
@@ -547,30 +975,58 @@ def imap_setup(
     https://myaccount.google.com/apppasswords and paste it when
     prompted. No OAuth / Cloud Console setup required.
 
-    Writes:
-      ~/.config/capabledeputy/secrets/imap-config.yaml
-      ~/.config/capabledeputy/secrets/imap-password   (mode 0o600)
+    Writes (default):
+      ~/.config/capabledeputy/secrets/imap-config.yaml   (mode 0600)
+      ~/.config/capabledeputy/secrets/imap-password      (mode 0600)
+      ~/.config/capabledeputy/daemon.yaml                (managed block)
+
+    With `--register-only` only the daemon.yaml managed block is
+    refreshed (credentials must already exist). With `--no-register`
+    only the credentials are written.
+
+    Once registered, `capdep chat` (no args) and `capdep daemon start`
+    (no --config) will auto-load this server.
     """
     import os as _os
     from pathlib import Path
+
+    from capabledeputy.cli._managed_config import (
+        IMAP_BLOCK_BODY,
+        IMAP_BLOCK_ID,
+        imap_credentials_present,
+        user_default_daemon_config_path,
+        write_managed_block,
+    )
 
     config_dir = (
         Path(_os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "capabledeputy"
     )
     secrets_dir = config_dir / "secrets"
-    secrets_dir.mkdir(parents=True, exist_ok=True)
 
-    if not username:
-        username = typer.prompt("Email address")
-    password = typer.prompt("Password (App Password for Gmail; will be hidden)", hide_input=True)
+    if register_only:
+        if not imap_credentials_present():
+            err_console.print(
+                "[red]--register-only refused:[/red] no IMAP credentials at "
+                f"{secrets_dir / 'imap-config.yaml'}. Run [bold]capdep imap-setup[/bold] "
+                "first to write them.",
+            )
+            raise typer.Exit(code=2)
+    else:
+        secrets_dir.mkdir(parents=True, exist_ok=True)
+        if not username:
+            username = typer.prompt("Email address")
+        password = typer.prompt(
+            "Password (App Password for Gmail; will be hidden)",
+            hide_input=True,
+        )
 
-    pw_path = secrets_dir / "imap-password"
-    pw_path.write_text(password.strip() + "\n", encoding="utf-8")
-    pw_path.chmod(0o600)
+        pw_path = secrets_dir / "imap-password"
+        pw_path.write_text(password.strip() + "\n", encoding="utf-8")
+        pw_path.chmod(0o600)
 
-    cfg_path = secrets_dir / "imap-config.yaml"
-    cfg_path.write_text(
-        f"""# IMAP / SMTP config for the bundled imap MCP server.
+        cfg_path = secrets_dir / "imap-config.yaml"
+        cfg_path.write_text(
+            f"""# IMAP / SMTP config for the bundled imap MCP server.
 # Generated by `capdep imap-setup` on demand.
 
 imap:
@@ -585,65 +1041,158 @@ smtp:
   username: {username}
   password_file: {pw_path}
 """,
-        encoding="utf-8",
-    )
-    cfg_path.chmod(0o600)
+            encoding="utf-8",
+        )
+        cfg_path.chmod(0o600)
 
-    console.print(f"[green]wrote IMAP config to {cfg_path}[/green]")
-    console.print(f"[green]wrote password to {pw_path} (mode 0600)[/green]")
+        console.print(f"[green]wrote IMAP config to {cfg_path}[/green]")
+        console.print(f"[green]wrote password to {pw_path} (mode 0600)[/green]")
+
+    if no_register:
+        console.print(
+            "\n[dim]--no-register: daemon.yaml not touched. Re-run with "
+            "--register-only when ready.[/dim]",
+        )
+        return
+
+    from capabledeputy.cli._managed_config import register_default_assistant_surface
+
+    daemon_yaml = user_default_daemon_config_path()
+    replaced, changed = write_managed_block(daemon_yaml, IMAP_BLOCK_ID, IMAP_BLOCK_BODY)
+    if changed and replaced:
+        console.print(f"[green]refreshed IMAP block in {daemon_yaml}[/green]")
+    elif changed:
+        console.print(f"[green]registered IMAP block in {daemon_yaml}[/green]")
+    else:
+        console.print(f"[dim]IMAP block in {daemon_yaml} already up to date[/dim]")
+
+    # Also register the standard bundled-server surface (fs, memory,
+    # git, fetch, search) + sandbox if podman is available. One setup
+    # run, complete assistant.
+    console.print("\n[bold]registering bundled assistant tools:[/bold]")
+    for msg in register_default_assistant_surface(daemon_yaml):
+        console.print(f"  [dim]·[/dim] {msg}")
+
     console.print(
-        "\n[bold]next:[/bold] add the imap server to your daemon config and start the daemon.\n"
-        "  See [bold]configs/curated/imap.yaml[/bold] for an example.",
+        "\n[bold]next:[/bold] [bold]capdep chat[/bold] — Gmail + fs + memory + "
+        "git + fetch + search tools will be available automatically.",
     )
 
 
 @app.command("gworkspace-setup")
-def gworkspace_setup() -> None:
-    """Run the one-time OAuth consent flow for Google Workspace.
+def gworkspace_setup(
+    register_only: Annotated[
+        bool,
+        typer.Option(
+            "--register-only",
+            help=(
+                "Skip the install/auth checklist; only add/refresh the "
+                "Google Workspace block in the user-local daemon config. "
+                "Use when `gws` is already installed and `gws auth login` "
+                "has succeeded."
+            ),
+        ),
+    ] = False,
+    services: Annotated[
+        str,
+        typer.Option(
+            "--services",
+            "-s",
+            help=(
+                "Comma-separated services to expose via gws-mcp-server. "
+                "Default: drive,sheets,calendar,docs,gmail."
+            ),
+        ),
+    ] = "drive,sheets,calendar,docs,gmail",
+) -> None:
+    """Wire up `gws-mcp-server` — the community MCP wrapper around the
+    `gws` Workspace CLI.
 
-    Prerequisites:
-      1. Create a Google Cloud project + enable Gmail/Docs/Drive/Calendar APIs.
-      2. Create an OAuth 2.0 Client ID (type: Desktop application).
-      3. Download `credentials.json` and save it to:
-           ~/.config/capabledeputy/secrets/gworkspace-credentials.json
-           (mode 0600)
+    `gws-mcp-server` reuses the OAuth tokens you already cached in the
+    OS keyring via `gws auth login`. No second consent flow, no
+    separate credentials file. 24 tools across Drive / Sheets /
+    Calendar / Docs / Gmail. Gmail is read-only by design (list / get
+    messages + threads only — no send).
 
-    Then run this command. It opens a browser; you approve; the
-    refresh token is cached. Subsequent daemon spawns reuse it.
+    One-time install:
 
-    To revoke: delete
-      ~/.config/capabledeputy/secrets/gworkspace-token.json
-    and re-run setup.
+      npm install -g gws-mcp-server
+
+    Prerequisites (already done if you ran `gws auth login`):
+
+      npm install -g @googleworkspace/cli   # installs `gws`
+      gws auth setup                        # one-time gcloud + OAuth client
+      gws auth login -s drive,gmail,calendar  # browser consent
+
+    Then run this command (or `--register-only`) to write a managed
+    block into `~/.config/capabledeputy/daemon.yaml`. After that,
+    `capdep chat` automatically loads Workspace tools.
+
+    Tool naming uses snake_case (`drive_list_files`, `gmail_list_messages`,
+    `calendar_list_events`, etc.). Audit via [bold]/tools gws[/bold]
+    in chat. Edits OUTSIDE the managed markers survive re-registration.
     """
-    from capabledeputy.mcp_servers._gworkspace_auth import (
-        credentials_path,
-        run_consent_flow,
+    from capabledeputy.cli._managed_config import (
+        GWORKSPACE_BLOCK_BODY,
+        GWORKSPACE_BLOCK_ID,
+        gws_cli_available,
+        gws_mcp_server_available,
+        user_default_daemon_config_path,
+        write_managed_block,
     )
 
-    cp = credentials_path()
-    if not cp.is_file():
-        err_console.print(
-            f"[red]missing OAuth client credentials at {cp}[/red]\n"
-            "  Create a Desktop OAuth client in Google Cloud Console and\n"
-            "  save the downloaded credentials.json there (mode 0600).",
+    have_gws = gws_cli_available()
+    have_mcp_server = gws_mcp_server_available()
+
+    # Build the block body with the user's chosen services if non-default.
+    block_body = GWORKSPACE_BLOCK_BODY
+    default_services = "drive,sheets,calendar,docs,gmail"
+    if services != default_services:
+        block_body = block_body.replace(
+            f'"--services", "{default_services}"',
+            f'"--services", "{services}"',
         )
-        raise typer.Exit(code=2)
 
-    console.print(
-        "[bold]starting OAuth consent flow[/bold] — a browser will open. "
-        "Approve the requested scopes.",
-    )
-    try:
-        tp = run_consent_flow()
-    except Exception as e:
-        err_console.print(f"[red]OAuth flow failed:[/red] {e}")
-        raise typer.Exit(code=1) from e
+    if not register_only:
+        console.print("[bold]Google Workspace setup[/bold]\n")
+        if have_gws:
+            console.print("  [green]✓[/green] `gws` binary on PATH (auth tokens in keyring)")
+        else:
+            console.print(
+                "  [yellow]·[/yellow] `gws` not found. Install + auth:\n"
+                "      [bold]npm install -g @googleworkspace/cli[/bold]\n"
+                "      [bold]gws auth setup[/bold]\n"
+                "      [bold]gws auth login -s drive,gmail,calendar,docs,sheets[/bold]",
+            )
+        if have_mcp_server:
+            console.print("  [green]✓[/green] `gws-mcp-server` installed")
+        else:
+            console.print(
+                "  [yellow]·[/yellow] `gws-mcp-server` not found. Install with:\n"
+                "      [bold]npm install -g gws-mcp-server[/bold]",
+            )
+        console.print()
 
-    console.print(f"[green]token cached to {tp}[/green]")
-    console.print(
-        "\n[bold]next:[/bold] add the gworkspace server to a daemon config and start the daemon.\n"
-        "  See [bold]configs/curated/google-workspace.yaml[/bold] for an example.",
-    )
+    daemon_yaml = user_default_daemon_config_path()
+    replaced, changed = write_managed_block(daemon_yaml, GWORKSPACE_BLOCK_ID, block_body)
+    if changed and replaced:
+        console.print(f"[green]refreshed gworkspace block in {daemon_yaml}[/green]")
+    elif changed:
+        console.print(f"[green]registered gworkspace block in {daemon_yaml}[/green]")
+    else:
+        console.print(f"[dim]gworkspace block in {daemon_yaml} already up to date[/dim]")
+
+    if have_gws and have_mcp_server:
+        console.print(
+            "\n[bold]next:[/bold] [bold]capdep daemon stop && capdep chat[/bold] — "
+            f"Workspace tools ({services}) will register automatically. "
+            "Run [bold]/tools gws[/bold] in the REPL to see what loaded.",
+        )
+    else:
+        console.print(
+            "\n[bold]next:[/bold] finish the install steps above, then "
+            "[bold]capdep daemon stop && capdep chat[/bold].",
+        )
 
 
 @app.command("compliance-emit-ssp")

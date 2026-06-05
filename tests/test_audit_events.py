@@ -45,6 +45,7 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         # 003 v0.9 labeling framework (T014).
         "binding",
         "override",
+        "ratification",  # FR-014 Q3 ratification authorization
         "pattern3",
         "isolation_region",
         "envelope",
@@ -54,6 +55,10 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         "inspector",
         "decision_inspector",
         "declassifier",
+        # Issue 003 / Q4 — decide() latency tracking (SC-023).
+        "decision",
+        # Cookbook Pattern ⑥ — shadow mode.
+        "enforcement",
     }
     for et in EventType:
         head, sep, _ = et.value.partition(".")
@@ -74,6 +79,11 @@ def test_event_type_taxonomy_matches_design() -> None:
         "llm.request_sent",
         "llm.response_received",
         "llm.response_parsed",
+        # Issue #36 — LLM error + context-window warning audit events.
+        "llm.error",
+        "llm.context_warning",
+        # Issue #36 (Q4) — decide() latency exceeded SC-023 thresholds.
+        "decision.latency_degraded",
         "mode.selected",
         "policy.decided",
         "label.propagated",
@@ -97,6 +107,7 @@ def test_event_type_taxonomy_matches_design() -> None:
         "override.refused",
         "override.expired",
         "override.use_refused",
+        "ratification.applied",
         "pattern3.handle_bind",
         "isolation_region.created",
         "isolation_region.discarded",
@@ -109,6 +120,9 @@ def test_event_type_taxonomy_matches_design() -> None:
         "inspector.applied",
         "decision_inspector.applied",
         "declassifier.applied",
+        # Cookbook Pattern ⑥ — shadow mode.
+        "policy.shadowed",
+        "enforcement.mode_changed",
     }
     actual = {et.value for et in EventType}
     assert actual == expected, f"missing: {expected - actual}, extra: {actual - expected}"

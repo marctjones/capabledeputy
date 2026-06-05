@@ -9,7 +9,7 @@ SCHEMA_VERSION 7 (FR-024 forward-only).
 Axis A — Data Category (this file: AxisA, Category schema).
 Axis B — Provenance Lattice (this file: AxisB, ProvenanceLevel).
 Axis C — Effect Class (lives on ToolDefinition + Capability.kind).
-Axis D — Decision Context (this file: AxisD).
+Axis D — Decision Context (policy/axis_d.py: DecisionContext, aliased as AxisD).
 
 Each axis dataclass is `@dataclass(frozen=True)` with default-tolerant
 to_dict/from_dict for backward-compat reads (Constitution §Sec.
@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Self
 
+from capabledeputy.policy.axis_d import DecisionContext
 from capabledeputy.policy.tiers import Tier, max_of
 
 
@@ -179,53 +180,12 @@ class AxisB:
         return cls(entries=tuple(AxisBEntry.from_dict(d) for d in raw))
 
 
-# --- Axis D: Decision Context (FR-006, FR-029) ----------------------
+# --- Axis D: Decision Context (FR-006, FR-029, FR-033, FR-037, T136) -------
+#
+# DecisionContext is the first-class type (policy/axis_d.py).
+# AxisD is an alias for backward compatibility with Session serialization.
 
-
-@dataclass(frozen=True)
-class AxisD:
-    """Per-session decision context.
-
-    `reversibility` is a dict `{degree, agent}` for now; the proper
-    ReversibilityLabel type lands in US6 (policy/reversibility.py).
-    Storing as dict here keeps the schema stable across phases.
-    """
-
-    initiator: str = "unset"
-    authentication: str = "none"
-    counterparty: str | None = None
-    relationship_group_ids: tuple[str, ...] = field(default_factory=tuple)
-    expectedness: str = "anomalous"
-    reversibility: dict[str, str] = field(
-        default_factory=lambda: {"degree": "irreversible", "agent": "external"},
-    )
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "initiator": self.initiator,
-            "authentication": self.authentication,
-            "counterparty": self.counterparty,
-            "relationship_group_ids": list(self.relationship_group_ids),
-            "expectedness": self.expectedness,
-            "reversibility": dict(self.reversibility),
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any] | None) -> Self:
-        if not d:
-            return cls()
-        rev = d.get("reversibility") or {"degree": "irreversible", "agent": "external"}
-        return cls(
-            initiator=str(d.get("initiator", "unset")),
-            authentication=str(d.get("authentication", "none")),
-            counterparty=d.get("counterparty"),
-            relationship_group_ids=tuple(str(g) for g in d.get("relationship_group_ids", [])),
-            expectedness=str(d.get("expectedness", "anomalous")),
-            reversibility={
-                "degree": str(rev.get("degree", "irreversible")),
-                "agent": str(rev.get("agent", "external")),
-            },
-        )
+AxisD = DecisionContext
 
 
 # --- T118 most_restrictive_inherit (FR-013) -------------------------

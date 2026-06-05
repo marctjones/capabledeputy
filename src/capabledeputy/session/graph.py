@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from capabledeputy.audit.events import Event, EventType
@@ -20,6 +21,9 @@ from capabledeputy.policy.capabilities import (
     DelegationRefusalReason,
     DelegationRequest,
     derive_delegated_capability,
+)
+from capabledeputy.policy.capabilities import (
+    kind_name as _kind_name_of,
 )
 from capabledeputy.policy.labels import Label
 from capabledeputy.policy.purposes import (
@@ -61,6 +65,24 @@ class PurposeAdmissibilityError(RuntimeError):
         self.inadmissible_categories = inadmissible_categories
 
 
+class QuarantinedLLMUnavailableError(RuntimeError):
+    """A Purpose declares recommended_pattern=pattern_2_dual_llm but
+    no quarantined LLM is wired on the App. Principle VI fail-closed:
+    we refuse the spawn rather than silently fall through to Pattern
+    ① (which would expose the planner to adversarial content the
+    operator declared inadmissible). The operator's fix is to either
+    wire a quarantined LLM at daemon start or change the Purpose's
+    recommended_pattern to ① + cope with the relaxed safety."""
+
+    def __init__(self, *, purpose_handle: str) -> None:
+        super().__init__(
+            f"purpose {purpose_handle!r} recommends pattern_2_dual_llm "
+            "but no quarantined LLM is wired on the App. Wire one at "
+            "daemon start or change the Purpose's recommended_pattern.",
+        )
+        self.purpose_handle = purpose_handle
+
+
 class SessionGraph:
     def __init__(
         self,
@@ -68,11 +90,19 @@ class SessionGraph:
         audit: AuditWriter | None = None,
         store: SessionStore | None = None,
         purposes: Purposes | None = None,
+        quarantined_available: bool = True,
     ) -> None:
         self._sessions: dict[UUID, Session] = {}
         self._audit = audit
         self._store = store
         self._purposes = purposes
+        # True when App.quarantined_llm is wired. Used by .new() to
+        # fail-closed when a Purpose recommends Pattern ② DUAL_LLM but
+        # no quarantined LLM is available — Principle VI requires we
+        # refuse the spawn rather than silently fall through to
+        # Pattern ① (which would expose the planner to adversarial
+        # content the operator explicitly declared inadmissible).
+        self._quarantined_available = quarantined_available
 
     def _has_restricted_candidates(self, categories: frozenset[str]) -> bool:
         """Heuristic for FR-047 spawn-refusal: if any candidate category
@@ -205,10 +235,46 @@ class SessionGraph:
         # /grant flow per session. The purposes registry is fail-
         # closed: unknown or UNSET purpose contributes no defaults.
         default_caps: frozenset[Capability] = frozenset()
+        # Issue 003 / Q1 (FR-030, 2026-05-25): the session's
+        # risk_preference_at_spawn is resolved from its Purpose's
+        # `risk_preference_dial` field. Different purposes carry
+        # different defaults (tax-prep: cautious vs daily-briefing:
+        # balanced). UNSET / unknown purpose falls back to the safety
+        # default "cautious" — consistent with the Purpose dataclass
+        # default + Constitution VI fail-closed.
+        risk_preference_at_spawn = "cautious"
         if self._purposes is not None and purpose_handle != UNSET_PURPOSE_HANDLE:
             purpose = self._purposes.get(purpose_handle)
-            if purpose is not None and purpose.default_capabilities:
-                default_caps = frozenset(purpose.default_capabilities)
+            if purpose is not None:
+                if purpose.default_capabilities:
+                    default_caps = frozenset(purpose.default_capabilities)
+                risk_preference_at_spawn = purpose.risk_preference_dial
+                # Pattern ② precondition (Principle VI fail-closed): a
+                # Purpose that recommends pattern_2_dual_llm requires
+                # the quarantined LLM. Without it, the planner would
+                # see raw adversarial content the operator declared
+                # inadmissible. Refuse the spawn rather than silently
+                # fall through to Pattern ①.
+                if (
+                    purpose.recommended_pattern == "pattern_2_dual_llm"
+                    and not self._quarantined_available
+                ):
+                    raise QuarantinedLLMUnavailableError(
+                        purpose_handle=purpose_handle,
+                    )
+        # Cookbook §4 #6 — cautious purposes get first-use prompts
+        # automatically. The operator can still flip the flag later
+        # via session.set_first_use_prompts. We only enable when the
+        # operator EXPLICITLY picked a cautious purpose — the
+        # fallback "cautious" dial for sessions without a purpose
+        # is silent (preserves back-compat for /chat without
+        # --persona). Non-cautious purposes leave the flag off so
+        # balanced/aggressive sessions retain friction-free behavior.
+        first_use_prompt_enabled = False
+        if self._purposes is not None and purpose_handle != UNSET_PURPOSE_HANDLE:
+            picked = self._purposes.get(purpose_handle)
+            if picked is not None and picked.risk_preference_dial == "cautious":
+                first_use_prompt_enabled = True
         session = Session.new(
             owner=owner,
             intent=intent,
@@ -217,6 +283,8 @@ class SessionGraph:
             parent=parent,
             purpose_handle=purpose_handle,
             capability_set=default_caps,
+            risk_preference_at_spawn=risk_preference_at_spawn,
+            first_use_prompt_enabled=first_use_prompt_enabled,
         )
         await self._save(session)
         self._sessions[session.id] = session
@@ -237,7 +305,7 @@ class SessionGraph:
             await self._emit(
                 EventType.CAPABILITY_GRANTED,
                 session,
-                kind=cap.kind.value,
+                kind=_kind_name_of(cap.kind),
                 pattern=cap.pattern,
                 origin=cap.origin.value,
                 source="purpose-default",
@@ -260,6 +328,13 @@ class SessionGraph:
         # parent's purpose_handle so capabilities admissible in the
         # parent stay admissible in the child (and inadmissible ones
         # remain refused).
+        # Q1 (FR-030, 2026-05-25): the child also inherits the
+        # parent's resolved risk_preference_at_spawn. The dial is
+        # bound to the Purpose at spawn time, not re-resolved on
+        # fork — that way an operator who flipped the dial on the
+        # parent's purpose mid-life doesn't accidentally apply the
+        # new value to active child sessions (replayability per
+        # SC-002).
         child = Session.new(
             parent=parent_id,
             owner=parent.owner,
@@ -269,6 +344,7 @@ class SessionGraph:
             history=parent.history,
             declassification_log=parent.declassification_log,
             purpose_handle=parent.purpose_handle,
+            risk_preference_at_spawn=parent.risk_preference_at_spawn,
         )
         await self._save(child)
         self._sessions[child.id] = child
@@ -296,6 +372,63 @@ class SessionGraph:
             event=EventType.SESSION_RESUMED,
         )
 
+    async def set_first_use_prompts(
+        self,
+        session_id: UUID,
+        enabled: bool,
+    ) -> Session:
+        """Cookbook §4 #6 — flip the per-session first-action-of-kind
+        prompt flag. Idempotent (no-op when already in the target
+        state). No special audit event today: the next decide() that
+        either fires or skips the FIRST_USE_OF_KIND_RULE is the
+        evidence in the audit trail."""
+        session = self.get(session_id)
+        if session.first_use_prompt_enabled == enabled:
+            return session
+        updated = replace(
+            session,
+            first_use_prompt_enabled=enabled,
+            updated_at=datetime.now(UTC),
+        )
+        await self._save(updated)
+        self._sessions[session_id] = updated
+        return updated
+
+    async def set_enforcement_mode(
+        self,
+        session_id: UUID,
+        mode: Any,
+    ) -> Session:
+        """Pattern ⑥ — flip the session's enforcement posture. The
+        change is auditable (ENFORCEMENT_MODE_CHANGED event with
+        old + new mode) so decisions before and after the flip can
+        be unambiguously distinguished in a replay.
+
+        No-op when the requested mode matches the current mode
+        (still returns the session unchanged; no audit event)."""
+        from capabledeputy.session.model import EnforcementMode
+
+        if not isinstance(mode, EnforcementMode):
+            mode = EnforcementMode(str(mode))
+        session = self.get(session_id)
+        if session.enforcement_mode == mode:
+            return session
+        old_mode = session.enforcement_mode
+        updated = replace(
+            session,
+            enforcement_mode=mode,
+            updated_at=datetime.now(UTC),
+        )
+        await self._save(updated)
+        self._sessions[session_id] = updated
+        await self._emit(
+            EventType.ENFORCEMENT_MODE_CHANGED,
+            updated,
+            old_mode=old_mode.value,
+            new_mode=mode.value,
+        )
+        return updated
+
     async def add_labels(
         self,
         session_id: UUID,
@@ -313,7 +446,7 @@ class SessionGraph:
     async def record_used_kind(
         self,
         session_id: UUID,
-        kind: CapabilityKind,
+        kind: CapabilityKind | str,
     ) -> Session:
         session = self.get(session_id)
         if kind in session.used_kinds:
@@ -390,12 +523,19 @@ class SessionGraph:
         await self._save(updated)
         self._sessions[session_id] = updated
         if self._audit is not None:
+            # Issue #35 — capability.kind may be an enum OR a custom-kind
+            # string. Both serialize to the bare name for audit events.
+            _kind_str = (
+                _kind_name_of(capability.kind)
+                if hasattr(capability.kind, "value")
+                else str(capability.kind)
+            )
             await self._audit.write(
                 Event(
                     event_type=EventType.CAPABILITY_GRANTED,
                     session_id=session_id,
                     payload={
-                        "kind": capability.kind.value,
+                        "kind": _kind_str,
                         "pattern": capability.pattern,
                         "expiry": capability.expiry.value,
                         "origin": capability.origin.value,
@@ -548,7 +688,7 @@ class SessionGraph:
             parent_session=str(parent_session_id),
             parent_audit_id=str(live[0].audit_id),
             child_audit_id=str(result.audit_id),
-            kind=result.kind.value,
+            kind=_kind_name_of(result.kind),
             depth=result.depth,
         )
         return result

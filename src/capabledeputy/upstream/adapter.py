@@ -30,10 +30,68 @@ from capabledeputy.upstream.config import UpstreamServerConfig
 if TYPE_CHECKING:
     from mcp import ClientSession
 
+    # The adapter accepts either a raw mcp ClientSession (older tests
+    # / standalone use) or a crash-recovering `LiveSession` wrapper
+    # (the production path through UpstreamManager). Both quack the
+    # same: list_tools/list_resources/read_resource/call_tool.
+    from capabledeputy.upstream.supervisor import LiveSession
+
+    SessionLike = ClientSession | LiveSession
+else:
+    SessionLike = object  # only for type hints
+
 
 _DELETE_TOKENS = ("delete", "remove", "unlink", "rmdir", "destroy", "purge")
 _MODIFY_TOKENS = ("write", "update", "modify", "edit", "patch", "replace", "set", "append")
 _CREATE_TOKENS = ("create", "new", "add", "mkdir")
+
+
+# Per-tool-response output cap. A single oversized response from an
+# upstream MCP server (e.g. a 100 KB gmail message with full HTML
+# body + DKIM/ARC headers) can blow the LLM context window in a few
+# parallel calls — see the email-summary failure mode where 5
+# parallel gmail_messages_get calls pushed the prompt to 202k tokens
+# against a 200k cap. Native tools (fs, fetch, git) already truncate;
+# the upstream adapter is the missing piece.
+#
+# 32 KB caps a single response to ~8k tokens, so even 8 parallel
+# oversized calls stay under 64k tokens of tool output — well within
+# any modern context window. The LLM gets a `truncated: true` marker
+# + `original_size_bytes` so it knows to re-request a narrower view
+# (e.g. format=metadata) rather than treat the truncated text as
+# complete.
+MAX_UPSTREAM_TOOL_OUTPUT_BYTES = 32 * 1024
+
+
+def _maybe_truncate_output(output: dict[str, Any]) -> dict[str, Any]:
+    """Cap the `text` field of an upstream tool result to keep a
+    single response from blowing the context window. Structured
+    outputs without a `text` field pass through untouched (they're
+    typically small dicts that the LLM consumes wholesale).
+
+    When truncating, replace `text` with the head of the original
+    plus a hint, and set `truncated=True` + `original_size_bytes` so
+    the LLM has the signal to take a different approach next call.
+    """
+    text = output.get("text")
+    if not isinstance(text, str):
+        return output
+    raw = text.encode("utf-8")
+    if len(raw) <= MAX_UPSTREAM_TOOL_OUTPUT_BYTES:
+        return output
+    head = raw[:MAX_UPSTREAM_TOOL_OUTPUT_BYTES].decode("utf-8", errors="ignore")
+    hint = (
+        f"\n\n[truncated: response was {len(raw):,} bytes; "
+        f"capped at {MAX_UPSTREAM_TOOL_OUTPUT_BYTES:,}. "
+        "If you need the full payload, request a single item at a "
+        "time or use a list/metadata variant of this tool.]"
+    )
+    return {
+        **output,
+        "text": head + hint,
+        "truncated": True,
+        "original_size_bytes": len(raw),
+    }
 
 
 def _infer_capability_kind(
@@ -60,8 +118,59 @@ def _infer_capability_kind(
         False,
     )
 
-    if any(t in lowered for t in ("send", "email", "mail")):
+    # Read-operation tokens that disambiguate read vs. write/send for
+    # services where the service-name alone is ambiguous (a 'gmail'
+    # tool can be read OR send; a 'drive' tool can be read OR delete).
+    read_tokens = ("read", "get", "list", "search", "find", "view")
+    has_read_token = any(t in lowered for t in read_tokens)
+
+    # Service classification — first match wins. Each branch then
+    # picks the right read/write kind based on tokens + hints.
+
+    # Gmail (matches "gmail.*" but NOT just "mail" — otherwise
+    # "voicemail" / "mailbox" / etc. would be misclassified).
+    if "gmail" in lowered:
+        if "send" in lowered:
+            return CapabilityKind.SEND_EMAIL
+        if any(t in lowered for t in _DELETE_TOKENS):
+            return CapabilityKind.DELETE_FS  # email deletion — destructive
+        if read_only or has_read_token:
+            return CapabilityKind.GMAIL_READ
+        # Default Gmail tool with unclear hint: most-restrictive read.
+        return CapabilityKind.GMAIL_READ
+
+    # Generic email (IMAP, SMTP — not Gmail-specific). "email" /
+    # "imap" / "smtp" in the name.
+    if any(t in lowered for t in ("imap", "smtp")) or (
+        "email" in lowered and "gmail" not in lowered
+    ):
+        if "send" in lowered or "smtp" in lowered:
+            return CapabilityKind.SEND_EMAIL
+        # IMAP-specific read tokens. `fetch` is the IMAP read primitive.
+        if read_only or has_read_token or "fetch" in lowered:
+            return CapabilityKind.IMAP_READ
+        # IMAP tools without a clear hint default to read (most-
+        # restrictive); destructive operations should be explicitly
+        # marked via tool annotations.
+        return CapabilityKind.IMAP_READ
+
+    # Google Drive (matches "drive.*"). Read by default; create/
+    # modify/delete distinguished by tokens.
+    if "drive" in lowered:
+        if any(t in lowered for t in _DELETE_TOKENS):
+            return CapabilityKind.DELETE_FS
+        if any(t in lowered for t in _CREATE_TOKENS):
+            return CapabilityKind.CREATE_FS
+        if destructive or any(t in lowered for t in _MODIFY_TOKENS):
+            return CapabilityKind.MODIFY_FS
+        if read_only or has_read_token:
+            return CapabilityKind.DRIVE_READ
+        return CapabilityKind.DRIVE_READ
+
+    # "send" alone (no Gmail) is generic SEND_EMAIL.
+    if "send" in lowered:
         return CapabilityKind.SEND_EMAIL
+
     if any(t in lowered for t in ("fetch", "web", "http", "url", "browse")):
         return CapabilityKind.WEB_FETCH
     if any(t in lowered for t in ("purchase", "buy", "checkout", "order")):
@@ -84,7 +193,7 @@ def _infer_capability_kind(
         return CapabilityKind.CREATE_FS
     if destructive or any(t in lowered for t in _MODIFY_TOKENS):
         return CapabilityKind.MODIFY_FS
-    if read_only or any(t in lowered for t in ("read", "get", "list", "search", "find")):
+    if read_only or has_read_token:
         return CapabilityKind.READ_FS
     return None
 
@@ -110,7 +219,7 @@ class LabeledMcpAdapter:
     def __init__(
         self,
         config: UpstreamServerConfig,
-        session: ClientSession,
+        session: SessionLike,
     ) -> None:
         self._config = config
         self._session = session
@@ -126,6 +235,11 @@ class LabeledMcpAdapter:
         """Upstream tools refused registration under strict mode
         (unclassifiable, no override). Surfaced for audit/observability."""
         return list(self._rejected_tools)
+
+    @property
+    def registered_names(self) -> list[str]:
+        """Tools that registered successfully (with capdep's `<server>.<tool>` prefix)."""
+        return list(self._registered_names)
 
     async def list_upstream_resources(self) -> list[dict[str, Any]]:
         """Spec 004 P1 — discover the upstream server's resources catalog.
@@ -198,9 +312,30 @@ class LabeledMcpAdapter:
             name = f"{self._config.name}.{upstream_tool.name}"
             override = self._config.tool_overrides.get(upstream_tool.name)
 
-            kind: CapabilityKind | None
+            kind: CapabilityKind | str | None
             if override and override.capability_kind:
                 kind = override.capability_kind
+            elif override is not None:
+                # Issue #35 — `_OverrideWithCustomKind` carries an
+                # unresolved custom-kind name (e.g. "slack:dm.send")
+                # that wasn't a built-in. Try to resolve via the
+                # global registry; if registered, use the string.
+                raw = getattr(override, "_custom_kind_name", None)
+                if raw:
+                    from capabledeputy.policy.capabilities import (
+                        UnknownKindError,
+                        resolve_kind,
+                    )
+
+                    try:
+                        kind = resolve_kind(raw)
+                    except UnknownKindError:
+                        kind = None
+                else:
+                    kind = _infer_capability_kind(
+                        upstream_tool.annotations,
+                        upstream_tool.name,
+                    )
             else:
                 kind = _infer_capability_kind(
                     upstream_tool.annotations,
@@ -211,11 +346,13 @@ class LabeledMcpAdapter:
                 # Not confidently classifiable and no explicit override.
                 if self._config.strict:
                     # Fail closed: refuse to register. An unmapped tool
-                    # is unavailable, never silently granted READ_FS.
+                    # is unavailable, never silently granted any read kind.
                     self._rejected_tools.append(upstream_tool.name)
                     continue
                 # Legacy/trusted server opted out of strict: most-
-                # restrictive fallback (read), not write/exec.
+                # restrictive fallback (READ_FS for back-compat — older
+                # grants might cover this tool. New deployments should
+                # use strict mode + explicit overrides).
                 kind = CapabilityKind.READ_FS
 
             additional = override.additional_labels if override else frozenset()
@@ -256,6 +393,7 @@ class LabeledMcpAdapter:
             if getattr(result, "isError", False):
                 output = {"upstream_error": True, **output}
 
+            output = _maybe_truncate_output(output)
             return ToolResult(output=output, additional_labels=additional)
 
         return handler

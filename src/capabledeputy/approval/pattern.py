@@ -23,6 +23,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from capabledeputy.approval.model import ApprovalAction, ApprovalRequest
+from capabledeputy.policy.labels import Label
 
 
 class PatternValidationError(ValueError):
@@ -66,6 +67,16 @@ class ApprovalPatternRule:
     revoked: bool = False
     auto_approval_count: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Issue #8 — label-subset matching. Auto-approve ONLY when the
+    # request's `labels_in` contains every label in this set. Lets
+    # operators distinguish "self-forward clean content" from
+    # "self-forward content tainted with X". Empty (default) = no
+    # label requirement — match purely on action+target+payload.
+    labels_required: frozenset[Label] = field(default_factory=frozenset)
+    # Operator-supplied audit tag — surfaces in the auto-approval
+    # audit event so the operator can grep "patterns that fired
+    # under tag 'self-forward'". Empty when not provided.
+    audit_tag: str = ""
 
     @classmethod
     def create(
@@ -76,6 +87,8 @@ class ApprovalPatternRule:
         ttl: timedelta,
         created_by: str = "user",
         payload_pattern: str | None = None,
+        labels_required: frozenset[Label] = frozenset(),
+        audit_tag: str = "",
     ) -> ApprovalPatternRule:
         _validate_target_pattern(target_pattern)
         if ttl <= timedelta(0):
@@ -91,6 +104,8 @@ class ApprovalPatternRule:
             created_at=now,
             expires_at=now + ttl,
             created_by=created_by,
+            labels_required=labels_required,
+            audit_tag=audit_tag,
         )
 
     def is_expired(self, now: datetime | None = None) -> bool:
@@ -102,6 +117,14 @@ class ApprovalPatternRule:
         if request.action != self.action:
             return False
         if not fnmatch.fnmatchcase(request.target, self.target_pattern):
+            return False
+        # Issue #8 — label-subset gate. Auto-approve only when the
+        # request's incoming labels INCLUDE every label the operator
+        # declared required. Strictly inclusive: extra labels on the
+        # request are fine; missing required labels disqualify.
+        if self.labels_required and not self.labels_required.issubset(
+            request.labels_in,
+        ):
             return False
         if self.payload_pattern is None:
             return True
@@ -118,6 +141,8 @@ class ApprovalPatternRule:
             "created_by": self.created_by,
             "revoked": self.revoked,
             "auto_approval_count": self.auto_approval_count,
+            "labels_required": sorted(label.value for label in self.labels_required),
+            "audit_tag": self.audit_tag,
         }
 
 

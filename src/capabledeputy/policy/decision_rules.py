@@ -37,6 +37,18 @@ class RuleOutcome(StrEnum):
     Per FR-011, the never-auto default is SUGGEST (or DENY if the
     operator declares the cell as such); only a matched human-ratified
     rule may yield AUTO.
+
+    SHADOW is a special outcome (cookbook P2.8). A rule with
+    outcome=SHADOW that matches is recorded in
+    EvaluationResult.shadowed_rule_ids but is EXCLUDED from the
+    most-restrictive composition. Lets operators author a new rule,
+    deploy it in shadow, watch what it WOULD do for K turns via the
+    audit log, then promote it to a real outcome (deny / suggest /
+    auto) once they're confident.
+
+    SHADOW is intentionally NOT in _OUTCOME_RANK so any attempt to
+    feed it to composition fails-closed loudly rather than silently
+    degrading. Use the carve-out in evaluate() to handle it.
     """
 
     DENY = "deny"
@@ -44,6 +56,7 @@ class RuleOutcome(StrEnum):
     REQUIRE_APPROVAL = "require-approval"
     SUGGEST = "suggest"
     AUTO = "auto"
+    SHADOW = "shadow"
 
 
 _OUTCOME_RANK: dict[RuleOutcome, int] = {
@@ -56,6 +69,9 @@ _OUTCOME_RANK: dict[RuleOutcome, int] = {
     RuleOutcome.REQUIRE_APPROVAL: 2,
     RuleOutcome.SUGGEST: 3,
     RuleOutcome.AUTO: 4,
+    # SHADOW deliberately absent — composition with it should crash,
+    # not silently pick a rank. evaluate() filters shadow matches
+    # out before calling _most_restrictive.
 }
 
 
@@ -121,7 +137,16 @@ class RulePredicate:
             for req in required_categories:
                 if req not in present:
                     return False
-        if self.axis_d_time_window is not None and now_hour is not None:
+        if self.axis_d_time_window is not None:
+            # Fail-closed per Principle VI: a rule that declares a time
+            # window MUST receive a `now_hour` from the caller. If the
+            # caller omits it we don't know whether we're inside the
+            # window, so the rule does NOT match — its outcome doesn't
+            # compose into the decision. The dispatcher SHOULD always
+            # supply now_hour; failure to is a caller bug worth
+            # surfacing.
+            if now_hour is None:
+                return False
             start_h, end_h = self.axis_d_time_window
             if start_h <= end_h:
                 if not (start_h <= now_hour <= end_h):
@@ -170,6 +195,15 @@ class EvaluationResult:
     outcome: RuleOutcome
     matched_rule_ids: tuple[str, ...]
     rationale: str
+    # Cookbook P2.8 — rule-level shadow mode. Rule ids that matched
+    # but had outcome=SHADOW: surfaced to the audit log so the
+    # operator can see what their pending rules would have done,
+    # without yet composing them into the live decision. Empty
+    # tuple when no shadow rules matched. The legacy session-level
+    # shadow (Pattern ⑥) addresses the same problem at the per-
+    # SESSION grain; this is the per-RULE grain — useful for A/B-
+    # testing a single rule against current behavior.
+    shadowed_rule_ids: tuple[str, ...] = ()
 
 
 def evaluate(
@@ -216,19 +250,35 @@ def evaluate(
         ):
             matched.append(rule)
 
-    if not matched:
+    # Cookbook P2.8 — partition into shadow vs live. Shadow rules
+    # are recorded for audit but excluded from composition. Empty
+    # live-set falls to the never-auto default, regardless of how
+    # many shadow rules matched.
+    live_matched = [r for r in matched if r.outcome != RuleOutcome.SHADOW]
+    shadow_matched = [r for r in matched if r.outcome == RuleOutcome.SHADOW]
+    shadowed_ids = tuple(sorted(r.rule_id for r in shadow_matched))
+
+    if not live_matched:
+        rationale = f"no live rule matched; default={default_when_no_match.value}"
+        if shadowed_ids:
+            rationale += f"; shadowed_rules={list(shadowed_ids)}"
         return EvaluationResult(
             outcome=default_when_no_match,
             matched_rule_ids=(),
-            rationale=(f"no human-ratified rule matched; default={default_when_no_match.value}"),
+            rationale=rationale,
+            shadowed_rule_ids=shadowed_ids,
         )
 
-    composed = _most_restrictive(*(r.outcome for r in matched))
-    ids = tuple(sorted(r.rule_id for r in matched))
+    composed = _most_restrictive(*(r.outcome for r in live_matched))
+    ids = tuple(sorted(r.rule_id for r in live_matched))
+    rationale = f"matched rules={list(ids)}; composed most-restrictive={composed.value}"
+    if shadowed_ids:
+        rationale += f"; shadowed_rules={list(shadowed_ids)}"
     return EvaluationResult(
         outcome=composed,
         matched_rule_ids=ids,
-        rationale=f"matched rules={list(ids)}; composed most-restrictive={composed.value}",
+        rationale=rationale,
+        shadowed_rule_ids=shadowed_ids,
     )
 
 

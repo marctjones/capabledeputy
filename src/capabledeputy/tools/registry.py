@@ -42,7 +42,10 @@ ToolHandler = Callable[[dict[str, Any], ToolContext], Awaitable[ToolResult]]
 class ToolDefinition:
     name: str
     description: str
-    capability_kind: CapabilityKind
+    # Issue #35 — kind can be a built-in CapabilityKind enum member
+    # OR a custom namespaced string registered via servers.d/*.yaml.
+    # Both compare correctly to str at the chokepoint.
+    capability_kind: CapabilityKind | str
     handler: ToolHandler
     target_arg: str = "target"
     amount_arg: str | None = None

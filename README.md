@@ -6,7 +6,7 @@ A structurally secure runtime for personal AI agents.
 
 CapableDeputy is an AI agent runtime built as a faithful implementation of recognized security models — a reference monitor, an information-flow lattice, and the object-capability model — with the LLM treated as an untrusted component *outside* the trusted computing base. Every action the agent takes flows through one deterministic capability and information-flow chokepoint, escalates to programmatic execution when stakes warrant, and surfaces every cross-compartment data flow through human-auditable approval gates.
 
-**Status:** Pre-alpha. See [ROADMAP.md](ROADMAP.md) for the implementation plan.
+**Status:** Alpha — v0.13.0. See [CHANGELOG.md](CHANGELOG.md) for what shipped and [ROADMAP.md](ROADMAP.md) for the implementation plan.
 
 ## Why
 
@@ -20,7 +20,7 @@ Because the guarantees come from the models rather than from per-attack rules, a
 - **Unauthorized irreversible or committing actions** — human-in-the-loop approval (Clark-Wilson separation of duty).
 - **Conflict-of-interest data mixing** — cross-compartment access rules (Brewer-Nash).
 - **Unaccountable automated decisions** — deterministic decisions over an append-only provenance record.
-- **Purpose-contamination** — sensitive data influencing a decision it has no bearing on (*designed, not yet built — v0.9*).
+- **Purpose-contamination** — sensitive data influencing a decision it has no bearing on (*designed; partially delivered in v0.13.0 via the labeling framework / Purpose Handle, spec 003 — completion in progress*).
 - **Prompt-injection-driven misuse** — mitigated as one special case of the above: the model is treated as untrusted regardless of how it was subverted.
 
 This is an illustrative consequence of the enforced models, not a feature checklist or a completeness claim.
@@ -29,7 +29,7 @@ The design draws on classical information security models — Bell-LaPadula, Bib
 
 ## Scope: a control at the intersection, not a governance program
 
-CapableDeputy is deliberately narrow. It is a **runtime control at the intersection of InfoSec, Data & Privacy, and AI governance** — it defends the conjunction those three programs structurally cannot — sensitive data, untrusted input, and capable action converging in one agent (the "lethal trifecta," in governance terms) — and intentionally does *not* attempt their breadth. Within AI governance it is deep and faithful on agentic-effect containment, human oversight, and decision accountability, and silent by design on model accuracy, bias/fairness, eval, and content safety. Every in-scope guarantee is bounded by three contingencies: correct labeling, a trustworthy substrate, and the still-unbuilt v0.9 purpose-scoping. See **[docs/governance-scope.md](docs/governance-scope.md)** for the precise in/out-of-scope statement and its alignment with this vision.
+CapableDeputy is deliberately narrow. It is a **runtime control at the intersection of InfoSec, Data & Privacy, and AI governance** — it defends the conjunction those three programs structurally cannot — sensitive data, untrusted input, and capable action converging in one agent (the "lethal trifecta," in governance terms) — and intentionally does *not* attempt their breadth. Within AI governance it is deep and faithful on agentic-effect containment, human oversight, and decision accountability, and silent by design on model accuracy, bias/fairness, eval, and content safety. Every in-scope guarantee is bounded by three contingencies: correct labeling, a trustworthy substrate, and purpose-scoping (the labeling framework / spec 003, partially delivered in v0.13.0 and still being completed). See **[docs/governance-scope.md](docs/governance-scope.md)** for the precise in/out-of-scope statement and its alignment with this vision.
 
 Why all three at once: a running agent collapses what were three mostly *design-time* governance disciplines into a single *runtime* problem — the right decision depends on the live context (purpose, recipient, sensitivity, reversibility) of each action. CapableDeputy resolves that context per action at one deterministic, LLM-isolated chokepoint: the *protection strength* adapts to context, the *mechanism deciding it* does not. The decision-layer rationale and its grounding in adaptive-governance / Contextual Integrity theory is in **[docs/trust-model.md](docs/trust-model.md)** (§9).
 

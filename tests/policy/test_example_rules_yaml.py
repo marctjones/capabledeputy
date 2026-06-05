@@ -31,9 +31,13 @@ def test_repo_rules_yaml_loads() -> None:
     rules = load(_RULES_YAML)
     rule_ids = sorted(r.rule_id for r in rules.rules)
     assert rule_ids == [
-        "block-personal-email",
         "cron-backup-auto",
+        "family-personal-email-suggest",
+        "phi-egress-deny",
         "proprietary-share-to-project-p",
+        "purchases-under-threshold-auto",
+        "send-after-hours-require-approval",
+        "work-team-email-suggest",
     ]
 
 
@@ -131,9 +135,12 @@ def test_share_to_non_member_falls_to_suggest() -> None:
     assert result.outcome == RuleOutcome.SUGGEST
 
 
-def test_block_personal_email_kill_switch_denies() -> None:
-    """The DENY rule fires for any personal-data email egress;
-    composes most-restrictive with anything else that might match."""
+def test_personal_email_to_family_member_resolves_to_suggest() -> None:
+    """Personal mail summary forwarded to a family-group recipient
+    matches the `family-personal-email-suggest` rule. Outcome is
+    SUGGEST — irreversible egress still requires an approval card,
+    but the rule marks the counterparty as recognized rather than
+    falling to the default unknown."""
     rules = load(_RULES_YAML)
     axis_a = AxisA(
         categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
@@ -142,6 +149,7 @@ def test_block_personal_email_kill_switch_denies() -> None:
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
+        relationship_group_ids=("family",),
         expectedness="expected",
     )
     result = evaluate(
@@ -150,7 +158,214 @@ def test_block_personal_email_kill_switch_denies() -> None:
         axis_b=axis_b,
         axis_d=axis_d,
         effect_class="send_email",
-        target="alice@example.com",
+        target="spouse@example.com",
+        now_hour=14,  # business hours — after-hours rule does not fire
+    )
+    assert result.outcome == RuleOutcome.SUGGEST
+    assert "family-personal-email-suggest" in result.matched_rule_ids
+
+
+def test_personal_email_to_non_family_falls_to_default_suggest() -> None:
+    """Personal mail to a non-family recipient finds no rule; the
+    default fail-closed SUGGEST cell holds. Distinguishable from the
+    family case by the empty matched_rule_ids — the approval card UX
+    can use that to surface the counterparty as unknown rather than
+    recognized."""
+    rules = load(_RULES_YAML)
+    axis_a = AxisA(
+        categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
+    )
+    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_d = AxisD(
+        initiator="principal:alice",
+        authentication="device-bound",
+        relationship_group_ids=(),
+        expectedness="expected",
+    )
+    result = evaluate(
+        rules=rules,
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="send_email",
+        target="stranger@example.com",
+        now_hour=14,  # business hours — after-hours rule does not fire
+    )
+    assert result.outcome == RuleOutcome.SUGGEST
+    assert result.matched_rule_ids == ()
+
+
+def test_work_email_to_workteam_member_resolves_to_suggest() -> None:
+    """Symmetric to the family-personal rule but for work content
+    forwarded to a recognized work-team member."""
+    rules = load(_RULES_YAML)
+    axis_a = AxisA(
+        categories=(AxisACategory(category="proprietary_work", tier=Tier.SENSITIVE),),
+    )
+    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_d = AxisD(
+        initiator="principal:alice",
+        authentication="device-bound",
+        relationship_group_ids=("work-team",),
+        expectedness="expected",
+    )
+    result = evaluate(
+        rules=rules,
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="send_email",
+        target="coworker@example.com",
+        now_hour=14,  # business hours — after-hours rule does not fire
+    )
+    assert result.outcome == RuleOutcome.SUGGEST
+    assert "work-team-email-suggest" in result.matched_rule_ids
+
+
+def test_work_email_to_family_member_falls_to_default_suggest() -> None:
+    """Cross-compartment send (work content → family recipient) does
+    NOT match work-team-email-suggest because the counterparty group
+    differs. Falls to default SUGGEST — operator approval card will
+    surface this as an unrecognized counterparty for the work axis."""
+    rules = load(_RULES_YAML)
+    axis_a = AxisA(
+        categories=(AxisACategory(category="proprietary_work", tier=Tier.SENSITIVE),),
+    )
+    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_d = AxisD(
+        initiator="principal:alice",
+        authentication="device-bound",
+        relationship_group_ids=("family",),
+        expectedness="expected",
+    )
+    result = evaluate(
+        rules=rules,
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="send_email",
+        target="spouse@example.com",
+        now_hour=14,  # business hours — after-hours rule does not fire
+    )
+    assert result.outcome == RuleOutcome.SUGGEST
+    assert result.matched_rule_ids == ()
+
+
+# --- Cookbook §9 stanza tests --------------------------------------------
+
+
+def test_send_at_night_escalates_to_require_approval() -> None:
+    """A send to a family-group recipient at 23:00 (within the
+    22-06 after-hours window) composes the family-suggest rule
+    with the after-hours rule. Most-restrictive wins —
+    REQUIRE_APPROVAL beats SUGGEST."""
+    rules = load(_RULES_YAML)
+    axis_a = AxisA(
+        categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
+    )
+    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_d = AxisD(
+        initiator="principal:alice",
+        authentication="device-bound",
+        relationship_group_ids=("family",),
+        expectedness="expected",
+    )
+    result = evaluate(
+        rules=rules,
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="send_email",
+        target="spouse@example.com",
+        now_hour=23,  # within 22-06 after-hours window
+    )
+    assert result.outcome == RuleOutcome.REQUIRE_APPROVAL
+    assert "send-after-hours-require-approval" in result.matched_rule_ids
+    assert "family-personal-email-suggest" in result.matched_rule_ids
+
+
+def test_phi_egress_denied_even_to_family() -> None:
+    """PHI never leaves the device without an OverrideGrant. The
+    phi-egress-deny rule composes most-restrictive with any other
+    rule — even a family-group recipient is denied, preventing
+    accidental disclosure of health data to a spouse who isn't
+    the patient."""
+    rules = load(_RULES_YAML)
+    axis_a = AxisA(
+        categories=(AxisACategory(category="phi", tier=Tier.SENSITIVE),),
+    )
+    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_d = AxisD(
+        initiator="principal:alice",
+        authentication="device-bound",
+        relationship_group_ids=("family",),
+        expectedness="expected",
+    )
+    result = evaluate(
+        rules=rules,
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="send_email",
+        target="spouse@example.com",
+        now_hour=14,
     )
     assert result.outcome == RuleOutcome.DENY
-    assert "block-personal-email" in result.matched_rule_ids
+    assert "phi-egress-deny" in result.matched_rule_ids
+
+
+def test_small_reversible_purchase_auto() -> None:
+    """A queue_purchase whose deterministic reversibility resolver
+    returns 'reversible' (returnable consumable within window) hits
+    the AUTO rule — no approval card. Operator-set cap on
+    QUEUE_PURCHASE max_amount is the dollar-level guard."""
+    rules = load(_RULES_YAML)
+    axis_a = AxisA(
+        categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
+    )
+    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_d = AxisD(
+        initiator="principal:alice",
+        authentication="device-bound",
+        reversibility={"degree": "reversible", "agent": "system"},
+        expectedness="expected",
+    )
+    result = evaluate(
+        rules=rules,
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="queue_purchase",
+        target="amazon",
+        now_hour=14,
+    )
+    assert result.outcome == RuleOutcome.AUTO
+    assert "purchases-under-threshold-auto" in result.matched_rule_ids
+
+
+def test_irreversible_purchase_falls_to_default_suggest() -> None:
+    """A purchase whose reversibility is irreversible (concert
+    ticket, custom build) does NOT hit the auto rule — falls to
+    the FR-011 SUGGEST default cell. Approval card required."""
+    rules = load(_RULES_YAML)
+    axis_a = AxisA(
+        categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
+    )
+    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_d = AxisD(
+        initiator="principal:alice",
+        authentication="device-bound",
+        reversibility={"degree": "irreversible", "agent": "external"},
+        expectedness="expected",
+    )
+    result = evaluate(
+        rules=rules,
+        axis_a=axis_a,
+        axis_b=axis_b,
+        axis_d=axis_d,
+        effect_class="queue_purchase",
+        target="ticketmaster",
+        now_hour=14,
+    )
+    assert result.outcome == RuleOutcome.SUGGEST
+    assert result.matched_rule_ids == ()

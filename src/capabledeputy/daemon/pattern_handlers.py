@@ -26,6 +26,14 @@ def make_pattern_handlers(app: App) -> dict[str, Handler]:
         return {"patterns": [r.to_dict() for r in app.approval_queue.patterns.list()]}
 
     async def pattern_create(params: dict[str, Any]) -> dict[str, Any]:
+        # Issue #8 — optional labels_required + audit_tag.
+        from capabledeputy.policy.labels import Label as _Label
+
+        labels_in_raw = params.get("labels_required") or []
+        try:
+            labels_required = frozenset(_Label(s) for s in labels_in_raw)
+        except ValueError as e:
+            return {"error": f"invalid label in labels_required: {e}"}
         try:
             rule = ApprovalPatternRule.create(
                 action=ApprovalAction(params["action"]),
@@ -33,6 +41,8 @@ def make_pattern_handlers(app: App) -> dict[str, Handler]:
                 ttl=timedelta(hours=float(params.get("ttl_hours", 24))),
                 created_by=str(params.get("created_by", "user")),
                 payload_pattern=params.get("payload_pattern"),
+                labels_required=labels_required,
+                audit_tag=str(params.get("audit_tag", "")),
             )
         except PatternValidationError as e:
             return {"error": str(e)}

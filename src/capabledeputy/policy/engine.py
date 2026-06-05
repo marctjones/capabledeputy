@@ -16,9 +16,9 @@ from capabledeputy.policy.actions import Action
 from capabledeputy.policy.assurance import EffectGate, reversibility_gate
 from capabledeputy.policy.bindings import BindingError, BindingSet
 from capabledeputy.policy.capabilities import (
-    DESTRUCTIVE_KINDS,
     Capability,
     CapabilityKind,
+    kind_name,
 )
 from capabledeputy.policy.decision_rules import (
     DecisionRules,
@@ -60,7 +60,33 @@ CONTROL_PLANE_TAINTED_RULE = "control-plane-tainted-session"
 CLEARANCE_REFUSED_RULE = "clearance-refused"
 INTEGRITY_FLOOR_REFUSED_RULE = "integrity-floor-refused"
 SANDBOX_NO_ACTUATOR_RULE = "sandbox-no-actuator"
+DEVBOX_NO_MANAGER_RULE = "devbox-no-manager"
 ORPHAN_RISK_CITATION_RULE = "orphan-risk-citation"
+FIRST_USE_OF_KIND_RULE = "first-use-of-kind"
+
+# Cookbook §4 #6 — capability kinds that fire a first-use prompt
+# when `Session.first_use_prompt_enabled` is on. Reads are excluded
+# (they don't change state and would create approval fatigue from
+# every new mailbox label / file path). The set covers everything
+# with egress, purchase, destructive, or execute semantics — the
+# operator's first use of the authority is the right approval
+# moment for confirming intent.
+_PROMPTABLE_FIRST_USE_KINDS: frozenset[CapabilityKind] = frozenset(
+    {
+        CapabilityKind.SEND_EMAIL,
+        CapabilityKind.QUEUE_PURCHASE,
+        CapabilityKind.WRITE_FS,
+        CapabilityKind.CREATE_FS,
+        CapabilityKind.MODIFY_FS,
+        CapabilityKind.DELETE_FS,
+        CapabilityKind.CALENDAR_WRITE,
+        CapabilityKind.CREATE_CAL,
+        CapabilityKind.MODIFY_CAL,
+        CapabilityKind.DELETE_CAL,
+        CapabilityKind.EXECUTE_SANDBOX,
+        CapabilityKind.EXECUTE_DEVBOX,
+    },
+)
 
 # Effect-class substrings that mark an egressing action. Egress crosses
 # the containment boundary; even reversible/system loses optimistic
@@ -79,6 +105,28 @@ def _effect_class_is_egressing(effect_class: str | None) -> bool:
         return False
     lo = effect_class.lower()
     return any(marker in lo for marker in _EGRESS_EFFECT_MARKERS)
+
+
+@dataclass(frozen=True)
+class RecoveryStep:
+    """A literal slash command an operator can paste to make progress
+    on a denied action. Issue #3.
+
+    `command` is the slash command name (e.g. "/grant", "/spawn",
+    "/override", "/extract"). `args` are the positional + flag tokens
+    that follow. `rationale` is a one-line explanation for the
+    operator — never blamed on the agent, always actionable.
+
+    The synthesizer (Issue #3) maps every non-ALLOW decision rule to
+    a determined sequence. Operators paste; agents quote literally.
+    """
+
+    command: str
+    args: tuple[str, ...]
+    rationale: str
+
+    def as_command_line(self) -> str:
+        return f"{self.command} {' '.join(self.args)}".strip()
 
 
 @dataclass(frozen=True)
@@ -104,6 +152,13 @@ class PolicyDecision:
     axis_b_snapshot: AxisB | None = None
     axis_d_snapshot: AxisD | None = None
     effect_class: str | None = None
+    # Issue #3 — Recovery synthesis. Empty tuple when the decision is
+    # ALLOW or when no slash-command recovery exists for the rule
+    # (e.g. EXECUTE.sandbox-no-actuator requires operator action,
+    # not a chat command). Populated for every other non-ALLOW path.
+    # Renders in the REPL as literal pasteable commands; exposed via
+    # policy.preview so the agent can quote without inventing.
+    recovery_steps: tuple[RecoveryStep, ...] = field(default_factory=tuple)
 
 
 _LEGACY_RANK: dict[Decision, int] = {
@@ -162,7 +217,12 @@ def _compose_with_v2(legacy: PolicyDecision, v2: EvaluationResult) -> PolicyDeci
     )
 
 
-def egress_label_for(kind: CapabilityKind) -> Label | None:
+def egress_label_for(kind: CapabilityKind | str) -> Label | None:
+    # Custom-kind strings don't appear in the egress map — only the
+    # built-in enum kinds (SEND_EMAIL, QUEUE_PURCHASE, etc.) do, so a
+    # str-typed kind safely yields None via the lookup.
+    if not isinstance(kind, CapabilityKind):
+        return None
     return _EGRESS_LABEL_FOR_KIND.get(kind)
 
 
@@ -261,6 +321,7 @@ def _decide_legacy(
     now: datetime | None = None,
     cap_uses: dict[str, tuple[datetime, ...]] | None = None,
     revoked_audit_ids: frozenset[UUID] = frozenset(),
+    rate_limit_escalation: bool = False,
 ) -> PolicyDecision:
     # Single decision clock: resolve once so every time-sensitive
     # check in this decision agrees. Deterministic and injectable —
@@ -296,7 +357,7 @@ def _decide_legacy(
                 decision=Decision.DENY,
                 rule=CAPABILITY_EXPIRED_RULE,
                 reason=(
-                    f"capability for {action.kind.value}({action.target}) "
+                    f"capability for {kind_name(action.kind)}({action.target}) "
                     f"expired at {deadline.isoformat()} "
                     f"(decision time {eff_now.isoformat()})"
                 ),
@@ -321,12 +382,25 @@ def _decide_legacy(
         )
         if rate_match is not None and rate_match.rate_limit is not None:
             rl = rate_match.rate_limit
+            # Cookbook P2.6 — rate-limit-as-friction. When the
+            # operator's risk dial is balanced/aggressive, a rate-
+            # exceeded match escalates to REQUIRE_APPROVAL instead
+            # of DENY: the operator can vouch mid-stream (approve
+            # the Nth send) instead of losing the session to a
+            # hard deny. Cautious sessions keep the hard floor —
+            # the cap is a non-negotiable limit, not a tripwire.
+            outcome = Decision.REQUIRE_APPROVAL if rate_limit_escalation else Decision.DENY
+            reason_prefix = (
+                "rate limit exceeded — operator approval required"
+                if rate_limit_escalation
+                else "rate limit exceeded"
+            )
             return PolicyDecision(
-                decision=Decision.DENY,
+                decision=outcome,
                 rule=RATE_LIMIT_EXCEEDED_RULE,
                 reason=(
-                    f"capability for {action.kind.value}({action.target}) "
-                    f"rate limit exceeded: {rl.max_uses} uses per "
+                    f"capability for {kind_name(action.kind)}({action.target}) "
+                    f"{reason_prefix}: {rl.max_uses} uses per "
                     f"{rl.window_seconds}s (decision time "
                     f"{eff_now.isoformat()})"
                 ),
@@ -335,7 +409,7 @@ def _decide_legacy(
             )
         return PolicyDecision(
             decision=Decision.DENY,
-            reason=f"no matching capability for {action.kind.value}({action.target})",
+            reason=f"no matching capability for {kind_name(action.kind)}({action.target})",
             effective_labels=label_set,
         )
 
@@ -358,7 +432,7 @@ def _decide_legacy(
             decision=Decision.DENY,
             rule=CAPABILITY_CASCADED_RULE,
             reason=(
-                f"capability for {action.kind.value}({action.target}) "
+                f"capability for {kind_name(action.kind)}({action.target}) "
                 f"is cascaded-inert: originating ancestor "
                 f"audit_id={originator_id} (revoked/expired/exhausted)"
             ),
@@ -376,7 +450,7 @@ def _decide_legacy(
             decision=Decision.DENY,
             rule=REVOKED_BY_PRIOR_USE_RULE,
             reason=(
-                f"capability for {action.kind.value} was revoked by prior use of "
+                f"capability for {kind_name(action.kind)} was revoked by prior use of "
                 f"{sorted(k.value for k in revoking)}"
             ),
             matched_capability=cap,
@@ -407,12 +481,20 @@ def _decide_legacy(
     # REQUIRE_APPROVAL so a human authorises it. This codifies the
     # Clark-Wilson well-formed-transaction principle: modifications are
     # deliberate, audited acts; never the implicit byproduct of a flow.
-    if action.kind in DESTRUCTIVE_KINDS and not cap.allows_destructive:
+    # Issue #35 — destructive check now consults both the built-in
+    # DESTRUCTIVE_KINDS set AND the CustomKindRegistry's per-kind flag,
+    # so a custom kind declared with `destructive: true` in servers.d/
+    # gets the same Clark-Wilson gating.
+    from capabledeputy.policy.capabilities import is_destructive_kind
+
+    if is_destructive_kind(action.kind) and not cap.allows_destructive:
+        # action.kind may be enum (has .value) or str (custom kinds).
+        kind_str = kind_name(action.kind)
         return PolicyDecision(
             decision=Decision.REQUIRE_APPROVAL,
             rule=DESTRUCTIVE_OP_RULE,
             reason=(
-                f"{action.kind.value} on '{action.target}' is a destructive "
+                f"{kind_str} on '{action.target}' is a destructive "
                 "operation and the matched capability does not have "
                 "allows_destructive=True"
             ),
@@ -427,7 +509,162 @@ def _decide_legacy(
     )
 
 
-def decide(
+def _synthesize_recovery_steps(
+    *,
+    decision: Decision,
+    rule: str | None,
+    action: Action,
+    effect_class: str | None,
+    reason: str | None = None,
+) -> tuple[RecoveryStep, ...]:
+    """Issue #3 — map a non-ALLOW decision to literal pasteable slash
+    commands. Returns empty tuple when no slash-command recovery
+    exists (e.g. EXECUTE.sandbox without a wired actuator — operator
+    must edit daemon config).
+
+    The output renders directly in the REPL and is exposed via
+    `policy.preview` so the agent quotes verbatim instead of inventing
+    commands.
+    """
+    if decision is Decision.ALLOW:
+        return ()
+
+    kind = kind_name(action.kind) if action.kind else "READ_FS"
+    target = action.target or "*"
+
+    # Reason-based fallback: the legacy "no matching capability" path
+    # returns rule=None but a stable reason string. Detect via reason
+    # so the synthesizer covers it without changing the engine's
+    # rule contract (test_policy_engine.py pins rule is None here).
+    if rule is None:
+        if reason and "no matching capability" in reason.lower():
+            return (
+                RecoveryStep(
+                    command="/grant",
+                    args=(kind, target, "--one-shot"),
+                    rationale=f"Session lacks a capability for {kind} on {target}.",
+                ),
+            )
+        return ()
+
+    # No-matching-capability — the simplest case. Just grant the cap.
+    if rule == "no-matching-capability" or "no-matching" in rule:
+        return (
+            RecoveryStep(
+                command="/grant",
+                args=(kind, target, "--one-shot"),
+                rationale=f"Session lacks a capability for {kind} on {target}.",
+            ),
+        )
+
+    # Capability expired — re-grant with a fresh TTL.
+    if rule == "capability-expired" or "expired" in rule:
+        return (
+            RecoveryStep(
+                command="/grant",
+                args=(kind, target, "--one-shot", "--ttl", "3600"),
+                rationale="Previous capability's deadline passed; grant a fresh one.",
+            ),
+        )
+
+    # Destructive op without the destructive flag.
+    if rule == DESTRUCTIVE_OP_RULE or "destructive" in rule.lower():
+        return (
+            RecoveryStep(
+                command="/grant",
+                args=(kind, target, "--one-shot", "--destructive"),
+                rationale="Action is destructive; grant must explicitly authorize it.",
+            ),
+        )
+
+    # Rate-limit exhausted — grant a higher-rate cap or wait.
+    if rule == RATE_LIMIT_EXCEEDED_RULE or "rate-limit" in rule.lower():
+        return (
+            RecoveryStep(
+                command="/grant",
+                args=(kind, target, "--one-shot", "--rate", "10/hour"),
+                rationale="Rate window exhausted; grant a higher-rate cap or wait.",
+            ),
+        )
+
+    # Capability revoked by prior use — fresh session is the cleanest
+    # path. The new session has no prior-use record.
+    if rule == REVOKED_BY_PRIOR_USE_RULE:
+        intent = f"continue with {kind}"
+        return (
+            RecoveryStep(
+                command="/spawn",
+                args=(f'"{intent}"',),
+                rationale="Capability was revoked by a prior tool use; fresh session resets the record.",
+            ),
+            RecoveryStep(
+                command="/grant",
+                args=(kind, target, "--one-shot"),
+                rationale="Grant the capability in the fresh session.",
+            ),
+        )
+
+    # Sandbox effect-class without wired actuator — no slash recovery.
+    if rule == SANDBOX_NO_ACTUATOR_RULE or (
+        effect_class == "EXECUTE.sandbox" and "actuator" in rule.lower()
+    ):
+        return ()  # Operator must wire a SandboxActuator in daemon config.
+
+    # Label-conflict family (untrusted/financial/health-meets-egress).
+    # The session has accumulated labels that conflict with the action's
+    # egress. Three recovery paths:
+    #   1. /spawn a clean session (primary — simplest)
+    #   2. /extract via quarantined declassification (when a schema exists)
+    #   3. /override request (operator's escape hatch)
+    if "meets-egress" in rule or "meets-email" in rule:
+        intent_hint = f"send to {target}" if target and "@" in target else f"continue with {kind}"
+        return (
+            RecoveryStep(
+                command="/spawn",
+                args=(f'"{intent_hint}"',),
+                rationale="Session is tainted by prior reads of untrusted/sensitive content; a fresh session has no labels to conflict.",
+            ),
+            RecoveryStep(
+                command="/grant",
+                args=(kind, target, "--one-shot"),
+                rationale="Grant the capability in the fresh session.",
+            ),
+            RecoveryStep(
+                command="/override",
+                args=(
+                    "request",
+                    kind,
+                    target,
+                    "--justification",
+                    f'"explicit user authorization for {kind} on {target}"',
+                ),
+                rationale="Alternative: request operator override to bypass the label conflict in this session.",
+            ),
+        )
+
+    # v2 relax-refused — operator's policy floor blocks the requested
+    # relaxation. Same shape as label conflicts — clean session or
+    # override path.
+    if rule == RELAX_REFUSED_RULE:
+        return (
+            RecoveryStep(
+                command="/override",
+                args=(
+                    "request",
+                    kind,
+                    target,
+                    "--justification",
+                    '"operator-floor relaxation needed"',
+                ),
+                rationale="A v2 rule refused to relax to ALLOW; operator override is the only path.",
+            ),
+        )
+
+    # Unknown rule — synthesizer doesn't know how to recover.
+    return ()
+
+
+def _decide_impl(
     label_set: frozenset[Label],
     capabilities: frozenset[Capability],
     action: Action,
@@ -453,13 +690,20 @@ def decide(
     integrity_floor_level: str | None = None,
     risk_register: Any = None,
     sandbox_actuator_wired: bool = False,
+    devbox_manager_wired: bool = False,
     revoked_audit_ids: frozenset[UUID] = frozenset(),
+    first_use_prompt_enabled: bool = False,
+    rate_limit_escalation: bool = False,
 ) -> PolicyDecision:
-    """Public chokepoint. Runs the legacy decision path, then — when
-    the v2 axis inputs and rule set are provided — composes the v2
-    decision-rule evaluator's result (FR-010/011/014/031). V2 may only
-    ratchet stricter; legacy DENY always stands. When any v2 input is
-    omitted, behavior is identical to the v0.7 engine (back-compat).
+    """Internal decision impl. The public `decide()` wraps this and
+    adds recovery-step synthesis (Issue #3) on the resulting
+    non-ALLOW outcomes.
+
+    Runs the legacy decision path, then — when the v2 axis inputs and
+    rule set are provided — composes the v2 decision-rule evaluator's
+    result (FR-010/011/014/031). V2 may only ratchet stricter; legacy
+    DENY always stands. When any v2 input is omitted, behavior is
+    identical to the v0.7 engine (back-compat).
 
     FR-031 asymmetry (T046): if any element of `relax_inputs` has a
     non-deterministic origin (anything outside
@@ -506,7 +750,7 @@ def decide(
                     rule="override-grant-active",
                     reason=(
                         f"override grant {active.id} authorizes "
-                        f"{action.kind.value}({action.target}) until "
+                        f"{kind_name(action.kind)}({action.target}) until "
                         f"{active.expires_at.isoformat()}"
                     ),
                     matched_capability=mint_result,
@@ -611,6 +855,33 @@ def decide(
             reason=(
                 f"FR-042/SC-017: {effect_class!r} requires a SandboxActuator "
                 f"port; none wired (spec 004 provider impl)"
+            ),
+            effective_labels=label_set,
+            axis_a_snapshot=axis_a,
+            axis_b_snapshot=axis_b,
+            axis_d_snapshot=axis_d,
+            effect_class=effect_class,
+        )
+
+    # Devbox-without-manager — same fail-closed shape for the
+    # persistent-container effect class. Defense-in-depth: the
+    # tool-registration check in tools/native/devbox.py already
+    # collapses the tool list when no manager is wired, but if a
+    # devbox-shaped tool exists through other paths (custom kind,
+    # operator misconfig) the engine refuses here. Parallels the
+    # SANDBOX_NO_ACTUATOR_RULE gate above.
+    if (
+        effect_class is not None
+        and effect_class.lower().startswith("execute.devbox")
+        and not devbox_manager_wired
+    ):
+        return PolicyDecision(
+            decision=Decision.OVERRIDE_REQUIRED,
+            rule=DEVBOX_NO_MANAGER_RULE,
+            reason=(
+                f"{effect_class!r} requires a PodmanDevbox manager; "
+                "none wired. Declare a sandbox.regions block in "
+                "daemon.yaml and ensure Podman is installed."
             ),
             effective_labels=label_set,
             axis_a_snapshot=axis_a,
@@ -761,6 +1032,7 @@ def decide(
         now,
         cap_uses,
         revoked_audit_ids,
+        rate_limit_escalation=rate_limit_escalation,
     )
     if (
         axis_a is None
@@ -786,7 +1058,18 @@ def decide(
                 envelope_rule=envelope_rule,
                 envelope_reason=envelope_reason,
             )
-        return result
+        return _maybe_first_use_escalation(
+            result,
+            action=action,
+            used_kinds=used_kinds,
+            first_use_prompt_enabled=first_use_prompt_enabled,
+        )
+    # Thread the engine's effective clock into the v2 evaluator so
+    # time-window rules (e.g. send-after-hours-require-approval) can
+    # actually fire. RulePredicate.matches fails-closed when a
+    # time-window rule is asked to match without a now_hour, so the
+    # rule's intent is silently ignored if we omit this argument.
+    _eff_now_for_v2 = now if now is not None else datetime.now(UTC)
     v2 = _evaluate_v2(
         rules=rules_v2,
         axis_a=axis_a,
@@ -795,6 +1078,7 @@ def decide(
         effect_class=effect_class,
         target=canonical_target if canonical_target is not None else action.target,
         default_when_no_match=default_v2_outcome,
+        now_hour=_eff_now_for_v2.hour,
     )
     composed = _compose_with_v2(legacy, v2)
     if reversibility_outcome is not None:
@@ -811,13 +1095,91 @@ def decide(
             envelope_rule=envelope_rule,
             envelope_reason=envelope_reason,
         )
-    return replace(
+    final = replace(
         composed,
         axis_a_snapshot=axis_a,
         axis_b_snapshot=axis_b,
         axis_d_snapshot=axis_d,
         effect_class=effect_class,
     )
+    return _maybe_first_use_escalation(
+        final,
+        action=action,
+        used_kinds=used_kinds,
+        first_use_prompt_enabled=first_use_prompt_enabled,
+    )
+
+
+def _maybe_first_use_escalation(
+    result: PolicyDecision,
+    *,
+    action: Action,
+    used_kinds: frozenset[CapabilityKind],
+    first_use_prompt_enabled: bool,
+) -> PolicyDecision:
+    """Cookbook §4 #6 — escalate an ALLOW outcome to REQUIRE_APPROVAL
+    the FIRST time a session uses a promptable kind. Only touches
+    ALLOWs — non-ALLOW results already gate, so the first-use
+    prompt would add nothing. Reads are excluded (would be too
+    noisy); the promptable set covers egress/destructive/execute.
+
+    Once the operator approves and the action dispatches, the kind
+    enters `session.used_kinds` and subsequent decisions pass through
+    here unchanged."""
+    if (
+        first_use_prompt_enabled
+        and result.decision == Decision.ALLOW
+        and action.kind in _PROMPTABLE_FIRST_USE_KINDS
+        and action.kind not in used_kinds
+    ):
+        return replace(
+            result,
+            decision=Decision.REQUIRE_APPROVAL,
+            rule=FIRST_USE_OF_KIND_RULE,
+            reason=(
+                f"first use of {action.kind.value} in this session — "
+                "operator confirmation required (cookbook §4 #6)"
+            ),
+        )
+    return result
+
+
+def decide(*args, **kwargs) -> PolicyDecision:
+    """Public chokepoint. Wraps `_decide_impl` and adds recovery-step
+    synthesis (Issue #3) for non-ALLOW outcomes.
+
+    The synthesizer maps `decision.rule` + action context to literal
+    pasteable slash commands. The REPL renders them in place of the
+    static prose hints from `presentation.DENY_RECOVERY`; the
+    `policy.preview` tool surfaces them in its output dict so the
+    agent quotes from the engine instead of inventing commands.
+
+    Callers that need to introspect the bare decision without
+    recovery noise can call `_decide_impl` directly (engine-internal).
+    """
+    result = _decide_impl(*args, **kwargs)
+    # ALLOW outcomes don't need recovery. Already-populated results
+    # (e.g. tests that construct PolicyDecision manually) get
+    # preserved; only synthesize when the slot is empty.
+    if result.decision is Decision.ALLOW or result.recovery_steps:
+        return result
+    # `action` is the third positional arg or `action=` kwarg.
+    if len(args) >= 3:
+        action_obj = args[2]
+    else:
+        action_obj = kwargs.get("action")
+    if action_obj is None:
+        return result
+    steps = _synthesize_recovery_steps(
+        decision=result.decision,
+        rule=result.rule,
+        action=action_obj,
+        effect_class=result.effect_class or kwargs.get("effect_class"),
+        reason=result.reason,
+    )
+    if steps:
+        return replace(result, recovery_steps=steps)
+    return result
 
 
 def _compose_with_envelope(
