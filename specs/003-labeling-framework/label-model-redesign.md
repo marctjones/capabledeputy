@@ -252,6 +252,18 @@ invariants enforced (Principle III). Order:
    registry validation (with the contract's CI invariant tests).
 4. **Engine**: re-type `decide()` to `LabelState`; port every rule;
    delete the flat-label decision path. Re-prove SC-002 determinism.
+   **R4c verification points (from the R4b.2 audit), MUST be checked here:**
+   - **Run-both-and-assert-agreement**: keep the legacy axis path and the
+     new `LabelState` path computing in parallel and assert identical
+     outcomes before deleting the legacy path — the safety net for the
+     re-type. In particular confirm the two authority-resolution
+     implementations agree: `_compose_a` (new, `_AUTHORITY_RANK` max) vs
+     `most_restrictive_inherit_axis_a` (legacy, parent-wins/raise-only)
+     must resolve `assignment_provenance` identically, else reconcile.
+   - **Fix the mis-declared test fixtures**: many test tool factories
+     blanket-declare `operations=(Operation(FETCH),)` regardless of the
+     tool's real effect (e.g. send/write fixtures). Inert until `operations`
+     is consumed here; correct the write/egress ones as part of this step.
 5. **Apply/remove**: route all application through the three sources and
    removal through certified declassifiers only; add the structural test
    that a non-declassifier operation cannot remove a tag.

@@ -70,6 +70,11 @@ Work in progress on `003-labeling-framework`. Not yet released.
   `labels: LabelState`; when given it derives the transitional
   `axis_a`/`axis_b` internally (equivalence test added). Engine-local, no
   call-site churn yet. Green (2067).
+- **R4 audit follow-up**: added `test_tool_risk_ids_in_register` (every
+  tool `risk_ids` must cite a real register entry — guards the rule-5 gap
+  that `register()` doesn't enforce) and recorded the R4c verification
+  points (run-both-and-assert-agreement; fix mis-declared test fixtures)
+  in the redesign note. Audit found no critical bugs in R3–R4b.2.
 
 ## [0.13.1] — 2026-06-05
 
