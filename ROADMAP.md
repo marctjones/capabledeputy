@@ -397,6 +397,7 @@ Operator-visible new surfaces:
 | Phase 5 | OTLP exporter (only — Splunk deferred) | ~5d |
 | Phase 7 | Two regression demos (Meta-director, ToxicSkills) | ~5d |
 | P0 | Inspector composability tests + per-arg label audit refinements | ~3d |
+| P0 | Structured four-axis label wire format for cross-host approval bundles + servers.d config (replace the lossy flat category/level-string format that drops tier + risk_ids; additive `inherent_tags` + bundle version bump) | ~3d |
 | P1 | Streamable HTTP transport + sampling chokepoint wire-in | ~10d |
 | P2 | OSCAL Profile + Assessment Plan + audit-replay pipeline | ~10d |
 | P3 | starlark-rust + PyO3 production runtime + OAuth flow-pattern-session for MCP credentials | ~15d |
