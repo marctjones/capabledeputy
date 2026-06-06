@@ -108,7 +108,7 @@ async def test_manager_captures_registered_server_status() -> None:
     mgr = UpstreamManager([config], ToolRegistry())
     # Manually walk the registration path without the supervisor
     adapter = LabeledMcpAdapter(config=config, session=session)
-    registered = await adapter.register_tools(mgr._registry)
+    await adapter.register_tools(mgr._registry)
     mgr._adapters.append(adapter)
     mgr._sessions.append(session)
     # Mirror what __aenter__ does

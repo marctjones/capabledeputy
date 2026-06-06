@@ -243,7 +243,7 @@ async def test_ddg_fallback_no_key(
     assert result.output["ok"] is True
     assert result.output["backend"] == "duckduckgo"
     assert mock_client_instance.call_args is not None
-    args, kwargs = mock_client_instance.call_args
+    args, _kwargs = mock_client_instance.call_args
     assert "duckduckgo.com" in args[0]
 
 

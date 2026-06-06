@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from capabledeputy.upstream.config import UpstreamServerConfig
 
 
-class UpstreamDead(RuntimeError):
+class UpstreamDead(RuntimeError):  # noqa: N818 (descriptive domain exception)
     """Raised when an upstream session is dead and the respawn attempt
     also failed. The caller should treat the upstream as unavailable
     for the duration of the daemon process unless something else
@@ -132,12 +132,10 @@ class LiveSession:
     async def stop(self) -> None:
         """Tear down. Safe to call multiple times."""
         if self._stack is not None:
-            try:
+            # During shutdown, swallow tear-down errors so we don't
+            # mask the more important shutdown.
+            with contextlib.suppress(Exception):
                 await self._stack.__aexit__(None, None, None)
-            except Exception:
-                # During shutdown, swallow tear-down errors so we don't
-                # mask the more important shutdown.
-                pass
             self._stack = None
             self._session = None
 

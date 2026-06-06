@@ -430,7 +430,7 @@ class OverrideGrantStore:
                     attester_principal_ids=frozenset(
                         entry_raw.get("attester_principal_ids", []),
                     ),
-                    expiry_seconds=int(entry_raw.get("expiry_seconds", OVERRIDE_EXPIRY_DEFAULT_SECONDS)),
+                    expiry_seconds=int(entry_raw.get("expiry_seconds", OVERRIDE_EXPIRY_DEFAULT_SECONDS)),  # noqa: E501
                     friction_level=(
                         FrictionLevel(entry_raw["friction_level"])
                         if entry_raw.get("friction_level")

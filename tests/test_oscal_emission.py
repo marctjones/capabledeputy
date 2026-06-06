@@ -21,7 +21,7 @@ def test_default_mapping_includes_core_rules() -> None:
     assert "capability-expired" in CAPDEP_TO_NIST_800_53
     assert "capability-cascaded" in CAPDEP_TO_NIST_800_53
     # All map to at least one NIST control
-    for rule, controls in CAPDEP_TO_NIST_800_53.items():
+    for _rule, controls in CAPDEP_TO_NIST_800_53.items():
         assert len(controls) > 0
 
 

@@ -442,7 +442,7 @@ def go_command(
     chat_command(session_id=None, intent=intent, new=False)
 
 
-import sys
+import sys  # noqa: E402 (late import inside command body)
 
 
 @app.command("trace")
@@ -890,7 +890,7 @@ def setup_command(
         bool,
         typer.Option(
             "--force-sandbox",
-            help="Register the sandbox block even if podman isn't on PATH (you'll install it later).",
+            help="Register the sandbox block even if podman isn't on PATH (you'll install it later).",  # noqa: E501
         ),
     ] = False,
 ) -> None:

@@ -181,13 +181,14 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
     # Drift warning: credentials exist but the daemon config doesn't
     # reference them — the user did setup once, then maybe edited the
     # file by hand. Show the one-liner that fixes it.
-    if imap_credentials_present():
-        if resolved_path is None or not has_managed_block(resolved_path, IMAP_BLOCK_ID):
-            console.print(
-                "[yellow]heads up:[/yellow] IMAP credentials are stashed but the daemon "
-                "config doesn't reference them. Run "
-                "[bold]capdep imap-setup --register-only[/bold] to wire them in.",
-            )
+    if imap_credentials_present() and (
+        resolved_path is None or not has_managed_block(resolved_path, IMAP_BLOCK_ID)
+    ):
+        console.print(
+            "[yellow]heads up:[/yellow] IMAP credentials are stashed but the daemon "
+            "config doesn't reference them. Run "
+            "[bold]capdep imap-setup --register-only[/bold] to wire them in.",
+        )
 
     # LLM key pre-flight: warn upfront if we're about to autostart a
     # daemon with no key wired. The daemon will also log this, but
@@ -868,8 +869,7 @@ def _render_approvals(approvals: list[dict[str, Any]]) -> None:
             f"session[/yellow] — confirm intent",
         )
         console.print(
-            f"  target: [dim]{a['target']}[/dim]  "
-            f"approval {clickable_id}  ·  {deny_id}",
+            f"  target: [dim]{a['target']}[/dim]  approval {clickable_id}  ·  {deny_id}",
         )
         console.print(
             "  [dim]This kind of capability hasn't been exercised yet. "
@@ -2082,7 +2082,8 @@ def _handle_remember(arg: str) -> None:
 
     Install an auto-approval pattern (Issue #8). Example:
       /remember QUEUE_PURCHASE amazon.com
-      /remember SEND_EMAIL marc@joneslaw.io --label-includes confidential.personal --tag self-forward
+      /remember SEND_EMAIL marc@joneslaw.io
+          --label-includes confidential.personal --tag self-forward
 
     With --label-includes, the pattern auto-approves only when the
     request's incoming labels include EVERY listed label. Lets you
@@ -2298,7 +2299,7 @@ def _handle_server_info() -> None:
                 if rej_names:
                     for rn in rej_names[:5]:
                         console.print(
-                            f"              [dim]·[/dim] rejected: [yellow]{rn}[/yellow] [dim](unclassifiable; add to tool_mappings/tool_overrides)[/dim]"
+                            f"              [dim]·[/dim] rejected: [yellow]{rn}[/yellow] [dim](unclassifiable; add to tool_mappings/tool_overrides)[/dim]"  # noqa: E501
                         )
                     if len(rej_names) > 5:
                         console.print(
@@ -2314,7 +2315,7 @@ def _handle_server_info() -> None:
                 cmd = srv.get("command", [])
                 if cmd:
                     console.print(
-                        f"              [dim]command:[/dim] {' '.join(cmd[:3])}{'...' if len(cmd) > 3 else ''}"
+                        f"              [dim]command:[/dim] {' '.join(cmd[:3])}{'...' if len(cmd) > 3 else ''}"  # noqa: E501
                     )
 
     # Tools

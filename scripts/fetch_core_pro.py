@@ -88,7 +88,7 @@ def clean(raw: str, url: str) -> str:
     banner = (
         f'<div class="src-banner"><b>Reference copy.</b> Source: '
         f'<a href="{url}">{url}</a><br>Retrieved {date.today().isoformat()} · '
-        f"Process Mechanics PLLC / Van Lindberg · retained with permission for internal reference.</div>"
+        f"Process Mechanics PLLC / Van Lindberg · retained with permission for internal reference.</div>"  # noqa: E501
     )
     return (
         f"<!doctype html><html><head><meta charset='utf-8'>"

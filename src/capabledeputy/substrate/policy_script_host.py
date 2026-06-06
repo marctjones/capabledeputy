@@ -146,16 +146,22 @@ class SafePythonScriptHost:
                     f"policy script {name!r} may not use `import` "
                     "(pure-Python ref host enforces hermetic execution)",
                 )
-            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-                if node.value.id == "__builtins__":
-                    raise ValueError(
-                        f"policy script {name!r} may not reference __builtins__",
-                    )
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                if node.func.id in ("eval", "exec", "compile", "__import__", "open"):
-                    raise ValueError(
-                        f"policy script {name!r} may not call {node.func.id!r}",
-                    )
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "__builtins__"
+            ):
+                raise ValueError(
+                    f"policy script {name!r} may not reference __builtins__",
+                )
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in ("eval", "exec", "compile", "__import__", "open")
+            ):
+                raise ValueError(
+                    f"policy script {name!r} may not call {node.func.id!r}",
+                )
 
         # Compile to bytecode for later exec
         try:

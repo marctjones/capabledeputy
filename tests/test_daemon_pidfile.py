@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import signal
 import subprocess
@@ -110,10 +111,8 @@ def _reaper(proc: subprocess.Popen) -> None:
     assert on `is_process_alive`."""
     if proc.poll() is None:
         proc.kill()
-    try:
+    with contextlib.suppress(subprocess.TimeoutExpired):
         proc.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        pass
 
 
 def test_terminate_with_escalation_term_succeeds(tmp_path: Path) -> None:

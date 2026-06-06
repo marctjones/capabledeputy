@@ -676,7 +676,7 @@ def _synthesize_recovery_steps(
             RecoveryStep(
                 command="/spawn",
                 args=(f'"{intent_hint}"',),
-                rationale="Session is tainted by prior reads of untrusted/sensitive content; a fresh session has no labels to conflict.",
+                rationale="Session is tainted by prior reads of untrusted/sensitive content; a fresh session has no labels to conflict.",  # noqa: E501
             ),
             RecoveryStep(
                 command="/grant",
@@ -692,7 +692,7 @@ def _synthesize_recovery_steps(
                     "--justification",
                     f'"explicit user authorization for {kind} on {target}"',
                 ),
-                rationale="Alternative: request operator override to bypass the label conflict in this session.",
+                rationale="Alternative: request operator override to bypass the label conflict in this session.",  # noqa: E501
             ),
         )
 
@@ -710,7 +710,7 @@ def _synthesize_recovery_steps(
                     "--justification",
                     '"operator-floor relaxation needed"',
                 ),
-                rationale="A v2 rule refused to relax to ALLOW; operator override is the only path.",
+                rationale="A v2 rule refused to relax to ALLOW; operator override is the only path.",  # noqa: E501
             ),
         )
 

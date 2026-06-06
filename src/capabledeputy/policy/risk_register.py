@@ -234,7 +234,7 @@ def load(path: Path) -> RiskRegister:
                 )
             except KeyError as e:
                 raise RiskRegisterError(
-                    f"risk register entry {entry_id!r} threshold missing required field: {e.args[0]!r}",
+                    f"risk register entry {entry_id!r} threshold missing required field: {e.args[0]!r}",  # noqa: E501
                 ) from e
 
         parsed[entry_id] = RiskRegisterEntry(
