@@ -4,12 +4,17 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
-## [Unreleased] — 0.15.0
+## [0.15.0] — 2026-06-06
 
 Completes the spec-003 label-model redesign: the four-axis `LabelState`
-model becomes authoritative and the legacy flat `Label` enum decision
-path is removed (no backwards compatibility; `state.db` wiped on cutover).
-See `specs/003-labeling-framework/label-model-redesign.md` "▶ Resume here".
+model is now the **sole** label model and the legacy flat `Label` enum is
+**deleted** (no backwards compatibility; `state.db` wiped on cutover at
+schema v7). BLP/Biba/confused-deputy enforcement is unchanged — it moved
+to always-on four-axis engine invariants, proven equivalent to the flat
+rules before the flat path was removed. The only remaining vestige is the
+internal `AxisA`/`AxisB` representation behind `LabelState` (collapsing
+those into a single stored field is deferred polish, tracked for 0.15.x).
+See `specs/003-labeling-framework/label-model-redesign.md`.
 
 ### Label-model redesign (continued — no backwards compatibility)
 - **R4c**: the four always-on conflict invariants are ported off the flat
@@ -227,6 +232,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.15.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.15.0
 [0.14.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.14.0
 [0.13.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.13.1
 [0.13.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.13.0

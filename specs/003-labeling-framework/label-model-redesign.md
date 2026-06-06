@@ -4,6 +4,16 @@
 half-migrated state where the legacy flat `Label` enum and the four-axis
 model coexist.
 
+> ## ✅ COMPLETE — shipped in v0.15.0 (2026-06-06)
+> The flat `Label` enum is **deleted**; the four-axis `LabelState` is the sole
+> label model. Tags `v0.15.0-R4c…` through `v0.15.0-R7-flat-enum-deleted` +
+> the `v0.15.0` release. Suite green (only the pre-existing
+> `test_run_status_stop_lifecycle` env flake). **One deferred polish item
+> (0.15.x):** collapse the internal `Session.axis_a`/`axis_b` +
+> `AxisA`/`AxisB` wrappers into a single stored `label_state: LabelState`
+> (they survive only as `LabelState.to_axis_a/to_axis_b` internals — no
+> behavior impact). The history below is retained for reference.
+>
 > ## ▶ Resume here (updated 2026-06-06)
 > **Done** (each a green, tagged checkpoint — see `git tag v0.14.0-R*` and
 > CHANGELOG `[Unreleased]`):
