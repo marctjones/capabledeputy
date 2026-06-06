@@ -14,13 +14,25 @@ description: "Task list for 003 — v0.9 Labeling Framework implementation"
 
 ## Phase R: Label-Model Redesign (test-first; supersedes migration tasks)
 
-- [ ] R1 Land the clean types: `Tier`, `CategoryTag`, `ProvenanceTag` (no floor flag), `LabelState`, `EffectClass` enum + optional `subtype`, `TagTransfer`, `required_floor` in `policy/labels.py` / `policy/tiers.py` / `policy/effect_class.py`. Hypothesis property tests: composition associative/commutative-where-required, monotone-raising, declassifier-only removal. (redesign §3/§4/§9.1)
-- [ ] R2 Populate `configs/labels.yaml` with the real stable-core category set; delete the empty stub. (redesign §9.2)
-- [ ] R3 **[supersedes T012]** Replace `ToolDefinition.inherent_labels: frozenset[Label]` with structured `inherent_tags` + canonical `effect_class: EffectClass` (+ optional `subtype`) + `required_floor` + `risk_ids` + tag-transfer; registry-load refuses any tool missing a required field or under-declaring its operation set (FR-005/039, Principle VI). CI invariant tests per `contracts/tool_definition.md`. (redesign §5/§9.3)
-- [ ] R4 Re-type `engine.decide()` from `label_set: frozenset[Label]` to `(labels: LabelState, operation, context, capabilities)`; port every rule; delete the flat-label decision path; re-prove SC-002 determinism. (redesign §6/§9.4)
-- [ ] R5 Route label application through the 3 apply sources (bindings / inherent declaration / raise-only inspector) and removal through certified declassifiers only; structural test that a non-declassifier operation cannot remove a tag; implement the `required_floor` Biba check. (redesign §4/§4a/§9.5)
-- [ ] R6 Store persists `LabelState`; delete all v5 read paths; wipe `state.db` on cutover. (redesign §6/§9.6)
-- [ ] R7 Delete the flat `Label` enum + all dead compat code; grep-gate that `frozenset[Label]` has zero occurrences. (redesign §9.7)
+Progress is tracked live in `label-model-redesign.md` "▶ Resume here";
+each step below is a green commit + git tag `v0.14.0-R*`.
+
+- [X] R1 Clean types (`CategoryTag`/`ProvenanceTag`/`LabelState`/`TagTransfer`/`EffectClass`+`subtype`/`Operation.required_floor`) + Hypothesis property tests. `v0.14.0-R1-label-types`
+- [X] R2 Stable-core Axis A category catalog in `configs/labels.yaml`. `v0.14.0-R2-category-catalog`
+- [X] R3a `ToolDefinition` structured shape (`operations`/`inherent_tags`) + `validate_tool_definition` + invariant tests. `v0.14.0-R3a-tooldef-validation`
+- [X] R3b Native tools declare `operations` + `risk_ids`. `v0.14.0-R3b-native`
+- [X] R3c MCP + skills adapters declare the new shape (`default_operation_for_kind`). `v0.14.0-R3c-adapters`
+- [X] R3d `register()` fail-closed validation enforced; ~12 test factories migrated. `v0.14.0-R3d-enforce`
+- [X] R4a Leaf consolidation: `AxisACategory`→`CategoryTag`, `AxisBEntry`→`ProvenanceTag`; `label_state.py` deleted. `v0.14.0-R4a-leaf-consolidation`
+- [X] R4b.1 `LabelState`↔`AxisA`/`AxisB` converters + `Session.label_state`. `v0.14.0-R4b1-converters`
+- [X] R4b.2 `decide()` accepts bundled `labels: LabelState` (transitional). `v0.14.0-R4b2-decide-labels`
+- [X] audit `test_tool_risk_ids_in_register` + R4c verification points recorded (no critical bugs found).
+- [ ] R4b.3 Re-type `decide()` **internals** onto `LabelState` behind the converters; run-both-and-assert-agreement (incl. `_compose_a` vs `most_restrictive_inherit_axis_a` authority resolution); migrate the ~185 test `decide(axis_a=,axis_b=)` call sites in batches; fix the mis-declared FETCH test fixtures. (redesign §9.4)
+- [ ] R4b.4 Collapse `Session.axis_a`/`axis_b` → one `LabelState` field; delete `AxisA`/`AxisB`.
+- [ ] R4c/R4d Make the four-axis leg authoritative (run-both-assert), then delete the flat `label_set` leg + `frozenset[Label]` param; re-prove SC-002.
+- [ ] R5 Route apply via the 3 sources / remove via certified declassifiers only; structural no-remove test; `required_floor` Biba check. (redesign §4/§4a/§9.5)
+- [ ] R6 Store persists `LabelState`; delete v5 read paths; wipe `state.db`. (redesign §9.6)
+- [ ] R7 Delete the flat `Label` enum + dead compat (incl. vestigial `ProvenanceTag.integrity_floor`); grep-gate `frozenset[Label]` == 0. (redesign §9.7)
 
 **Organization**: Tasks are grouped by user story (US1–US6) to enable independent implementation and testing. Priority order from spec.md: US1 (P1) → US2 (P2) → US3 (P3) → US6 (P3) → US4 (P4) → US5 (P5) → Polish.
 
