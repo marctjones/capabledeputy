@@ -441,8 +441,9 @@ class Evaluator:
 
         outcome = await self._tool_caller(tool_name, raw_args, arg_labels)
 
-        # TODO: ToolCallRecord still expects frozenset[Label]; migrate to LabelState
-        # For now, convert LabelState back to empty frozenset placeholder
+        # ToolCallRecord.inherent_labels is the flat-string bundle wire
+        # format (category/level strings); the propagated four-axis taint
+        # lives on `outcome.tags_added` (LabelState). Left empty here.
         record = ToolCallRecord(
             tool_name=tool_name,
             args=raw_args,

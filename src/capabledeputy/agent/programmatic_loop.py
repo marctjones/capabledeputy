@@ -101,7 +101,7 @@ def _record_to_outcome(record: ToolCallRecord) -> ToolCallOutcome:
         output={"args": record.args} if record.decision == Decision.ALLOW else None,
         rule=record.rule,
         reason=record.reason,
-        tags_added=LabelState(),  # ToolCallRecord still uses flat Label; TODO migrate to LabelState
+        tags_added=LabelState(),  # programmatic loop doesn't surface per-call taint deltas
     )
 
 
