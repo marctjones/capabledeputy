@@ -7,7 +7,7 @@ from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import Label
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import Session, SessionStatus, Turn
-from capabledeputy.session.store import SchemaVersionError, SessionStore
+from capabledeputy.session.store import SCHEMA_VERSION, SessionStore
 
 
 @pytest.fixture
@@ -83,20 +83,32 @@ async def test_initialize_is_idempotent(store_path: Path) -> None:
     await s2.initialize()
 
 
-async def test_schema_version_mismatch_raises(store_path: Path) -> None:
-    s1 = SessionStore(store_path)
-    await s1.initialize()
-
+async def test_schema_version_mismatch_wipes(store_path: Path) -> None:
+    """§R6 no-backwards-compat: a db at a foreign schema version is
+    WIPED and recreated clean, not migrated and not raised on.
+    Pre-existing sessions are gone; the version is reset to current."""
     import sqlite3
 
+    s1 = SessionStore(store_path)
+    await s1.initialize()
+    sess = Session.new(owner="o")
+    await s1.upsert(sess)
+    assert await s1.get(sess.id) is not None
+
+    # Stamp a foreign version (simulating an older on-disk schema).
     conn = sqlite3.connect(str(store_path))
     conn.execute("UPDATE schema_version SET version = 999")
     conn.commit()
     conn.close()
 
     s2 = SessionStore(store_path)
-    with pytest.raises(SchemaVersionError):
-        await s2.initialize()
+    await s2.initialize()  # wipes — does not raise
+    assert await s2.get(sess.id) is None  # old data gone
+
+    conn = sqlite3.connect(str(store_path))
+    version = conn.execute("SELECT version FROM schema_version").fetchone()[0]
+    conn.close()
+    assert version == SCHEMA_VERSION
 
 
 async def test_graph_persists_sessions_through_store(store_path: Path) -> None:

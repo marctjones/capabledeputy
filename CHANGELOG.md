@@ -37,6 +37,17 @@ See `specs/003-labeling-framework/label-model-redesign.md` "▶ Resume here".
   Removal stays declassifier-only (the existing `TagTransfer` /
   `apply_transfer` structural rule). Tests: four-axis taint propagation
   through the chokepoint + the forward-map un-fusing.
+- **R6**: session store moves to schema **v7** with **no migration**. The
+  v1–v5 upgrade ladder and the legacy `label_set → axis_a/axis_b/axis_d`
+  backfill (`_convert_legacy_label_set`, `_LEGACY_TO_AXIS_*`, the Axis-D
+  trust-prefix defaults, `_apply_v6_idempotent_alters`, `SchemaVersionError`)
+  are deleted. A db at any other schema version is **wiped and recreated
+  clean** (`_needs_wipe`), per the single-operator no-backwards-compat
+  mandate. `clearance_profile_id` is added to the base `CREATE TABLE` so
+  wiped/fresh dbs match the full column shape. The four-axis state
+  (`axis_a`/`axis_b`/`axis_d`, i.e. `LabelState` + context) is the
+  authoritative persisted form; the flat `label_set` column remains only
+  until the enum is deleted (R7).
 
 ## [0.14.0] — 2026-06-06
 
