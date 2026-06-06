@@ -4,7 +4,7 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
-## [Unreleased] — 0.15.1
+## [0.15.1] — 2026-06-06
 
 Post-0.15.0 cleanup of deferred redesign debt (no behavior change).
 
@@ -22,7 +22,13 @@ Post-0.15.0 cleanup of deferred redesign debt (no behavior change).
 - **Fix**: `ToolCallRecord.{arg,inherent}_labels` are flat category/level
   strings post-R7 (bundle wire format), not `Label`; corrected a latent
   `label.value` serialization in `programmatic_handlers`.
-- **Chore**: ruff auto-fixable lint cleanup (unused imports, import sort).
+- **Chore**: repo-wide `ruff check` now clean (was 69 pre-existing) —
+  auto-fixes, collapsible-ifs, `contextlib.suppress`, `ClassVar`, and
+  `noqa`-with-reason for intentional cases (descriptive domain exceptions,
+  cycle-avoidance late imports, MCP tool-annotation field names).
+- **Docs**: refreshed stale audit docstrings — cross-rotation chain
+  verification (`verify_audit_chain(..., include_rotated=True)`, CLI
+  `capdep audit verify --include-rotated`) is already implemented + tested.
 
 ## [0.15.0] — 2026-06-06
 
@@ -252,6 +258,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.15.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.15.1
 [0.15.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.15.0
 [0.14.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.14.0
 [0.13.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.13.1
