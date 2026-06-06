@@ -39,25 +39,63 @@ model coexist.
 >   drop confused-deputy enforcement in the real daemon. Corrected order
 >   matches §9: …4 engine re-type · 5 apply/remove · 6 store · 7 delete enum.
 >
-> Checkpoint sequence (each green + tagged):
-> 1. **R4b.4 (callers):** every `decide()` caller (prod `client._build_v2_decide_kwargs`,
->    daemon/policy_preview/multi_tenant, ~19 test files) passes
->    `labels=LabelState` instead of `axis_a=/axis_b=`.
-> 2. **R4b.4 (collapse):** `Session.axis_a/axis_b` → one `label_state`; delete
->    `AxisA`/`AxisB` + `most_restrictive_inherit_axis_a/_b`; re-type
->    `decide()`/`decision_rules`/`assurance`/`inspector_port`/`PolicyDecision`
->    snapshot onto `LabelState`.
-> 3. **R4c:** add the D-conflict four-axis gates as engine invariants
->    (additive — both legs now enforce; run-both-and-assert-agreement tests).
-> 4. **R5:** wire apply source #2 (tool `inherent_tags`/operations → session
->    four-axis state) + removal via certified declassifiers only; structural
->    "non-declassifier cannot remove a tag" test. Now four-axis ≡ flat.
-> 5. **R4d:** delete the flat `label_set` decision + propagation leg (the
->    four-axis leg is now equivalent and authoritative).
-> 6. **R6:** persist `LabelState`; SCHEMA bump; delete v5 backfill; wipe `state.db`.
-> 7. **R7:** delete flat `Label` enum + tenancy/daemon vestiges +
->    `ProvenanceTag.integrity_floor`; grep-gate `frozenset[Label]` == 0.
-> 8. **Release 0.15.0:** version bump, CHANGELOG, README, tag `v0.15.0`.
+> Checkpoint sequence (✅ = done, green + tagged):
+> - ✅ **R4c** (`v0.15.0-R4c-conflict-invariants`): the four conflict
+>   invariants ported to always-on four-axis engine gates
+>   (`engine._conflict_invariant_outcome`), proven to agree with the flat
+>   `CONFLICT_RULES` (run-both-assert). Additive — both legs enforce.
+> - ✅ **R5** (`v0.15.0-R5-apply-wiring`): apply-source #2 wired. New
+>   `labels.tags_for_labels` (flat→`LabelState` forward map; egress un-fused)
+>   + `SessionGraph.add_tags`; the chokepoint now raises four-axis taint
+>   from the same declaration set it feeds `add_labels`, so `label_state`
+>   accumulates equivalently to `label_set` in the **real daemon** (not just
+>   under direct `labels=` test inputs). Removal stays declassifier-only.
+> - ✅ **R6** (`v0.15.0-R6-store-v7-wipe`): store at schema **v7**, no
+>   migration. Deleted the v1–v5 ladder + the legacy `label_set` backfill
+>   (`_convert_legacy_label_set`, `_LEGACY_TO_AXIS_*`, `_apply_v6_*`,
+>   `SchemaVersionError`); a foreign-version db is **wiped** (`_needs_wipe`).
+>   Four-axis state is the authoritative persisted form.
+>
+> **Net: the four-axis model is now AUTHORITATIVE, ENFORCING in production,
+> and PERSISTED.** The flat `Label` leg remains only as a proven-equivalent
+> redundant duplicate. Suite green (2076 passed; pre-existing
+> `test_run_status_stop_lifecycle` env flake is the only red — subprocess
+> TimeoutError, unrelated to labels).
+>
+> **Remaining — R7 (= old R4d + R7): delete the flat `Label` enum + all
+> compat. CHANGES NO BEHAVIOR** (the four-axis leg already enforces
+> equivalently) but is a **large mechanical migration**:
+> 1. **engine.py**: drop `label_set` param from `decide/_decide_impl/_decide_legacy`;
+>    delete the `CONFLICT_RULES` firing loop + `rules` param + `egress_label`
+>    injection + `effective_labels`/`_EGRESS_LABEL_FOR_KIND`/`egress_label_for`;
+>    drop the `Label` import.
+> 2. **rules.py**: delete `ConflictRule` + `CONFLICT_RULES` (keep `Decision`).
+> 3. **labels.py**: delete the `Label` enum + `_LABEL_TO_TAGS` /
+>    `tags_for_label(s)` (only needed while flat declarations existed) +
+>    vestigial `ProvenanceTag.integrity_floor`.
+> 4. **registry/ToolDefinition + ~14 native tools + adapters**: replace
+>    `inherent_labels`/`arg_inherent_labels` (flat) with native `inherent_tags`
+>    (`LabelState`) + a four-axis per-arg mechanism; chokepoint propagation
+>    switches from `add_labels(labels_to_add)` to native `add_tags`.
+> 5. **session/model.py + store.py**: drop the `label_set` field + column +
+>    serialization. **tenancy.py/multi_tenant_engine.py/daemon handlers**:
+>    drop the flat `TenantLabel` lift/project + flat label RPC handling.
+> 6. **graph.py**: drop flat `add_labels` (migrate seeders to `add_tags`).
+> 7. **~40 test files / ~335 `Label.X` usages**: rewrite flat seeding
+>    (`label_set=` / `add_labels({Label.X})`) to four-axis (`labels=LabelState`
+>    / `add_tags`). Conflict-decision assertions keep passing via the R4c gate.
+> 8. **grep-gate**: `frozenset[Label]` and `Label.` == 0 occurrences.
+>
+> Then **R4b.4** (collapse `Session.axis_a/axis_b`→one `label_state`; delete
+> `AxisA`/`AxisB` + `most_restrictive_inherit_axis_a/_b`) — pure consolidation,
+> optional for the tag — and **Release 0.15.0** (version bump 0.15.0.dev0→0.15.0,
+> finalize CHANGELOG `[0.15.0]`, README, tag `v0.15.0`).
+>
+> R7 is ~80 files and best done as its own deliberate pass (or a parallel
+> workflow) so the tree is never left broken — split it into green
+> sub-commits: (a) engine/rules decision-leg deletion + conflict-test
+> migration; (b) propagation → native `inherent_tags`; (c) enum + field +
+> vestige deletion + grep-gate.
 >
 > **Explicit mandate: no backwards compatibility.** The flat
 enum, all migration glue, and every SCHEMA_VERSION-5 read path are
