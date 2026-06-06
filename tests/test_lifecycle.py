@@ -9,7 +9,7 @@ from capabledeputy.daemon.lifecycle import (
 )
 
 
-async def _wait_for_socket(path: Path, timeout: float = 2.0) -> None:
+async def _wait_for_socket(path: Path, timeout: float = 15.0) -> None:
     deadline = anyio.current_time() + timeout
     while anyio.current_time() < deadline:
         if path.exists():
