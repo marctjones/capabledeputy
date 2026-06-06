@@ -222,6 +222,19 @@ class LabelState:
     a: frozenset[CategoryTag] = frozenset()
     b: frozenset[ProvenanceTag] = frozenset()
 
+    # R4b transitional converters: the engine + Session still carry the
+    # separate AxisA/AxisB pair; these bridge to/from the bundled form
+    # while call sites migrate. AxisA/AxisB are deleted at the end of R4.
+    @classmethod
+    def from_axes(cls, axis_a: AxisA, axis_b: AxisB) -> LabelState:
+        return cls(a=frozenset(axis_a.categories), b=frozenset(axis_b.entries))
+
+    def to_axis_a(self) -> AxisA:
+        return AxisA(categories=tuple(self.a))
+
+    def to_axis_b(self) -> AxisB:
+        return AxisB(entries=tuple(self.b))
+
 
 def _compose_a(*sets: frozenset[CategoryTag]) -> frozenset[CategoryTag]:
     by_cat: dict[str, list[CategoryTag]] = {}

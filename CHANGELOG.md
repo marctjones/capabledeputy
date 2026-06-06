@@ -62,6 +62,10 @@ Work in progress on `003-labeling-framework`. Not yet released.
   `policy/label_state.py`. Pure rename + consolidation; suite green
   (2065). Containers `AxisA`/`AxisB`→`LabelState` and the `decide()`
   re-type follow in R4b–d.
+- **R4b.1 (converters)**: added `LabelState.from_axes`/`to_axis_a`/
+  `to_axis_b` + a `Session.label_state` accessor — transitional bridges
+  so `decide()` and call sites can migrate to the bundled `LabelState`
+  in R4b.2–4 before `AxisA`/`AxisB` are deleted. Green (2066).
 
 ## [0.13.1] — 2026-06-05
 

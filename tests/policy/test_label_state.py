@@ -17,6 +17,8 @@ from hypothesis import strategies as st
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import (
     AssignmentProvenance,
+    AxisA,
+    AxisB,
     CategoryTag,
     LabelError,
     LabelState,
@@ -160,3 +162,20 @@ def test_operation_carries_subtype_and_floor() -> None:
     assert op.effect_class is EffectClass.MUTATE_LOCAL
     assert op.subtype == "calendar.delete"
     assert op.required_floor is ProvenanceLevel.SYSTEM_INTERNAL
+
+
+# --- R4b transitional converters -------------------------------------
+
+
+def test_label_state_axes_roundtrip() -> None:
+    ls = LabelState(
+        a=frozenset({CategoryTag("health", Tier.RESTRICTED)}),
+        b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+    )
+    assert LabelState.from_axes(ls.to_axis_a(), ls.to_axis_b()) == ls
+
+    axis_a = AxisA(categories=(CategoryTag("work", Tier.SENSITIVE),))
+    axis_b = AxisB(entries=(ProvenanceTag(ProvenanceLevel.SYSTEM_INTERNAL),))
+    back = LabelState.from_axes(axis_a, axis_b)
+    assert set(back.to_axis_a().categories) == set(axis_a.categories)
+    assert set(back.to_axis_b().entries) == set(axis_b.entries)
