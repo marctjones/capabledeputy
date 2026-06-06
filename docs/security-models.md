@@ -187,16 +187,24 @@ above) — no multistep trick changes this.
 
 ### Tracked missing mechanisms (planned work, by leverage)
 
-1. **Context-profile clearance** (max tier a principal/use-case may
-   handle + read-up refusal) → completes *dynamic BLP*.
-2. **First-class flow-pattern ③ / sealed-effect** → unlocks *true NI*
-   for `restricted`. Rule is now first-class in `specs/003`
-   (FR-047 for ③, FR-040/041/042 for ⑤ sealed-effect via disposable
-   isolation); impl pending (003 plan/tasks for ③; spec 004 for ⑤).
-3. **Integrity floor + "no read-down"** on the provenance axis → the
-   unaddressed *Biba* half (NOT solved by confidentiality tiers).
+1. **Context-profile clearance** — ✅ **delivered.** Max-tier read-up
+   refusal (FR-008): logic in `policy/resolution.py` + `policy/engine.py`;
+   the dispatcher derives `clearance_max_tier` from the session's profile
+   (`tools/client.py`); tested (`tests/policy/test_max_tier_clearance.py`).
+   *Dynamic BLP* is enforced when a profile declares `max_tier`.
+2. **First-class flow-pattern ③ / sealed-effect** — partial. ③
+   `ReferenceHandle` shipped (`patterns/reference_handle.py`) and ⑤ sealed
+   isolation shipped (`substrate/sandbox_actuator.py`); the *dispatcher
+   wiring* of ③ + the `select_mode` REFERENCE/SEALED floor for `restricted`
+   remain (003 tasks T104/T105). Until wired, `restricted` true-NI is not
+   auto-selected.
+3. **Integrity floor + "no read-down"** — ✅ **delivered.** Biba-direction
+   refusal (FR-004): `policy/engine.py` + `policy/resolution.py`
+   (`IntegrityFloorError`); tested (`tests/policy/test_integrity_floor.py`).
+   The scoped one-direction Biba is enforced.
 4. **Formal lattice dominance/join in the engine** (replace ad-hoc
-   conflict-rule pairs) → makes *Denning* fully faithful.
+   conflict-rule pairs) → still pending; `most_restrictive_inherit` is the
+   current composition. Makes *Denning* fully faithful when added.
 
 ## How this is tracked
 

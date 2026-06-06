@@ -44,7 +44,9 @@ each step below is a green commit + git tag `v0.14.0-R*`.
 > admissibility, clearance, reference handles, sealed isolation, residual-risk)
 > stays valid — but they MUST be implemented on the **post-R4 `LabelState`
 > engine**, after R4b.3/R4c land, not against the old axis pair. Only their
-> substrate changed.
+> substrate changed. (Some, e.g. **T101/T102** clearance + integrity-floor,
+> are already implemented on the current axis model and will be *ported* by
+> R4b.3 rather than written from scratch.)
 
 **Organization**: Tasks are grouped by user story (US1–US6) to enable independent implementation and testing. Priority order from spec.md: US1 (P1) → US2 (P2) → US3 (P3) → US6 (P3) → US4 (P4) → US5 (P5) → Polish.
 
@@ -270,8 +272,8 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ### Implementation for User Story 5
 
-- [ ] T101 [P] [US5] Implement max-tier clearance + read-up refusal in `src/capabledeputy/policy/resolution.py` (FR-008): every context profile carries `max_tier`; reads above it refused.
-- [ ] T102 [P] [US5] Implement integrity-floor + no-read-down within a step in `src/capabledeputy/policy/engine.py` (FR-004 Biba direction): integrity-floored steps refuse `external-untrusted` provenance inputs.
+- [X] T101 [P] [US5] Max-tier clearance + read-up refusal (FR-008): impl `policy/resolution.py` + `policy/engine.py`; dispatch derives it from the session profile (`tools/client.py`); tested `tests/policy/test_max_tier_clearance.py`. (Done on the current axis model; ported by R4b.3.)
+- [X] T102 [P] [US5] Integrity-floor + no-read-down (FR-004 Biba): impl `policy/engine.py` + `policy/resolution.py` (`IntegrityFloorError`); tested `tests/policy/test_integrity_floor.py`. (Done on the current axis model; ported by R4b.3.)
 - [X] T103 [US5] Create `src/capabledeputy/patterns/__init__.py` and `src/capabledeputy/patterns/reference_handle.py` per `contracts/reference_handle.md`: `ReferenceHandle`, `ReferenceHandleStore.issue/bind/destroy/bind_trail`; per-session in-memory; persisted into `sessions.reference_handles`.
 - [ ] T104 [US5] Wire handle issue/bind into the dispatcher: only the dispatcher (post-`decide`-allow) may bind; tools with `accepts_handles=true` receive handles in declared `handle_arg_names`; `pattern3.handle_bind` audit per insertion (FR-047).
 - [ ] T105 [US5] Extend `src/capabledeputy/mode/dispatcher.py::select_mode` to include `REFERENCE` and `SEALED` outputs; deterministic floor: effective tier `restricted` ⇒ `REFERENCE` (if any session tool `accepts_handles=true`) or `SEALED` (if SandboxActuator port satisfied); else fail-closed at spawn (FR-047).
