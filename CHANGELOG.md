@@ -84,6 +84,10 @@ Work in progress on `003-labeling-framework`. Not yet released.
   inherit (`test_directional_inherit_matches_legacy`). The engine's
   delegation/fork path will use `inherit`; session accumulation uses
   `most_restrictive_inherit`. Green (2069).
+  Then routed the one composition call site (the FR-025 inspector
+  taint-raise in `tools/client.py`) through `labels.inherit` — behavior-
+  preserving — leaving `most_restrictive_inherit_axis_a/_b` with **no
+  callers** (deletable at R4b.4/R7).
 
 ## [0.13.1] — 2026-06-05
 

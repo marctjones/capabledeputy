@@ -845,10 +845,7 @@ class LabeledToolClient:
         Refused to lower — the composition is monotone by construction."""
         from dataclasses import replace as dc_replace
 
-        from capabledeputy.policy.labels import (
-            most_restrictive_inherit_axis_a,
-            most_restrictive_inherit_axis_b,
-        )
+        from capabledeputy.policy.labels import LabelState, inherit
 
         if self._policy_context is None:
             return
@@ -861,8 +858,15 @@ class LabeledToolClient:
                 current_axis_b=new_axis_b,
             )
             pre_a, pre_b = new_axis_a, new_axis_b
-            new_axis_a = most_restrictive_inherit_axis_a(new_axis_a, delta.axis_a_raise)
-            new_axis_b = most_restrictive_inherit_axis_b(new_axis_b, delta.axis_b_raise)
+            # R4b.3 — route inspector taint-raise through the directional
+            # LabelState.inherit (session-authoritative; raise-only-inspector
+            # exception). Behavior-preserving vs the legacy axis inherit
+            # (proven by test_directional_inherit_matches_legacy).
+            raised = inherit(
+                LabelState.from_axes(new_axis_a, new_axis_b),
+                LabelState.from_axes(delta.axis_a_raise, delta.axis_b_raise),
+            )
+            new_axis_a, new_axis_b = raised.to_axis_a(), raised.to_axis_b()
             # Audit each inspector that actually raised something. A
             # no-op inspector (delta with empty axes) doesn't fire an
             # event — keeps the audit stream signal-rich.
