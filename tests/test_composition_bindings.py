@@ -38,6 +38,7 @@ from capabledeputy.policy.decision_rules import (
     RuleOutcome,
     RulePredicate,
 )
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.engine import BINDING_UNBOUND_RULE, decide
 from capabledeputy.policy.labels import (
     AxisA,
@@ -228,6 +229,8 @@ def _api_post_tool() -> ToolDefinition:
         handler=_noop_handler,
         target_arg="url",
         effect_class="data.write_remote",
+        operations=(Operation(EffectClass.FETCH),),
+        risk_ids=("RISK-INDIRECT-INJECTION",),
     )
 
 

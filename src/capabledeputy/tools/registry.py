@@ -275,10 +275,11 @@ class ToolRegistry:
     def register(self, tool: ToolDefinition) -> None:
         if tool.name in self._tools:
             raise DuplicateToolError(f"tool already registered: {tool.name}")
-        # 003 R3d (pending) — flip to fail-closed validation here:
-        #   validate_tool_definition(tool)
-        # Deferred until the ~14 unit-test tool factories declare the new
-        # fields; see specs/003-labeling-framework/label-model-redesign.md §9.
+        # 003 R3d — fail-closed registry validation (Constitution VI). A tool
+        # missing required fields (operations, risk_ids, ...) is refused, never
+        # registered with a usable capability. Rule 5 (risk_ids subset of the
+        # loaded register) is a separate daemon-start audit, not enforced here.
+        validate_tool_definition(tool)
         self._tools[tool.name] = tool
 
     def get(self, name: str) -> ToolDefinition:

@@ -38,6 +38,7 @@ from capabledeputy.policy.decision_rules import (
     RulePredicate,
     evaluate,
 )
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.engine import decide
 from capabledeputy.policy.envelope import (
     CellKey,
@@ -373,6 +374,8 @@ def _read_tool() -> ToolDefinition:
         capability_kind=CapabilityKind.READ_FS,
         handler=_ok_handler,
         target_arg="key",
+        operations=(Operation(EffectClass.FETCH),),
+        risk_ids=("RISK-INDIRECT-INJECTION",),
     )
 
 

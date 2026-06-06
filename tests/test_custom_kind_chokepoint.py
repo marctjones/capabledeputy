@@ -32,6 +32,7 @@ from capabledeputy.policy.capabilities import (
     reset_custom_kind_registry,
     resolve_kind,
 )
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import Label
 from capabledeputy.upstream.server_yaml import CustomKindDecl, CustomKindRegistry
 
@@ -265,6 +266,8 @@ async def test_custom_kind_add_labels_propagate_to_session(tmp_path) -> None:
             description="Read Slack messages",
             capability_kind="slack:read",  # custom-kind string
             handler=slack_read_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             target_arg="query",
             parameters_schema={
                 "type": "object",
@@ -284,6 +287,7 @@ async def test_custom_kind_add_labels_propagate_to_session(tmp_path) -> None:
     # Call should have succeeded (ALLOW), and the custom kind's
     # add_labels should now be in the session's label_set.
     from capabledeputy.policy.rules import Decision
+
     assert outcome.decision == Decision.ALLOW, f"Expected ALLOW, got: {outcome}"
     session_after = graph.get(session.id)
     assert Label.UNTRUSTED_EXTERNAL in session_after.label_set

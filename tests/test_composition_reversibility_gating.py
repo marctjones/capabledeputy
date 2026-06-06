@@ -26,6 +26,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityOrigin,
 )
 from capabledeputy.policy.decision_rules import DecisionRules
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.engine import (
     OPTIMISTIC_AUTO_RULE,
     REVERSIBILITY_IRREVERSIBLE_RULE,
@@ -260,6 +261,8 @@ async def _noop_handler(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
 def _reversible_tool() -> ToolDefinition:
     return ToolDefinition(
         name="scratch.write",
+        operations=(Operation(EffectClass.FETCH),),
+        risk_ids=("RISK-INDIRECT-INJECTION",),
         description="t",
         capability_kind=CapabilityKind.WRITE_FS,
         handler=_noop_handler,
@@ -272,6 +275,8 @@ def _reversible_tool() -> ToolDefinition:
 def _social_tool() -> ToolDefinition:
     return ToolDefinition(
         name="social.send",
+        operations=(Operation(EffectClass.FETCH),),
+        risk_ids=("RISK-INDIRECT-INJECTION",),
         description="t",
         capability_kind=CapabilityKind.SEND_EMAIL,
         handler=_noop_handler,

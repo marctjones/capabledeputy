@@ -47,8 +47,14 @@ Work in progress on `003-labeling-framework`. Not yet released.
 - **R3c (adapters)**: the upstream MCP + skills adapters now derive
   `operations`/`risk_ids`/`surfaces` from each tool's capability kind
   (`default_operation_for_kind`), so every tool creator declares the new
-  shape. Enforcement at `register()` is staged but deferred to R3d (it
-  requires migrating ~14 unit-test tool factories first).
+  shape.
+- **R3d (enforce)**: `ToolRegistry.register()` now calls
+  `validate_tool_definition` fail-closed — a tool missing required fields
+  is refused, never registered (Constitution VI). Migrated the ~12
+  unit-test tool factories to declare `operations`/`risk_ids`. **R3
+  complete**: the registry is fail-closed on malformed tools. (Engine
+  `decide()` re-typing onto `LabelState` + `inherent_tags` population is
+  R4; flat `Label` enum deletion is R7.)
 
 ## [0.13.1] — 2026-06-05
 

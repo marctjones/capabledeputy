@@ -14,6 +14,7 @@ import pytest
 
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import Label
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
@@ -47,6 +48,8 @@ def _make_tool_with_arg_labels(arg_labels):
         },
         target_arg="to",
         arg_inherent_labels=arg_labels,
+        operations=(Operation(EffectClass.FETCH),),
+        risk_ids=("RISK-INDIRECT-INJECTION",),
     )
 
 

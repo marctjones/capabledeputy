@@ -19,6 +19,7 @@ from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.mode.dispatcher import ExecutionMode
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.tools.aliasing import (
     alias_for,
     build_alias_map,
@@ -73,6 +74,8 @@ def _registry_with(*names: str) -> ToolRegistry:
                 description=f"tool {name}",
                 capability_kind=CapabilityKind.READ_FS,
                 handler=_noop,
+                operations=(Operation(EffectClass.FETCH),),
+                risk_ids=("RISK-INDIRECT-INJECTION",),
             ),
         )
     return reg
