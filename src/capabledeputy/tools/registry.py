@@ -210,6 +210,54 @@ def validate_tool_definition(
     # bare ToolDefinition; enforced at the wrapper construction site (R3b).
 
 
+# Best-effort capability-kind -> EffectClass for adapter-created tools
+# (upstream MCP, skills). Unknown/custom kinds default to FETCH (read),
+# matching the upstream adapter's conservative READ_FS default for
+# unclassifiable tools.
+_KIND_TO_EFFECT: dict[str, EffectClass] = {
+    "READ_FS": EffectClass.FETCH,
+    "GMAIL_READ": EffectClass.FETCH,
+    "IMAP_READ": EffectClass.FETCH,
+    "DRIVE_READ": EffectClass.FETCH,
+    "CALENDAR_READ": EffectClass.FETCH,
+    "WEB_FETCH": EffectClass.FETCH,
+    "WRITE_FS": EffectClass.MUTATE_LOCAL,
+    "CREATE_FS": EffectClass.MUTATE_LOCAL,
+    "MODIFY_FS": EffectClass.MUTATE_LOCAL,
+    "CALENDAR_WRITE": EffectClass.MUTATE_LOCAL,
+    "CREATE_CAL": EffectClass.MUTATE_LOCAL,
+    "MODIFY_CAL": EffectClass.MUTATE_LOCAL,
+    "DELETE_FS": EffectClass.DESTROY,
+    "DELETE_CAL": EffectClass.DESTROY,
+    "SEND_EMAIL": EffectClass.COMMUNICATE,
+    "QUEUE_PURCHASE": EffectClass.TRANSACT,
+    "EXECUTE_SANDBOX": EffectClass.EXECUTE_SANDBOX,
+    "EXECUTE_DEVBOX": EffectClass.EXECUTE_SANDBOX,
+}
+_EFFECT_DEFAULT_RISK: dict[EffectClass, tuple[str, ...]] = {
+    EffectClass.OBSERVE: ("RISK-EXCESSIVE-AGENCY",),
+    EffectClass.FETCH: ("RISK-INDIRECT-INJECTION",),
+    EffectClass.MUTATE_LOCAL: ("RISK-DESTRUCTIVE-WRITE",),
+    EffectClass.DESTROY: ("RISK-DESTRUCTIVE-WRITE",),
+    EffectClass.COMMUNICATE: ("RISK-DATA-EXFIL-AGENT-TOOLS",),
+    EffectClass.TRANSACT: ("RISK-IRREVERSIBLE-SEND",),
+    EffectClass.EXECUTE_SANDBOX: ("RISK-UNSAFE-CODE-EXEC",),
+}
+
+
+def default_operation_for_kind(
+    kind: CapabilityKind | str,
+) -> tuple[Operation, tuple[str, ...], bool]:
+    """Best-effort (Operation, risk_ids, surfaces_destination_id) for an
+    adapter-created tool from its capability kind. Used by the upstream /
+    skills adapters so their tools satisfy `validate_tool_definition`."""
+    key = kind.value if isinstance(kind, CapabilityKind) else str(kind)
+    effect = _KIND_TO_EFFECT.get(key, EffectClass.FETCH)
+    risks = _EFFECT_DEFAULT_RISK[effect]
+    surfaces = effect not in (EffectClass.OBSERVE, EffectClass.FETCH)
+    return Operation(effect, subtype=key), risks, surfaces
+
+
 class DuplicateToolError(ValueError):
     pass
 
@@ -227,6 +275,10 @@ class ToolRegistry:
     def register(self, tool: ToolDefinition) -> None:
         if tool.name in self._tools:
             raise DuplicateToolError(f"tool already registered: {tool.name}")
+        # 003 R3d (pending) — flip to fail-closed validation here:
+        #   validate_tool_definition(tool)
+        # Deferred until the ~14 unit-test tool factories declare the new
+        # fields; see specs/003-labeling-framework/label-model-redesign.md §9.
         self._tools[tool.name] = tool
 
     def get(self, name: str) -> ToolDefinition:

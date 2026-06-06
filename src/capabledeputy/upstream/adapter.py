@@ -24,6 +24,7 @@ from capabledeputy.tools.registry import (
     ToolDefinition,
     ToolRegistry,
     ToolResult,
+    default_operation_for_kind,
 )
 from capabledeputy.upstream.config import UpstreamServerConfig
 
@@ -360,6 +361,7 @@ class LabeledMcpAdapter:
                 self._config.inherent_labels | additional | _extract_labels(upstream_tool.meta)
             )
 
+            op, op_risks, op_surfaces = default_operation_for_kind(kind)
             registry.register(
                 ToolDefinition(
                     name=name,
@@ -370,6 +372,9 @@ class LabeledMcpAdapter:
                     handler=self._make_handler(upstream_tool.name),
                     inherent_labels=inherent,
                     parameters_schema=upstream_tool.inputSchema or {"type": "object"},
+                    operations=(op,),
+                    risk_ids=op_risks,
+                    surfaces_destination_id=op_surfaces,
                 ),
             )
             self._registered_names.append(name)

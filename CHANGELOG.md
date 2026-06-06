@@ -43,8 +43,12 @@ Work in progress on `003-labeling-framework`. Not yet released.
 - **R3b (native)**: migrated all 14 native tool modules to declare
   `operations` (canonical `EffectClass` + subtype) + `risk_ids` (+
   `surfaces_destination_id` for writes/egress). Additive — `inherent_labels`
-  kept for the engine until R4; enforcement flip + MCP/skill adapters land
-  next.
+  kept for the engine until R4.
+- **R3c (adapters)**: the upstream MCP + skills adapters now derive
+  `operations`/`risk_ids`/`surfaces` from each tool's capability kind
+  (`default_operation_for_kind`), so every tool creator declares the new
+  shape. Enforcement at `register()` is staged but deferred to R3d (it
+  requires migrating ~14 unit-test tool factories first).
 
 ## [0.13.1] — 2026-06-05
 
