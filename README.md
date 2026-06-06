@@ -6,7 +6,7 @@ A structurally secure runtime for personal AI agents.
 
 CapableDeputy is an AI agent runtime built as a faithful implementation of recognized security models — a reference monitor, an information-flow lattice, and the object-capability model — with the LLM treated as an untrusted component *outside* the trusted computing base. Every action the agent takes flows through one deterministic capability and information-flow chokepoint, escalates to programmatic execution when stakes warrant, and surfaces every cross-compartment data flow through human-auditable approval gates.
 
-**Status:** Alpha — v0.13.1 released; **v0.14.0 in development** on `003-labeling-framework` (label-model redesign — clean four-axis model, no backwards compatibility; see [docs/responsible-ai-frameworks.md](docs/responsible-ai-frameworks.md) and [specs/003-labeling-framework/label-model-redesign.md](specs/003-labeling-framework/label-model-redesign.md)). See [CHANGELOG.md](CHANGELOG.md) for what shipped and [ROADMAP.md](ROADMAP.md) for the plan.
+**Status:** Alpha — **v0.14.0 released** (governance/CORE-PRO docs, agentic risk register, label-model redesign R1–R4b.3). The label-model redesign continues on `003-labeling-framework` (clean four-axis model, no backwards compatibility; see [docs/responsible-ai-frameworks.md](docs/responsible-ai-frameworks.md) and [specs/003-labeling-framework/label-model-redesign.md](specs/003-labeling-framework/label-model-redesign.md)). See [CHANGELOG.md](CHANGELOG.md) for what shipped and [ROADMAP.md](ROADMAP.md) for the plan.
 
 ## Why
 

@@ -4,9 +4,15 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
-## [Unreleased] — 0.14.0 (in development)
+## [0.14.0] — 2026-06-06
 
-Work in progress on `003-labeling-framework`. Not yet released.
+Ships the responsible-AI / CORE-PRO governance work, the agentic risk-register
+import, and the **first phases of the spec-003 label-model redesign (R1–R4b.3)**.
+The label-model redesign is **in progress** — it is green and behavior-preserving
+at every step, but the four-axis `LabelState` model still coexists transitionally
+with the legacy `AxisA`/`AxisB` pair (the `decide()` re-type + `AxisA`/`AxisB`
+deletion land in R4b.4). BLP (FR-008) and Biba (FR-004) enforcement verified.
+See `specs/003-labeling-framework/label-model-redesign.md` "▶ Resume here".
 
 ### Governance & responsible-AI
 - New docs: `responsible-ai-frameworks.md` (the eight enforceable core
@@ -152,5 +158,6 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.14.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.14.0
 [0.13.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.13.1
 [0.13.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.13.0
