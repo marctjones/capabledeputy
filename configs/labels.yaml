@@ -25,6 +25,41 @@
 #       degree: <immutable|append-only|in-place>
 #       agent: <system|human|external>
 
-categories: []
+# Stable-core Axis A categories (003 redesign R2). Each cites >=1 risk
+# register id (SC-001 lint). Unlabeled/public data carries no category
+# (absence = unlabeled; handled fail-closed at the chokepoint), so there
+# is deliberately no "public" category here.
+categories:
+  - id: health
+    kind: stable_core
+    c_impact: high
+    i_impact: medium
+    default_tier: restricted
+    resolution_mode: fixed-high        # health is always high; profiles cannot lower
+    risk_ids: [RISK-HEALTH-LEAK]
+  - id: financial
+    kind: stable_core
+    c_impact: high
+    i_impact: medium
+    default_tier: restricted
+    resolution_mode: fixed-high
+    risk_ids: [RISK-FIN-LEAK]
+  - id: personal
+    kind: stable_core
+    c_impact: high
+    i_impact: medium
+    default_tier: regulated
+    resolution_mode: context-up        # profiles may raise (e.g. to restricted), never lower
+    risk_ids: [RISK-PII-DISCLOSURE]
+  - id: proprietary_work
+    kind: stable_core
+    c_impact: high
+    i_impact: medium
+    default_tier: regulated
+    resolution_mode: context-up
+    risk_ids: [RISK-PROP-LEAK]
+
+# Reversibility / mutability label catalogs are populated in a later
+# step (they also require risk_id citations under SC-001).
 reversibility_labels: []
 mutability_labels: []
