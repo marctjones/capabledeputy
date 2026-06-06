@@ -11,10 +11,12 @@ those predate the chain and form a "pre-chain prefix." We report
 the count and the index of the first chained line so the operator
 can see exactly where the cryptographic guarantee begins.
 
-Today the verifier only walks the ACTIVE file. Cross-file
-verification (chain spans rotation when archives are kept) is a
-follow-up: the writer preserves the chain across rotation, but the
-verifier currently treats each file's chain independently.
+By default the verifier walks the ACTIVE file. Pass
+`include_rotated=True` (CLI: `capdep audit verify --include-rotated`)
+to walk the rotated archives too — `_enumerate_chain_files` orders them
+oldest → archive.1 → active and the walk threads `prev_hash` across the
+rotation boundaries, so a tamper anywhere in the kept history is caught
+(reported as "file F line L").
 
 This module is structured so it can run standalone (no daemon
 needed): point it at any audit.jsonl and ask for a yes/no answer.
