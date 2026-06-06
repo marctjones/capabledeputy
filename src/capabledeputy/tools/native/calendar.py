@@ -24,6 +24,7 @@ from uuid import UUID, uuid4
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
@@ -162,6 +163,8 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
         ToolDefinition(
             name="calendar.events_today",
             effect_class="data.read_calendar",
+            operations=(Operation(EffectClass.FETCH, subtype="calendar.read"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
             description=(
@@ -186,6 +189,9 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
         ToolDefinition(
             name="calendar.create_event",
             effect_class="data.write_calendar",
+            operations=(Operation(EffectClass.MUTATE_LOCAL, subtype="calendar.create"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
+            surfaces_destination_id=True,
             default_reversibility={"degree": "reversible-with-friction", "agent": "human"},
             tool_provenance="operator-curated",
             description=(
@@ -211,6 +217,9 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
         ToolDefinition(
             name="calendar.update_event",
             effect_class="data.modify_calendar",
+            operations=(Operation(EffectClass.MUTATE_LOCAL, subtype="calendar.modify"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
+            surfaces_destination_id=True,
             default_reversibility={"degree": "reversible-with-friction", "agent": "human"},
             tool_provenance="operator-curated",
             description=(
@@ -237,6 +246,9 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
         ToolDefinition(
             name="calendar.delete_event",
             effect_class="data.delete_calendar",
+            operations=(Operation(EffectClass.DESTROY, subtype="calendar.delete"),),
+            risk_ids=("RISK-DESTRUCTIVE-WRITE",),
+            surfaces_destination_id=True,
             default_reversibility={"degree": "irreversible", "agent": "external"},
             tool_provenance="operator-curated",
             description=(

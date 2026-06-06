@@ -14,6 +14,7 @@ from typing import Any
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
@@ -109,6 +110,9 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="memory.write",
+            operations=(Operation(EffectClass.MUTATE_LOCAL, subtype="memory.write"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
+            surfaces_destination_id=True,
             description=(
                 "Write a value to a key in the memory store (create or "
                 "overwrite). Required args: key (string), value (string)."
@@ -130,6 +134,8 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="memory.read",
+            operations=(Operation(EffectClass.FETCH, subtype="memory.read"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
             description=(
                 "Read the value at a key in the memory store. Returns "
                 "{found, value} and propagates the value's labels into "
@@ -151,6 +157,9 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="memory.create",
+            operations=(Operation(EffectClass.MUTATE_LOCAL, subtype="memory.create"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
+            surfaces_destination_id=True,
             description=(
                 "Create a new key. Fails if the key already exists. "
                 "Non-destructive: bypasses the destructive-op gate. "
@@ -173,6 +182,9 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="memory.update",
+            operations=(Operation(EffectClass.MUTATE_LOCAL, subtype="memory.update"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
+            surfaces_destination_id=True,
             description=(
                 "Update an existing key. Fails if the key doesn't exist. "
                 "Destructive: requires approval unless the capability has "
@@ -196,6 +208,9 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="memory.delete",
+            operations=(Operation(EffectClass.DESTROY, subtype="memory.delete"),),
+            risk_ids=("RISK-DESTRUCTIVE-WRITE",),
+            surfaces_destination_id=True,
             effect_class="data.delete_local",
             default_reversibility={"degree": "irreversible", "agent": "external"},
             tool_provenance="operator-curated",

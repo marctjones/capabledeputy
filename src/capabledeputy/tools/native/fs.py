@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
@@ -205,6 +206,8 @@ def make_fs_tools() -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="fs.read",
+            operations=(Operation(EffectClass.FETCH, subtype="fs.read"),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             description=(
                 "Read a UTF-8 text file from disk. Required arg: path "
                 "(absolute). Returns {ok, path, uri, text} on success or "
@@ -232,6 +235,8 @@ def make_fs_tools() -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="fs.read_pdf",
+            operations=(Operation(EffectClass.FETCH, subtype="fs.read_pdf"),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             description=(
                 "Read a PDF file and return its text content. Pages are "
                 "separated by ASCII form-feed. Required arg: path "
@@ -258,6 +263,8 @@ def make_fs_tools() -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="fs.create",
+            operations=(Operation(EffectClass.MUTATE_LOCAL, subtype="fs.create"),),
+            risk_ids=("RISK-DESTRUCTIVE-WRITE",),
             description=(
                 "Create a new UTF-8 text file. REFUSES if the target "
                 "already exists (use fs.modify to overwrite). Required "
@@ -286,6 +293,8 @@ def make_fs_tools() -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="fs.modify",
+            operations=(Operation(EffectClass.MUTATE_LOCAL, subtype="fs.modify"),),
+            risk_ids=("RISK-DESTRUCTIVE-WRITE",),
             description=(
                 "Overwrite an existing UTF-8 text file. REFUSES if the "
                 "target does not already exist (use fs.create instead). "

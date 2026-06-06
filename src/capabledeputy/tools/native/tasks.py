@@ -27,6 +27,7 @@ from typing import Any
 from uuid import uuid4
 
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
@@ -134,6 +135,9 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="tasks.add",
+            operations=(Operation(EffectClass.MUTATE_LOCAL, subtype="tasks.add"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
+            surfaces_destination_id=True,
             effect_class="data.create_local",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
@@ -156,6 +160,8 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="tasks.list",
+            operations=(Operation(EffectClass.FETCH, subtype="tasks.list"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
             effect_class="data.read_local",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
@@ -173,6 +179,9 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="tasks.complete",
+            operations=(Operation(EffectClass.MUTATE_LOCAL, subtype="tasks.complete"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
+            surfaces_destination_id=True,
             effect_class="data.modify_local",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
@@ -194,6 +203,9 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="tasks.edit",
+            operations=(Operation(EffectClass.MUTATE_LOCAL, subtype="tasks.edit"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
+            surfaces_destination_id=True,
             effect_class="data.modify_local",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
@@ -219,6 +231,9 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="tasks.delete",
+            operations=(Operation(EffectClass.DESTROY, subtype="tasks.delete"),),
+            risk_ids=("RISK-DESTRUCTIVE-WRITE",),
+            surfaces_destination_id=True,
             effect_class="data.delete_local",
             default_reversibility={"degree": "irreversible", "agent": "external"},
             tool_provenance="operator-curated",

@@ -17,6 +17,7 @@ from typing import Any
 
 from capabledeputy.policy.actions import Action
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.engine import decide
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
@@ -65,6 +66,8 @@ def make_policy_preview_tools(graph: SessionGraph) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="policy.preview",
+            operations=(Operation(EffectClass.OBSERVE, subtype="policy.preview"),),
+            risk_ids=("RISK-EXCESSIVE-AGENCY",),
             effect_class="introspection.policy",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",

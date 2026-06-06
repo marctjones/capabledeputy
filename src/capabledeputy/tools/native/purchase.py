@@ -17,6 +17,7 @@ from uuid import UUID, uuid4
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
 
@@ -70,6 +71,8 @@ def make_purchase_tools(queue: PurchaseQueue) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="purchase.queue",
+            operations=(Operation(EffectClass.TRANSACT, subtype="purchase.queue"),),
+            risk_ids=("RISK-IRREVERSIBLE-SEND",),
             effect_class="social.queue_purchase",
             default_reversibility={"degree": "irreversible", "agent": "external"},
             social_commitment=True,

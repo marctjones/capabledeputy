@@ -28,6 +28,7 @@ from typing import Any
 
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
 
@@ -209,6 +210,9 @@ def make_sandbox_tools(policy_context, audit=None) -> list[ToolDefinition]:
         ToolDefinition(
             name="sandbox.run",
             effect_class="EXECUTE.sandbox",
+            operations=(Operation(EffectClass.EXECUTE_SANDBOX, subtype="sandbox.run"),),
+            risk_ids=("RISK-UNSAFE-CODE-EXEC",),
+            surfaces_destination_id=True,
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
             description=(

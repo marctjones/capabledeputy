@@ -40,6 +40,11 @@ Work in progress on `003-labeling-framework`. Not yet released.
   contracts/tool_definition.md registry-load rules) + invariant tests.
   Validation is wired into `register()` in R3b once native tools declare
   the new fields.
+- **R3b (native)**: migrated all 14 native tool modules to declare
+  `operations` (canonical `EffectClass` + subtype) + `risk_ids` (+
+  `surfaces_destination_id` for writes/egress). Additive — `inherent_labels`
+  kept for the engine until R4; enforcement flip + MCP/skill adapters land
+  next.
 
 ## [0.13.1] — 2026-06-05
 

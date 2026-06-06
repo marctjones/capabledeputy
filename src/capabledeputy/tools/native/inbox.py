@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
@@ -96,6 +97,8 @@ def make_inbox_tools(inbox: Inbox) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="inbox.list",
+            operations=(Operation(EffectClass.FETCH, subtype="inbox.list"),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             effect_class="data.read_inbox",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
@@ -116,6 +119,8 @@ def make_inbox_tools(inbox: Inbox) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="inbox.read",
+            operations=(Operation(EffectClass.FETCH, subtype="inbox.read"),),
+            risk_ids=("RISK-INDIRECT-INJECTION", "RISK-PII-DISCLOSURE"),
             effect_class="data.read_inbox",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
