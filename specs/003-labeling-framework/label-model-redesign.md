@@ -1,8 +1,32 @@
 # Label Model Redesign (003 addendum) — clean four-axis, no backwards compat
 
-**Status: design note for review. No code yet.** Supersedes the
+**Status: IN IMPLEMENTATION (Phase R).** Supersedes the
 half-migrated state where the legacy flat `Label` enum and the four-axis
-model coexist. **Explicit mandate: no backwards compatibility.** The flat
+model coexist.
+
+> ## ▶ Resume here (updated 2026-06-06)
+> **Done** (each a green, tagged checkpoint — see `git tag v0.14.0-R*` and
+> CHANGELOG `[Unreleased]`):
+> R1 types · R2 catalog · R3a–d tool-definition shape + fail-closed
+> `register()` · R4a leaf consolidation (`CategoryTag`/`ProvenanceTag`
+> canonical, `label_state.py` deleted) · R4b.1 `LabelState`↔axes converters
+> + `Session.label_state` · R4b.2 `decide(labels=…)` · audit follow-up
+> (`test_tool_risk_ids_in_register`). Latest tag: `v0.14.0-R4b2-decide-labels`.
+> Suite green (2068).
+>
+> **Next: R4b.3+** (§9 step 4 + §9.4 verification points):
+> 1. Re-type `decide()`'s **internals** to consume `LabelState` behind the
+>    R4b.1 converters; keep the legacy axis path running in parallel and
+>    **assert both agree** (incl. `_compose_a` vs `most_restrictive_inherit_axis_a`
+>    authority resolution).
+> 2. Migrate the ~185 **test** `decide(axis_a=…, axis_b=…)` call sites to
+>    `labels=` in batches (src has no clean `decide(axis_a=)` callers).
+> 3. **R4b.4**: collapse `Session.axis_a`/`axis_b` → one `LabelState`; delete
+>    `AxisA`/`AxisB`. Then R4c (flat-leg authoritative), R4d (delete flat
+>    `label_set` leg), R5 (apply/remove wiring), R6 (store + `state.db` wipe),
+>    R7 (delete flat `Label` enum + vestigial `ProvenanceTag.integrity_floor`).
+>
+> Honor the standing rule: **stop at each sub-step checkpoint for review.** **Explicit mandate: no backwards compatibility.** The flat
 enum, all migration glue, and every SCHEMA_VERSION-5 read path are
 deleted, not bridged. `state.db` is wiped on cutover (single-operator,
 local; no migration). Heavy rewrites are accepted to reach the correct,
