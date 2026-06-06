@@ -148,8 +148,8 @@ for inspector in registry.get("at_chokepoint.decision"):
 ## Composition guarantees
 
 - **Inspector composition** (raise-only): monotone-inherit. Multiple
-  inspectors compose by `most_restrictive_inherit_axis_*`; the final
-  axes are never less restrictive than any single inspector returned.
+  inspectors compose by the directional `inherit` on `LabelState`; the
+  final taint is never less restrictive than any single inspector returned.
 - **Decision inspector composition**: TIGHTEN beats RELAX. Among
   tightens, strictest wins. Among relaxes, loosest wins. Non-monotone
   outcomes (relax→stricter, tighten→looser) are rejected as protocol

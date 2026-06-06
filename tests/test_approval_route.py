@@ -106,17 +106,15 @@ async def test_require_approval_outcome_carries_resolved_submission(
         pattern="*",
         max_amount=10_000,
     )
-    from capabledeputy.policy.labels import AxisA
-
-    financial_axis_a = AxisA(
-        categories=(
+    financial_label_state = LabelState(
+        a=frozenset({
             CategoryTag("financial", Tier.REGULATED, assignment_provenance="source-declared"),
-        )
+        })
     )
     app.graph._sessions[s.id] = replace(
         s,
         capability_set=frozenset({cap}),
-        axis_a=financial_axis_a,
+        label_state=financial_label_state,
     )
     client = LabeledToolClient(app.registry, app.graph, app.audit)
 

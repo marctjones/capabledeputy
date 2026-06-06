@@ -35,7 +35,7 @@ async def test_wrap_output_substitutes_sensitive_keys() -> None:
         session_id=sid,
         output={"record": "patient's full medical history", "key": "alice"},
         sensitive_keys=("record",),
-        labels=ResolvedLabels(axis_a=("health",), axis_b=("source-declared",)),
+        labels=ResolvedLabels(axis_a=("health",), axis_b=("principal-direct",)),
     )
     # 'record' is now a UUID string; 'key' is unchanged.
     assert is_planner_safe_token(out["record"])

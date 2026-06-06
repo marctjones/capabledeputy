@@ -41,8 +41,6 @@ from capabledeputy.policy.capabilities import (
 )
 from capabledeputy.policy.engine import _conflict_invariant_outcome
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     LabelState,
     ProvenanceLevel,
     ProvenanceTag,
@@ -181,9 +179,7 @@ async def dry_run_for_bundle(
         from capabledeputy.policy.actions import Action
 
         fake_action = Action(kind=tool.capability_kind, target="", amount=0)
-        axis_a = AxisA(categories=tuple(effective.a))
-        axis_b = AxisB(entries=tuple(effective.b))
-        conflict_outcome = _conflict_invariant_outcome(axis_a, axis_b, fake_action)
+        conflict_outcome = _conflict_invariant_outcome(effective, fake_action)
 
         gate_decision = Decision.ALLOW
         gate_rule = None
@@ -387,7 +383,7 @@ async def _dispatch_via_purpose_session(
     )
     granted = _replace(
         granted,
-        axis_b=principal_direct_tags.to_axis_b(),
+        label_state=principal_direct_tags,
     )
     graph._sessions[granted.id] = granted
 

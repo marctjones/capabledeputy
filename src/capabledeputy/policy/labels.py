@@ -1,12 +1,13 @@
 """Information-flow labels (DESIGN.md §7.1; 003 four-axis extension).
 
-New code MUST consume the four-axis representation (AxisA / AxisB / AxisC /
-AxisD) introduced for v0.9. SCHEMA_VERSION 7 and forward use only four-axis
-representations; the v0.7 flat Label enum (and backward-compat converters) have
-been removed (FR-024 forward-only).
+New code MUST consume the four-axis representation (AxisC / AxisD) and the
+bundled two-axis propagating label representation (LabelState) introduced
+for v0.9. SCHEMA_VERSION 7 and forward use only four-axis representations;
+the v0.7 flat Label enum (and backward-compat converters) have been removed
+(FR-024 forward-only).
 
-Axis A — Data Category (this file: AxisA, Category schema).
-Axis B — Provenance Lattice (this file: AxisB, ProvenanceLevel).
+Axis A — Data Category (this file: CategoryTag schema).
+Axis B — Provenance Lattice (this file: ProvenanceTag).
 Axis C — Effect Class (lives on ToolDefinition + Capability.kind).
 Axis D — Decision Context (policy/axis_d.py: DecisionContext, aliased as AxisD).
 
@@ -32,7 +33,8 @@ from capabledeputy.policy.tiers import Tier, max_of
 class ProvenanceLevel(StrEnum):
     """Three-level provenance lattice, monotone order:
     PRINCIPAL_DIRECT > SYSTEM_INTERNAL > EXTERNAL_UNTRUSTED.
-    Integrity-floor flag attaches at the AxisB level, not here."""
+    The integrity floor is a property of the Operation
+    (`Operation.required_floor`), not of the provenance level."""
 
     PRINCIPAL_DIRECT = "principal-direct"
     SYSTEM_INTERNAL = "system-internal"
@@ -104,65 +106,25 @@ class CategoryTag:
         )
 
 
-@dataclass(frozen=True)
-class AxisA:
-    """Session-level Axis A label set: a list of categories with
-    their resolved tiers. Empty means 'no labeled categories in
-    this session'. Composition with other AxisA values is
-    most-restrictive per-category via most_restrictive_inherit."""
-
-    categories: tuple[CategoryTag, ...] = field(default_factory=tuple)
-
-    def to_dict(self) -> list[dict[str, Any]]:
-        return [c.to_dict() for c in self.categories]
-
-    @classmethod
-    def from_dict(cls, raw: list[dict[str, Any]] | None) -> Self:
-        if not raw:
-            return cls(categories=())
-        return cls(categories=tuple(CategoryTag.from_dict(d) for d in raw))
-
-
 # --- Axis B: Provenance set + integrity floor (FR-004) --------------
 
 
 @dataclass(frozen=True)
 class ProvenanceTag:
     """One Axis-B label: a provenance level present in the session. 003
-    redesign canonical leaf type (was AxisBEntry). NOTE: `integrity_floor`
-    is retained transitionally for serialization compatibility; the
-    redesign moves the floor to the Operation (`required_floor`) and it
-    will be dropped from the data tag in a later R4 step."""
+    redesign canonical leaf type (was AxisBEntry). R4b.4: integrity_floor
+    removed (moved to Operation.required_floor)."""
 
     level: ProvenanceLevel
-    integrity_floor: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return {"level": self.level.value, "integrity_floor": self.integrity_floor}
+        return {"level": self.level.value}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Self:
         return cls(
             level=ProvenanceLevel(d["level"]),
-            integrity_floor=bool(d.get("integrity_floor", False)),
         )
-
-
-@dataclass(frozen=True)
-class AxisB:
-    """Session-level Axis B label set: which provenance levels are
-    present + whether any step demands an integrity floor."""
-
-    entries: tuple[ProvenanceTag, ...] = field(default_factory=tuple)
-
-    def to_dict(self) -> list[dict[str, Any]]:
-        return [e.to_dict() for e in self.entries]
-
-    @classmethod
-    def from_dict(cls, raw: list[dict[str, Any]] | None) -> Self:
-        if not raw:
-            return cls(entries=())
-        return cls(entries=tuple(ProvenanceTag.from_dict(d) for d in raw))
 
 
 # --- 003 redesign: LabelState (the propagating labels) + apply/remove --
@@ -204,19 +166,6 @@ class LabelState:
 
     a: frozenset[CategoryTag] = frozenset()
     b: frozenset[ProvenanceTag] = frozenset()
-
-    # R4b transitional converters: the engine + Session still carry the
-    # separate AxisA/AxisB pair; these bridge to/from the bundled form
-    # while call sites migrate. AxisA/AxisB are deleted at the end of R4.
-    @classmethod
-    def from_axes(cls, axis_a: AxisA, axis_b: AxisB) -> LabelState:
-        return cls(a=frozenset(axis_a.categories), b=frozenset(axis_b.entries))
-
-    def to_axis_a(self) -> AxisA:
-        return AxisA(categories=tuple(self.a))
-
-    def to_axis_b(self) -> AxisB:
-        return AxisB(entries=tuple(self.b))
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a dict for storage/serialization.
@@ -273,8 +222,7 @@ def inherit(parent: LabelState, child: LabelState) -> LabelState:
     and `assignment_provenance` stays the **parent's** ("derivation cannot
     launder provenance away" — a Provenance-security / FR-022 property),
     *unless* the child's is `raise-only-inspector` (which only adds taint).
-    Axis B: union of levels; `integrity_floor` = OR. Ports the legacy
-    `most_restrictive_inherit_axis_a/_b` semantics onto `LabelState`."""
+    Axis B: union of levels."""
     by_cat: dict[str, CategoryTag] = {t.category: t for t in parent.a}
     for cc in child.a:
         pc = by_cat.get(cc.category)
@@ -294,14 +242,8 @@ def inherit(parent: LabelState, child: LabelState) -> LabelState:
         )
     by_lvl: dict[ProvenanceLevel, ProvenanceTag] = {e.level: e for e in parent.b}
     for ce in child.b:
-        pe = by_lvl.get(ce.level)
-        if pe is None:
+        if ce.level not in by_lvl:
             by_lvl[ce.level] = ce
-        else:
-            by_lvl[ce.level] = ProvenanceTag(
-                level=ce.level,
-                integrity_floor=pe.integrity_floor or ce.integrity_floor,
-            )
     return LabelState(a=frozenset(by_cat.values()), b=frozenset(by_lvl.values()))
 
 
@@ -405,56 +347,3 @@ def apply_transfer(state: LabelState, transfer: TagTransfer) -> LabelState:
 # AxisD is an alias for backward compatibility with Session serialization.
 
 AxisD = DecisionContext
-
-
-# --- T118 most_restrictive_inherit (FR-013) -------------------------
-
-
-def most_restrictive_inherit_axis_a(parent: AxisA, child: AxisA) -> AxisA:
-    """Per-category most-restrictive merge of two AxisA sets.
-
-    For each category present in either side: tier = max(parent.tier,
-    child.tier); risk_ids = set-union; assignment_provenance = the
-    strictest source (parent wins as the more-authoritative source —
-    derivation cannot wash provenance away). FR-013 non-enumerated
-    inheritance per T118.
-    """
-    by_category: dict[str, CategoryTag] = {c.category: c for c in parent.categories}
-    for cc in child.categories:
-        if cc.category not in by_category:
-            by_category[cc.category] = cc
-            continue
-        pc = by_category[cc.category]
-        merged_risks = tuple(sorted(set(pc.risk_ids) | set(cc.risk_ids)))
-        # Parent's assignment_provenance is the more-authoritative
-        # source for derived data; only escalate to child's if child's
-        # is "raise-only-inspector" (which only adds taint, never clears).
-        merged_provenance = (
-            cc.assignment_provenance
-            if cc.assignment_provenance == "raise-only-inspector"
-            else pc.assignment_provenance
-        )
-        by_category[cc.category] = CategoryTag(
-            category=cc.category,
-            tier=max_of(pc.tier, cc.tier),
-            risk_ids=merged_risks,
-            assignment_provenance=merged_provenance,
-        )
-    return AxisA(categories=tuple(by_category.values()))
-
-
-def most_restrictive_inherit_axis_b(parent: AxisB, child: AxisB) -> AxisB:
-    """Most-restrictive merge of two AxisB sets: union of provenance
-    levels (taint never washes away); integrity_floor=True iff either
-    side had it. FR-013 non-enumerated inheritance per T118."""
-    by_level: dict[ProvenanceLevel, ProvenanceTag] = {e.level: e for e in parent.entries}
-    for ce in child.entries:
-        if ce.level not in by_level:
-            by_level[ce.level] = ce
-            continue
-        pe = by_level[ce.level]
-        by_level[ce.level] = ProvenanceTag(
-            level=ce.level,
-            integrity_floor=pe.integrity_floor or ce.integrity_floor,
-        )
-    return AxisB(entries=tuple(by_level.values()))

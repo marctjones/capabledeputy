@@ -63,15 +63,15 @@ async def test_all_returns_in_creation_order(store_path: Path) -> None:
 
 
 async def test_history_and_label_set_persist(store_path: Path) -> None:
-    from capabledeputy.policy.labels import AxisA
+    from capabledeputy.policy.labels import LabelState
 
     store = SessionStore(store_path)
     s = Session.new(
-        axis_a=AxisA(
-            categories=(
+        label_state=LabelState(
+            a=frozenset({
                 CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared"),
                 CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared"),
-            )
+            })
         ),
         capability_set=frozenset(
             {Capability(kind=CapabilityKind.READ_FS, pattern="/health/*")},

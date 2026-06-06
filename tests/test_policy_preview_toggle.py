@@ -51,16 +51,16 @@ async def test_enforcement_unchanged_when_preview_disabled(_started) -> None:
     """The whole point: disabling preview is NOT a security control.
     A tainted session still denies egress deterministically with the
     preview tool entirely absent."""
-    from capabledeputy.policy.labels import AxisB
+    from capabledeputy.policy.labels import LabelState
 
     app = await _started(False)
     s = await app.graph.new()
     cap = Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*")
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),))
+    label_state = LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}))
     app.graph._sessions[s.id] = replace(
         s,
         capability_set=frozenset({cap}),
-        axis_b=axis_b,
+        label_state=label_state,
     )
     outcome = await app.tool_client.call_tool(
         s.id,

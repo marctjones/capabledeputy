@@ -41,10 +41,9 @@ from capabledeputy.policy.decision_rules import (
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.engine import BINDING_UNBOUND_RULE, decide
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     AxisD,
     CategoryTag,
+    LabelState,
     ProvenanceLevel,
     ProvenanceTag,
 )
@@ -69,21 +68,21 @@ def _team_sharepoint_binding() -> SourceLocationLabelBinding:
     )
 
 
-def _personal_axis_a() -> AxisA:
-    return AxisA(
-        categories=(
+def _personal_label_state() -> LabelState:
+    return LabelState(
+        a=frozenset({
             CategoryTag(
                 category="personal",
                 tier=Tier.REGULATED,
                 assignment_provenance="human-declared",
             ),
-        ),
+        })
     )
 
 
-def _principal_axes() -> tuple[AxisB, AxisD]:
+def _principal_axes() -> tuple[LabelState, AxisD]:
     return (
-        AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),)),
+        LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)})),
         AxisD(initiator="principal:alice", authentication="device-bound"),
     )
 
@@ -118,12 +117,11 @@ def test_unbound_target_fails_closed() -> None:
     """When bindings is wired and the target doesn't match any
     binding, decide() denies with BINDING_UNBOUND_RULE. SC-022."""
     bindings = BindingSet(bindings=(_team_sharepoint_binding(),))
-    axis_b, axis_d = _principal_axes()
+    labels, axis_d = _principal_axes()
     result = decide(
         frozenset({_send_cap()}),
         Action(kind=CapabilityKind.WEB_FETCH, target="https://random.example.com/x"),
-        axis_a=_personal_axis_a(),
-        axis_b=axis_b,
+        labels=LabelState(a=_personal_label_state().a | labels.a, b=labels.b),
         axis_d=axis_d,
         effect_class="data.write_remote",
         rules_v2=DecisionRules(rules=()),
@@ -139,7 +137,7 @@ def test_case_varying_url_canonicalizes_then_matches_rule() -> None:
     is what the rule predicate sees."""
     bindings = BindingSet(bindings=(_team_sharepoint_binding(),))
     rules = DecisionRules(rules=(_deny_personal_to_sharepoint_rule(),))
-    axis_b, axis_d = _principal_axes()
+    labels, axis_d = _principal_axes()
     # Case-varied target
     result = decide(
         frozenset({_send_cap()}),
@@ -147,8 +145,7 @@ def test_case_varying_url_canonicalizes_then_matches_rule() -> None:
             kind=CapabilityKind.WEB_FETCH,
             target="HTTPS://Teams.SharePoint.COM/sites/x",
         ),
-        axis_a=_personal_axis_a(),
-        axis_b=axis_b,
+        labels=LabelState(a=_personal_label_state().a | labels.a, b=labels.b),
         axis_d=axis_d,
         effect_class="data.write_remote",
         rules_v2=rules,
@@ -162,15 +159,14 @@ def test_bound_target_passes_through_when_no_rule_matches() -> None:
     """When the destination is bound but no rule predicates on it,
     the v2 leg falls to the never-auto default ⇒ REQUIRE_APPROVAL."""
     bindings = BindingSet(bindings=(_team_sharepoint_binding(),))
-    axis_b, axis_d = _principal_axes()
+    labels, axis_d = _principal_axes()
     result = decide(
         frozenset({_send_cap()}),
         Action(
             kind=CapabilityKind.WEB_FETCH,
             target="https://teams.sharepoint.com/sites/other",
         ),
-        axis_a=AxisA(),  # no labeled categories
-        axis_b=axis_b,
+        labels=labels,  # no labeled categories
         axis_d=axis_d,
         effect_class="data.write_remote",
         rules_v2=DecisionRules(rules=()),
@@ -184,7 +180,7 @@ def test_no_bindings_set_falls_back_to_raw_target() -> None:
     """Back-compat: if PolicyContext doesn't provide bindings, the
     raw target is passed through to rule predicates unchanged."""
     rules = DecisionRules(rules=(_deny_personal_to_sharepoint_rule(),))
-    axis_b, axis_d = _principal_axes()
+    labels, axis_d = _principal_axes()
     # Without bindings, only an exact raw-string match against the
     # rule predicate would fire — case-varied input won't.
     result = decide(
@@ -193,8 +189,7 @@ def test_no_bindings_set_falls_back_to_raw_target() -> None:
             kind=CapabilityKind.WEB_FETCH,
             target="HTTPS://Teams.SharePoint.COM/sites/x",  # case-varied
         ),
-        axis_a=_personal_axis_a(),
-        axis_b=axis_b,
+        labels=LabelState(a=_personal_label_state().a | labels.a, b=labels.b),
         axis_d=axis_d,
         effect_class="data.write_remote",
         rules_v2=rules,
@@ -245,8 +240,10 @@ async def _make_session_with_personal_axis(graph: SessionGraph) -> Any:
                 ),
             },
         ),
-        axis_a=_personal_axis_a(),
-        axis_b=AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),)),
+        label_state=LabelState(
+            a=_personal_label_state().a,
+            b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
+        ),
         axis_d=AxisD(initiator="principal:alice", authentication="device-bound"),
     )
     graph._sessions[s.id] = s

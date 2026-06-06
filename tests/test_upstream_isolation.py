@@ -123,7 +123,7 @@ def test_parse_config_without_isolation_leaves_field_none() -> None:
                 "command": ["uvx", "mcp-server-fetch"],
                 "inherent_tags": {
                     "a": [],
-                    "b": [{"level": "external-untrusted", "integrity_floor": False}],
+                    "b": [{"level": "external-untrusted"}],
                 },
                 "tool_overrides": {
                     "fetch": {"capability_kind": "WEB_FETCH"},

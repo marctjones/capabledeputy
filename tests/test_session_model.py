@@ -24,13 +24,13 @@ def test_new_session_label_and_capability_sets_are_empty_by_default() -> None:
 
 
 def test_new_session_inherits_supplied_fields() -> None:
-    from capabledeputy.policy.labels import AxisB
-
     cap = Capability(kind=CapabilityKind.WEB_FETCH, pattern="*")
     s = Session.new(
         owner="marc",
         intent="research",
-        axis_b=AxisB(entries=(ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED),)),
+        label_state=LabelState(
+            b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+        ),
         capability_set=frozenset({cap}),
     )
     assert s.owner == "marc"
@@ -58,19 +58,17 @@ def test_is_terminal_true_for_done_and_aborted() -> None:
 
 
 def test_session_round_trip_through_dict() -> None:
-    from capabledeputy.policy.labels import AxisA
-
     parent_id = uuid4()
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="/home/*")
     s = Session.new(
         parent=parent_id,
         owner="marc",
         intent="test",
-        axis_a=AxisA(
-            categories=(
+        label_state=LabelState(
+            a=frozenset({
                 CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared"),
                 CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared"),
-            )
+            })
         ),
         capability_set=frozenset({cap}),
         history=(Turn(turn_id=0, role="user", content="hello", timestamp=datetime.now(UTC)),),
@@ -80,21 +78,19 @@ def test_session_round_trip_through_dict() -> None:
 
 
 def test_session_dict_serializes_label_set_sorted() -> None:
-    from capabledeputy.policy.labels import AxisA, AxisB
-
     s = Session.new(
-        axis_a=AxisA(
-            categories=(
+        label_state=LabelState(
+            a=frozenset({
                 CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared"),
-            )
+            }),
+            b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})
         ),
-        axis_b=AxisB(entries=(ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED),)),
     )
     d = s.to_dict()
-    # The axis_a and axis_b are serialized separately
-    assert "axis_a" in d
-    assert "axis_b" in d
-    assert len(d["axis_a"]) > 0 or len(d["axis_b"]) > 0
+    # The label_state is serialized as a single dict with "a" and "b" keys
+    assert "label_state" in d
+    ls = d["label_state"]
+    assert len(ls.get("a", [])) > 0 or len(ls.get("b", [])) > 0
 
 
 def test_session_dict_serializes_capability_set_as_list_of_dicts() -> None:

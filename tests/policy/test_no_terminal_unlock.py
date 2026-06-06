@@ -38,10 +38,9 @@ from capabledeputy.policy.envelope import (
     RiskPreference,
 )
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     AxisD,
     CategoryTag,
+    LabelState,
     ProvenanceLevel,
     ProvenanceTag,
 )
@@ -57,17 +56,11 @@ from capabledeputy.policy.overrides import (
 from capabledeputy.policy.tiers import Tier
 
 
-def _prohibited_axes() -> tuple[AxisA, AxisB, AxisD]:
-    axis_a = AxisA(
-        categories=(CategoryTag(category="weapons_specs", tier=Tier.PROHIBITED),),
+def _prohibited_labels() -> LabelState:
+    return LabelState(
+        a=frozenset({CategoryTag(category="weapons_specs", tier=Tier.PROHIBITED)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
-    axis_d = AxisD(
-        initiator="principal:alice",
-        authentication="device-bound",
-        expectedness="expected",
-    )
-    return axis_a, axis_b, axis_d
 
 
 def test_ratified_auto_rule_cannot_force_prohibited_auto_via_default() -> None:
@@ -82,7 +75,12 @@ def test_ratified_auto_rule_cannot_force_prohibited_auto_via_default() -> None:
     composition layer above (envelope dial + decide.py) is what
     enforces SC-006 — and the next test demonstrates that layer.
     """
-    axis_a, axis_b, axis_d = _prohibited_axes()
+    labels = _prohibited_labels()
+    axis_d = AxisD(
+        initiator="principal:alice",
+        authentication="device-bound",
+        expectedness="expected",
+    )
     rule = DecisionRule(
         rule_id="optimistic-auto",
         predicate=RulePredicate(axis_a_category="weapons_specs"),
@@ -93,8 +91,7 @@ def test_ratified_auto_rule_cannot_force_prohibited_auto_via_default() -> None:
     rules = DecisionRules(rules=(rule,))
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="describe",
         target="anything",

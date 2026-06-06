@@ -4,6 +4,26 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [Unreleased] — 0.15.1
+
+Post-0.15.0 cleanup of deferred redesign debt (no behavior change).
+
+- **R4b.4**: collapsed `Session.axis_a`/`axis_b` into a single
+  `label_state: LabelState` field (store schema → v8) and **deleted** the
+  now-internal `AxisA`/`AxisB` wrapper classes, the
+  `most_restrictive_inherit_axis_a/_b` legacy functions, and the
+  `LabelState.from_axes`/`to_axis_a`/`to_axis_b` converters. `decide()`,
+  `decision_rules.evaluate`/`RulePredicate.matches`,
+  `assurance.control_plane_admissible`, the raise-only `inspector_port`,
+  and `PolicyDecision` (now `labels_snapshot`) all type directly on
+  `LabelState`. Also removed the vestigial `ProvenanceTag.integrity_floor`
+  flag (the integrity floor is an `Operation.required_floor`). Pure
+  internal-representation tidy-up; enforcement unchanged, suite green.
+- **Fix**: `ToolCallRecord.{arg,inherent}_labels` are flat category/level
+  strings post-R7 (bundle wire format), not `Label`; corrected a latent
+  `label.value` serialization in `programmatic_handlers`.
+- **Chore**: ruff auto-fixable lint cleanup (unused imports, import sort).
+
 ## [0.15.0] — 2026-06-06
 
 Completes the spec-003 label-model redesign: the four-axis `LabelState`

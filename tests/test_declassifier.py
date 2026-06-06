@@ -119,7 +119,7 @@ def test_projector_keeps_allowed_drops_rest() -> None:
     assert result.structural_proof_kind == "schema-projected"
 
 
-def test_projector_lowers_axis_b_to_trusted() -> None:
+def test_projector_lowers_provenance_level_to_trusted() -> None:
     proj = SchemaProjector(allowed_keys=("ok",), lower_axis_b_level="trusted")
     result = proj.declassify(
         value={"ok": "yes", "noise": "bad"},

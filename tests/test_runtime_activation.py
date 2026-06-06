@@ -121,8 +121,7 @@ async def test_runtime_activated_email_send_denies_via_reversibility_gate(
         id=s.id,
         parent=s.parent,
         status=s.status,
-        axis_a=s.axis_a,
-        axis_b=s.axis_b,
+        label_state=s.label_state,
         axis_d=s.axis_d,
         capability_set=frozenset(
             {
@@ -190,8 +189,7 @@ async def test_legacy_app_without_policy_context_allows_same_dispatch(
         id=s.id,
         parent=s.parent,
         status=s.status,
-        axis_a=s.axis_a,
-        axis_b=s.axis_b,
+        label_state=s.label_state,
         axis_d=s.axis_d,
         capability_set=frozenset(
             {

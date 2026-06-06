@@ -19,7 +19,7 @@ from anyio.to_thread import run_sync as run_in_thread
 
 from capabledeputy.session.model import Session
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -44,8 +44,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     revoked_audit_ids TEXT NOT NULL DEFAULT '[]',
     -- 003 v0.9 four-axis storage shape (T008, FR-045). axis_c lives on
     -- capability_set/ToolDefinition, not on the session.
-    axis_a TEXT NOT NULL DEFAULT '[]',
-    axis_b TEXT NOT NULL DEFAULT '[]',
+    -- R4b.4: collapsed axis_a + axis_b into label_state.
+    label_state TEXT NOT NULL DEFAULT '{}',
     axis_d TEXT NOT NULL DEFAULT '{}',
     purpose_handle TEXT NOT NULL DEFAULT 'unset',
     reference_handles TEXT NOT NULL DEFAULT '{}',
@@ -213,12 +213,12 @@ class SessionStore:
                     created_at, updated_at, owner,
                     tool_aliasing, prefer_programmatic, used_kinds, cap_uses,
                     revoked_audit_ids,
-                    axis_a, axis_b, axis_d, purpose_handle,
+                    label_state, axis_d, purpose_handle,
                     reference_handles, risk_preference_at_spawn,
                     effective_isolation_region_id, enforcement_mode,
                     first_use_prompt_enabled
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status = excluded.status,
                     intent = excluded.intent,
@@ -232,8 +232,7 @@ class SessionStore:
                     used_kinds = excluded.used_kinds,
                     cap_uses = excluded.cap_uses,
                     revoked_audit_ids = excluded.revoked_audit_ids,
-                    axis_a = excluded.axis_a,
-                    axis_b = excluded.axis_b,
+                    label_state = excluded.label_state,
                     axis_d = excluded.axis_d,
                     purpose_handle = excluded.purpose_handle,
                     reference_handles = excluded.reference_handles,
@@ -258,8 +257,7 @@ class SessionStore:
                     json.dumps(d["used_kinds"]),
                     json.dumps(d["cap_uses"]),
                     json.dumps(d["revoked_audit_ids"]),
-                    json.dumps(d["axis_a"]),
-                    json.dumps(d["axis_b"]),
+                    json.dumps(d["label_state"]),
                     json.dumps(d["axis_d"]),
                     d["purpose_handle"],
                     json.dumps(d["reference_handles"]),
@@ -323,8 +321,7 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "used_kinds": json.loads(row["used_kinds"]),
             "cap_uses": json.loads(row["cap_uses"]),
             "revoked_audit_ids": json.loads(row["revoked_audit_ids"]),
-            "axis_a": json.loads(str(_col("axis_a", "[]"))),
-            "axis_b": json.loads(str(_col("axis_b", "[]"))),
+            "label_state": json.loads(str(_col("label_state", "{}"))),
             "axis_d": json.loads(str(_col("axis_d", "{}"))),
             "purpose_handle": _col("purpose_handle", "unset"),
             "reference_handles": json.loads(str(_col("reference_handles", "{}"))),

@@ -95,7 +95,7 @@ async def test_declassifier_runs_and_transforms_value(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_declassifier_reduces_label_propagation(tmp_path: Path) -> None:
-    """When a declassifier lowers axis_b to 'trusted', untrusted labels
+    """When a declassifier lowers provenance level to 'trusted', untrusted labels
     drop from the per-result propagation."""
     writer = AuditWriter(tmp_path / "audit.jsonl")
     graph = SessionGraph(audit=writer)

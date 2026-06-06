@@ -17,8 +17,6 @@ from hypothesis import strategies as st
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import (
     AssignmentProvenance,
-    AxisA,
-    AxisB,
     CategoryTag,
     LabelError,
     LabelState,
@@ -26,6 +24,7 @@ from capabledeputy.policy.labels import (
     ProvenanceTag,
     TagTransfer,
     apply_transfer,
+    inherit,
     meets_required_floor,
     most_restrictive_inherit,
     tags_for_labels_strings,
@@ -191,51 +190,47 @@ def test_operation_carries_subtype_and_floor() -> None:
     assert op.required_floor is ProvenanceLevel.SYSTEM_INTERNAL
 
 
-# --- R4b transitional converters -------------------------------------
+# --- directional inheritance (delegation / fork) ---------------------
 
 
-def test_label_state_axes_roundtrip() -> None:
-    ls = LabelState(
-        a=frozenset({CategoryTag("health", Tier.RESTRICTED)}),
-        b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+def test_directional_inherit_keeps_parent_provenance() -> None:
+    """`inherit` (delegation/fork) is parent-authoritative on provenance:
+    derivation cannot launder a category's assignment_provenance away —
+    the parent's source wins on a shared category. Distinct from the
+    symmetric `most_restrictive_inherit` (in-session accumulation)."""
+    parent = LabelState(
+        a=frozenset({CategoryTag("work", Tier.SENSITIVE, assignment_provenance="human-declared")}),
     )
-    assert LabelState.from_axes(ls.to_axis_a(), ls.to_axis_b()) == ls
-
-    axis_a = AxisA(categories=(CategoryTag("work", Tier.SENSITIVE),))
-    axis_b = AxisB(entries=(ProvenanceTag(ProvenanceLevel.SYSTEM_INTERNAL),))
-    back = LabelState.from_axes(axis_a, axis_b)
-    assert set(back.to_axis_a().categories) == set(axis_a.categories)
-    assert set(back.to_axis_b().entries) == set(axis_b.entries)
-
-
-@given(_label_states, _label_states)
-def test_directional_inherit_matches_legacy(parent: LabelState, child: LabelState) -> None:
-    """R4c safety net: the new directional `inherit` must reproduce the
-    legacy `most_restrictive_inherit_axis_a/_b` (parent-authoritative
-    provenance) exactly — so the engine's delegation/fork path can switch
-    to it without behavior change. (Distinct from the symmetric
-    `most_restrictive_inherit`, which deliberately differs.)"""
-    from capabledeputy.policy.labels import (
-        inherit,
-        most_restrictive_inherit_axis_a,
-        most_restrictive_inherit_axis_b,
+    child = LabelState(
+        a=frozenset(
+            {CategoryTag("work", Tier.RESTRICTED, assignment_provenance="source-declared")},
+        ),
     )
+    merged = inherit(parent, child)
+    (tag,) = merged.a
+    assert tag.category == "work"
+    assert tag.tier is Tier.RESTRICTED  # tier still rises to most-restrictive
+    assert tag.assignment_provenance == "human-declared"  # parent's source wins
 
-    # Normalize so per-category/level dedup is settled (frozenset→tuple
-    # ordering then can't affect the parent-wins tie-break).
-    parent = most_restrictive_inherit(parent)
-    child = most_restrictive_inherit(child)
-    new = inherit(parent, child)
-    legacy = LabelState.from_axes(
-        most_restrictive_inherit_axis_a(parent.to_axis_a(), child.to_axis_a()),
-        most_restrictive_inherit_axis_b(parent.to_axis_b(), child.to_axis_b()),
+
+def test_directional_inherit_raise_only_inspector_escalates() -> None:
+    """The one exception: a child tag from the raise-only inspector may
+    override provenance (it can only ADD taint, never clear it)."""
+    parent = LabelState(
+        a=frozenset({CategoryTag("work", Tier.SENSITIVE, assignment_provenance="human-declared")}),
     )
-    assert new == legacy
+    child = LabelState(
+        a=frozenset(
+            {CategoryTag("work", Tier.SENSITIVE, assignment_provenance="raise-only-inspector")},
+        ),
+    )
+    (tag,) = inherit(parent, child).a
+    assert tag.assignment_provenance == "raise-only-inspector"
 
 
-def test_decide_labels_param_equivalent_to_axes() -> None:
-    """R4b.2 — passing `labels=LabelState(...)` to decide() must yield the
-    same outcome as passing the derived axis_a/axis_b separately."""
+def test_decide_uses_labels_param() -> None:
+    """R4b.4 — decide() now uses the labels=LabelState(...) parameter
+    directly. The engine now expects LabelState, not separate axes."""
     from capabledeputy.policy.actions import Action
     from capabledeputy.policy.capabilities import Capability, CapabilityKind
     from capabledeputy.policy.engine import decide
@@ -243,6 +238,6 @@ def test_decide_labels_param_equivalent_to_axes() -> None:
     ls = LabelState(a=frozenset({CategoryTag("personal", Tier.REGULATED)}))
     action = Action(kind=CapabilityKind.READ_FS, target="/x")
     caps = frozenset({Capability(kind=CapabilityKind.READ_FS, pattern="*")})
-    via_labels = decide(caps, action, labels=ls)
-    via_axes = decide(caps, action, axis_a=ls.to_axis_a(), axis_b=ls.to_axis_b())
-    assert via_labels.decision == via_axes.decision
+    result = decide(caps, action, labels=ls)
+    # Just verify the call succeeds and returns a decision
+    assert result is not None

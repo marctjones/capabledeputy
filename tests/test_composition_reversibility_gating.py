@@ -28,8 +28,6 @@ from capabledeputy.policy.engine import (
     decide,
 )
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     AxisD,
     LabelState,
     ProvenanceLevel,
@@ -54,10 +52,9 @@ def _scratch_cap() -> Capability:
     )
 
 
-def _empty_axes() -> tuple[AxisA, AxisB, AxisD]:
+def _empty_label_state() -> tuple[LabelState, AxisD]:
     return (
-        AxisA(),
-        AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),)),
+        LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)})),
         AxisD(initiator="principal:alice"),
     )
 
@@ -74,12 +71,11 @@ def test_reversible_system_non_egressing_optimistic_auto() -> None:
     ⇒ AUTO without prompt. The v2 default would otherwise have been
     SUGGEST → REQUIRE_APPROVAL; the optimistic carve-out relaxes it
     to ALLOW."""
-    axis_a, axis_b, axis_d = _empty_axes()
+    labels, axis_d = _empty_label_state()
     result = decide(
         frozenset({_scratch_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/scratch/file"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write_scratch",
         rules_v2=DecisionRules(rules=()),
@@ -96,12 +92,11 @@ def test_reversible_system_non_egressing_optimistic_auto() -> None:
 def test_reversible_system_egressing_does_not_auto() -> None:
     """Same reversibility, but the effect class marks egress (e.g.,
     write_remote). Optimistic carve-out doesn't apply."""
-    axis_a, axis_b, axis_d = _empty_axes()
+    labels, axis_d = _empty_label_state()
     result = decide(
         frozenset({_scratch_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/scratch/file"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write_remote",  # ← egressing
         rules_v2=DecisionRules(rules=()),
@@ -118,12 +113,11 @@ def test_reversible_system_egressing_does_not_auto() -> None:
 
 def test_irreversible_effect_denies() -> None:
     """Irreversible effect ⇒ DENY regardless of capability holdings."""
-    axis_a, axis_b, axis_d = _empty_axes()
+    labels, axis_d = _empty_label_state()
     result = decide(
         frozenset({_scratch_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/scratch/file"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write_scratch",
         rules_v2=DecisionRules(rules=()),
@@ -142,12 +136,11 @@ def test_reversible_human_requires_approval() -> None:
     the gate produces REQUIRE_APPROVAL. (The composing v2 default
     already ratchets to REQUIRE_APPROVAL too; either rule wins on
     a tie. What matters is the decision.)"""
-    axis_a, axis_b, axis_d = _empty_axes()
+    labels, axis_d = _empty_label_state()
     result = decide(
         frozenset({_scratch_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/scratch/file"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write_scratch",
         rules_v2=DecisionRules(rules=()),
@@ -165,7 +158,7 @@ def test_social_commitment_forced_irreversible_even_if_declared_reversible() -> 
     irreversible. A reversible/system declaration on the tool DOES
     NOT win. Use a matching capability so the legacy path doesn't
     DENY on missing-cap; the gate's DENY is the decision."""
-    axis_a, axis_b, axis_d = _empty_axes()
+    labels, axis_d = _empty_label_state()
     matching_cap = Capability(
         kind=CapabilityKind.WRITE_FS,
         pattern="*",
@@ -175,8 +168,7 @@ def test_social_commitment_forced_irreversible_even_if_declared_reversible() -> 
     result = decide(
         frozenset({matching_cap}),
         Action(kind=CapabilityKind.WRITE_FS, target="x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="social.send_email",
         rules_v2=DecisionRules(rules=()),
@@ -212,12 +204,11 @@ def test_legacy_only_path_also_applies_gate() -> None:
 def test_no_reversibility_supplied_falls_to_v2_default() -> None:
     """Back-compat: without effective_reversibility, the gate is
     inert and the v2 default fires normally."""
-    axis_a, axis_b, axis_d = _empty_axes()
+    labels, axis_d = _empty_label_state()
     result = decide(
         frozenset({_scratch_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/scratch/file"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write_scratch",
         rules_v2=DecisionRules(rules=()),

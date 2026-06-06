@@ -37,9 +37,9 @@ class ReferenceHandleError(RuntimeError):
 
 @dataclass(frozen=True)
 class ResolvedLabels:
-    """The frozen-at-fetch labels carried with a handle. Kept here as
-    a stringly-typed snapshot to avoid a circular import on AxisA/B —
-    callers serialize their AxisA/B into this opaque-shaped dict."""
+    """The frozen-at-fetch labels carried with a handle. A stringly-typed
+    snapshot (category ids + provenance level strings) — the handle wire
+    format; callers project a `LabelState` into these tuples."""
 
     axis_a: tuple[str, ...] = field(default_factory=tuple)  # category ids
     axis_b: tuple[str, ...] = field(default_factory=tuple)  # provenance levels

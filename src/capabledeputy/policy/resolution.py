@@ -416,8 +416,8 @@ def check_integrity_floor(
     if `input_level` is below `floor_level` on the provenance lattice.
 
     Both arguments are the string forms of `ProvenanceLevel` to keep
-    this helper string-based (callers may not have AxisB constructed
-    when they invoke this from a non-AxisB path)."""
+    this helper string-based (callers may pass raw level strings without
+    constructing a LabelState)."""
     if floor_level not in _INTEGRITY_RANK:
         raise IntegrityFloorError(floor=floor_level, input_level=input_level)
     if input_level not in _INTEGRITY_RANK:

@@ -12,9 +12,8 @@ from capabledeputy.audit.events import Event, EventType
 from capabledeputy.llm.types import ToolDescription
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     CategoryTag,
+    LabelState,
     ProvenanceLevel,
     ProvenanceTag,
 )
@@ -41,8 +40,10 @@ def rich_session() -> Session:
         intent="financial-review",
         clearance_profile_id="tier_2",
         risk_preference_at_spawn="balanced",
-        axis_a=AxisA(categories=(CategoryTag(category="financial", tier=Tier.REGULATED),)),
-        axis_b=AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),)),
+        label_state=LabelState(
+            a=frozenset({CategoryTag(category="financial", tier=Tier.REGULATED)}),
+            b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+        ),
     )
 
 
@@ -137,7 +138,9 @@ class TestLLMContextDeterminism:
         ctx1 = build_llm_context(empty_session, tools, registry, events)
 
         session_with_label = Session.new(
-            axis_b=AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),)),
+            label_state=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+            ),
         )
         ctx2 = build_llm_context(session_with_label, tools, registry, events)
 
@@ -245,7 +248,9 @@ class TestToolInclusionAndHints:
         tool_desc, tool_defn = email_tool
 
         session = Session.new(
-            axis_b=AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),)),
+            label_state=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+            ),
         )
 
         tools = [tool_desc]
@@ -265,7 +270,9 @@ class TestToolInclusionAndHints:
         tool_desc, tool_defn = email_tool
 
         session = Session.new(
-            axis_a=AxisA(categories=(CategoryTag(category="financial", tier=Tier.REGULATED),)),
+            label_state=LabelState(
+                a=frozenset({CategoryTag(category="financial", tier=Tier.REGULATED)}),
+            ),
         )
 
         tools = [tool_desc]

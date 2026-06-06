@@ -53,8 +53,7 @@ async def test_preview_deny_for_blocked_egress(app: App) -> None:
     tainted = replace(
         s,
         capability_set=frozenset({cap}),
-        axis_a=tainted_label_state.to_axis_a(),
-        axis_b=tainted_label_state.to_axis_b(),
+        label_state=tainted_label_state,
     )
     app.graph._sessions[s.id] = tainted
 

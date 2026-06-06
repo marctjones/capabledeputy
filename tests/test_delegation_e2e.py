@@ -144,8 +144,7 @@ async def test_e2e_us1_us2_us3_combined() -> None:
     d = decide(
         combined_pre,
         action,
-        axis_a=child_session.axis_a,
-        axis_b=child_session.axis_b,
+        labels=child_session.label_state,
         axis_d=child_session.axis_d,
     )
     assert d.decision == Decision.ALLOW
@@ -156,8 +155,7 @@ async def test_e2e_us1_us2_us3_combined() -> None:
     d = decide(
         combined_pre,
         action,
-        axis_a=child_session.axis_a,
-        axis_b=child_session.axis_b,
+        labels=child_session.label_state,
         axis_d=child_session.axis_d,
         revoked_audit_ids=revoked_set,
     )

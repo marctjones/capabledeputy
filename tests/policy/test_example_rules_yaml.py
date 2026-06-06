@@ -14,10 +14,9 @@ from pathlib import Path
 
 from capabledeputy.policy.decision_rules import RuleOutcome, evaluate, load
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     AxisD,
     CategoryTag,
+    LabelState,
     ProvenanceLevel,
     ProvenanceTag,
 )
@@ -43,10 +42,10 @@ def test_repo_rules_yaml_loads() -> None:
 
 def test_cron_backup_scenario_resolves_to_auto_via_yaml() -> None:
     rules = load(_RULES_YAML)
-    axis_a = AxisA(
-        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL),))
     axis_d = AxisD(
         initiator="cron:backup-job",
         authentication="device-bound",
@@ -54,8 +53,7 @@ def test_cron_backup_scenario_resolves_to_auto_via_yaml() -> None:
     )
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="backup_storage",
         target="s3://backups/db",
@@ -68,10 +66,10 @@ def test_unauth_inbound_backup_falls_to_default_suggest() -> None:
     """Same effect_class, different axis_d — no rule matches, default
     SUGGEST holds (FR-011 never-auto)."""
     rules = load(_RULES_YAML)
-    axis_a = AxisA(
-        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL),))
     axis_d = AxisD(
         initiator="inbound:unauthenticated",
         authentication="none",
@@ -79,8 +77,7 @@ def test_unauth_inbound_backup_falls_to_default_suggest() -> None:
     )
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="backup_storage",
         target="s3://backups/db",
@@ -90,10 +87,10 @@ def test_unauth_inbound_backup_falls_to_default_suggest() -> None:
 
 def test_share_to_project_p_member_resolves_to_auto() -> None:
     rules = load(_RULES_YAML)
-    axis_a = AxisA(
-        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -102,8 +99,7 @@ def test_share_to_project_p_member_resolves_to_auto() -> None:
     )
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="share",
         target="bob@acme.example",
@@ -114,10 +110,10 @@ def test_share_to_project_p_member_resolves_to_auto() -> None:
 
 def test_share_to_non_member_falls_to_suggest() -> None:
     rules = load(_RULES_YAML)
-    axis_a = AxisA(
-        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -126,8 +122,7 @@ def test_share_to_non_member_falls_to_suggest() -> None:
     )
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="share",
         target="rival@example.com",
@@ -142,10 +137,10 @@ def test_personal_email_to_family_member_resolves_to_suggest() -> None:
     but the rule marks the counterparty as recognized rather than
     falling to the default unknown."""
     rules = load(_RULES_YAML)
-    axis_a = AxisA(
-        categories=(CategoryTag(category="personal", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="personal", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -154,8 +149,7 @@ def test_personal_email_to_family_member_resolves_to_suggest() -> None:
     )
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="send_email",
         target="spouse@example.com",
@@ -172,10 +166,10 @@ def test_personal_email_to_non_family_falls_to_default_suggest() -> None:
     can use that to surface the counterparty as unknown rather than
     recognized."""
     rules = load(_RULES_YAML)
-    axis_a = AxisA(
-        categories=(CategoryTag(category="personal", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="personal", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -184,8 +178,7 @@ def test_personal_email_to_non_family_falls_to_default_suggest() -> None:
     )
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="send_email",
         target="stranger@example.com",
@@ -199,10 +192,10 @@ def test_work_email_to_workteam_member_resolves_to_suggest() -> None:
     """Symmetric to the family-personal rule but for work content
     forwarded to a recognized work-team member."""
     rules = load(_RULES_YAML)
-    axis_a = AxisA(
-        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -211,8 +204,7 @@ def test_work_email_to_workteam_member_resolves_to_suggest() -> None:
     )
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="send_email",
         target="coworker@example.com",
@@ -228,10 +220,10 @@ def test_work_email_to_family_member_falls_to_default_suggest() -> None:
     differs. Falls to default SUGGEST — operator approval card will
     surface this as an unrecognized counterparty for the work axis."""
     rules = load(_RULES_YAML)
-    axis_a = AxisA(
-        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -240,8 +232,7 @@ def test_work_email_to_family_member_falls_to_default_suggest() -> None:
     )
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="send_email",
         target="spouse@example.com",
@@ -260,10 +251,10 @@ def test_send_at_night_escalates_to_require_approval() -> None:
     with the after-hours rule. Most-restrictive wins —
     REQUIRE_APPROVAL beats SUGGEST."""
     rules = load(_RULES_YAML)
-    axis_a = AxisA(
-        categories=(CategoryTag(category="personal", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="personal", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -272,8 +263,7 @@ def test_send_at_night_escalates_to_require_approval() -> None:
     )
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="send_email",
         target="spouse@example.com",
@@ -291,10 +281,10 @@ def test_phi_egress_denied_even_to_family() -> None:
     accidental disclosure of health data to a spouse who isn't
     the patient."""
     rules = load(_RULES_YAML)
-    axis_a = AxisA(
-        categories=(CategoryTag(category="phi", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="phi", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -303,8 +293,7 @@ def test_phi_egress_denied_even_to_family() -> None:
     )
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="send_email",
         target="spouse@example.com",
@@ -320,10 +309,10 @@ def test_small_reversible_purchase_auto() -> None:
     the AUTO rule — no approval card. Operator-set cap on
     QUEUE_PURCHASE max_amount is the dollar-level guard."""
     rules = load(_RULES_YAML)
-    axis_a = AxisA(
-        categories=(CategoryTag(category="personal", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="personal", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -332,8 +321,7 @@ def test_small_reversible_purchase_auto() -> None:
     )
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="queue_purchase",
         target="amazon",
@@ -348,10 +336,10 @@ def test_irreversible_purchase_falls_to_default_suggest() -> None:
     ticket, custom build) does NOT hit the auto rule — falls to
     the FR-011 SUGGEST default cell. Approval card required."""
     rules = load(_RULES_YAML)
-    axis_a = AxisA(
-        categories=(CategoryTag(category="personal", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="personal", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -360,8 +348,7 @@ def test_irreversible_purchase_falls_to_default_suggest() -> None:
     )
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="queue_purchase",
         target="ticketmaster",

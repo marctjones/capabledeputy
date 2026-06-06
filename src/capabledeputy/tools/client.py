@@ -195,13 +195,11 @@ def build_policy_decided_payload(
             {"description": r.description, "origin": r.origin}
             for r in decision.refused_relax_inputs
         ]
-    # T048 — full Axis-A/B/D snapshot when v2 ran. Enough for T041
-    # audit-reconstruction to rebuild AxisA/B/D from the payload and
+    # T048 — full Label-State/D snapshot when v2 ran. Enough for T041
+    # audit-reconstruction to rebuild LabelState/D from the payload and
     # replay evaluate() to the same outcome (FR-021).
-    if decision.axis_a_snapshot is not None:
-        payload["axis_a"] = decision.axis_a_snapshot.to_dict()
-    if decision.axis_b_snapshot is not None:
-        payload["axis_b"] = decision.axis_b_snapshot.to_dict()
+    if decision.labels_snapshot is not None:
+        payload["label_state"] = decision.labels_snapshot.to_dict()
     if decision.axis_d_snapshot is not None:
         payload["axis_d"] = decision.axis_d_snapshot.to_dict()
     if decision.effect_class is not None:
@@ -517,12 +515,12 @@ class LabeledToolClient:
         )
 
         # FR-025 raise-only inspector hook. Inspectors examine the
-        # returned value + current axes and may return a delta. The
-        # delta is composed via most_restrictive_inherit on AxisA/B,
-        # which is monotone — inspectors can only RAISE taint, never
-        # clear it. The runtime contract is structural: even a
-        # buggy/malicious inspector that returns a lower-restriction
-        # AxisA cannot lower the actual session axes.
+        # returned value + current label_state and may return a delta.
+        # The delta is composed via the directional `inherit` on
+        # LabelState, which is monotone — inspectors can only RAISE
+        # taint, never clear it. The runtime contract is structural:
+        # even a buggy/malicious inspector that returns a
+        # lower-restriction LabelState cannot lower the session's taint.
         if self._policy_context is not None and self._policy_context.inspectors:
             await self._apply_inspectors(session, result.output)
 
@@ -874,50 +872,48 @@ class LabeledToolClient:
         value: object,
     ) -> None:
         """FR-025 — run every registered raise-only inspector against
-        the just-returned value + current session axes; compose any
+        the just-returned value + current session label_state; compose any
         returned taint into the session via most_restrictive_inherit.
         Refused to lower — the composition is monotone by construction."""
         from dataclasses import replace as dc_replace
 
-        from capabledeputy.policy.labels import LabelState, inherit
+        from capabledeputy.policy.labels import inherit
 
         if self._policy_context is None:
             return
-        new_axis_a = session.axis_a
-        new_axis_b = session.axis_b
+        new_label_state = session.label_state
         for inspector in self._policy_context.inspectors:
             delta = inspector.inspect(
                 value=value,
-                current_axis_a=new_axis_a,
-                current_axis_b=new_axis_b,
+                current_label_state=new_label_state,
             )
-            pre_a, pre_b = new_axis_a, new_axis_b
-            # R4b.3 — route inspector taint-raise through the directional
+            pre_state = new_label_state
+            # R4b.4 — route inspector taint-raise through the directional
             # LabelState.inherit (session-authoritative; raise-only-inspector
-            # exception). Behavior-preserving vs the legacy axis inherit
-            # (proven by test_directional_inherit_matches_legacy).
+            # exception). The delta returns a raise_state which is composed
+            # monotonically into the session's label_state.
             raised = inherit(
-                LabelState.from_axes(new_axis_a, new_axis_b),
-                LabelState.from_axes(delta.axis_a_raise, delta.axis_b_raise),
+                new_label_state,
+                delta.raise_state,
             )
-            new_axis_a, new_axis_b = raised.to_axis_a(), raised.to_axis_b()
+            new_label_state = raised
             # Audit each inspector that actually raised something. A
-            # no-op inspector (delta with empty axes) doesn't fire an
+            # no-op inspector (delta with empty state) doesn't fire an
             # event — keeps the audit stream signal-rich.
-            if new_axis_a != pre_a or new_axis_b != pre_b:
+            if new_label_state != pre_state:
                 await self._audit.write(
                     Event(
                         event_type=EventType.INSPECTOR_APPLIED,
                         session_id=session.id,
                         payload={
                             "inspector": getattr(inspector, "__class__", type(inspector)).__name__,
-                            "raised_axis_a": new_axis_a != pre_a,
-                            "raised_axis_b": new_axis_b != pre_b,
+                            "raised_axis_a": len(new_label_state.a) > len(pre_state.a),
+                            "raised_axis_b": len(new_label_state.b) > len(pre_state.b),
                         },
                     ),
                 )
-        if new_axis_a != session.axis_a or new_axis_b != session.axis_b:
-            updated = dc_replace(session, axis_a=new_axis_a, axis_b=new_axis_b)
+        if new_label_state != session.label_state:
+            updated = dc_replace(session, label_state=new_label_state)
             await self._graph._save(updated)
             self._graph._sessions[session.id] = updated
 

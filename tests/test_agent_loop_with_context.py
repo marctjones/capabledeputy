@@ -13,7 +13,7 @@ from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, Role, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import AxisA, CategoryTag
+from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.graph import SessionGraph
@@ -168,14 +168,14 @@ class TestSystemPromptReplacement:
         s = await graph.new()
         s_labeled = replace(
             s,
-            axis_a=AxisA(
-                categories=(
+            label_state=LabelState(
+                a=frozenset({
                     CategoryTag(
                         "personal",
                         Tier.REGULATED,
                         assignment_provenance="source-declared",
                     ),
-                )
+                })
             ),
             clearance_profile_id="tier_1",
             intent="calendar-review",

@@ -32,8 +32,6 @@ from capabledeputy.policy.decision_rules import (
 )
 from capabledeputy.policy.engine import V2_RULE_PREFIX, decide
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     AxisD,
     CategoryTag,
     LabelState,
@@ -57,20 +55,17 @@ def _send_action() -> Action:
     return Action(kind=CapabilityKind.SEND_EMAIL, target="alice@example.com")
 
 
-def _axis_a_personal() -> AxisA:
-    return AxisA(
-        categories=(
+def _label_state_personal() -> LabelState:
+    return LabelState(
+        a=frozenset({
             CategoryTag(
                 category="personal",
                 tier=Tier.SENSITIVE,
                 assignment_provenance="human-declared",
             ),
-        ),
+        }),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-
-
-def _axis_b_direct() -> AxisB:
-    return AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
 
 
 def _axis_d_principal() -> AxisD:
@@ -119,7 +114,7 @@ def test_omitting_v2_inputs_yields_legacy_behavior() -> None:
     result = decide(
         frozenset({cap}),
         _send_action(),
-        labels=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)})),
+        labels=_label_state_personal(),
     )
     assert result.decision == Decision.ALLOW
     assert result.v2_outcome is None
@@ -132,8 +127,7 @@ def test_partial_v2_inputs_yields_legacy_behavior() -> None:
     result = decide(
         frozenset({cap}),
         _send_action(),
-        axis_a=_axis_a_personal(),
-        axis_b=_axis_b_direct(),
+        labels=_label_state_personal(),
         axis_d=_axis_d_principal(),
         effect_class="send_email",
         rules_v2=None,
@@ -153,8 +147,7 @@ def test_v2_default_suggest_ratchets_legacy_allow_to_require_approval() -> None:
     result = decide(
         frozenset({cap}),
         _send_action(),
-        axis_a=_axis_a_personal(),
-        axis_b=_axis_b_direct(),
+        labels=_label_state_personal(),
         axis_d=_axis_d_principal(),
         effect_class="send_email",
         rules_v2=empty_rules,
@@ -170,8 +163,7 @@ def test_v2_deny_ratchets_legacy_allow_to_deny() -> None:
     result = decide(
         frozenset({_send_email_cap()}),
         _send_action(),
-        axis_a=_axis_a_personal(),
-        axis_b=_axis_b_direct(),
+        labels=_label_state_personal(),
         axis_d=_axis_d_principal(),
         effect_class="send_email",
         rules_v2=rules_v2,
@@ -189,11 +181,20 @@ def test_v2_auto_cannot_override_legacy_deny() -> None:
     AUTO rule cannot relax that. v2_outcome is still recorded for audit."""
     cap = _send_email_cap()
     rules_v2 = DecisionRules(rules=(_ratified_auto_rule(),))
+    tainted_labels = LabelState(
+        a=frozenset({
+            CategoryTag(
+                category="personal",
+                tier=Tier.SENSITIVE,
+                assignment_provenance="human-declared",
+            ),
+        }),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+    )
     result = decide(
         frozenset({cap}),
         _send_action(),
-        axis_a=_axis_a_personal(),
-        axis_b=AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),)),
+        labels=tainted_labels,
         axis_d=_axis_d_principal(),
         effect_class="send_email",
         rules_v2=rules_v2,
@@ -211,8 +212,7 @@ def test_v2_auto_preserves_legacy_allow() -> None:
     result = decide(
         frozenset({_send_email_cap()}),
         _send_action(),
-        axis_a=_axis_a_personal(),
-        axis_b=_axis_b_direct(),
+        labels=_label_state_personal(),
         axis_d=_axis_d_principal(),
         effect_class="send_email",
         rules_v2=rules_v2,
@@ -243,8 +243,7 @@ def test_unratified_auto_rule_does_not_fire_in_wire_in() -> None:
     result = decide(
         frozenset({_send_email_cap()}),
         _send_action(),
-        axis_a=_axis_a_personal(),
-        axis_b=_axis_b_direct(),
+        labels=_label_state_personal(),
         axis_d=_axis_d_principal(),
         effect_class="send_email",
         rules_v2=rules_v2,
@@ -263,8 +262,7 @@ def test_v2_default_deny_ratchets_legacy_allow_to_deny() -> None:
     result = decide(
         frozenset({_send_email_cap()}),
         _send_action(),
-        axis_a=_axis_a_personal(),
-        axis_b=_axis_b_direct(),
+        labels=_label_state_personal(),
         axis_d=_axis_d_principal(),
         effect_class="send_email",
         rules_v2=DecisionRules(rules=()),

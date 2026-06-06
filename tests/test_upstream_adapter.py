@@ -341,7 +341,7 @@ def test_parse_config_round_trip() -> None:
             {
                 "name": "fetch",
                 "command": ["uvx", "mcp-server-fetch"],
-                "inherent_tags": {"b": [{"level": "external-untrusted", "integrity_floor": False}]},
+                "inherent_tags": {"b": [{"level": "external-untrusted"}]},
             },
         ],
     }

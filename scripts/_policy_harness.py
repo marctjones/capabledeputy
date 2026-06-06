@@ -94,8 +94,7 @@ async def run_scenario(sc: Scenario) -> list[str]:
         app.graph._sessions[s.id] = replace(
             s,
             capability_set=sc.caps,
-            axis_a=seed.to_axis_a(),
-            axis_b=seed.to_axis_b(),
+            label_state=seed,
         )
 
         handlers = make_agent_handlers(app)

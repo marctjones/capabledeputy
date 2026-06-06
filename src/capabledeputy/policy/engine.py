@@ -35,8 +35,6 @@ from capabledeputy.policy.envelope import (
     RiskPreference,
 )
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     AxisD,
     LabelState,
     ProvenanceLevel,
@@ -163,9 +161,9 @@ class PolicyDecision:
     # v2 leg ran, these are populated so the audit payload can record
     # the full Axis-A/B/D context + effect_class — enough for T041
     # decision-replay to reconstruct the same evaluate() outcome from
-    # the logged event alone (FR-021).
-    axis_a_snapshot: AxisA | None = None
-    axis_b_snapshot: AxisB | None = None
+    # the logged event alone (FR-021). R4b.4: labels_snapshot replaces
+    # axis_a_snapshot + axis_b_snapshot.
+    labels_snapshot: LabelState | None = None
     axis_d_snapshot: AxisD | None = None
     effect_class: str | None = None
     # Issue #3 — Recovery synthesis. Empty tuple when the decision is
@@ -234,8 +232,7 @@ def _compose_with_v2(legacy: PolicyDecision, v2: EvaluationResult) -> PolicyDeci
 
 
 def _conflict_invariant_outcome(
-    axis_a: AxisA | None,
-    axis_b: AxisB | None,
+    labels: LabelState,
     action: Action,
 ) -> tuple[Decision, str, str] | None:
     """Four-axis port of the flat CONFLICT_RULES (decision D-conflict).
@@ -261,8 +258,8 @@ def _conflict_invariant_outcome(
     if not (is_email or is_purchase):
         return None
     egress = "email" if is_email else "purchase"
-    provenance = {e.level for e in axis_b.entries} if axis_b is not None else set()
-    categories = {c.category for c in axis_a.categories} if axis_a is not None else set()
+    provenance = {e.level for e in labels.b}
+    categories = {c.category for c in labels.a}
     if ProvenanceLevel.EXTERNAL_UNTRUSTED in provenance:
         return (
             Decision.DENY,
@@ -728,8 +725,6 @@ def _decide_impl(
     now: datetime | None = None,
     cap_uses: dict[str, tuple[datetime, ...]] | None = None,
     *,
-    axis_a: AxisA | None = None,
-    axis_b: AxisB | None = None,
     axis_d: AxisD | None = None,
     effect_class: str | None = None,
     rules_v2: DecisionRules | None = None,
@@ -768,12 +763,9 @@ def _decide_impl(
     the refused inputs are surfaced on `PolicyDecision.refused_relax_inputs`
     so the caller can emit a `RELAXATION_REFUSED` audit event.
     """
-    # R4b.2 — bundled LabelState is the canonical Axis A/B input. When
-    # provided, derive the (transitional) axis_a/axis_b that the rest of
-    # this impl still consumes; R4b.4 collapses these into one field.
-    if labels is not None:
-        axis_a = labels.to_axis_a()
-        axis_b = labels.to_axis_b()
+    # R4b.4 — use bundled LabelState directly. Default to empty when not provided.
+    if labels is None:
+        labels = LabelState()
 
     # T079 override grant short-circuit. If an ACTIVE, not-expired,
     # not-consumed grant matches (session_id, action.kind, action.target),
@@ -874,10 +866,10 @@ def _decide_impl(
                 reversibility_reason = opt.rationale
 
     # Sub-phase G / Demo #7 — control-plane reflexivity (FR-018).
-    # A tainted session (AxisB carries external-untrusted) cannot
+    # A tainted session (carries external-untrusted provenance) cannot
     # exercise any ADMINISTER-class effect. Refused before legacy/v2
     # so the audit reason is unambiguous.
-    if effect_class is not None and axis_b is not None:
+    if effect_class is not None:
         from capabledeputy.policy.assurance import (
             control_plane_admissible,
             is_control_plane_effect,
@@ -885,7 +877,7 @@ def _decide_impl(
 
         if is_control_plane_effect(effect_class) and not control_plane_admissible(
             effect_class=effect_class,
-            axis_b=axis_b,
+            labels=labels,
         ):
             return PolicyDecision(
                 decision=Decision.DENY,
@@ -894,8 +886,7 @@ def _decide_impl(
                     f"FR-018: session with external-untrusted provenance "
                     f"cannot exercise control-plane effect {effect_class!r}"
                 ),
-                axis_a_snapshot=axis_a,
-                axis_b_snapshot=axis_b,
+                labels_snapshot=labels,
                 axis_d_snapshot=axis_d,
                 effect_class=effect_class,
             )
@@ -916,8 +907,7 @@ def _decide_impl(
                 f"FR-042/SC-017: {effect_class!r} requires a SandboxActuator "
                 f"port; none wired (spec 004 provider impl)"
             ),
-            axis_a_snapshot=axis_a,
-            axis_b_snapshot=axis_b,
+            labels_snapshot=labels,
             axis_d_snapshot=axis_d,
             effect_class=effect_class,
         )
@@ -942,21 +932,20 @@ def _decide_impl(
                 "none wired. Declare a sandbox.regions block in "
                 "daemon.yaml and ensure Podman is installed."
             ),
-            axis_a_snapshot=axis_a,
-            axis_b_snapshot=axis_b,
+            labels_snapshot=labels,
             axis_d_snapshot=axis_d,
             effect_class=effect_class,
         )
 
     # Orphan risk-citation refusal (FR-015 runtime side). If a risk
-    # register is wired AND axis_a labels declare risk_ids, any id NOT
+    # register is wired AND labels declare risk_ids, any id NOT
     # in the register refuses the decision. The CI lint already catches
     # missing framework_refs at build time; this catches runtime
     # citations of unknown ids.
-    if risk_register is not None and axis_a is not None:
+    if risk_register is not None:
         from capabledeputy.policy.assurance import validate_label_citation
 
-        for cat in axis_a.categories:
+        for cat in labels.a:
             # Categories that don't declare any risk_ids are a CI-lint
             # concern (SC-001); runtime check focuses on category that
             # DOES cite ids, and refuses when any id is unknown.
@@ -974,21 +963,20 @@ def _decide_impl(
                         f"FR-015: category {cat.category!r} cites unknown "
                         f"risk ids {sorted(orphans)}"
                     ),
-                    axis_a_snapshot=axis_a,
-                    axis_b_snapshot=axis_b,
+                    labels_snapshot=labels,
                     axis_d_snapshot=axis_d,
                     effect_class=effect_class,
                 )
 
     # Sub-phase H / Demo #8 — clearance + integrity floor (FR-008/FR-004).
-    # Clearance: if axis_a carries a category whose resolved tier
+    # Clearance: if labels carry a category whose resolved tier
     # exceeds clearance_max_tier, refuse (BLP read-up). Integrity:
-    # if integrity_floor_level is set and any axis_b entry is below
+    # if integrity_floor_level is set and any provenance entry is below
     # the floor, refuse (Biba read-down).
-    if clearance_max_tier is not None and axis_a is not None:
+    if clearance_max_tier is not None:
         from capabledeputy.policy.tiers import compare as _tier_compare
 
-        for cat in axis_a.categories:
+        for cat in labels.a:
             if _tier_compare(cat.tier, clearance_max_tier) > 0:
                 return PolicyDecision(
                     decision=Decision.DENY,
@@ -998,19 +986,18 @@ def _decide_impl(
                         f"refuses read of category {cat.category!r} at tier "
                         f"{cat.tier.value}"
                     ),
-                    axis_a_snapshot=axis_a,
-                    axis_b_snapshot=axis_b,
+                    labels_snapshot=labels,
                     axis_d_snapshot=axis_d,
                     effect_class=effect_class,
                 )
 
-    if integrity_floor_level is not None and axis_b is not None:
+    if integrity_floor_level is not None:
         from capabledeputy.policy.resolution import (
             IntegrityFloorError,
             check_integrity_floor,
         )
 
-        for entry in axis_b.entries:
+        for entry in labels.b:
             try:
                 check_integrity_floor(
                     floor_level=integrity_floor_level,
@@ -1021,8 +1008,7 @@ def _decide_impl(
                     decision=Decision.DENY,
                     rule=INTEGRITY_FLOOR_REFUSED_RULE,
                     reason=str(e),
-                    axis_a_snapshot=axis_a,
-                    axis_b_snapshot=axis_b,
+                    labels_snapshot=labels,
                     axis_d_snapshot=axis_d,
                     effect_class=effect_class,
                 )
@@ -1034,7 +1020,7 @@ def _decide_impl(
     envelope_outcome: Decision | None = None
     envelope_rule: str | None = None
     envelope_reason: str | None = None
-    # The cell key uses the FIRST axis-A category (most-specific
+    # The cell key uses the FIRST category (most-specific
     # post-resolution); decision_context_canonical is the initiator
     # string for stability. Multi-category sessions produce one
     # envelope lookup per category — future work.
@@ -1042,13 +1028,12 @@ def _decide_impl(
         envelope_set is not None
         and risk_preference is not None
         and effect_class is not None
-        and axis_a is not None
         and axis_d is not None
         and effective_reversibility is not None
-        and axis_a.categories
+        and labels.a
     ):
         cell = CellKey(
-            category=axis_a.categories[0].category,
+            category=next(iter(labels.a)).category,
             effect=effect_class,
             decision_context_canonical=axis_d.initiator,
             reversibility=effective_reversibility.degree.value,
@@ -1068,8 +1053,8 @@ def _decide_impl(
     # always-on integrity + confidentiality-confinement floors computed
     # from the propagating axes. Composed most-restrictively into both
     # the legacy-only and the v2 return paths below — they only ratchet
-    # stricter, never relax. Dormant when the caller passes no axes.
-    conflict_outcome = _conflict_invariant_outcome(axis_a, axis_b, action)
+    # stricter, never relax.
+    conflict_outcome = _conflict_invariant_outcome(labels, action)
 
     if relax_inputs:
         inspected: RelaxInspectionResult = inspect_relax_inputs(relax_inputs)
@@ -1094,9 +1079,7 @@ def _decide_impl(
         rate_limit_escalation=rate_limit_escalation,
     )
     if (
-        axis_a is None
-        or axis_b is None
-        or axis_d is None
+        axis_d is None
         or effect_class is None
         or rules_v2 is None
     ):
@@ -1132,8 +1115,7 @@ def _decide_impl(
     _eff_now_for_v2 = now if now is not None else datetime.now(UTC)
     v2 = _evaluate_v2(
         rules=rules_v2,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class=effect_class,
         target=canonical_target if canonical_target is not None else action.target,
@@ -1158,8 +1140,7 @@ def _decide_impl(
     composed = _compose_with_conflict_invariant(composed, conflict_outcome)
     final = replace(
         composed,
-        axis_a_snapshot=axis_a,
-        axis_b_snapshot=axis_b,
+        labels_snapshot=labels,
         axis_d_snapshot=axis_d,
         effect_class=effect_class,
     )

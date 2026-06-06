@@ -339,8 +339,7 @@ class SessionGraph:
             parent=parent_id,
             owner=parent.owner,
             intent=intent,
-            axis_a=parent.axis_a,
-            axis_b=parent.axis_b,
+            label_state=parent.label_state,
             axis_d=parent.axis_d,
             capability_set=parent.capability_set,
             history=parent.history,
@@ -450,8 +449,7 @@ class SessionGraph:
             return session
         updated = replace(
             session,
-            axis_a=composed.to_axis_a(),
-            axis_b=composed.to_axis_b(),
+            label_state=composed,
             updated_at=datetime.now(UTC),
         )
         await self._save(updated)

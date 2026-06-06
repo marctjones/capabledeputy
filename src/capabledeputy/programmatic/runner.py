@@ -23,7 +23,7 @@ from uuid import UUID
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.engine import _conflict_invariant_outcome
-from capabledeputy.policy.labels import AxisA, AxisB, LabelState, most_restrictive_inherit
+from capabledeputy.policy.labels import LabelState, most_restrictive_inherit
 from capabledeputy.policy.rules import Decision
 from capabledeputy.programmatic.errors import ProgramSyntaxError
 from capabledeputy.programmatic.evaluator import (
@@ -116,9 +116,7 @@ def _make_dry_run_caller(
         from capabledeputy.policy.actions import Action
 
         fake_action = Action(kind=tool.capability_kind, target="", amount=0)
-        axis_a = AxisA(categories=tuple(effective.a))
-        axis_b = AxisB(entries=tuple(effective.b))
-        conflict_outcome = _conflict_invariant_outcome(axis_a, axis_b, fake_action)
+        conflict_outcome = _conflict_invariant_outcome(effective, fake_action)
         if conflict_outcome is not None:
             decision, rule, reason = conflict_outcome
             return ToolDispatchResult(
