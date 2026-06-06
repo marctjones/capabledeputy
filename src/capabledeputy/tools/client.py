@@ -580,6 +580,14 @@ class LabeledToolClient:
             before = session.label_set
             updated = await self._graph.add_labels(session_id, labels_to_add)
             labels_added = updated.label_set - before
+            # §R5 apply-source #2: raise the equivalent four-axis taint
+            # into the session's LabelState (Axis A/B) from the SAME
+            # declaration set, so `label_state` accumulates identically to
+            # the flat `label_set`. Derived via the canonical
+            # `tags_for_labels` map; the flat leg is deleted in R4d/R7.
+            from capabledeputy.policy.labels import tags_for_labels
+
+            await self._graph.add_tags(session_id, tags_for_labels(labels_to_add))
             if labels_added:
                 await self._audit.write(
                     Event(

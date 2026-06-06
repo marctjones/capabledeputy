@@ -28,7 +28,9 @@ from capabledeputy.policy.labels import (
     apply_transfer,
     meets_required_floor,
     most_restrictive_inherit,
+    tags_for_labels,
 )
+from capabledeputy.policy.labels import Label
 from capabledeputy.policy.tiers import Tier, compare
 
 # --- strategies ------------------------------------------------------
@@ -111,6 +113,31 @@ def test_non_declassifier_removal_is_rejected_at_construction() -> None:
     rem = LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)}))
     with pytest.raises(LabelError):
         TagTransfer(adds=LabelState(), removes=rem, is_declassifier=False)
+
+
+def test_tags_for_labels_maps_categories_and_provenance() -> None:
+    """§R5 apply-source #2: the flat→four-axis forward map places
+    confidential.* on Axis A and untrusted/trusted.* on Axis B."""
+    health = tags_for_labels(frozenset({Label.CONFIDENTIAL_HEALTH}))
+    assert {t.category for t in health.a} == {"health"}
+    assert not health.b
+    untrusted = tags_for_labels(frozenset({Label.UNTRUSTED_EXTERNAL}))
+    assert {t.level for t in untrusted.b} == {ProvenanceLevel.EXTERNAL_UNTRUSTED}
+    assert not untrusted.a
+
+
+def test_tags_for_labels_unfuses_egress_effects() -> None:
+    """Egress labels are Axis-C effects, not propagating tags — they
+    contribute nothing to the LabelState (the redesign's un-fusing)."""
+    assert tags_for_labels(frozenset({Label.EGRESS_EMAIL})) == LabelState()
+    assert tags_for_labels(frozenset({Label.EGRESS_PURCHASE})) == LabelState()
+    # A mixed set drops only the egress part.
+    mixed = tags_for_labels(frozenset({Label.CONFIDENTIAL_FINANCIAL, Label.EGRESS_EMAIL}))
+    assert {t.category for t in mixed.a} == {"financial"}
+
+
+def test_tags_for_labels_empty_is_empty() -> None:
+    assert tags_for_labels(frozenset()) == LabelState()
 
 
 def test_certified_declassifier_removes_a_tag() -> None:

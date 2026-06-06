@@ -300,6 +300,61 @@ def inherit(parent: LabelState, child: LabelState) -> LabelState:
     return LabelState(a=frozenset(by_cat.values()), b=frozenset(by_lvl.values()))
 
 
+# --- Apply source #2: operation/tool inherent declaration (FR-013, §R5) --
+#
+# The runtime still receives inherent declarations + per-result deltas as
+# flat `Label` values (tool `inherent_labels`, custom-kind add_labels,
+# handler-returned additional_labels). This is the single canonical
+# forward map from a flat label to the propagating `LabelState` it
+# denotes in the four-axis model — used by the dispatch chokepoint to
+# accumulate four-axis taint equivalently to the flat `label_set`. The
+# flat enum + this map are deleted together in R7, once tool authors
+# declare `inherent_tags` natively. `EGRESS_*` are Axis-C **effects**,
+# not propagating tags (the un-fusing), so they map to the empty state.
+_LABEL_TO_TAGS: dict[Label, LabelState] = {
+    Label.CONFIDENTIAL_HEALTH: LabelState(
+        a=frozenset(
+            {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")},
+        ),
+    ),
+    Label.CONFIDENTIAL_FINANCIAL: LabelState(
+        a=frozenset(
+            {CategoryTag("financial", Tier.REGULATED, assignment_provenance="source-declared")},
+        ),
+    ),
+    Label.CONFIDENTIAL_PERSONAL: LabelState(
+        a=frozenset(
+            {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")},
+        ),
+    ),
+    Label.UNTRUSTED_EXTERNAL: LabelState(
+        b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+    ),
+    Label.UNTRUSTED_USER_INPUT: LabelState(
+        b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+    ),
+    Label.TRUSTED_USER_DIRECT: LabelState(
+        b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)}),
+    ),
+    Label.EGRESS_EMAIL: LabelState(),  # Axis-C effect, not a propagating tag
+    Label.EGRESS_PURCHASE: LabelState(),
+}
+
+
+def tags_for_label(label: Label) -> LabelState:
+    """The propagating `LabelState` a single flat label denotes."""
+    return _LABEL_TO_TAGS.get(label, LabelState())
+
+
+def tags_for_labels(labels: frozenset[Label]) -> LabelState:
+    """Compose the four-axis taint denoted by a flat label set. Empty
+    set ⇒ empty state. The result is the apply-source-#2 delta the
+    dispatch chokepoint raises into the session's `LabelState`."""
+    if not labels:
+        return LabelState()
+    return most_restrictive_inherit(*(tags_for_label(label) for label in labels))
+
+
 def meets_required_floor(state: LabelState, required_floor: ProvenanceLevel | None) -> bool:
     """Biba 'no read-down': True iff every provenance level present is at
     least as trustworthy as `required_floor`. None ⇒ no floor ⇒ True."""

@@ -23,6 +23,20 @@ See `specs/003-labeling-framework/label-model-redesign.md` "▶ Resume here".
   Additive — both legs enforce until R4d removes the flat one. (These are
   information-flow invariants, not Brewer-Nash/Chinese-Wall COI rules
   despite the legacy naming.)
+- **R5**: wired apply-source #2 (operation/tool inherent declaration →
+  session four-axis state). The dispatch chokepoint now raises the
+  equivalent `LabelState` taint via the new `SessionGraph.add_tags`
+  (monotone `most_restrictive_inherit`) from the same declaration set it
+  feeds to the flat `add_labels`, using the canonical `labels.tags_for_labels`
+  forward map (confidential.* → Axis A category, untrusted/trusted.* →
+  Axis B provenance; `egress.*` un-fused to nothing — effects are not
+  propagating tags). The session's `label_state` now accumulates
+  equivalently to the flat `label_set`, so the R4c four-axis invariants
+  enforce in the real daemon — not just under direct `labels=` test
+  inputs — which is the precondition for deleting the flat leg (R4d).
+  Removal stays declassifier-only (the existing `TagTransfer` /
+  `apply_transfer` structural rule). Tests: four-axis taint propagation
+  through the chokepoint + the forward-map un-fusing.
 
 ## [0.14.0] — 2026-06-06
 

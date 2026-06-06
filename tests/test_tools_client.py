@@ -187,6 +187,12 @@ async def test_inherent_labels_propagate_to_session(writer: AuditWriter) -> None
     assert Label.UNTRUSTED_EXTERNAL in outcome.labels_added
     after = graph.get(s.id)
     assert Label.UNTRUSTED_EXTERNAL in after.label_set
+    # §R5 apply-source #2: the SAME declaration also raised the equivalent
+    # four-axis taint into the session's LabelState, so the four-axis
+    # decision path sees the provenance the flat label_set sees.
+    from capabledeputy.policy.labels import ProvenanceLevel
+
+    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {t.level for t in after.label_state.b}
 
 
 async def test_handler_additional_labels_propagate(writer: AuditWriter) -> None:
