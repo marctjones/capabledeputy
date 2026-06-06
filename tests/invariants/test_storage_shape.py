@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from capabledeputy.policy.labels import AxisA, AxisACategory, AxisB, AxisBEntry, ProvenanceLevel
+from capabledeputy.policy.labels import AxisA, AxisB, CategoryTag, ProvenanceLevel, ProvenanceTag
 from capabledeputy.policy.storage_audit import audit_storage_shape
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.model import Session
@@ -34,10 +34,10 @@ async def test_storage_shape_clean_on_new_session(tmp_path: Path) -> None:
     await store.initialize()
     session = Session.new(
         axis_a=AxisA(
-            categories=(AxisACategory(category="health", tier=Tier.REGULATED, risk_ids=("R001",)),),
+            categories=(CategoryTag(category="health", tier=Tier.REGULATED, risk_ids=("R001",)),),
         ),
         axis_b=AxisB(
-            entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),),
+            entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),),
         ),
     )
     await store.upsert(session)

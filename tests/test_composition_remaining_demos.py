@@ -37,12 +37,12 @@ from capabledeputy.policy.envelope import (
 )
 from capabledeputy.policy.labels import (
     AxisA,
-    AxisACategory,
     AxisB,
-    AxisBEntry,
     AxisD,
+    CategoryTag,
     Label,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.reversibility import (
     ReversalAgent,
@@ -66,9 +66,9 @@ def _wide_cap(kind: CapabilityKind = CapabilityKind.WRITE_FS) -> Capability:
 
 def _principal_axes(category: str = "proprietary_work") -> tuple[AxisA, AxisB, AxisD]:
     axis_a = AxisA(
-        categories=(AxisACategory(category=category, tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category=category, tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(initiator="principal:alice", authentication="device-bound")
     return axis_a, axis_b, axis_d
 
@@ -76,8 +76,8 @@ def _principal_axes(category: str = "proprietary_work") -> tuple[AxisA, AxisB, A
 def _tainted_axis_b() -> AxisB:
     return AxisB(
         entries=(
-            AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),
-            AxisBEntry(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),
+            ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),
+            ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),
         ),
     )
 
@@ -276,9 +276,9 @@ def test_clearance_refuses_read_up() -> None:
     """A profile cleared to REGULATED cannot read a RESTRICTED-tier
     datum (FR-008)."""
     axis_a = AxisA(
-        categories=(AxisACategory(category="health", tier=Tier.RESTRICTED),),
+        categories=(CategoryTag(category="health", tier=Tier.RESTRICTED),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(initiator="principal:alice")
     result = decide(
         frozenset(),
@@ -299,9 +299,9 @@ def test_clearance_refuses_read_up() -> None:
 def test_clearance_open_when_below_max() -> None:
     """A SENSITIVE-tier read under REGULATED clearance is fine."""
     axis_a = AxisA(
-        categories=(AxisACategory(category="x", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="x", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(initiator="principal:alice")
     result = decide(
         frozenset({Label.TRUSTED_USER_DIRECT}),
@@ -323,7 +323,7 @@ def test_integrity_floor_refuses_below_floor_input() -> None:
     (FR-004 Biba no-read-down)."""
     axis_a, _, axis_d = _principal_axes()
     axis_b = AxisB(
-        entries=(AxisBEntry(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),),
+        entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),),
     )
     result = decide(
         frozenset(),

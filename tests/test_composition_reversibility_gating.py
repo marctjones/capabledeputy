@@ -35,10 +35,10 @@ from capabledeputy.policy.engine import (
 from capabledeputy.policy.labels import (
     AxisA,
     AxisB,
-    AxisBEntry,
     AxisD,
     Label,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.reversibility import (
     ReversalAgent,
@@ -70,7 +70,7 @@ def _scratch_cap() -> Capability:
 def _empty_axes() -> tuple[AxisA, AxisB, AxisD]:
     return (
         AxisA(),
-        AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),)),
+        AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),)),
         AxisD(initiator="principal:alice"),
     )
 

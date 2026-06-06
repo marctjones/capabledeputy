@@ -10,7 +10,7 @@ Axis A behavior:
 
 from __future__ import annotations
 
-from capabledeputy.policy.labels import AxisA, AxisACategory
+from capabledeputy.policy.labels import AxisA, CategoryTag
 from capabledeputy.policy.tiers import Tier
 
 
@@ -19,9 +19,9 @@ def test_categories_are_distinct_in_axis_a() -> None:
     not subsume another (lattice compartments, not a hierarchy)."""
     axis = AxisA(
         categories=(
-            AxisACategory(category="health", tier=Tier.REGULATED),
-            AxisACategory(category="financial", tier=Tier.REGULATED),
-            AxisACategory(category="personal", tier=Tier.SENSITIVE),
+            CategoryTag(category="health", tier=Tier.REGULATED),
+            CategoryTag(category="financial", tier=Tier.REGULATED),
+            CategoryTag(category="personal", tier=Tier.SENSITIVE),
         ),
     )
     ids = {c.category for c in axis.categories}
@@ -29,12 +29,12 @@ def test_categories_are_distinct_in_axis_a() -> None:
 
 
 def test_axis_a_category_carries_assignment_provenance() -> None:
-    """Every AxisACategory carries assignment_provenance (FR-022 trace).
+    """Every CategoryTag carries assignment_provenance (FR-022 trace).
     Default for direct construction is 'system-default'."""
-    cat = AxisACategory(category="health", tier=Tier.REGULATED)
+    cat = CategoryTag(category="health", tier=Tier.REGULATED)
     assert cat.assignment_provenance == "system-default"
 
-    explicit = AxisACategory(
+    explicit = CategoryTag(
         category="proprietary_work",
         tier=Tier.RESTRICTED,
         assignment_provenance="source-declared",
@@ -45,7 +45,7 @@ def test_axis_a_category_carries_assignment_provenance() -> None:
 def test_axis_a_round_trip_preserves_provenance() -> None:
     """to_dict/from_dict must round-trip assignment_provenance —
     losing it would silently break replayability (SC-002)."""
-    cat = AxisACategory(
+    cat = CategoryTag(
         category="health",
         tier=Tier.RESTRICTED,
         risk_ids=("R001", "R002"),

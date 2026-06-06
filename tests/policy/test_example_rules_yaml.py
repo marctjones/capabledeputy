@@ -15,11 +15,11 @@ from pathlib import Path
 from capabledeputy.policy.decision_rules import RuleOutcome, evaluate, load
 from capabledeputy.policy.labels import (
     AxisA,
-    AxisACategory,
     AxisB,
-    AxisBEntry,
     AxisD,
+    CategoryTag,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.tiers import Tier
 
@@ -44,9 +44,9 @@ def test_repo_rules_yaml_loads() -> None:
 def test_cron_backup_scenario_resolves_to_auto_via_yaml() -> None:
     rules = load(_RULES_YAML)
     axis_a = AxisA(
-        categories=(AxisACategory(category="proprietary_work", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.SYSTEM_INTERNAL),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL),))
     axis_d = AxisD(
         initiator="cron:backup-job",
         authentication="device-bound",
@@ -69,9 +69,9 @@ def test_unauth_inbound_backup_falls_to_default_suggest() -> None:
     SUGGEST holds (FR-011 never-auto)."""
     rules = load(_RULES_YAML)
     axis_a = AxisA(
-        categories=(AxisACategory(category="proprietary_work", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.SYSTEM_INTERNAL),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL),))
     axis_d = AxisD(
         initiator="inbound:unauthenticated",
         authentication="none",
@@ -91,9 +91,9 @@ def test_unauth_inbound_backup_falls_to_default_suggest() -> None:
 def test_share_to_project_p_member_resolves_to_auto() -> None:
     rules = load(_RULES_YAML)
     axis_a = AxisA(
-        categories=(AxisACategory(category="proprietary_work", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -115,9 +115,9 @@ def test_share_to_project_p_member_resolves_to_auto() -> None:
 def test_share_to_non_member_falls_to_suggest() -> None:
     rules = load(_RULES_YAML)
     axis_a = AxisA(
-        categories=(AxisACategory(category="proprietary_work", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -143,9 +143,9 @@ def test_personal_email_to_family_member_resolves_to_suggest() -> None:
     falling to the default unknown."""
     rules = load(_RULES_YAML)
     axis_a = AxisA(
-        categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="personal", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -173,9 +173,9 @@ def test_personal_email_to_non_family_falls_to_default_suggest() -> None:
     recognized."""
     rules = load(_RULES_YAML)
     axis_a = AxisA(
-        categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="personal", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -200,9 +200,9 @@ def test_work_email_to_workteam_member_resolves_to_suggest() -> None:
     forwarded to a recognized work-team member."""
     rules = load(_RULES_YAML)
     axis_a = AxisA(
-        categories=(AxisACategory(category="proprietary_work", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -229,9 +229,9 @@ def test_work_email_to_family_member_falls_to_default_suggest() -> None:
     surface this as an unrecognized counterparty for the work axis."""
     rules = load(_RULES_YAML)
     axis_a = AxisA(
-        categories=(AxisACategory(category="proprietary_work", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -261,9 +261,9 @@ def test_send_at_night_escalates_to_require_approval() -> None:
     REQUIRE_APPROVAL beats SUGGEST."""
     rules = load(_RULES_YAML)
     axis_a = AxisA(
-        categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="personal", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -292,9 +292,9 @@ def test_phi_egress_denied_even_to_family() -> None:
     the patient."""
     rules = load(_RULES_YAML)
     axis_a = AxisA(
-        categories=(AxisACategory(category="phi", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="phi", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -321,9 +321,9 @@ def test_small_reversible_purchase_auto() -> None:
     QUEUE_PURCHASE max_amount is the dollar-level guard."""
     rules = load(_RULES_YAML)
     axis_a = AxisA(
-        categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="personal", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
@@ -349,9 +349,9 @@ def test_irreversible_purchase_falls_to_default_suggest() -> None:
     the FR-011 SUGGEST default cell. Approval card required."""
     rules = load(_RULES_YAML)
     axis_a = AxisA(
-        categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="personal", tier=Tier.SENSITIVE),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",

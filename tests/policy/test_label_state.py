@@ -1,8 +1,9 @@
-"""Property + unit tests for the 003 redesign label model (R1).
+"""Property + unit tests for the 003 redesign label model (R1, consolidated
+into policy/labels.py in R4a).
 
-Proves the composition/apply/floor math before any consumer is wired:
-  - composition is commutative, associative, idempotent (SC-002 determinism)
-  - composition is monotone-raising (never lowers a tier / drops a level)
+Proves the composition/apply/floor math:
+  - composition commutative, associative, idempotent (SC-002 determinism)
+  - composition monotone-raising (never lowers a tier / drops a level)
   - a non-declassifier transfer can never remove a tag (Constitution VI)
   - the integrity floor (Biba) is checked correctly
 """
@@ -14,29 +15,30 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.label_state import (
+from capabledeputy.policy.labels import (
+    AssignmentProvenance,
     CategoryTag,
     LabelError,
     LabelState,
+    ProvenanceLevel,
     ProvenanceTag,
     TagTransfer,
     apply_transfer,
     meets_required_floor,
     most_restrictive_inherit,
 )
-from capabledeputy.policy.labels import AssignmentProvenance, ProvenanceLevel
 from capabledeputy.policy.tiers import Tier, compare
 
 # --- strategies ------------------------------------------------------
 
 _categories = st.sampled_from(["health", "finance", "personal", "work"])
 _tiers = st.sampled_from(list(Tier))
-_provs = st.sampled_from(list(AssignmentProvenance))
+_provs = st.sampled_from([p.value for p in AssignmentProvenance])
 _levels = st.sampled_from(list(ProvenanceLevel))
-_risk_ids = st.frozensets(st.sampled_from(["R-1", "R-2", "R-3"]), max_size=3)
+_risk_ids = st.lists(st.sampled_from(["R-1", "R-2", "R-3"]), max_size=3, unique=True).map(tuple)
 
 _cat_tags = st.builds(
-    CategoryTag, category=_categories, tier=_tiers, risk_ids=_risk_ids, assigned_by=_provs
+    CategoryTag, category=_categories, tier=_tiers, risk_ids=_risk_ids, assignment_provenance=_provs
 )
 _prov_tags = st.builds(ProvenanceTag, level=_levels)
 _label_states = st.builds(
@@ -79,7 +81,7 @@ def test_compose_idempotent(x: LabelState) -> None:
 def test_compose_monotone_tier(x: LabelState, y: LabelState) -> None:
     composed = _tier_by_cat(most_restrictive_inherit(x, y))
     for cat, tier in _tier_by_cat(x).items():
-        assert compare(composed[cat], tier) >= 0  # composed >= x's tier
+        assert compare(composed[cat], tier) >= 0
 
 
 @given(_label_states, _label_states)
@@ -115,8 +117,7 @@ def test_certified_declassifier_removes_a_tag() -> None:
     )
     rem = LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)}))
     out = apply_transfer(state, TagTransfer(removes=rem, is_declassifier=True))
-    cats = {t.category for t in out.a}
-    assert cats == {"work"}
+    assert {t.category for t in out.a} == {"work"}
 
 
 # --- integrity floor (Biba) ------------------------------------------
@@ -129,7 +130,6 @@ def test_required_floor_none_always_passes() -> None:
 
 def test_required_floor_refuses_below_floor() -> None:
     tainted = LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}))
-    # action requires at least system-internal trust -> untrusted input fails
     assert meets_required_floor(tainted, ProvenanceLevel.SYSTEM_INTERNAL) is False
 
 

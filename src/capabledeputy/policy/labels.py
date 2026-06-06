@@ -92,11 +92,11 @@ class AssignmentProvenance(StrEnum):
 
 
 @dataclass(frozen=True)
-class AxisACategory:
-    """One entry in a session's Axis A label set: (category-id,
-    resolved tier, risk-register ids, assignment provenance).
-    Categories themselves are operator-declared in configs/labels.yaml
-    and loaded by US1's resolution layer."""
+class CategoryTag:
+    """One Axis-A label: (category-id, resolved tier, risk-register ids,
+    assignment provenance). 003 redesign canonical leaf type (was
+    AxisACategory). Categories are operator-declared in configs/labels.yaml
+    and loaded by the resolution layer."""
 
     category: str
     tier: Tier
@@ -128,7 +128,7 @@ class AxisA:
     this session'. Composition with other AxisA values is
     most-restrictive per-category via most_restrictive_inherit."""
 
-    categories: tuple[AxisACategory, ...] = field(default_factory=tuple)
+    categories: tuple[CategoryTag, ...] = field(default_factory=tuple)
 
     def to_dict(self) -> list[dict[str, Any]]:
         return [c.to_dict() for c in self.categories]
@@ -137,17 +137,19 @@ class AxisA:
     def from_dict(cls, raw: list[dict[str, Any]] | None) -> Self:
         if not raw:
             return cls(categories=())
-        return cls(categories=tuple(AxisACategory.from_dict(d) for d in raw))
+        return cls(categories=tuple(CategoryTag.from_dict(d) for d in raw))
 
 
 # --- Axis B: Provenance set + integrity floor (FR-004) --------------
 
 
 @dataclass(frozen=True)
-class AxisBEntry:
-    """One per provenance level present in this session. The
-    integrity_floor flag indicates whether *this step* must reject
-    inputs below the floor (Biba direction; FR-004)."""
+class ProvenanceTag:
+    """One Axis-B label: a provenance level present in the session. 003
+    redesign canonical leaf type (was AxisBEntry). NOTE: `integrity_floor`
+    is retained transitionally for serialization compatibility; the
+    redesign moves the floor to the Operation (`required_floor`) and it
+    will be dropped from the data tag in a later R4 step."""
 
     level: ProvenanceLevel
     integrity_floor: bool = False
@@ -168,7 +170,7 @@ class AxisB:
     """Session-level Axis B label set: which provenance levels are
     present + whether any step demands an integrity floor."""
 
-    entries: tuple[AxisBEntry, ...] = field(default_factory=tuple)
+    entries: tuple[ProvenanceTag, ...] = field(default_factory=tuple)
 
     def to_dict(self) -> list[dict[str, Any]]:
         return [e.to_dict() for e in self.entries]
@@ -177,7 +179,118 @@ class AxisB:
     def from_dict(cls, raw: list[dict[str, Any]] | None) -> Self:
         if not raw:
             return cls(entries=())
-        return cls(entries=tuple(AxisBEntry.from_dict(d) for d in raw))
+        return cls(entries=tuple(ProvenanceTag.from_dict(d) for d in raw))
+
+
+# --- 003 redesign: LabelState (the propagating labels) + apply/remove --
+#
+# LabelState bundles Axis A + Axis B (the only labels that propagate).
+# One composition rule (most_restrictive_inherit). Applied by 3 sources
+# (bindings / inherent declaration / raise-only inspector); removed only
+# by a certified declassifier (a non-declassifier TagTransfer may not
+# remove). See specs/003-labeling-framework/label-model-redesign.md.
+
+
+class LabelError(RuntimeError):
+    """An illegal label operation (e.g. a non-declassifier attempting
+    removal). Fail-closed per Constitution VI."""
+
+
+# Authority order for assignment_provenance (strict total order so the
+# tie-break in composition is deterministic — SC-002).
+_AUTHORITY_RANK: dict[str, int] = {
+    "raise-only-inspector": 0,
+    "legacy-migration": 1,
+    "system-default": 2,
+    "source-declared": 3,
+    "curated-mcp": 4,
+    "operator-declared": 5,
+    "human-declared": 6,
+}
+_PROVENANCE_ORDER: tuple[ProvenanceLevel, ...] = tuple(ProvenanceLevel)
+
+
+def _authority(prov: str) -> int:
+    return _AUTHORITY_RANK.get(prov, _AUTHORITY_RANK["system-default"])
+
+
+@dataclass(frozen=True)
+class LabelState:
+    """The propagating label set: Axis A categories + Axis B provenance.
+    Empty = unlabeled. Supersedes the separate AxisA+AxisB pair."""
+
+    a: frozenset[CategoryTag] = frozenset()
+    b: frozenset[ProvenanceTag] = frozenset()
+
+
+def _compose_a(*sets: frozenset[CategoryTag]) -> frozenset[CategoryTag]:
+    by_cat: dict[str, list[CategoryTag]] = {}
+    for tag_set in sets:
+        for tag in tag_set:
+            by_cat.setdefault(tag.category, []).append(tag)
+    out: set[CategoryTag] = set()
+    for cat, tags in by_cat.items():
+        tier = max_of(*(t.tier for t in tags))
+        risks = tuple(sorted({r for t in tags for r in t.risk_ids}))
+        prov = max((t.assignment_provenance for t in tags), key=_authority)
+        out.add(CategoryTag(category=cat, tier=tier, risk_ids=risks, assignment_provenance=prov))
+    return frozenset(out)
+
+
+def most_restrictive_inherit(*states: LabelState) -> LabelState:
+    """The single composition rule: A per-category most-restrictive
+    (tier=max, risk_ids=union, provenance=most-authoritative); B=union.
+    Never lowers a tier or drops a provenance level."""
+    if not states:
+        return LabelState()
+    a = _compose_a(*(s.a for s in states))
+    b: frozenset[ProvenanceTag] = frozenset().union(*(s.b for s in states))
+    return LabelState(a=a, b=b)
+
+
+def meets_required_floor(state: LabelState, required_floor: ProvenanceLevel | None) -> bool:
+    """Biba 'no read-down': True iff every provenance level present is at
+    least as trustworthy as `required_floor`. None ⇒ no floor ⇒ True."""
+    if required_floor is None:
+        return True
+    floor_rank = _PROVENANCE_ORDER.index(required_floor)
+    return all(_PROVENANCE_ORDER.index(t.level) <= floor_rank for t in state.b)
+
+
+@dataclass(frozen=True)
+class TagTransfer:
+    """An Operation's effect on the LabelState. `adds` is raised in;
+    `removes` is honoured ONLY for a certified declassifier."""
+
+    adds: LabelState = LabelState()
+    removes: LabelState | None = None
+    is_declassifier: bool = False
+
+    def __post_init__(self) -> None:
+        if self.removes is not None and not self.is_declassifier:
+            raise LabelError(
+                "a non-declassifier TagTransfer may not specify removals (Constitution VI)",
+            )
+
+
+def _remove(state: LabelState, rem: LabelState) -> LabelState:
+    rem_cats = {t.category for t in rem.a}
+    rem_levels = {t.level for t in rem.b}
+    return LabelState(
+        a=frozenset(t for t in state.a if t.category not in rem_cats),
+        b=frozenset(t for t in state.b if t.level not in rem_levels),
+    )
+
+
+def apply_transfer(state: LabelState, transfer: TagTransfer) -> LabelState:
+    """Apply an Operation's tag-transfer. Adds raised in; removals only
+    for a certified declassifier, else fail-closed."""
+    raised = most_restrictive_inherit(state, transfer.adds)
+    if transfer.removes is None:
+        return raised
+    if not transfer.is_declassifier:
+        raise LabelError("only a certified declassifier may remove tags (Constitution VI)")
+    return _remove(raised, transfer.removes)
 
 
 # --- Axis D: Decision Context (FR-006, FR-029, FR-033, FR-037, T136) -------
@@ -200,7 +313,7 @@ def most_restrictive_inherit_axis_a(parent: AxisA, child: AxisA) -> AxisA:
     derivation cannot wash provenance away). FR-013 non-enumerated
     inheritance per T118.
     """
-    by_category: dict[str, AxisACategory] = {c.category: c for c in parent.categories}
+    by_category: dict[str, CategoryTag] = {c.category: c for c in parent.categories}
     for cc in child.categories:
         if cc.category not in by_category:
             by_category[cc.category] = cc
@@ -215,7 +328,7 @@ def most_restrictive_inherit_axis_a(parent: AxisA, child: AxisA) -> AxisA:
             if cc.assignment_provenance == "raise-only-inspector"
             else pc.assignment_provenance
         )
-        by_category[cc.category] = AxisACategory(
+        by_category[cc.category] = CategoryTag(
             category=cc.category,
             tier=max_of(pc.tier, cc.tier),
             risk_ids=merged_risks,
@@ -228,13 +341,13 @@ def most_restrictive_inherit_axis_b(parent: AxisB, child: AxisB) -> AxisB:
     """Most-restrictive merge of two AxisB sets: union of provenance
     levels (taint never washes away); integrity_floor=True iff either
     side had it. FR-013 non-enumerated inheritance per T118."""
-    by_level: dict[ProvenanceLevel, AxisBEntry] = {e.level: e for e in parent.entries}
+    by_level: dict[ProvenanceLevel, ProvenanceTag] = {e.level: e for e in parent.entries}
     for ce in child.entries:
         if ce.level not in by_level:
             by_level[ce.level] = ce
             continue
         pe = by_level[ce.level]
-        by_level[ce.level] = AxisBEntry(
+        by_level[ce.level] = ProvenanceTag(
             level=ce.level,
             integrity_floor=pe.integrity_floor or ce.integrity_floor,
         )

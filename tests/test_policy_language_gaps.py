@@ -49,11 +49,11 @@ from capabledeputy.policy.envelope import (
 from capabledeputy.policy.labels import (
     AssignmentProvenance,
     AxisA,
-    AxisACategory,
     AxisB,
-    AxisBEntry,
     AxisD,
+    CategoryTag,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.reversibility import (
     ReversalAgent,
@@ -84,9 +84,9 @@ from capabledeputy.tools.registry import (
 
 def _principal_axes_for_cats(cats: tuple[str, ...]) -> tuple[AxisA, AxisB, AxisD]:
     axis_a = AxisA(
-        categories=tuple(AxisACategory(category=c, tier=Tier.SENSITIVE) for c in cats),
+        categories=tuple(CategoryTag(category=c, tier=Tier.SENSITIVE) for c in cats),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(initiator="principal:alice")
     return axis_a, axis_b, axis_d
 
@@ -245,9 +245,9 @@ def test_assignment_provenance_enum_values() -> None:
 
 
 def test_axis_a_category_accepts_enum_string() -> None:
-    """AxisACategory's assignment_provenance is still a string; the
+    """CategoryTag's assignment_provenance is still a string; the
     enum is a vocabulary, not a type constraint."""
-    cat = AxisACategory(
+    cat = CategoryTag(
         category="health",
         tier=Tier.REGULATED,
         assignment_provenance=AssignmentProvenance.HUMAN_DECLARED.value,
@@ -273,7 +273,7 @@ class _AddHealthInspector(RaiseOnlyInspector):
             return InspectorDelta(
                 axis_a_raise=AxisA(
                     categories=(
-                        AxisACategory(
+                        CategoryTag(
                             category="health",
                             tier=Tier.REGULATED,
                             assignment_provenance=AssignmentProvenance.RAISE_ONLY_INSPECTOR.value,
@@ -301,7 +301,7 @@ class _LowerCategoryInspector(RaiseOnlyInspector):
         # actually lower the session axes.
         return InspectorDelta(
             axis_a_raise=AxisA(
-                categories=(AxisACategory(category="health", tier=Tier.NONE),),
+                categories=(CategoryTag(category="health", tier=Tier.NONE),),
             ),
         )
 
@@ -412,7 +412,7 @@ async def test_inspector_cannot_lower_existing_axis(writer: AuditWriter) -> None
     graph = SessionGraph()
     pre_existing = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="health",
                 tier=Tier.REGULATED,
                 assignment_provenance=AssignmentProvenance.HUMAN_DECLARED.value,

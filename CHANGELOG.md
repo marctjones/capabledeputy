@@ -55,6 +55,13 @@ Work in progress on `003-labeling-framework`. Not yet released.
   complete**: the registry is fail-closed on malformed tools. (Engine
   `decide()` re-typing onto `LabelState` + `inherent_tags` population is
   R4; flat `Label` enum deletion is R7.)
+- **R4a (leaf consolidation)**: chose option (a) — the new types win.
+  Renamed `AxisACategory`→`CategoryTag` and `AxisBEntry`→`ProvenanceTag`
+  across the repo (~140 sites), consolidated `LabelState`/`TagTransfer`/
+  composition into `policy/labels.py`, and deleted the duplicate
+  `policy/label_state.py`. Pure rename + consolidation; suite green
+  (2065). Containers `AxisA`/`AxisB`→`LabelState` and the `decide()`
+  re-type follow in R4b–d.
 
 ## [0.13.1] — 2026-06-05
 

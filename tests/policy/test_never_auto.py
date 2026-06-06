@@ -22,11 +22,11 @@ from capabledeputy.policy.decision_rules import (
 )
 from capabledeputy.policy.labels import (
     AxisA,
-    AxisACategory,
     AxisB,
-    AxisBEntry,
     AxisD,
+    CategoryTag,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.tiers import Tier
 
@@ -60,9 +60,9 @@ def test_empty_rule_set_yields_only_suggest_for_default_suggest() -> None:
         _TARGETS,
     ):
         axis_a = AxisA(
-            categories=(AxisACategory(category=cat, tier=Tier.SENSITIVE),),
+            categories=(CategoryTag(category=cat, tier=Tier.SENSITIVE),),
         )
-        axis_b = AxisB(entries=(AxisBEntry(level=prov),))
+        axis_b = AxisB(entries=(ProvenanceTag(level=prov),))
         axis_d = AxisD(initiator=init)
         result = evaluate(
             rules=rules,
@@ -89,10 +89,10 @@ def test_empty_rule_set_yields_only_deny_for_default_deny() -> None:
     rules = DecisionRules(rules=())
     for cat in _CATEGORIES:
         axis_a = AxisA(
-            categories=(AxisACategory(category=cat, tier=Tier.PROHIBITED),),
+            categories=(CategoryTag(category=cat, tier=Tier.PROHIBITED),),
         )
         axis_b = AxisB(
-            entries=(AxisBEntry(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),),
+            entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),),
         )
         axis_d = AxisD(initiator="inbound:unauthenticated")
         result = evaluate(
@@ -122,11 +122,11 @@ def test_unratified_rules_cannot_produce_auto_even_if_they_match() -> None:
     )
     rules = DecisionRules(rules=(universal_unratified_auto,))
     for cat in _CATEGORIES:
-        axis_a = AxisA(categories=(AxisACategory(category=cat, tier=Tier.SENSITIVE),))
+        axis_a = AxisA(categories=(CategoryTag(category=cat, tier=Tier.SENSITIVE),))
         result = evaluate(
             rules=rules,
             axis_a=axis_a,
-            axis_b=AxisB(entries=(AxisBEntry(level=ProvenanceLevel.SYSTEM_INTERNAL),)),
+            axis_b=AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL),)),
             axis_d=AxisD(),
             effect_class="send_email",
             target="any",

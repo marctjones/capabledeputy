@@ -24,11 +24,11 @@ from capabledeputy.policy.decision_rules import (
 )
 from capabledeputy.policy.labels import (
     AxisA,
-    AxisACategory,
     AxisB,
-    AxisBEntry,
     AxisD,
+    CategoryTag,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.tiers import Tier
 
@@ -206,10 +206,10 @@ def test_predicate_axis_a_category_must_match() -> None:
         human_ratified_by="marc",
     )
     health_axis = AxisA(
-        categories=(AxisACategory(category="health", tier=Tier.REGULATED),),
+        categories=(CategoryTag(category="health", tier=Tier.REGULATED),),
     )
     other_axis = AxisA(
-        categories=(AxisACategory(category="personal", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="personal", tier=Tier.SENSITIVE),),
     )
     r_match = evaluate(
         rules=DecisionRules(rules=(rule,)),
@@ -239,8 +239,8 @@ def test_predicate_axis_b_provenance_must_match() -> None:
         rationale="trusted provenance",
         human_ratified_by="marc",
     )
-    trusted = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
-    untrusted = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),))
+    trusted = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    untrusted = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),))
     r_match = evaluate(
         rules=DecisionRules(rules=(rule,)),
         axis_a=AxisA(),

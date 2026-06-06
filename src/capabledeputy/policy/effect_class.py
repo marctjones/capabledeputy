@@ -45,7 +45,7 @@ class Operation:
     - `required_floor`: the Biba integrity requirement — the minimum input
       trustworthiness this action demands. `None` ⇒ no floor. Checked at
       decide() against the session's Axis-B provenance
-      (`label_state.meets_required_floor`).
+      (`labels.meets_required_floor`).
     """
 
     effect_class: EffectClass

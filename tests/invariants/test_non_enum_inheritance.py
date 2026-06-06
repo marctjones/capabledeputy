@@ -16,10 +16,10 @@ import pytest
 
 from capabledeputy.policy.labels import (
     AxisA,
-    AxisACategory,
     AxisB,
-    AxisBEntry,
+    CategoryTag,
     ProvenanceLevel,
+    ProvenanceTag,
     most_restrictive_inherit_axis_a,
     most_restrictive_inherit_axis_b,
 )
@@ -29,10 +29,10 @@ from capabledeputy.policy.tiers import Tier
 @pytest.mark.invariant
 def test_axis_a_tier_is_most_restrictive() -> None:
     parent = AxisA(
-        categories=(AxisACategory(category="health", tier=Tier.SENSITIVE),),
+        categories=(CategoryTag(category="health", tier=Tier.SENSITIVE),),
     )
     child = AxisA(
-        categories=(AxisACategory(category="health", tier=Tier.REGULATED),),
+        categories=(CategoryTag(category="health", tier=Tier.REGULATED),),
     )
     merged = most_restrictive_inherit_axis_a(parent, child)
     assert len(merged.categories) == 1
@@ -43,7 +43,7 @@ def test_axis_a_tier_is_most_restrictive() -> None:
 def test_axis_a_risk_ids_set_union() -> None:
     parent = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="finance",
                 tier=Tier.REGULATED,
                 risk_ids=("R001", "R002"),
@@ -52,7 +52,7 @@ def test_axis_a_risk_ids_set_union() -> None:
     )
     child = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="finance",
                 tier=Tier.REGULATED,
                 risk_ids=("R002", "R003"),
@@ -69,7 +69,7 @@ def test_axis_a_provenance_parent_wins_by_default() -> None:
     — derivation cannot wash provenance away."""
     parent = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="personal",
                 tier=Tier.SENSITIVE,
                 assignment_provenance="curated-mcp",
@@ -78,7 +78,7 @@ def test_axis_a_provenance_parent_wins_by_default() -> None:
     )
     child = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="personal",
                 tier=Tier.SENSITIVE,
                 assignment_provenance="source-declared",
@@ -95,7 +95,7 @@ def test_axis_a_provenance_raise_only_inspector_escalates() -> None:
     because it represents added taint (inspector found something)."""
     parent = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="proprietary_work",
                 tier=Tier.REGULATED,
                 assignment_provenance="curated-mcp",
@@ -104,7 +104,7 @@ def test_axis_a_provenance_raise_only_inspector_escalates() -> None:
     )
     child = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="proprietary_work",
                 tier=Tier.REGULATED,
                 assignment_provenance="raise-only-inspector",
@@ -118,10 +118,10 @@ def test_axis_a_provenance_raise_only_inspector_escalates() -> None:
 @pytest.mark.invariant
 def test_axis_a_new_category_in_child_added() -> None:
     parent = AxisA(
-        categories=(AxisACategory(category="health", tier=Tier.REGULATED),),
+        categories=(CategoryTag(category="health", tier=Tier.REGULATED),),
     )
     child = AxisA(
-        categories=(AxisACategory(category="finance", tier=Tier.REGULATED),),
+        categories=(CategoryTag(category="finance", tier=Tier.REGULATED),),
     )
     merged = most_restrictive_inherit_axis_a(parent, child)
     cats = {c.category for c in merged.categories}
@@ -131,10 +131,10 @@ def test_axis_a_new_category_in_child_added() -> None:
 @pytest.mark.invariant
 def test_axis_b_integrity_floor_is_or() -> None:
     parent = AxisB(
-        entries=(AxisBEntry(level=ProvenanceLevel.EXTERNAL_UNTRUSTED, integrity_floor=False),),
+        entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED, integrity_floor=False),),
     )
     child = AxisB(
-        entries=(AxisBEntry(level=ProvenanceLevel.EXTERNAL_UNTRUSTED, integrity_floor=True),),
+        entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED, integrity_floor=True),),
     )
     merged = most_restrictive_inherit_axis_b(parent, child)
     assert merged.entries[0].integrity_floor is True
@@ -142,8 +142,8 @@ def test_axis_b_integrity_floor_is_or() -> None:
 
 @pytest.mark.invariant
 def test_axis_b_levels_union() -> None:
-    parent = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
-    child = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),))
+    parent = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    child = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),))
     merged = most_restrictive_inherit_axis_b(parent, child)
     levels = {e.level for e in merged.entries}
     assert levels == {ProvenanceLevel.PRINCIPAL_DIRECT, ProvenanceLevel.EXTERNAL_UNTRUSTED}

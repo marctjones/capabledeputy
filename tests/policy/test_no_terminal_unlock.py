@@ -39,11 +39,11 @@ from capabledeputy.policy.envelope import (
 )
 from capabledeputy.policy.labels import (
     AxisA,
-    AxisACategory,
     AxisB,
-    AxisBEntry,
     AxisD,
+    CategoryTag,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.overrides import (
     HardFloor,
@@ -59,9 +59,9 @@ from capabledeputy.policy.tiers import Tier
 
 def _prohibited_axes() -> tuple[AxisA, AxisB, AxisD]:
     axis_a = AxisA(
-        categories=(AxisACategory(category="weapons_specs", tier=Tier.PROHIBITED),),
+        categories=(CategoryTag(category="weapons_specs", tier=Tier.PROHIBITED),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",

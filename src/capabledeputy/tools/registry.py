@@ -21,8 +21,7 @@ from uuid import UUID
 from capabledeputy.approval.route import ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.label_state import LabelState
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import Label, LabelState
 
 
 @dataclass(frozen=True)
