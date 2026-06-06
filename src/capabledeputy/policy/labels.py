@@ -261,6 +261,45 @@ def most_restrictive_inherit(*states: LabelState) -> LabelState:
     return LabelState(a=a, b=b)
 
 
+def inherit(parent: LabelState, child: LabelState) -> LabelState:
+    """**Directional** parent→child inheritance (delegation / fork /
+    derivation) — distinct from the symmetric `most_restrictive_inherit`
+    (in-session accumulation). Per-category: tier = max, risk_ids = union,
+    and `assignment_provenance` stays the **parent's** ("derivation cannot
+    launder provenance away" — a Provenance-security / FR-022 property),
+    *unless* the child's is `raise-only-inspector` (which only adds taint).
+    Axis B: union of levels; `integrity_floor` = OR. Ports the legacy
+    `most_restrictive_inherit_axis_a/_b` semantics onto `LabelState`."""
+    by_cat: dict[str, CategoryTag] = {t.category: t for t in parent.a}
+    for cc in child.a:
+        pc = by_cat.get(cc.category)
+        if pc is None:
+            by_cat[cc.category] = cc
+            continue
+        prov = (
+            cc.assignment_provenance
+            if cc.assignment_provenance == "raise-only-inspector"
+            else pc.assignment_provenance
+        )
+        by_cat[cc.category] = CategoryTag(
+            category=cc.category,
+            tier=max_of(pc.tier, cc.tier),
+            risk_ids=tuple(sorted(set(pc.risk_ids) | set(cc.risk_ids))),
+            assignment_provenance=prov,
+        )
+    by_lvl: dict[ProvenanceLevel, ProvenanceTag] = {e.level: e for e in parent.b}
+    for ce in child.b:
+        pe = by_lvl.get(ce.level)
+        if pe is None:
+            by_lvl[ce.level] = ce
+        else:
+            by_lvl[ce.level] = ProvenanceTag(
+                level=ce.level,
+                integrity_floor=pe.integrity_floor or ce.integrity_floor,
+            )
+    return LabelState(a=frozenset(by_cat.values()), b=frozenset(by_lvl.values()))
+
+
 def meets_required_floor(state: LabelState, required_floor: ProvenanceLevel | None) -> bool:
     """Biba 'no read-down': True iff every provenance level present is at
     least as trustworthy as `required_floor`. None ⇒ no floor ⇒ True."""

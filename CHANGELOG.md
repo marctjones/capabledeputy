@@ -75,6 +75,15 @@ Work in progress on `003-labeling-framework`. Not yet released.
   that `register()` doesn't enforce) and recorded the R4c verification
   points (run-both-and-assert-agreement; fix mis-declared test fixtures)
   in the redesign note. Audit found no critical bugs in R3–R4b.2.
+- **R4b.3 (safety net)**: the run-both-assert check found the legacy
+  `most_restrictive_inherit_axis_a` (directional, parent-authoritative
+  provenance) and the new `most_restrictive_inherit` (symmetric) are
+  *distinct operations*, not a bug. Added directional `labels.inherit`
+  (preserves the Provenance-security "derivation cannot launder
+  provenance" property, FR-022), proven equivalent to the legacy axis
+  inherit (`test_directional_inherit_matches_legacy`). The engine's
+  delegation/fork path will use `inherit`; session accumulation uses
+  `most_restrictive_inherit`. Green (2069).
 
 ## [0.13.1] — 2026-06-05
 

@@ -11,14 +11,15 @@ model coexist.
 > `register()` · R4a leaf consolidation (`CategoryTag`/`ProvenanceTag`
 > canonical, `label_state.py` deleted) · R4b.1 `LabelState`↔axes converters
 > + `Session.label_state` · R4b.2 `decide(labels=…)` · audit follow-up
-> (`test_tool_risk_ids_in_register`). Latest tag: `v0.14.0-R4b2-decide-labels`.
-> Suite green (2068).
+> (`test_tool_risk_ids_in_register`) · **R4b.3 safety net**: directional
+> `labels.inherit` added (symmetric-vs-directional composition resolved,
+> §9.4) + proven equivalent to the legacy axis inherit. Suite green (2069).
 >
-> **Next: R4b.3+** (§9 step 4 + §9.4 verification points):
+> **Next: R4b.3 (cont.)** (§9 step 4):
 > 1. Re-type `decide()`'s **internals** to consume `LabelState` behind the
->    R4b.1 converters; keep the legacy axis path running in parallel and
->    **assert both agree** (incl. `_compose_a` vs `most_restrictive_inherit_axis_a`
->    authority resolution).
+>    R4b.1 converters — delegation/fork path uses `labels.inherit`, session
+>    accumulation uses `most_restrictive_inherit`. Keep the legacy axis path
+>    in parallel and assert identical outcomes before deleting it.
 > 2. Migrate the ~185 **test** `decide(axis_a=…, axis_b=…)` call sites to
 >    `labels=` in batches (src has no clean `decide(axis_a=)` callers).
 > 3. **R4b.4**: collapse `Session.axis_a`/`axis_b` → one `LabelState`; delete
@@ -280,10 +281,20 @@ invariants enforced (Principle III). Order:
    - **Run-both-and-assert-agreement**: keep the legacy axis path and the
      new `LabelState` path computing in parallel and assert identical
      outcomes before deleting the legacy path — the safety net for the
-     re-type. In particular confirm the two authority-resolution
-     implementations agree: `_compose_a` (new, `_AUTHORITY_RANK` max) vs
-     `most_restrictive_inherit_axis_a` (legacy, parent-wins/raise-only)
-     must resolve `assignment_provenance` identically, else reconcile.
+     re-type.
+   - **RESOLVED (R4b.3): symmetric vs directional composition are two
+     distinct operations — do NOT merge them.** The safety check found
+     `_compose_a`/`most_restrictive_inherit` (symmetric, `_AUTHORITY_RANK`
+     max, order-independent — for *in-session accumulation*) and the legacy
+     `most_restrictive_inherit_axis_a` (directional, *parent-authoritative*
+     provenance with a raise-only-inspector exception — for
+     *delegation/fork/derivation*) deliberately differ: the directional one
+     preserves the Provenance-security "derivation cannot launder
+     provenance" property (FR-022). A directional `labels.inherit(parent,
+     child)` was added and proven equivalent to the legacy functions
+     (`test_directional_inherit_matches_legacy`). The engine's delegation
+     path MUST use `inherit`; session accumulation uses
+     `most_restrictive_inherit`.
    - **Fix the mis-declared test fixtures**: many test tool factories
      blanket-declare `operations=(Operation(FETCH),)` regardless of the
      tool's real effect (e.g. send/write fixtures). Inert until `operations`

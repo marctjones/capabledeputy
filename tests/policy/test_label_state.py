@@ -181,6 +181,31 @@ def test_label_state_axes_roundtrip() -> None:
     assert set(back.to_axis_b().entries) == set(axis_b.entries)
 
 
+@given(_label_states, _label_states)
+def test_directional_inherit_matches_legacy(parent: LabelState, child: LabelState) -> None:
+    """R4c safety net: the new directional `inherit` must reproduce the
+    legacy `most_restrictive_inherit_axis_a/_b` (parent-authoritative
+    provenance) exactly — so the engine's delegation/fork path can switch
+    to it without behavior change. (Distinct from the symmetric
+    `most_restrictive_inherit`, which deliberately differs.)"""
+    from capabledeputy.policy.labels import (
+        inherit,
+        most_restrictive_inherit_axis_a,
+        most_restrictive_inherit_axis_b,
+    )
+
+    # Normalize so per-category/level dedup is settled (frozenset→tuple
+    # ordering then can't affect the parent-wins tie-break).
+    parent = most_restrictive_inherit(parent)
+    child = most_restrictive_inherit(child)
+    new = inherit(parent, child)
+    legacy = LabelState.from_axes(
+        most_restrictive_inherit_axis_a(parent.to_axis_a(), child.to_axis_a()),
+        most_restrictive_inherit_axis_b(parent.to_axis_b(), child.to_axis_b()),
+    )
+    assert new == legacy
+
+
 def test_decide_labels_param_equivalent_to_axes() -> None:
     """R4b.2 — passing `labels=LabelState(...)` to decide() must yield the
     same outcome as passing the derived axis_a/axis_b separately."""
