@@ -16,8 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from capabledeputy.policy.risk_register import load as load_register, RiskRegisterError
-
+from capabledeputy.policy.risk_register import load as load_register
 
 _QUANTIFICATION_REQUIRED_FRAMEWORKS = frozenset(
     {
@@ -61,7 +60,7 @@ class TestRiskRegisterThresholdSchema:
                     f"{quantified_frameworks} but has no threshold field"
                 )
 
-        assert not failures, f"threshold compliance failures:\n" + "\n".join(
+        assert not failures, "threshold compliance failures:\n" + "\n".join(
             f"  - {f}" for f in failures
         )
 

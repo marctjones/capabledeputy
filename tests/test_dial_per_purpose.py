@@ -24,11 +24,13 @@ import pytest
 
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.purposes import (
-    Purpose,
-    Purposes,
     _DEFAULT_DIAL_VALUE,
     _VALID_DIAL_VALUES,
+    Purpose,
     PurposeError,
+    Purposes,
+)
+from capabledeputy.policy.purposes import (
     load as load_purposes,
 )
 from capabledeputy.session.graph import SessionGraph
@@ -45,7 +47,7 @@ def _write_purposes_yaml(directory: Path, body: str) -> Path:
 
 def test_default_dial_constants_are_canonical() -> None:
     """Q1 vocabulary is exactly the three documented values."""
-    assert _VALID_DIAL_VALUES == frozenset({"cautious", "balanced", "permissive"})
+    assert frozenset({"cautious", "balanced", "permissive"}) == _VALID_DIAL_VALUES
     assert _DEFAULT_DIAL_VALUE == "cautious"
 
 

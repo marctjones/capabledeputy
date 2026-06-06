@@ -19,9 +19,9 @@ import sys
 import time
 import urllib.request
 
+from capabledeputy.quarantined.constraints import validate_extracted_value
 from capabledeputy.quarantined.extractor import _build_extraction_prompt
 from capabledeputy.quarantined.schemas import get_schema, schema_to_jsonschema
-from capabledeputy.quarantined.constraints import validate_extracted_value
 
 OLLAMA = "http://localhost:11434/api/chat"
 SCHEMA = "EmailTriageItem"
@@ -120,7 +120,7 @@ def main() -> None:
         status, detail, validated = "OK", "", None
         try:
             validated = parse_like_capdep(out)
-        except Exception as e:  # noqa: BLE001 - we want every failure mode
+        except Exception as e:
             status, detail = type(e).__name__, str(e).replace("\n", " ")[:160]
 
         rows.append((name, status, tok_s, raw["_wall_s"], eval_c, detail, validated, out))

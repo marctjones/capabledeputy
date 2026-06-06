@@ -15,8 +15,6 @@ by-default; this unit test covers the tracker mechanics in isolation.
 
 from __future__ import annotations
 
-import pytest
-
 from capabledeputy.policy.latency import (
     DEFAULT_CHECK_EVERY_N_DISPATCHES,
     SC023_P95_TARGET_MS,

@@ -15,18 +15,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from uuid import UUID
 
 import pytest
 
 from capabledeputy.agent.events import (
-    LLMRequestSent,
     TurnCompleted,
     TurnInterrupted,
 )
 from capabledeputy.agent.loop import (
-    ContextOverflowError,
-    _MODEL_CONTEXT_WINDOWS,
     _context_window_for,
     _estimate_message_tokens,
     run_turn_streaming,

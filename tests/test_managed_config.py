@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -10,7 +9,6 @@ import yaml
 
 from capabledeputy.cli._managed_config import (
     IMAP_BLOCK_BODY,
-    IMAP_BLOCK_ID,
     has_managed_block,
     imap_credentials_present,
     remove_managed_block,

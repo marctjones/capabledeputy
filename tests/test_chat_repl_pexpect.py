@@ -188,7 +188,7 @@ def test_capdep_chat_binary_exists() -> None:
     regressions."""
     if shutil.which("uv") is None:
         pytest.skip("uv not available")
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         ["uv", "run", "capdep", "chat", "--help"],
         capture_output=True,
         text=True,

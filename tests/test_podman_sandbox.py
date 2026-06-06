@@ -17,7 +17,6 @@ import shutil
 import subprocess
 import threading
 import time
-from typing import Any
 
 import pytest
 
@@ -33,7 +32,6 @@ from capabledeputy.substrate.podman_sandbox import (
     parse_sandbox_config,
 )
 from capabledeputy.substrate.sandbox_actuator import SandboxProgress
-
 
 # --- FakePopen ---------------------------------------------------------------
 

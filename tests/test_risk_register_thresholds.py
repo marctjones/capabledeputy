@@ -15,8 +15,8 @@ import pytest
 from capabledeputy.policy.risk_register import (
     RiskRegister,
     RiskRegisterEntry,
-    Threshold,
     RiskRegisterError,
+    Threshold,
 )
 
 
