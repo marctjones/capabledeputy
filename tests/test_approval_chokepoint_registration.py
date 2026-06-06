@@ -16,7 +16,8 @@ import pytest
 from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalStatus
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import AxisA, AxisB, CategoryTag, ProvenanceLevel, ProvenanceTag
+from capabledeputy.policy.tiers import Tier
 
 
 @pytest.fixture
@@ -27,6 +28,18 @@ async def app(tmp_path: Path) -> App:
     )
     await a.startup()
     return a
+
+
+def _financial_axis_a() -> AxisA:
+    return AxisA(
+        categories=(
+            CategoryTag("financial", Tier.REGULATED, assignment_provenance="source-declared"),
+        )
+    )
+
+
+def _external_untrusted_axis_b() -> AxisB:
+    return AxisB(entries=(ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED),))
 
 
 async def test_require_approval_auto_registers_in_queue(app: App) -> None:
@@ -41,7 +54,7 @@ async def test_require_approval_auto_registers_in_queue(app: App) -> None:
     app.graph._sessions[s.id] = replace(
         s,
         capability_set=frozenset({cap}),
-        label_set=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        axis_a=_financial_axis_a(),
     )
 
     assert len(app.approval_queue.list()) == 0
@@ -73,7 +86,7 @@ async def test_identical_repeat_call_dedups_to_same_approval(app: App) -> None:
     app.graph._sessions[s.id] = replace(
         s,
         capability_set=frozenset({cap}),
-        label_set=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        axis_a=_financial_axis_a(),
     )
 
     args = {"vendor": "amazon", "item": "towels", "amount": 50}
@@ -94,7 +107,7 @@ async def test_distinct_targets_get_distinct_approvals(app: App) -> None:
     app.graph._sessions[s.id] = replace(
         s,
         capability_set=frozenset({cap}),
-        label_set=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        axis_a=_financial_axis_a(),
     )
 
     o1 = await app.tool_client.call_tool(
@@ -119,7 +132,7 @@ async def test_deny_outcome_registers_nothing(app: App) -> None:
     app.graph._sessions[s.id] = replace(
         s,
         capability_set=frozenset({cap}),
-        label_set=frozenset({Label.UNTRUSTED_EXTERNAL}),
+        axis_b=_external_untrusted_axis_b(),
     )
     outcome = await app.tool_client.call_tool(
         s.id,
@@ -156,7 +169,7 @@ async def test_no_queue_wired_degrades_gracefully(tmp_path: Path) -> None:
     graph._sessions[s.id] = replace(
         s,
         capability_set=frozenset({cap}),
-        label_set=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        axis_a=_financial_axis_a(),
     )
     outcome = await client.call_tool(
         s.id,

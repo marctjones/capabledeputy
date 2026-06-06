@@ -1,8 +1,8 @@
 """Labeled in-memory key-value store and the memory.read / memory.write tools.
 
 memory.write stores a value alongside the calling session's current label
-set. memory.read returns the value along with the stored labels as
-additional_labels, so they propagate into the calling session — that's
+state. memory.read returns the value along with the stored labels as
+additional_tags, so they propagate into the calling session — that's
 the IFC-correct behavior: reading labeled data inherits its labels.
 """
 
@@ -15,7 +15,7 @@ from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
 _DESTRUCTIVE_ROUTE = ApprovalRoute(
@@ -28,15 +28,15 @@ _DESTRUCTIVE_ROUTE = ApprovalRoute(
 @dataclass
 class _MemoryEntry:
     value: Any
-    labels: frozenset[Label]
+    label_state: LabelState
 
 
 class LabeledMemoryStore:
     def __init__(self) -> None:
         self._data: dict[str, _MemoryEntry] = {}
 
-    def write(self, key: str, value: Any, labels: frozenset[Label]) -> None:
-        self._data[key] = _MemoryEntry(value=value, labels=labels)
+    def write(self, key: str, value: Any, label_state: LabelState) -> None:
+        self._data[key] = _MemoryEntry(value=value, label_state=label_state)
 
     def read(self, key: str) -> _MemoryEntry | None:
         return self._data.get(key)
@@ -44,16 +44,20 @@ class LabeledMemoryStore:
     def keys(self) -> list[str]:
         return sorted(self._data.keys())
 
-    def labels_of(self, key: str) -> frozenset[Label]:
+    def label_state_of(self, key: str) -> LabelState:
         entry = self._data.get(key)
-        return entry.labels if entry else frozenset()
+        return entry.label_state if entry else LabelState()
+
+    def labels_of(self, key: str) -> LabelState:
+        """Alias for label_state_of (backward compat)."""
+        return self.label_state_of(key)
 
 
 def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
     async def memory_write(args: dict[str, Any], context: ToolContext) -> ToolResult:
         key = str(args["key"])
         value = args["value"]
-        store.write(key, value, context.label_set)
+        store.write(key, value, context.label_state)
         return ToolResult(output={"ok": True, "key": key})
 
     async def memory_read(args: dict[str, Any], context: ToolContext) -> ToolResult:
@@ -63,7 +67,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             return ToolResult(output={"found": False})
         return ToolResult(
             output={"found": True, "value": entry.value},
-            additional_labels=entry.labels,
+            additional_tags=entry.label_state,
         )
 
     async def memory_create(args: dict[str, Any], context: ToolContext) -> ToolResult:
@@ -76,7 +80,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             return ToolResult(
                 output={"ok": False, "error": f"key already exists: {key}"},
             )
-        store.write(key, value, context.label_set)
+        store.write(key, value, context.label_state)
         return ToolResult(output={"ok": True, "key": key, "created": True})
 
     async def memory_update(args: dict[str, Any], context: ToolContext) -> ToolResult:
@@ -89,7 +93,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             return ToolResult(
                 output={"ok": False, "error": f"key does not exist: {key}"},
             )
-        store.write(key, value, context.label_set)
+        store.write(key, value, context.label_state)
         return ToolResult(output={"ok": True, "key": key, "modified": True})
 
     async def memory_delete(args: dict[str, Any], context: ToolContext) -> ToolResult:

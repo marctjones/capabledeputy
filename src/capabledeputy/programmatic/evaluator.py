@@ -16,7 +16,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, most_restrictive_inherit
 from capabledeputy.policy.rules import Decision
 from capabledeputy.programmatic.errors import (
     ProgramPolicyError,
@@ -24,16 +24,16 @@ from capabledeputy.programmatic.errors import (
 )
 from capabledeputy.programmatic.value import (
     LabeledValue,
-    labels_of,
     lv,
-    union_labels,
+    tags_of,
+    union_tags,
     unwrap,
 )
 
 # An async hook the caller provides to actually invoke a tool.
-# Returns: (raw_output, additional_labels, decision, rule, reason)
+# Returns: ToolDispatchResult with decision, output, inherent_labels, rule, reason
 ToolCaller = Callable[
-    [str, dict[str, Any], frozenset[Label]],
+    [str, dict[str, Any], LabelState],
     Awaitable["ToolDispatchResult"],
 ]
 
@@ -43,13 +43,13 @@ class ToolDispatchResult:
     """Caller-side outcome of a tool dispatch in programmatic mode.
 
     `decision` is the policy decision; ALLOW means `output` is valid and
-    `inherent_labels` should be propagated. Any other decision halts the
+    `tags_added` should be propagated. Any other decision halts the
     program with a ProgramPolicyError before the caller sees `output`.
     """
 
     decision: Decision
     output: Any = None
-    inherent_labels: frozenset[Label] = frozenset()
+    tags_added: LabelState = field(default_factory=LabelState)
     rule: str | None = None
     reason: str | None = None
 
@@ -58,9 +58,9 @@ class ToolDispatchResult:
 class ToolCallRecord:
     tool_name: str
     args: dict[str, Any]
-    arg_labels: frozenset[Label]
+    arg_labels: frozenset[str]
     decision: Decision
-    inherent_labels: frozenset[Label]
+    inherent_labels: frozenset[str]
     rule: str | None
     reason: str | None
     line: int | None
@@ -216,7 +216,7 @@ class Evaluator:
             current = await self._eval(stmt.target)
             value = await self._eval(stmt.value)
             new_raw = _apply_binop(type(stmt.op), unwrap(current), unwrap(value))
-            new = lv(new_raw, union_labels(current, value))
+            new = lv(new_raw, union_tags(current, value))
             self._assign(stmt.target, new)
             return
         if isinstance(stmt, ast.If):
@@ -229,11 +229,11 @@ class Evaluator:
         if isinstance(stmt, ast.For):
             iterable = await self._eval(stmt.iter)
             seq = unwrap(iterable)
-            seq_labels = labels_of(iterable)
+            seq_labels = tags_of(iterable)
             broke = False
             for item in seq:
                 if isinstance(item, LabeledValue):
-                    bound: LabeledValue = item.with_labels(seq_labels)
+                    bound: LabeledValue = item.with_tags(seq_labels)
                 else:
                     bound = lv(item, seq_labels)
                 self._assign(stmt.target, bound)
@@ -255,7 +255,7 @@ class Evaluator:
             return
         if isinstance(target, ast.Tuple):
             seq = unwrap(value)
-            seq_labels = labels_of(value)
+            seq_labels = tags_of(value)
             if not isinstance(seq, (list, tuple)):
                 raise ProgramRuntimeError("cannot unpack non-sequence in assignment")
             if len(seq) != len(target.elts):
@@ -264,7 +264,7 @@ class Evaluator:
                 )
             for sub_target, item in zip(target.elts, seq, strict=True):
                 if isinstance(item, LabeledValue):
-                    bound = item.with_labels(seq_labels)
+                    bound = item.with_tags(seq_labels)
                 else:
                     bound = lv(item, seq_labels)
                 self._assign(sub_target, bound)
@@ -281,7 +281,7 @@ class Evaluator:
                 raise ProgramRuntimeError(
                     f"cannot subscript-assign into {type(raw_container).__name__}",
                 )
-            new_labels = container.labels | value.labels
+            new_labels = most_restrictive_inherit(container.label_state, value.label_state)
             self._scope[_subscript_root_name(target)] = lv(raw_container, new_labels)
             return
         raise ProgramRuntimeError(f"unsupported assignment target {type(target).__name__}")
@@ -314,25 +314,25 @@ class Evaluator:
             left = await self._eval(expr.left)
             right = await self._eval(expr.right)
             value = _apply_binop(type(expr.op), unwrap(left), unwrap(right))
-            return lv(value, union_labels(left, right))
+            return lv(value, union_tags(left, right))
         if isinstance(expr, ast.BoolOp):
             results: list[LabeledValue] = []
             for v in expr.values:
                 r = await self._eval(v)
                 results.append(r)
                 if isinstance(expr.op, ast.And) and not unwrap(r):
-                    return lv(unwrap(r), union_labels(*results))
+                    return lv(unwrap(r), union_tags(*results))
                 if isinstance(expr.op, ast.Or) and unwrap(r):
-                    return lv(unwrap(r), union_labels(*results))
-            return results[-1].with_labels(union_labels(*results))
+                    return lv(unwrap(r), union_tags(*results))
+            return results[-1].with_tags(union_tags(*results))
         if isinstance(expr, ast.Compare):
             left = await self._eval(expr.left)
             current_raw = unwrap(left)
-            all_labels = labels_of(left)
+            all_labels = tags_of(left)
             result_value = True
             for cmp_op, comparator in zip(expr.ops, expr.comparators, strict=True):
                 right = await self._eval(comparator)
-                all_labels = all_labels | labels_of(right)
+                all_labels = most_restrictive_inherit(all_labels, tags_of(right))
                 cmp_fn = _CMP_OPS[type(cmp_op)]
                 step = cmp_fn(current_raw, unwrap(right))
                 if not step:
@@ -342,30 +342,32 @@ class Evaluator:
             return lv(result_value, all_labels)
         if isinstance(expr, ast.UnaryOp):
             operand = await self._eval(expr.operand)
-            return lv(_UNARY_OPS[type(expr.op)](unwrap(operand)), labels_of(operand))
+            return lv(_UNARY_OPS[type(expr.op)](unwrap(operand)), tags_of(operand))
         if isinstance(expr, ast.IfExp):
             cond = await self._eval(expr.test)
             chosen = await self._eval(expr.body) if unwrap(cond) else await self._eval(expr.orelse)
-            return chosen.with_labels(labels_of(cond))
+            return chosen.with_tags(tags_of(cond))
         if isinstance(expr, ast.Tuple):
             items = [await self._eval(e) for e in expr.elts]
-            return lv(tuple(items), union_labels(*items))
+            return lv(tuple(items), union_tags(*items))
         if isinstance(expr, ast.List):
             items = [await self._eval(e) for e in expr.elts]
-            return lv(list(items), union_labels(*items))
+            return lv(list(items), union_tags(*items))
         if isinstance(expr, ast.Set):
             items = [await self._eval(e) for e in expr.elts]
-            return lv({unwrap(i) for i in items}, union_labels(*items))
+            return lv({unwrap(i) for i in items}, union_tags(*items))
         if isinstance(expr, ast.Dict):
             entries: dict[Any, Any] = {}
-            collected_labels: frozenset[Label] = frozenset()
+            collected_labels: LabelState = LabelState()
             for k_node, v_node in zip(expr.keys, expr.values, strict=True):
                 if k_node is None:
                     raise ProgramRuntimeError("dict unpacking is not allowed")
                 k = await self._eval(k_node)
                 v = await self._eval(v_node)
                 entries[unwrap(k)] = v
-                collected_labels = collected_labels | labels_of(k) | labels_of(v)
+                collected_labels = most_restrictive_inherit(
+                    collected_labels, tags_of(k), tags_of(v)
+                )
             return lv(entries, collected_labels)
         if isinstance(expr, ast.Subscript):
             container = await self._eval(expr.value)
@@ -378,9 +380,9 @@ class Evaluator:
                 raise ProgramRuntimeError(
                     f"subscript failed: {type(e).__name__}: {e}",
                 ) from e
-            child_labels = labels_of(container) | labels_of(index)
+            child_labels = most_restrictive_inherit(tags_of(container), tags_of(index))
             if isinstance(value, LabeledValue):
-                return value.with_labels(child_labels)
+                return value.with_tags(child_labels)
             return lv(value, child_labels)
         if isinstance(expr, ast.Call):
             return await self._eval_call(expr)
@@ -414,7 +416,7 @@ class Evaluator:
                 raise ProgramRuntimeError(
                     f"builtin {func_name} failed: {type(e).__name__}: {e}",
                 ) from e
-            child_labels = union_labels(*positional, *kwargs.values())
+            child_labels = union_tags(*positional, *kwargs.values())
             return lv(result, child_labels)
 
         raise ProgramRuntimeError(f"unknown function: {func_name}")
@@ -435,16 +437,18 @@ class Evaluator:
             )
         tool_name = unwrap(positional[0])
         raw_args = {k: unwrap(v) for k, v in kwargs.items()}
-        arg_labels = union_labels(*kwargs.values())
+        arg_labels = union_tags(*kwargs.values())
 
         outcome = await self._tool_caller(tool_name, raw_args, arg_labels)
 
+        # TODO: ToolCallRecord still expects frozenset[Label]; migrate to LabelState
+        # For now, convert LabelState back to empty frozenset placeholder
         record = ToolCallRecord(
             tool_name=tool_name,
             args=raw_args,
-            arg_labels=arg_labels,
+            arg_labels=frozenset(),  # placeholder; tags now stored in outcome.tags_added
             decision=outcome.decision,
-            inherent_labels=outcome.inherent_labels,
+            inherent_labels=frozenset(),  # placeholder; tags now stored in outcome.tags_added
             rule=outcome.rule,
             reason=outcome.reason,
             line=getattr(call_node, "lineno", None),
@@ -459,7 +463,7 @@ class Evaluator:
                 reason=outcome.reason,
             )
 
-        return lv(outcome.output, arg_labels | outcome.inherent_labels)
+        return lv(outcome.output, union_tags(arg_labels, outcome.tags_added))
 
 
 def _apply_binop(op_type: type[ast.operator], left: Any, right: Any) -> Any:

@@ -23,7 +23,6 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from capabledeputy.approval.model import ApprovalAction, ApprovalRequest
-from capabledeputy.policy.labels import Label
 
 
 class PatternValidationError(ValueError):
@@ -72,7 +71,8 @@ class ApprovalPatternRule:
     # operators distinguish "self-forward clean content" from
     # "self-forward content tainted with X". Empty (default) = no
     # label requirement — match purely on action+target+payload.
-    labels_required: frozenset[Label] = field(default_factory=frozenset)
+    # Now stored as string values (the .value of Label enum for compat).
+    labels_required: frozenset[str] = field(default_factory=frozenset)
     # Operator-supplied audit tag — surfaces in the auto-approval
     # audit event so the operator can grep "patterns that fired
     # under tag 'self-forward'". Empty when not provided.
@@ -87,7 +87,7 @@ class ApprovalPatternRule:
         ttl: timedelta,
         created_by: str = "user",
         payload_pattern: str | None = None,
-        labels_required: frozenset[Label] = frozenset(),
+        labels_required: frozenset[str] = frozenset(),
         audit_tag: str = "",
     ) -> ApprovalPatternRule:
         _validate_target_pattern(target_pattern)
@@ -122,10 +122,22 @@ class ApprovalPatternRule:
         # request's incoming labels INCLUDE every label the operator
         # declared required. Strictly inclusive: extra labels on the
         # request are fine; missing required labels disqualify.
-        if self.labels_required and not self.labels_required.issubset(
-            request.labels_in,
-        ):
-            return False
+        # Convert request.labels_in (LabelState) to a set of label string values.
+        if self.labels_required:
+            # Get all label values from the request's LabelState
+            request_label_values = set()
+            # Axis A: category labels
+            for cat_tag in request.labels_in.a:
+                request_label_values.add(f"confidential.{cat_tag.category}")
+            # Axis B: provenance labels
+            for prov_tag in request.labels_in.b:
+                if prov_tag.level.value == "external-untrusted":
+                    request_label_values.add("untrusted.external")
+                elif prov_tag.level.value == "principal-direct":
+                    request_label_values.add("trusted.user_direct")
+
+            if not self.labels_required.issubset(request_label_values):
+                return False
         if self.payload_pattern is None:
             return True
         return fnmatch.fnmatchcase(request.payload, self.payload_pattern)
@@ -141,7 +153,7 @@ class ApprovalPatternRule:
             "created_by": self.created_by,
             "revoked": self.revoked,
             "auto_approval_count": self.auto_approval_count,
-            "labels_required": sorted(label.value for label in self.labels_required),
+            "labels_required": sorted(self.labels_required),
             "audit_tag": self.audit_tag,
         }
 

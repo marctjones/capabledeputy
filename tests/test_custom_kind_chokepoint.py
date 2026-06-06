@@ -27,13 +27,13 @@ from capabledeputy.policy.capabilities import (
     CapabilityOrigin,
     UnknownKindError,
     is_destructive_kind,
-    kind_add_labels,
+    kind_add_tags,
     register_custom_kind_registry,
     reset_custom_kind_registry,
     resolve_kind,
 )
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.upstream.server_yaml import CustomKindDecl, CustomKindRegistry
 
 
@@ -130,26 +130,30 @@ def test_is_destructive_kind_unknown_custom_defaults_false() -> None:
 
 
 def test_kind_add_labels_custom() -> None:
-    """A custom kind's declared add_labels surface via kind_add_labels."""
+    """A custom kind's declared add_tags surface via kind_add_tags."""
     reg = _make_registry(
         CustomKindDecl(
             name="slack:read",
             destructive=False,
-            add_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+            add_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
             declared_by_file="slack.yaml",
         ),
     )
     register_custom_kind_registry(reg)
 
-    labels = kind_add_labels("slack:read")
-    assert labels == frozenset({Label.UNTRUSTED_EXTERNAL})
+    tags = kind_add_tags("slack:read")
+    assert tags == LabelState(
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+    )
 
 
 def test_kind_add_labels_built_in_returns_empty() -> None:
     """Built-in kinds get their label propagation from the policy
-    engine's hardcoded rules — kind_add_labels returns empty for them."""
-    assert kind_add_labels(CapabilityKind.GMAIL_READ) == frozenset()
-    assert kind_add_labels(CapabilityKind.READ_FS) == frozenset()
+    engine's hardcoded rules — kind_add_tags returns empty for them."""
+    assert kind_add_tags(CapabilityKind.GMAIL_READ) == LabelState()
+    assert kind_add_tags(CapabilityKind.READ_FS) == LabelState()
 
 
 def test_capability_from_dict_round_trips_custom_kind() -> None:
@@ -215,10 +219,10 @@ def test_capability_matches_custom_kind() -> None:
 
 async def test_custom_kind_add_labels_propagate_to_session(tmp_path) -> None:
     """End-to-end: a tool registered with a custom CapabilityKind
-    whose yaml declares `add_labels: [untrusted.external]` causes
-    that label to land in the session's label_set after a successful
+    whose yaml declares `add_tags` with untrusted provenance causes
+    that tag to land in the session's label_state after a successful
     call. This closes the IFC story for plugin kinds — destructiveness
-    gates the call; declared add_labels color the session afterward."""
+    gates the call; declared add_tags color the session afterward."""
     from capabledeputy.audit.writer import AuditWriter
     from capabledeputy.session.graph import SessionGraph
     from capabledeputy.tools.client import LabeledToolClient
@@ -232,7 +236,9 @@ async def test_custom_kind_add_labels_propagate_to_session(tmp_path) -> None:
         CustomKindDecl(
             name="slack:read",
             destructive=False,
-            add_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+            add_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
             declared_by_file="slack.yaml",
         ),
     )
@@ -278,19 +284,23 @@ async def test_custom_kind_add_labels_propagate_to_session(tmp_path) -> None:
 
     client = LabeledToolClient(registry=registry, graph=graph, audit=audit)
 
-    # Before the call: session has no labels
+    # Before the call: session has no external-untrusted provenance
     session_before = graph.get(session.id)
-    assert Label.UNTRUSTED_EXTERNAL not in session_before.label_set
+    assert not any(
+        tag.level == ProvenanceLevel.EXTERNAL_UNTRUSTED for tag in session_before.label_state.b
+    )
 
     outcome = await client.call_tool(session.id, "slack.search_messages", {"query": "hello"})
 
     # Call should have succeeded (ALLOW), and the custom kind's
-    # add_labels should now be in the session's label_set.
+    # add_tags should now be in the session's label_state.
     from capabledeputy.policy.rules import Decision
 
     assert outcome.decision == Decision.ALLOW, f"Expected ALLOW, got: {outcome}"
     session_after = graph.get(session.id)
-    assert Label.UNTRUSTED_EXTERNAL in session_after.label_set
+    assert any(
+        tag.level == ProvenanceLevel.EXTERNAL_UNTRUSTED for tag in session_after.label_state.b
+    )
 
 
 def test_built_in_kind_does_not_satisfy_custom_kind() -> None:

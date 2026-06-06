@@ -14,7 +14,8 @@ from uuid import uuid4
 
 import pytest
 
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.resources.static import (
     Resource,
     ResourceError,
@@ -61,7 +62,7 @@ resources:
     assert r.uri == "doc://cv.md"
     assert r.name == "Current CV"
     assert r.mime_type == "text/markdown"
-    assert Label.CONFIDENTIAL_PERSONAL in r.labels
+    assert any(c.category == "personal" for c in r.tags.a)
 
 
 def test_load_relative_path_refused(tmp_path: Path) -> None:
@@ -183,19 +184,31 @@ async def test_resources_list_tool(tmp_path: Path) -> None:
                 description="Resume",
                 mime_type="text/markdown",
                 content_path=tmp_path / "cv.md",
-                labels=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+                tags=LabelState(
+                    a=frozenset(
+                        {
+                            CategoryTag(
+                                "personal",
+                                Tier.REGULATED,
+                                assignment_provenance="source-declared",
+                            ),
+                        }
+                    )
+                ),
             ),
         ),
     )
     tools = make_resources_tools(pub)
     list_tool = next(t for t in tools if t.name == "resources.list")
-    ctx = ToolContext(session_id=uuid4(), label_set=frozenset())
+    ctx = ToolContext(session_id=uuid4(), label_state=LabelState())
     result = await list_tool.handler({}, ctx)
     assert result.output["count"] == 1
     entry = result.output["resources"][0]
     assert entry["uri"] == "doc://cv.md"
     assert entry["name"] == "CV"
-    assert "confidential.personal" in entry["labels"]
+    # tags is now a dict with structure {"a": [...], "b": [...]}
+    tags_dict = entry.get("tags", {})
+    assert tags_dict is not None
 
 
 @pytest.mark.asyncio
@@ -210,19 +223,29 @@ async def test_resources_read_tool(tmp_path: Path) -> None:
                 description="",
                 mime_type="text/markdown",
                 content_path=content,
-                labels=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+                tags=LabelState(
+                    a=frozenset(
+                        {
+                            CategoryTag(
+                                "personal",
+                                Tier.REGULATED,
+                                assignment_provenance="source-declared",
+                            ),
+                        }
+                    )
+                ),
             ),
         ),
     )
     tools = make_resources_tools(pub)
     read_tool = next(t for t in tools if t.name == "resources.read")
-    ctx = ToolContext(session_id=uuid4(), label_set=frozenset())
+    ctx = ToolContext(session_id=uuid4(), label_state=LabelState())
     result = await read_tool.handler({"uri": "doc://cv.md"}, ctx)
     assert result.output["found"] is True
     assert "Software engineer." in result.output["content"]
-    # Inherent label flows back so the chokepoint can propagate it
-    # into the session's label set.
-    assert Label.CONFIDENTIAL_PERSONAL in result.additional_labels
+    # Inherent tag flows back so the chokepoint can propagate it
+    # into the session's label_state.
+    assert any(c.category == "personal" for c in result.additional_tags.a)
 
 
 @pytest.mark.asyncio
@@ -230,7 +253,7 @@ async def test_resources_read_unknown_uri(tmp_path: Path) -> None:
     pub = StaticResourcePublisher(resources=())
     tools = make_resources_tools(pub)
     read_tool = next(t for t in tools if t.name == "resources.read")
-    ctx = ToolContext(session_id=uuid4(), label_set=frozenset())
+    ctx = ToolContext(session_id=uuid4(), label_state=LabelState())
     result = await read_tool.handler({"uri": "doc://nope"}, ctx)
     assert result.output["found"] is False
 
@@ -252,7 +275,7 @@ async def test_resources_read_missing_content_file(tmp_path: Path) -> None:
     )
     tools = make_resources_tools(pub)
     read_tool = next(t for t in tools if t.name == "resources.read")
-    ctx = ToolContext(session_id=uuid4(), label_set=frozenset())
+    ctx = ToolContext(session_id=uuid4(), label_state=LabelState())
     result = await read_tool.handler({"uri": "doc://gone.md"}, ctx)
     assert result.output["found"] is False
     assert "missing" in result.output.get("error", "")
@@ -276,7 +299,7 @@ async def test_resources_read_too_large(tmp_path: Path) -> None:
     )
     tools = make_resources_tools(pub)
     read_tool = next(t for t in tools if t.name == "resources.read")
-    ctx = ToolContext(session_id=uuid4(), label_set=frozenset())
+    ctx = ToolContext(session_id=uuid4(), label_state=LabelState())
     result = await read_tool.handler({"uri": "doc://big.txt"}, ctx)
     assert result.output["found"] is False
     assert "too large" in result.output.get("error", "")

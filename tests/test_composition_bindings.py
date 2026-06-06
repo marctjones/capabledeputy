@@ -120,7 +120,6 @@ def test_unbound_target_fails_closed() -> None:
     bindings = BindingSet(bindings=(_team_sharepoint_binding(),))
     axis_b, axis_d = _principal_axes()
     result = decide(
-        frozenset(),
         frozenset({_send_cap()}),
         Action(kind=CapabilityKind.WEB_FETCH, target="https://random.example.com/x"),
         axis_a=_personal_axis_a(),
@@ -143,7 +142,6 @@ def test_case_varying_url_canonicalizes_then_matches_rule() -> None:
     axis_b, axis_d = _principal_axes()
     # Case-varied target
     result = decide(
-        frozenset(),
         frozenset({_send_cap()}),
         Action(
             kind=CapabilityKind.WEB_FETCH,
@@ -166,7 +164,6 @@ def test_bound_target_passes_through_when_no_rule_matches() -> None:
     bindings = BindingSet(bindings=(_team_sharepoint_binding(),))
     axis_b, axis_d = _principal_axes()
     result = decide(
-        frozenset(),
         frozenset({_send_cap()}),
         Action(
             kind=CapabilityKind.WEB_FETCH,
@@ -191,7 +188,6 @@ def test_no_bindings_set_falls_back_to_raw_target() -> None:
     # Without bindings, only an exact raw-string match against the
     # rule predicate would fire — case-varied input won't.
     result = decide(
-        frozenset(),
         frozenset({_send_cap()}),
         Action(
             kind=CapabilityKind.WEB_FETCH,
@@ -236,11 +232,10 @@ def _api_post_tool() -> ToolDefinition:
 
 async def _make_session_with_personal_axis(graph: SessionGraph) -> Any:
     s = await graph.new()
-    s = s.__class__(
-        id=s.id,
-        parent=s.parent,
-        status=s.status,
-        label_set=s.label_set,
+    from dataclasses import replace as _replace
+
+    s = _replace(
+        s,
         capability_set=frozenset(
             {
                 Capability(
@@ -250,12 +245,6 @@ async def _make_session_with_personal_axis(graph: SessionGraph) -> Any:
                 ),
             },
         ),
-        history=s.history,
-        declassification_log=s.declassification_log,
-        created_at=s.created_at,
-        updated_at=s.updated_at,
-        owner=s.owner,
-        intent=s.intent,
         axis_a=_personal_axis_a(),
         axis_b=AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),)),
         axis_d=AxisD(initiator="principal:alice", authentication="device-bound"),

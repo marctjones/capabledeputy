@@ -29,14 +29,23 @@ from capabledeputy.policy.capabilities import (
     CapabilityOrigin,
 )
 from capabledeputy.policy.engine import decide
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+    ProvenanceLevel,
+    ProvenanceTag,
+)
+from capabledeputy.policy.tiers import Tier
 
 _NOW = datetime(2026, 5, 19, 12, 0, tzinfo=UTC)
 
 
-def _build_workload() -> tuple[frozenset[Label], frozenset[Capability], Action]:
-    label_set = frozenset(
-        {Label.TRUSTED_USER_DIRECT, Label.CONFIDENTIAL_PERSONAL},
+def _build_workload() -> tuple[LabelState, frozenset[Capability], Action]:
+    label_state = LabelState(
+        a=frozenset(
+            {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")},
+        ),
+        b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
     caps = frozenset(
         {
@@ -58,24 +67,24 @@ def _build_workload() -> tuple[frozenset[Label], frozenset[Capability], Action]:
         },
     )
     action = Action(kind=CapabilityKind.READ_FS, target="/data/file.txt")
-    return label_set, caps, action
+    return label_state, caps, action
 
 
 @pytest.mark.perf
 def test_decide_p99_under_threshold() -> None:
     """5000 iterations; assert p99 < threshold (1 ms by default)."""
     threshold_ms = float(os.environ.get("CAPDEP_DECIDE_LATENCY_P99_MS", "1.0"))
-    label_set, caps, action = _build_workload()
+    label_state, caps, action = _build_workload()
     n_iterations = 5000
     samples: list[float] = []
 
     # Warmup
     for _ in range(50):
-        decide(label_set, caps, action, now=_NOW)
+        decide(caps, action, labels=label_state, now=_NOW)
 
     for _ in range(n_iterations):
         t0 = time.perf_counter_ns()
-        decide(label_set, caps, action, now=_NOW)
+        decide(caps, action, labels=label_state, now=_NOW)
         samples.append((time.perf_counter_ns() - t0) / 1_000_000.0)  # ms
 
     samples.sort()

@@ -37,7 +37,6 @@ from capabledeputy.policy.labels import (
     AxisB,
     AxisD,
     CategoryTag,
-    Label,
     ProvenanceLevel,
     ProvenanceTag,
 )
@@ -97,7 +96,6 @@ def test_payload_contains_inputs_needed_for_replay() -> None:
     axis_a, axis_b, axis_d = _axes()
     rules = DecisionRules(rules=(_rule(),))
     decision = decide(
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
         capabilities=frozenset({_cap()}),
         action=_action(),
         axis_a=axis_a,
@@ -126,7 +124,6 @@ def test_replay_from_payload_produces_identical_v2_outcome() -> None:
     axis_a, axis_b, axis_d = _axes()
     rules = DecisionRules(rules=(_rule(),))
     decision = decide(
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
         capabilities=frozenset({_cap()}),
         action=_action(),
         axis_a=axis_a,
@@ -165,7 +162,6 @@ def test_replay_preserves_rationale_when_no_rule_matches() -> None:
     axis_a, axis_b, axis_d = _axes()
     empty_rules = DecisionRules(rules=())
     decision = decide(
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
         capabilities=frozenset({_cap()}),
         action=_action(),
         axis_a=axis_a,
@@ -200,7 +196,6 @@ def test_legacy_only_decision_has_no_axis_snapshots_in_payload() -> None:
     axis_a/b/d/effect_class keys — pre-Phase-4 traces stay
     bit-identical so older consumers don't choke on new keys."""
     decision = decide(
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
         capabilities=frozenset({_cap()}),
         action=_action(),
     )

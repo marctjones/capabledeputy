@@ -25,7 +25,7 @@ from capabledeputy.policy.capabilities import (
 from capabledeputy.policy.capabilities import (
     kind_name as _kind_name_of,
 )
-from capabledeputy.policy.labels import Label, LabelState, most_restrictive_inherit
+from capabledeputy.policy.labels import LabelState, most_restrictive_inherit
 from capabledeputy.policy.purposes import (
     UNSET_PURPOSE_HANDLE,
     Purposes,
@@ -339,7 +339,9 @@ class SessionGraph:
             parent=parent_id,
             owner=parent.owner,
             intent=intent,
-            label_set=parent.label_set,
+            axis_a=parent.axis_a,
+            axis_b=parent.axis_b,
+            axis_d=parent.axis_d,
             capability_set=parent.capability_set,
             history=parent.history,
             declassification_log=parent.declassification_log,
@@ -427,20 +429,6 @@ class SessionGraph:
             old_mode=old_mode.value,
             new_mode=mode.value,
         )
-        return updated
-
-    async def add_labels(
-        self,
-        session_id: UUID,
-        labels: frozenset[Label],
-    ) -> Session:
-        session = self.get(session_id)
-        if not labels or labels.issubset(session.label_set):
-            return session
-        new_set = session.label_set | labels
-        updated = replace(session, label_set=new_set, updated_at=datetime.now(UTC))
-        await self._save(updated)
-        self._sessions[session_id] = updated
         return updated
 
     async def add_tags(

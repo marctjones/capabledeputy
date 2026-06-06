@@ -322,7 +322,6 @@ async def _make_session(graph: SessionGraph, axis_a: AxisA | None = None) -> Any
             id=s.id,
             parent=s.parent,
             status=s.status,
-            label_set=s.label_set,
             capability_set=frozenset(
                 {
                     Capability(
@@ -346,7 +345,6 @@ async def _make_session(graph: SessionGraph, axis_a: AxisA | None = None) -> Any
             id=s.id,
             parent=s.parent,
             status=s.status,
-            label_set=s.label_set,
             capability_set=frozenset(
                 {
                     Capability(
@@ -534,7 +532,6 @@ def test_bounded_relax_cross_product(
         ),
     )
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="t"),
         axis_a=a,

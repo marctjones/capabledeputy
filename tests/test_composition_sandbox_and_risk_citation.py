@@ -69,7 +69,6 @@ def test_execute_sandbox_without_actuator_returns_override_required() -> None:
     spec 004 OR route through Pattern (3) handles."""
     axis_a, axis_b, axis_d = _axes()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -90,7 +89,6 @@ def test_execute_sandbox_with_actuator_runs_normal_path() -> None:
     on the never-auto default)."""
     axis_a, axis_b, axis_d = _axes()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -108,7 +106,6 @@ def test_non_sandbox_effect_unaffected() -> None:
     """The check only fires for EXECUTE.sandbox effect_class."""
     axis_a, axis_b, axis_d = _axes()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -134,7 +131,6 @@ def test_execute_devbox_without_manager_returns_override_required() -> None:
 
     axis_a, axis_b, axis_d = _axes()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="py-dev"),
         axis_a=axis_a,
@@ -158,7 +154,6 @@ def test_execute_devbox_with_manager_runs_normal_path() -> None:
 
     axis_a, axis_b, axis_d = _axes()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="py-dev"),
         axis_a=axis_a,
@@ -181,7 +176,6 @@ def test_devbox_gate_does_not_fire_for_sandbox_effect() -> None:
 
     axis_a, axis_b, axis_d = _axes()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -217,7 +211,6 @@ def test_orphan_risk_citation_refuses() -> None:
     the decision at runtime, even with valid capabilities (FR-015)."""
     axis_a, axis_b, axis_d = _axes(risk_ids=("RISK-DOES-NOT-EXIST",))
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -236,7 +229,6 @@ def test_known_risk_id_passes() -> None:
     """A cited id that exists in the register doesn't trigger refusal."""
     axis_a, axis_b, axis_d = _axes(risk_ids=("RISK-PII-001",))
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -254,7 +246,6 @@ def test_no_risk_register_skips_check() -> None:
     """Without a register wired, no orphan check fires — back-compat."""
     axis_a, axis_b, axis_d = _axes(risk_ids=("RISK-DOES-NOT-EXIST",))
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -273,7 +264,6 @@ def test_empty_risk_ids_does_not_refuse() -> None:
     a separate SC-001 lint problem caught at CI, not runtime)."""
     axis_a, axis_b, axis_d = _axes(risk_ids=())
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,

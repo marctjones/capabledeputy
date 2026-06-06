@@ -23,7 +23,7 @@ from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import tags_for_labels_strings
 
 
 def tc(call_id: str, name: str, **args: object) -> ToolCall:
@@ -61,7 +61,7 @@ class Scenario:
     caps: frozenset[Capability]
     responses: list[LLMResponse]
     expect: list[Expect]
-    session_labels: frozenset[Label] = frozenset()
+    session_labels: frozenset[str] = frozenset()
     # Optional seeding hook: receives the started App; use it to write
     # labeled memory, add inbox messages, create calendar events, etc.
     pre: Callable[[App], None] | None = field(default=None)
@@ -90,10 +90,12 @@ async def run_scenario(sc: Scenario) -> list[str]:
             sc.pre(app)
 
         s = await app.graph.new(intent=f"harness:{sc.name}")
+        seed = tags_for_labels_strings(sc.session_labels)
         app.graph._sessions[s.id] = replace(
             s,
             capability_set=sc.caps,
-            label_set=sc.session_labels,
+            axis_a=seed.to_axis_a(),
+            axis_b=seed.to_axis_b(),
         )
 
         handlers = make_agent_handlers(app)

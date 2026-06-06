@@ -36,7 +36,6 @@ from _policy_harness import (
 )
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
 
 TITLE = "LABEL effects (all 8 labels)"
 
@@ -72,7 +71,7 @@ SCENARIOS: list[Scenario] = [
         name="trusted-user-direct-benign",
         why="TRUSTED_USER_DIRECT is in no conflict rule -> egress ALLOWED.",
         caps=_EMAIL,
-        session_labels=frozenset({Label.TRUSTED_USER_DIRECT}),
+        session_labels=frozenset({"trusted.user_direct"}),
         responses=_email_turn(),
         expect=[Expect("email.send", "allow")],
     ),
@@ -81,7 +80,7 @@ SCENARIOS: list[Scenario] = [
         why="CONFIDENTIAL_PERSONAL is in no conflict rule -> egress ALLOWED "
         "(not all 'confidential' labels block — the engine is precise).",
         caps=_EMAIL,
-        session_labels=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        session_labels=frozenset({"confidential.personal"}),
         responses=_email_turn(),
         expect=[Expect("email.send", "allow")],
     ),
@@ -89,7 +88,7 @@ SCENARIOS: list[Scenario] = [
         name="confidential-health-blocks-email",
         why="CONFIDENTIAL_HEALTH x EGRESS_EMAIL -> DENY.",
         caps=_EMAIL,
-        session_labels=frozenset({Label.CONFIDENTIAL_HEALTH}),
+        session_labels=frozenset({"confidential.health"}),
         responses=_email_turn(),
         expect=[Expect("email.send", "deny", "health-meets-egress")],
     ),
@@ -97,7 +96,7 @@ SCENARIOS: list[Scenario] = [
         name="confidential-health-blocks-purchase",
         why="CONFIDENTIAL_HEALTH x EGRESS_PURCHASE -> DENY.",
         caps=_PURCHASE,
-        session_labels=frozenset({Label.CONFIDENTIAL_HEALTH}),
+        session_labels=frozenset({"confidential.health"}),
         responses=_purchase_turn(),
         expect=[Expect("purchase.queue", "deny", "health-meets-egress")],
     ),
@@ -105,7 +104,7 @@ SCENARIOS: list[Scenario] = [
         name="confidential-financial-blocks-email",
         why="CONFIDENTIAL_FINANCIAL x EGRESS_EMAIL -> DENY.",
         caps=_EMAIL,
-        session_labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        session_labels=frozenset({"confidential.financial"}),
         responses=_email_turn(),
         expect=[Expect("email.send", "deny", "financial-meets-email")],
     ),
@@ -113,7 +112,7 @@ SCENARIOS: list[Scenario] = [
         name="confidential-financial-gates-purchase",
         why="CONFIDENTIAL_FINANCIAL x EGRESS_PURCHASE -> REQUIRE_APPROVAL.",
         caps=_PURCHASE,
-        session_labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        session_labels=frozenset({"confidential.financial"}),
         responses=_purchase_turn(),
         expect=[
             Expect("purchase.queue", "require_approval", "financial-meets-purchase"),
@@ -123,7 +122,7 @@ SCENARIOS: list[Scenario] = [
         name="untrusted-external-blocks-email",
         why="UNTRUSTED_EXTERNAL x EGRESS_EMAIL -> DENY.",
         caps=_EMAIL,
-        session_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+        session_labels=frozenset({"untrusted.external"}),
         responses=_email_turn(),
         expect=[Expect("email.send", "deny", "untrusted-meets-egress")],
     ),
@@ -131,7 +130,7 @@ SCENARIOS: list[Scenario] = [
         name="untrusted-user-input-blocks-purchase",
         why="UNTRUSTED_USER_INPUT x EGRESS_PURCHASE -> DENY.",
         caps=_PURCHASE,
-        session_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
+        session_labels=frozenset({"untrusted.user_input"}),
         responses=_purchase_turn(),
         expect=[Expect("purchase.queue", "deny", "untrusted-meets-egress")],
     ),

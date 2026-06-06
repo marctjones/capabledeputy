@@ -355,8 +355,8 @@ class TestAxisDBackwardCompatAlias:
 
     def test_axis_d_imported_in_session(self) -> None:
         """Session imports AxisD from labels and uses it correctly."""
+
         from capabledeputy.session.model import Session
-        from uuid import uuid4
 
         # Create a session with axis_d
         session = Session.new(

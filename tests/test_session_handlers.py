@@ -102,15 +102,20 @@ async def test_session_children_returns_forks(graph: SessionGraph) -> None:
 
 
 async def test_session_add_labels_persists(graph: SessionGraph) -> None:
+    from capabledeputy.policy.labels import ProvenanceLevel
+
     handlers = make_session_handlers(graph)
     s = await handlers["session.new"]({})
     updated = await handlers["session.add_labels"](
         {"session_id": s["id"], "labels": ["trusted.user_direct"]},
     )
-    assert "trusted.user_direct" in updated["label_set"]
+    # trusted.user_direct maps to ProvenanceTag(PRINCIPAL_DIRECT)
+    assert any(e["level"] == ProvenanceLevel.PRINCIPAL_DIRECT.value for e in updated["axis_b"])
 
 
 async def test_session_add_labels_is_additive(graph: SessionGraph) -> None:
+    from capabledeputy.policy.labels import ProvenanceLevel
+
     handlers = make_session_handlers(graph)
     s = await handlers["session.new"]({})
     await handlers["session.add_labels"](
@@ -119,5 +124,7 @@ async def test_session_add_labels_is_additive(graph: SessionGraph) -> None:
     updated = await handlers["session.add_labels"](
         {"session_id": s["id"], "labels": ["confidential.personal"]},
     )
-    assert "trusted.user_direct" in updated["label_set"]
-    assert "confidential.personal" in updated["label_set"]
+    # trusted.user_direct maps to ProvenanceTag(PRINCIPAL_DIRECT) in axis_b
+    assert any(e["level"] == ProvenanceLevel.PRINCIPAL_DIRECT.value for e in updated["axis_b"])
+    # confidential.personal maps to CategoryTag("personal") in axis_a
+    assert any(c["category"] == "personal" for c in updated["axis_a"])

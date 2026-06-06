@@ -27,13 +27,8 @@ def make_pattern_handlers(app: App) -> dict[str, Handler]:
 
     async def pattern_create(params: dict[str, Any]) -> dict[str, Any]:
         # Issue #8 — optional labels_required + audit_tag.
-        from capabledeputy.policy.labels import Label as _Label
-
         labels_in_raw = params.get("labels_required") or []
-        try:
-            labels_required = frozenset(_Label(s) for s in labels_in_raw)
-        except ValueError as e:
-            return {"error": f"invalid label in labels_required: {e}"}
+        labels_required = frozenset(str(s) for s in labels_in_raw)
         try:
             rule = ApprovalPatternRule.create(
                 action=ApprovalAction(params["action"]),

@@ -37,13 +37,12 @@ from capabledeputy.policy.capabilities import (
     Capability,
     CapabilityKind,
 )
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.registry import ToolRegistry
 from capabledeputy.upstream.adapter import LabeledMcpAdapter
 from capabledeputy.upstream.config import UpstreamServerConfig
-
 
 # --- Fixtures ---------------------------------------------------------------
 
@@ -98,7 +97,7 @@ def _build_upstream_config(server_name: str) -> UpstreamServerConfig:
     return UpstreamServerConfig(
         name=server_name,
         command=("never", "spawned"),
-        inherent_labels=frozenset(),
+        inherent_tags=LabelState(),
         tool_overrides={},
         isolation=None,
         env={},
@@ -126,14 +125,16 @@ async def test_fs_read_list_create_write_workflow(
 
         session_state = await _make_session_with_caps(
             graph,
-            frozenset({
-                _cap(CapabilityKind.READ_FS),
-                _cap(CapabilityKind.CREATE_FS),
-                _cap(
-                    CapabilityKind.WRITE_FS,
-                    allows_destructive=True,
-                ),
-            }),
+            frozenset(
+                {
+                    _cap(CapabilityKind.READ_FS),
+                    _cap(CapabilityKind.CREATE_FS),
+                    _cap(
+                        CapabilityKind.WRITE_FS,
+                        allows_destructive=True,
+                    ),
+                }
+            ),
             intent="fs workflow",
         )
         client = LabeledToolClient(registry, graph, writer)
@@ -199,14 +200,16 @@ async def test_memory_create_read_list_update_workflow(
 
         session_state = await _make_session_with_caps(
             graph,
-            frozenset({
-                _cap(CapabilityKind.READ_FS),
-                _cap(CapabilityKind.CREATE_FS),
-                _cap(
-                    CapabilityKind.WRITE_FS,
-                    allows_destructive=True,
-                ),
-            }),
+            frozenset(
+                {
+                    _cap(CapabilityKind.READ_FS),
+                    _cap(CapabilityKind.CREATE_FS),
+                    _cap(
+                        CapabilityKind.WRITE_FS,
+                        allows_destructive=True,
+                    ),
+                }
+            ),
             intent="memory workflow",
         )
         client = LabeledToolClient(registry, graph, writer)
@@ -256,15 +259,17 @@ async def test_git_read_only_workflow(
     """Spin up a tiny git repo in tmp and exercise read-only git.*
     tools through the chokepoint."""
     # Make a tiny repo with a single commit.
-    subprocess.run(  # noqa: S603
-        ["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True,
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main"],
+        cwd=tmp_path,
+        check=True,
     )
     (tmp_path / "x.txt").write_text("hi\n")
     subprocess.run(["git", "add", "x.txt"], cwd=tmp_path, check=True)
     subprocess.run(
-        ["git", "-c", "user.email=a@b.c", "-c", "user.name=t",
-         "commit", "-q", "-m", "init"],
-        cwd=tmp_path, check=True,
+        ["git", "-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-q", "-m", "init"],
+        cwd=tmp_path,
+        check=True,
     )
 
     server = build_server("git", git_server.tools())
@@ -290,9 +295,7 @@ async def test_git_read_only_workflow(
                 tool_name,
                 args,
             )
-            assert out.decision.value == "allow", (
-                f"{tool_name} denied: {out.reason}"
-            )
+            assert out.decision.value == "allow", f"{tool_name} denied: {out.reason}"
 
 
 # --- Registration smoke for fetch / search ---------------------------------
@@ -306,15 +309,16 @@ async def test_fetch_and_search_register(registry: ToolRegistry) -> None:
     from capabledeputy.mcp_servers import fetch as fetch_server
     from capabledeputy.mcp_servers import search as search_server
 
-    for module, server_name, expected_label in (
-        (fetch_server, "fetch", Label.UNTRUSTED_EXTERNAL),
-        (search_server, "search", Label.UNTRUSTED_EXTERNAL),
+    expected_tag = ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)
+    for module, server_name in (
+        (fetch_server, "fetch"),
+        (search_server, "search"),
     ):
         server = build_server(server_name, module.tools())
         config = UpstreamServerConfig(
             name=server_name,
             command=("never", "spawned"),
-            inherent_labels=frozenset({expected_label}),
+            inherent_tags=LabelState(b=frozenset({expected_tag})),
             tool_overrides={},
             isolation=None,
             env={},
@@ -329,6 +333,6 @@ async def test_fetch_and_search_register(registry: ToolRegistry) -> None:
             # sessions that call it.
             first_tool_name = registered[0]
             first_tool = registry.get(first_tool_name)
-            assert expected_label in first_tool.inherent_labels, (
-                f"{first_tool_name} missing {expected_label} label"
+            assert expected_tag in first_tool.inherent_tags.b, (
+                f"{first_tool_name} missing {expected_tag} tag"
             )

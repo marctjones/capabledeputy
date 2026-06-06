@@ -31,7 +31,8 @@ from capabledeputy.mcp_server.resources import (
     read_resource,
 )
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 
 
 def _text_of(content: object) -> str:
@@ -80,8 +81,20 @@ async def test_list_resources_exposes_memory_entries_with_labels(
     paths: dict[str, Path],
 ) -> None:
     daemon, app = await _build_daemon(paths)
-    app.memory.write("rx", "lisinopril 10mg", frozenset({Label.CONFIDENTIAL_HEALTH}))
-    app.memory.write("notes", "groceries", frozenset({Label.CONFIDENTIAL_PERSONAL}))
+    app.memory.write(
+        "rx",
+        "lisinopril 10mg",
+        LabelState(
+            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+        ),
+    )
+    app.memory.write(
+        "notes",
+        "groceries",
+        LabelState(
+            a={CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        ),
+    )
 
     async with anyio.create_task_group() as tg:
         tg.start_soon(daemon.serve)
@@ -108,7 +121,13 @@ async def test_read_resource_dispatches_through_policy(
     so policy gating and label propagation happen on the resources
     path identically to the tools path."""
     daemon, app = await _build_daemon(paths)
-    app.memory.write("k", "value", frozenset({Label.CONFIDENTIAL_HEALTH}))
+    app.memory.write(
+        "k",
+        "value",
+        LabelState(
+            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+        ),
+    )
     s = await app.graph.new()
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
@@ -122,7 +141,7 @@ async def test_read_resource_dispatches_through_policy(
         assert "value" in text
 
         after = app.graph.get(s.id)
-        assert Label.CONFIDENTIAL_HEALTH in after.label_set
+        assert any(c.category == "health" for c in after.label_state.a)
 
         await client.call("shutdown")
 
@@ -131,7 +150,7 @@ async def test_read_resource_denied_when_no_capability(
     paths: dict[str, Path],
 ) -> None:
     daemon, app = await _build_daemon(paths)
-    app.memory.write("k", "v", frozenset())
+    app.memory.write("k", "v", LabelState())
     s = await app.graph.new()
 
     async with anyio.create_task_group() as tg:

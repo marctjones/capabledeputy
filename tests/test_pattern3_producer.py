@@ -99,8 +99,10 @@ async def test_make_handle_wrapper_wraps_tool_handler() -> None:
         labels=ResolvedLabels(axis_a=("personal",)),
     )
 
+    from capabledeputy.policy.labels import LabelState
+
     sid = uuid4()
-    ctx = ToolContext(session_id=sid, label_set=frozenset())
+    ctx = ToolContext(session_id=sid, label_state=LabelState())
     result = await wrapped({"key": "alice"}, ctx)
     assert isinstance(result, ToolResult)
     assert is_planner_safe_token(result.output["secret_value"])

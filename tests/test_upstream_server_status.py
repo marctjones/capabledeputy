@@ -7,8 +7,6 @@ each configured upstream MCP server, including rejected tool names
 
 from __future__ import annotations
 
-import pytest
-
 from capabledeputy.tools.registry import ToolRegistry
 from capabledeputy.upstream.adapter import LabeledMcpAdapter
 from capabledeputy.upstream.config import UpstreamServerConfig
@@ -101,10 +99,12 @@ async def test_manager_captures_registered_server_status() -> None:
     # Stub the LiveSession + register manually to avoid spawning a
     # real subprocess.
     config = UpstreamServerConfig(name="ok", command=("stub",))
-    session = _StubSession(tools=[
-        _stub_tool("read_files", read_only=True),
-        _stub_tool("list_dirs", read_only=True),
-    ])
+    session = _StubSession(
+        tools=[
+            _stub_tool("read_files", read_only=True),
+            _stub_tool("list_dirs", read_only=True),
+        ]
+    )
     mgr = UpstreamManager([config], ToolRegistry())
     # Manually walk the registration path without the supervisor
     adapter = LabeledMcpAdapter(config=config, session=session)

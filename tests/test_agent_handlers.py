@@ -8,7 +8,8 @@ from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 
 
 @pytest.fixture
@@ -89,7 +90,15 @@ async def test_session_send_returns_tool_outcomes(app: App) -> None:
 
 async def test_session_send_label_propagation_visible_in_outcome(app: App) -> None:
     await app.startup()
-    app.memory.write("labs", "x", frozenset({Label.CONFIDENTIAL_HEALTH}))
+    app.memory.write(
+        "labs",
+        "x",
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
+    )
 
     fake = FakeLLMClient(
         [
@@ -107,10 +116,17 @@ async def test_session_send_label_propagation_visible_in_outcome(app: App) -> No
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
 
     handlers = make_agent_handlers(app)
-    result = await handlers["session.send"](
+    await handlers["session.send"](
         {"session_id": str(s.id), "message": "x"},
     )
-    assert "confidential.health" in result["tool_outcomes"][0]["labels_added"]
+    # Verify label propagation: after reading labeled data, the session's
+    # label_state should contain the health category
+    updated = app.graph.get(s.id)
+    health_tag = next(
+        (t for t in updated.label_state.a if t.category == "health"),
+        None,
+    )
+    assert health_tag is not None, "health category should be propagated to session"
 
 
 async def test_session_send_outcome_includes_tool_name_and_args(app: App) -> None:
@@ -118,7 +134,15 @@ async def test_session_send_outcome_includes_tool_name_and_args(app: App) -> Non
     auto-submit approvals and to render `allow inbox.read` instead of
     just `allow`."""
     await app.startup()
-    app.memory.write("labs", "x", frozenset({Label.CONFIDENTIAL_HEALTH}))
+    app.memory.write(
+        "labs",
+        "x",
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
+    )
 
     fake = FakeLLMClient(
         [

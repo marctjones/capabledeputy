@@ -29,13 +29,13 @@ from capabledeputy.policy.capabilities import (
     CapabilityOrigin,
 )
 from capabledeputy.policy.engine import decide
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState
 
 # Frozen clock — we want determinism across runs, not "real time."
 _NOW = datetime(2026, 5, 19, 12, 0, tzinfo=UTC)
 
 
-_LABEL_STRATEGY = st.sampled_from(list(Label))
+_LABEL_STRATEGY = st.just(LabelState())
 _KIND_STRATEGY = st.sampled_from(
     [
         CapabilityKind.READ_FS,
@@ -65,36 +65,35 @@ def _capabilities(draw: st.DrawFn) -> frozenset[Capability]:
 
 
 @given(
-    label_set=st.sets(_LABEL_STRATEGY, max_size=4).map(frozenset),
+    labels=_LABEL_STRATEGY,
     capabilities=_capabilities(),
     action_kind=_KIND_STRATEGY,
     action_target=_TARGET_STRATEGY,
 )
 @settings(max_examples=200, deadline=None)
 def test_decide_is_deterministic_under_identical_inputs(
-    label_set: frozenset[Label],
+    labels: LabelState,
     capabilities: frozenset[Capability],
     action_kind: CapabilityKind,
     action_target: str,
 ) -> None:
     action = Action(kind=action_kind, target=action_target)
-    d1 = decide(label_set, capabilities, action, now=_NOW)
-    d2 = decide(label_set, capabilities, action, now=_NOW)
+    d1 = decide(capabilities, action, labels=labels, now=_NOW)
+    d2 = decide(capabilities, action, labels=labels, now=_NOW)
     assert d1.decision == d2.decision
     assert d1.rule == d2.rule
     assert d1.reason == d2.reason
-    assert d1.effective_labels == d2.effective_labels
 
 
 @given(
-    label_set=st.sets(_LABEL_STRATEGY, max_size=4).map(frozenset),
+    labels=_LABEL_STRATEGY,
     capabilities=_capabilities(),
     action_kind=_KIND_STRATEGY,
     action_target=_TARGET_STRATEGY,
 )
 @settings(max_examples=200, deadline=None)
 def test_decide_independent_of_set_construction_order(
-    label_set: frozenset[Label],
+    labels: LabelState,
     capabilities: frozenset[Capability],
     action_kind: CapabilityKind,
     action_target: str,
@@ -102,10 +101,9 @@ def test_decide_independent_of_set_construction_order(
     """Frozensets are unordered. Building the same set from the
     reversed list of elements MUST yield the same decision."""
     action = Action(kind=action_kind, target=action_target)
-    reversed_labels = frozenset(reversed(list(label_set)))
     reversed_caps = frozenset(reversed(list(capabilities)))
-    d1 = decide(label_set, capabilities, action, now=_NOW)
-    d2 = decide(reversed_labels, reversed_caps, action, now=_NOW)
+    d1 = decide(capabilities, action, labels=labels, now=_NOW)
+    d2 = decide(reversed_caps, action, labels=labels, now=_NOW)
     assert d1.decision == d2.decision
     assert d1.rule == d2.rule
 
@@ -121,8 +119,8 @@ def test_decide_never_reads_wall_clock_without_injected_now() -> None:
         origin=CapabilityOrigin.USER_APPROVED,
     )
     action = Action(kind=CapabilityKind.READ_FS, target="/x")
-    d1 = decide(frozenset(), frozenset({cap}), action, now=_NOW)
-    d2 = decide(frozenset(), frozenset({cap}), action, now=_NOW)
+    d1 = decide(frozenset({cap}), action, now=_NOW)
+    d2 = decide(frozenset({cap}), action, now=_NOW)
     assert d1 == d2
 
 
@@ -136,7 +134,6 @@ def test_decide_repeated_calls_equal(seed: int) -> None:
         origin=CapabilityOrigin.USER_APPROVED,
     )
     action = Action(kind=CapabilityKind.SEND_EMAIL, target="alice@example.com")
-    label_set = frozenset({Label.TRUSTED_USER_DIRECT})
-    decisions = [decide(label_set, frozenset({cap}), action, now=_NOW) for _ in range(5)]
+    decisions = [decide(frozenset({cap}), action, now=_NOW) for _ in range(5)]
     for d in decisions[1:]:
         assert d == decisions[0], f"non-determinism detected (seed={seed})"

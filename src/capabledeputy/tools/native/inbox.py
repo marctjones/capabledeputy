@@ -21,7 +21,6 @@ from typing import Any
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import (
-    Label,
     LabelState,
     ProvenanceLevel,
     ProvenanceTag,
@@ -78,7 +77,9 @@ def make_inbox_tools(inbox: Inbox) -> list[ToolDefinition]:
                     for m in messages
                 ],
             },
-            additional_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+            additional_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
         )
 
     async def inbox_read(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
@@ -96,7 +97,9 @@ def make_inbox_tools(inbox: Inbox) -> list[ToolDefinition]:
                 "body": message.body,
                 "received_at": message.received_at.isoformat(),
             },
-            additional_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+            additional_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
         )
 
     return [
@@ -114,8 +117,9 @@ def make_inbox_tools(inbox: Inbox) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.IMAP_READ,
             handler=inbox_list,
             target_arg="folder",
-            inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
-            inherent_tags=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
+            inherent_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -138,8 +142,9 @@ def make_inbox_tools(inbox: Inbox) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.IMAP_READ,
             handler=inbox_read,
             target_arg="id",
-            inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
-            inherent_tags=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
+            inherent_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
             parameters_schema={
                 "type": "object",
                 "properties": {"id": {"type": "string"}},

@@ -18,7 +18,7 @@ from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction, ApprovalStatus
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.llm.fake import FakeLLMClient
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState, Tier
 
 
 @pytest.fixture
@@ -46,14 +46,22 @@ async def _submit_sibling_pair(app: App) -> tuple[str, int, int]:
         action=ApprovalAction.SEND_EMAIL,
         payload="body 1",
         target="spouse@example.com",
-        labels_in=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        labels_in=LabelState(
+            a=frozenset(
+                {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
     b = await app.approval_queue.submit(
         from_session=sid,
         action=ApprovalAction.SEND_EMAIL,
         payload="body 2",
         target="spouse@example.com",
-        labels_in=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        labels_in=LabelState(
+            a=frozenset(
+                {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
     group = app.approval_queue.get(a.id).sibling_group_id
     assert group is not None

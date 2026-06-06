@@ -32,7 +32,7 @@ from _policy_harness import (
 
 from capabledeputy.llm.types import LLMResponse
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, tags_for_labels_strings
 from capabledeputy.tools.native.inbox import InboundMessage
 
 TITLE = "ALLOW paths (full tool sweep)"
@@ -53,8 +53,8 @@ def _seed_inbox(app: object) -> None:
 
 
 def _seed_mem(app: object) -> None:
-    app.memory.write("doomed", "v", frozenset())  # type: ignore[attr-defined]
-    app.memory.write("stale", "v", frozenset())  # type: ignore[attr-defined]
+    app.memory.write("doomed", "v", LabelState())  # type: ignore[attr-defined]
+    app.memory.write("stale", "v", LabelState())  # type: ignore[attr-defined]
 
 
 SCENARIOS: list[Scenario] = [
@@ -173,7 +173,7 @@ SCENARIOS: list[Scenario] = [
         pre=lambda app: app.memory.write(  # type: ignore[attr-defined]
             "briefing.source",
             "CALENDAR 3 events; INBOX 5 unread; top: 1:1 with Maria",
-            frozenset({Label.CONFIDENTIAL_PERSONAL, Label.UNTRUSTED_EXTERNAL}),
+            tags_for_labels_strings(frozenset({"confidential.personal", "untrusted.external"})),
         ),
         quarantined=[
             LLMResponse(

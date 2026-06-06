@@ -31,8 +31,15 @@ from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.model import SessionStatus
+
+_FINANCIAL = LabelState(
+    a=frozenset(
+        {CategoryTag("financial", Tier.REGULATED, assignment_provenance="source-declared")}
+    ),
+)
 
 
 async def test_financial_summary_to_accountant(tmp_path: Path) -> None:
@@ -92,7 +99,7 @@ async def test_financial_summary_to_accountant(tmp_path: Path) -> None:
             "Income: $327,432.18 from 12 invoices to Customer A; ...\n"
             "Expenses: $74,108.92 across 412 transactions ...\n"
         ),
-        frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        _FINANCIAL,
     )
 
     s = await app.graph.new(intent="quarterly accountant summary")
@@ -156,7 +163,7 @@ async def test_financial_summary_to_accountant(tmp_path: Path) -> None:
 
     purpose = app.graph.get(UUID(purpose_id))
     assert purpose.status == SessionStatus.ABORTED
-    assert Label.CONFIDENTIAL_FINANCIAL not in purpose.label_set
+    assert not any(t.category == "financial" for t in purpose.label_state.a)
 
     # The originating session went through the schema extractor — by
     # construction the schema IS the declassification (DESIGN.md §5.2),
@@ -165,7 +172,5 @@ async def test_financial_summary_to_accountant(tmp_path: Path) -> None:
     # property: declassified extract produces a clean planner context,
     # while the memory source's labels are unchanged.
     after = app.graph.get(s.id)
-    assert Label.CONFIDENTIAL_FINANCIAL not in after.label_set
-    assert app.memory.labels_of("finance.q1") == frozenset(
-        {Label.CONFIDENTIAL_FINANCIAL},
-    )
+    assert not any(t.category == "financial" for t in after.label_state.a)
+    assert {t.category for t in app.memory.labels_of("finance.q1").a} == {"financial"}

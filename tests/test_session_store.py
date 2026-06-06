@@ -4,7 +4,8 @@ from uuid import uuid4
 import pytest
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import Session, SessionStatus, Turn
 from capabledeputy.session.store import SCHEMA_VERSION, SessionStore
@@ -62,9 +63,16 @@ async def test_all_returns_in_creation_order(store_path: Path) -> None:
 
 
 async def test_history_and_label_set_persist(store_path: Path) -> None:
+    from capabledeputy.policy.labels import AxisA
+
     store = SessionStore(store_path)
     s = Session.new(
-        label_set=frozenset({Label.CONFIDENTIAL_HEALTH, Label.CONFIDENTIAL_PERSONAL}),
+        axis_a=AxisA(
+            categories=(
+                CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared"),
+                CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared"),
+            )
+        ),
         capability_set=frozenset(
             {Capability(kind=CapabilityKind.READ_FS, pattern="/health/*")},
         ),
@@ -183,7 +191,6 @@ async def test_time_bounded_capability_survives_store_reload(
 
     # Past the original deadline → still denies, attributed to expiry.
     result = decide(
-        frozenset(),
         loaded.capability_set,
         Action(kind=CapabilityKind.READ_FS, target="/x"),
         now=deadline + timedelta(hours=1),

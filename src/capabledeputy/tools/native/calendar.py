@@ -27,7 +27,6 @@ from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import (
     CategoryTag,
-    Label,
     LabelState,
 )
 from capabledeputy.policy.tiers import Tier
@@ -47,7 +46,7 @@ class CalendarEvent:
     starts_at: datetime
     ends_at: datetime
     notes: str = ""
-    labels: frozenset[Label] = field(default_factory=frozenset)
+    label_state: LabelState = field(default_factory=LabelState)
 
 
 class CalendarStore:
@@ -118,7 +117,7 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
             starts_at=starts,
             ends_at=ends,
             notes=str(args.get("notes", "")),
-            labels=ctx.label_set,
+            label_state=ctx.label_state,
         )
         store.add(event)
         return ToolResult(output={"created": True, "id": str(event.id)})
@@ -151,7 +150,7 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
             starts_at=starts,
             ends_at=ends,
             notes=notes,
-            labels=existing.labels | ctx.label_set,
+            label_state=existing.label_state,
         )
         store.update(new)
         return ToolResult(output={"ok": True, "id": str(event_id), "modified": True})
@@ -180,7 +179,6 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.CALENDAR_READ,
             handler=events_today,
             target_arg="date",
-            inherent_labels=frozenset({Label.CONFIDENTIAL_PERSONAL}),
             inherent_tags=LabelState(
                 a=frozenset(
                     {

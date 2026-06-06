@@ -16,7 +16,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+)
+from capabledeputy.policy.tiers import Tier
 
 
 @dataclass(frozen=True)
@@ -34,14 +38,14 @@ class CalendarSeed:
     starts_in_minutes: int
     duration_minutes: int = 30
     notes: str = ""
-    labels: frozenset[Label] = field(default_factory=frozenset)
+    label_state: LabelState = field(default_factory=LabelState)
 
 
 @dataclass(frozen=True)
 class MemorySeed:
     key: str
     value: str
-    labels: frozenset[Label] = field(default_factory=frozenset)
+    label_state: LabelState = field(default_factory=LabelState)
 
 
 @dataclass(frozen=True)
@@ -196,17 +200,47 @@ _ACCOUNTANT = Scenario(
         MemorySeed(
             key="rent-2026-05",
             value="Rent paid 2026-05-01: $2400",
-            labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+            label_state=LabelState(
+                a=frozenset(
+                    {
+                        CategoryTag(
+                            "financial",
+                            Tier.REGULATED,
+                            assignment_provenance="source-declared",
+                        )
+                    }
+                )
+            ),
         ),
         MemorySeed(
             key="grocery-2026-05",
             value="Groceries weekly avg: $180",
-            labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+            label_state=LabelState(
+                a=frozenset(
+                    {
+                        CategoryTag(
+                            "financial",
+                            Tier.REGULATED,
+                            assignment_provenance="source-declared",
+                        )
+                    }
+                )
+            ),
         ),
         MemorySeed(
             key="utilities-2026-05",
             value="Utilities May: $145",
-            labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+            label_state=LabelState(
+                a=frozenset(
+                    {
+                        CategoryTag(
+                            "financial",
+                            Tier.REGULATED,
+                            assignment_provenance="source-declared",
+                        )
+                    }
+                )
+            ),
         ),
     ),
     suggested_prompts=(

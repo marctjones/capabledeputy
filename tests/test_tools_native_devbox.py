@@ -83,7 +83,9 @@ class _FakePolicyCtx:
 
 
 def _ctx(session_id: UUID | None = None) -> ToolContext:
-    return ToolContext(session_id=session_id or uuid4(), label_set=frozenset())
+    from capabledeputy.policy.labels import LabelState
+
+    return ToolContext(session_id=session_id or uuid4(), label_state=LabelState())
 
 
 def _tool_by_name(tools, name: str):

@@ -40,7 +40,7 @@ from capabledeputy.policy.labels import (
     AxisB,
     AxisD,
     CategoryTag,
-    Label,
+    LabelState,
     ProvenanceLevel,
     ProvenanceTag,
 )
@@ -105,7 +105,6 @@ def test_dial_picks_strictest_under_cautious() -> None:
         },
     )
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -147,7 +146,6 @@ def test_dial_picks_loosest_under_permissive() -> None:
         },
     )
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -188,7 +186,6 @@ def test_hard_floor_envelope_immovable_by_dial() -> None:
         },
     )
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -215,7 +212,6 @@ def test_tainted_session_refused_for_administer_effect() -> None:
     refused with CONTROL_PLANE_TAINTED_RULE."""
     axis_a, _, axis_d = _principal_axes()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -235,7 +231,6 @@ def test_clean_session_allowed_for_administer_effect() -> None:
     matched, but NOT a DENY."""
     axis_a, axis_b, axis_d = _principal_axes()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -254,7 +249,6 @@ def test_tainted_session_data_plane_effect_unaffected() -> None:
     normal pipeline."""
     axis_a, _, axis_d = _principal_axes()
     result = decide(
-        frozenset({Label.TRUSTED_USER_DIRECT}),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -263,6 +257,7 @@ def test_tainted_session_data_plane_effect_unaffected() -> None:
         effect_class="data.write_scratch",  # data-plane
         rules_v2=DecisionRules(rules=()),
         now=_NOW,
+        labels=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)})),
     )
     # No clearance gate, no envelope ⇒ v2 default SUGGEST.
     assert result.decision == Decision.REQUIRE_APPROVAL
@@ -281,7 +276,6 @@ def test_clearance_refuses_read_up() -> None:
     axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(initiator="principal:alice")
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -304,7 +298,6 @@ def test_clearance_open_when_below_max() -> None:
     axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(initiator="principal:alice")
     result = decide(
-        frozenset({Label.TRUSTED_USER_DIRECT}),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -314,6 +307,7 @@ def test_clearance_open_when_below_max() -> None:
         rules_v2=DecisionRules(rules=()),
         clearance_max_tier=Tier.REGULATED,
         now=_NOW,
+        labels=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)})),
     )
     assert result.decision != Decision.DENY or result.rule != CLEARANCE_REFUSED_RULE
 
@@ -326,7 +320,6 @@ def test_integrity_floor_refuses_below_floor_input() -> None:
         entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),),
     )
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -345,7 +338,6 @@ def test_integrity_floor_admits_above_floor_input() -> None:
     """principal-direct is ABOVE the system-internal floor — admitted."""
     axis_a, axis_b, axis_d = _principal_axes()
     result = decide(
-        frozenset({Label.TRUSTED_USER_DIRECT}),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
         axis_a=axis_a,
@@ -355,5 +347,6 @@ def test_integrity_floor_admits_above_floor_input() -> None:
         rules_v2=DecisionRules(rules=()),
         integrity_floor_level="system-internal",
         now=_NOW,
+        labels=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)})),
     )
     assert result.rule != INTEGRITY_FLOOR_REFUSED_RULE

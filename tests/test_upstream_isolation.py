@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import textwrap
 
-from capabledeputy.policy.labels import Label
 from capabledeputy.upstream.config import (
     UpstreamServerConfig,
     UpstreamToolOverride,
@@ -84,7 +83,17 @@ def test_parse_config_with_isolation() -> None:
             {
                 "name": "filesystem",
                 "command": ["uvx", "mcp-server-filesystem", "/data"],
-                "inherent_labels": ["confidential.personal"],
+                "inherent_tags": {
+                    "a": [
+                        {
+                            "category": "personal",
+                            "tier": "regulated",
+                            "risk_ids": [],
+                            "assignment_provenance": "system-default",
+                        }
+                    ],
+                    "b": [],
+                },
                 "isolation": {
                     "image": "docker.io/library/python:3.12-slim",
                     "network": "none",
@@ -102,7 +111,8 @@ def test_parse_config_with_isolation() -> None:
     assert cfg.isolation.network == "none"
     assert cfg.isolation.memory == "256m"
     assert cfg.isolation.volumes[0].host == "/h/notes"
-    assert Label.CONFIDENTIAL_PERSONAL in cfg.inherent_labels
+    # Check that the personal category tag is present
+    assert any(tag.category == "personal" for tag in cfg.inherent_tags.a)
 
 
 def test_parse_config_without_isolation_leaves_field_none() -> None:
@@ -111,7 +121,10 @@ def test_parse_config_without_isolation_leaves_field_none() -> None:
             {
                 "name": "fetch",
                 "command": ["uvx", "mcp-server-fetch"],
-                "inherent_labels": ["untrusted.external"],
+                "inherent_tags": {
+                    "a": [],
+                    "b": [{"level": "external-untrusted", "integrity_floor": False}],
+                },
                 "tool_overrides": {
                     "fetch": {"capability_kind": "WEB_FETCH"},
                 },
@@ -180,7 +193,13 @@ def test_yaml_round_trip_with_isolation(tmp_path) -> None:
             upstream_servers:
               - name: filesystem
                 command: ["uvx", "mcp-server-filesystem", "/data"]
-                inherent_labels: ["confidential.personal"]
+                inherent_tags:
+                  a:
+                    - category: personal
+                      tier: regulated
+                      risk_ids: []
+                      assignment_provenance: system-default
+                  b: []
                 isolation:
                   image: docker.io/library/python:3.12-slim
                   network: none

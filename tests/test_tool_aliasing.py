@@ -129,7 +129,9 @@ async def test_agent_loop_dispatches_correctly_with_or_without_aliasing(
     s = await app.graph.new(intent="aliasing test", tool_aliasing=aliasing)
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
-    app.memory.write("k", "v", frozenset())
+    from capabledeputy.policy.labels import LabelState
+
+    app.memory.write("k", "v", LabelState())
 
     tool_name = alias_for(s.id, "memory.read") if aliasing else "memory.read"
 

@@ -6,7 +6,9 @@ from capabledeputy.tools.registry import ToolContext
 
 
 def _ctx() -> ToolContext:
-    return ToolContext(session_id=uuid4(), label_set=frozenset())
+    from capabledeputy.policy.labels import LabelState
+
+    return ToolContext(session_id=uuid4(), label_state=LabelState())
 
 
 async def test_purchase_queue_records_and_returns_message() -> None:
@@ -24,11 +26,13 @@ async def test_purchase_queue_records_and_returns_message() -> None:
 
 
 async def test_purchase_queue_records_session_id() -> None:
+    from capabledeputy.policy.labels import LabelState
+
     queue = PurchaseQueue()
     tools = {t.name: t for t in make_purchase_tools(queue)}
 
     sid = uuid4()
-    ctx = ToolContext(session_id=sid, label_set=frozenset())
+    ctx = ToolContext(session_id=sid, label_state=LabelState())
     await tools["purchase.queue"].handler(
         {"vendor": "amazon", "item": "x"},
         ctx,

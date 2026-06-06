@@ -14,7 +14,6 @@ from capabledeputy.policy.capabilities import (
     DelegationRequest,
     RateLimit,
 )
-from capabledeputy.policy.labels import Label
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import SessionStatus
 
@@ -87,8 +86,12 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
         return s.to_dict()
 
     async def session_add_labels(params: dict[str, Any]) -> dict[str, Any]:
-        labels = frozenset(Label(s) for s in params.get("labels", []))
-        s = await graph.add_labels(UUID(params["session_id"]), labels)
+        from capabledeputy.policy.labels import tags_for_labels_strings
+
+        labels_strs = frozenset(s for s in params.get("labels", []))
+        # Convert legacy label strings to LabelState
+        label_state = tags_for_labels_strings(labels_strs)
+        s = await graph.add_tags(UUID(params["session_id"]), label_state)
         return s.to_dict()
 
     async def capability_revoke(params: dict[str, Any]) -> dict[str, Any]:

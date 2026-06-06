@@ -18,7 +18,7 @@ from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState, Tier
 from capabledeputy.tools.client import LabeledToolClient
 
 
@@ -106,10 +106,17 @@ async def test_require_approval_outcome_carries_resolved_submission(
         pattern="*",
         max_amount=10_000,
     )
+    from capabledeputy.policy.labels import AxisA
+
+    financial_axis_a = AxisA(
+        categories=(
+            CategoryTag("financial", Tier.REGULATED, assignment_provenance="source-declared"),
+        )
+    )
     app.graph._sessions[s.id] = replace(
         s,
         capability_set=frozenset({cap}),
-        label_set=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        axis_a=financial_axis_a,
     )
     client = LabeledToolClient(app.registry, app.graph, app.audit)
 
@@ -129,7 +136,8 @@ async def test_require_approval_outcome_carries_resolved_submission(
 async def test_destructive_outcome_carries_tool_envelope_submission(
     app: App,
 ) -> None:
-    app.memory.write("k", "v", frozenset())
+
+    app.memory.write("k", "v", LabelState())
     s = await app.graph.new()
     cap = Capability(
         kind=CapabilityKind.WRITE_FS,
@@ -156,10 +164,11 @@ async def test_destructive_outcome_carries_tool_envelope_submission(
 
 
 async def test_allow_outcome_has_no_approval_submission(app: App) -> None:
+
     s = await app.graph.new()
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
-    app.memory.write("k", "v", frozenset())
+    app.memory.write("k", "v", LabelState())
     client = LabeledToolClient(app.registry, app.graph, app.audit)
 
     outcome = await client.call_tool(s.id, "memory.read", {"key": "k"})

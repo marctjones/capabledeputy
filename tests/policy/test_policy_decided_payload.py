@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from capabledeputy.policy.decision_rules import RuleOutcome
 from capabledeputy.policy.engine import PolicyDecision
-from capabledeputy.policy.labels import Label
 from capabledeputy.policy.rules import Decision
 from capabledeputy.tools.client import build_policy_decided_payload
 
@@ -24,13 +23,11 @@ def test_payload_omits_v2_fields_when_v2_did_not_run() -> None:
         decision=Decision.ALLOW,
         rule=None,
         reason=None,
-        effective_labels=frozenset({Label.TRUSTED_USER_DIRECT}),
     )
     payload = build_policy_decided_payload("fs.read", {"path": "/x"}, decision)
     assert "v2_outcome" not in payload
     assert "v2_matched_rule_ids" not in payload
     assert payload["decision"] == "allow"
-    assert payload["effective_labels"] == ["trusted.user_direct"]
 
 
 def test_payload_includes_v2_fields_when_v2_ran() -> None:
@@ -41,7 +38,6 @@ def test_payload_includes_v2_fields_when_v2_ran() -> None:
         decision=Decision.REQUIRE_APPROVAL,
         rule="v2:default",
         reason="no human-ratified rule matched; default=suggest",
-        effective_labels=frozenset({Label.TRUSTED_USER_DIRECT}),
         v2_outcome=RuleOutcome.SUGGEST,
         v2_matched_rule_ids=(),
     )
@@ -58,7 +54,6 @@ def test_payload_includes_matched_rule_ids() -> None:
         decision=Decision.DENY,
         rule="v2:block-personal-email",
         reason="matched rules=['block-personal-email']; composed most-restrictive=deny",
-        effective_labels=frozenset(),
         v2_outcome=RuleOutcome.DENY,
         v2_matched_rule_ids=("block-personal-email",),
     )
@@ -79,9 +74,6 @@ def test_payload_records_v2_even_when_legacy_wins() -> None:
         decision=Decision.DENY,
         rule="untrusted-meets-egress",
         reason="rule untrusted-meets-egress fired on labels [...]",
-        effective_labels=frozenset(
-            {Label.UNTRUSTED_EXTERNAL, Label.EGRESS_EMAIL},
-        ),
         v2_outcome=RuleOutcome.AUTO,
         v2_matched_rule_ids=("email-to-alice-auto",),
     )

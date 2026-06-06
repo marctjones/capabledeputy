@@ -38,7 +38,6 @@ from typing import Any
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import (
-    Label,
     LabelState,
     ProvenanceLevel,
     ProvenanceTag,
@@ -80,7 +79,9 @@ async def _fs_read_handler(args: dict[str, Any], _ctx: ToolContext) -> ToolResul
         return ToolResult(output={"ok": False, "error": f"read failed: {e}"})
     return ToolResult(
         output={"ok": True, "path": raw_path, "uri": uri, "text": text},
-        additional_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
+        additional_tags=LabelState(
+            b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+        ),
     )
 
 
@@ -122,7 +123,9 @@ async def _fs_read_pdf_handler(args: dict[str, Any], _ctx: ToolContext) -> ToolR
             "text": text[:_MAX_BYTES],
             "truncated": len(text) > _MAX_BYTES,
         },
-        additional_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
+        additional_tags=LabelState(
+            b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+        ),
     )
 
 
@@ -226,8 +229,9 @@ def make_fs_tools() -> list[ToolDefinition]:
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
             surfaces_destination_id=True,
-            inherent_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
-            inherent_tags=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
+            inherent_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -255,8 +259,9 @@ def make_fs_tools() -> list[ToolDefinition]:
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
             surfaces_destination_id=True,
-            inherent_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
-            inherent_tags=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
+            inherent_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
             parameters_schema={
                 "type": "object",
                 "properties": {

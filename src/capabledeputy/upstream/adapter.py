@@ -4,8 +4,8 @@ wrappers.
 
 Each upstream tool becomes a `ToolDefinition` whose handler proxies
 calls to the upstream server via `session.call_tool` and returns a
-`ToolResult` carrying the upstream server's inherent labels (so the
-calling session inherits, e.g., `untrusted.external` for a fetch
+`ToolResult` carrying the upstream server's inherent tags (so the
+calling session inherits, e.g., external provenance for a fetch
 server).
 
 Subprocess lifecycle (spawning + connecting to upstream MCP servers
@@ -18,7 +18,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+    ProvenanceTag,
+    most_restrictive_inherit,
+)
 from capabledeputy.tools.registry import (
     ToolContext,
     ToolDefinition,
@@ -62,6 +67,15 @@ _CREATE_TOKENS = ("create", "new", "add", "mkdir")
 # (e.g. format=metadata) rather than treat the truncated text as
 # complete.
 MAX_UPSTREAM_TOOL_OUTPUT_BYTES = 32 * 1024
+
+
+def _tag_to_str(tag: CategoryTag | ProvenanceTag) -> str:
+    """Convert a CategoryTag or ProvenanceTag to a string representation."""
+    if isinstance(tag, CategoryTag):
+        return tag.category
+    elif isinstance(tag, ProvenanceTag):
+        return tag.level.value
+    return ""
 
 
 def _maybe_truncate_output(output: dict[str, Any]) -> dict[str, Any]:
@@ -199,19 +213,13 @@ def _infer_capability_kind(
     return None
 
 
-def _extract_labels(annotations_meta: dict[str, Any] | None) -> frozenset[Label]:
+def _extract_tags(annotations_meta: dict[str, Any] | None) -> LabelState:
     if not annotations_meta:
-        return frozenset()
-    raw = annotations_meta.get("io.capabledeputy/inherent_labels", [])
-    if not isinstance(raw, list):
-        return frozenset()
-    out: set[Label] = set()
-    for v in raw:
-        try:
-            out.add(Label(str(v)))
-        except ValueError:
-            continue
-    return frozenset(out)
+        return LabelState()
+    raw = annotations_meta.get("io.capabledeputy/inherent_tags", {})
+    if not isinstance(raw, dict):
+        return LabelState()
+    return LabelState.from_dict(raw)
 
 
 class LabeledMcpAdapter:
@@ -248,7 +256,7 @@ class LabeledMcpAdapter:
         Returns a list of {uri, name, description, mime_type, labels}
         dicts in the same shape as our StaticResourcePublisher's catalog
         entries. Labels are derived from the upstream config's
-        inherent_labels plus any meta-supplied labels on each resource.
+        inherent_tags plus any meta-supplied tags on each resource.
 
         Gracefully handles servers that don't support resources/list —
         returns an empty list instead of raising.
@@ -262,15 +270,15 @@ class LabeledMcpAdapter:
             uri = str(getattr(r, "uri", ""))
             if not uri:
                 continue
-            meta_labels = _extract_labels(getattr(r, "meta", None))
-            all_labels = self._config.inherent_labels | meta_labels
+            meta_tags = _extract_tags(getattr(r, "meta", None))
+            all_tags = most_restrictive_inherit(self._config.inherent_tags, meta_tags)
             out.append(
                 {
                     "uri": uri,
                     "name": str(getattr(r, "name", "") or uri),
                     "description": str(getattr(r, "description", "") or ""),
                     "mime_type": str(getattr(r, "mimeType", "") or "text/plain"),
-                    "labels": sorted(label.value for label in all_labels),
+                    "labels": sorted(_tag_to_str(t) for t in all_tags.a | all_tags.b),
                     "server": self._config.name,
                 },
             )
@@ -302,7 +310,9 @@ class LabeledMcpAdapter:
             "mime_type": str(
                 getattr(contents[0], "mimeType", "text/plain") if contents else "text/plain"
             ),
-            "labels": sorted(label.value for label in self._config.inherent_labels),
+            "labels": sorted(
+                _tag_to_str(t) for t in self._config.inherent_tags.a | self._config.inherent_tags.b
+            ),
             "server": self._config.name,
         }
 
@@ -356,9 +366,9 @@ class LabeledMcpAdapter:
                 # use strict mode + explicit overrides).
                 kind = CapabilityKind.READ_FS
 
-            additional = override.additional_labels if override else frozenset()
-            inherent = (
-                self._config.inherent_labels | additional | _extract_labels(upstream_tool.meta)
+            additional = override.additional_tags if override else LabelState()
+            inherent = most_restrictive_inherit(
+                self._config.inherent_tags, additional, _extract_tags(upstream_tool.meta)
             )
 
             op, op_risks, op_surfaces = default_operation_for_kind(kind)
@@ -370,7 +380,7 @@ class LabeledMcpAdapter:
                     ),
                     capability_kind=kind,
                     handler=self._make_handler(upstream_tool.name),
-                    inherent_labels=inherent,
+                    inherent_tags=inherent,
                     parameters_schema=upstream_tool.inputSchema or {"type": "object"},
                     operations=(op,),
                     risk_ids=op_risks,
@@ -394,11 +404,11 @@ class LabeledMcpAdapter:
                         texts.append(text)
                 output = {"text": "\n".join(texts)} if texts else {}
 
-            additional: frozenset[Label] = frozenset()
+            additional = LabelState()
             if getattr(result, "isError", False):
                 output = {"upstream_error": True, **output}
 
             output = _maybe_truncate_output(output)
-            return ToolResult(output=output, additional_labels=additional)
+            return ToolResult(output=output, additional_tags=additional)
 
         return handler

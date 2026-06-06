@@ -36,11 +36,11 @@ def make_policy_preview_tools(graph: SessionGraph) -> list[ToolDefinition]:
         session = graph.get(ctx.session_id)
         action = Action(kind=kind, target=target, amount=amount)
         decision = decide(
-            session.label_set,
             session.capability_set,
             action,
             used_kinds=session.used_kinds,
             cap_uses=session.cap_uses,
+            labels=session.label_state,
         )
         return ToolResult(
             output={
@@ -48,7 +48,6 @@ def make_policy_preview_tools(graph: SessionGraph) -> list[ToolDefinition]:
                 "rule": decision.rule,
                 "reason": decision.reason,
                 "would_match_capability": decision.matched_capability is not None,
-                "effective_labels": sorted(label.value for label in decision.effective_labels),
                 # Issue #3 — Recovery synthesis. The agent sees these
                 # in policy.preview's output and quotes them literally
                 # to the user instead of inventing slash commands.

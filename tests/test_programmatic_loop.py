@@ -20,7 +20,8 @@ from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse
 from capabledeputy.mode.dispatcher import ExecutionMode
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 
 
 def test_extract_code_block_finds_python_block() -> None:
@@ -66,7 +67,7 @@ async def test_programmatic_loop_executes_emitted_program(tmp_path: Path) -> Non
     s = await app.graph.new(intent="programmatic loop test")
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
-    app.memory.write("k", "v", frozenset())
+    app.memory.write("k", "v", LabelState())
 
     program = """\
 I'll read the value at key k.
@@ -175,7 +176,15 @@ async def test_programmatic_loop_halts_on_policy_deny(tmp_path: Path) -> None:
         s,
         capability_set=frozenset({read_cap, purchase_cap}),
     )
-    app.memory.write("labs", "lisinopril", frozenset({Label.CONFIDENTIAL_HEALTH}))
+    app.memory.write(
+        "labs",
+        "lisinopril",
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
+    )
 
     program = """\
 ```python
@@ -216,7 +225,7 @@ async def test_run_turn_dispatches_to_programmatic_when_session_prefers(
     s = await app.graph.new(prefer_programmatic=True)
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
-    app.memory.write("k", "v", frozenset())
+    app.memory.write("k", "v", LabelState())
 
     app.llm_client = FakeLLMClient(
         [
@@ -255,7 +264,7 @@ async def test_run_turn_force_mode_programmatic(tmp_path: Path) -> None:
     s = await app.graph.new()
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
-    app.memory.write("k", "v", frozenset())
+    app.memory.write("k", "v", LabelState())
 
     app.llm_client = FakeLLMClient(
         [

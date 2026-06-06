@@ -22,10 +22,9 @@ from uuid import UUID
 
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
-from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.engine import egress_label_for
-from capabledeputy.policy.labels import Label
-from capabledeputy.policy.rules import CONFLICT_RULES, Decision
+from capabledeputy.policy.engine import _conflict_invariant_outcome
+from capabledeputy.policy.labels import AxisA, AxisB, LabelState, most_restrictive_inherit
+from capabledeputy.policy.rules import Decision
 from capabledeputy.programmatic.errors import ProgramSyntaxError
 from capabledeputy.programmatic.evaluator import (
     ExecutionResult,
@@ -59,80 +58,38 @@ class DryRunReport:
         return self.parse_error is None and self.runtime_error is None and not self.violations
 
 
-def _starting_label_set(initial_scope: dict[str, LabeledValue] | None) -> frozenset[Label]:
+def _starting_label_state(initial_scope: dict[str, LabeledValue] | None) -> LabelState:
     if not initial_scope:
-        return frozenset()
-    out: frozenset[Label] = frozenset()
+        return LabelState()
+    states: list[LabelState] = []
     for value in initial_scope.values():
-        out = out | value.labels
-    return out
-
-
-def _hypothetical_decide(
-    label_set: frozenset[Label],
-    kind: CapabilityKind | str,
-) -> tuple[Decision, str | None, str | None]:
-    """Predict the *information-flow* outcome of a tool call from the
-    effective label set. This is a deliberately scoped second decision
-    surface — read this before assuming it mirrors `policy.engine.decide`.
-
-    IN SCOPE (what this models): the Brewer-Nash CONFLICT_RULES over
-    labels + the egress label for the tool's kind. That is the part a
-    static, pre-execution plan analysis can reason about without any
-    runtime state.
-
-    OUT OF SCOPE (deliberately NOT modelled here): every
-    capability-level denial — no matching capability,
-    `capability-expired`, `rate-limit-exceeded`,
-    `capability-revoked-by-prior-use`, and the
-    `destructive-op-needs-approval` gate. Those depend on the live
-    session's granted capabilities, clock, and per-capability use log,
-    none of which a dry-run has.
-
-    WHY THIS IS SAFE (the boundary, not a bug): the dry-run is an
-    advisory planning aid, NEVER the enforcement surface. Enforcement
-    is `decide()`, which runs unconditionally at every real dispatch
-    (`LabeledToolClient`). So a dry-run that reports ALLOW for a call
-    the runtime would actually deny (expired/rate-limited/revoked/
-    ungranted) still *fails closed* at execution. The dry-run can only
-    be optimistic, never permissive — it cannot grant anything. The
-    single enforcement chokepoint is preserved (constitution
-    Principle I); this surface is scoped and tested
-    (`tests/test_programmatic_runner.py::test_dry_run_*boundary*`),
-    not silently divergent.
-    """
-    egress = egress_label_for(kind)
-    effective = label_set | ({egress} if egress else frozenset())
-    for rule in CONFLICT_RULES:
-        if rule.fires(effective):
-            return (
-                rule.decision,
-                rule.name,
-                f"rule {rule.name} fires on {sorted(label.value for label in effective)}",
-            )
-    return Decision.ALLOW, None, None
+        states.append(value.label_state)
+    return most_restrictive_inherit(*states) if states else LabelState()
 
 
 def _make_dry_run_caller(
     registry: ToolRegistry,
-    starting_labels: frozenset[Label],
+    starting_label_state: LabelState,
 ):
     """Build a ToolCaller that simulates a tool dispatch in dry-run mode.
 
     Each invocation:
       - Looks up the tool definition (errors if unknown).
-      - Builds the predicted effective label set (starting + accumulated +
-        the call's arg labels + tool's inherent labels).
-      - Runs the conflict-rule check.
-      - Returns a synthetic ToolDispatchResult with the inherent labels
+      - Builds the predicted effective four-axis label state (starting +
+        accumulated + the call's arg labels + tool's inherent tags).
+      - Dry-run can only be optimistic: it doesn't gate on capability
+        availability, expiry, rate-limits, or approval requirements
+        (those depend on live session state). Enforcement is done by the
+        real `LabeledToolClient.call_tool()` at dispatch time.
+      - Returns a synthetic ToolDispatchResult with the inherent tags
         and a placeholder output.
     """
-    accumulated_labels = {"value": starting_labels}
+    accumulated_state = {"value": starting_label_state}
 
     async def caller(
         tool_name: str,
         args: dict[str, Any],
-        arg_labels: frozenset[Label],
+        arg_label_state: LabelState,
     ) -> ToolDispatchResult:
         try:
             tool = registry.get(tool_name)
@@ -141,24 +98,42 @@ def _make_dry_run_caller(
                 decision=Decision.DENY,
                 rule=None,
                 reason=str(e),
-                inherent_labels=frozenset(),
+                tags_added=LabelState(),
                 output=None,
             )
-        effective = accumulated_labels["value"] | arg_labels | tool.inherent_labels
-        decision, rule, reason = _hypothetical_decide(effective, tool.capability_kind)
-        if decision == Decision.ALLOW:
-            accumulated_labels["value"] = effective
+        # Compose four-axis tags: accumulated + args + tool inherent + per-arg inherent
+        per_arg_tags = tool.extract_arg_inherent_tags(args)
+        effective = most_restrictive_inherit(
+            accumulated_state["value"],
+            arg_label_state,
+            tool.inherent_tags,
+            per_arg_tags,
+        )
+
+        # Check four-axis information-flow conflict invariants (the same gates
+        # the real engine enforces). Dry-run is optimistic on everything else
+        # (no capability checks, no rate limits, no approvals).
+        from capabledeputy.policy.actions import Action
+
+        fake_action = Action(kind=tool.capability_kind, target="", amount=0)
+        axis_a = AxisA(categories=tuple(effective.a))
+        axis_b = AxisB(entries=tuple(effective.b))
+        conflict_outcome = _conflict_invariant_outcome(axis_a, axis_b, fake_action)
+        if conflict_outcome is not None:
+            decision, rule, reason = conflict_outcome
             return ToolDispatchResult(
-                decision=Decision.ALLOW,
-                output={"_dry_run": True, "tool": tool_name},
-                inherent_labels=tool.inherent_labels,
+                decision=decision,
+                rule=rule,
+                reason=reason,
+                tags_added=LabelState(),
             )
+
+        # Dry-run allows when no information-flow conflicts fire.
+        accumulated_state["value"] = effective
         return ToolDispatchResult(
-            decision=decision,
-            output=None,
-            inherent_labels=tool.inherent_labels,
-            rule=rule,
-            reason=reason,
+            decision=Decision.ALLOW,
+            output={"_dry_run": True, "tool": tool_name},
+            tags_added=LabelState(),
         )
 
     return caller
@@ -174,10 +149,10 @@ def _make_real_caller(
     """Build a ToolCaller that dispatches through LabeledToolClient.
 
     Policy + label propagation + audit happen identically to turn-level
-    mode. The arg-level labels carried by each LabeledValue are unioned
+    mode. The arg-level tags carried by each LabeledValue are composed
     into the session BEFORE the policy decision runs, so per-value
     provenance contributes to the gate (turn-level mode only sees
-    accumulated session labels — programmatic mode is more precise).
+    accumulated session tags — programmatic mode is more precise).
 
     A `mode.selected` audit event marked `mode=programmatic` fires per
     successful call so traces distinguish interpreter-driven calls from
@@ -187,25 +162,28 @@ def _make_real_caller(
     async def caller(
         tool_name: str,
         args: dict[str, Any],
-        arg_labels: frozenset[Label],
+        arg_label_state: LabelState,
     ) -> ToolDispatchResult:
         try:
-            tool = registry.get(tool_name)
+            _ = registry.get(tool_name)
         except ToolNotFoundError as e:
             return ToolDispatchResult(
                 decision=Decision.DENY,
                 rule=None,
                 reason=str(e),
-                inherent_labels=frozenset(),
+                tags_added=LabelState(),
                 output=None,
             )
 
-        if arg_labels:
-            await graph.add_labels(session_id, arg_labels)
+        if arg_label_state.a or arg_label_state.b:
+            await graph.add_tags(session_id, arg_label_state)
 
         outcome = await tool_client.call_tool(session_id, tool_name, args)
 
         if audit is not None and outcome.decision == Decision.ALLOW:
+            # Emit audit with four-axis delta
+            delta_a = sorted(t.category for t in arg_label_state.a)
+            delta_b = sorted(t.level.value for t in arg_label_state.b)
             await audit.write(
                 Event(
                     event_type=EventType.MODE_SELECTED,
@@ -213,7 +191,8 @@ def _make_real_caller(
                     payload={
                         "mode": "programmatic",
                         "tool": tool_name,
-                        "arg_labels": sorted(label.value for label in arg_labels),
+                        "arg_categories": delta_a,
+                        "arg_provenance": delta_b,
                     },
                 ),
             )
@@ -221,7 +200,7 @@ def _make_real_caller(
         return ToolDispatchResult(
             decision=outcome.decision,
             output=outcome.output,
-            inherent_labels=tool.inherent_labels | outcome.labels_added,
+            tags_added=LabelState(),
             rule=outcome.rule,
             reason=outcome.reason,
         )
@@ -244,8 +223,8 @@ async def dry_run_program(
             parse_error=str(e),
         )
 
-    starting_labels = _starting_label_set(initial_scope)
-    caller = _make_dry_run_caller(registry, starting_labels)
+    starting_state = _starting_label_state(initial_scope)
+    caller = _make_dry_run_caller(registry, starting_state)
     result = await run_program(module, caller, initial_scope=initial_scope)
 
     violations = [c for c in result.tool_calls if c.decision != Decision.ALLOW]

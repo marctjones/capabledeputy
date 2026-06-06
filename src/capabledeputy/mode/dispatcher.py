@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState
 from capabledeputy.session.model import Session
 from capabledeputy.tools.registry import ToolDefinition, ToolRegistry
 
@@ -46,11 +46,11 @@ class ModeSelectionError(RuntimeError):
     is available."""
 
 
-_CONFIDENTIAL_LABELS: frozenset[Label] = frozenset(
+_CONFIDENTIAL_CATEGORIES: frozenset[str] = frozenset(
     {
-        Label.CONFIDENTIAL_HEALTH,
-        Label.CONFIDENTIAL_FINANCIAL,
-        Label.CONFIDENTIAL_PERSONAL,
+        "health",
+        "financial",
+        "personal",
     },
 )
 
@@ -60,7 +60,7 @@ _RAW_LABELED_DATA_TOOLS: frozenset[str] = frozenset(
 
 
 def select_mode(
-    label_set: frozenset[Label],
+    label_state: LabelState,
     registry: ToolRegistry,
     *,
     prefer_programmatic: bool = False,
@@ -75,7 +75,7 @@ def select_mode(
       2. `prefer_programmatic` — session-level flag set at session.new
          time; takes precedence over the auto-escalation heuristic so
          users can opt into programmatic for a whole session.
-      3. Auto-heuristic — confidential labels present + a quarantined
+      3. Auto-heuristic — confidential categories present + a quarantined
          extractor registered → DUAL_LLM. Otherwise TURN_LEVEL.
 
     Returns (mode, reason) so the audit record explains the choice.
@@ -89,7 +89,10 @@ def select_mode(
             "session prefers programmatic mode; planner will emit a program",
         )
 
-    if not label_set & _CONFIDENTIAL_LABELS:
+    # Check if any category in label_state.a matches confidential categories
+    has_confidential = any(tag.category in _CONFIDENTIAL_CATEGORIES for tag in label_state.a)
+
+    if not has_confidential:
         return ExecutionMode.TURN_LEVEL, "no confidential labels in session"
 
     has_quarantined = any(tool.name.startswith("quarantined.") for tool in registry.list())

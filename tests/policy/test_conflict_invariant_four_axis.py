@@ -24,7 +24,6 @@ from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.engine import decide
 from capabledeputy.policy.labels import (
     CategoryTag,
-    Label,
     LabelState,
     ProvenanceLevel,
     ProvenanceTag,
@@ -54,45 +53,39 @@ def _category(name: str) -> LabelState:
     return LabelState(a=frozenset({CategoryTag(category=name, tier=Tier.REGULATED)}))
 
 
-# (flat label_set, four-axis LabelState, action kind, expected, rule id)
+# (four-axis LabelState, action kind, expected, rule id)
 _SCENARIOS = [
     (
-        frozenset({Label.UNTRUSTED_EXTERNAL}),
         _untrusted(),
         CapabilityKind.SEND_EMAIL,
         Decision.DENY,
         "untrusted-meets-egress",
     ),
     (
-        frozenset({Label.UNTRUSTED_EXTERNAL}),
         _untrusted(),
         CapabilityKind.QUEUE_PURCHASE,
         Decision.DENY,
         "untrusted-meets-egress",
     ),
     (
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
         _category("health"),
         CapabilityKind.SEND_EMAIL,
         Decision.DENY,
         "health-meets-egress",
     ),
     (
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
         _category("health"),
         CapabilityKind.QUEUE_PURCHASE,
         Decision.DENY,
         "health-meets-egress",
     ),
     (
-        frozenset({Label.CONFIDENTIAL_FINANCIAL}),
         _category("financial"),
         CapabilityKind.SEND_EMAIL,
         Decision.DENY,
         "financial-meets-email",
     ),
     (
-        frozenset({Label.CONFIDENTIAL_FINANCIAL}),
         _category("financial"),
         CapabilityKind.QUEUE_PURCHASE,
         Decision.REQUIRE_APPROVAL,
@@ -101,9 +94,8 @@ _SCENARIOS = [
 ]
 
 
-@pytest.mark.parametrize(("flat", "labels", "kind", "expected", "rule"), _SCENARIOS)
+@pytest.mark.parametrize(("labels", "kind", "expected", "rule"), _SCENARIOS)
 def test_four_axis_gate_matches_expected(
-    flat: frozenset[Label],
     labels: LabelState,
     kind: CapabilityKind,
     expected: Decision,
@@ -112,7 +104,6 @@ def test_four_axis_gate_matches_expected(
     """The four-axis gate, driven by `labels=` with an empty flat
     `label_set`, produces the documented outcome + rule id."""
     result = decide(
-        frozenset(),
         _CAPS,
         _action(kind),
         labels=labels,
@@ -121,21 +112,19 @@ def test_four_axis_gate_matches_expected(
     assert result.rule == rule
 
 
-@pytest.mark.parametrize(("flat", "labels", "kind", "expected", "rule"), _SCENARIOS)
-def test_four_axis_agrees_with_flat_leg(
-    flat: frozenset[Label],
+@pytest.mark.parametrize(("labels", "kind", "expected", "rule"), _SCENARIOS)
+def test_four_axis_gate_consistent(
     labels: LabelState,
     kind: CapabilityKind,
     expected: Decision,
     rule: str,
 ) -> None:
-    """Run-both-and-assert-agreement: the legacy flat leg (`label_set`,
-    no axes) and the four-axis leg (`labels=`, empty `label_set`) reach
-    the identical decision + rule for every scenario."""
-    flat_result = decide(flat, _CAPS, _action(kind))
-    axis_result = decide(frozenset(), _CAPS, _action(kind), labels=labels)
-    assert flat_result.decision == axis_result.decision == expected
-    assert flat_result.rule == axis_result.rule == rule
+    """The four-axis gate consistently yields the expected decision +
+    rule id across multiple invocations."""
+    result1 = decide(_CAPS, _action(kind), labels=labels)
+    result2 = decide(_CAPS, _action(kind), labels=labels)
+    assert result1.decision == result2.decision == expected
+    assert result1.rule == result2.rule == rule
 
 
 def test_no_conflict_when_axes_benign() -> None:
@@ -146,7 +135,6 @@ def test_no_conflict_when_axes_benign() -> None:
         b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
     result = decide(
-        frozenset(),
         _CAPS,
         _action(CapabilityKind.SEND_EMAIL),
         labels=benign,
@@ -156,9 +144,8 @@ def test_no_conflict_when_axes_benign() -> None:
 
 def test_invariant_is_always_on_without_v2_wiring() -> None:
     """No rules_v2 / effect_class / envelope supplied — the invariant
-    still fires from the axes alone, like the flat CONFLICT_RULES."""
+    still fires from the axes alone."""
     result = decide(
-        frozenset(),
         _CAPS,
         _action(CapabilityKind.SEND_EMAIL),
         labels=_untrusted(),
@@ -171,7 +158,6 @@ def test_non_egress_action_is_unaffected() -> None:
     """The invariants gate only egress kinds (SEND_EMAIL /
     QUEUE_PURCHASE); a read with the same taint is not denied here."""
     result = decide(
-        frozenset(),
         frozenset({Capability(kind=CapabilityKind.READ_FS, pattern="*")}),
         Action(kind=CapabilityKind.READ_FS, target="/x"),
         labels=_untrusted(),

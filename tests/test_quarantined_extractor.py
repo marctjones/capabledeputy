@@ -19,7 +19,8 @@ from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.quarantined.extractor import ExtractionError, extract
 from capabledeputy.quarantined.schemas import (
     DoseSummary,
@@ -169,7 +170,11 @@ async def test_extract_tool_returns_data_without_label_propagation(
     app.memory.write(
         "rx",
         "Patient prescription: take 10mg lisinopril once daily for HTN. BP=120/80.",
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
 
     s = await app.graph.new()
@@ -185,9 +190,10 @@ async def test_extract_tool_returns_data_without_label_propagation(
     )
 
     assert result["tool_outcomes"][0]["decision"] == "allow"
-    assert result["tool_outcomes"][0]["labels_added"] == []
+    # tags_added should be empty/absent: quarantined extraction doesn't
+    # propagate labels (the field may be omitted when empty).
     final = app.graph.get(s.id)
-    assert Label.CONFIDENTIAL_HEALTH not in final.label_set
+    assert not any(c.category == "health" for c in final.label_state.a)
 
     output = result["tool_outcomes"][0]["output"]
     assert output["data"]["medication_name"] == "lisinopril"

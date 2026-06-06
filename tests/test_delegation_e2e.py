@@ -101,7 +101,6 @@ async def test_e2e_us1_us2_us3_combined() -> None:
     US2-4 — pooled rate: parent's window decrements on child use
     US3 — depth-limit refusal at 4th hop
     """
-    from datetime import UTC, datetime, timedelta
 
     from capabledeputy.policy.actions import Action
     from capabledeputy.policy.capabilities import RateLimit
@@ -143,9 +142,11 @@ async def test_e2e_us1_us2_us3_combined() -> None:
     action = Action(kind=CapabilityKind.READ_FS, target="x")
     combined_pre = child_session.capability_set | {pcap}
     d = decide(
-        child_session.label_set,
         combined_pre,
         action,
+        axis_a=child_session.axis_a,
+        axis_b=child_session.axis_b,
+        axis_d=child_session.axis_d,
     )
     assert d.decision == Decision.ALLOW
 
@@ -153,9 +154,11 @@ async def test_e2e_us1_us2_us3_combined() -> None:
     await g.revoke_capability(parent.id, pcap.audit_id)
     revoked_set = frozenset({pcap.audit_id})
     d = decide(
-        child_session.label_set,
         combined_pre,
         action,
+        axis_a=child_session.axis_a,
+        axis_b=child_session.axis_b,
+        axis_d=child_session.axis_d,
         revoked_audit_ids=revoked_set,
     )
     assert d.decision == Decision.DENY
@@ -210,9 +213,9 @@ async def test_decide_byte_identical_across_repeated_runs() -> None:
     action = Action(kind=CapabilityKind.READ_FS, target="x")
     now = datetime(2026, 5, 21, 0, 0, 0, tzinfo=UTC)
 
-    d1 = decide(frozenset(), frozenset({cap}), action, now=now)
-    d2 = decide(frozenset(), frozenset({cap}), action, now=now)
-    d3 = decide(frozenset(), frozenset({cap}), action, now=now)
+    d1 = decide(frozenset({cap}), action, now=now)
+    d2 = decide(frozenset({cap}), action, now=now)
+    d3 = decide(frozenset({cap}), action, now=now)
 
     # All three decisions are equal (frozen dataclasses compare by value).
     assert d1 == d2 == d3

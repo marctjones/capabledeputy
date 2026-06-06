@@ -24,7 +24,12 @@ from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+    ProvenanceLevel,
+)
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.model import SessionStatus
 
 
@@ -76,7 +81,11 @@ async def test_prescription_to_wife_full_flow(app: App, tmp_path: Path) -> None:
     app.memory.write(
         "rx",
         "Lisinopril 10mg daily, recheck in 6 weeks",
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
 
     health_session = await app.graph.new(intent="health-context")
@@ -101,7 +110,7 @@ async def test_prescription_to_wife_full_flow(app: App, tmp_path: Path) -> None:
     assert len(app.email_outbox.all()) == 0
 
     health_state = app.graph.get(health_session.id)
-    assert Label.CONFIDENTIAL_HEALTH in health_state.label_set
+    assert any(tag.category == "health" for tag in health_state.label_state.a)
 
     approvals = make_approval_handlers(app)
     submitted = await approvals["approval.submit"](
@@ -132,7 +141,7 @@ async def test_prescription_to_wife_full_flow(app: App, tmp_path: Path) -> None:
     assert "Lisinopril" in sent.body
 
     after_health = app.graph.get(health_session.id)
-    assert Label.CONFIDENTIAL_HEALTH in after_health.label_set
+    assert any(tag.category == "health" for tag in after_health.label_state.a)
     assert all(
         c.kind != CapabilityKind.SEND_EMAIL or c.pattern != "wife@example.com"
         for c in after_health.capability_set
@@ -143,8 +152,8 @@ async def test_prescription_to_wife_full_flow(app: App, tmp_path: Path) -> None:
 
     purpose = app.graph.get(UUID(purpose_session_id))
     assert purpose.status == SessionStatus.ABORTED
-    assert Label.CONFIDENTIAL_HEALTH not in purpose.label_set
-    assert Label.TRUSTED_USER_DIRECT in purpose.label_set
+    assert not any(tag.category == "health" for tag in purpose.label_state.a)
+    assert any(tag.level == ProvenanceLevel.PRINCIPAL_DIRECT for tag in purpose.label_state.b)
 
     events = await app.audit.read_all()
     types = [e.event_type.value for e in events]

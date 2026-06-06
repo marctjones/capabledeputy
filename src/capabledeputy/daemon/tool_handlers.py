@@ -21,7 +21,6 @@ def _tool_to_dict(tool: ToolDefinition) -> dict[str, Any]:
         "capability_kind": kind_name(tool.capability_kind),
         "target_arg": tool.target_arg,
         "amount_arg": tool.amount_arg,
-        "inherent_labels": sorted(label.value for label in tool.inherent_labels),
         "parameters_schema": tool.parameters_schema,
     }
 
@@ -48,11 +47,11 @@ def make_tool_handlers(
             amount=tool.extract_amount(args),
         )
         decision = decide(
-            session.label_set,
             session.capability_set,
             action,
             used_kinds=session.used_kinds,
             cap_uses=session.cap_uses,
+            labels=session.label_state,
         )
         return {
             "decision": decision.decision.value,
@@ -61,7 +60,6 @@ def make_tool_handlers(
             "matched_capability": (
                 decision.matched_capability.to_dict() if decision.matched_capability else None
             ),
-            "effective_labels": sorted(label.value for label in decision.effective_labels),
             "tool": _tool_to_dict(tool),
             "action": {
                 "kind": kind_name(action.kind),
@@ -79,18 +77,32 @@ def make_tool_handlers(
     if tool_client is not None:
 
         async def tool_call(params: dict[str, Any]) -> dict[str, Any]:
+            from capabledeputy.policy.labels import _LEGACY_LABEL_STRINGS_TO_TAGS
+
             outcome = await tool_client.call_tool(
                 session_id=UUID(params["session_id"]),
                 tool_name=params["tool"],
                 args=params.get("args", {}),
             )
+            # Convert tags_added (LabelState) back to legacy label strings for
+            # backward compatibility with MCP clients.
+            labels_added = []
+            for label_str, tags in _LEGACY_LABEL_STRINGS_TO_TAGS.items():
+                # Egress labels map to empty LabelState, skip them
+                if not tags.a and not tags.b:
+                    continue
+                # Check if this label's tags are all present in the added state
+                if all(cat in outcome.tags_added.a for cat in tags.a) and all(
+                    prov in outcome.tags_added.b for prov in tags.b
+                ):
+                    labels_added.append(label_str)
             return {
                 "decision": outcome.decision.value,
                 "output": outcome.output,
                 "rule": outcome.rule,
                 "reason": outcome.reason,
-                "labels_added": sorted(label.value for label in outcome.labels_added),
                 "error": outcome.error,
+                "labels_added": sorted(labels_added),
             }
 
         handlers["tool.call"] = tool_call

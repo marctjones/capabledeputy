@@ -21,19 +21,19 @@ from uuid import UUID
 from capabledeputy.approval.route import ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label, LabelState
+from capabledeputy.policy.labels import LabelState
 
 
 @dataclass(frozen=True)
 class ToolContext:
     session_id: UUID
-    label_set: frozenset[Label]
+    label_state: LabelState
 
 
 @dataclass(frozen=True)
 class ToolResult:
     output: dict[str, Any]
-    additional_labels: frozenset[Label] = field(default_factory=frozenset)
+    additional_tags: LabelState = field(default_factory=LabelState)
 
 
 ToolHandler = Callable[[dict[str, Any], ToolContext], Awaitable[ToolResult]]
@@ -50,7 +50,7 @@ class ToolDefinition:
     handler: ToolHandler
     target_arg: str = "target"
     amount_arg: str | None = None
-    inherent_labels: frozenset[Label] = field(default_factory=frozenset)
+    inherent_labels: frozenset = field(default_factory=frozenset)  # Legacy field, do not use
     parameters_schema: dict[str, Any] = field(
         default_factory=lambda: {"type": "object", "properties": {}, "required": []},
     )
@@ -85,16 +85,17 @@ class ToolDefinition:
     # supersede `inherent_labels` / `effect_class` (deleted in R7).
     operations: tuple[Operation, ...] = field(default_factory=tuple)
     inherent_tags: LabelState = field(default_factory=LabelState)
-    # Spec 004 P0 FR-027/039 — per-arg payload labels. Maps an arg
-    # name to a frozenset of Labels that fire WHEN THAT ARG IS NON-EMPTY.
-    # Example: email.send.arg_inherent_labels = {
-    #   "body": frozenset({Label.CONFIDENTIAL_PERSONAL}),
-    #   "attachments": frozenset({Label.UNTRUSTED_USER}),
+    # R7 — per-arg payload tags. Maps an arg name to a LabelState that
+    # fires WHEN THAT ARG IS NON-EMPTY. Example: email.send.arg_inherent_tags = {
+    #   "body": LabelState(a={CategoryTag("personal", Tier.REGULATED)}),
+    #   "attachments": LabelState(b={ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
     # }
-    # The chokepoint adds these per-arg labels in addition to the
-    # tool-level inherent_labels. Lets a tool declare "the body field
-    # carries personal data" without painting EVERY call with that label.
-    arg_inherent_labels: dict[str, frozenset[Label]] = field(default_factory=dict)
+    # The chokepoint adds these per-arg tags in addition to the
+    # tool-level inherent_tags. Lets a tool declare "the body field
+    # carries personal data" without painting EVERY call with that tag.
+    arg_inherent_tags: dict[str, LabelState] = field(default_factory=dict)
+    # Legacy field for backward compat, do not use
+    arg_inherent_labels: dict[str, frozenset] = field(default_factory=dict)
 
     def extract_target(self, args: dict[str, Any]) -> str:
         return str(args.get(self.target_arg, ""))
@@ -105,21 +106,23 @@ class ToolDefinition:
         value = args.get(self.amount_arg)
         return int(value) if value is not None else None
 
-    def extract_arg_inherent_labels(
+    def extract_arg_inherent_tags(
         self,
         args: dict[str, Any],
-    ) -> frozenset[Label]:
-        """Spec 004 P0 FR-027/039 — per-arg payload labels.
+    ) -> LabelState:
+        """R7 — per-arg payload tags.
 
-        For each (arg_name, labels) declaration: if the corresponding
+        For each (arg_name, tags) declaration: if the corresponding
         value in `args` is non-empty (truthy + not empty string/dict/list),
-        include those labels. Result is the union of all matching
-        per-arg labels; empty if no declared arg is populated.
+        include those tags. Result is the composition (most_restrictive_inherit)
+        of all matching per-arg tags; empty if no declared arg is populated.
         """
-        if not self.arg_inherent_labels:
-            return frozenset()
-        out: set[Label] = set()
-        for arg_name, labels in self.arg_inherent_labels.items():
+        if not self.arg_inherent_tags:
+            return LabelState()
+        from capabledeputy.policy.labels import most_restrictive_inherit
+
+        tags_to_compose: list[LabelState] = []
+        for arg_name, tags in self.arg_inherent_tags.items():
             value = args.get(arg_name)
             if value is None:
                 continue
@@ -129,8 +132,15 @@ class ToolDefinition:
                     continue
             elif not value:
                 continue
-            out.update(labels)
-        return frozenset(out)
+            tags_to_compose.append(tags)
+        return most_restrictive_inherit(*tags_to_compose) if tags_to_compose else LabelState()
+
+    def extract_arg_inherent_labels(
+        self,
+        args: dict[str, Any],
+    ) -> frozenset:
+        """LEGACY — do not use. Kept for backward compat during migration."""
+        return frozenset()
 
 
 class ToolValidationError(ValueError):

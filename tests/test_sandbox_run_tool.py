@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 from unittest.mock import MagicMock
 
 from capabledeputy.substrate.sandbox_actuator import SandboxOutputFile, SandboxResult
@@ -55,7 +54,9 @@ def test_make_sandbox_tools_returns_single_tool_when_wired() -> None:
 def _ctx() -> ToolContext:
     from uuid import uuid4
 
-    return ToolContext(session_id=uuid4(), label_set=frozenset())
+    from capabledeputy.policy.labels import LabelState
+
+    return ToolContext(session_id=uuid4(), label_state=LabelState())
 
 
 def test_sandbox_run_happy_path() -> None:

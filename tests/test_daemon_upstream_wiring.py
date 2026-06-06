@@ -69,9 +69,9 @@ async def test_real_fetch_server_registers_behind_policy(
 ) -> None:
     """End-to-end: spawn the real official fetch MCP server and confirm
     its tool registers into a shared registry with WEB_FETCH +
-    untrusted.external (so the policy engine's egress rules apply)."""
+    untrusted provenance (so the policy engine's egress rules apply)."""
     from capabledeputy.policy.capabilities import CapabilityKind
-    from capabledeputy.policy.labels import Label
+    from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
     from capabledeputy.tools.registry import ToolRegistry
     from capabledeputy.upstream.config import UpstreamServerConfig
     from capabledeputy.upstream.manager import UpstreamManager
@@ -80,7 +80,9 @@ async def test_real_fetch_server_registers_behind_policy(
     cfg = UpstreamServerConfig(
         name="fetch",
         command=("uvx", "mcp-server-fetch"),
-        inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+        inherent_tags=LabelState(
+            b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+        ),
         tool_overrides={},
         strict=True,
     )
@@ -89,4 +91,4 @@ async def test_real_fetch_server_registers_behind_policy(
         assert fetch_tools, [t.name for t in registry.list()]
         tool = fetch_tools[0]
         assert tool.capability_kind == CapabilityKind.WEB_FETCH
-        assert Label.UNTRUSTED_EXTERNAL in tool.inherent_labels
+        assert any(tag.level == ProvenanceLevel.EXTERNAL_UNTRUSTED for tag in tool.inherent_tags.b)

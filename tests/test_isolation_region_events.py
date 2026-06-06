@@ -13,15 +13,9 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-import pytest
-
 from capabledeputy.audit.events import EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.substrate.in_process_sandbox import InProcessSandboxActuator
-from capabledeputy.substrate.sandbox_actuator import (
-    SandboxOutputFile,
-    SandboxResult,
-)
 from capabledeputy.tools.native.sandbox import make_sandbox_tools
 from capabledeputy.tools.registry import ToolContext
 
@@ -59,7 +53,9 @@ async def test_successful_run_emits_created_then_discarded(tmp_path: Path) -> No
     assert len(tools) == 1
     handler = tools[0].handler
 
-    ctx = ToolContext(session_id=uuid4(), label_set=frozenset())
+    from capabledeputy.policy.labels import LabelState
+
+    ctx = ToolContext(session_id=uuid4(), label_state=LabelState())
     result = await handler(
         {"spec_id": "scratch", "argv": ["echo", "hi"], "timeout_seconds": 5},
         ctx,
@@ -92,7 +88,9 @@ async def test_failed_execute_still_emits_discarded(tmp_path: Path) -> None:
     tools = make_sandbox_tools(_FakePolicyContext(actuator), audit=audit)
     handler = tools[0].handler
 
-    ctx = ToolContext(session_id=uuid4(), label_set=frozenset())
+    from capabledeputy.policy.labels import LabelState
+
+    ctx = ToolContext(session_id=uuid4(), label_state=LabelState())
     result = await handler(
         {"spec_id": "scratch", "argv": ["true"], "timeout_seconds": 5},
         ctx,
@@ -111,11 +109,13 @@ async def test_failed_execute_still_emits_discarded(tmp_path: Path) -> None:
 async def test_audit_none_emits_nothing(tmp_path: Path) -> None:
     """When `audit=None` (legacy / test path), no events are emitted
     and the sandbox tool still works normally — no NoneType crashes."""
+    from capabledeputy.policy.labels import LabelState
+
     actuator = InProcessSandboxActuator()
     tools = make_sandbox_tools(_FakePolicyContext(actuator), audit=None)
     handler = tools[0].handler
 
-    ctx = ToolContext(session_id=uuid4(), label_set=frozenset())
+    ctx = ToolContext(session_id=uuid4(), label_state=LabelState())
     result = await handler(
         {"spec_id": "scratch", "argv": ["echo", "hello"], "timeout_seconds": 5},
         ctx,

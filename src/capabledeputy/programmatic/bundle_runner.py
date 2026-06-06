@@ -39,9 +39,16 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
-from capabledeputy.policy.engine import egress_label_for
-from capabledeputy.policy.labels import Label
-from capabledeputy.policy.rules import CONFLICT_RULES, Decision
+from capabledeputy.policy.engine import _conflict_invariant_outcome
+from capabledeputy.policy.labels import (
+    AxisA,
+    AxisB,
+    LabelState,
+    ProvenanceLevel,
+    ProvenanceTag,
+    most_restrictive_inherit,
+)
+from capabledeputy.policy.rules import Decision
 from capabledeputy.programmatic.errors import ProgramSyntaxError
 from capabledeputy.programmatic.evaluator import (
     ToolDispatchResult,
@@ -60,27 +67,15 @@ class BundleMismatchError(RuntimeError):
     bundle is from a different program."""
 
 
-def _hypothetical_decide(
-    label_set: frozenset[Label],
-    kind: CapabilityKind | str,
-) -> tuple[Decision, str | None, str | None]:
-    """Information-flow-only bundle prediction. Same scoped boundary as
-    `runner._hypothetical_decide`: models the label CONFLICT_RULES, NOT
-    capability-level denials (no-cap / expired / rate-limited / revoked
-    / destructive-op gate). Safe because real enforcement is `decide()`
-    at dispatch — this can only be optimistic, never permissive. See
-    that docstring for the full rationale and the boundary test.
-    """
-    egress = egress_label_for(kind)
-    effective = label_set | ({egress} if egress else frozenset())
-    for rule in CONFLICT_RULES:
-        if rule.fires(effective):
-            return (
-                rule.decision,
-                rule.name,
-                f"rule {rule.name} fires on {sorted(label.value for label in effective)}",
-            )
-    return Decision.ALLOW, None, None
+def _starting_label_state(
+    initial_scope: dict[str, LabeledValue] | None,
+) -> LabelState:
+    if not initial_scope:
+        return LabelState()
+    states: list[LabelState] = []
+    for value in initial_scope.values():
+        states.append(value.label_state)
+    return most_restrictive_inherit(*states) if states else LabelState()
 
 
 async def dry_run_for_bundle(
@@ -116,13 +111,13 @@ async def dry_run_for_bundle(
     # Per-call accumulator the synthetic ToolCaller updates as it goes.
     state = {
         "step_counter": 0,
-        "accumulated_labels": _starting_labels(initial_scope),
+        "accumulated_label_state": _starting_label_state(initial_scope),
     }
 
     async def caller(
         tool_name: str,
         args: dict[str, Any],
-        arg_labels: frozenset[Label],
+        arg_label_state: LabelState,
     ) -> ToolDispatchResult:
         state["step_counter"] += 1
         step_index = state["step_counter"]
@@ -130,12 +125,15 @@ async def dry_run_for_bundle(
         try:
             tool = registry.get(tool_name)
         except ToolNotFoundError as e:
+            # Render arg_label_state to flat format for backward-compat audit
+            arg_categories = sorted(t.category for t in arg_label_state.a)
+            arg_levels = sorted(t.level.value for t in arg_label_state.b)
             impact.steps.append(
                 WorkflowStep(
                     step_index=step_index,
                     tool_name=tool_name,
                     args=args,
-                    arg_labels=frozenset(label.value for label in arg_labels),
+                    arg_labels=frozenset(list(arg_categories) + list(arg_levels)),
                     decision=Decision.DENY.value,
                     inherent_labels=frozenset(),
                     rule="tool-not-found",
@@ -148,7 +146,7 @@ async def dry_run_for_bundle(
                     step_index=step_index,
                     tool_name=tool_name,
                     args=args,
-                    arg_labels=frozenset(label.value for label in arg_labels),
+                    arg_labels=frozenset(list(arg_categories) + list(arg_levels)),
                     rule="tool-not-found",
                     reason=str(e),
                     state=GateState.WOULD_DENY,
@@ -160,71 +158,86 @@ async def dry_run_for_bundle(
                 decision=Decision.DENY,
                 rule="tool-not-found",
                 reason=str(e),
+                tags_added=LabelState(),
             )
 
-        effective = state["accumulated_labels"] | arg_labels | tool.inherent_labels
-        decision, rule, reason = _hypothetical_decide(effective, tool.capability_kind)
+        # Compose four-axis tags: accumulated + args + tool inherent + per-arg
+        per_arg_tags = tool.extract_arg_inherent_tags(args)
+        effective = most_restrictive_inherit(
+            state["accumulated_label_state"],
+            arg_label_state,
+            tool.inherent_tags,
+            per_arg_tags,
+        )
+
+        # Check four-axis information-flow conflict invariants (same gates real
+        # engine enforces). Record any REQUIRE_APPROVAL gates as deferred steps.
+        # Render four-axis for backward-compat audit trails.
+        arg_categories = sorted(t.category for t in arg_label_state.a)
+        arg_levels = sorted(t.level.value for t in arg_label_state.b)
+        tool_categories = sorted(t.category for t in tool.inherent_tags.a)
+        tool_levels = sorted(t.level.value for t in tool.inherent_tags.b)
+
+        from capabledeputy.policy.actions import Action
+
+        fake_action = Action(kind=tool.capability_kind, target="", amount=0)
+        axis_a = AxisA(categories=tuple(effective.a))
+        axis_b = AxisB(entries=tuple(effective.b))
+        conflict_outcome = _conflict_invariant_outcome(axis_a, axis_b, fake_action)
+
+        gate_decision = Decision.ALLOW
+        gate_rule = None
+        gate_reason = None
+
+        if conflict_outcome is not None:
+            gate_decision, gate_rule, gate_reason = conflict_outcome
 
         impact.steps.append(
             WorkflowStep(
                 step_index=step_index,
                 tool_name=tool_name,
                 args=args,
-                arg_labels=frozenset(label.value for label in arg_labels),
-                decision=decision.value,
-                inherent_labels=frozenset(label.value for label in tool.inherent_labels),
-                rule=rule,
-                reason=reason,
+                arg_labels=frozenset(list(arg_categories) + list(arg_levels)),
+                decision=gate_decision.value,
+                inherent_labels=frozenset(list(tool_categories) + list(tool_levels)),
+                rule=gate_rule,
+                reason=gate_reason,
                 line=None,
             ),
         )
 
-        if decision == Decision.DENY:
+        # Record gates for non-ALLOW outcomes
+        if gate_decision != Decision.ALLOW:
+            gate_state = (
+                GateState.WOULD_DENY if gate_decision == Decision.DENY else GateState.PENDING
+            )
             impact.gates.append(
                 BundledApproval(
                     step_index=step_index,
                     tool_name=tool_name,
                     args=args,
-                    arg_labels=frozenset(label.value for label in arg_labels),
-                    rule=rule,
-                    reason=reason,
-                    state=GateState.WOULD_DENY,
+                    arg_labels=frozenset(list(arg_categories) + list(arg_levels)),
+                    rule=gate_rule,
+                    reason=gate_reason,
+                    state=gate_state,
                 ),
             )
-            # Halt at the DENY: continuing past would be misleading
-            # (the rest of the workflow would never run).
-            return ToolDispatchResult(
-                decision=Decision.DENY,
-                rule=rule,
-                reason=reason,
-            )
+            # For DENY, halt; for REQUIRE_APPROVAL, continue (deferred gates).
+            if gate_decision == Decision.DENY:
+                return ToolDispatchResult(
+                    decision=Decision.DENY,
+                    rule=gate_rule,
+                    reason=gate_reason,
+                    tags_added=LabelState(),
+                )
 
-        if decision == Decision.REQUIRE_APPROVAL:
-            impact.gates.append(
-                BundledApproval(
-                    step_index=step_index,
-                    tool_name=tool_name,
-                    args=args,
-                    arg_labels=frozenset(label.value for label in arg_labels),
-                    rule=rule,
-                    reason=reason,
-                    state=GateState.PENDING,
-                ),
-            )
-            # KEY: we DEFER, not halt. Return a synthetic ALLOW so
-            # downstream analysis still runs.
-            state["accumulated_labels"] = effective
-            return ToolDispatchResult(
-                decision=Decision.ALLOW,
-                output={"_dry_run": True, "_deferred": True, "tool": tool_name},
-                inherent_labels=tool.inherent_labels,
-            )
-
-        state["accumulated_labels"] = effective
+        # Deferred gates (bundle-only behavior): allow the call to proceed
+        # so downstream analysis sees the full workflow impact.
+        state["accumulated_label_state"] = effective
         return ToolDispatchResult(
             decision=Decision.ALLOW,
             output={"_dry_run": True, "tool": tool_name},
-            inherent_labels=tool.inherent_labels,
+            tags_added=LabelState(),
         )
 
     result = await run_program(module, caller, initial_scope=initial_scope)
@@ -275,7 +288,7 @@ async def execute_with_approved_bundle(
     async def caller(
         tool_name: str,
         args: dict[str, Any],
-        arg_labels: frozenset[Label],
+        arg_label_state: LabelState,
     ) -> ToolDispatchResult:
         state["step_counter"] += 1
         step_index = state["step_counter"]
@@ -287,6 +300,7 @@ async def execute_with_approved_bundle(
                 decision=Decision.DENY,
                 rule="tool-not-found",
                 reason=str(e),
+                tags_added=LabelState(),
             )
 
         gate = gates_by_index.get(step_index)
@@ -318,35 +332,24 @@ async def execute_with_approved_bundle(
             return ToolDispatchResult(
                 decision=outcome.decision,
                 output=outcome.output,
-                inherent_labels=tool.inherent_labels | outcome.labels_added,
+                tags_added=LabelState(),
                 rule=outcome.rule,
                 reason=outcome.reason,
             )
 
         # No gate match → ordinary path.
-        if arg_labels:
-            await graph.add_labels(session_id, arg_labels)
+        if arg_label_state.a or arg_label_state.b:
+            await graph.add_tags(session_id, arg_label_state)
         outcome = await tool_client.call_tool(session_id, tool_name, args)
         return ToolDispatchResult(
             decision=outcome.decision,
             output=outcome.output,
-            inherent_labels=tool.inherent_labels | outcome.labels_added,
+            tags_added=LabelState(),
             rule=outcome.rule,
             reason=outcome.reason,
         )
 
     return await run_program(module, caller, initial_scope=initial_scope)
-
-
-def _starting_labels(
-    initial_scope: dict[str, LabeledValue] | None,
-) -> frozenset[Label]:
-    if not initial_scope:
-        return frozenset()
-    out: frozenset[Label] = frozenset()
-    for value in initial_scope.values():
-        out = out | value.labels
-    return out
 
 
 async def _dispatch_via_purpose_session(
@@ -378,9 +381,13 @@ async def _dispatch_via_purpose_session(
         intent=f"bundle {bundle_id} step {step_index} ({tool_name})",
     )
     granted = await graph.grant_capability(purpose.id, cap)
+    # Seed with principal-direct provenance (user-approved execution)
+    principal_direct_tags = LabelState(
+        b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})
+    )
     granted = _replace(
         granted,
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
+        axis_b=principal_direct_tags.to_axis_b(),
     )
     graph._sessions[granted.id] = granted
 

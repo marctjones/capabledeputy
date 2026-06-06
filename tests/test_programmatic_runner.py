@@ -20,8 +20,9 @@ from pathlib import Path
 
 from capabledeputy.app import App
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.rules import Decision
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.programmatic import (
     dry_run_program,
     run_program_against_session,
@@ -66,7 +67,15 @@ result = call("purchase.queue", vendor="amazon", item=labeled_input, amount=50)
         initial_scope={
             "labeled_input": LabeledValue(
                 raw="rx",
-                labels=frozenset({Label.CONFIDENTIAL_HEALTH}),
+                label_state=LabelState(
+                    a=frozenset(
+                        {
+                            CategoryTag(
+                                "health", Tier.REGULATED, assignment_provenance="source-declared"
+                            )
+                        }
+                    )
+                ),
             ),
         },
     )
@@ -110,7 +119,7 @@ async def test_run_program_against_session_executes(tmp_path: Path) -> None:
         capability_set=frozenset({read_cap, write_cap}),
     )
 
-    app.memory.write("source", "hello world", frozenset())
+    app.memory.write("source", "hello world", LabelState())
     src = """
 note = call("memory.read", key="source")
 saved = call("memory.write", key="copy", value=note["value"])
@@ -159,7 +168,11 @@ async def test_run_program_halts_on_policy_deny(tmp_path: Path) -> None:
     app.memory.write(
         "labs",
         "lisinopril 10mg",
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
 
     src = """
@@ -178,7 +191,7 @@ purchase = call("purchase.queue", vendor="pharmacy", item=labs, amount=50)
     assert "purchase.queue" in result.error
     assert len(app.purchase_queue.all()) == 0
     final = app.graph.get(s.id)
-    assert Label.CONFIDENTIAL_HEALTH in final.label_set
+    assert any(c.category == "health" for c in final.label_state.a)
 
 
 # --- Dry-run capability-constraint boundary (documented + tested) --------
@@ -236,7 +249,6 @@ def test_dry_run_boundary_is_safe_runtime_fails_closed() -> None:
         expires_at=now,
     )
     r1 = decide(
-        frozenset(),
         frozenset({expired}),
         action,
         now=now + timedelta(seconds=1),
@@ -251,7 +263,6 @@ def test_dry_run_boundary_is_safe_runtime_fails_closed() -> None:
         rate_limit=RateLimit(max_uses=1, window_seconds=3600),
     )
     r2 = decide(
-        frozenset(),
         frozenset({rate}),
         action,
         now=now,
@@ -266,7 +277,6 @@ def test_dry_run_boundary_is_safe_runtime_fails_closed() -> None:
         revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
     )
     r3 = decide(
-        frozenset(),
         frozenset({revoked}),
         action,
         used_kinds=frozenset({CapabilityKind.WEB_FETCH}),

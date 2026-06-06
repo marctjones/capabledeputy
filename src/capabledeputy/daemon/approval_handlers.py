@@ -23,7 +23,11 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    LabelState,
+    ProvenanceLevel,
+    ProvenanceTag,
+)
 
 
 def make_approval_handlers(app: App) -> dict[str, Handler]:
@@ -38,13 +42,17 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         return request.to_dict()
 
     async def approval_submit(params: dict[str, Any]) -> dict[str, Any]:
+        from capabledeputy.policy.labels import tags_for_labels_strings
+
+        labels_in_flat = frozenset(s for s in params.get("labels_in", []))
+        labels_out_flat = frozenset(s for s in params.get("labels_out", []))
         request = await app.approval_queue.submit(
             from_session=UUID(params["from_session"]),
             action=ApprovalAction(params["action"]),
             payload=str(params["payload"]),
             target=str(params["target"]),
-            labels_in=frozenset(Label(s) for s in params.get("labels_in", [])),
-            labels_out=frozenset(Label(s) for s in params.get("labels_out", [])),
+            labels_in=tags_for_labels_strings(labels_in_flat),
+            labels_out=tags_for_labels_strings(labels_out_flat),
             justification=str(params.get("justification", "")),
         )
         return request.to_dict()
@@ -236,11 +244,11 @@ async def _execute_declassified_destructive(
         ),
     )
     granted = await app.graph.grant_capability(purpose_session.id, cap)
-    granted = replace(
-        granted,
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
+    # Seed with TRUSTED_USER_DIRECT provenance via add_tags
+    await app.graph.add_tags(
+        granted.id,
+        LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})),
     )
-    app.graph._sessions[granted.id] = granted
 
     outcome = await app.tool_client.call_tool(granted.id, tool_name, tool_args)
     await app.graph.abort(granted.id)
@@ -276,11 +284,11 @@ async def _execute_declassified_purchase(
         intent=f"declassified purchase at {target} (approved from {origin_session})",
     )
     granted = await app.graph.grant_capability(purpose_session.id, cap)
-    granted = replace(
-        granted,
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
+    # Seed with TRUSTED_USER_DIRECT provenance via add_tags
+    await app.graph.add_tags(
+        granted.id,
+        LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})),
     )
-    app.graph._sessions[granted.id] = granted
 
     call_args = {"vendor": target, **{k: v for k, v in args.items() if k != "vendor"}}
     outcome = await app.tool_client.call_tool(granted.id, "purchase.queue", call_args)
@@ -304,11 +312,11 @@ async def _execute_declassified_email(
         intent=f"declassified send to {target} (approved from {origin_session})",
     )
     granted = await app.graph.grant_capability(purpose_session.id, cap)
-    granted = replace(
-        granted,
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
+    # Seed with TRUSTED_USER_DIRECT provenance via add_tags
+    await app.graph.add_tags(
+        granted.id,
+        LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})),
     )
-    app.graph._sessions[granted.id] = granted
 
     outcome = await app.tool_client.call_tool(
         granted.id,

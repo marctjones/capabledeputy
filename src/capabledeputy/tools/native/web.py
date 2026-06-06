@@ -21,7 +21,6 @@ import httpx
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import (
-    Label,
     LabelState,
     ProvenanceLevel,
     ProvenanceTag,
@@ -120,11 +119,15 @@ def make_web_tools(mock: WebMock) -> list[ToolDefinition]:
         if body is None:
             return ToolResult(
                 output={"found": False, "url": url},
-                additional_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+                additional_tags=LabelState(
+                    b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+                ),
             )
         return ToolResult(
             output={"found": True, "url": url, "body": body},
-            additional_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+            additional_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
         )
 
     async def web_search(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
@@ -132,7 +135,9 @@ def make_web_tools(mock: WebMock) -> list[ToolDefinition]:
         if not query:
             return ToolResult(
                 output={"ok": False, "error": "query must be non-empty"},
-                additional_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+                additional_tags=LabelState(
+                    b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+                ),
             )
         count = int(args.get("count", _DEFAULT_SEARCH_COUNT))
         if count < 1 or count > _MAX_SEARCH_COUNT:
@@ -141,7 +146,9 @@ def make_web_tools(mock: WebMock) -> list[ToolDefinition]:
                     "ok": False,
                     "error": f"count must be in [1, {_MAX_SEARCH_COUNT}]",
                 },
-                additional_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+                additional_tags=LabelState(
+                    b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+                ),
             )
         api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "").strip()
         try:
@@ -152,12 +159,16 @@ def make_web_tools(mock: WebMock) -> list[ToolDefinition]:
             result["ok"] = True
             return ToolResult(
                 output=result,
-                additional_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+                additional_tags=LabelState(
+                    b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+                ),
             )
         except Exception as e:
             return ToolResult(
                 output={"ok": False, "error": f"search failed: {e!s}"},
-                additional_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+                additional_tags=LabelState(
+                    b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+                ),
             )
 
     return [
@@ -179,8 +190,9 @@ def make_web_tools(mock: WebMock) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.WEB_FETCH,
             handler=web_fetch,
             target_arg="url",
-            inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
-            inherent_tags=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
+            inherent_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
             parameters_schema={
                 "type": "object",
                 "properties": {"url": {"type": "string"}},
@@ -207,8 +219,9 @@ def make_web_tools(mock: WebMock) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.WEB_FETCH,
             handler=web_search,
             target_arg="query",
-            inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
-            inherent_tags=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
+            inherent_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
             parameters_schema={
                 "type": "object",
                 "properties": {

@@ -16,11 +16,11 @@ from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.engine import (
     REVOKED_BY_PRIOR_USE_RULE,
     decide,
-    egress_label_for,
     find_capability,
 )
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.policy.rules import Decision
+from capabledeputy.policy.tiers import Tier
 
 _GLOB_CAPABILITIES: frozenset[Capability] = frozenset(
     {
@@ -58,11 +58,37 @@ def _action(kind: CapabilityKind) -> Action:
     return Action(kind=kind, target="/some/target")
 
 
+def _label_state(**kwargs) -> LabelState:
+    """Convert legacy label kwargs to LabelState.
+
+    health, financial, personal → CategoryTag in axis_a
+    untrusted, trusted → ProvenanceTag in axis_b
+    """
+    a_tags = set()
+    b_tags = set()
+
+    if kwargs.get("health"):
+        a_tags.add(CategoryTag(category="health", tier=Tier.REGULATED))
+    if kwargs.get("financial"):
+        a_tags.add(CategoryTag(category="financial", tier=Tier.REGULATED))
+    if kwargs.get("personal"):
+        a_tags.add(CategoryTag(category="personal", tier=Tier.REGULATED))
+    if kwargs.get("untrusted"):
+        b_tags.add(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED))
+    if kwargs.get("trusted"):
+        b_tags.add(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT))
+
+    return LabelState(
+        a=frozenset(a_tags),
+        b=frozenset(b_tags),
+    )
+
+
 def test_no_capability_denies() -> None:
     result = decide(
-        label_set=frozenset(),
         capabilities=frozenset(),
         action=_action(CapabilityKind.SEND_EMAIL),
+        labels=LabelState(),
     )
     assert result.decision == Decision.DENY
     assert "no matching capability" in (result.reason or "")
@@ -71,58 +97,58 @@ def test_no_capability_denies() -> None:
 def test_capability_present_with_no_labels_allows() -> None:
     for kind in CapabilityKind:
         result = decide(
-            label_set=frozenset(),
             capabilities=_GLOB_CAPABILITIES,
             action=_action(kind),
+            labels=LabelState(),
         )
         assert result.decision == Decision.ALLOW, f"{kind} should allow with no labels"
 
 
 @pytest.mark.parametrize(
-    ("labels", "kind", "expected", "expected_rule"),
+    ("label_kwargs", "kind", "expected", "expected_rule"),
     [
         # Rule 1: untrusted.* + egress.* -> DENY
         (
-            frozenset({Label.UNTRUSTED_EXTERNAL}),
+            {"untrusted": True},
             CapabilityKind.SEND_EMAIL,
             Decision.DENY,
             "untrusted-meets-egress",
         ),
         (
-            frozenset({Label.UNTRUSTED_USER_INPUT}),
+            {"untrusted": True},
             CapabilityKind.SEND_EMAIL,
             Decision.DENY,
             "untrusted-meets-egress",
         ),
         (
-            frozenset({Label.UNTRUSTED_EXTERNAL}),
+            {"untrusted": True},
             CapabilityKind.QUEUE_PURCHASE,
             Decision.DENY,
             "untrusted-meets-egress",
         ),
         # Rule 2: confidential.health + egress.* -> DENY
         (
-            frozenset({Label.CONFIDENTIAL_HEALTH}),
+            {"health": True},
             CapabilityKind.SEND_EMAIL,
             Decision.DENY,
             "health-meets-egress",
         ),
         (
-            frozenset({Label.CONFIDENTIAL_HEALTH}),
+            {"health": True},
             CapabilityKind.QUEUE_PURCHASE,
             Decision.DENY,
             "health-meets-egress",
         ),
         # Rule 3: confidential.financial + egress.email -> DENY
         (
-            frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+            {"financial": True},
             CapabilityKind.SEND_EMAIL,
             Decision.DENY,
             "financial-meets-email",
         ),
         # Rule 4: confidential.financial + egress.purchase -> REQUIRE_APPROVAL
         (
-            frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+            {"financial": True},
             CapabilityKind.QUEUE_PURCHASE,
             Decision.REQUIRE_APPROVAL,
             "financial-meets-purchase",
@@ -130,83 +156,57 @@ def test_capability_present_with_no_labels_allows() -> None:
     ],
 )
 def test_rule_firings(
-    labels: frozenset[Label],
+    label_kwargs: dict,
     kind: CapabilityKind,
     expected: Decision,
     expected_rule: str,
 ) -> None:
     result = decide(
-        label_set=labels,
         capabilities=_GLOB_CAPABILITIES,
         action=_action(kind),
+        labels=_label_state(**label_kwargs),
     )
     assert result.decision == expected
     assert result.rule == expected_rule
 
 
 @pytest.mark.parametrize(
-    ("labels", "kind"),
+    ("label_kwargs", "kind"),
     [
-        (frozenset({Label.CONFIDENTIAL_HEALTH}), CapabilityKind.READ_FS),
-        (frozenset({Label.CONFIDENTIAL_HEALTH}), CapabilityKind.WRITE_FS),
-        (frozenset({Label.CONFIDENTIAL_HEALTH}), CapabilityKind.WEB_FETCH),
-        (frozenset({Label.CONFIDENTIAL_HEALTH}), CapabilityKind.CALENDAR_READ),
-        (frozenset({Label.CONFIDENTIAL_PERSONAL}), CapabilityKind.SEND_EMAIL),
-        (frozenset({Label.CONFIDENTIAL_PERSONAL}), CapabilityKind.QUEUE_PURCHASE),
-        (frozenset({Label.TRUSTED_USER_DIRECT}), CapabilityKind.SEND_EMAIL),
-        (frozenset({Label.TRUSTED_USER_DIRECT}), CapabilityKind.QUEUE_PURCHASE),
-        (frozenset({Label.UNTRUSTED_EXTERNAL}), CapabilityKind.READ_FS),
-        (frozenset({Label.UNTRUSTED_EXTERNAL}), CapabilityKind.WEB_FETCH),
-        (frozenset({Label.CONFIDENTIAL_FINANCIAL}), CapabilityKind.READ_FS),
-        (frozenset({Label.CONFIDENTIAL_FINANCIAL}), CapabilityKind.CALENDAR_READ),
+        ({"health": True}, CapabilityKind.READ_FS),
+        ({"health": True}, CapabilityKind.WRITE_FS),
+        ({"health": True}, CapabilityKind.WEB_FETCH),
+        ({"health": True}, CapabilityKind.CALENDAR_READ),
+        ({"personal": True}, CapabilityKind.SEND_EMAIL),
+        ({"personal": True}, CapabilityKind.QUEUE_PURCHASE),
+        ({"trusted": True}, CapabilityKind.SEND_EMAIL),
+        ({"trusted": True}, CapabilityKind.QUEUE_PURCHASE),
+        ({"untrusted": True}, CapabilityKind.READ_FS),
+        ({"untrusted": True}, CapabilityKind.WEB_FETCH),
+        ({"financial": True}, CapabilityKind.READ_FS),
+        ({"financial": True}, CapabilityKind.CALENDAR_READ),
     ],
 )
 def test_non_conflicting_combinations_allow(
-    labels: frozenset[Label],
+    label_kwargs: dict,
     kind: CapabilityKind,
 ) -> None:
     result = decide(
-        label_set=labels,
         capabilities=_GLOB_CAPABILITIES,
         action=_action(kind),
+        labels=_label_state(**label_kwargs),
     )
     assert result.decision == Decision.ALLOW
 
 
 def test_decide_returns_matched_capability_on_allow() -> None:
     result = decide(
-        label_set=frozenset(),
         capabilities=_GLOB_CAPABILITIES,
         action=_action(CapabilityKind.READ_FS),
+        labels=LabelState(),
     )
     assert result.matched_capability is not None
     assert result.matched_capability.kind == CapabilityKind.READ_FS
-
-
-def test_decide_includes_egress_label_in_effective_labels() -> None:
-    result = decide(
-        label_set=frozenset({Label.CONFIDENTIAL_PERSONAL}),
-        capabilities=_GLOB_CAPABILITIES,
-        action=_action(CapabilityKind.SEND_EMAIL),
-    )
-    assert Label.EGRESS_EMAIL in result.effective_labels
-    assert Label.CONFIDENTIAL_PERSONAL in result.effective_labels
-
-
-def test_decide_does_not_add_egress_for_non_egress_actions() -> None:
-    result = decide(
-        label_set=frozenset(),
-        capabilities=_GLOB_CAPABILITIES,
-        action=_action(CapabilityKind.READ_FS),
-    )
-    assert result.effective_labels == frozenset()
-
-
-def test_egress_label_lookup() -> None:
-    assert egress_label_for(CapabilityKind.SEND_EMAIL) == Label.EGRESS_EMAIL
-    assert egress_label_for(CapabilityKind.QUEUE_PURCHASE) == Label.EGRESS_PURCHASE
-    assert egress_label_for(CapabilityKind.READ_FS) is None
-    assert egress_label_for(CapabilityKind.CALENDAR_READ) is None
 
 
 def test_find_capability_returns_first_match() -> None:
@@ -244,13 +244,13 @@ def test_find_capability_respects_max_amount() -> None:
 
 def test_decide_purchase_below_limit_with_financial_requires_approval() -> None:
     result = decide(
-        label_set=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
         capabilities=_GLOB_CAPABILITIES,
         action=Action(
             kind=CapabilityKind.QUEUE_PURCHASE,
             target="amazon",
             amount=50,
         ),
+        labels=_label_state(financial=True),
     )
     assert result.decision == Decision.REQUIRE_APPROVAL
     assert result.rule == "financial-meets-purchase"
@@ -258,37 +258,37 @@ def test_decide_purchase_below_limit_with_financial_requires_approval() -> None:
 
 def test_decide_purchase_over_capability_limit_denies() -> None:
     result = decide(
-        label_set=frozenset(),
         capabilities=_GLOB_CAPABILITIES,
         action=Action(
             kind=CapabilityKind.QUEUE_PURCHASE,
             target="amazon",
             amount=99_999_999,
         ),
+        labels=LabelState(),
     )
     assert result.decision == Decision.DENY
 
 
-_TRIGGER_LABELS = (
-    Label.CONFIDENTIAL_HEALTH,
-    Label.CONFIDENTIAL_FINANCIAL,
-    Label.UNTRUSTED_EXTERNAL,
-    Label.UNTRUSTED_USER_INPUT,
-)
+_TRIGGER_KWARGS = [
+    {"health": True},
+    {"financial": True},
+    {"untrusted": True},
+]
 
 
-@pytest.mark.parametrize("trigger_pair", list(combinations(_TRIGGER_LABELS, 2)))
+@pytest.mark.parametrize("trigger_pair", list(combinations(_TRIGGER_KWARGS, 2)))
 def test_combined_triggers_still_block_egress(
-    trigger_pair: tuple[Label, ...],
+    trigger_pair: tuple[dict, ...],
 ) -> None:
     """A label set with multiple trigger labels should still produce
     DENY (or REQUIRE_APPROVAL) for egress actions, never ALLOW."""
-    labels = frozenset(trigger_pair)
+    # Merge the two trigger dicts
+    merged_kwargs = {k: v for d in trigger_pair for k, v in d.items()}
     for kind in (CapabilityKind.SEND_EMAIL, CapabilityKind.QUEUE_PURCHASE):
         result = decide(
-            label_set=labels,
             capabilities=_GLOB_CAPABILITIES,
             action=_action(kind),
+            labels=_label_state(**merged_kwargs),
         )
         assert result.decision in {Decision.DENY, Decision.REQUIRE_APPROVAL}, (
             f"{trigger_pair} + {kind} → {result.decision} (expected non-ALLOW)"
@@ -308,10 +308,10 @@ def test_revoked_by_empty_used_kinds_allows() -> None:
         revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
     )
     result = decide(
-        label_set=frozenset(),
         capabilities=frozenset({cap}),
         action=Action(kind=CapabilityKind.WRITE_FS, target="/notes/x"),
         used_kinds=frozenset(),
+        labels=LabelState(),
     )
     assert result.decision == Decision.ALLOW
 
@@ -324,10 +324,10 @@ def test_revoked_by_prior_use_denies() -> None:
         revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
     )
     result = decide(
-        label_set=frozenset(),
         capabilities=frozenset({cap}),
         action=Action(kind=CapabilityKind.WRITE_FS, target="/notes/x"),
         used_kinds=frozenset({CapabilityKind.WEB_FETCH}),
+        labels=LabelState(),
     )
     assert result.decision == Decision.DENY
     assert result.rule == REVOKED_BY_PRIOR_USE_RULE
@@ -343,10 +343,10 @@ def test_revoked_by_unrelated_prior_use_allows() -> None:
         revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
     )
     result = decide(
-        label_set=frozenset(),
         capabilities=frozenset({cap}),
         action=Action(kind=CapabilityKind.WRITE_FS, target="/notes/x"),
         used_kinds=frozenset({CapabilityKind.READ_FS, CapabilityKind.CALENDAR_READ}),
+        labels=LabelState(),
     )
     assert result.decision == Decision.ALLOW
 
@@ -360,10 +360,10 @@ def test_revoked_by_any_member_of_set_denies() -> None:
         ),
     )
     result = decide(
-        label_set=frozenset(),
         capabilities=frozenset({cap}),
         action=Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
         used_kinds=frozenset({CapabilityKind.READ_FS}),
+        labels=LabelState(),
     )
     assert result.decision == Decision.DENY
     assert result.rule == REVOKED_BY_PRIOR_USE_RULE
@@ -380,10 +380,10 @@ def test_revoked_by_runs_before_conflict_rules() -> None:
     )
     result = decide(
         # untrusted.external would normally fire untrusted-meets-egress
-        label_set=frozenset({Label.UNTRUSTED_EXTERNAL}),
         capabilities=frozenset({cap}),
         action=Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
         used_kinds=frozenset({CapabilityKind.WEB_FETCH}),
+        labels=_label_state(untrusted=True),
     )
     assert result.decision == Decision.DENY
     assert result.rule == REVOKED_BY_PRIOR_USE_RULE
@@ -428,8 +428,8 @@ def test_future_deadline_is_transparent() -> None:
         expires_at=_T0 + timedelta(hours=1),
     )
     plain = Capability(kind=CapabilityKind.READ_FS, pattern="*")
-    r_future = decide(frozenset(), frozenset({future}), _read_action(), now=_T0)
-    r_plain = decide(frozenset(), frozenset({plain}), _read_action(), now=_T0)
+    r_future = decide(frozenset({future}), _read_action(), now=_T0, labels=LabelState())
+    r_plain = decide(frozenset({plain}), _read_action(), now=_T0, labels=LabelState())
     assert r_future.decision == r_plain.decision == Decision.ALLOW
 
 
@@ -442,10 +442,10 @@ def test_expired_capability_treated_as_absent() -> None:
         expires_at=_T0,
     )
     r = decide(
-        frozenset(),
         frozenset({expired}),
         _read_action(),
         now=_T0 + timedelta(seconds=1),
+        labels=LabelState(),
     )
     assert r.decision == Decision.DENY
     assert r.rule == CAPABILITY_EXPIRED_RULE
@@ -456,12 +456,12 @@ def test_half_open_boundary_instant() -> None:
     """At exactly now == expires_at the capability is expired."""
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*", expires_at=_T0)
     before = decide(
-        frozenset(),
         frozenset({cap}),
         _read_action(),
         now=_T0 - timedelta(microseconds=1),
+        labels=LabelState(),
     )
-    at = decide(frozenset(), frozenset({cap}), _read_action(), now=_T0)
+    at = decide(frozenset({cap}), _read_action(), now=_T0, labels=LabelState())
     assert before.decision == Decision.ALLOW
     assert at.decision == Decision.DENY
     assert at.rule == CAPABILITY_EXPIRED_RULE
@@ -477,10 +477,10 @@ def test_non_expired_sibling_still_satisfies() -> None:
     )
     live = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     r = decide(
-        frozenset(),
         frozenset({expired, live}),
         _read_action(),
         now=_T0 + timedelta(hours=1),
+        labels=LabelState(),
     )
     assert r.decision == Decision.ALLOW
 
@@ -494,12 +494,12 @@ def test_expiry_distinct_from_no_capability() -> None:
         expires_at=_T0,
     )
     r_expired = decide(
-        frozenset(),
         frozenset({expired}),
         _read_action(),
         now=_T0 + timedelta(seconds=1),
+        labels=LabelState(),
     )
-    r_absent = decide(frozenset(), frozenset(), _read_action(), now=_T0)
+    r_absent = decide(frozenset(), _read_action(), now=_T0, labels=LabelState())
     assert r_expired.rule == CAPABILITY_EXPIRED_RULE
     assert r_absent.rule is None
     assert "no matching capability" in (r_absent.reason or "")
@@ -516,11 +516,11 @@ def test_expiry_composes_with_revoked_by() -> None:
         revoked_by=frozenset({CapabilityKind.WEB_FETCH}),
     )
     r = decide(
-        frozenset(),
         frozenset({cap}),
         _read_action(),
         used_kinds=frozenset({CapabilityKind.WEB_FETCH}),
         now=_T0 + timedelta(seconds=1),
+        labels=LabelState(),
     )
     assert r.decision == Decision.DENY
     assert r.rule == CAPABILITY_EXPIRED_RULE  # expiry wins (skipped first)
@@ -530,7 +530,7 @@ def test_decide_without_now_uses_wall_clock_and_stays_backcompat() -> None:
     """Omitting `now` resolves to current UTC; a non-expiring cap is
     unaffected (existing callers unchanged)."""
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
-    r = decide(frozenset(), frozenset({cap}), _read_action())
+    r = decide(frozenset({cap}), _read_action(), labels=LabelState())
     assert r.decision == Decision.ALLOW
 
 
@@ -557,11 +557,11 @@ def test_rate_limit_under_limit_allows() -> None:
     cap = _rl_cap(3, 60)
     uses = {_RL_AID: (_T0 - timedelta(seconds=10),)}  # 1 use < 3
     r = decide(
-        frozenset(),
         frozenset({cap}),
         _read_action(),
         now=_T0,
         cap_uses=uses,
+        labels=LabelState(),
     )
     assert r.decision == Decision.ALLOW
 
@@ -570,11 +570,11 @@ def test_rate_limit_at_limit_denies_with_rule() -> None:
     cap = _rl_cap(2, 60)
     uses = {_RL_AID: (_T0 - timedelta(seconds=30), _T0 - timedelta(seconds=5))}
     r = decide(
-        frozenset(),
         frozenset({cap}),
         _read_action(),
         now=_T0,
         cap_uses=uses,
+        labels=LabelState(),
     )
     assert r.decision == Decision.DENY
     assert r.rule == RATE_LIMIT_EXCEEDED_RULE
@@ -586,11 +586,11 @@ def test_rate_limit_window_slides_and_frees() -> None:
     # one use 90s ago → outside 60s window → allowed again
     uses = {_RL_AID: (_T0 - timedelta(seconds=90),)}
     r = decide(
-        frozenset(),
         frozenset({cap}),
         _read_action(),
         now=_T0,
         cap_uses=uses,
+        labels=LabelState(),
     )
     assert r.decision == Decision.ALLOW
 
@@ -599,13 +599,13 @@ def test_rate_exceeded_distinct_from_expired_and_no_cap() -> None:
     cap = _rl_cap(1, 60)
     uses = {_RL_AID: (_T0 - timedelta(seconds=1),)}
     r_rate = decide(
-        frozenset(),
         frozenset({cap}),
         _read_action(),
         now=_T0,
         cap_uses=uses,
+        labels=LabelState(),
     )
-    r_absent = decide(frozenset(), frozenset(), _read_action(), now=_T0)
+    r_absent = decide(frozenset(), _read_action(), now=_T0, labels=LabelState())
     assert r_rate.rule == RATE_LIMIT_EXCEEDED_RULE
     assert r_absent.rule is None
 
@@ -615,11 +615,11 @@ def test_rate_exceeded_non_expired_sibling_survives() -> None:
     uses = {_RL_AID: (_T0 - timedelta(seconds=1),)}
     plain = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     r = decide(
-        frozenset(),
         frozenset({limited, plain}),
         _read_action(),
         now=_T0,
         cap_uses=uses,
+        labels=LabelState(),
     )
     assert r.decision == Decision.ALLOW  # sibling without a limit
 
@@ -639,10 +639,10 @@ def test_expiry_takes_precedence_over_rate_in_attribution() -> None:
     )
     uses = {_RL_AID: (_T0 - timedelta(seconds=1),)}
     r = decide(
-        frozenset(),
         frozenset({cap}),
         _read_action(),
         now=_T0 + timedelta(seconds=1),
         cap_uses=uses,
+        labels=LabelState(),
     )
     assert r.rule == CAPABILITY_EXPIRED_RULE

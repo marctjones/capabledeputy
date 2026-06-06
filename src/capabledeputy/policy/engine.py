@@ -38,19 +38,13 @@ from capabledeputy.policy.labels import (
     AxisA,
     AxisB,
     AxisD,
-    Label,
     LabelState,
     ProvenanceLevel,
 )
 from capabledeputy.policy.optimistic import evaluate_optimistic
 from capabledeputy.policy.overrides import OverrideGrantStore, use_override
 from capabledeputy.policy.reversibility import ReversibilityLabel
-from capabledeputy.policy.rules import CONFLICT_RULES, ConflictRule, Decision
-
-_EGRESS_LABEL_FOR_KIND: dict[CapabilityKind, Label] = {
-    CapabilityKind.SEND_EMAIL: Label.EGRESS_EMAIL,
-    CapabilityKind.QUEUE_PURCHASE: Label.EGRESS_PURCHASE,
-}
+from capabledeputy.policy.rules import Decision
 
 DESTRUCTIVE_OP_RULE = "destructive-op-needs-approval"
 REVOKED_BY_PRIOR_USE_RULE = "capability-revoked-by-prior-use"
@@ -75,9 +69,9 @@ FIRST_USE_OF_KIND_RULE = "first-use-of-kind"
 # §R4c, decision D-conflict). These port the four co-presence conflict
 # rules off the flat `Label` set onto the propagating axes. They are
 # NOT Brewer-Nash / Chinese-Wall COI rules (despite the legacy
-# rules.py docstring): the first is an Axis-B(provenance)×Axis-C(effect)
+# rules.py docstring): the first is an Axis-B(provenance)xAxis-C(effect)
 # *integrity* invariant (a confused-deputy / taint-flow block); the
-# other three are Axis-A(category)×Axis-C(effect) *confidentiality
+# other three are Axis-A(category)xAxis-C(effect) *confidentiality
 # confinement* invariants. They are always-on engine invariants — no
 # config can disable them — sitting beside the BLP-clearance and
 # Biba-floor gates. Rule ids are kept identical to the flat
@@ -158,7 +152,6 @@ class PolicyDecision:
     rule: str | None = None
     reason: str | None = None
     matched_capability: Capability | None = None
-    effective_labels: frozenset[Label] = frozenset()
     v2_outcome: RuleOutcome | None = None
     v2_matched_rule_ids: tuple[str, ...] = field(default_factory=tuple)
     # T046 — relax inputs that were refused per FR-031 asymmetry. When
@@ -240,15 +233,6 @@ def _compose_with_v2(legacy: PolicyDecision, v2: EvaluationResult) -> PolicyDeci
     )
 
 
-def egress_label_for(kind: CapabilityKind | str) -> Label | None:
-    # Custom-kind strings don't appear in the egress map — only the
-    # built-in enum kinds (SEND_EMAIL, QUEUE_PURCHASE, etc.) do, so a
-    # str-typed kind safely yields None via the lookup.
-    if not isinstance(kind, CapabilityKind):
-        return None
-    return _EGRESS_LABEL_FOR_KIND.get(kind)
-
-
 def _conflict_invariant_outcome(
     axis_a: AxisA | None,
     axis_b: AxisB | None,
@@ -264,7 +248,7 @@ def _conflict_invariant_outcome(
       2. Axis-A `health` category + egress                ⇒ DENY
       3. Axis-A `financial` category + email egress       ⇒ DENY
       4. Axis-A `financial` category + purchase egress     ⇒ REQUIRE_APPROVAL
-         (2–4: confidentiality confinement).
+         (2-4: confidentiality confinement).
 
     Egress is the action kind (SEND_EMAIL / QUEUE_PURCHASE) — exactly
     the signal the flat `egress_label_for(action.kind)` used, so this
@@ -411,10 +395,8 @@ def find_capability(
 
 
 def _decide_legacy(
-    label_set: frozenset[Label],
     capabilities: frozenset[Capability],
     action: Action,
-    rules: tuple[ConflictRule, ...] = CONFLICT_RULES,
     used_kinds: frozenset[CapabilityKind] = frozenset(),
     now: datetime | None = None,
     cap_uses: dict[str, tuple[datetime, ...]] | None = None,
@@ -460,7 +442,6 @@ def _decide_legacy(
                     f"(decision time {eff_now.isoformat()})"
                 ),
                 matched_capability=expired_match,
-                effective_labels=label_set,
             )
         # Next: a scope-matching capability that is only disqualified
         # because its sliding-window rate limit is exhausted. Distinct
@@ -503,12 +484,10 @@ def _decide_legacy(
                     f"{eff_now.isoformat()})"
                 ),
                 matched_capability=rate_match,
-                effective_labels=label_set,
             )
         return PolicyDecision(
             decision=Decision.DENY,
             reason=f"no matching capability for {kind_name(action.kind)}({action.target})",
-            effective_labels=label_set,
         )
 
     # 002 US2 cascade revocation: if the matched capability OR any
@@ -535,7 +514,6 @@ def _decide_legacy(
                 f"audit_id={originator_id} (revoked/expired/exhausted)"
             ),
             matched_capability=cap,
-            effective_labels=label_set,
         )
 
     # Tool-identity revocation: if the matched capability declares
@@ -552,26 +530,7 @@ def _decide_legacy(
                 f"{sorted(k.value for k in revoking)}"
             ),
             matched_capability=cap,
-            effective_labels=label_set,
         )
-
-    effective_labels = label_set
-    egress_label = egress_label_for(action.kind)
-    if egress_label is not None:
-        effective_labels = effective_labels | {egress_label}
-
-    for rule in rules:
-        if rule.fires(effective_labels):
-            return PolicyDecision(
-                decision=rule.decision,
-                rule=rule.name,
-                reason=(
-                    f"rule {rule.name} fired on labels "
-                    f"{sorted(label.value for label in effective_labels)}"
-                ),
-                matched_capability=cap,
-                effective_labels=effective_labels,
-            )
 
     # Destructive-op gate (DESIGN.md §7.5): MODIFY_* / DELETE_* actions
     # require a capability with `allows_destructive=True` OR an approval.
@@ -597,13 +556,11 @@ def _decide_legacy(
                 "allows_destructive=True"
             ),
             matched_capability=cap,
-            effective_labels=effective_labels,
         )
 
     return PolicyDecision(
         decision=Decision.ALLOW,
         matched_capability=cap,
-        effective_labels=effective_labels,
     )
 
 
@@ -693,7 +650,9 @@ def _synthesize_recovery_steps(
             RecoveryStep(
                 command="/spawn",
                 args=(f'"{intent}"',),
-                rationale="Capability was revoked by a prior tool use; fresh session resets the record.",
+                rationale=(
+                    "Capability was revoked by a prior tool use; fresh session resets the record."
+                ),
             ),
             RecoveryStep(
                 command="/grant",
@@ -763,10 +722,8 @@ def _synthesize_recovery_steps(
 
 
 def _decide_impl(
-    label_set: frozenset[Label],
     capabilities: frozenset[Capability],
     action: Action,
-    rules: tuple[ConflictRule, ...] = CONFLICT_RULES,
     used_kinds: frozenset[CapabilityKind] = frozenset(),
     now: datetime | None = None,
     cap_uses: dict[str, tuple[datetime, ...]] | None = None,
@@ -860,7 +817,6 @@ def _decide_impl(
                         f"{active.expires_at.isoformat()}"
                     ),
                     matched_capability=mint_result,
-                    effective_labels=label_set,
                 )
 
     # T077 / Demo #6 — binding canonicalization. When the operator
@@ -880,7 +836,6 @@ def _decide_impl(
                 decision=Decision.DENY,
                 rule=BINDING_UNBOUND_RULE,
                 reason=str(e),
-                effective_labels=label_set,
             )
 
     # T094 / T081 / Demo #4 — reversibility-weighted gating +
@@ -939,7 +894,6 @@ def _decide_impl(
                     f"FR-018: session with external-untrusted provenance "
                     f"cannot exercise control-plane effect {effect_class!r}"
                 ),
-                effective_labels=label_set,
                 axis_a_snapshot=axis_a,
                 axis_b_snapshot=axis_b,
                 axis_d_snapshot=axis_d,
@@ -962,7 +916,6 @@ def _decide_impl(
                 f"FR-042/SC-017: {effect_class!r} requires a SandboxActuator "
                 f"port; none wired (spec 004 provider impl)"
             ),
-            effective_labels=label_set,
             axis_a_snapshot=axis_a,
             axis_b_snapshot=axis_b,
             axis_d_snapshot=axis_d,
@@ -989,7 +942,6 @@ def _decide_impl(
                 "none wired. Declare a sandbox.regions block in "
                 "daemon.yaml and ensure Podman is installed."
             ),
-            effective_labels=label_set,
             axis_a_snapshot=axis_a,
             axis_b_snapshot=axis_b,
             axis_d_snapshot=axis_d,
@@ -1022,7 +974,6 @@ def _decide_impl(
                         f"FR-015: category {cat.category!r} cites unknown "
                         f"risk ids {sorted(orphans)}"
                     ),
-                    effective_labels=label_set,
                     axis_a_snapshot=axis_a,
                     axis_b_snapshot=axis_b,
                     axis_d_snapshot=axis_d,
@@ -1047,7 +998,6 @@ def _decide_impl(
                         f"refuses read of category {cat.category!r} at tier "
                         f"{cat.tier.value}"
                     ),
-                    effective_labels=label_set,
                     axis_a_snapshot=axis_a,
                     axis_b_snapshot=axis_b,
                     axis_d_snapshot=axis_d,
@@ -1071,7 +1021,6 @@ def _decide_impl(
                     decision=Decision.DENY,
                     rule=INTEGRITY_FLOOR_REFUSED_RULE,
                     reason=str(e),
-                    effective_labels=label_set,
                     axis_a_snapshot=axis_a,
                     axis_b_snapshot=axis_b,
                     axis_d_snapshot=axis_d,
@@ -1132,15 +1081,12 @@ def _decide_impl(
                 reason=(
                     f"FR-031: relax input(s) from non-deterministic origin(s) {origins} refused"
                 ),
-                effective_labels=label_set,
                 refused_relax_inputs=inspected.refused,
             )
 
     legacy = _decide_legacy(
-        label_set,
         capabilities,
         action,
-        rules,
         used_kinds,
         now,
         cap_uses,
@@ -1278,11 +1224,8 @@ def decide(*args, **kwargs) -> PolicyDecision:
     # preserved; only synthesize when the slot is empty.
     if result.decision is Decision.ALLOW or result.recovery_steps:
         return result
-    # `action` is the third positional arg or `action=` kwarg.
-    if len(args) >= 3:
-        action_obj = args[2]
-    else:
-        action_obj = kwargs.get("action")
+    # `action` is the second positional arg or `action=` kwarg.
+    action_obj = args[1] if len(args) >= 2 else kwargs.get("action")
     if action_obj is None:
         return result
     steps = _synthesize_recovery_steps(

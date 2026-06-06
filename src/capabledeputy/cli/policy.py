@@ -117,31 +117,11 @@ def policy_show(
         console.print_json(data=result)
         return
 
-    label_table = Table(title=f"Labels ({len(result['labels'])})")
-    label_table.add_column("Label")
-    for label in result["labels"]:
-        label_table.add_row(label)
-    console.print(label_table)
-
     kind_table = Table(title=f"Capability kinds ({len(result['capability_kinds'])})")
     kind_table.add_column("Kind")
     for kind in result["capability_kinds"]:
         kind_table.add_row(kind)
     console.print(kind_table)
-
-    rule_table = Table(title=f"Conflict rules ({len(result['rules'])})")
-    rule_table.add_column("Name")
-    rule_table.add_column("Triggers")
-    rule_table.add_column("Conflicts")
-    rule_table.add_column("Decision")
-    for rule in result["rules"]:
-        rule_table.add_row(
-            rule["name"],
-            ", ".join(rule["triggers"]),
-            ", ".join(rule["conflicts"]),
-            rule["decision"],
-        )
-    console.print(rule_table)
 
 
 @policy_app.command("validate")
@@ -208,8 +188,6 @@ def policy_test(
         console.print(f"rule: {result['rule']}")
     if result["reason"]:
         console.print(f"reason: {result['reason']}")
-    if result["effective_labels"]:
-        console.print(f"effective labels: {', '.join(result['effective_labels'])}")
     matched = result["matched_capability"]
     if matched:
         console.print(f"matched capability: {matched['kind']}({matched['pattern']})")

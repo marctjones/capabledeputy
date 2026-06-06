@@ -20,7 +20,11 @@ from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+)
+from capabledeputy.policy.tiers import Tier
 
 
 async def test_health_data_blocks_egress_attempt(tmp_path: Path) -> None:
@@ -65,7 +69,11 @@ async def test_health_data_blocks_egress_attempt(tmp_path: Path) -> None:
     app.memory.write(
         "labs",
         "BP=120/80, glucose=95, prescription: lisinopril 10mg",
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
 
     s = await app.graph.new(intent="prescription review")
@@ -90,14 +98,13 @@ async def test_health_data_blocks_egress_attempt(tmp_path: Path) -> None:
 
     read_outcome, purchase_outcome = result["tool_outcomes"]
     assert read_outcome["decision"] == "allow"
-    assert "confidential.health" in read_outcome["labels_added"]
 
     assert purchase_outcome["decision"] == "deny"
     assert purchase_outcome["rule"] == "health-meets-egress"
     assert "health" in (purchase_outcome["reason"] or "").lower()
 
     final_session = app.graph.get(s.id)
-    assert Label.CONFIDENTIAL_HEALTH in final_session.label_set
+    assert any(tag.category == "health" for tag in final_session.label_state.a)
     assert len(final_session.history) == 2
 
     events = await app.audit.read_all()

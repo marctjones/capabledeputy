@@ -65,12 +65,11 @@ def test_revoked_ancestor_denies_descendant() -> None:
     action = Action(kind=CapabilityKind.READ_FS, target="anywhere.txt")
 
     # Without revocation: ALLOW (child matches; nothing inert)
-    d = decide(frozenset(), caps, action)
+    d = decide(caps, action)
     assert d.decision == Decision.ALLOW
 
     # With parent revoked: cascaded DENY
     d = decide(
-        frozenset(),
         caps,
         action,
         revoked_audit_ids=frozenset({parent.audit_id}),
@@ -88,7 +87,6 @@ def test_revoked_grandparent_denies_grandchild() -> None:
     action = Action(kind=CapabilityKind.READ_FS, target="x")
 
     d = decide(
-        frozenset(),
         caps,
         action,
         revoked_audit_ids=frozenset({root.audit_id}),
@@ -111,7 +109,7 @@ def test_expired_ancestor_cascades() -> None:
     caps = frozenset({parent, child})
     action = Action(kind=CapabilityKind.READ_FS, target="x")
 
-    d = decide(frozenset(), caps, action)
+    d = decide(caps, action)
     # When the parent is expired, child is cascaded-inert. But the
     # cap-match step finds child first (it's not expired). The cascade
     # check fires next.
@@ -131,7 +129,6 @@ def test_distinct_from_expired_and_rate_rules() -> None:
         expires_at=long_ago,
     )
     d = decide(
-        frozenset(),
         frozenset({expired_cap}),
         Action(kind=CapabilityKind.READ_FS, target="x"),
     )
@@ -199,7 +196,6 @@ async def test_pooled_rate_child_cannot_outspend_ancestor(tmp_path: Path) -> Non
 
     # 4th call against child — should DENY (rate limit on the pooled chain)
     d = decide(
-        frozenset(),
         caps,
         action,
         now=now,
@@ -218,6 +214,8 @@ async def test_pending_approval_invalidated_when_capability_cascaded(
     """An approval whose capability_requested is descendant of a
     revoked ancestor must be invalidated at approve() time, not
     upgraded to ALLOW. Emits CAPABILITY_CASCADE_REVOKED audit event."""
+    from capabledeputy.policy.labels import LabelState
+
     writer = AuditWriter(tmp_path / "audit.jsonl")
     graph = SessionGraph(audit=writer)
     s = await graph.new()
@@ -235,7 +233,7 @@ async def test_pending_approval_invalidated_when_capability_cascaded(
         action=ApprovalAction.SEND_EMAIL,
         target="ops@example.com",
         payload={"body": "hello"},
-        labels_in=frozenset(),
+        labels_in=LabelState(),
         from_session=s.id,
         justification="test",
         capability_requested=child,
@@ -273,13 +271,12 @@ def test_already_dispatched_call_not_unwound_by_subsequent_revoke() -> None:
     now = datetime.now(UTC)
 
     # Time T0: allow.
-    d0 = decide(frozenset(), caps, action, now=now)
+    d0 = decide(caps, action, now=now)
     assert d0.decision == Decision.ALLOW
 
     # Time T1: parent revoked. NEW decide() at T1 denies; nothing
     # changes about d0 (it's a value; nothing to unwind).
     d1 = decide(
-        frozenset(),
         caps,
         action,
         now=now + timedelta(seconds=1),

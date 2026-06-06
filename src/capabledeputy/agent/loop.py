@@ -423,7 +423,7 @@ async def run_turn_streaming(
     # Mode selection happens BEFORE history is mutated so the
     # programmatic loop can take over cleanly when selected.
     mode, mode_reason = select_mode(
-        session.label_set,
+        session.label_state,
         registry,
         prefer_programmatic=session.prefer_programmatic,
         force_mode=force_mode,

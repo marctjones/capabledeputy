@@ -77,7 +77,7 @@ def make_programmatic_handlers(app: App) -> dict[str, Handler]:
                 if result.return_value is None
                 else {
                     "raw": result.return_value.raw,
-                    "labels": sorted(label.value for label in result.return_value.labels),
+                    "label_state": result.return_value.label_state.to_dict(),
                 }
             ),
         }

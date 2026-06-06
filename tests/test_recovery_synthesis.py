@@ -6,15 +6,16 @@ slash-command sequence. Adding a new rule? Add a golden test here.
 
 from __future__ import annotations
 
-import pytest
-
 from capabledeputy.policy.actions import Action
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.engine import _synthesize_recovery_steps
 from capabledeputy.policy.rules import Decision
 
 
-def _act(kind: CapabilityKind = CapabilityKind.SEND_EMAIL, target: str = "marc@joneslaw.io") -> Action:
+def _act(
+    kind: CapabilityKind = CapabilityKind.SEND_EMAIL,
+    target: str = "marc@joneslaw.io",
+) -> Action:
     return Action(kind=kind, target=target)
 
 
@@ -165,14 +166,12 @@ def test_recovery_step_as_command_line() -> None:
 def test_decide_populates_recovery_steps_on_deny() -> None:
     """The public decide() wrapper auto-populates recovery_steps on
     non-ALLOW outcomes by calling the synthesizer."""
-    from capabledeputy.policy.capabilities import Capability
     from capabledeputy.policy.engine import decide
 
     # No capabilities at all → no-matching-capability rule fires
     result = decide(
-        label_set=frozenset(),
-        capabilities=frozenset(),
-        action=_act(),
+        frozenset(),
+        _act(),
     )
     assert result.decision == Decision.DENY
     assert result.recovery_steps, (
@@ -186,11 +185,8 @@ def test_decide_allow_has_no_recovery_steps() -> None:
     from capabledeputy.policy.engine import decide
 
     result = decide(
-        label_set=frozenset(),
-        capabilities=frozenset(
-            {Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*")},
-        ),
-        action=_act(),
+        frozenset({Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*")}),
+        _act(),
     )
     assert result.decision == Decision.ALLOW
     assert result.recovery_steps == ()

@@ -79,7 +79,7 @@ async def main() -> int:
         ("OVER delegated amount (parent allowed 100)", Action(K.SEND_EMAIL, "mail/team/x", 80)),
     ]
     for desc, act in cases:
-        d = decide(frozenset(), caps, act)
+        d = decide(caps, act)
         print(f"  child {desc:<44} -> {d.decision.value.upper()}")
     print()
     print("Child can do strictly LESS than the parent could — by construction.")

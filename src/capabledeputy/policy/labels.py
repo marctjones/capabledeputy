@@ -1,10 +1,9 @@
 """Information-flow labels (DESIGN.md §7.1; 003 four-axis extension).
 
-The v0.7 flat `Label` enum is retained for backward-compat reads of
-sessions on the legacy SCHEMA_VERSION 5 storage shape — but new code
-MUST consume the four-axis representation (AxisA / AxisB / AxisC /
-AxisD) introduced for v0.9. The legacy enum will be removed at
-SCHEMA_VERSION 7 (FR-024 forward-only).
+New code MUST consume the four-axis representation (AxisA / AxisB / AxisC /
+AxisD) introduced for v0.9. SCHEMA_VERSION 7 and forward use only four-axis
+representations; the v0.7 flat Label enum (and backward-compat converters) have
+been removed (FR-024 forward-only).
 
 Axis A — Data Category (this file: AxisA, Category schema).
 Axis B — Provenance Lattice (this file: AxisB, ProvenanceLevel).
@@ -26,22 +25,6 @@ from typing import Any, Self
 
 from capabledeputy.policy.axis_d import DecisionContext
 from capabledeputy.policy.tiers import Tier, max_of
-
-
-class Label(StrEnum):
-    """LEGACY v0.7 flat label set — retained for backward-compat reads
-    only. New code uses AxisA/AxisB/AxisD instead. Scheduled for
-    removal at SCHEMA_VERSION 7 (FR-024 forward-only)."""
-
-    CONFIDENTIAL_HEALTH = "confidential.health"
-    CONFIDENTIAL_FINANCIAL = "confidential.financial"
-    CONFIDENTIAL_PERSONAL = "confidential.personal"
-    UNTRUSTED_EXTERNAL = "untrusted.external"
-    UNTRUSTED_USER_INPUT = "untrusted.user_input"
-    TRUSTED_USER_DIRECT = "trusted.user_direct"
-    EGRESS_EMAIL = "egress.email"
-    EGRESS_PURCHASE = "egress.purchase"
-
 
 # --- Axis B: Provenance lattice (FR-004) -----------------------------
 
@@ -235,6 +218,28 @@ class LabelState:
     def to_axis_b(self) -> AxisB:
         return AxisB(entries=tuple(self.b))
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a dict for storage/serialization.
+
+        Format: {"a": [CategoryTag.to_dict() for each], "b": [ProvenanceTag.to_dict() for each]}
+        """
+        return {
+            "a": [t.to_dict() for t in sorted(self.a, key=lambda x: x.category)],
+            "b": [t.to_dict() for t in sorted(self.b, key=lambda x: x.level.value)],
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any] | None) -> LabelState:
+        """Deserialize from a dict. Default-tolerant: missing keys or None become
+        empty LabelState()."""
+        if d is None:
+            return cls()
+        a_list = d.get("a", [])
+        b_list = d.get("b", [])
+        a = frozenset(CategoryTag.from_dict(x) for x in a_list) if a_list else frozenset()
+        b = frozenset(ProvenanceTag.from_dict(x) for x in b_list) if b_list else frozenset()
+        return cls(a=a, b=b)
+
 
 def _compose_a(*sets: frozenset[CategoryTag]) -> frozenset[CategoryTag]:
     by_cat: dict[str, list[CategoryTag]] = {}
@@ -302,57 +307,51 @@ def inherit(parent: LabelState, child: LabelState) -> LabelState:
 
 # --- Apply source #2: operation/tool inherent declaration (FR-013, §R5) --
 #
-# The runtime still receives inherent declarations + per-result deltas as
-# flat `Label` values (tool `inherent_labels`, custom-kind add_labels,
-# handler-returned additional_labels). This is the single canonical
-# forward map from a flat label to the propagating `LabelState` it
-# denotes in the four-axis model — used by the dispatch chokepoint to
-# accumulate four-axis taint equivalently to the flat `label_set`. The
-# flat enum + this map are deleted together in R7, once tool authors
-# declare `inherent_tags` natively. `EGRESS_*` are Axis-C **effects**,
-# not propagating tags (the un-fusing), so they map to the empty state.
-_LABEL_TO_TAGS: dict[Label, LabelState] = {
-    Label.CONFIDENTIAL_HEALTH: LabelState(
+# Conversion from legacy flat-label string values to the new `LabelState`
+# representation. `EGRESS_*` are Axis-C **effects**, not propagating tags
+# (the un-fusing), so they map to the empty state.
+_LEGACY_LABEL_STRINGS_TO_TAGS: dict[str, LabelState] = {
+    "confidential.health": LabelState(
         a=frozenset(
             {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")},
         ),
     ),
-    Label.CONFIDENTIAL_FINANCIAL: LabelState(
+    "confidential.financial": LabelState(
         a=frozenset(
             {CategoryTag("financial", Tier.REGULATED, assignment_provenance="source-declared")},
         ),
     ),
-    Label.CONFIDENTIAL_PERSONAL: LabelState(
+    "confidential.personal": LabelState(
         a=frozenset(
             {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")},
         ),
     ),
-    Label.UNTRUSTED_EXTERNAL: LabelState(
+    "untrusted.external": LabelState(
         b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
     ),
-    Label.UNTRUSTED_USER_INPUT: LabelState(
+    "untrusted.user_input": LabelState(
         b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
     ),
-    Label.TRUSTED_USER_DIRECT: LabelState(
+    "trusted.user_direct": LabelState(
         b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)}),
     ),
-    Label.EGRESS_EMAIL: LabelState(),  # Axis-C effect, not a propagating tag
-    Label.EGRESS_PURCHASE: LabelState(),
+    "egress.email": LabelState(),  # Axis-C effect, not a propagating tag
+    "egress.purchase": LabelState(),
 }
 
 
-def tags_for_label(label: Label) -> LabelState:
-    """The propagating `LabelState` a single flat label denotes."""
-    return _LABEL_TO_TAGS.get(label, LabelState())
+def tags_for_label_string(label_str: str) -> LabelState:
+    """The propagating `LabelState` a legacy flat-label string denotes."""
+    return _LEGACY_LABEL_STRINGS_TO_TAGS.get(label_str, LabelState())
 
 
-def tags_for_labels(labels: frozenset[Label]) -> LabelState:
-    """Compose the four-axis taint denoted by a flat label set. Empty
+def tags_for_labels_strings(labels: frozenset[str]) -> LabelState:
+    """Compose the four-axis taint denoted by a flat label string set. Empty
     set ⇒ empty state. The result is the apply-source-#2 delta the
     dispatch chokepoint raises into the session's `LabelState`."""
     if not labels:
         return LabelState()
-    return most_restrictive_inherit(*(tags_for_label(label) for label in labels))
+    return most_restrictive_inherit(*(tags_for_label_string(label) for label in labels))
 
 
 def meets_required_floor(state: LabelState, required_floor: ProvenanceLevel | None) -> bool:

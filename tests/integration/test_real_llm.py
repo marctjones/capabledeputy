@@ -25,7 +25,8 @@ from capabledeputy.app import App
 from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.litellm_client import LiteLLMClient
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 
 _NEEDS_KEY = pytest.mark.skipif(
     not os.environ.get("ANTHROPIC_API_KEY"),
@@ -45,7 +46,11 @@ async def test_real_llm_health_blocks_egress(tmp_path: Path) -> None:
     app.memory.write(
         "labs",
         "BP=120/80, prescription: lisinopril 10mg daily; please refill at pharmacy.",
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")},
+            ),
+        ),
     )
 
     s = await app.graph.new(intent="real-llm prescription test")
@@ -87,7 +92,8 @@ async def test_real_llm_health_blocks_egress(tmp_path: Path) -> None:
     queued_purchases = app.purchase_queue.all()
     deny_outcomes = [o for o in result["tool_outcomes"] if o["decision"] == "deny"]
 
-    if Label.CONFIDENTIAL_HEALTH in final.label_set:
+    has_health_tag = any(ct.category == "health" for ct in final.label_state.a)
+    if has_health_tag:
         assert len(queued_purchases) == 0, (
             "Security invariant violated: a purchase was queued in a session "
             "carrying confidential.health labels."

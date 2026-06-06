@@ -24,17 +24,32 @@ def _serialize_recovery_step(step: Any) -> dict[str, Any]:
 
 
 def _outcome_to_dict(outcome: ToolCallOutcome) -> dict[str, Any]:
+    # Convert tags_added (LabelState) back to legacy label strings for
+    # backward compatibility with clients.
+    from capabledeputy.policy.labels import _LEGACY_LABEL_STRINGS_TO_TAGS
+
+    labels_added = []
+    for label_str, tags in _LEGACY_LABEL_STRINGS_TO_TAGS.items():
+        # Egress labels map to empty LabelState, skip them
+        if not tags.a and not tags.b:
+            continue
+        # Check if this label's tags are all present in the added state
+        if all(cat in outcome.tags_added.a for cat in tags.a) and all(
+            prov in outcome.tags_added.b for prov in tags.b
+        ):
+            labels_added.append(label_str)
+
     return {
         "decision": outcome.decision.value,
         "rule": outcome.rule,
         "reason": outcome.reason,
-        "labels_added": sorted(label.value for label in outcome.labels_added),
         "error": outcome.error,
         "output": outcome.output,
         "tool_name": outcome.tool_name,
         "tool_args": outcome.tool_args,
         "approval_submission": outcome.approval_submission,
         "approval_id": outcome.approval_id,
+        "labels_added": sorted(labels_added),
         # Issue #3 — Recovery steps surface to the chat REPL and to
         # the agent via policy.preview's output. Empty list when no
         # synthesis fired (ALLOW or unsupported rule).
@@ -73,7 +88,8 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
                 max_iterations=int(params.get("max_iterations", 50)),
                 force_mode=force_mode,
                 cancel_check=lambda sid=session_uuid: app.cancellation_flags.get(
-                    sid, False,
+                    sid,
+                    False,
                 ),
             )
         finally:

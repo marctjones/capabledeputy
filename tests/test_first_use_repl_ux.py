@@ -25,7 +25,11 @@ from rich.console import Console
 import capabledeputy.cli.chat as chat
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.approval.queue import ApprovalQueue
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+)
+from capabledeputy.policy.tiers import Tier
 
 
 @pytest.fixture
@@ -47,7 +51,11 @@ async def test_submit_with_rule_persists_on_request() -> None:
         action=ApprovalAction.SEND_EMAIL,
         payload="hi",
         target="alice@example.com",
-        labels_in=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        labels_in=LabelState(
+            a=frozenset(
+                {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
         justification="user requested",
         rule="first-use-of-kind",
     )
@@ -67,7 +75,11 @@ async def test_submit_without_rule_remains_none() -> None:
         action=ApprovalAction.SEND_EMAIL,
         payload="x",
         target="bob@example.com",
-        labels_in=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        labels_in=LabelState(
+            a=frozenset(
+                {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
     assert req.rule is None
     assert req.to_dict()["rule"] is None

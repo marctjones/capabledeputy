@@ -9,7 +9,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from capabledeputy.policy.capabilities import Capability
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState
 
 
 class ApprovalAction(StrEnum):
@@ -40,8 +40,8 @@ class ApprovalRequest:
     action: ApprovalAction
     payload: str
     target: str
-    labels_in: frozenset[Label]
-    labels_out: frozenset[Label]
+    labels_in: LabelState
+    labels_out: LabelState
     capability_requested: Capability | None
     justification: str
     requested_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -83,8 +83,8 @@ class ApprovalRequest:
             "action": self.action.value,
             "payload": self.payload,
             "target": self.target,
-            "labels_in": sorted(label.value for label in self.labels_in),
-            "labels_out": sorted(label.value for label in self.labels_out),
+            "labels_in": self.labels_in.to_dict(),
+            "labels_out": self.labels_out.to_dict(),
             "capability_requested": (
                 self.capability_requested.to_dict() if self.capability_requested else None
             ),

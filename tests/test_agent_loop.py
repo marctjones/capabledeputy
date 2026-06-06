@@ -13,8 +13,9 @@ from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.rules import Decision
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
@@ -174,7 +175,15 @@ async def test_label_accumulation_blocks_subsequent_egress(writer: AuditWriter) 
         capability_set=frozenset({read_cap, write_cap, purchase_cap}),
     )
 
-    memory.write("labs", "BP=120/80", frozenset({Label.CONFIDENTIAL_HEALTH}))
+    memory.write(
+        "labs",
+        "BP=120/80",
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
+    )
 
     llm = FakeLLMClient(
         [
@@ -212,12 +221,22 @@ async def test_label_accumulation_blocks_subsequent_egress(writer: AuditWriter) 
     )
     assert len(result.tool_outcomes) == 2
     assert result.tool_outcomes[0].decision == Decision.ALLOW
-    assert Label.CONFIDENTIAL_HEALTH in result.tool_outcomes[0].labels_added
+    # Check that the health category tag was propagated (via tags_added)
+    health_tag = next(
+        (t for t in result.tool_outcomes[0].tags_added.a if t.category == "health"),
+        None,
+    )
+    assert health_tag is not None, "health category should have been propagated"
     assert result.tool_outcomes[1].decision == Decision.DENY
     assert result.tool_outcomes[1].rule == "health-meets-egress"
 
     after = graph.get(s.id)
-    assert Label.CONFIDENTIAL_HEALTH in after.label_set
+    # Check that the session's label_state (axis_a) has the health category
+    health_in_session = next(
+        (t for t in after.label_state.a if t.category == "health"),
+        None,
+    )
+    assert health_in_session is not None, "health category should be in session after read"
 
 
 async def test_tool_not_found_handled_gracefully(writer: AuditWriter) -> None:

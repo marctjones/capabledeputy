@@ -70,7 +70,6 @@ def test_first_use_escalates_allow_to_require_approval() -> None:
     name is the FIRST_USE_OF_KIND_RULE constant so tooling can
     recognize and explain the escalation."""
     result = decide(
-        frozenset(),
         frozenset({_wide_cap(CapabilityKind.SEND_EMAIL)}),
         Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
         used_kinds=frozenset(),  # never used SEND_EMAIL before
@@ -84,7 +83,6 @@ def test_second_use_passes_through() -> None:
     """Once the kind has been used, the prompt doesn't fire again —
     no per-call friction on subsequent dispatches."""
     result = decide(
-        frozenset(),
         frozenset({_wide_cap(CapabilityKind.SEND_EMAIL)}),
         Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
         used_kinds=frozenset({CapabilityKind.SEND_EMAIL}),
@@ -100,7 +98,6 @@ def test_read_kind_never_prompts() -> None:
     assert CapabilityKind.READ_FS not in _PROMPTABLE_FIRST_USE_KINDS
     assert CapabilityKind.GMAIL_READ not in _PROMPTABLE_FIRST_USE_KINDS
     result = decide(
-        frozenset(),
         frozenset({_wide_cap(CapabilityKind.READ_FS)}),
         Action(kind=CapabilityKind.READ_FS, target="/home/x"),
         used_kinds=frozenset(),
@@ -113,7 +110,6 @@ def test_flag_off_no_prompt() -> None:
     """Default-off path: an opt-out session ALLOWs even on first
     use. Pre-existing back-compat preserved."""
     result = decide(
-        frozenset(),
         frozenset({_wide_cap(CapabilityKind.SEND_EMAIL)}),
         Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
         used_kinds=frozenset(),
@@ -129,7 +125,6 @@ def test_non_allow_outcomes_pass_through() -> None:
     stands."""
     # No capabilities → 'no matching capability' DENY
     result = decide(
-        frozenset(),
         frozenset(),
         Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
         used_kinds=frozenset(),

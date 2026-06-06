@@ -76,12 +76,12 @@ async def apply_scenario(app: App, scenario: Scenario) -> SeedResult:
                 starts_at=starts_at,
                 ends_at=ends_at,
                 notes=event.notes,
-                labels=event.labels,
+                label_state=event.label_state,
             ),
         )
 
     for entry in scenario.memory:
-        app.memory.write(entry.key, entry.value, entry.labels)
+        app.memory.write(entry.key, entry.value, entry.label_state)
 
     return SeedResult(
         session_id=session.id,

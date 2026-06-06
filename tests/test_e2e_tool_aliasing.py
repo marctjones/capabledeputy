@@ -24,6 +24,8 @@ from capabledeputy.tools.aliasing import alias_for
 async def test_aliased_session_sees_random_token_names(tmp_path: Path) -> None:
     """The agent loop builds tool descriptions for the LLM with
     aliased names; the LLM picks the alias; the harness reverse-maps."""
+    from capabledeputy.policy.labels import LabelState
+
     app = App(
         state_db_path=tmp_path / "state.db",
         audit_log_path=tmp_path / "audit.jsonl",
@@ -32,7 +34,7 @@ async def test_aliased_session_sees_random_token_names(tmp_path: Path) -> None:
     s = await app.graph.new(intent="aliased session", tool_aliasing=True)
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
-    app.memory.write("k", "v", frozenset())
+    app.memory.write("k", "v", LabelState())
 
     # The agent loop calls memory.read but the LLM is asked to use
     # the aliased name. The fake LLM is scripted to call the alias.
@@ -64,6 +66,8 @@ async def test_token_from_one_session_does_not_dispatch_in_another(
     """Cross-session token reuse fails. The token bound to session A
     is not bound to any tool in session B; dispatch returns the
     'tool not found' deny shape."""
+    from capabledeputy.policy.labels import LabelState
+
     app = App(
         state_db_path=tmp_path / "state.db",
         audit_log_path=tmp_path / "audit.jsonl",
@@ -74,7 +78,7 @@ async def test_token_from_one_session_does_not_dispatch_in_another(
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     app.graph._sessions[a.id] = replace(a, capability_set=frozenset({cap}))
     app.graph._sessions[b.id] = replace(b, capability_set=frozenset({cap}))
-    app.memory.write("k", "v", frozenset())
+    app.memory.write("k", "v", LabelState())
 
     # Token bound to session A.
     a_token = alias_for(a.id, "memory.read")
@@ -103,6 +107,8 @@ async def test_token_from_one_session_does_not_dispatch_in_another(
 
 async def test_aliasing_off_uses_canonical_names(tmp_path: Path) -> None:
     """Default behaviour stays the same when aliasing isn't enabled."""
+    from capabledeputy.policy.labels import LabelState
+
     app = App(
         state_db_path=tmp_path / "state.db",
         audit_log_path=tmp_path / "audit.jsonl",
@@ -111,7 +117,7 @@ async def test_aliasing_off_uses_canonical_names(tmp_path: Path) -> None:
     s = await app.graph.new()  # tool_aliasing=False default
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
-    app.memory.write("k", "v", frozenset())
+    app.memory.write("k", "v", LabelState())
 
     app.llm_client = FakeLLMClient(
         [

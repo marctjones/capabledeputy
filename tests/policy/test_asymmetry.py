@@ -29,7 +29,7 @@ from capabledeputy.policy.engine import (
     RELAX_REFUSED_RULE,
     decide,
 )
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.policy.rules import Decision
 from capabledeputy.tools.client import (
     build_policy_decided_payload,
@@ -100,9 +100,9 @@ def test_decide_refuses_with_non_deterministic_relax_input() -> None:
     relax input ⇒ entire decision is refused (FR-031)."""
     bad = RelaxInput(description="model said it's fine", origin="llm-suggested")
     result = decide(
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
         capabilities=frozenset({_send_email_cap()}),
         action=_send_action(),
+        labels=LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})),
         relax_inputs=(bad,),
     )
     assert result.decision == Decision.DENY
@@ -119,9 +119,9 @@ def test_decide_passes_with_only_deterministic_relax_inputs() -> None:
         RelaxInput(description="from MCP", origin="curated-mcp"),
     )
     result = decide(
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
         capabilities=frozenset({_send_email_cap()}),
         action=_send_action(),
+        labels=LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})),
         relax_inputs=good,
     )
     assert result.decision == Decision.ALLOW
@@ -136,9 +136,9 @@ def test_decide_refuses_even_one_tainted_among_many() -> None:
         RelaxInput(description="tainted", origin="planner-heuristic"),
     )
     result = decide(
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
         capabilities=frozenset({_send_email_cap()}),
         action=_send_action(),
+        labels=LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})),
         relax_inputs=inputs,
     )
     assert result.decision == Decision.DENY
@@ -155,9 +155,9 @@ def test_policy_decided_payload_surfaces_refused_inputs() -> None:
     audit replay needs them to reconstruct the asymmetry refusal."""
     bad = RelaxInput(description="model said it's fine", origin="llm-suggested")
     decision = decide(
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
         capabilities=frozenset({_send_email_cap()}),
         action=_send_action(),
+        labels=LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})),
         relax_inputs=(bad,),
     )
     payload = build_policy_decided_payload(
@@ -174,9 +174,9 @@ def test_policy_decided_payload_surfaces_refused_inputs() -> None:
 def test_relaxation_refused_payload_shape() -> None:
     bad = RelaxInput(description="model said it's fine", origin="llm-suggested")
     decision = decide(
-        label_set=frozenset({Label.TRUSTED_USER_DIRECT}),
         capabilities=frozenset({_send_email_cap()}),
         action=_send_action(),
+        labels=LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})),
         relax_inputs=(bad,),
     )
     payload = build_relaxation_refused_payload(

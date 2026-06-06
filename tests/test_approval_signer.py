@@ -19,7 +19,6 @@ from capabledeputy.approval.signer import (
     canonical_payload,
     load_or_create_software_key,
 )
-from capabledeputy.policy.labels import Label
 
 
 def test_software_signer_round_trip() -> None:
@@ -96,19 +95,23 @@ def test_canonical_payload_is_deterministic() -> None:
 
 async def test_queue_approve_unsigned_succeeds_when_not_required() -> None:
     """Default behaviour stays the same — signing is opt-in."""
+    from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
+
     queue = ApprovalQueue()
     request = await queue.submit(
         from_session=uuid4(),
         action=ApprovalAction.SEND_EMAIL,
         payload="test",
         target="alice@example.com",
-        labels_in=frozenset({Label.TRUSTED_USER_DIRECT}),
+        labels_in=LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})),
     )
-    decided = await queue.approve(request.id)
+    decided = await queue.approve(request.id)  # type: ignore
     assert decided.status.value == "approved"
 
 
 async def test_queue_approve_with_signature_records_in_decision_scope() -> None:
+    from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
+
     queue = ApprovalQueue()
     signer = SoftwareKeySigner(key=b"y" * 32, key_id="sw:scope")
     request = await queue.submit(
@@ -116,18 +119,25 @@ async def test_queue_approve_with_signature_records_in_decision_scope() -> None:
         action=ApprovalAction.SEND_EMAIL,
         payload="signed",
         target="alice@example.com",
-        labels_in=frozenset({Label.TRUSTED_USER_DIRECT}),
+        labels_in=LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})),
     )
+    # Convert LabelState to flat labels for canonical_payload
+    labels_flat = frozenset()
+    if request.labels_in.b and any(
+        t.level.value == "principal-direct" for t in request.labels_in.b
+    ):
+        labels_flat = frozenset({"trusted.user_direct"})
+
     msg = canonical_payload(
         approval_id=request.id,
         action=request.action.value,
         target=request.target,
         payload=request.payload,
-        labels_in=frozenset(label.value for label in request.labels_in),
+        labels_in=labels_flat,
     )
     sig = signer.sign(msg)
     decided = await queue.approve(
-        request.id,
+        request.id,  # type: ignore
         signature=sig,
         signer_for_verify=signer,
         require_signature=True,
@@ -137,21 +147,25 @@ async def test_queue_approve_with_signature_records_in_decision_scope() -> None:
 
 
 async def test_queue_approve_blocks_when_signature_required_but_missing() -> None:
+    from capabledeputy.policy.labels import LabelState
+
     queue = ApprovalQueue()
     request = await queue.submit(
         from_session=uuid4(),
         action=ApprovalAction.SEND_EMAIL,
         payload="x",
         target="a@b.com",
-        labels_in=frozenset(),
+        labels_in=LabelState(),
     )
     with pytest.raises(ApprovalSignatureRequiredError, match="requires a signature"):
-        await queue.approve(request.id, require_signature=True)
+        await queue.approve(request.id, require_signature=True)  # type: ignore
     # State stays pending so the user can retry with a valid signature.
-    assert queue.get(request.id).status.value == "pending"
+    assert queue.get(request.id).status.value == "pending"  # type: ignore
 
 
 async def test_queue_approve_blocks_on_invalid_signature() -> None:
+    from capabledeputy.policy.labels import LabelState
+
     queue = ApprovalQueue()
     signer = SoftwareKeySigner(key=b"a" * 32, key_id="sw:a")
     other_signer = SoftwareKeySigner(key=b"b" * 32, key_id="sw:a")  # same id, wrong key
@@ -160,7 +174,7 @@ async def test_queue_approve_blocks_on_invalid_signature() -> None:
         action=ApprovalAction.SEND_EMAIL,
         payload="x",
         target="a@b.com",
-        labels_in=frozenset(),
+        labels_in=LabelState(),
     )
     msg = canonical_payload(
         approval_id=request.id,
@@ -172,7 +186,7 @@ async def test_queue_approve_blocks_on_invalid_signature() -> None:
     bogus = other_signer.sign(msg)  # wrong key, but verifier can't tell that yet
     with pytest.raises(ApprovalSignatureRequiredError):
         await queue.approve(
-            request.id,
+            request.id,  # type: ignore
             signature=bogus,
             signer_for_verify=signer,
             require_signature=True,

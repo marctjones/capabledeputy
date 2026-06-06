@@ -16,7 +16,8 @@ from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 
 
 @pytest.fixture
@@ -33,7 +34,15 @@ async def test_destructive_approval_actually_executes_memory_update(
     app: App,
 ) -> None:
     # 1. Seed a memory key the destructive op will mutate.
-    app.memory.write("note-1", "old", frozenset({Label.CONFIDENTIAL_PERSONAL}))
+    app.memory.write(
+        "note-1",
+        "old",
+        LabelState(
+            a=frozenset(
+                {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
+    )
 
     # 2. Origin session — has the WRITE_FS cap but NOT allows_destructive,
     #    so memory.update would return REQUIRE_APPROVAL via the destructive-op gate.

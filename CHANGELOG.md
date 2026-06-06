@@ -51,11 +51,27 @@ See `specs/003-labeling-framework/label-model-redesign.md` "▶ Resume here".
 - **R7 prep** (additive, no behavior change): native tools now declare
   four-axis `inherent_tags` alongside the legacy flat `inherent_labels`
   (inert until the flip). The authoritative, file-by-file R7 atomic-flip
-  spec — deleting the flat `Label` enum across the ~15 src subsystems +
-  ~40 test files it still threads — is written up in
-  `specs/003-labeling-framework/r7-flip-plan.md`. R7 itself (the flip)
-  and the `0.15.0` release tag are deferred to a dedicated pass; the flat
-  `Label` enum is still present, so this remains `0.15.0.dev`.
+  spec is `specs/003-labeling-framework/r7-flip-plan.md`.
+- **R7 (the flip): the flat `Label` enum is DELETED.** The four-axis
+  `LabelState` is now the *only* label model — no backwards compatibility.
+  Removed across ~15 src subsystems + the test suite: the `Label` enum,
+  `ConflictRule`/`CONFLICT_RULES` (the four conflict invariants live only
+  in the engine gate now), `Session.label_set` (field + column +
+  serialization), `SessionGraph.add_labels`, `PolicyDecision.effective_labels`,
+  `decide()`'s flat `label_set`/`rules` params, `ToolResult.additional_labels`
+  → `additional_tags: LabelState`, `ToolContext.label_set` →
+  `label_state`, `ToolDefinition.inherent_labels`/`arg_inherent_labels` →
+  `inherent_tags`/`arg_inherent_tags`, `kind_add_labels` → `kind_add_tags`,
+  and the flat-carrying fields on `LabeledValue`, `Resource`,
+  `ApprovalRequest`, plus the four-axis rewrites of `select_mode` and the
+  agent-context conflict heuristics. The (test-only) `tenancy`/
+  multi-tenant flat-label engine was dropped. `decide()`'s `labels=`
+  bridge for legacy label *strings* survives as `tags_for_labels_strings`
+  for the daemon RPC wire only. **No enforcement behavior changed** — the
+  four-axis path already enforced equivalently (R4c/R5). Grep-gate:
+  `frozenset[Label]` has zero occurrences. Suite green. Executed via
+  parallel migration workflows (core → leaves → tests) with manual
+  reconciliation; the redesign is complete.
 
 ## [0.14.0] — 2026-06-06
 

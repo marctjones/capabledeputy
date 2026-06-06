@@ -27,6 +27,7 @@ from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.client import LLMClient
 from capabledeputy.llm.types import FinishReason, Message, Role
+from capabledeputy.policy.labels import LabelState
 from capabledeputy.policy.rules import Decision
 from capabledeputy.programmatic import (
     ProgramSyntaxError,
@@ -100,7 +101,7 @@ def _record_to_outcome(record: ToolCallRecord) -> ToolCallOutcome:
         output={"args": record.args} if record.decision == Decision.ALLOW else None,
         rule=record.rule,
         reason=record.reason,
-        labels_added=record.inherent_labels,
+        tags_added=LabelState(),  # ToolCallRecord still uses flat Label; TODO migrate to LabelState
     )
 
 

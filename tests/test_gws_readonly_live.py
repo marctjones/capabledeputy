@@ -108,13 +108,14 @@ def gws_config() -> UpstreamServerConfig:
     the explicit gmail_* overrides the adapter's name-based inference
     matches "gmail" → SEND_EMAIL, which would incorrectly tag a list
     call as outbound."""
-    from capabledeputy.policy.labels import Label
+    from capabledeputy.policy.labels import CategoryTag, LabelState
+    from capabledeputy.policy.tiers import Tier
     from capabledeputy.upstream.config import UpstreamToolOverride
 
     read_personal = UpstreamToolOverride(
         capability_kind=CapabilityKind.READ_FS,
-        additional_labels=frozenset(
-            {Label.CONFIDENTIAL_PERSONAL, Label.UNTRUSTED_USER_INPUT},
+        additional_tags=LabelState(
+            a={CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")},
         ),
     )
     overrides = {
@@ -126,7 +127,7 @@ def gws_config() -> UpstreamServerConfig:
     return UpstreamServerConfig(
         name="gws",
         command=("gws-mcp-server", "--services", "drive,sheets,calendar,docs,gmail"),
-        inherent_labels=frozenset(),
+        inherent_tags=LabelState(),
         tool_overrides=overrides,
         isolation=None,
         env={},
@@ -155,9 +156,7 @@ async def test_gws_spawns_and_registers_tools(
         # At least one of the canonical read-only patterns must be
         # present — gmail / drive / calendar all support list.
         read_only = [n for n in registered if _is_read_only(n)]
-        assert read_only, (
-            f"no read-only gws tools registered out of {len(registered)} total"
-        )
+        assert read_only, f"no read-only gws tools registered out of {len(registered)} total"
     finally:
         await live.stop()
 
@@ -186,7 +185,8 @@ async def test_gmail_list_threads_round_trip(
         # We don't pin the exact form because gws may evolve naming;
         # the substring check is robust to that.
         candidates = [
-            n for n in registered
+            n
+            for n in registered
             if "gmail" in n.lower()
             and "thread" in n.lower()
             and ("list" in n.lower() or "search" in n.lower())
@@ -197,14 +197,13 @@ async def test_gmail_list_threads_round_trip(
                 "tool naming may have changed",
             )
         tool_name = candidates[0]
-        assert _is_read_only(tool_name), (
-            f"sanity: {tool_name} not read-only?"
-        )
+        assert _is_read_only(tool_name), f"sanity: {tool_name} not read-only?"
 
         # Build a session with read-only caps.
         s = await graph.new(intent="gmail readonly smoke")
         graph._sessions[s.id] = replace(
-            s, capability_set=_cap_read_only(),
+            s,
+            capability_set=_cap_read_only(),
         )
         client = LabeledToolClient(registry, graph, writer)
 
@@ -213,9 +212,7 @@ async def test_gmail_list_threads_round_trip(
             tool_name,
             {"maxResults": 3},
         )
-        assert outcome.decision.value == "allow", (
-            f"{tool_name} denied: {outcome.reason}"
-        )
+        assert outcome.decision.value == "allow", f"{tool_name} denied: {outcome.reason}"
         # The call returned SOMETHING. Don't pin shape — gmail's
         # response varies.
         assert outcome.output is not None
@@ -239,9 +236,9 @@ async def test_drive_list_files_round_trip(
         registered = await adapter.register_tools(registry)
 
         candidates = [
-            n for n in registered
-            if "drive" in n.lower()
-            and ("list" in n.lower() or "files" in n.lower())
+            n
+            for n in registered
+            if "drive" in n.lower() and ("list" in n.lower() or "files" in n.lower())
         ]
         if not candidates:
             pytest.skip(f"no drive list-style tool found in {registered[:10]}")
@@ -250,15 +247,16 @@ async def test_drive_list_files_round_trip(
 
         s = await graph.new(intent="drive readonly smoke")
         graph._sessions[s.id] = replace(
-            s, capability_set=_cap_read_only(),
+            s,
+            capability_set=_cap_read_only(),
         )
         client = LabeledToolClient(registry, graph, writer)
         outcome = await client.call_tool(
-            s.id, tool_name, {"pageSize": 3},
+            s.id,
+            tool_name,
+            {"pageSize": 3},
         )
-        assert outcome.decision.value == "allow", (
-            f"{tool_name} denied: {outcome.reason}"
-        )
+        assert outcome.decision.value == "allow", f"{tool_name} denied: {outcome.reason}"
         assert outcome.output is not None
     finally:
         await live.stop()
@@ -280,10 +278,9 @@ async def test_calendar_list_events_round_trip(
         registered = await adapter.register_tools(registry)
 
         candidates = [
-            n for n in registered
-            if "calendar" in n.lower()
-            and "list" in n.lower()
-            and "event" in n.lower()
+            n
+            for n in registered
+            if "calendar" in n.lower() and "list" in n.lower() and "event" in n.lower()
         ]
         if not candidates:
             pytest.skip(
@@ -294,17 +291,18 @@ async def test_calendar_list_events_round_trip(
 
         s = await graph.new(intent="calendar readonly smoke")
         graph._sessions[s.id] = replace(
-            s, capability_set=_cap_read_only(),
+            s,
+            capability_set=_cap_read_only(),
         )
         client = LabeledToolClient(registry, graph, writer)
         # The calendar list-events tool typically wants a calendarId
         # (`primary` is the user's own calendar) and a maxResults cap.
         outcome = await client.call_tool(
-            s.id, tool_name, {"calendarId": "primary", "maxResults": 3},
+            s.id,
+            tool_name,
+            {"calendarId": "primary", "maxResults": 3},
         )
-        assert outcome.decision.value == "allow", (
-            f"{tool_name} denied: {outcome.reason}"
-        )
+        assert outcome.decision.value == "allow", f"{tool_name} denied: {outcome.reason}"
         assert outcome.output is not None
     finally:
         await live.stop()
@@ -328,17 +326,15 @@ async def test_destructive_tools_are_denied(
         registered = await adapter.register_tools(registry)
 
         # Find a send-style tool.
-        send_candidates = [
-            n for n in registered
-            if "gmail" in n.lower() and "send" in n.lower()
-        ]
+        send_candidates = [n for n in registered if "gmail" in n.lower() and "send" in n.lower()]
         if not send_candidates:
             pytest.skip("no gmail send-style tool registered to test")
         tool_name = send_candidates[0]
 
         s = await graph.new(intent="destructive-denial check")
         graph._sessions[s.id] = replace(
-            s, capability_set=_cap_read_only(),
+            s,
+            capability_set=_cap_read_only(),
         )
         client = LabeledToolClient(registry, graph, writer)
 

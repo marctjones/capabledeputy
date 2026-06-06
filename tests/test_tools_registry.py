@@ -5,7 +5,7 @@ import pytest
 
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.tools.registry import (
     DuplicateToolError,
     ToolContext,
@@ -100,29 +100,33 @@ def test_extract_amount_returns_none_when_missing() -> None:
 
 def test_inherent_labels_default_empty() -> None:
     tool = _make_tool()
-    assert tool.inherent_labels == frozenset()
+    assert tool.inherent_tags == LabelState()
 
 
 def test_inherent_labels_can_be_supplied() -> None:
-    tool = _make_tool(inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}))
-    assert Label.UNTRUSTED_EXTERNAL in tool.inherent_labels
+    tool = _make_tool(
+        inherent_tags=LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}))
+    )
+    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {t.level for t in tool.inherent_tags.b}
 
 
 def test_tool_context_carries_session_state() -> None:
     sid = uuid4()
-    ctx = ToolContext(session_id=sid, label_set=frozenset({Label.CONFIDENTIAL_HEALTH}))
+    ctx = ToolContext(session_id=sid, label_state=LabelState())
     assert ctx.session_id == sid
-    assert Label.CONFIDENTIAL_HEALTH in ctx.label_set
+    assert ctx.label_state == LabelState()
 
 
 def test_tool_result_default_no_additional_labels() -> None:
     result = ToolResult(output={"ok": True})
-    assert result.additional_labels == frozenset()
+    assert result.additional_tags == LabelState()
 
 
 def test_tool_result_with_additional_labels() -> None:
     result = ToolResult(
         output={"value": "x"},
-        additional_labels=frozenset({Label.CONFIDENTIAL_HEALTH}),
+        additional_tags=LabelState(
+            b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+        ),
     )
-    assert Label.CONFIDENTIAL_HEALTH in result.additional_labels
+    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {t.level for t in result.additional_tags.b}

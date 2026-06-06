@@ -15,7 +15,7 @@ from mcp.server.lowlevel import Server
 from mcp.shared.memory import create_connected_server_and_client_session
 
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.tools.registry import ToolContext, ToolRegistry
 from capabledeputy.upstream.adapter import (
     MAX_UPSTREAM_TOOL_OUTPUT_BYTES,
@@ -87,7 +87,7 @@ async def test_register_tools_creates_namespaced_entries() -> None:
     config = UpstreamServerConfig(
         name="fakefs",
         command=("noop",),
-        inherent_labels=frozenset(),
+        inherent_tags=LabelState(),
     )
 
     async with create_connected_server_and_client_session(
@@ -105,10 +105,13 @@ async def test_register_tools_creates_namespaced_entries() -> None:
 async def test_inherent_labels_propagate_to_registered_tools() -> None:
     server = _build_fake_server()
     registry = ToolRegistry()
+    untrusted_label_state = LabelState(
+        b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+    )
     config = UpstreamServerConfig(
         name="fetcher",
         command=("noop",),
-        inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+        inherent_tags=untrusted_label_state,
     )
 
     async with create_connected_server_and_client_session(server) as session:
@@ -116,7 +119,7 @@ async def test_inherent_labels_propagate_to_registered_tools() -> None:
         await adapter.register_tools(registry)
 
     fetch_tool = registry.get("fetcher.fetch")
-    assert Label.UNTRUSTED_EXTERNAL in fetch_tool.inherent_labels
+    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {t.level for t in fetch_tool.inherent_tags.b}
 
 
 async def test_capability_kind_inferred_from_annotations() -> None:
@@ -170,7 +173,7 @@ async def test_handler_dispatches_to_upstream() -> None:
         await adapter.register_tools(registry)
         tool = registry.get("fakefs.read_file")
 
-        ctx = ToolContext(session_id=__import__("uuid").uuid4(), label_set=frozenset())
+        ctx = ToolContext(session_id=__import__("uuid").uuid4(), label_state=LabelState())
         result = await tool.handler({"path": "/etc/hostname"}, ctx)
 
     assert result.output["name"] == "read_file"
@@ -330,7 +333,7 @@ def test_parse_config_round_trip() -> None:
             {
                 "name": "filesystem",
                 "command": ["uvx", "mcp-server-filesystem", "/tmp"],
-                "inherent_labels": [],
+                "inherent_tags": {},
                 "tool_overrides": {
                     "read_file": {"capability_kind": "READ_FS"},
                 },
@@ -338,7 +341,7 @@ def test_parse_config_round_trip() -> None:
             {
                 "name": "fetch",
                 "command": ["uvx", "mcp-server-fetch"],
-                "inherent_labels": ["untrusted.external"],
+                "inherent_tags": {"b": [{"level": "external-untrusted", "integrity_floor": False}]},
             },
         ],
     }
@@ -347,7 +350,7 @@ def test_parse_config_round_trip() -> None:
     assert parsed[0].name == "filesystem"
     assert parsed[0].command == ("uvx", "mcp-server-filesystem", "/tmp")
     assert parsed[0].tool_overrides["read_file"].capability_kind == CapabilityKind.READ_FS
-    assert Label.UNTRUSTED_EXTERNAL in parsed[1].inherent_labels
+    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {t.level for t in parsed[1].inherent_tags.b}
     # Fail-closed is the default posture.
     assert parsed[0].strict is True
     assert parsed[1].strict is True

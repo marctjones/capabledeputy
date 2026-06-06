@@ -13,8 +13,9 @@ from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, Role, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import AxisA, CategoryTag
 from capabledeputy.policy.rules import Decision
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
@@ -167,7 +168,15 @@ class TestSystemPromptReplacement:
         s = await graph.new()
         s_labeled = replace(
             s,
-            label_set=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+            axis_a=AxisA(
+                categories=(
+                    CategoryTag(
+                        "personal",
+                        Tier.REGULATED,
+                        assignment_provenance="source-declared",
+                    ),
+                )
+            ),
             clearance_profile_id="tier_1",
             intent="calendar-review",
         )

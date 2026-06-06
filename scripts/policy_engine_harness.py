@@ -26,7 +26,7 @@ from _policy_harness import (
 )
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import tags_for_labels_strings
 
 TITLE = "smoke"
 
@@ -69,7 +69,7 @@ SCENARIOS: list[Scenario] = [
         pre=lambda app: app.memory.write(
             "rx",
             "lisinopril 10mg",
-            frozenset({Label.CONFIDENTIAL_HEALTH}),
+            tags_for_labels_strings(frozenset({"confidential.health"})),
         ),
         responses=[
             tool_turn("read rx", tc("h1", "memory.read", key="rx")),
@@ -96,7 +96,7 @@ SCENARIOS: list[Scenario] = [
                 ),
             },
         ),
-        session_labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        session_labels=frozenset({"confidential.financial"}),
         responses=[
             tool_turn(
                 "queue purchase",

@@ -28,9 +28,8 @@ from capabledeputy.policy.labels import (
     apply_transfer,
     meets_required_floor,
     most_restrictive_inherit,
-    tags_for_labels,
+    tags_for_labels_strings,
 )
-from capabledeputy.policy.labels import Label
 from capabledeputy.policy.tiers import Tier, compare
 
 # --- strategies ------------------------------------------------------
@@ -116,28 +115,29 @@ def test_non_declassifier_removal_is_rejected_at_construction() -> None:
 
 
 def test_tags_for_labels_maps_categories_and_provenance() -> None:
-    """§R5 apply-source #2: the flat→four-axis forward map places
-    confidential.* on Axis A and untrusted/trusted.* on Axis B."""
-    health = tags_for_labels(frozenset({Label.CONFIDENTIAL_HEALTH}))
+    """The legacy-string→four-axis forward map (`tags_for_labels_strings`,
+    used by the daemon RPC paths that still receive flat label strings)
+    places confidential.* on Axis A and untrusted/trusted.* on Axis B."""
+    health = tags_for_labels_strings(frozenset({"confidential.health"}))
     assert {t.category for t in health.a} == {"health"}
     assert not health.b
-    untrusted = tags_for_labels(frozenset({Label.UNTRUSTED_EXTERNAL}))
+    untrusted = tags_for_labels_strings(frozenset({"untrusted.external"}))
     assert {t.level for t in untrusted.b} == {ProvenanceLevel.EXTERNAL_UNTRUSTED}
     assert not untrusted.a
 
 
 def test_tags_for_labels_unfuses_egress_effects() -> None:
-    """Egress labels are Axis-C effects, not propagating tags — they
+    """Egress strings are Axis-C effects, not propagating tags — they
     contribute nothing to the LabelState (the redesign's un-fusing)."""
-    assert tags_for_labels(frozenset({Label.EGRESS_EMAIL})) == LabelState()
-    assert tags_for_labels(frozenset({Label.EGRESS_PURCHASE})) == LabelState()
+    assert tags_for_labels_strings(frozenset({"egress.email"})) == LabelState()
+    assert tags_for_labels_strings(frozenset({"egress.purchase"})) == LabelState()
     # A mixed set drops only the egress part.
-    mixed = tags_for_labels(frozenset({Label.CONFIDENTIAL_FINANCIAL, Label.EGRESS_EMAIL}))
+    mixed = tags_for_labels_strings(frozenset({"confidential.financial", "egress.email"}))
     assert {t.category for t in mixed.a} == {"financial"}
 
 
 def test_tags_for_labels_empty_is_empty() -> None:
-    assert tags_for_labels(frozenset()) == LabelState()
+    assert tags_for_labels_strings(frozenset()) == LabelState()
 
 
 def test_certified_declassifier_removes_a_tag() -> None:
@@ -237,13 +237,12 @@ def test_decide_labels_param_equivalent_to_axes() -> None:
     """R4b.2 — passing `labels=LabelState(...)` to decide() must yield the
     same outcome as passing the derived axis_a/axis_b separately."""
     from capabledeputy.policy.actions import Action
-    from capabledeputy.policy.capabilities import CapabilityKind
+    from capabledeputy.policy.capabilities import Capability, CapabilityKind
     from capabledeputy.policy.engine import decide
 
     ls = LabelState(a=frozenset({CategoryTag("personal", Tier.REGULATED)}))
     action = Action(kind=CapabilityKind.READ_FS, target="/x")
-    via_labels = decide(frozenset(), frozenset(), action, labels=ls)
-    via_axes = decide(
-        frozenset(), frozenset(), action, axis_a=ls.to_axis_a(), axis_b=ls.to_axis_b()
-    )
+    caps = frozenset({Capability(kind=CapabilityKind.READ_FS, pattern="*")})
+    via_labels = decide(caps, action, labels=ls)
+    via_axes = decide(caps, action, axis_a=ls.to_axis_a(), axis_b=ls.to_axis_b())
     assert via_labels.decision == via_axes.decision

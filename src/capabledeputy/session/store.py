@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     parent_id TEXT,
     status TEXT NOT NULL,
     intent TEXT,
-    label_set TEXT NOT NULL,
     capability_set TEXT NOT NULL,
     history TEXT NOT NULL,
     declassification_log TEXT NOT NULL,
@@ -210,7 +209,7 @@ class SessionStore:
                 """
                 INSERT INTO sessions (
                     id, parent_id, status, intent,
-                    label_set, capability_set, history, declassification_log,
+                    capability_set, history, declassification_log,
                     created_at, updated_at, owner,
                     tool_aliasing, prefer_programmatic, used_kinds, cap_uses,
                     revoked_audit_ids,
@@ -218,12 +217,11 @@ class SessionStore:
                     reference_handles, risk_preference_at_spawn,
                     effective_isolation_region_id, enforcement_mode,
                     first_use_prompt_enabled
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                           ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status = excluded.status,
                     intent = excluded.intent,
-                    label_set = excluded.label_set,
                     capability_set = excluded.capability_set,
                     history = excluded.history,
                     declassification_log = excluded.declassification_log,
@@ -249,7 +247,6 @@ class SessionStore:
                     d["parent"],
                     d["status"],
                     d["intent"],
-                    json.dumps(d["label_set"]),
                     json.dumps(d["capability_set"]),
                     json.dumps(d["history"]),
                     json.dumps(d["declassification_log"]),
@@ -315,7 +312,6 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "parent": row["parent_id"],
             "status": row["status"],
             "intent": row["intent"],
-            "label_set": json.loads(row["label_set"]),
             "capability_set": json.loads(row["capability_set"]),
             "history": json.loads(row["history"]),
             "declassification_log": json.loads(row["declassification_log"]),
@@ -338,5 +334,3 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "first_use_prompt_enabled": bool(_col("first_use_prompt_enabled", 0)),
         },
     )
-
-

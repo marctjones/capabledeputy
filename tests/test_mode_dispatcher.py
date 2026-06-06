@@ -7,7 +7,8 @@ from capabledeputy.mode.dispatcher import (
 )
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry, ToolResult
 
 
@@ -33,7 +34,7 @@ def _make_registry(*tool_names: str) -> ToolRegistry:
 
 def test_no_confidential_labels_picks_turn_level() -> None:
     registry = _make_registry("memory.read", "quarantined.extract")
-    mode, reason = select_mode(frozenset(), registry)
+    mode, reason = select_mode(LabelState(), registry)
     assert mode == ExecutionMode.TURN_LEVEL
     assert "no confidential" in reason
 
@@ -41,7 +42,9 @@ def test_no_confidential_labels_picks_turn_level() -> None:
 def test_confidential_with_quarantined_picks_dual_llm() -> None:
     registry = _make_registry("memory.read", "quarantined.extract")
     mode, _ = select_mode(
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        LabelState(
+            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+        ),
         registry,
     )
     assert mode == ExecutionMode.DUAL_LLM
@@ -50,7 +53,9 @@ def test_confidential_with_quarantined_picks_dual_llm() -> None:
 def test_confidential_without_quarantined_falls_back() -> None:
     registry = _make_registry("memory.read")
     mode, reason = select_mode(
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        LabelState(
+            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+        ),
         registry,
     )
     assert mode == ExecutionMode.TURN_LEVEL
@@ -86,19 +91,20 @@ def test_filter_hides_raw_readers_in_dual_llm() -> None:
 
 def test_each_confidential_label_triggers_dual_llm() -> None:
     registry = _make_registry("quarantined.extract")
-    for label in (
-        Label.CONFIDENTIAL_HEALTH,
-        Label.CONFIDENTIAL_FINANCIAL,
-        Label.CONFIDENTIAL_PERSONAL,
-    ):
-        mode, _ = select_mode(frozenset({label}), registry)
+    for category in ("health", "financial", "personal"):
+        mode, _ = select_mode(
+            LabelState(
+                a={CategoryTag(category, Tier.REGULATED, assignment_provenance="source-declared")}
+            ),
+            registry,
+        )
         assert mode == ExecutionMode.DUAL_LLM
 
 
 def test_prefer_programmatic_overrides_default_heuristic() -> None:
     registry = _make_registry("memory.read")
     mode, reason = select_mode(
-        frozenset(),
+        LabelState(),
         registry,
         prefer_programmatic=True,
     )
@@ -112,7 +118,9 @@ def test_force_mode_overrides_prefer_and_heuristic() -> None:
     # dual_llm; prefer_programmatic would pick programmatic; force
     # beats both.
     mode, reason = select_mode(
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        LabelState(
+            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+        ),
         registry,
         prefer_programmatic=True,
         force_mode=ExecutionMode.TURN_LEVEL,
