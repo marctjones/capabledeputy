@@ -34,12 +34,12 @@ from capabledeputy.policy.decision_rules import (
 from capabledeputy.policy.engine import decide
 from capabledeputy.policy.labels import (
     AxisA,
-    AxisACategory,
     AxisB,
-    AxisBEntry,
     AxisD,
+    CategoryTag,
     Label,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.client import build_policy_decided_payload
@@ -74,14 +74,14 @@ def _rule() -> DecisionRule:
 def _axes() -> tuple[AxisA, AxisB, AxisD]:
     axis_a = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="personal",
                 tier=Tier.SENSITIVE,
                 assignment_provenance="human-declared",
             ),
         ),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",

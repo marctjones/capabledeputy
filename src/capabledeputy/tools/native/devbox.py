@@ -36,6 +36,7 @@ import base64
 from typing import Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
 # Per-call cap on the bytes we return inline (stdout + stderr each).
@@ -190,6 +191,9 @@ def make_devbox_tools(policy_context) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="devbox.start",
+            operations=(Operation(EffectClass.EXECUTE_SANDBOX, subtype="devbox.start"),),
+            risk_ids=("RISK-UNSAFE-CODE-EXEC",),
+            surfaces_destination_id=True,
             description=(
                 "Start (or attach to) a persistent dev container for "
                 "the given spec_id. Idempotent: if a container is "
@@ -224,6 +228,9 @@ def make_devbox_tools(policy_context) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="devbox.exec",
+            operations=(Operation(EffectClass.EXECUTE_SANDBOX, subtype="devbox.exec"),),
+            risk_ids=("RISK-UNSAFE-CODE-EXEC",),
+            surfaces_destination_id=True,
             description=(
                 "Run `argv` inside the persistent dev container for "
                 "spec_id. Auto-starts the container if not already "
@@ -277,6 +284,9 @@ def make_devbox_tools(policy_context) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="devbox.stop",
+            operations=(Operation(EffectClass.EXECUTE_SANDBOX, subtype="devbox.stop"),),
+            risk_ids=("RISK-UNSAFE-CODE-EXEC",),
+            surfaces_destination_id=True,
             description=(
                 "Tear down the persistent container for spec_id. The "
                 "workspace dir is preserved on disk by default so you "
@@ -306,6 +316,8 @@ def make_devbox_tools(policy_context) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="devbox.list",
+            operations=(Operation(EffectClass.OBSERVE, subtype="devbox.list"),),
+            risk_ids=("RISK-EXCESSIVE-AGENCY",),
             description=(
                 "List the live persistent containers for this "
                 "session and the available specs you can start. "

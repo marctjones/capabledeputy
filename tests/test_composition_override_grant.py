@@ -32,6 +32,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.engine import decide
 from capabledeputy.policy.overrides import (
     FrictionLevel,
@@ -196,6 +197,8 @@ def _send_email_tool() -> ToolDefinition:
         capability_kind=CapabilityKind.SEND_EMAIL,
         handler=_ok_handler,
         target_arg="to",
+        operations=(Operation(EffectClass.FETCH),),
+        risk_ids=("RISK-INDIRECT-INJECTION",),
     )
 
 

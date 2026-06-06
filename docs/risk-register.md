@@ -115,3 +115,27 @@ After adding this entry:
 2. Run `uv run pytest tests/test_risk_register_thresholds.py` to verify functional behavior.
 3. Update labels/profiles to cite `RISK-MODEL-DRIFT` if the risk is relevant.
 4. At decision time, if a decision citing this risk is ALLOW, the engine will check the threshold.
+
+## Model Monster / CORE crosswalk (agentic risk import)
+
+The agentic-risk entries (`RISK-EXCESSIVE-AGENCY`,
+`RISK-INDIRECT-INJECTION`, `RISK-DATA-EXFIL-AGENT-TOOLS`,
+`RISK-TOOL-POISONING`, `RISK-PRIVILEGE-ESCALATION`,
+`RISK-MEMORY-POISONING`, `RISK-UNSAFE-CODE-EXEC`,
+`RISK-PURPOSE-CONTAMINATION`) are mapped from the Model Monster /
+Process Mechanics **CORE/PRO** risk registry (R-1000 threats / R-2000
+failure modes / R-3000 governance), used with permission. Their
+`framework_refs` cite the same external standards Model Monster
+cross-references (OWASP LLM/ASI, MITRE ATLAS, NIST AI RMF, EU AI Act,
+GDPR) plus the source `ModelMonster-R-####` class id. See
+`docs/policy-rule-structure.md` for the PRO-over-CORE lens and the
+CapableDeputy ⇄ CORE comparison.
+
+Scope honesty: the import is the *subset capdep structurally addresses*,
+so a tool's `risk_ids` (T012) can cite a real entry. Model Monster's
+multi-agent / supply-chain / model-quality risk classes are
+deliberately **not** imported — they are out of scope per
+`docs/governance-scope.md` (importing them would imply coverage capdep
+does not provide). `RISK-PURPOSE-CONTAMINATION` is registered precisely
+because it is a *known structural gap* (FR-009): tracked, not claimed
+as covered.

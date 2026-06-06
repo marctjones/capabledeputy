@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from capabledeputy.policy.labels import (
     AxisA,
-    AxisACategory,
+    CategoryTag,
     most_restrictive_inherit_axis_a,
 )
 from capabledeputy.policy.tiers import Tier
@@ -20,7 +20,7 @@ from capabledeputy.policy.tiers import Tier
 def test_assignment_provenance_parent_dominates() -> None:
     parent = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="health",
                 tier=Tier.REGULATED,
                 assignment_provenance="curated-mcp",
@@ -29,7 +29,7 @@ def test_assignment_provenance_parent_dominates() -> None:
     )
     child = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="health",
                 tier=Tier.REGULATED,
                 assignment_provenance="source-declared",
@@ -48,7 +48,7 @@ def test_raise_only_inspector_does_not_clear_taint() -> None:
     inputs, and the provenance flips to raise-only-inspector."""
     parent = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="proprietary_work",
                 tier=Tier.REGULATED,
                 assignment_provenance="curated-mcp",
@@ -57,7 +57,7 @@ def test_raise_only_inspector_does_not_clear_taint() -> None:
     )
     inspector = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="proprietary_work",
                 tier=Tier.RESTRICTED,  # inspector raised the tier
                 assignment_provenance="raise-only-inspector",
@@ -72,7 +72,7 @@ def test_raise_only_inspector_does_not_clear_taint() -> None:
 def test_provenance_preserved_when_new_category_added() -> None:
     parent = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="health",
                 tier=Tier.REGULATED,
                 assignment_provenance="source-declared",
@@ -81,7 +81,7 @@ def test_provenance_preserved_when_new_category_added() -> None:
     )
     child = AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="finance",
                 tier=Tier.REGULATED,
                 assignment_provenance="curated-mcp",

@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.resources.static import StaticResourcePublisher
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
@@ -81,6 +82,8 @@ def make_resources_tools(publisher: StaticResourcePublisher) -> list[ToolDefinit
     return [
         ToolDefinition(
             name="resources.list",
+            operations=(Operation(EffectClass.OBSERVE, subtype="resources.list"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
             effect_class="data.read_local",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
@@ -101,6 +104,8 @@ def make_resources_tools(publisher: StaticResourcePublisher) -> list[ToolDefinit
         ),
         ToolDefinition(
             name="resources.read",
+            operations=(Operation(EffectClass.FETCH, subtype="resources.read"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
             effect_class="data.read_local",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",

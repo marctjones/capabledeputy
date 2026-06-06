@@ -15,6 +15,7 @@ import pytest
 from capabledeputy.audit.events import EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import Label
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
@@ -45,6 +46,8 @@ def _make_tool_returning(value, inherent_labels=frozenset()):
         parameters_schema={"type": "object", "properties": {}},
         target_arg=None,
         inherent_labels=inherent_labels,
+        operations=(Operation(EffectClass.FETCH),),
+        risk_ids=("RISK-INDIRECT-INJECTION",),
     )
 
 

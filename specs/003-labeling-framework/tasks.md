@@ -10,6 +10,44 @@ description: "Task list for 003 — v0.9 Labeling Framework implementation"
 
 **Tests**: REQUIRED — Constitution Principle III (NON-NEGOTIABLE, "Test-First, Invariants as Tests") makes test tasks mandatory for every behavioral change. Tests for an invariant MUST exist before the invariant's implementation.
 
+> **⚠ Label-model redesign (2026-06-05) — supersedes the migration tasks.** Per [label-model-redesign.md](./label-model-redesign.md): no backwards compatibility (flat `Label` enum + all migration deleted, `state.db` wiped on cutover), `EffectClass` enum + optional `subtype` (resolves T012), integrity floor = Operation `required_floor`. The **Phase R** block below replaces the flat→axis migration work; T011/T024/T031/T120 are superseded, T012/T047 amended.
+
+## Phase R: Label-Model Redesign (test-first; supersedes migration tasks)
+
+Progress is tracked live in `label-model-redesign.md` "▶ Resume here";
+each step below is a green commit + git tag `v0.14.0-R*`.
+
+- [X] R1 Clean types (`CategoryTag`/`ProvenanceTag`/`LabelState`/`TagTransfer`/`EffectClass`+`subtype`/`Operation.required_floor`) + Hypothesis property tests. `v0.14.0-R1-label-types`
+- [X] R2 Stable-core Axis A category catalog in `configs/labels.yaml`. `v0.14.0-R2-category-catalog`
+- [X] R3a `ToolDefinition` structured shape (`operations`/`inherent_tags`) + `validate_tool_definition` + invariant tests. `v0.14.0-R3a-tooldef-validation`
+- [X] R3b Native tools declare `operations` + `risk_ids`. `v0.14.0-R3b-native`
+- [X] R3c MCP + skills adapters declare the new shape (`default_operation_for_kind`). `v0.14.0-R3c-adapters`
+- [X] R3d `register()` fail-closed validation enforced; ~12 test factories migrated. `v0.14.0-R3d-enforce`
+- [X] R4a Leaf consolidation: `AxisACategory`→`CategoryTag`, `AxisBEntry`→`ProvenanceTag`; `label_state.py` deleted. `v0.14.0-R4a-leaf-consolidation`
+- [X] R4b.1 `LabelState`↔`AxisA`/`AxisB` converters + `Session.label_state`. `v0.14.0-R4b1-converters`
+- [X] R4b.2 `decide()` accepts bundled `labels: LabelState` (transitional). `v0.14.0-R4b2-decide-labels`
+- [X] audit `test_tool_risk_ids_in_register` + R4c verification points recorded (no critical bugs found).
+- [ ] R4b.3 Re-type `decide()` **internals** onto `LabelState` behind the converters; run-both-and-assert-agreement (incl. `_compose_a` vs `most_restrictive_inherit_axis_a` authority resolution); migrate the ~185 test `decide(axis_a=,axis_b=)` call sites in batches; fix the mis-declared FETCH test fixtures. (redesign §9.4)
+- [ ] R4b.4 Collapse `Session.axis_a`/`axis_b` → one `LabelState` field; delete `AxisA`/`AxisB`.
+- [ ] R4c/R4d Make the four-axis leg authoritative (run-both-assert), then delete the flat `label_set` leg + `frozenset[Label]` param; re-prove SC-002.
+- [ ] R5 Route apply via the 3 sources / remove via certified declassifiers only; structural no-remove test; `required_floor` Biba check. (redesign §4/§4a/§9.5)
+- [ ] R6 Store persists `LabelState`; delete v5 read paths; wipe `state.db`. (redesign §9.6)
+- [ ] R7 Delete the flat `Label` enum + dead compat (incl. vestigial `ProvenanceTag.integrity_floor`); grep-gate `frozenset[Label]` == 0. (redesign §9.7)
+
+> **Decision-engine ownership (F1):** the US1–US6 tasks below describe the
+> v0.9 decision engine against the *original* axis model (and referenced a
+> now-nonexistent `decide.py` — corrected to `engine.py`). **Phase R rebuilds
+> the label-model *plumbing*** (R4 re-types `decide()` onto `LabelState`); it
+> does **not** itself implement the US features. So the still-open US2–US5
+> engine/decision tasks (T029, T044–T046, T056–T060, T077–T086, T091–T107)
+> are **not superseded** — their feature intent (never-auto, bounded-relax,
+> admissibility, clearance, reference handles, sealed isolation, residual-risk)
+> stays valid — but they MUST be implemented on the **post-R4 `LabelState`
+> engine**, after R4b.3/R4c land, not against the old axis pair. Only their
+> substrate changed. (Some, e.g. **T101/T102** clearance + integrity-floor,
+> are already implemented on the current axis model and will be *ported* by
+> R4b.3 rather than written from scratch.)
+
 **Organization**: Tasks are grouped by user story (US1–US6) to enable independent implementation and testing. Priority order from spec.md: US1 (P1) → US2 (P2) → US3 (P3) → US6 (P3) → US4 (P4) → US5 (P5) → Polish.
 
 ## Format: `[ID] [P?] [Story] Description`
@@ -38,17 +76,17 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-**Purpose**: Schema migration v5→v6, axis type stubs, ToolDefinition extension, audit-events registry, invariant-test scaffolding. **No US-story work begins until Phase 2 is green.**
+**Purpose**: axis type stubs, ToolDefinition extension, audit-events registry, invariant-test scaffolding. **No US-story work begins until Phase 2 is green.** **[Amended — no-compat]** the "schema migration v5→v6" purpose is dropped; under the redesign the store is created fresh in the four-axis shape (`state.db` wiped) — see Phase R.
 
 ⚠️ **CRITICAL**: blocks all user stories.
 
 - [X] T006 [P] Create `src/capabledeputy/policy/tiers.py` with `Tier(StrEnum)` (none<sensitive<regulated<restricted<prohibited), strict total-order helpers `compare`/`max_of`/`is_above`, frozen as a module-level total order (FR-027).
 - [X] T007 [P] Add Axis A/B/D type stubs in `src/capabledeputy/policy/labels.py`: `AxisA` (list of `{category, tier, risk_ids[]}`), `AxisB` (provenance lattice with `integrity_floor: bool`), `AxisD` (initiator+auth, counterparty/relationship_group_ids, expectedness, reversibility) — `@dataclass(frozen=True)` with `to_dict`/`from_dict` default-tolerant.
-- [X] T008 ALTER TABLE migration in `src/capabledeputy/session/store.py` for new `sessions` columns (`axis_a TEXT NOT NULL DEFAULT '[]'`, `axis_b TEXT NOT NULL DEFAULT '[]'`, `axis_d TEXT NOT NULL DEFAULT '{}'`, `purpose_handle TEXT NOT NULL DEFAULT 'unset'`, `reference_handles TEXT NOT NULL DEFAULT '{}'`, `risk_preference_at_spawn TEXT NOT NULL DEFAULT 'cautious'`, `effective_isolation_region_id TEXT NULL`); idempotent, follows the v3→v4/v4→v5 pattern; broadens `if current in (1,2,3,4,5)` to include 5 (FR-045).
+- [X] T008 **[Amended — no-compat → R6]** the four-axis `sessions` columns (`axis_a`, `axis_b`, `axis_d`, `purpose_handle`, `reference_handles`, `risk_preference_at_spawn`, `effective_isolation_region_id`) are part of the **fresh** schema (created, not ALTER-migrated; `state.db` wiped on cutover) (FR-045).
 - [X] T009 Add new tables to `src/capabledeputy/session/store.py`: `source_location_bindings`, `relationship_groups`, `expectation_bindings`, `purposes`, `override_policies`, `override_grants` per data-model.md §Persistence shape; CREATE TABLE IF NOT EXISTS + indices on parent/session.
 - [X] T010 Extend `Session` dataclass in `src/capabledeputy/session/model.py` with new fields (axis_a, axis_b, axis_d, purpose_handle, reference_handles, risk_preference_at_spawn, effective_isolation_region_id); `Session.new()` accepts them with safe defaults; `to_dict`/`from_dict` default-tolerant (Constitution §Sec. Constraints: backward-tolerant on read).
-- [X] T011 Implement one-time legacy `label_set` converter in `src/capabledeputy/session/store.py` migration path: each legacy enum value maps into axis-correct slot at the most-restrictive position (FR-024 forward-only); legacy column retained read-only (drop scheduled at v7).
-- [ ] T012 [P] Extend `ToolDefinition` in `src/capabledeputy/tools/registry.py` with new required fields per `contracts/tool_definition.md` (effect_class, default_reversibility, default_mutability_target_facets, social_commitment, tool_provenance, accepts_handles, handle_arg_names, surfaces_destination_id, risk_ids); registry-load validation refuses a `ToolDefinition` missing any new required field (FR-005, FR-039, Principle VI fail-closed).
+- [X] T011 **[SUPERSEDED — no-compat → see R6/R7]** ~~one-time legacy `label_set` converter~~ → removed; flat set deleted, `state.db` wiped on cutover (no migration). (redesign §6)
+- [ ] T012 **[SUPERSEDED by R3 — redesign]** The ToolDefinition extension is replaced by R3 (structured `inherent_tags` + `EffectClass` enum + `subtype` + `required_floor`, fail-closed registry validation). (redesign §5)
 - [X] T013 [P] Create `src/capabledeputy/policy/risk_register.py`: load `configs/risk_register.json` at daemon start; expose `get(id)`/`exists(id)`/`audit_orphans()` (FR-015/028).
 - [X] T014 [P] Extend `src/capabledeputy/audit/events.py` with new event constants and types: `binding.applied`, `override.granted`, `override.attested`, `override.refused`, `override.expired`, `override.use_refused`, `pattern3.handle_bind`, `isolation_region.created`, `isolation_region.discarded`, `envelope.dial_changed`, `risk_register.audit`, `residual_risk.exception`.
 - [X] T015 [P] Create invariant-test scaffold: `tests/invariants/__init__.py`; pytest marker `@pytest.mark.invariant`; new `tests/invariants/conftest.py` with shared fixtures (in-memory daemon, frozen clock).
@@ -72,8 +110,8 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 - [X] T021 [P] [US1] Test `tests/policy/test_axis_a.py`: data categories stay distinct (FR-003); fixed-high resolution mode cannot be lowered by any profile (US1 scenario 3); each Axis-A label carries `assignment_provenance`.
 - [X] T022 [P] [US1] Test `tests/policy/test_resolution.py`: same inputs → byte-identical outcome + rationale (SC-002); conflicting profiles → most-restrictive (edge case).
-- [X] T023 [US1] End-to-end determinism via test_resolution.py determinism tests (replay with logged inputs reproduces tier+rationale). Covered without separate test_decide_us1.py since decide.py wire-in (T029) is deferred — the resolver itself is the pure function under SC-002.
-- [ ] T024 [P] [US1] Test `tests/policy/test_legacy_migration.py`: legacy `label_set` rows treated most-restrictive; no datum's effective protection lowered (FR-024). [Deferred — T011 converter covered by integration; explicit unit test lands when US2 needs migration semantics in decide().]
+- [X] T023 [US1] End-to-end determinism via test_resolution.py determinism tests (replay with logged inputs reproduces tier+rationale). Covered without separate test_decide_us1.py since engine.py wire-in (T029) is deferred — the resolver itself is the pure function under SC-002.
+- [ ] T024 **[SUPERSEDED — no-compat]** ~~Test legacy `label_set` rows treated most-restrictive (FR-024)~~ → removed; no legacy rows exist (`state.db` wiped). (redesign §6)
 
 ### Implementation for User Story 1
 
@@ -81,9 +119,9 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - [X] T026 [P] [US1] Define Axis B provenance lattice in `src/capabledeputy/policy/labels.py`: `principal-direct > system-internal > external-untrusted` with `integrity_floor` (FR-004); pure comparison helpers via `provenance_max`. [is_sanctioned_declassifier flag deferred — needed by US5 only.]
 - [X] T027 [US1] Create `src/capabledeputy/policy/resolution.py`: `ContextProfile` loader (configs/profiles.yaml); `resolve_tier(category, profile_ids, categories, profiles) → ResolutionResult` honoring `fixed-high | context-up | context-resolved` modes (FR-007); deterministic + replayable.
 - [X] T028 [US1] Implement most-restrictive composition baseline in `src/capabledeputy/policy/resolution.py` (FR-026(a) only — baseline; the bounded-relax cases land in US2).
-- [ ] T029 [US1] Wire `resolve_tier()` into `src/capabledeputy/policy/decide.py`; capture the resolved tier + the input snapshot into the audit event (FR-021/SC-002). [Deferred — decide.py integration lands with US2 never-auto rule (T044); MVP doesn't need it for SC-002 determinism since resolver is the pure function.]
-- [ ] T030 [US1] Thread `LabelAssignmentRecord` through resolution in `src/capabledeputy/policy/labels.py` + `resolution.py`: every label preserves `assignment_provenance` (source-declared / curated-MCP / human-declared / raise-only-inspector) (FR-022). [Deferred — assignment_provenance is on AxisACategory; full LabelAssignmentRecord plumbing lands with decide.py integration.]
-- [X] T031 [US1] Implement the legacy-`label_set` converter callsite in the v5→v6 migration (uses T011 helper) — touches `src/capabledeputy/session/store.py`. [Done in Phase 2b alongside T011.]
+- [ ] T029 [US1] Wire `resolve_tier()` into `src/capabledeputy/policy/engine.py`; capture the resolved tier + the input snapshot into the audit event (FR-021/SC-002). [Deferred — engine.py integration lands with US2 never-auto rule (T044); MVP doesn't need it for SC-002 determinism since resolver is the pure function.]
+- [ ] T030 [US1] Thread `LabelAssignmentRecord` through resolution in `src/capabledeputy/policy/labels.py` + `resolution.py`: every label preserves `assignment_provenance` (source-declared / curated-MCP / human-declared / raise-only-inspector) (FR-022). [Deferred — assignment_provenance is on CategoryTag; full LabelAssignmentRecord plumbing lands with engine.py integration (Phase R / R4b.3).]
+- [X] T031 **[SUPERSEDED — no-compat → R6]** ~~legacy-`label_set` converter callsite~~ → removed (no migration; `state.db` wiped). (redesign §6)
 - [X] T032 [US1] Add CLI subcommand `capdep policy resolve <category> <profile>` in `src/capabledeputy/cli/policy.py` demonstrating deterministic tier resolution end-to-end. [Extended existing policy.py instead of creating policy_cmd.py.]
 - [X] T033 [P] [US1] Test `tests/policy/test_assignment_provenance.py`: provenance preserved across resolution chains; raise-only inspector adds taint only, never clears.
 - [X] T034 [US1] Run `uv run ruff check && uv run ruff format --check && uv run pyright && uv run pytest`; assert green. 791 passed, 4 skipped.
@@ -113,10 +151,10 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - [X] T136 [US2] Create the **Axis D first-class type** in `src/capabledeputy/policy/axis_d.py`: `DecisionContext(initiator: PrincipalRef, initiator_authentication: AuthLevel, counterparty: PrincipalRef | None, relationship_group_ids: frozenset[str], expectedness: Literal["expected","anomalous"], reversibility: ReversibilityLabel)`. Implement `Session.axis_d` storage shape per FR-045; derive from authentication adapter at request time. Mark every constructor as runtime-built from the deterministic adapter chain — no AI path may construct one (FR-006, FR-012, FR-045). Resolves analyzer finding A1.
 - [X] T042 [P] [US2] Create `src/capabledeputy/policy/relationships.py`: `RelationshipGroup` registry loading `configs/relationship_groups.yaml`; `is_member(principal, group_id)`; human-declared, AI-read-only (FR-033).
 - [X] T043 [P] [US2] Create `src/capabledeputy/policy/expectations.py`: `ExpectationBinding` registry loading `configs/expectations.yaml`; deterministic `match(initiator, effect, params, now)` (FR-029); no heuristic anomaly inference allowed.
-- [ ] T044 [US2] Extend `src/capabledeputy/policy/decide.py` with `DecisionRule` evaluation: load `configs/rules.yaml`; rules are predicates over axes A–D + target (FR-001 four-axis input shape; FR-002 axis A categories drive the rule lookup); ratchet-stricter only relative to baseline (FR-010/026(b–c)).
-- [ ] T045 [US2] Implement never-auto default in `decide.py` (FR-011): absent matching rule ⇒ `suggest` or `deny` per the cell's default; never `auto`.
-- [ ] T046 [US2] Implement baseline + bounded-relax composition full algorithm in `decide.py` (FR-026); reject any relax input that originates from a non-deterministic source (FR-031) and emit `audit: relaxation_refused`.
-- [ ] T047 [US2] Derive Axis-D `initiator+authentication` from the existing trust prefix on legacy `label_set` reads during migration (T011); going forward, set it from the authentication adapter at request time.
+- [ ] T044 [US2] Extend `src/capabledeputy/policy/engine.py` with `DecisionRule` evaluation: load `configs/rules.yaml`; rules are predicates over axes A–D + target (FR-001 four-axis input shape; FR-002 axis A categories drive the rule lookup); ratchet-stricter only relative to baseline (FR-010/026(b–c)).
+- [ ] T045 [US2] Implement never-auto default in `engine.py` (FR-011): absent matching rule ⇒ `suggest` or `deny` per the cell's default; never `auto`.
+- [ ] T046 [US2] Implement baseline + bounded-relax composition full algorithm in `engine.py` (FR-026); reject any relax input that originates from a non-deterministic source (FR-031) and emit `audit: relaxation_refused`.
+- [ ] T047 [US2] **[Amended — no-compat]** Set Axis-D `initiator+authentication` from the authentication adapter at request time. The legacy-trust-prefix derivation is removed (no legacy reads).
 - [ ] T048 [US2] Update audit events in `src/capabledeputy/audit/events.py` to record `rule_matched_id`, `relax_inputs[]`, full Axis-D context (FR-021).
 - [ ] T049 [US2] US2 checkpoint: SC-003 and SC-002 (decision-record replay) green; one rules.yaml example checked into `configs/rules.yaml` exercising the scenario battery.
 
@@ -178,11 +216,11 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - [X] T074 [P] [US6] Create `src/capabledeputy/policy/bindings.py`: `SourceLocationLabelBinding` + resolver — load `configs/source_bindings.yaml`; canonicalize via per-scheme canonicalizers (`file://`, `unc://`, `https://...`, `mcp:...`); subtree-inheritance; most-restrictive composition; unbound/non-canonicalizable ⇒ fail-closed (FR-043).
 - [X] T075 [US6] Create `src/capabledeputy/substrate/source_port.py` and `src/capabledeputy/substrate/version_write_port.py` (port-only interfaces per Constitution VII; **no provider impl** — that's spec 004); document the `canonical_resource_handle`/`canonical_destination_id`/`surfaces_destination_id` contract (FR-048) and `VersionedWritePort.write` returning `{prior_version_handle, post_state_hash, attestation}` (FR-044).
 - [X] T076 [US6] Create `src/capabledeputy/policy/envelope.py`: `OutcomeEnvelope` loader (`configs/envelopes.yaml`); `RiskPreferenceProfile` loader (`configs/risk_preference.json`); `select_outcome(envelope, dial_value) → Decision` (FR-030); hard-floor cells have degenerate envelopes.
-- [ ] T077 [US6] Wire envelope dial into `src/capabledeputy/policy/decide.py`: after baseline + bounded-relax, the dial picks the envelope point; refuses to cross any hard floor (FR-026(d) + FR-030).
+- [ ] T077 [US6] Wire envelope dial into `src/capabledeputy/policy/engine.py`: after baseline + bounded-relax, the dial picks the envelope point; refuses to cross any hard floor (FR-026(d) + FR-030).
 - [X] T078 [US6] Create `src/capabledeputy/policy/overrides.py`: `OverridePolicy`, `OverrideAuthorization`, `OverrideGrant` types + FSM per `contracts/override.md`; persisted in `override_grants` table; auto-expiry enforced at every `decide()` call (SC-011).
-- [ ] T079 [US6] Implement `OverrideRequired` distinct return path in `src/capabledeputy/policy/decide.py` (replaces collapsing into `require-approval` for floor crossings) (FR-038); audit `decision.override_required`.
+- [ ] T079 [US6] Implement `OverrideRequired` distinct return path in `src/capabledeputy/policy/engine.py` (replaces collapsing into `require-approval` for floor crossings) (FR-038); audit `decision.override_required`.
 - [X] T080 [US6] Add `capdep override request/attest/list/show/refuse` CLI in new `src/capabledeputy/cli/override_cmd.py`; the planner has no path to invoke any of these (Principle I + V).
-- [ ] T081 [US6] Implement optimistic execution boundary in `src/capabledeputy/policy/decide.py` (FR-034): if effective reversibility is degree-low + agent=`system` + non-egressing, return `auto` without prompt; reversal-agent=`human` work surfaces/gates; carve-out for purpose-contamination (FR-009) — pre-excluded at spawn, not act-then-flag.
+- [ ] T081 [US6] Implement optimistic execution boundary in `src/capabledeputy/policy/engine.py` (FR-034): if effective reversibility is degree-low + agent=`system` + non-egressing, return `auto` without prompt; reversal-agent=`human` work surfaces/gates; carve-out for purpose-contamination (FR-009) — pre-excluded at spawn, not act-then-flag.
 - [ ] T082 [US6] Implement semantic approval grouping in `src/capabledeputy/policy/approval_grouping.py` (FR-035): group homogeneous actions by rationale; aggregate impact presented; per-step prompting refused.
 - [ ] T083 [US6] Implement write-discipline verification in `src/capabledeputy/policy/reversibility.py` (FR-044): given a `VersionedWritePort.WriteResult`, verify prior-version retention by reading the prior-version handle and matching the pre-write state hash; only on success label the write `reversible/system`.
 - [ ] T084 [US6] Implement isolation-posture rules in `src/capabledeputy/patterns/isolation_posture.py` (FR-040/041/042): a session running in a Disposable Isolation Region composes effective reversibility to `reversible/system`; "containment ≠ declassification" (output retains source category labels); `EXECUTE.sandbox` invocation without the actuator port satisfied ⇒ `OverrideRequired` (Principle VI fail-closed; SC-017).
@@ -208,10 +246,10 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ### Implementation for User Story 4
 
-- [ ] T091 [US4] Enforce risk-id citation at label-load and decision-record time in `src/capabledeputy/policy/risk_register.py` + `decide.py`; orphan label or unknown risk-id refused (FR-015).
-- [ ] T092 [US4] Implement Residual-Risk Exception emission in `src/capabledeputy/policy/decide.py` (FR-016): any allow that crosses a configured risk threshold emits a `residual_risk.exception` audit event with full inputs and rationale.
-- [ ] T093 [US4] Implement control-plane reflexivity in `src/capabledeputy/policy/decide.py` (FR-018): label/capability/profile/audit operations are `ADMINISTER`-class; refuse if the session carries any `external-untrusted` provenance.
-- [ ] T094 [US4] Implement reversibility-weighted gating in `src/capabledeputy/policy/decide.py` (FR-019) replacing the binary destructive-op gate; social-commitment effect class hard-coded `irreversible` regardless of declared reversibility.
+- [ ] T091 [US4] Enforce risk-id citation at label-load and decision-record time in `src/capabledeputy/policy/risk_register.py` + `engine.py`; orphan label or unknown risk-id refused (FR-015).
+- [ ] T092 [US4] Implement Residual-Risk Exception emission in `src/capabledeputy/policy/engine.py` (FR-016): any allow that crosses a configured risk threshold emits a `residual_risk.exception` audit event with full inputs and rationale.
+- [ ] T093 [US4] Implement control-plane reflexivity in `src/capabledeputy/policy/engine.py` (FR-018): label/capability/profile/audit operations are `ADMINISTER`-class; refuse if the session carries any `external-untrusted` provenance.
+- [ ] T094 [US4] Implement reversibility-weighted gating in `src/capabledeputy/policy/engine.py` (FR-019) replacing the binary destructive-op gate; social-commitment effect class hard-coded `irreversible` regardless of declared reversibility.
 - [ ] T095 [US4] US4 checkpoint: SC-001, SC-005, SC-006, SC-007 green.
 
 **Checkpoint**: US4 functional; every label/decision is risk-traceable; threshold crossings are explicit exceptions; tainted sessions cannot touch the control plane.
@@ -234,8 +272,8 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ### Implementation for User Story 5
 
-- [ ] T101 [P] [US5] Implement max-tier clearance + read-up refusal in `src/capabledeputy/policy/resolution.py` (FR-008): every context profile carries `max_tier`; reads above it refused.
-- [ ] T102 [P] [US5] Implement integrity-floor + no-read-down within a step in `src/capabledeputy/policy/decide.py` (FR-004 Biba direction): integrity-floored steps refuse `external-untrusted` provenance inputs.
+- [X] T101 [P] [US5] Max-tier clearance + read-up refusal (FR-008): impl `policy/resolution.py` + `policy/engine.py`; dispatch derives it from the session profile (`tools/client.py`); tested `tests/policy/test_max_tier_clearance.py`. (Done on the current axis model; ported by R4b.3.)
+- [X] T102 [P] [US5] Integrity-floor + no-read-down (FR-004 Biba): impl `policy/engine.py` + `policy/resolution.py` (`IntegrityFloorError`); tested `tests/policy/test_integrity_floor.py`. (Done on the current axis model; ported by R4b.3.)
 - [X] T103 [US5] Create `src/capabledeputy/patterns/__init__.py` and `src/capabledeputy/patterns/reference_handle.py` per `contracts/reference_handle.md`: `ReferenceHandle`, `ReferenceHandleStore.issue/bind/destroy/bind_trail`; per-session in-memory; persisted into `sessions.reference_handles`.
 - [ ] T104 [US5] Wire handle issue/bind into the dispatcher: only the dispatcher (post-`decide`-allow) may bind; tools with `accepts_handles=true` receive handles in declared `handle_arg_names`; `pattern3.handle_bind` audit per insertion (FR-047).
 - [ ] T105 [US5] Extend `src/capabledeputy/mode/dispatcher.py::select_mode` to include `REFERENCE` and `SEALED` outputs; deterministic floor: effective tier `restricted` ⇒ `REFERENCE` (if any session tool `accepts_handles=true`) or `SEALED` (if SandboxActuator port satisfied); else fail-closed at spawn (FR-047).
@@ -268,7 +306,7 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 - [X] T118 [P] [US6] Extend `configs/purposes.yaml` schema: each Purpose entry MUST carry a `risk_preference_dial` field valued in `cautious | balanced | permissive`. Update the Purpose loader in `src/capabledeputy/policy/purposes.py` to read and expose the per-purpose dial value. (D12, Q1)
 - [X] T119 [US6] Modify session-spawn path in `src/capabledeputy/session/graph.py` `SessionGraph.new()` so `risk_preference_at_spawn` is resolved from the session's Purpose entry's `risk_preference_dial`, not from a standalone config file. On `fork`, child inherits the parent's resolved dial. (D12, Q1)
-- [X] T120 [P] [US6] Migration task: extend `src/capabledeputy/store/migrations/v6.py` — read legacy `configs/risk_preference.json` (if present), apply its value as default `risk_preference_dial` to every Purpose entry that doesn't declare one, then archive the legacy file (`configs/risk_preference.json.migrated`). (D12, Q1)
+- [X] T120 **[SUPERSEDED — no-compat]** ~~Migrate legacy `configs/risk_preference.json`~~ → removed; per-purpose `risk_preference_dial` is operator-declared directly. (redesign §6)
 - [X] T121 [P] [US6] Test `tests/test_dial_per_purpose.py` — verify Session inherits dial from its Purpose at spawn; verify fork inherits parent's dial; verify session cannot mutate its own dial at runtime; verify per-purpose values differentiate (`tax-prep: cautious` vs `daily-briefing: balanced`) (FR-030, Q1, SC-010 extension).
 
 ### Q2: Override Grant default expiry (FR-032)

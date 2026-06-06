@@ -2,16 +2,18 @@
 
 **Status**: Phase 1 output. Persistence shape, entities, fields, relationships, validation rules, state transitions for the v0.9 labeling framework. The shape MUST satisfy FR-045 (axes A–D as separate structured fields, not a prefixed flat set) — Principle-VIII observable.
 
+> **⚠ Label-model redesign (2026-06-05) — authoritative.** See [label-model-redesign.md](./label-model-redesign.md). No backwards compatibility: the flat `Label` enum + all migration are deleted, `state.db` is **wiped on cutover**, the store is **created** in the four-axis shape (no `5→6` converter). `EffectClass` is an **enum + optional `subtype`** (resolves T012). The **integrity floor is an Operation requirement** (`required_floor`), not an `axis_b` flag.
+
 ## Persistence shape
 
-**Schema migration**: `SCHEMA_VERSION 5 → 6` (forward-only per FR-024). On first daemon launch after upgrade, a one-time converter reads each `sessions` row's legacy `label_set` and maps it into the new axis columns at the most-restrictive position; the legacy column is retained read-only for one schema cycle for audit, then dropped at v7. Existing columns (`history`, `declassification_log`, `used_kinds`, `cap_uses`, `revoked_audit_ids`) are preserved unchanged.
+**Schema (no migration — no-compat redesign 2026-06-05).** The store is **created directly** in the four-axis shape; `state.db` is **wiped on cutover**. There is no legacy `label_set` column, no `SCHEMA_VERSION 5→6` converter, no v7 drop. The other columns (`history`, `declassification_log`, `used_kinds`, `cap_uses`, `revoked_audit_ids`) are part of the fresh schema. See [label-model-redesign.md](./label-model-redesign.md) §6.
 
 ### Existing `sessions` table — additions (ALTER TABLE)
 
 | Column | Type | NOT NULL? | Notes |
 |---|---|---|---|
 | `axis_a` | TEXT (JSON list of `{category, tier, risk_ids[]}`) | yes | Axis A data category + resolved tier per category present in this session (FR-002/007/045). |
-| `axis_b` | TEXT (JSON list of provenance levels with monotone-lattice position + integrity-floor flag) | yes | Axis B provenance/integrity (FR-004/045). Replaces the trust prefix portion of legacy `label_set`. |
+| `axis_b` | TEXT (JSON list of provenance levels, monotone-lattice position) | yes | Axis B provenance/integrity (FR-004/045). **No integrity-floor flag here** — the floor is an Operation requirement (`required_floor`), see [label-model-redesign.md](./label-model-redesign.md) §4a. (The `ProvenanceTag.integrity_floor` field is retained transitionally in code and removed in R7.) |
 | `axis_d` | TEXT (JSON object: `initiator+auth`, `counterparty/relationship_group_ids[]`, `expectedness: expected\|anomalous`, `reversibility: {degree, agent}`) | yes | Axis D decision context (FR-006/029/045). |
 | `purpose_handle` | TEXT (foreign-ref into purpose registry) | yes (default `unset` → fail-closed) | Structured purpose (FR-046). Distinct from free-text `intent`. |
 | `reference_handles` | TEXT (JSON map `handle_id → {bound_resource_ref, axis_a, axis_b, materialized_at[]}`) | yes (`{}`) | Pattern ③ handles (FR-047). |
@@ -132,7 +134,7 @@ Each entry MUST declare a `threshold` field scoped to its framework reference. C
 
 The `sessions.risk_preference_at_spawn` column captures the dial value resolved from the session's purpose at spawn (and inherited on `fork`) for replayability (SC-002). A session cannot mutate its own dial at runtime — changes go through the FR-014 ratification path (Q3).
 
-Migration: existing `configs/risk_preference.json` (if present) is read once during v5→v6 migration and its value applied as a default to every purpose without an explicit `risk_preference_dial`; the legacy file is then removed.
+**[SUPERSEDED — no-compat]** No migration of `configs/risk_preference.json`; the per-purpose `risk_preference_dial` is operator-declared directly.
 
 ## Entities (logical, beyond what's already in spec.md §Key Entities)
 

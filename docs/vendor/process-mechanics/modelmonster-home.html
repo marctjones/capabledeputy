@@ -1,0 +1,904 @@
+<!doctype html><html><head><meta charset='utf-8'><title>Model Monster | AI system tracking, reporting, and governance</title><style>
+@page { size: A4; margin: 18mm 16mm; @bottom-center {
+  content: "Process Mechanics — reference copy · " counter(page); font-size: 8pt; color:#888; } }
+body { font: 11pt/1.5 'DejaVu Serif', Georgia, serif; color:#1a1a1a; max-width: 100%; }
+h1 { font-size: 20pt; border-bottom: 2px solid #333; padding-bottom: 4pt; }
+h2 { font-size: 15pt; margin-top: 18pt; color:#222; }
+h3 { font-size: 12.5pt; color:#333; }
+h1,h2,h3,h4 { font-family:'DejaVu Sans', Helvetica, sans-serif; page-break-after: avoid; }
+code,pre { font-family:'DejaVu Sans Mono', monospace; font-size:9.5pt; background:#f4f4f4; }
+pre { padding:8pt; border-radius:4pt; white-space:pre-wrap; }
+table { border-collapse: collapse; width:100%; font-size:9.5pt; }
+th,td { border:1px solid #bbb; padding:4pt 6pt; text-align:left; vertical-align:top; }
+th { background:#eee; }
+a { color:#0b5; text-decoration:none; }
+.src-banner { font-family:'DejaVu Sans',sans-serif; font-size:9pt; color:#666;
+  border:1px solid #ddd; background:#fafafa; padding:8pt; border-radius:4pt; margin-bottom:14pt; }
+img { max-width:100%; }
+</style></head><body><h1>Model Monster | AI system tracking, reporting, and governance</h1><div class="src-banner"><b>Reference copy.</b> Source: <a href="https://modelmonster.ai/">https://modelmonster.ai/</a><br>Retrieved 2026-06-05 · Process Mechanics PLLC / Van Lindberg · retained with permission for internal reference.</div>
+<!-- Hero Section -->
+<section class="min-h-screen flex items-center pt-20 pb-12 px-4 lg:px-8 bg-base-100 dark:bg-base-200 grid-pattern noise-texture relative overflow-hidden">
+<!-- Floating orbs for depth -->
+<div class="floating-orb orb-purple">
+</div>
+<div class="floating-orb orb-cobalt">
+</div>
+<div class="container max-w-7xl mx-auto relative z-10">
+<div class="grid lg:grid-cols-[1.2fr_0.8fr] gap-12 items-start">
+<!-- Left Column: Content -->
+<div class="text-center lg:text-left" style="max-width: 900px;">
+<h1 class="text-6xl lg:text-7xl font-bold mb-6 leading-tight hero-h1 text-[#051060] dark:text-white">
+        AI Governance
+        <br/>
+<span style="font-weight: 400;">
+         Doesn't Have to be
+         <span class="text-shimmer">
+          Scary</span></span>
+</h1>
+<p class="text-xl mb-10 text-base-content/70 dark:text-white/80" style="letter-spacing: 0.01em;">
+        Model Monster helps you see, understand, and govern your AI systems as they actually work—so legal, compliance, and engineering teams can make decisions together, with confidence.
+       </p>
+<div id="early-access-form-wrapper-hero">
+
+</div>
+<!-- Caption -->
+<p class="text-sm mb-8 text-base-content/70 dark:text-white/80" style="letter-spacing: 0.01em; line-height: 1.5;">
+        Now accepting organizations into our early access program. Work with us to see how Model Monster can accelerate your governance.
+       </p>
+<!-- Secondary CTA -->
+<div class="text-center lg:text-left">
+<a class="animated-underline inline-flex items-center text-[#643AFE] hover:text-[#7838F8] dark:text-[#CD6DFE] dark:hover:text-[#CD6DFE] font-semibold transition-colors" href="#problem">
+         See how it works
+         <span class="ml-2">
+          →</span></a>
+</div>
+</div>
+<!-- Right Column: Marcellus -->
+<div class="flex items-start justify-center lg:justify-end">
+<img alt="Marcellus pointing at system graphic" class="w-full max-w-2xl mt-4" fetchpriority="high" loading="eager" src="/static/images/hero-system-graphic-pointing.png"/>
+</div>
+</div>
+</div>
+</section>
+<!-- Problem Statement Section -->
+<section class="marketing-section-height flex items-center pt-24 pb-16 px-4 lg:px-8 bg-[#051060] relative overflow-hidden" id="problem" style="background-image: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px); background-size: 30px 30px;">
+<!-- Floating orbs for atmosphere -->
+<div class="floating-orb orb-purple" style="opacity: 0.15;">
+</div>
+<div class="floating-orb orb-crimson" style="opacity: 0.12;">
+</div>
+<!-- Organic vignette mask to hide grid in center -->
+<div class="absolute inset-0 pointer-events-none" style="background:
+      radial-gradient(ellipse 1100px 950px at 50% 50%, rgba(5, 16, 96, 1) 0%, rgba(5, 16, 96, 0.9) 40%, rgba(5, 16, 96, 0.5) 65%, transparent 85%),
+      radial-gradient(ellipse 850px 750px at 25% 35%, rgba(5, 16, 96, 0.85) 0%, rgba(5, 16, 96, 0.6) 45%, transparent 75%),
+      radial-gradient(ellipse 900px 800px at 75% 65%, rgba(5, 16, 96, 0.8) 0%, rgba(5, 16, 96, 0.5) 50%, transparent 78%),
+      radial-gradient(ellipse 750px 850px at 35% 75%, rgba(5, 16, 96, 0.85) 0%, rgba(5, 16, 96, 0.4) 45%, transparent 75%),
+      radial-gradient(ellipse 800px 700px at 70% 25%, rgba(5, 16, 96, 0.8) 0%, rgba(5, 16, 96, 0.45) 50%, transparent 78%);">
+</div>
+<div class="container max-w-7xl mx-auto text-center relative z-10">
+<h2 class="text-6xl lg:text-7xl font-bold mb-6 text-white" style="letter-spacing: -0.02em;">
+      AI risk doesn't live in models, it lives in systems
+      <span class="neon-accent"></span>
+</h2>
+<div class="prose prose-lg max-w-4xl mx-auto mb-8 text-left">
+<p class="text-xl text-white" style="letter-spacing: 0.01em;">
+       Most AI governance still treats risk as something you approve at the model level. But real risk shows up in production — shaped by how systems are designed, connected, and operated.
+      </p>
+<div>
+<p class="text-xl text-white mt-6" style="letter-spacing: 0.01em;">
+        In practice, AI risk depends on:
+       </p>
+<ul class="list-disc text-xl text-white space-y-2 ml-6 pl-2 my-6" style="letter-spacing: 0.01em; --tw-text-opacity: 1; color: rgb(255 255 255 / var(--tw-text-opacity));">
+<li>
+         What data the system can access
+        </li>
+<li>
+         What actions it can take
+        </li>
+<li>
+         What guardrails exist (or don't)
+        </li>
+<li>
+         How everything connects in production
+        </li>
+</ul>
+</div>
+<p class="text-xl text-white" style="letter-spacing: 0.01em;">
+       When governance stops at model approval, teams are forced into painful tradeoffs:
+      </p>
+</div>
+<!-- Pain Points Cards -->
+<div class="grid md:grid-cols-3 gap-6 mb-8">
+<div class="card enhanced-card feature-card pain-card-1 border border-white/10 border-t-4 border-t-[#643AFE] depth-shadow" style="background-color: rgba(75, 134, 255, 0.1);">
+<div class="card-body text-left">
+<div class="flex items-start gap-3 mb-3">
+<div class="w-10 h-10 rounded-lg bg-[#643AFE]/20 flex items-center justify-center flex-shrink-0">
+
+</div>
+<h3 class="text-lg font-bold text-white flex-1">
+          You approved a model. You deployed a system.
+         </h3>
+</div>
+<p class="text-base text-white ml-13" style="letter-spacing: 0.01em;">
+         The chatbot you approved now touches customer data, calls external services, and operates with permissions no one tracks centrally.
+        </p>
+</div>
+</div>
+<div class="card enhanced-card feature-card pain-card-2 border border-white/10 border-t-4 border-t-[#4B86FF] depth-shadow" style="background-color: rgba(75, 134, 255, 0.1);">
+<div class="card-body text-left">
+<div class="flex items-start gap-3 mb-3">
+<div class="w-10 h-10 rounded-lg bg-[#4B86FF]/20 flex items-center justify-center flex-shrink-0">
+
+</div>
+<h3 class="text-lg font-bold text-white flex-1">
+          You finished a risk assessment. The system kept changing.
+         </h3>
+</div>
+<p class="text-base text-white ml-13" style="letter-spacing: 0.01em;">
+         Updates ship, configurations drift, and risk reviews quietly fall out of sync with reality.
+        </p>
+</div>
+</div>
+<div class="card enhanced-card feature-card pain-card-3 border border-white/10 border-t-4 border-t-[#E2416D] depth-shadow" style="background-color: rgba(75, 134, 255, 0.1);">
+<div class="card-body text-left">
+<div class="flex items-start gap-3 mb-3">
+<div class="w-10 h-10 rounded-lg bg-[#E2416D]/20 flex items-center justify-center flex-shrink-0">
+
+</div>
+<h3 class="text-lg font-bold text-white flex-1">
+          Engineering builds it. Legal reviews it. No shared map.
+         </h3>
+</div>
+<p class="text-base text-white ml-13" style="letter-spacing: 0.01em;">
+         The system exists, but not in a form both teams can reason about. Translating between them takes time — and guesswork.
+        </p>
+</div>
+</div>
+</div>
+<div class="text-2xl font-semibold italic" style="color: #CD6DFE;">
+      That's not because teams are careless. It's because AI systems are hard to see.
+     </div>
+<div class="mt-8">
+<a class="btn btn-enhanced btn-lg rounded-full px-8" href="#how-we-see" style="background-color: rgba(100, 58, 254, 0.18); color: #FFF8F0; border: 2px solid rgba(100, 58, 254, 0.5);">
+       See how we map real AI systems
+       <span class="ml-2">
+        →</span></a>
+</div>
+</div>
+</section>
+<!-- How We See Your Systems - Horizontal Steps -->
+<section class="marketing-section-height flex items-center pt-24 pb-16 px-4 lg:px-8 bg-base-100 dark:bg-base-200 grid-pattern noise-texture relative overflow-hidden" id="how-we-see" x-data="{ activeStep: 'components' }">
+<!-- Floating orb for subtle atmosphere -->
+<div class="floating-orb orb-cobalt" style="opacity: 0.2; top: 30%; left: 10%;">
+</div>
+<div class="container max-w-7xl mx-auto w-full relative z-10">
+<div class="text-center mb-6">
+<h2 class="text-5xl lg:text-6xl font-bold mb-4 text-[#051060] dark:text-white" style="letter-spacing: -0.02em;">
+       How we see your systems:
+      </h2>
+<p class="text-xl text-base-content/70 dark:text-white/80 max-w-4xl mx-auto" style="letter-spacing: 0.01em;">
+       One shared map of components, permissions, and data flow — generated automatically.
+      </p>
+</div>
+<!-- Horizontal Step Pills -->
+<div class="flex flex-wrap justify-center gap-3 mb-6">
+<!-- Components Pill -->
+
+<!-- Operations Pill -->
+
+<!-- Resources Pill -->
+
+<!-- Execution Pill -->
+
+</div>
+<!-- Blueprint Visualization -->
+<div class="blueprint-visualization relative bg-white rounded-2xl overflow-hidden border border-base-content/10 dark:border-base-content/20 shadow-xl dark:shadow-[0_10px_25px_-5px_rgba(100,58,254,0.3),0_5px_10px_-5px_rgba(100,58,254,0.2)]" style="min-height: 550px;">
+<!-- Blueprint Background Grid -->
+<div class="absolute inset-0 opacity-20 dark:opacity-10" style="background-image: linear-gradient(rgba(5, 16, 96, .08) 1px, transparent 1px), linear-gradient(90deg, rgba(5, 16, 96, .08) 1px, transparent 1px); background-size: 30px 30px;">
+</div>
+<!-- Components View - Desktop -->
+<div class="hidden lg:block absolute inset-0" x-cloak="" x-show="activeStep === 'components'">
+<div class="absolute inset-0 flex items-center justify-center p-8">
+<img alt="Components View" class="max-w-full max-h-full object-contain dark:hidden" loading="lazy" src="/static/images/core-diagrams/components.png"/>
+<img alt="Components View" class="max-w-full max-h-full object-contain hidden dark:block" loading="lazy" src="/static/images/core-diagrams/components-dark.png"/>
+<!-- Components Explainer -->
+<div class="absolute top-8 right-8 max-w-xs dark:bg-base-200/80" style="backdrop-filter: blur(4px); background: linear-gradient(135deg, rgba(255, 248, 240, 0.3) 0%, rgba(205, 109, 254, 0.25) 100%); border-radius: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.3);">
+<!-- Corner Brackets -->
+<div class="absolute -top-2 -left-2 w-8 h-8" style="border-top: 3px solid rgba(205, 109, 254, 0.5); border-left: 3px solid rgba(205, 109, 254, 0.5);">
+</div>
+<div class="absolute -top-2 -right-2 w-8 h-8" style="border-top: 3px solid rgba(205, 109, 254, 0.5); border-right: 3px solid rgba(205, 109, 254, 0.5);">
+</div>
+<div class="p-4">
+<!-- Close-up Image -->
+<div class="mb-3 rounded-lg overflow-hidden border border-[#CD6DFE]/30" style="box-shadow: 0 0 20px rgba(205, 109, 254, 0.3);">
+<img alt="Component Detail" class="w-full h-auto dark:hidden" loading="lazy" src="/static/images/core-diagrams/component-closeup.png"/>
+<img alt="Component Detail" class="w-full h-auto hidden dark:block" loading="lazy" src="/static/images/core-diagrams/component-closeup-dark.png"/>
+</div>
+<!-- Label -->
+<div class="flex items-center gap-2 mb-2">
+<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#643AFE] to-[#7838F8] flex items-center justify-center">
+<span class="text-white font-bold text-sm font-coolvetica">
+             C</span>
+</div>
+<h4 class="text-sm font-bold text-[#643AFE] dark:text-white uppercase tracking-wider" style="letter-spacing: 0.1em;">
+            Components
+           </h4>
+</div>
+<!-- Description -->
+<p class="text-sm text-base-content dark:text-white/80 leading-relaxed">
+           The building blocks of your AI system: models, APIs, guardrails, humans.
+          </p>
+</div>
+</div>
+</div>
+</div>
+<!-- Components View - Mobile -->
+<div class="block lg:hidden absolute inset-0 flex flex-col items-center justify-start p-4 overflow-y-auto" x-show="activeStep === 'components'">
+<img alt="Components View" class="w-full max-w-2xl mb-4 dark:hidden" loading="lazy" src="/static/images/core-diagrams/components.png"/>
+<img alt="Components View" class="w-full max-w-2xl mb-4 hidden dark:block" loading="lazy" src="/static/images/core-diagrams/components-dark.png"/>
+<!-- Components Explainer -->
+<div class="w-full max-w-2xl dark:bg-base-200/80" style="backdrop-filter: blur(4px); background: linear-gradient(135deg, rgba(255, 248, 240, 0.3) 0%, rgba(205, 109, 254, 0.25) 100%); border-radius: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.3);">
+<!-- Corner Brackets -->
+<div class="absolute -top-2 -left-2 w-8 h-8" style="border-top: 3px solid rgba(205, 109, 254, 0.5); border-left: 3px solid rgba(205, 109, 254, 0.5);">
+</div>
+<div class="absolute -top-2 -right-2 w-8 h-8" style="border-top: 3px solid rgba(205, 109, 254, 0.5); border-right: 3px solid rgba(205, 109, 254, 0.5);">
+</div>
+<div class="p-4">
+<!-- Close-up Image -->
+<div class="mb-3 rounded-lg overflow-hidden border border-[#CD6DFE]/30" style="box-shadow: 0 0 20px rgba(205, 109, 254, 0.3);">
+<img alt="Component Detail" class="w-full h-auto dark:hidden" src="/static/images/core-diagrams/component-closeup.png"/>
+<img alt="Component Detail" class="w-full h-auto hidden dark:block" src="/static/images/core-diagrams/component-closeup-dark.png"/>
+</div>
+<!-- Label -->
+<div class="flex items-center gap-2 mb-2">
+<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#643AFE] to-[#7838F8] flex items-center justify-center">
+<span class="text-white font-bold text-sm font-coolvetica">
+            C</span>
+</div>
+<h4 class="text-sm font-bold text-[#643AFE] uppercase tracking-wider" style="letter-spacing: 0.1em;">
+           Components
+          </h4>
+</div>
+<!-- Description -->
+<p class="text-sm text-base-content dark:text-white leading-relaxed">
+          The building blocks of your AI system: models, APIs, guardrails, humans.
+         </p>
+</div>
+</div>
+</div>
+<!-- Operations View - Desktop -->
+<div class="hidden lg:block absolute inset-0" x-show="activeStep === 'operations'">
+<div class="absolute inset-0 flex items-center justify-center p-8">
+<img alt="Operations View" class="max-w-full max-h-full object-contain dark:hidden" loading="lazy" src="/static/images/core-diagrams/operations-desktop.png"/>
+<img alt="Operations View" class="max-w-full max-h-full object-contain hidden dark:block" loading="lazy" src="/static/images/core-diagrams/operations-desktop-dark.png"/>
+<!-- Operations Explainer -->
+<div class="absolute top-20 left-8 max-w-[22rem] dark:bg-base-200/80" style="backdrop-filter: blur(4px); background: linear-gradient(135deg, rgba(255, 248, 240, 0.3) 0%, rgba(75, 134, 255, 0.25) 100%); border-radius: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.3);">
+<!-- Corner Brackets -->
+<div class="absolute -top-2 -left-2 w-8 h-8" style="border-top: 3px solid rgba(75, 134, 255, 0.5); border-left: 3px solid rgba(75, 134, 255, 0.5);">
+</div>
+<div class="absolute -bottom-2 -right-2 w-8 h-8" style="border-bottom: 3px solid rgba(75, 134, 255, 0.5); border-right: 3px solid rgba(75, 134, 255, 0.5);">
+</div>
+<div class="p-4">
+<!-- Close-up Image -->
+<div class="mb-3 rounded-lg overflow-hidden border border-[#4B86FF]/30" style="box-shadow: 0 0 20px rgba(75, 134, 255, 0.3);">
+<img alt="Operations Detail" class="w-full h-auto dark:hidden" loading="lazy" src="/static/images/core-diagrams/operations-closeup.png"/>
+<img alt="Operations Detail" class="w-full h-auto hidden dark:block" loading="lazy" src="/static/images/core-diagrams/operations-closeup-dark.png"/>
+</div>
+<!-- Label -->
+<div class="flex items-center gap-2 mb-2">
+<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#4B86FF] to-[#3a6cd4] flex items-center justify-center">
+<span class="text-white font-bold text-sm font-coolvetica">
+             O</span>
+</div>
+<h4 class="text-sm font-bold text-[#4B86FF] dark:text-white uppercase tracking-wider" style="letter-spacing: 0.1em;">
+            Operations
+           </h4>
+</div>
+<!-- Description -->
+<p class="text-sm text-[#051060] dark:text-white/80 leading-relaxed">
+           The actions those components perform on resources—think read, write, execute, access.
+          </p>
+</div>
+</div>
+</div>
+</div>
+<!-- Operations View - Mobile -->
+<div class="block lg:hidden absolute inset-0 flex flex-col items-center justify-start p-4 overflow-y-auto" x-show="activeStep === 'operations'">
+<img alt="Operations View" class="w-full max-w-2xl mb-4 dark:hidden" loading="lazy" src="/static/images/core-diagrams/operations-mobile.png"/>
+<img alt="Operations View" class="w-full max-w-2xl mb-4 hidden dark:block" loading="lazy" src="/static/images/core-diagrams/operations-mobile-dark.png"/>
+<!-- Operations Explainer -->
+<div class="w-full max-w-2xl dark:bg-base-200/80" style="backdrop-filter: blur(4px); background: linear-gradient(135deg, rgba(255, 248, 240, 0.3) 0%, rgba(75, 134, 255, 0.25) 100%); border-radius: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.3);">
+<!-- Corner Brackets -->
+<div class="absolute -top-2 -left-2 w-8 h-8" style="border-top: 3px solid rgba(75, 134, 255, 0.5); border-left: 3px solid rgba(75, 134, 255, 0.5);">
+</div>
+<div class="absolute -bottom-2 -right-2 w-8 h-8" style="border-bottom: 3px solid rgba(75, 134, 255, 0.5); border-right: 3px solid rgba(75, 134, 255, 0.5);">
+</div>
+<div class="p-4">
+<!-- Close-up Image -->
+<div class="mb-3 rounded-lg overflow-hidden border border-[#4B86FF]/30" style="box-shadow: 0 0 20px rgba(75, 134, 255, 0.3);">
+<img alt="Operations Detail" class="w-full h-auto dark:hidden" src="/static/images/core-diagrams/operations-closeup.png"/>
+<img alt="Operations Detail" class="w-full h-auto hidden dark:block" src="/static/images/core-diagrams/operations-closeup-dark.png"/>
+</div>
+<!-- Label -->
+<div class="flex items-center gap-2 mb-2">
+<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#4B86FF] to-[#3a6cd4] flex items-center justify-center">
+<span class="text-white font-bold text-sm font-coolvetica">
+            O</span>
+</div>
+<h4 class="text-sm font-bold text-[#4B86FF] uppercase tracking-wider" style="letter-spacing: 0.1em;">
+           Operations
+          </h4>
+</div>
+<!-- Description -->
+<p class="text-sm text-[#051060] leading-relaxed">
+          The actions those components perform on resources—think read, write, execute, access.
+         </p>
+</div>
+</div>
+</div>
+<!-- Resources View - Desktop -->
+<div class="hidden lg:block absolute inset-0" x-show="activeStep === 'resources'">
+<div class="absolute inset-0 flex items-center justify-center p-8">
+<img alt="Resources View" class="max-w-full max-h-full object-contain dark:hidden" loading="lazy" src="/static/images/core-diagrams/resources-desktop.png"/>
+<img alt="Resources View" class="max-w-full max-h-full object-contain hidden dark:block" loading="lazy" src="/static/images/core-diagrams/resources-desktop-dark.png"/>
+<!-- Resources Explainer -->
+<div class="absolute bottom-8 right-8 max-w-xs dark:bg-base-200/80" style="backdrop-filter: blur(4px); background: linear-gradient(135deg, rgba(255, 248, 240, 0.3) 0%, rgba(205, 109, 254, 0.25) 100%); border-radius: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.3);">
+<!-- Corner Brackets -->
+<div class="absolute -bottom-2 -left-2 w-8 h-8" style="border-bottom: 3px solid rgba(205, 109, 254, 0.5); border-left: 3px solid rgba(205, 109, 254, 0.5);">
+</div>
+<div class="absolute -top-2 -right-2 w-8 h-8" style="border-top: 3px solid rgba(205, 109, 254, 0.5); border-right: 3px solid rgba(205, 109, 254, 0.5);">
+</div>
+<div class="p-4">
+<!-- Close-up Image -->
+<div class="mb-3 rounded-lg overflow-hidden border border-[#CD6DFE]/30" style="box-shadow: 0 0 20px rgba(205, 109, 254, 0.3);">
+<img alt="Resources Detail" class="w-full h-auto dark:hidden" loading="lazy" src="/static/images/core-diagrams/resource-closeup.png"/>
+<img alt="Resources Detail" class="w-full h-auto hidden dark:block" loading="lazy" src="/static/images/core-diagrams/resource-closeup-dark.png"/>
+</div>
+<!-- Label -->
+<div class="flex items-center gap-2 mb-2">
+<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#CD6DFE] to-[#643AFE] flex items-center justify-center">
+<span class="text-white font-bold text-sm font-coolvetica">
+             R</span>
+</div>
+<h4 class="text-sm font-bold text-[#CD6DFE] dark:text-white uppercase tracking-wider" style="letter-spacing: 0.1em;">
+            Resources
+           </h4>
+</div>
+<!-- Description -->
+<p class="text-sm text-[#051060] dark:text-white/80 leading-relaxed">
+           The external data and systems your AI can touch. Databases, APIs, email, internet.
+          </p>
+</div>
+</div>
+</div>
+</div>
+<!-- Resources View - Mobile -->
+<div class="block lg:hidden absolute inset-0 flex flex-col items-center justify-start p-4 overflow-y-auto" x-show="activeStep === 'resources'">
+<img alt="Resources View" class="w-full max-w-2xl mb-4 dark:hidden" loading="lazy" src="/static/images/core-diagrams/resources-mobile.png"/>
+<img alt="Resources View" class="w-full max-w-2xl mb-4 hidden dark:block" loading="lazy" src="/static/images/core-diagrams/resources-mobile-dark.png"/>
+<!-- Resources Explainer -->
+<div class="w-full max-w-2xl dark:bg-base-200/80" style="backdrop-filter: blur(4px); background: linear-gradient(135deg, rgba(255, 248, 240, 0.3) 0%, rgba(205, 109, 254, 0.25) 100%); border-radius: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.3);">
+<!-- Corner Brackets -->
+<div class="absolute -bottom-2 -left-2 w-8 h-8" style="border-bottom: 3px solid rgba(205, 109, 254, 0.5); border-left: 3px solid rgba(205, 109, 254, 0.5);">
+</div>
+<div class="absolute -top-2 -right-2 w-8 h-8" style="border-top: 3px solid rgba(205, 109, 254, 0.5); border-right: 3px solid rgba(205, 109, 254, 0.5);">
+</div>
+<div class="p-4">
+<!-- Close-up Image -->
+<div class="mb-3 rounded-lg overflow-hidden border border-[#CD6DFE]/30" style="box-shadow: 0 0 20px rgba(205, 109, 254, 0.3);">
+<img alt="Resources Detail" class="w-full h-auto dark:hidden" src="/static/images/core-diagrams/resource-closeup.png"/>
+<img alt="Resources Detail" class="w-full h-auto hidden dark:block" src="/static/images/core-diagrams/resource-closeup-dark.png"/>
+</div>
+<!-- Label -->
+<div class="flex items-center gap-2 mb-2">
+<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#CD6DFE] to-[#643AFE] flex items-center justify-center">
+<span class="text-white font-bold text-sm font-coolvetica">
+            R</span>
+</div>
+<h4 class="text-sm font-bold text-[#CD6DFE] uppercase tracking-wider" style="letter-spacing: 0.1em;">
+           Resources
+          </h4>
+</div>
+<!-- Description -->
+<p class="text-sm text-[#051060] leading-relaxed">
+          The external data and systems your AI can touch. Databases, APIs, email, internet.
+         </p>
+</div>
+</div>
+</div>
+<!-- Execution View - Desktop -->
+<div class="hidden lg:block absolute inset-0" x-show="activeStep === 'execution'">
+<div class="absolute inset-0 flex items-center justify-center p-8">
+<img alt="Execution View" class="max-w-full max-h-full object-contain dark:hidden" loading="lazy" src="/static/images/core-diagrams/execution-desktop.png"/>
+<img alt="Execution View" class="max-w-full max-h-full object-contain hidden dark:block" loading="lazy" src="/static/images/core-diagrams/execution-desktop-dark.png"/>
+<!-- Execution Explainer -->
+<div class="absolute top-[35%] right-16 -translate-y-[35%] max-w-xs dark:bg-base-200/80" style="backdrop-filter: blur(4px); background: linear-gradient(135deg, rgba(255, 248, 240, 0.3) 0%, rgba(226, 65, 109, 0.25) 100%); border-radius: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.3);">
+<!-- Corner Brackets -->
+<div class="absolute -top-2 -left-2 w-8 h-8" style="border-top: 3px solid rgba(226, 65, 109, 0.5); border-left: 3px solid rgba(226, 65, 109, 0.5);">
+</div>
+<div class="absolute -bottom-2 -right-2 w-8 h-8" style="border-bottom: 3px solid rgba(226, 65, 109, 0.5); border-right: 3px solid rgba(226, 65, 109, 0.5);">
+</div>
+<div class="p-4">
+<!-- Label -->
+<div class="flex items-center gap-2 mb-2">
+<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#E2416D] to-[#c8355d] flex items-center justify-center">
+<span class="text-white font-bold text-sm font-coolvetica">
+             E</span>
+</div>
+<h4 class="text-sm font-bold text-[#E2416D] dark:text-white uppercase tracking-wider" style="letter-spacing: 0.1em;">
+            Execution
+           </h4>
+</div>
+<!-- Description -->
+<p class="text-sm text-[#051060] dark:text-white/80 leading-relaxed mb-2">
+           The real execution paths—how data flows from input to output.
+          </p>
+<!-- Flow Indicator -->
+<div class="flex items-center gap-2 pt-2 border-t border-[#E2416D]/30">
+<div class="flex items-center gap-1">
+<div class="w-2 h-2 rounded-full bg-[#643AFE]" style="box-shadow: 0 0 8px rgba(100, 58, 254, 0.6);">
+</div>
+<span class="text-sm text-base-content dark:text-white">
+             Input</span>
+</div>
+
+<div class="flex items-center gap-1">
+<div class="w-2 h-2 rounded-full bg-[#643AFE]" style="box-shadow: 0 0 8px rgba(100, 58, 254, 0.6);">
+</div>
+<span class="text-sm text-base-content dark:text-white">
+             Output</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Execution View - Mobile -->
+<div class="block lg:hidden absolute inset-0 flex flex-col items-center justify-start p-4 overflow-y-auto" x-show="activeStep === 'execution'">
+<img alt="Execution View" class="w-full max-w-2xl mb-4 dark:hidden" loading="lazy" src="/static/images/core-diagrams/execution-mobile.png"/>
+<img alt="Execution View" class="w-full max-w-2xl mb-4 hidden dark:block" loading="lazy" src="/static/images/core-diagrams/execution-mobile-dark.png"/>
+<!-- Execution Explainer -->
+<div class="w-full max-w-2xl dark:bg-base-200/80" style="backdrop-filter: blur(4px); background: linear-gradient(135deg, rgba(255, 248, 240, 0.3) 0%, rgba(226, 65, 109, 0.25) 100%); border-radius: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.3);">
+<!-- Corner Brackets -->
+<div class="absolute -top-2 -left-2 w-8 h-8" style="border-top: 3px solid rgba(226, 65, 109, 0.5); border-left: 3px solid rgba(226, 65, 109, 0.5);">
+</div>
+<div class="absolute -bottom-2 -right-2 w-8 h-8" style="border-bottom: 3px solid rgba(226, 65, 109, 0.5); border-right: 3px solid rgba(226, 65, 109, 0.5);">
+</div>
+<div class="p-4">
+<!-- Label -->
+<div class="flex items-center gap-2 mb-2">
+<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#E2416D] to-[#c8355d] flex items-center justify-center">
+<span class="text-white font-bold text-sm font-coolvetica">
+            E</span>
+</div>
+<h4 class="text-sm font-bold text-[#E2416D] uppercase tracking-wider" style="letter-spacing: 0.1em;">
+           Execution
+          </h4>
+</div>
+<!-- Description -->
+<p class="text-sm text-base-content dark:text-white leading-relaxed mb-2">
+          The real execution paths—how data flows from input to output.
+         </p>
+<!-- Flow Indicator -->
+<div class="flex items-center gap-2 pt-2 border-t border-[#E2416D]/30">
+<div class="flex items-center gap-1">
+<div class="w-2 h-2 rounded-full bg-[#643AFE]" style="box-shadow: 0 0 8px rgba(100, 58, 254, 0.6);">
+</div>
+<span class="text-sm text-base-content dark:text-white">
+            Input</span>
+</div>
+
+<div class="flex items-center gap-1">
+<div class="w-2 h-2 rounded-full bg-[#643AFE]" style="box-shadow: 0 0 8px rgba(100, 58, 254, 0.6);">
+</div>
+<span class="text-sm text-base-content dark:text-white">
+            Output</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-8 relative">
+<!-- Primary CTA - Centered -->
+<div class="text-center">
+<a class="btn btn-enhanced btn-lg rounded-full px-8 bg-[#643AFE] text-white hover:bg-[#7838F8] border border-[#643AFE]/20 layered-shadow" href="#governance">
+        See how this powers governance at scale
+        <span class="ml-2">
+         →</span></a>
+</div>
+</div>
+</div>
+</section>
+<!-- Governance at System Speed -->
+<section class="marketing-section-height flex items-center py-20 px-4 lg:px-8 governance-gradient relative overflow-hidden" id="governance">
+<!-- Floating orbs for atmosphere -->
+<div class="floating-orb orb-purple" style="opacity: 0.15; top: 20%; left: 5%;">
+</div>
+<div class="floating-orb orb-crimson" style="opacity: 0.12; bottom: 15%; right: 8%;">
+</div>
+<div class="container max-w-7xl mx-auto w-full relative z-10">
+<div class="text-center mb-16">
+<h2 class="text-5xl lg:text-6xl font-bold mb-4 text-white" style="letter-spacing: -0.02em;">
+       Governance that moves at the speed of your system
+       <span class="neon-accent"></span>
+</h2>
+</div>
+<!-- Split Layout -->
+<div class="grid lg:grid-cols-2 gap-12 items-center">
+<!-- Left: Visual Cards -->
+<div class="space-y-4">
+<!-- Change Diff Card -->
+<div class="enhanced-card bg-white/5 border-l-4 border-l-[#BEFE4B] rounded-r-lg p-6 backdrop-blur-sm layered-shadow">
+<div class="flex items-center gap-3 mb-4">
+<div class="w-8 h-8 rounded-lg bg-[#BEFE4B]/20 flex items-center justify-center flex-shrink-0">
+
+</div>
+<h3 class="text-lg font-bold text-white">
+          Change Diff
+         </h3>
+</div>
+<div class="space-y-2 font-mono text-sm">
+<div class="text-[#BEFE4B]">
+          + Added: Slack tool (WRITE)
+         </div>
+<div class="text-[#E2416D]">
+          ! New risk: External communication path
+         </div>
+<div class="text-[#E2416D]">
+          ! Policy: Human approval required
+         </div>
+<div class="text-white">
+          Resource: customer_database
+         </div>
+</div>
+</div>
+<!-- Automatic Re-evaluation Card -->
+<div class="enhanced-card bg-white/5 border-l-4 border-l-[#4B86FF] rounded-r-lg p-6 backdrop-blur-sm layered-shadow">
+<div class="flex items-center gap-3 mb-4">
+<div class="w-8 h-8 rounded-lg bg-[#4B86FF]/20 flex items-center justify-center flex-shrink-0">
+
+</div>
+<h3 class="text-lg font-bold text-white">
+          Automatic Re-evaluation
+         </h3>
+</div>
+<div class="space-y-2 text-sm">
+<div class="flex items-center gap-2">
+
+<span class="text-white">
+           Re-ran 12 compliance policies</span>
+</div>
+<div class="flex items-center gap-2">
+
+<span class="text-white">
+           Updated CORE report</span>
+</div>
+<div class="flex items-center gap-2">
+
+<span class="text-white">
+           Flagged 2 new risks</span>
+</div>
+</div>
+</div>
+<!-- Design-time Checks Card -->
+<div class="enhanced-card bg-white/5 border-l-4 border-l-[#643AFE] rounded-r-lg p-6 backdrop-blur-sm layered-shadow">
+<div class="flex items-center gap-3 mb-4">
+<div class="w-8 h-8 rounded-lg bg-[#643AFE]/20 flex items-center justify-center flex-shrink-0">
+
+</div>
+<h3 class="text-lg font-bold text-white">
+          Design-time Checks
+         </h3>
+</div>
+<div class="space-y-2 text-sm">
+<div class="text-[#E2416D]">
+<span class="font-semibold">
+           ⚠ Pre-deployment warning:</span>
+</div>
+<div class="text-white ml-4">
+          PII access requires data classification review before production deployment
+         </div>
+</div>
+</div>
+</div>
+<!-- Right: Explanatory Copy -->
+<div class="space-y-6">
+<p class="text-lg text-white leading-relaxed" style="letter-spacing: 0.01em;">
+        Every time your system changes—new model, new tool, new permission—Model Monster updates the blueprint automatically.
+       </p>
+<p class="text-lg text-white leading-relaxed" style="letter-spacing: 0.01em;">
+        Risks are re-evaluated against your policies. Evidence stays current. Reviews don't start from scratch.
+       </p>
+<p class="text-lg text-white leading-relaxed" style="letter-spacing: 0.01em;">
+        Catch issues before deployment, not during last-minute reviews.
+       </p>
+<div class="pt-4 border-t border-[#FFF8F0]/20">
+<p class="text-xl font-semibold text-[#BEFE4B] leading-relaxed">
+         Governance doesn't have to slow you down—if it's built around change.
+        </p>
+</div>
+</div>
+</div>
+<div class="mt-12 relative">
+<!-- Primary CTA - Centered -->
+<div class="text-center">
+<a class="btn btn-enhanced btn-lg rounded-full px-8" href="#what-you-get" style="background-color: rgba(100, 58, 254, 0.18); color: #FFF8F0; border: 2px solid rgba(100, 58, 254, 0.5);">
+        See real governance outputs
+        <span class="ml-2">
+         →</span></a>
+</div>
+</div>
+</div>
+</section>
+<!-- What You Get on Day One -->
+<section class="marketing-section-height flex items-center py-20 px-4 lg:px-8 bg-base-100 dark:bg-base-200 grid-pattern noise-texture relative overflow-hidden" id="what-you-get">
+<!-- Floating orb for subtle atmosphere -->
+<div class="floating-orb orb-purple" style="opacity: 0.18; top: 15%; right: 10%;">
+</div>
+<div class="container max-w-7xl mx-auto w-full relative z-10">
+<!-- Centered Title -->
+<div class="text-center mb-8">
+<h2 class="text-5xl lg:text-6xl font-bold text-[#051060] dark:text-white" style="letter-spacing: -0.02em;">
+       What you get on day one:
+      </h2>
+<p class="text-xl text-base-content/70 dark:text-white/80 mt-4 max-w-3xl mx-auto" style="letter-spacing: 0.01em;">
+       Immediate visibility into your AI systems with production-ready tools
+      </p>
+</div>
+<!-- Card Grid with Vertical Layout -->
+<div class="grid md:grid-cols-2 gap-6 max-w-6xl mx-auto">
+<!-- Card 1: System Blueprint -->
+<div class="card enhanced-card scale-hover bg-white dark:bg-base-200 border-t-4 border-t-[#643AFE] overflow-hidden md:col-span-2 lg:col-span-1" style="box-shadow: 0 8px 32px rgba(100, 58, 254, 0.12);">
+<!-- Full-width Image Header with Gradient Overlay -->
+<div class="relative h-32 overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-br from-[#643AFE]/90 to-[#7838F8]/70 mix-blend-multiply z-10">
+</div>
+<img alt="System Blueprint Diagram" class="w-full h-full object-cover" loading="lazy" src="/static/images/screenshot-horizontal-cropped.png"/>
+<!-- Floating Icon Badge -->
+<div class="absolute top-4 left-4 z-20 w-12 h-12 rounded-xl bg-white/95 dark:bg-base-300/95 backdrop-blur-sm flex items-center justify-center shadow-lg">
+
+</div>
+</div>
+<!-- Card Content -->
+<div class="card-body p-5">
+<h3 class="text-xl font-bold dark:text-white mb-2">
+         System Blueprint
+        </h3>
+<ul class="space-y-2 text-sm">
+<li class="flex items-start gap-2">
+<div class="w-4 h-4 rounded-full bg-[#643AFE]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+
+</div>
+<span class="dark:text-white/80">
+           Components + resources + data flows</span>
+</li>
+<li class="flex items-start gap-2">
+<div class="w-4 h-4 rounded-full bg-[#643AFE]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+
+</div>
+<span class="dark:text-white/80">
+           Full change history</span>
+</li>
+</ul>
+</div>
+</div>
+<!-- Card 2: CORE Report -->
+<div class="card enhanced-card scale-hover bg-white dark:bg-base-200 border-t-4 border-t-[#4B86FF] overflow-hidden" style="box-shadow: 0 8px 32px rgba(75, 134, 255, 0.12);">
+<!-- Full-width Image Header with Gradient Overlay -->
+<div class="relative h-32 overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-br from-[#4B86FF]/80 to-[#3a6cd4]/60 mix-blend-multiply z-10">
+</div>
+<img alt="CORE Report Screenshot" class="w-full h-full object-cover object-left" loading="lazy" src="/static/images/report-composite.png"/>
+<!-- Floating Icon Badge -->
+<div class="absolute top-4 left-4 z-20 w-12 h-12 rounded-xl bg-white/95 dark:bg-base-300/95 backdrop-blur-sm flex items-center justify-center shadow-lg">
+
+</div>
+</div>
+<!-- Card Content -->
+<div class="card-body p-5">
+<h3 class="text-xl font-bold dark:text-white mb-2">
+         CORE Report
+        </h3>
+<ul class="space-y-2 text-sm">
+<li class="flex items-start gap-2">
+<div class="w-4 h-4 rounded-full bg-[#4B86FF]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+
+</div>
+<span class="dark:text-white/80">
+           Modular reports builder</span>
+</li>
+<li class="flex items-start gap-2">
+<div class="w-4 h-4 rounded-full bg-[#4B86FF]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+
+</div>
+<span class="dark:text-white/80">
+           Mapped controls + use case context</span>
+</li>
+</ul>
+</div>
+</div>
+<!-- Card 3: Execution Flows -->
+<div class="card enhanced-card scale-hover bg-white dark:bg-base-200 border-t-4 border-t-[#CD6DFE] overflow-hidden" style="box-shadow: 0 8px 32px rgba(205, 109, 254, 0.12);">
+<!-- Full-width Image Header with Background Matching Image -->
+<div class="relative h-32 overflow-hidden" style="background-color: #211D32;">
+<img alt="Execution Flows Screenshot" class="w-full h-full object-cover object-left" loading="lazy" src="/static/images/execution-highlighted.png"/>
+<!-- Floating Icon Badge -->
+<div class="absolute top-4 left-4 z-20 w-12 h-12 rounded-xl bg-white/95 dark:bg-base-300/95 backdrop-blur-sm flex items-center justify-center shadow-lg">
+
+</div>
+<!-- Neon Accent Indicator -->
+<div class="absolute top-4 right-4 z-20">
+<span class="neon-accent pulse-dot" style="width: 10px; height: 10px;"></span>
+</div>
+</div>
+<!-- Card Content -->
+<div class="card-body p-5">
+<h3 class="text-xl font-bold dark:text-white mb-2">
+         Execution Flows
+        </h3>
+<ul class="space-y-2 text-sm">
+<li class="flex items-start gap-2">
+<div class="w-4 h-4 rounded-full bg-[#CD6DFE]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+
+</div>
+<span class="dark:text-white/80">
+           Entry points + warning points</span>
+</li>
+<li class="flex items-start gap-2">
+<div class="w-4 h-4 rounded-full bg-[#CD6DFE]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+
+</div>
+<span class="dark:text-white/80">
+           Risk pathway visualization</span>
+</li>
+</ul>
+</div>
+</div>
+<!-- Card 4: Component Library -->
+<div class="card enhanced-card scale-hover bg-white dark:bg-base-200 border-t-4 border-t-[#E2416D] overflow-hidden" style="box-shadow: 0 8px 32px rgba(226, 65, 109, 0.12);">
+<!-- Full-width Image Header with Gradient Overlay -->
+<div class="relative h-32 overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-br from-[#E2416D]/85 to-[#c8355d]/65 mix-blend-multiply z-10">
+</div>
+<img alt="Component Library Screenshot" class="w-full h-full object-cover object-left" loading="lazy" src="/static/images/component-inventory-cropped.png"/>
+<!-- Floating Icon Badge -->
+<div class="absolute top-4 left-4 z-20 w-12 h-12 rounded-xl bg-white/95 dark:bg-base-300/95 backdrop-blur-sm flex items-center justify-center shadow-lg">
+
+</div>
+</div>
+<!-- Card Content -->
+<div class="card-body p-5">
+<h3 class="text-xl font-bold dark:text-white mb-2">
+         Component Library
+        </h3>
+<ul class="space-y-2 text-sm">
+<li class="flex items-start gap-2">
+<div class="w-4 h-4 rounded-full bg-[#E2416D]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+
+</div>
+<span class="dark:text-white/80">
+           Thousands of common AI components</span>
+</li>
+<li class="flex items-start gap-2">
+<div class="w-4 h-4 rounded-full bg-[#E2416D]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+
+</div>
+<span class="dark:text-white/80">
+           Simplifies AI Bills of Materials</span>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<!-- CTA Section -->
+<div class="mt-8 relative">
+<!-- Primary CTA - Centered -->
+<div class="text-center">
+<a class="btn btn-enhanced btn-lg rounded-full px-8 bg-[#643AFE] text-white hover:bg-[#7838F8] border border-[#643AFE]/20 layered-shadow" href="#who-its-for">
+        See how this works for your team
+        <span class="ml-2">
+         →</span></a>
+</div>
+</div>
+</div>
+</section>
+<!-- Who It's For -->
+<section class="marketing-section-height flex items-center py-20 px-4 lg:px-8 bg-[#051060] relative overflow-hidden" id="who-its-for" style="background-image: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px); background-size: 30px 30px;">
+<!-- Floating orbs for atmosphere -->
+<div class="floating-orb orb-cobalt" style="opacity: 0.14; top: 25%; left: 8%;">
+</div>
+<div class="floating-orb orb-purple" style="opacity: 0.16; bottom: 20%; right: 12%;">
+</div>
+<!-- Organic vignette mask to hide grid in center -->
+<div class="absolute inset-0 pointer-events-none" style="background:
+      radial-gradient(ellipse 1100px 950px at 50% 50%, rgba(5, 16, 96, 1) 0%, rgba(5, 16, 96, 0.9) 40%, rgba(5, 16, 96, 0.5) 65%, transparent 85%),
+      radial-gradient(ellipse 850px 750px at 25% 35%, rgba(5, 16, 96, 0.85) 0%, rgba(5, 16, 96, 0.6) 45%, transparent 75%),
+      radial-gradient(ellipse 900px 800px at 75% 65%, rgba(5, 16, 96, 0.8) 0%, rgba(5, 16, 96, 0.5) 50%, transparent 78%),
+      radial-gradient(ellipse 750px 850px at 35% 75%, rgba(5, 16, 96, 0.85) 0%, rgba(5, 16, 96, 0.4) 45%, transparent 75%),
+      radial-gradient(ellipse 800px 700px at 70% 25%, rgba(5, 16, 96, 0.8) 0%, rgba(5, 16, 96, 0.45) 50%, transparent 78%);">
+</div>
+<div class="container max-w-7xl mx-auto w-full relative z-10">
+<div class="text-center mb-16">
+<h2 class="text-5xl lg:text-6xl font-bold mb-4 text-white" style="letter-spacing: -0.02em;">
+       Built for teams who need real answers
+       <span class="neon-accent"></span>
+</h2>
+<p class="text-xl text-white max-w-4xl mx-auto" style="letter-spacing: 0.01em;">
+       A shared source of truth across legal, compliance, security, and product—without slowing delivery.
+      </p>
+</div>
+<div class="grid md:grid-cols-3 gap-8">
+<!-- Legal & Compliance -->
+<div class="card enhanced-card border border-white/10 border-t-4 border-t-[#E2416D] feature-card hover:bg-[#0d1d80] transition-all accent-corner" style="background-color: #0c1c70;">
+<div class="card-body items-center text-center">
+<div class="text-5xl mb-4" style="color: #E2416D;">
+<i aria-hidden="true" class="fas fa-balance-scale"></i>
+</div>
+<h3 class="card-title text-2xl mb-4 text-white">
+         Legal &amp; Compliance
+        </h3>
+<p class="text-base text-white" style="letter-spacing: 0.01em;">
+         Demonstrate due diligence with clear, regulator-ready system documentation. Architecture-level visibility means stronger "reasonable care" arguments.
+        </p>
+</div>
+</div>
+<!-- Risk & Audit -->
+<div class="card enhanced-card border border-white/10 border-t-4 border-t-[#4B86FF] feature-card hover:bg-[#0d1d80] transition-all accent-corner" style="background-color: #0c1c70;">
+<div class="card-body items-center text-center">
+<div class="text-5xl mb-4" style="color: #4B86FF;">
+<i aria-hidden="true" class="fas fa-clipboard-check"></i>
+</div>
+<h3 class="card-title text-2xl mb-4 text-white">
+         Risk &amp; Audit
+        </h3>
+<p class="text-base text-white" style="letter-spacing: 0.01em;">
+         Evaluate policies against real architectures, not assumptions. Clear data access and permissions. Better incident response and audits.
+        </p>
+</div>
+</div>
+<!-- Engineering & Product -->
+<div class="card enhanced-card border border-white/10 border-t-4 border-t-[#643AFE] feature-card hover:bg-[#0d1d80] transition-all accent-corner" style="background-color: #0c1c70;">
+<div class="card-body items-center text-center">
+<div class="text-5xl mb-4" style="color: #643AFE;">
+<i aria-hidden="true" class="fas fa-code"></i>
+</div>
+<h3 class="card-title text-2xl mb-4 text-white">
+         Engineering &amp; Product
+        </h3>
+<p class="text-base text-white" style="letter-spacing: 0.01em;">
+         Use the systems you already build—no parallel documentation process. Ship faster with fewer last-minute blockers. Shared language across technical and non-technical teams.
+        </p>
+</div>
+</div>
+</div>
+<div class="mt-8 relative">
+<!-- Primary CTA - Centered -->
+<div class="text-center">
+<a class="btn btn-enhanced btn-lg rounded-full px-8" href="#demo" style="background-color: rgba(100, 58, 254, 0.18); color: #FFF8F0; border: 2px solid rgba(100, 58, 254, 0.5);">
+        Get early access
+        <span class="ml-2">
+         →</span></a>
+</div>
+</div>
+</div>
+</section>
+<!-- Final CTA -->
+<section class="py-24 px-4 lg:px-8 bg-base-100 dark:bg-base-200 grid-pattern noise-texture relative overflow-hidden" id="demo">
+<!-- Decorative gradient orbs -->
+<div class="absolute top-0 right-0 w-96 h-96 bg-[#643AFE] rounded-full blur-[128px] opacity-20">
+</div>
+<div class="absolute bottom-0 left-0 w-64 h-64 bg-[#E2416D] rounded-full blur-[100px] opacity-15">
+</div>
+<div class="container max-w-7xl mx-auto text-center relative z-10">
+<h2 class="text-5xl lg:text-6xl font-bold mb-6 text-[#051060] dark:text-white" style="letter-spacing: -0.02em;">
+      Ready to see your AI systems clearly?
+     </h2>
+<!-- Caption as subhead -->
+<p class="text-xl dark:text-white/80 mb-12 max-w-4xl mx-auto" style="letter-spacing: 0.01em;">
+      Now accepting organizations into our early access program. Work with us to see how Model Monster can accelerate your governance.
+     </p>
+
+</div>
+</section>
+</body></html>

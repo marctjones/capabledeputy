@@ -19,6 +19,7 @@ from typing import Any
 import httpx
 
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
@@ -157,6 +158,8 @@ def make_web_tools(mock: WebMock) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="web.fetch",
+            operations=(Operation(EffectClass.FETCH, subtype="web.fetch"),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             effect_class="data.read_remote",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
@@ -180,6 +183,8 @@ def make_web_tools(mock: WebMock) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="web.search",
+            operations=(Operation(EffectClass.FETCH, subtype="web.search"),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             effect_class="data.read_remote",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",

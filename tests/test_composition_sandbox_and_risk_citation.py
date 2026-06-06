@@ -26,11 +26,11 @@ from capabledeputy.policy.engine import (
 )
 from capabledeputy.policy.labels import (
     AxisA,
-    AxisACategory,
     AxisB,
-    AxisBEntry,
     AxisD,
+    CategoryTag,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.risk_register import (
     RiskRegister,
@@ -53,9 +53,9 @@ def _wide_cap() -> Capability:
 
 def _axes(category: str = "data", risk_ids: tuple[str, ...] = ()) -> tuple[AxisA, AxisB, AxisD]:
     axis_a = AxisA(
-        categories=(AxisACategory(category=category, tier=Tier.SENSITIVE, risk_ids=risk_ids),),
+        categories=(CategoryTag(category=category, tier=Tier.SENSITIVE, risk_ids=risk_ids),),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(initiator="principal:alice")
     return axis_a, axis_b, axis_d
 

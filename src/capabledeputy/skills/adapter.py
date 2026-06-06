@@ -20,7 +20,12 @@ from capabledeputy.llm.client import LLMClient
 from capabledeputy.llm.types import FinishReason, Message, Role
 from capabledeputy.quarantined.extractor import ExtractionError, extract
 from capabledeputy.skills.parser import Skill
-from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
+from capabledeputy.tools.registry import (
+    ToolContext,
+    ToolDefinition,
+    ToolResult,
+    default_operation_for_kind,
+)
 
 _QUARANTINED_SYSTEM_PROMPT = (
     "You are a quarantined skill executor. You have NO tools. Your "
@@ -70,6 +75,7 @@ def skill_to_tool(skill: Skill, llm: LLMClient) -> ToolDefinition:
             additional_labels=skill.inherent_labels,
         )
 
+    op, op_risks, op_surfaces = default_operation_for_kind(skill.capability_kind)
     return ToolDefinition(
         name=skill.name,
         description=skill.description,
@@ -78,4 +84,7 @@ def skill_to_tool(skill: Skill, llm: LLMClient) -> ToolDefinition:
         target_arg=skill.target_arg,
         inherent_labels=skill.inherent_labels,
         parameters_schema=skill.parameters_schema,
+        operations=(op,),
+        risk_ids=op_risks,
+        surfaces_destination_id=op_surfaces,
     )

@@ -6,6 +6,7 @@ import pytest
 from capabledeputy.audit.events import EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import Label
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
@@ -67,6 +68,8 @@ async def test_allow_dispatches_and_returns_output(writer: AuditWriter) -> None:
             description="t",
             capability_kind=CapabilityKind.READ_FS,
             handler=_ok_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             target_arg="path",
         ),
     )
@@ -102,6 +105,8 @@ async def test_deny_when_no_matching_capability(writer: AuditWriter) -> None:
             description="t",
             capability_kind=CapabilityKind.SEND_EMAIL,
             handler=_ok_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             target_arg="to",
         ),
     )
@@ -120,6 +125,8 @@ async def test_deny_on_brewer_nash_conflict(writer: AuditWriter) -> None:
             description="t",
             capability_kind=CapabilityKind.SEND_EMAIL,
             handler=_ok_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             target_arg="to",
         ),
     )
@@ -153,6 +160,8 @@ async def test_inherent_labels_propagate_to_session(writer: AuditWriter) -> None
             description="t",
             capability_kind=CapabilityKind.WEB_FETCH,
             handler=_ok_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             target_arg="url",
             inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
         ),
@@ -188,6 +197,8 @@ async def test_handler_additional_labels_propagate(writer: AuditWriter) -> None:
             description="t",
             capability_kind=CapabilityKind.READ_FS,
             handler=_labeling_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             target_arg="key",
         ),
     )
@@ -220,6 +231,8 @@ async def test_handler_exception_returns_error(writer: AuditWriter) -> None:
             description="t",
             capability_kind=CapabilityKind.READ_FS,
             handler=_raising_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             target_arg="x",
         ),
     )
@@ -253,6 +266,8 @@ async def test_audit_events_are_emitted(writer: AuditWriter) -> None:
             description="t",
             capability_kind=CapabilityKind.READ_FS,
             handler=_ok_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             target_arg="path",
         ),
     )
@@ -295,6 +310,8 @@ async def test_revoked_by_prior_use_blocks_second_dispatch(
             description="t",
             capability_kind=CapabilityKind.WEB_FETCH,
             handler=_ok_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             target_arg="url",
         ),
     )
@@ -304,6 +321,8 @@ async def test_revoked_by_prior_use_blocks_second_dispatch(
             description="t",
             capability_kind=CapabilityKind.WRITE_FS,
             handler=_ok_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             target_arg="path",
         ),
     )
@@ -350,6 +369,8 @@ async def test_context_carries_session_state(writer: AuditWriter) -> None:
             description="t",
             capability_kind=CapabilityKind.READ_FS,
             handler=_capture_context_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             target_arg="x",
         ),
     )

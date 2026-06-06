@@ -6,6 +6,7 @@ from capabledeputy.mode.dispatcher import (
     select_mode,
 )
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry, ToolResult
 
@@ -23,6 +24,8 @@ def _make_registry(*tool_names: str) -> ToolRegistry:
                 description="t",
                 capability_kind=CapabilityKind.READ_FS,
                 handler=_noop,
+                operations=(Operation(EffectClass.FETCH),),
+                risk_ids=("RISK-INDIRECT-INJECTION",),
             ),
         )
     return registry

@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
 
@@ -186,6 +187,8 @@ def make_email_tools(outbox: EmailOutbox, drafts: DraftBox) -> list[ToolDefiniti
     return [
         ToolDefinition(
             name="email.send",
+            operations=(Operation(EffectClass.COMMUNICATE, subtype="email.send"),),
+            risk_ids=("RISK-DATA-EXFIL-AGENT-TOOLS", "RISK-IRREVERSIBLE-SEND"),
             description=(
                 "Send an email. Stub: records the send for audit but "
                 "does not actually deliver. Required args: to, subject, body."
@@ -216,6 +219,9 @@ def make_email_tools(outbox: EmailOutbox, drafts: DraftBox) -> list[ToolDefiniti
         ),
         ToolDefinition(
             name="email.draft_save",
+            operations=(Operation(EffectClass.MUTATE_LOCAL, subtype="email.draft_save"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
+            surfaces_destination_id=True,
             description=(
                 "Save a local email draft. NON-EGRESSING — the draft lives "
                 "in the local DraftBox; the social-commitment gate does NOT "
@@ -239,6 +245,8 @@ def make_email_tools(outbox: EmailOutbox, drafts: DraftBox) -> list[ToolDefiniti
         ),
         ToolDefinition(
             name="email.draft_list",
+            operations=(Operation(EffectClass.FETCH, subtype="email.draft_list"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
             description="List saved drafts. Read-only.",
             capability_kind=CapabilityKind.IMAP_READ,
             handler=email_draft_list,
@@ -249,6 +257,8 @@ def make_email_tools(outbox: EmailOutbox, drafts: DraftBox) -> list[ToolDefiniti
         ),
         ToolDefinition(
             name="email.draft_send",
+            operations=(Operation(EffectClass.COMMUNICATE, subtype="email.draft_send"),),
+            risk_ids=("RISK-DATA-EXFIL-AGENT-TOOLS", "RISK-IRREVERSIBLE-SEND"),
             description=(
                 "Promote a saved draft to a real send. Same policy gates "
                 "as email.send (irreversible/external social commitment). "

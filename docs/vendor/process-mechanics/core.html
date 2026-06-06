@@ -1,0 +1,199 @@
+<!doctype html><html><head><meta charset='utf-8'><title>The CORE Framework | Process Mechanics</title><style>
+@page { size: A4; margin: 18mm 16mm; @bottom-center {
+  content: "Process Mechanics — reference copy · " counter(page); font-size: 8pt; color:#888; } }
+body { font: 11pt/1.5 'DejaVu Serif', Georgia, serif; color:#1a1a1a; max-width: 100%; }
+h1 { font-size: 20pt; border-bottom: 2px solid #333; padding-bottom: 4pt; }
+h2 { font-size: 15pt; margin-top: 18pt; color:#222; }
+h3 { font-size: 12.5pt; color:#333; }
+h1,h2,h3,h4 { font-family:'DejaVu Sans', Helvetica, sans-serif; page-break-after: avoid; }
+code,pre { font-family:'DejaVu Sans Mono', monospace; font-size:9.5pt; background:#f4f4f4; }
+pre { padding:8pt; border-radius:4pt; white-space:pre-wrap; }
+table { border-collapse: collapse; width:100%; font-size:9.5pt; }
+th,td { border:1px solid #bbb; padding:4pt 6pt; text-align:left; vertical-align:top; }
+th { background:#eee; }
+a { color:#0b5; text-decoration:none; }
+.src-banner { font-family:'DejaVu Sans',sans-serif; font-size:9pt; color:#666;
+  border:1px solid #ddd; background:#fafafa; padding:8pt; border-radius:4pt; margin-bottom:14pt; }
+img { max-width:100%; }
+</style></head><body><h1>The CORE Framework | Process Mechanics</h1><div class="src-banner"><b>Reference copy.</b> Source: <a href="https://processmechanics.com/core/">https://processmechanics.com/core/</a><br>Retrieved 2026-06-05 · Process Mechanics PLLC / Van Lindberg · retained with permission for internal reference.</div>
+<div class="grow p-6 lg:rounded-lg lg:bg-base-50 dark:lg:bg-base-50 lg:p-10 lg:shadow-xs lg:ring-1 lg:ring-base-950/5 dark:lg:ring-white/10">
+<div class="mx-auto max-w-6xl">
+<section class="text-base-content dark:text-primary-content py-16 overflow-hidden" data-navbar-theme="dark">
+<div class="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<h1 class="text-4xl md:text-5xl lg:text-6xl font-bold text-base-content text-center font-bold mb-6">
+        The CORE Framework for AI System Analysis
+       </h1>
+</div>
+</section>
+<section class="text-base-content dark:text-primary-content py-12" data-navbar-theme="dark">
+<div class="container max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="text-content prose max-w-full prose-headings:font-semibold prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-strong:font-semibold prose-code:text-sm prose-code:bg-base-200 prose-code:px-1 prose-code:rounded dark:prose-invert">
+<p>
+         The EU AI Act (and similar legislation) describe two main types of controls: 1) controls on AI models, in particular models that are designated to pose a possibility of “systemic risk,” and 2) controls related to specific use cases that are considered to pose “unacceptable,” “high” or “minimal” risk. It also includes some policies regarding education, transparency, and reporting that apply to all AI systems.
+        </p>
+<p>
+         From most companies’ perspective, however, most of what the EU AI Act regulates is out of scope. For example, most companies are unlikely to be using “subliminal, manipulative, or deceptive techniques” to distort people’s behavior, nor are they going to be trying to infer sensitive attributes like race or political opinions from biometric attributes. Most use cases and models fall into low risk categories (as defined by the EU AI Act).
+        </p>
+<p>
+         But just because an AI system isn’t an EU AI Act “high risk” system doesn’t mean that governance is unneeded. A regulatory-only over-focus on just models and EU AI Act-influenced risk categories misses most of the issues that companies really care about:
+        </p>
+<ul>
+<li>
+<strong>
+           Contractual Compliance &amp; Third-Party Obligations.</strong>
+          Are all component licenses, API terms of service, and data processing agreements being followed throughout the system? This covers open source license obligations, commercial API usage restrictions, customer contract requirements, and vendor SLA compliance across the entire execution path.
+         </li>
+<li>
+<strong>
+           Liability &amp; Negligence Prevention.</strong>
+          Can your organization demonstrate reasonable care in system design and operation to defend against negligence claims? This requires documenting risk assessments, mitigation measures, testing protocols, human oversight implementation, and evidence of following industry standards of care.
+         </li>
+<li>
+<strong>
+           Data Sovereignty &amp; Confidentiality Controls.</strong>
+          Where does sensitive data (customer, employee, corporate confidential) flow and where is it stored? This encompasses cross-border data transfers, encryption requirements, access controls, and ensuring confidential information doesn't leak through model outputs or to unauthorized third parties.
+         </li>
+<li>
+<strong>
+           Safety &amp; Product Liability.</strong>
+          Could system failures or errors cause physical harm, property damage, or economic loss? To what extent does the use of AI systems affect the company’s ability to meet contractual requirements and SLAs?
+         </li>
+<li>
+<strong>
+           Transparency &amp; Explainability Requirements.</strong>
+          Can the system provide required explanations to various stakeholders (regulators, customers, employees, auditors)? This varies by context—GDPR requires explanations for automated decisions, while SEC may require disclosure of AI use in material business processes.
+         </li>
+<li>
+<strong>
+           Incident Response &amp; Evidence Preservation.</strong>
+          When something goes wrong, can you reconstruct what happened and demonstrate proper response? This includes audit logging, version control, incident escalation procedures, and maintaining forensic capabilities for investigations or litigation.
+         </li>
+</ul>
+<h1>
+         The CORE Framework
+        </h1>
+<p>
+         Responsible AI (RAI) governance needs to be more than a general evaluation of the “risk” of a model. It needs to provide documentation of the organization’s reasonableness and due diligence as demonstrated throughout the entire system. In order to provide this documentation, RAI teams need information about the entire AI system and how the models in the system interact with their environment. You can identify what is needed by using the acronym CORE:
+         <em>
+          Components</em>,
+         <em>
+          Operations</em>,
+         <em>
+          Resources</em>, and
+         <em>
+          Execution</em>.
+        </p>
+<p>
+         The CORE framework represents AI systems as a system “blueprint” (technically a “directed graph”) where data flows through components. By documenting Components, Operations, Resources, and Execution paths, organizations can automatically evaluate policies, track compliance, and assess risks. The framework treats governance as a data flow problem rather than a documentation problem.
+        </p>
+<p>
+         CORE works by translating developer/engineer-level knowledge (“What do we deploy?”) into a form suitable for policy-level analysis. IP protection becomes "what components access proprietary data?", contractual compliance becomes "what third-party APIs are called?", and liability prevention becomes "can we show what guardrails exist in the data flow?"
+        </p>
+<p>
+         CORE not only works as a framework to guide information gathering and system analysis, but crucially, almost all of its steps can be automated, speeding up governance and simultaneously reducing risk. It is faster and more structured than questionnaire-based flows and more complete than model-centric approaches.
+        </p>
+<h2>
+         The CORE Framework Structure
+        </h2>
+<p>
+<em>
+          Components</em>
+         are the nodes in the system blueprint. Each one is classified by type (e.g. LLM, database, API, guardrail, human-in-the-loop), and characterized by the operations and transformations it performs on data and the resources it accesses.
+        </p>
+<p>
+<em>
+          Operations</em>
+         are the actions components perform. Data operations transform or analyze data flowing through the system; resource operations read from or write to external systems. Each operation can add or remove tags that track properties of the data as it moves, which is what makes downstream policy evaluation possible.
+        </p>
+<p>
+<em>
+          Resources</em>
+         are the external assets the AI system does not control but must access, such as customer databases, third-party APIs, and filesystems. Resources sit outside the system boundary by definition. What CORE captures is the access pattern (read, write, delete) for each component-resource pair.
+        </p>
+<p>
+<em>
+          Execution</em>
+         refers to how data flows through the system. It is represented as the edges connecting components, with tags propagating along those edges to track properties like "PII" or "encrypted." Multiple execution paths may exist depending on routing logic, and each path is a separate object that policies can be evaluated against.
+        </p>
+<h1>
+         The PRO Policy Layer
+        </h1>
+<p>
+         The CORE framework provides a structured way to capture AI system architecture as a blueprint—a directed graph showing Components, Operations, Resources, and Execution paths.  This blueprint answers the question "What does this system look like?" in a way that is meaningful to both developers and policy professionals. It translates technical knowledge into a form that governance professionals can analyze without reading code.
+        </p>
+<p>
+         But documentation alone does not constitute governance. Governance requires analyzing the system's risk: Does this system comply with our policies? What are the risks associated with this system, and are they adequately controlled? Can we demonstrate due diligence to auditors and regulators?
+        </p>
+<p>
+         These questions require a layer of logic that sits on top of the CORE blueprint to interpret it, enforce rules, and quantify risk. This is the role of the
+         <strong>
+          PRO</strong>
+         extensions: Policies, a Risk register, and Outcome evaluations. Together, CORE+PRO transforms governance from passive documentation into active, automated compliance verification.
+        </p>
+<h2>
+         How CORE+PRO Enables Corporate AI Governance
+        </h2>
+<p>
+         PRO adds three capabilities to the CORE blueprint:
+        </p>
+<p>
+<strong>
+          Policies</strong>
+         translate organizational constraints into executable rules. Rather than relying on engineers to read policy documents and self-attest compliance, PRO policies run directly against the system blueprint. A policy like "Customer data cannot flow to third-party AI providers" becomes an automated check that either passes or fails, with specific evidence of which data flows caused any violations.
+        </p>
+<p>
+<strong>
+          The Risk Register</strong>
+         applies systematic failure analysis to identify and prioritize risks. Model Monster provides a
+         <a href="https://modelmonster.ai/risk-registry/">
+          comprehensive taxonomy of risks cross-referenced to every major standard</a>, so coverage is complete by construction. Risky system designs are automatically flagged for human review where the analysis can identify them.
+        </p>
+<p>
+<strong>
+          Outcomes</strong>
+         are the generated artifacts that demonstrate governance occurred: compliance reports showing which policies passed and failed, risk summaries showing the system's overall risk profile, and violation logs identifying precisely where problems exist. These outcomes create the evidentiary chain that demonstrates reasonable care.
+        </p>
+<h2>
+         Risk Assessment with Defensible Methodology
+        </h2>
+<p>
+         When AI systems cause harm, organizations face questions about whether they exercised reasonable care. Vague assertions that "we assessed the risks" provide weak defense. The PRO system adapts governance for the probabilistic nature of AI: traditional software governance relies on binary checklists (Pass/Fail), which fail when applied to models that behave non-deterministically and guardrails that have non-zero failure rates.
+        </p>
+<p>
+         PRO applies a Failure Modes and Effects Analysis (FMEA) methodology that scores risks Severity of failure, Occurrence (probability) and Detection (mitigation effectiveness). This allows the organization to quantify and prioritize risks like “Compounding Multi-Agent Failures” or “Indirect Injection” that cannot be completely eliminated, only managed to an acceptable threshold. Where appropriate, PRO analysis also incorporates Use Case documentation that captures business context - intended purpose, user population, deployment environment - that shapes risk assessment but isn't visible in the technical blueprint.
+        </p>
+<p>
+         For governance teams, having a comprehensive risk register also makes it explicit which risks are being evaluated. It moves risk identification from an ad hoc process to a checklist-based process, making it easy to verify that nothing was missed.
+        </p>
+<h1>
+         What CORE+PRO Delivers
+        </h1>
+<p>
+         Together, CORE+PRO enables rapid, automated governance that both speeds up deployment and reduces risk.
+        </p>
+<p>
+<strong>
+          For Developers and Product Teams:</strong>
+         CORE+PRO gives software teams specific feedback about what needs to be done and what can be improved. Rather than saying “we need to make sure this system is safe,” CORE+PRO identifies particular failure points and risky execution paths and describes exactly what gives rise to the risk.
+        </p>
+<p>
+<strong>
+          For Legal and Compliance Teams:</strong>
+         CORE makes complicated AI systems legible. PRO provides immediate evidence of reasonable care. When questions arise about whether the organization exercised due diligence, CORE+PRO evidence shows that policies were defined, systems were evaluated against those policies, risks were systematically assessed, and appropriate action was taken on findings. This evidentiary chain is far more defensible than attestation emails or meeting notes.
+        </p>
+<p>
+<strong>
+          For Regulators:</strong>
+         The EU AI Act's Article 9 (Risk Management) and Article 11 (Technical Documentation) require organizations to demonstrate systematic risk assessment and maintain technical documentation. CORE+PRO systems satisfy these requirements with structured data rather than narrative descriptions.
+        </p>
+<p>
+<strong>
+          For Executive Leadership:</strong>
+         CORE+PRO provides confidence that deployment decisions rest on rigorous analysis rather than verbal assurance. When a system is approved for deployment, leadership can see exactly what policies were checked, what risks were assessed, and what the findings were.
+        </p>
+</div>
+</div>
+</section>
+</div>
+</div>
+</body></html>

@@ -17,6 +17,7 @@ from typing import Any
 
 from capabledeputy.llm.client import LLMClient
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.quarantined.extractor import ExtractionError, extract
 from capabledeputy.quarantined.schemas import list_schemas
 from capabledeputy.tools.native.memory import LabeledMemoryStore
@@ -53,6 +54,8 @@ def make_extract_tools(
         ToolDefinition(
             name="quarantined.extract",
             effect_class="data.read_quarantined",
+            operations=(Operation(EffectClass.FETCH, subtype="quarantined.extract"),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
             description=(

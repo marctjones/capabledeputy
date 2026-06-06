@@ -33,12 +33,12 @@ from capabledeputy.policy.decision_rules import (
 from capabledeputy.policy.engine import V2_RULE_PREFIX, decide
 from capabledeputy.policy.labels import (
     AxisA,
-    AxisACategory,
     AxisB,
-    AxisBEntry,
     AxisD,
+    CategoryTag,
     Label,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
@@ -60,7 +60,7 @@ def _send_action() -> Action:
 def _axis_a_personal() -> AxisA:
     return AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="personal",
                 tier=Tier.SENSITIVE,
                 assignment_provenance="human-declared",
@@ -70,7 +70,7 @@ def _axis_a_personal() -> AxisA:
 
 
 def _axis_b_direct() -> AxisB:
-    return AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
+    return AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
 
 
 def _axis_d_principal() -> AxisD:

@@ -13,7 +13,7 @@ from typing import Any, Self
 from uuid import UUID, uuid4
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import AxisA, AxisB, AxisD, Label
+from capabledeputy.policy.labels import AxisA, AxisB, AxisD, Label, LabelState
 
 
 class SessionStatus(StrEnum):
@@ -226,6 +226,14 @@ class Session:
     @property
     def is_terminal(self) -> bool:
         return self.status in _TERMINAL_STATUSES
+
+    @property
+    def label_state(self) -> LabelState:
+        """R4b transitional: the bundled four-axis label state (Axis A +
+        Axis B). Reads through the separate axis_a/axis_b fields until
+        they are collapsed into a single stored LabelState in R4b's later
+        steps."""
+        return LabelState.from_axes(self.axis_a, self.axis_b)
 
     def with_status(self, status: SessionStatus) -> Self:
         return replace(self, status=status, updated_at=_utcnow())

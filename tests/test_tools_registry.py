@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import Label
 from capabledeputy.tools.registry import (
     DuplicateToolError,
@@ -26,6 +27,8 @@ def _make_tool(name: str = "fs.read", **kwargs: Any) -> ToolDefinition:
         "capability_kind": CapabilityKind.READ_FS,
         "handler": _noop_handler,
         "target_arg": "path",
+        "operations": (Operation(EffectClass.FETCH),),
+        "risk_ids": ("RISK-INDIRECT-INJECTION",),
     }
     defaults.update(kwargs)
     return ToolDefinition(**defaults)

@@ -38,14 +38,15 @@ from capabledeputy.policy.decision_rules import (
     RuleOutcome,
     RulePredicate,
 )
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.engine import BINDING_UNBOUND_RULE, decide
 from capabledeputy.policy.labels import (
     AxisA,
-    AxisACategory,
     AxisB,
-    AxisBEntry,
     AxisD,
+    CategoryTag,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
@@ -71,7 +72,7 @@ def _team_sharepoint_binding() -> SourceLocationLabelBinding:
 def _personal_axis_a() -> AxisA:
     return AxisA(
         categories=(
-            AxisACategory(
+            CategoryTag(
                 category="personal",
                 tier=Tier.REGULATED,
                 assignment_provenance="human-declared",
@@ -82,7 +83,7 @@ def _personal_axis_a() -> AxisA:
 
 def _principal_axes() -> tuple[AxisB, AxisD]:
     return (
-        AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),)),
+        AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),)),
         AxisD(initiator="principal:alice", authentication="device-bound"),
     )
 
@@ -228,6 +229,8 @@ def _api_post_tool() -> ToolDefinition:
         handler=_noop_handler,
         target_arg="url",
         effect_class="data.write_remote",
+        operations=(Operation(EffectClass.FETCH),),
+        risk_ids=("RISK-INDIRECT-INJECTION",),
     )
 
 
@@ -254,7 +257,7 @@ async def _make_session_with_personal_axis(graph: SessionGraph) -> Any:
         owner=s.owner,
         intent=s.intent,
         axis_a=_personal_axis_a(),
-        axis_b=AxisB(entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),)),
+        axis_b=AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),)),
         axis_d=AxisD(initiator="principal:alice", authentication="device-bound"),
     )
     graph._sessions[s.id] = s

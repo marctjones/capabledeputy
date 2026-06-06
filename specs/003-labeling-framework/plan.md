@@ -3,6 +3,8 @@
 **Branch**: `003-labeling-framework` | **Date**: 2026-05-25 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/003-labeling-framework/spec.md`
 
+> **⚠ Label-model redesign (2026-06-05) — authoritative.** See [label-model-redesign.md](./label-model-redesign.md): clean four-axis model, **no backwards compatibility** (flat `Label` enum + all migration deleted; `state.db` wiped on cutover); `EffectClass` enum + optional `subtype` (resolves T012); integrity floor = Operation `required_floor`. Migration modules/tasks below are superseded.
+
 ## Summary
 
 003 promotes capdep's information-flow model from a single 8-value prefixed label set into four independent axes (data-category, provenance/integrity, effect class, decision context) with a deterministic, engine-side resolution layer and a structured Purpose Handle on every Session. The framework adds:
@@ -36,7 +38,7 @@ The implementation lives entirely inside the existing in-repo trusted computing 
 - **Constitution Principle VI**: fail-closed on unclassifiable input — unbound source ⇒ deny, no canonical destination ⇒ deny.
 - **Constitution Principle VII**: substrate stays behind in-repo ports; the SandboxActuator implementation, the provider adapters, and the version-preserving write actuators are spec-004 substrate, not 003 TCB.
 - **Constitution Principle VIII**: every mechanism in 003 must trace to a named security model (Denning lattice for axis B, Brewer-Nash for FR-009 admissibility exclusion, Clark-Wilson for FR-019 destructive gate, Bell-LaPadula for FR-008 read-up refusal, Biba for the integrity floor, noninterference for FR-047 Pattern ③).
-- **Backward compatibility**: forward-only migration per FR-024 — legacy `sessions.label_set` rows read at most-restrictive position; never lower effective protection.
+- **Backward compatibility**: **none (2026-06-05 redesign).** The flat `label_set` is deleted; no forward-only migration; `state.db` is wiped on cutover. See [label-model-redesign.md](./label-model-redesign.md) §6.
 **Scale/Scope**:
 - Single operator, single machine, single daemon process.
 - Rule corpus: ≥1k human-authored decision rules tractable.
@@ -102,8 +104,7 @@ src/capabledeputy/
 │   ├── graph.py                # SessionGraph — add purpose_handle, axis_a/b/d storage (FR-045/046)
 │   └── model.py                # Session dataclass — axis fields per FR-045
 ├── store/
-│   ├── schema.py               # SCHEMA_VERSION 5→6 migration (forward-only per FR-024)
-│   └── migrations/v6.py        # NEW — legacy label_set forward-only migration
+│   └── schema.py               # store created in four-axis shape; no migration (no-compat redesign)
 ├── audit/
 │   ├── events.py               # Add: pattern3.handle_bind, residual_risk_exception, ratification.applied, decision.latency_degraded
 │   └── writer.py
@@ -141,7 +142,7 @@ tests/
 └── test_t120_unratified_zero_effect.py   # FR-014 tripwire
 ```
 
-**Structure Decision**: Existing single-project layout (`src/capabledeputy/`) is the right shape. 003 modifies existing modules in-place and adds 5 new modules (`envelopes.py`, `ratification.py`, `reference_handle.py`, `risk_register.py`, `migrations/v6.py`). No new top-level packages. No new external dependencies. The `policy/` package is the in-TCB decision plane; the `upstream/` adapter layer surfaces destination ids but stays outside the TCB per Constitution VII.
+**Structure Decision**: Existing single-project layout (`src/capabledeputy/`) is the right shape. 003 modifies existing modules in-place and adds 4 new modules (`envelopes.py`, `ratification.py`, `reference_handle.py`, `risk_register.py`); **no migration module** (no-compat redesign — `state.db` wiped on cutover). No new top-level packages. No new external dependencies. The `policy/` package is the in-TCB decision plane; the `upstream/` adapter layer surfaces destination ids but stays outside the TCB per Constitution VII.
 
 ## Complexity Tracking
 

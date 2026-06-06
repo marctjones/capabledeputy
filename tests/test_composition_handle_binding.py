@@ -27,6 +27,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient, PolicyContext
@@ -64,12 +65,20 @@ def _handle_aware_tool() -> ToolDefinition:
         accepts_handles=True,
         handle_arg_names=("body",),
         effect_class="data.api_post",
+        operations=(Operation(EffectClass.FETCH),),
+        risk_ids=("RISK-INDIRECT-INJECTION",),
+        parameters_schema={
+            "type": "object",
+            "properties": {"url": {"type": "string"}, "body": {"type": "string"}},
+        },
     )
 
 
 def _legacy_tool() -> ToolDefinition:
     return ToolDefinition(
         name="legacy.echo",
+        operations=(Operation(EffectClass.FETCH),),
+        risk_ids=("RISK-INDIRECT-INJECTION",),
         description="echo args as-is",
         capability_kind=CapabilityKind.READ_FS,
         handler=_legacy_handler,

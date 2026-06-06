@@ -6,7 +6,7 @@ A structurally secure runtime for personal AI agents.
 
 CapableDeputy is an AI agent runtime built as a faithful implementation of recognized security models — a reference monitor, an information-flow lattice, and the object-capability model — with the LLM treated as an untrusted component *outside* the trusted computing base. Every action the agent takes flows through one deterministic capability and information-flow chokepoint, escalates to programmatic execution when stakes warrant, and surfaces every cross-compartment data flow through human-auditable approval gates.
 
-**Status:** Alpha — v0.13.1. See [CHANGELOG.md](CHANGELOG.md) for what shipped and [ROADMAP.md](ROADMAP.md) for the implementation plan.
+**Status:** Alpha — **v0.14.0 released** (governance/CORE-PRO docs, agentic risk register, label-model redesign R1–R4b.3). The label-model redesign continues on `003-labeling-framework` (clean four-axis model, no backwards compatibility; see [docs/responsible-ai-frameworks.md](docs/responsible-ai-frameworks.md) and [specs/003-labeling-framework/label-model-redesign.md](specs/003-labeling-framework/label-model-redesign.md)). See [CHANGELOG.md](CHANGELOG.md) for what shipped and [ROADMAP.md](ROADMAP.md) for the plan.
 
 ## Why
 
@@ -39,6 +39,7 @@ Why all three at once: a running agent collapses what were three mostly *design-
 - [docs/security-models.md](docs/security-models.md) — theoretical model lineage, faithful-vs-approximate intent, deliberate deviations (the yardstick)
 - [docs/llm-flow-patterns.md](docs/llm-flow-patterns.md) — the named planner↔labeled-data flow patterns and their selector
 - [docs/trust-model.md](docs/trust-model.md) — decision layer: who authorizes, and the adaptive-context / Contextual Integrity grounding
+- [docs/responsible-ai-frameworks.md](docs/responsible-ai-frameworks.md) — **the actionable core of responsible AI: keeping the human in control of the agent's actions, not policing model correctness** — the eight enforced principles, the human in/on/over-the-loop ladder, and what is deliberately out of scope
 
 - [docs/SURFACES.md](docs/SURFACES.md) — **which command do I use?** (chat vs console vs tui vs demo vs …) — start here
 - [DESIGN.md](DESIGN.md) — full design specification
