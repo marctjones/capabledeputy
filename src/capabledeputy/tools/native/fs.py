@@ -37,7 +37,12 @@ from typing import Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    Label,
+    LabelState,
+    ProvenanceLevel,
+    ProvenanceTag,
+)
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
 _MAX_BYTES = 64 * 1024
@@ -222,6 +227,7 @@ def make_fs_tools() -> list[ToolDefinition]:
             tool_provenance="operator-curated",
             surfaces_destination_id=True,
             inherent_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
+            inherent_tags=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -250,6 +256,7 @@ def make_fs_tools() -> list[ToolDefinition]:
             tool_provenance="operator-curated",
             surfaces_destination_id=True,
             inherent_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
+            inherent_tags=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
             parameters_schema={
                 "type": "object",
                 "properties": {

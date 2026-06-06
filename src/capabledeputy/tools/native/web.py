@@ -20,7 +20,12 @@ import httpx
 
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    Label,
+    LabelState,
+    ProvenanceLevel,
+    ProvenanceTag,
+)
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
 
@@ -175,6 +180,7 @@ def make_web_tools(mock: WebMock) -> list[ToolDefinition]:
             handler=web_fetch,
             target_arg="url",
             inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+            inherent_tags=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
             parameters_schema={
                 "type": "object",
                 "properties": {"url": {"type": "string"}},
@@ -202,6 +208,7 @@ def make_web_tools(mock: WebMock) -> list[ToolDefinition]:
             handler=web_search,
             target_arg="query",
             inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+            inherent_tags=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
             parameters_schema={
                 "type": "object",
                 "properties": {

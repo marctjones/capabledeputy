@@ -20,7 +20,12 @@ from typing import Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    Label,
+    LabelState,
+    ProvenanceLevel,
+    ProvenanceTag,
+)
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
 
@@ -110,6 +115,7 @@ def make_inbox_tools(inbox: Inbox) -> list[ToolDefinition]:
             handler=inbox_list,
             target_arg="folder",
             inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+            inherent_tags=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -133,6 +139,7 @@ def make_inbox_tools(inbox: Inbox) -> list[ToolDefinition]:
             handler=inbox_read,
             target_arg="id",
             inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+            inherent_tags=LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
             parameters_schema={
                 "type": "object",
                 "properties": {"id": {"type": "string"}},

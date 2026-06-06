@@ -62,9 +62,20 @@ model coexist.
 > `test_run_status_stop_lifecycle` env flake is the only red — subprocess
 > TimeoutError, unrelated to labels).
 >
+> **R7 prep done (additive, green):** native tools declare four-axis
+> `inherent_tags` alongside flat `inherent_labels` (inert until the flip);
+> the authoritative file-by-file flip spec is
+> **`specs/003-labeling-framework/r7-flip-plan.md`** (1007 lines, before/after
+> per file). Execute R7 from that doc.
+>
 > **Remaining — R7 (= old R4d + R7): delete the flat `Label` enum + all
 > compat. CHANGES NO BEHAVIOR** (the four-axis leg already enforces
-> equivalently) but is a **large mechanical migration**:
+> equivalently) but is a **large refactor across ~15 src subsystems +
+> ~40 test files** (NOT a mechanical enum-delete — `decide()`'s first
+> positional `label_set` ripples to every caller; `ToolResult`/`ToolContext`
+> taint plumbing, `LabeledValue`, `Resource`, `ApprovalRequest`,
+> `select_mode`, `agent/context` heuristics, `tenancy` all thread flat
+> `Label`). See `r7-flip-plan.md` §5 for the NEEDS-JUDGMENT rewrites:
 > 1. **engine.py**: drop `label_set` param from `decide/_decide_impl/_decide_legacy`;
 >    delete the `CONFLICT_RULES` firing loop + `rules` param + `egress_label`
 >    injection + `effective_labels`/`_EGRESS_LABEL_FOR_KIND`/`egress_label_for`;

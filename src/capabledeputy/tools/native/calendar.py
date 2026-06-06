@@ -25,7 +25,12 @@ from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    Label,
+    LabelState,
+)
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
 _CAL_DESTRUCTIVE_ROUTE = ApprovalRoute(
@@ -176,6 +181,17 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
             handler=events_today,
             target_arg="date",
             inherent_labels=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+            inherent_tags=LabelState(
+                a=frozenset(
+                    {
+                        CategoryTag(
+                            category="personal",
+                            tier=Tier.REGULATED,
+                            assignment_provenance="source-declared",
+                        )
+                    }
+                )
+            ),
             parameters_schema={
                 "type": "object",
                 "properties": {

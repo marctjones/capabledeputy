@@ -48,6 +48,14 @@ See `specs/003-labeling-framework/label-model-redesign.md` "▶ Resume here".
   (`axis_a`/`axis_b`/`axis_d`, i.e. `LabelState` + context) is the
   authoritative persisted form; the flat `label_set` column remains only
   until the enum is deleted (R7).
+- **R7 prep** (additive, no behavior change): native tools now declare
+  four-axis `inherent_tags` alongside the legacy flat `inherent_labels`
+  (inert until the flip). The authoritative, file-by-file R7 atomic-flip
+  spec — deleting the flat `Label` enum across the ~15 src subsystems +
+  ~40 test files it still threads — is written up in
+  `specs/003-labeling-framework/r7-flip-plan.md`. R7 itself (the flip)
+  and the `0.15.0` release tag are deferred to a dedicated pass; the flat
+  `Label` enum is still present, so this remains `0.15.0.dev`.
 
 ## [0.14.0] — 2026-06-06
 
