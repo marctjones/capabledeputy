@@ -66,6 +66,10 @@ Work in progress on `003-labeling-framework`. Not yet released.
   `to_axis_b` + a `Session.label_state` accessor — transitional bridges
   so `decide()` and call sites can migrate to the bundled `LabelState`
   in R4b.2–4 before `AxisA`/`AxisB` are deleted. Green (2066).
+- **R4b.2 (decide accepts LabelState)**: `decide()` now takes an optional
+  `labels: LabelState`; when given it derives the transitional
+  `axis_a`/`axis_b` internally (equivalence test added). Engine-local, no
+  call-site churn yet. Green (2067).
 
 ## [0.13.1] — 2026-06-05
 

@@ -34,7 +34,7 @@ from capabledeputy.policy.envelope import (
     EnvelopeSet,
     RiskPreference,
 )
-from capabledeputy.policy.labels import AxisA, AxisB, AxisD, Label
+from capabledeputy.policy.labels import AxisA, AxisB, AxisD, Label, LabelState
 from capabledeputy.policy.optimistic import evaluate_optimistic
 from capabledeputy.policy.overrides import OverrideGrantStore, use_override
 from capabledeputy.policy.reversibility import ReversibilityLabel
@@ -694,6 +694,7 @@ def _decide_impl(
     revoked_audit_ids: frozenset[UUID] = frozenset(),
     first_use_prompt_enabled: bool = False,
     rate_limit_escalation: bool = False,
+    labels: LabelState | None = None,
 ) -> PolicyDecision:
     """Internal decision impl. The public `decide()` wraps this and
     adds recovery-step synthesis (Issue #3) on the resulting
@@ -712,6 +713,13 @@ def _decide_impl(
     the refused inputs are surfaced on `PolicyDecision.refused_relax_inputs`
     so the caller can emit a `RELAXATION_REFUSED` audit event.
     """
+    # R4b.2 — bundled LabelState is the canonical Axis A/B input. When
+    # provided, derive the (transitional) axis_a/axis_b that the rest of
+    # this impl still consumes; R4b.4 collapses these into one field.
+    if labels is not None:
+        axis_a = labels.to_axis_a()
+        axis_b = labels.to_axis_b()
+
     # T079 override grant short-circuit. If an ACTIVE, not-expired,
     # not-consumed grant matches (session_id, action.kind, action.target),
     # mint the override-derived capability and short-circuit to ALLOW.

@@ -179,3 +179,19 @@ def test_label_state_axes_roundtrip() -> None:
     back = LabelState.from_axes(axis_a, axis_b)
     assert set(back.to_axis_a().categories) == set(axis_a.categories)
     assert set(back.to_axis_b().entries) == set(axis_b.entries)
+
+
+def test_decide_labels_param_equivalent_to_axes() -> None:
+    """R4b.2 — passing `labels=LabelState(...)` to decide() must yield the
+    same outcome as passing the derived axis_a/axis_b separately."""
+    from capabledeputy.policy.actions import Action
+    from capabledeputy.policy.capabilities import CapabilityKind
+    from capabledeputy.policy.engine import decide
+
+    ls = LabelState(a=frozenset({CategoryTag("personal", Tier.REGULATED)}))
+    action = Action(kind=CapabilityKind.READ_FS, target="/x")
+    via_labels = decide(frozenset(), frozenset(), action, labels=ls)
+    via_axes = decide(
+        frozenset(), frozenset(), action, axis_a=ls.to_axis_a(), axis_b=ls.to_axis_b()
+    )
+    assert via_labels.decision == via_axes.decision
