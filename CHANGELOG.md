@@ -4,6 +4,38 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [Unreleased] — 0.14.0 (in development)
+
+Work in progress on `003-labeling-framework`. Not yet released.
+
+### Governance & responsible-AI
+- New docs: `responsible-ai-frameworks.md` (the eight enforceable core
+  principles + the human in/on/over-the-loop ladder; control-not-correctness
+  scope), `policy-rule-structure.md` (rules attach to Operations/effect
+  classes, not tools; the PRO-over-CORE lens + CapableDeputy-vs-CORE
+  analysis), `source-bindings.md` (the labeling layer as CORE Resources +
+  the raise-only-inspector LLM-labeler pattern).
+- Imported the agentic-risk subset of the Model Monster / Process Mechanics
+  CORE/PRO registry into `configs/risk_register.json` (excessive agency,
+  injection, exfil-via-tools, tool poisoning, privilege escalation, memory
+  poisoning, unsafe code exec, purpose-contamination), cross-referenced to
+  OWASP/MITRE/NIST/EU-AI-Act.
+- Archived CORE/PRO reference pages as cleaned PDFs under
+  `docs/vendor/process-mechanics/` (used with permission).
+
+### Label-model redesign (in progress — no backwards compatibility)
+- Design note `specs/003-labeling-framework/label-model-redesign.md`: clean
+  four-axis model (Axis A+B propagate; C = Operation; D = context), apply via
+  3 sources / remove only via certified declassifiers, `EffectClass` enum +
+  optional subtype (resolves T012), integrity floor as an Operation
+  `required_floor`. Flat `Label` enum + all migration to be deleted;
+  `state.db` wiped on cutover.
+- **R1**: landed clean types (`policy/effect_class.py`, `policy/label_state.py`)
+  + Hypothesis property tests (composition determinism, monotone-raising,
+  declassifier-only removal, Biba floor). Tag `v0.14.0-R1-label-types`.
+- **R2**: populated the stable-core Axis A category catalog in
+  `configs/labels.yaml`.
+
 ## [0.13.1] — 2026-06-05
 
 ### Security (dependency patches)
