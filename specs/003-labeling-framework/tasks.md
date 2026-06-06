@@ -34,6 +34,18 @@ each step below is a green commit + git tag `v0.14.0-R*`.
 - [ ] R6 Store persists `LabelState`; delete v5 read paths; wipe `state.db`. (redesign §9.6)
 - [ ] R7 Delete the flat `Label` enum + dead compat (incl. vestigial `ProvenanceTag.integrity_floor`); grep-gate `frozenset[Label]` == 0. (redesign §9.7)
 
+> **Decision-engine ownership (F1):** the US1–US6 tasks below describe the
+> v0.9 decision engine against the *original* axis model (and referenced a
+> now-nonexistent `decide.py` — corrected to `engine.py`). **Phase R rebuilds
+> the label-model *plumbing*** (R4 re-types `decide()` onto `LabelState`); it
+> does **not** itself implement the US features. So the still-open US2–US5
+> engine/decision tasks (T029, T044–T046, T056–T060, T077–T086, T091–T107)
+> are **not superseded** — their feature intent (never-auto, bounded-relax,
+> admissibility, clearance, reference handles, sealed isolation, residual-risk)
+> stays valid — but they MUST be implemented on the **post-R4 `LabelState`
+> engine**, after R4b.3/R4c land, not against the old axis pair. Only their
+> substrate changed.
+
 **Organization**: Tasks are grouped by user story (US1–US6) to enable independent implementation and testing. Priority order from spec.md: US1 (P1) → US2 (P2) → US3 (P3) → US6 (P3) → US4 (P4) → US5 (P5) → Polish.
 
 ## Format: `[ID] [P?] [Story] Description`
@@ -96,7 +108,7 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 - [X] T021 [P] [US1] Test `tests/policy/test_axis_a.py`: data categories stay distinct (FR-003); fixed-high resolution mode cannot be lowered by any profile (US1 scenario 3); each Axis-A label carries `assignment_provenance`.
 - [X] T022 [P] [US1] Test `tests/policy/test_resolution.py`: same inputs → byte-identical outcome + rationale (SC-002); conflicting profiles → most-restrictive (edge case).
-- [X] T023 [US1] End-to-end determinism via test_resolution.py determinism tests (replay with logged inputs reproduces tier+rationale). Covered without separate test_decide_us1.py since decide.py wire-in (T029) is deferred — the resolver itself is the pure function under SC-002.
+- [X] T023 [US1] End-to-end determinism via test_resolution.py determinism tests (replay with logged inputs reproduces tier+rationale). Covered without separate test_decide_us1.py since engine.py wire-in (T029) is deferred — the resolver itself is the pure function under SC-002.
 - [ ] T024 **[SUPERSEDED — no-compat]** ~~Test legacy `label_set` rows treated most-restrictive (FR-024)~~ → removed; no legacy rows exist (`state.db` wiped). (redesign §6)
 
 ### Implementation for User Story 1
@@ -105,8 +117,8 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - [X] T026 [P] [US1] Define Axis B provenance lattice in `src/capabledeputy/policy/labels.py`: `principal-direct > system-internal > external-untrusted` with `integrity_floor` (FR-004); pure comparison helpers via `provenance_max`. [is_sanctioned_declassifier flag deferred — needed by US5 only.]
 - [X] T027 [US1] Create `src/capabledeputy/policy/resolution.py`: `ContextProfile` loader (configs/profiles.yaml); `resolve_tier(category, profile_ids, categories, profiles) → ResolutionResult` honoring `fixed-high | context-up | context-resolved` modes (FR-007); deterministic + replayable.
 - [X] T028 [US1] Implement most-restrictive composition baseline in `src/capabledeputy/policy/resolution.py` (FR-026(a) only — baseline; the bounded-relax cases land in US2).
-- [ ] T029 [US1] Wire `resolve_tier()` into `src/capabledeputy/policy/decide.py`; capture the resolved tier + the input snapshot into the audit event (FR-021/SC-002). [Deferred — decide.py integration lands with US2 never-auto rule (T044); MVP doesn't need it for SC-002 determinism since resolver is the pure function.]
-- [ ] T030 [US1] Thread `LabelAssignmentRecord` through resolution in `src/capabledeputy/policy/labels.py` + `resolution.py`: every label preserves `assignment_provenance` (source-declared / curated-MCP / human-declared / raise-only-inspector) (FR-022). [Deferred — assignment_provenance is on AxisACategory; full LabelAssignmentRecord plumbing lands with decide.py integration.]
+- [ ] T029 [US1] Wire `resolve_tier()` into `src/capabledeputy/policy/engine.py`; capture the resolved tier + the input snapshot into the audit event (FR-021/SC-002). [Deferred — engine.py integration lands with US2 never-auto rule (T044); MVP doesn't need it for SC-002 determinism since resolver is the pure function.]
+- [ ] T030 [US1] Thread `LabelAssignmentRecord` through resolution in `src/capabledeputy/policy/labels.py` + `resolution.py`: every label preserves `assignment_provenance` (source-declared / curated-MCP / human-declared / raise-only-inspector) (FR-022). [Deferred — assignment_provenance is on CategoryTag; full LabelAssignmentRecord plumbing lands with engine.py integration (Phase R / R4b.3).]
 - [X] T031 **[SUPERSEDED — no-compat → R6]** ~~legacy-`label_set` converter callsite~~ → removed (no migration; `state.db` wiped). (redesign §6)
 - [X] T032 [US1] Add CLI subcommand `capdep policy resolve <category> <profile>` in `src/capabledeputy/cli/policy.py` demonstrating deterministic tier resolution end-to-end. [Extended existing policy.py instead of creating policy_cmd.py.]
 - [X] T033 [P] [US1] Test `tests/policy/test_assignment_provenance.py`: provenance preserved across resolution chains; raise-only inspector adds taint only, never clears.
@@ -137,9 +149,9 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - [X] T136 [US2] Create the **Axis D first-class type** in `src/capabledeputy/policy/axis_d.py`: `DecisionContext(initiator: PrincipalRef, initiator_authentication: AuthLevel, counterparty: PrincipalRef | None, relationship_group_ids: frozenset[str], expectedness: Literal["expected","anomalous"], reversibility: ReversibilityLabel)`. Implement `Session.axis_d` storage shape per FR-045; derive from authentication adapter at request time. Mark every constructor as runtime-built from the deterministic adapter chain — no AI path may construct one (FR-006, FR-012, FR-045). Resolves analyzer finding A1.
 - [X] T042 [P] [US2] Create `src/capabledeputy/policy/relationships.py`: `RelationshipGroup` registry loading `configs/relationship_groups.yaml`; `is_member(principal, group_id)`; human-declared, AI-read-only (FR-033).
 - [X] T043 [P] [US2] Create `src/capabledeputy/policy/expectations.py`: `ExpectationBinding` registry loading `configs/expectations.yaml`; deterministic `match(initiator, effect, params, now)` (FR-029); no heuristic anomaly inference allowed.
-- [ ] T044 [US2] Extend `src/capabledeputy/policy/decide.py` with `DecisionRule` evaluation: load `configs/rules.yaml`; rules are predicates over axes A–D + target (FR-001 four-axis input shape; FR-002 axis A categories drive the rule lookup); ratchet-stricter only relative to baseline (FR-010/026(b–c)).
-- [ ] T045 [US2] Implement never-auto default in `decide.py` (FR-011): absent matching rule ⇒ `suggest` or `deny` per the cell's default; never `auto`.
-- [ ] T046 [US2] Implement baseline + bounded-relax composition full algorithm in `decide.py` (FR-026); reject any relax input that originates from a non-deterministic source (FR-031) and emit `audit: relaxation_refused`.
+- [ ] T044 [US2] Extend `src/capabledeputy/policy/engine.py` with `DecisionRule` evaluation: load `configs/rules.yaml`; rules are predicates over axes A–D + target (FR-001 four-axis input shape; FR-002 axis A categories drive the rule lookup); ratchet-stricter only relative to baseline (FR-010/026(b–c)).
+- [ ] T045 [US2] Implement never-auto default in `engine.py` (FR-011): absent matching rule ⇒ `suggest` or `deny` per the cell's default; never `auto`.
+- [ ] T046 [US2] Implement baseline + bounded-relax composition full algorithm in `engine.py` (FR-026); reject any relax input that originates from a non-deterministic source (FR-031) and emit `audit: relaxation_refused`.
 - [ ] T047 [US2] **[Amended — no-compat]** Set Axis-D `initiator+authentication` from the authentication adapter at request time. The legacy-trust-prefix derivation is removed (no legacy reads).
 - [ ] T048 [US2] Update audit events in `src/capabledeputy/audit/events.py` to record `rule_matched_id`, `relax_inputs[]`, full Axis-D context (FR-021).
 - [ ] T049 [US2] US2 checkpoint: SC-003 and SC-002 (decision-record replay) green; one rules.yaml example checked into `configs/rules.yaml` exercising the scenario battery.
@@ -202,11 +214,11 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 - [X] T074 [P] [US6] Create `src/capabledeputy/policy/bindings.py`: `SourceLocationLabelBinding` + resolver — load `configs/source_bindings.yaml`; canonicalize via per-scheme canonicalizers (`file://`, `unc://`, `https://...`, `mcp:...`); subtree-inheritance; most-restrictive composition; unbound/non-canonicalizable ⇒ fail-closed (FR-043).
 - [X] T075 [US6] Create `src/capabledeputy/substrate/source_port.py` and `src/capabledeputy/substrate/version_write_port.py` (port-only interfaces per Constitution VII; **no provider impl** — that's spec 004); document the `canonical_resource_handle`/`canonical_destination_id`/`surfaces_destination_id` contract (FR-048) and `VersionedWritePort.write` returning `{prior_version_handle, post_state_hash, attestation}` (FR-044).
 - [X] T076 [US6] Create `src/capabledeputy/policy/envelope.py`: `OutcomeEnvelope` loader (`configs/envelopes.yaml`); `RiskPreferenceProfile` loader (`configs/risk_preference.json`); `select_outcome(envelope, dial_value) → Decision` (FR-030); hard-floor cells have degenerate envelopes.
-- [ ] T077 [US6] Wire envelope dial into `src/capabledeputy/policy/decide.py`: after baseline + bounded-relax, the dial picks the envelope point; refuses to cross any hard floor (FR-026(d) + FR-030).
+- [ ] T077 [US6] Wire envelope dial into `src/capabledeputy/policy/engine.py`: after baseline + bounded-relax, the dial picks the envelope point; refuses to cross any hard floor (FR-026(d) + FR-030).
 - [X] T078 [US6] Create `src/capabledeputy/policy/overrides.py`: `OverridePolicy`, `OverrideAuthorization`, `OverrideGrant` types + FSM per `contracts/override.md`; persisted in `override_grants` table; auto-expiry enforced at every `decide()` call (SC-011).
-- [ ] T079 [US6] Implement `OverrideRequired` distinct return path in `src/capabledeputy/policy/decide.py` (replaces collapsing into `require-approval` for floor crossings) (FR-038); audit `decision.override_required`.
+- [ ] T079 [US6] Implement `OverrideRequired` distinct return path in `src/capabledeputy/policy/engine.py` (replaces collapsing into `require-approval` for floor crossings) (FR-038); audit `decision.override_required`.
 - [X] T080 [US6] Add `capdep override request/attest/list/show/refuse` CLI in new `src/capabledeputy/cli/override_cmd.py`; the planner has no path to invoke any of these (Principle I + V).
-- [ ] T081 [US6] Implement optimistic execution boundary in `src/capabledeputy/policy/decide.py` (FR-034): if effective reversibility is degree-low + agent=`system` + non-egressing, return `auto` without prompt; reversal-agent=`human` work surfaces/gates; carve-out for purpose-contamination (FR-009) — pre-excluded at spawn, not act-then-flag.
+- [ ] T081 [US6] Implement optimistic execution boundary in `src/capabledeputy/policy/engine.py` (FR-034): if effective reversibility is degree-low + agent=`system` + non-egressing, return `auto` without prompt; reversal-agent=`human` work surfaces/gates; carve-out for purpose-contamination (FR-009) — pre-excluded at spawn, not act-then-flag.
 - [ ] T082 [US6] Implement semantic approval grouping in `src/capabledeputy/policy/approval_grouping.py` (FR-035): group homogeneous actions by rationale; aggregate impact presented; per-step prompting refused.
 - [ ] T083 [US6] Implement write-discipline verification in `src/capabledeputy/policy/reversibility.py` (FR-044): given a `VersionedWritePort.WriteResult`, verify prior-version retention by reading the prior-version handle and matching the pre-write state hash; only on success label the write `reversible/system`.
 - [ ] T084 [US6] Implement isolation-posture rules in `src/capabledeputy/patterns/isolation_posture.py` (FR-040/041/042): a session running in a Disposable Isolation Region composes effective reversibility to `reversible/system`; "containment ≠ declassification" (output retains source category labels); `EXECUTE.sandbox` invocation without the actuator port satisfied ⇒ `OverrideRequired` (Principle VI fail-closed; SC-017).
@@ -232,10 +244,10 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 
 ### Implementation for User Story 4
 
-- [ ] T091 [US4] Enforce risk-id citation at label-load and decision-record time in `src/capabledeputy/policy/risk_register.py` + `decide.py`; orphan label or unknown risk-id refused (FR-015).
-- [ ] T092 [US4] Implement Residual-Risk Exception emission in `src/capabledeputy/policy/decide.py` (FR-016): any allow that crosses a configured risk threshold emits a `residual_risk.exception` audit event with full inputs and rationale.
-- [ ] T093 [US4] Implement control-plane reflexivity in `src/capabledeputy/policy/decide.py` (FR-018): label/capability/profile/audit operations are `ADMINISTER`-class; refuse if the session carries any `external-untrusted` provenance.
-- [ ] T094 [US4] Implement reversibility-weighted gating in `src/capabledeputy/policy/decide.py` (FR-019) replacing the binary destructive-op gate; social-commitment effect class hard-coded `irreversible` regardless of declared reversibility.
+- [ ] T091 [US4] Enforce risk-id citation at label-load and decision-record time in `src/capabledeputy/policy/risk_register.py` + `engine.py`; orphan label or unknown risk-id refused (FR-015).
+- [ ] T092 [US4] Implement Residual-Risk Exception emission in `src/capabledeputy/policy/engine.py` (FR-016): any allow that crosses a configured risk threshold emits a `residual_risk.exception` audit event with full inputs and rationale.
+- [ ] T093 [US4] Implement control-plane reflexivity in `src/capabledeputy/policy/engine.py` (FR-018): label/capability/profile/audit operations are `ADMINISTER`-class; refuse if the session carries any `external-untrusted` provenance.
+- [ ] T094 [US4] Implement reversibility-weighted gating in `src/capabledeputy/policy/engine.py` (FR-019) replacing the binary destructive-op gate; social-commitment effect class hard-coded `irreversible` regardless of declared reversibility.
 - [ ] T095 [US4] US4 checkpoint: SC-001, SC-005, SC-006, SC-007 green.
 
 **Checkpoint**: US4 functional; every label/decision is risk-traceable; threshold crossings are explicit exceptions; tainted sessions cannot touch the control plane.
@@ -259,7 +271,7 @@ Single project — existing layout under `src/capabledeputy/` and `tests/` at re
 ### Implementation for User Story 5
 
 - [ ] T101 [P] [US5] Implement max-tier clearance + read-up refusal in `src/capabledeputy/policy/resolution.py` (FR-008): every context profile carries `max_tier`; reads above it refused.
-- [ ] T102 [P] [US5] Implement integrity-floor + no-read-down within a step in `src/capabledeputy/policy/decide.py` (FR-004 Biba direction): integrity-floored steps refuse `external-untrusted` provenance inputs.
+- [ ] T102 [P] [US5] Implement integrity-floor + no-read-down within a step in `src/capabledeputy/policy/engine.py` (FR-004 Biba direction): integrity-floored steps refuse `external-untrusted` provenance inputs.
 - [X] T103 [US5] Create `src/capabledeputy/patterns/__init__.py` and `src/capabledeputy/patterns/reference_handle.py` per `contracts/reference_handle.md`: `ReferenceHandle`, `ReferenceHandleStore.issue/bind/destroy/bind_trail`; per-session in-memory; persisted into `sessions.reference_handles`.
 - [ ] T104 [US5] Wire handle issue/bind into the dispatcher: only the dispatcher (post-`decide`-allow) may bind; tools with `accepts_handles=true` receive handles in declared `handle_arg_names`; `pattern3.handle_bind` audit per insertion (FR-047).
 - [ ] T105 [US5] Extend `src/capabledeputy/mode/dispatcher.py::select_mode` to include `REFERENCE` and `SEALED` outputs; deterministic floor: effective tier `restricted` ⇒ `REFERENCE` (if any session tool `accepts_handles=true`) or `SEALED` (if SandboxActuator port satisfied); else fail-closed at spawn (FR-047).

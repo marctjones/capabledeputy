@@ -13,7 +13,7 @@
 | Column | Type | NOT NULL? | Notes |
 |---|---|---|---|
 | `axis_a` | TEXT (JSON list of `{category, tier, risk_ids[]}`) | yes | Axis A data category + resolved tier per category present in this session (FR-002/007/045). |
-| `axis_b` | TEXT (JSON list of provenance levels, monotone-lattice position) | yes | Axis B provenance/integrity (FR-004/045). **No integrity-floor flag here** — the floor is an Operation requirement (`required_floor`), see [label-model-redesign.md](./label-model-redesign.md) §4a. |
+| `axis_b` | TEXT (JSON list of provenance levels, monotone-lattice position) | yes | Axis B provenance/integrity (FR-004/045). **No integrity-floor flag here** — the floor is an Operation requirement (`required_floor`), see [label-model-redesign.md](./label-model-redesign.md) §4a. (The `ProvenanceTag.integrity_floor` field is retained transitionally in code and removed in R7.) |
 | `axis_d` | TEXT (JSON object: `initiator+auth`, `counterparty/relationship_group_ids[]`, `expectedness: expected\|anomalous`, `reversibility: {degree, agent}`) | yes | Axis D decision context (FR-006/029/045). |
 | `purpose_handle` | TEXT (foreign-ref into purpose registry) | yes (default `unset` → fail-closed) | Structured purpose (FR-046). Distinct from free-text `intent`. |
 | `reference_handles` | TEXT (JSON map `handle_id → {bound_resource_ref, axis_a, axis_b, materialized_at[]}`) | yes (`{}`) | Pattern ③ handles (FR-047). |
