@@ -15,19 +15,51 @@ model coexist.
 > `labels.inherit` added (symmetric-vs-directional composition resolved,
 > §9.4) + proven equivalent to the legacy axis inherit. Suite green (2069).
 >
-> **Next: R4b.3 (cont.)** (§9 step 4):
-> 1. Re-type `decide()`'s **internals** to consume `LabelState` behind the
->    R4b.1 converters — delegation/fork path uses `labels.inherit`, session
->    accumulation uses `most_restrictive_inherit`. Keep the legacy axis path
->    in parallel and assert identical outcomes before deleting it.
-> 2. Migrate the ~185 **test** `decide(axis_a=…, axis_b=…)` call sites to
->    `labels=` in batches (src has no clean `decide(axis_a=)` callers).
-> 3. **R4b.4**: collapse `Session.axis_a`/`axis_b` → one `LabelState`; delete
->    `AxisA`/`AxisB`. Then R4c (flat-leg authoritative), R4d (delete flat
->    `label_set` leg), R5 (apply/remove wiring), R6 (store + `state.db` wipe),
->    R7 (delete flat `Label` enum + vestigial `ProvenanceTag.integrity_floor`).
+> **Next: finish R4b.3 (cont.) → 0.15.0.** This is being driven straight to
+> the 0.15.0 release (operator authorized "push straight through", commit +
+> tag each checkpoint, stop only on real ambiguity or a red suite). Two
+> decisions were locked at the start of this push:
 >
-> Honor the standing rule: **stop at each sub-step checkpoint for review.** **Explicit mandate: no backwards compatibility.** The flat
+> - **D-conflict (locked): the 4 Brewer-Nash `CONFLICT_RULES` are ported as
+>   always-on engine invariants, NOT config rules.** When the flat `Label`
+>   leg is deleted, `_decide_impl` grows four-axis gates computed from
+>   `LabelState` (provenance `external-untrusted` + egress ⇒ DENY; category
+>   `health` + egress ⇒ DENY; `financial` + email ⇒ DENY; `financial` +
+>   purchase ⇒ REQUIRE_APPROVAL), sitting beside the existing
+>   control-plane/BLP/Biba gates. They stay non-optional, no config can
+>   disable them; the existing always-on DENY tests keep passing.
+> - **D-order (locked): R5 apply-wiring must land BEFORE deleting the flat
+>   propagation leg (R4d).** Discovery: production populates the flat
+>   `session.label_set` from `tool.inherent_labels` on *every* dispatch, but
+>   only populates four-axis `axis_a/axis_b` from *wired raise-only
+>   inspectors*. So the two accumulators are NOT yet equivalent. Source #2
+>   of the three apply-sources (operation/tool inherent declaration →
+>   session four-axis state) is unwired. Deleting the flat leg before wiring
+>   it would pass the test-suite (tests pass axes directly) yet silently
+>   drop confused-deputy enforcement in the real daemon. Corrected order
+>   matches §9: …4 engine re-type · 5 apply/remove · 6 store · 7 delete enum.
+>
+> Checkpoint sequence (each green + tagged):
+> 1. **R4b.4 (callers):** every `decide()` caller (prod `client._build_v2_decide_kwargs`,
+>    daemon/policy_preview/multi_tenant, ~19 test files) passes
+>    `labels=LabelState` instead of `axis_a=/axis_b=`.
+> 2. **R4b.4 (collapse):** `Session.axis_a/axis_b` → one `label_state`; delete
+>    `AxisA`/`AxisB` + `most_restrictive_inherit_axis_a/_b`; re-type
+>    `decide()`/`decision_rules`/`assurance`/`inspector_port`/`PolicyDecision`
+>    snapshot onto `LabelState`.
+> 3. **R4c:** add the D-conflict four-axis gates as engine invariants
+>    (additive — both legs now enforce; run-both-and-assert-agreement tests).
+> 4. **R5:** wire apply source #2 (tool `inherent_tags`/operations → session
+>    four-axis state) + removal via certified declassifiers only; structural
+>    "non-declassifier cannot remove a tag" test. Now four-axis ≡ flat.
+> 5. **R4d:** delete the flat `label_set` decision + propagation leg (the
+>    four-axis leg is now equivalent and authoritative).
+> 6. **R6:** persist `LabelState`; SCHEMA bump; delete v5 backfill; wipe `state.db`.
+> 7. **R7:** delete flat `Label` enum + tenancy/daemon vestiges +
+>    `ProvenanceTag.integrity_floor`; grep-gate `frozenset[Label]` == 0.
+> 8. **Release 0.15.0:** version bump, CHANGELOG, README, tag `v0.15.0`.
+>
+> **Explicit mandate: no backwards compatibility.** The flat
 enum, all migration glue, and every SCHEMA_VERSION-5 read path are
 deleted, not bridged. `state.db` is wiped on cutover (single-operator,
 local; no migration). Heavy rewrites are accepted to reach the correct,
