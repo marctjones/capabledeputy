@@ -35,6 +35,11 @@ Work in progress on `003-labeling-framework`. Not yet released.
   declassifier-only removal, Biba floor). Tag `v0.14.0-R1-label-types`.
 - **R2**: populated the stable-core Axis A category catalog in
   `configs/labels.yaml`.
+- **R3a**: new structured `ToolDefinition` shape (`operations`,
+  `inherent_tags`) + fail-closed `validate_tool_definition` (the
+  contracts/tool_definition.md registry-load rules) + invariant tests.
+  Validation is wired into `register()` in R3b once native tools declare
+  the new fields.
 
 ## [0.13.1] — 2026-06-05
 

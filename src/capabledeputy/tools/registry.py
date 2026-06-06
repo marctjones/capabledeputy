@@ -20,6 +20,8 @@ from uuid import UUID
 
 from capabledeputy.approval.route import ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
+from capabledeputy.policy.label_state import LabelState
 from capabledeputy.policy.labels import Label
 
 
@@ -74,6 +76,16 @@ class ToolDefinition:
     tool_provenance: str = "operator-curated"  # e.g., "operator-curated" | "mcp"
     surfaces_destination_id: bool = False  # FR-048 — port-backed canonical id
     risk_ids: tuple[str, ...] = field(default_factory=tuple)
+    # 003 redesign (R3) — the structured replacements for the flat
+    # `inherent_labels` + string `effect_class`. `operations` is the set
+    # of Operations this tool performs (Axis C, canonical EffectClass enum
+    # + optional subtype + required_floor); `inherent_tags` are the Axis A
+    # / Axis B labels its output inherently carries. Default-empty so
+    # existing constructions keep working until R3b migrates them; once
+    # migrated, `register()` enforces `validate_tool_definition` and these
+    # supersede `inherent_labels` / `effect_class` (deleted in R7).
+    operations: tuple[Operation, ...] = field(default_factory=tuple)
+    inherent_tags: LabelState = field(default_factory=LabelState)
     # Spec 004 P0 FR-027/039 — per-arg payload labels. Maps an arg
     # name to a frozenset of Labels that fire WHEN THAT ARG IS NON-EMPTY.
     # Example: email.send.arg_inherent_labels = {
@@ -120,6 +132,82 @@ class ToolDefinition:
                 continue
             out.update(labels)
         return frozenset(out)
+
+
+class ToolValidationError(ValueError):
+    """A ToolDefinition violates the registry-load contract
+    (contracts/tool_definition.md). Fail-closed per Constitution VI:
+    a malformed tool is refused, never registered with a usable
+    capability."""
+
+
+# EffectClasses that are mechanical execution (never a social commitment).
+_MECHANICAL_EXECUTE: frozenset[EffectClass] = frozenset(
+    {EffectClass.EXECUTE_HOST, EffectClass.EXECUTE_REMOTE, EffectClass.EXECUTE_DEPLOY},
+)
+# EffectClasses that neither write nor egress (no canonical destination needed).
+_READ_ONLY_EFFECTS: frozenset[EffectClass] = frozenset(
+    {EffectClass.OBSERVE, EffectClass.FETCH},
+)
+
+
+def validate_tool_definition(
+    tool: ToolDefinition,
+    *,
+    known_risk_ids: frozenset[str] | None = None,
+) -> None:
+    """Enforce the contracts/tool_definition.md registry-load rules.
+    Raises ToolValidationError on the first violation (fail-closed).
+
+    Wired into `register()` in R3b once native tools declare the new
+    fields; in R3a it is exercised by the invariant tests.
+
+    `known_risk_ids`: if provided, every `risk_ids` entry MUST be a
+    member (rule 5). Pass the loaded RiskRegister id set at daemon start.
+    """
+    effects = {op.effect_class for op in tool.operations}
+
+    # Rule 1 — required fields present.
+    if not tool.operations:
+        raise ToolValidationError(f"{tool.name}: must declare >=1 operation (effect_class)")
+    if not tool.risk_ids:
+        raise ToolValidationError(f"{tool.name}: must cite >=1 risk_id (FR-015)")
+
+    # Rule 2 — mechanical EXECUTE.* must not carry social commitment.
+    if (effects & _MECHANICAL_EXECUTE) and tool.social_commitment:
+        raise ToolValidationError(
+            f"{tool.name}: mechanical EXECUTE.* effects must not declare social_commitment "
+            "(social commitment lives on COMMUNICATE / TRANSACT)",
+        )
+
+    # Rule 3 — accepts_handles ⇒ handle_arg_names non-empty and in schema.
+    if tool.accepts_handles:
+        if not tool.handle_arg_names:
+            raise ToolValidationError(
+                f"{tool.name}: accepts_handles=True requires non-empty handle_arg_names",
+            )
+        props = (tool.parameters_schema or {}).get("properties", {})
+        missing = [a for a in tool.handle_arg_names if a not in props]
+        if missing:
+            raise ToolValidationError(
+                f"{tool.name}: handle_arg_names {missing} absent from parameters_schema",
+            )
+
+    # Rule 4 — no canonical destination ⇒ only read effects allowed (FR-048).
+    if not tool.surfaces_destination_id and not (effects <= _READ_ONLY_EFFECTS):
+        raise ToolValidationError(
+            f"{tool.name}: write/egress effect {effects - _READ_ONLY_EFFECTS} requires "
+            "surfaces_destination_id=True (FR-048)",
+        )
+
+    # Rule 5 — risk_ids must be known register entries.
+    if known_risk_ids is not None:
+        unknown = set(tool.risk_ids) - known_risk_ids
+        if unknown:
+            raise ToolValidationError(f"{tool.name}: cites unknown risk_ids {sorted(unknown)}")
+
+    # Rule 6 (wrapper union) needs sub-tool composition info not present on a
+    # bare ToolDefinition; enforced at the wrapper construction site (R3b).
 
 
 class DuplicateToolError(ValueError):
