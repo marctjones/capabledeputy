@@ -4,6 +4,26 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [Unreleased] — 0.15.0
+
+Completes the spec-003 label-model redesign: the four-axis `LabelState`
+model becomes authoritative and the legacy flat `Label` enum decision
+path is removed (no backwards compatibility; `state.db` wiped on cutover).
+See `specs/003-labeling-framework/label-model-redesign.md` "▶ Resume here".
+
+### Label-model redesign (continued — no backwards compatibility)
+- **R4c**: the four always-on conflict invariants are ported off the flat
+  `Label` set onto the propagating axes as engine invariants
+  (`engine._conflict_invariant_outcome`): Axis-B `external-untrusted`
+  provenance + egress ⇒ DENY (integrity / confused-deputy); Axis-A
+  `health`/`financial` category + egress ⇒ DENY / REQUIRE_APPROVAL
+  (confidentiality confinement). Computed from `LabelState`, composed
+  most-restrictively, and proven to agree outcome-for-outcome with the
+  legacy `CONFLICT_RULES` (`tests/policy/test_conflict_invariant_four_axis.py`).
+  Additive — both legs enforce until R4d removes the flat one. (These are
+  information-flow invariants, not Brewer-Nash/Chinese-Wall COI rules
+  despite the legacy naming.)
+
 ## [0.14.0] — 2026-06-06
 
 Ships the responsible-AI / CORE-PRO governance work, the agentic risk-register

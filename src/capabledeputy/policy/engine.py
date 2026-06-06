@@ -34,7 +34,14 @@ from capabledeputy.policy.envelope import (
     EnvelopeSet,
     RiskPreference,
 )
-from capabledeputy.policy.labels import AxisA, AxisB, AxisD, Label, LabelState
+from capabledeputy.policy.labels import (
+    AxisA,
+    AxisB,
+    AxisD,
+    Label,
+    LabelState,
+    ProvenanceLevel,
+)
 from capabledeputy.policy.optimistic import evaluate_optimistic
 from capabledeputy.policy.overrides import OverrideGrantStore, use_override
 from capabledeputy.policy.reversibility import ReversibilityLabel
@@ -63,6 +70,22 @@ SANDBOX_NO_ACTUATOR_RULE = "sandbox-no-actuator"
 DEVBOX_NO_MANAGER_RULE = "devbox-no-manager"
 ORPHAN_RISK_CITATION_RULE = "orphan-risk-citation"
 FIRST_USE_OF_KIND_RULE = "first-use-of-kind"
+
+# Four-axis information-flow conflict invariants (label-model-redesign
+# §R4c, decision D-conflict). These port the four co-presence conflict
+# rules off the flat `Label` set onto the propagating axes. They are
+# NOT Brewer-Nash / Chinese-Wall COI rules (despite the legacy
+# rules.py docstring): the first is an Axis-B(provenance)×Axis-C(effect)
+# *integrity* invariant (a confused-deputy / taint-flow block); the
+# other three are Axis-A(category)×Axis-C(effect) *confidentiality
+# confinement* invariants. They are always-on engine invariants — no
+# config can disable them — sitting beside the BLP-clearance and
+# Biba-floor gates. Rule ids are kept identical to the flat
+# CONFLICT_RULES for audit-trail / replay continuity.
+PROVENANCE_EGRESS_RULE = "untrusted-meets-egress"
+HEALTH_EGRESS_RULE = "health-meets-egress"
+FINANCIAL_EMAIL_RULE = "financial-meets-email"
+FINANCIAL_PURCHASE_RULE = "financial-meets-purchase"
 
 # Cookbook §4 #6 — capability kinds that fire a first-use prompt
 # when `Session.first_use_prompt_enabled` is on. Reads are excluded
@@ -224,6 +247,81 @@ def egress_label_for(kind: CapabilityKind | str) -> Label | None:
     if not isinstance(kind, CapabilityKind):
         return None
     return _EGRESS_LABEL_FOR_KIND.get(kind)
+
+
+def _conflict_invariant_outcome(
+    axis_a: AxisA | None,
+    axis_b: AxisB | None,
+    action: Action,
+) -> tuple[Decision, str, str] | None:
+    """Four-axis port of the flat CONFLICT_RULES (decision D-conflict).
+
+    Computes the four always-on information-flow conflict outcomes from
+    the propagating axes instead of the flat `Label` set:
+
+      1. Axis-B `external-untrusted` provenance + egress  ⇒ DENY
+         (integrity / confused-deputy: tainted data cannot leave).
+      2. Axis-A `health` category + egress                ⇒ DENY
+      3. Axis-A `financial` category + email egress       ⇒ DENY
+      4. Axis-A `financial` category + purchase egress     ⇒ REQUIRE_APPROVAL
+         (2–4: confidentiality confinement).
+
+    Egress is the action kind (SEND_EMAIL / QUEUE_PURCHASE) — exactly
+    the signal the flat `egress_label_for(action.kind)` used, so this
+    gate and the legacy CONFLICT_RULES agree by construction. Rules are
+    evaluated in the same precedence order as the flat tuple; the first
+    firing wins. Returns (decision, rule_id, reason) or None.
+    """
+    is_email = action.kind == CapabilityKind.SEND_EMAIL
+    is_purchase = action.kind == CapabilityKind.QUEUE_PURCHASE
+    if not (is_email or is_purchase):
+        return None
+    egress = "email" if is_email else "purchase"
+    provenance = {e.level for e in axis_b.entries} if axis_b is not None else set()
+    categories = {c.category for c in axis_a.categories} if axis_a is not None else set()
+    if ProvenanceLevel.EXTERNAL_UNTRUSTED in provenance:
+        return (
+            Decision.DENY,
+            PROVENANCE_EGRESS_RULE,
+            f"{PROVENANCE_EGRESS_RULE}: external-untrusted provenance cannot "
+            f"egress via {egress} (integrity / confused-deputy)",
+        )
+    if "health" in categories:
+        return (
+            Decision.DENY,
+            HEALTH_EGRESS_RULE,
+            f"{HEALTH_EGRESS_RULE}: health-category data cannot egress via {egress}",
+        )
+    if "financial" in categories:
+        if is_email:
+            return (
+                Decision.DENY,
+                FINANCIAL_EMAIL_RULE,
+                f"{FINANCIAL_EMAIL_RULE}: financial-category data cannot egress via email",
+            )
+        return (
+            Decision.REQUIRE_APPROVAL,
+            FINANCIAL_PURCHASE_RULE,
+            f"{FINANCIAL_PURCHASE_RULE}: financial-category data egress via "
+            f"purchase requires approval",
+        )
+    return None
+
+
+def _compose_with_conflict_invariant(
+    base: PolicyDecision,
+    outcome: tuple[Decision, str, str] | None,
+) -> PolicyDecision:
+    """Compose a four-axis conflict-invariant outcome with the base
+    decision. Most-restrictive wins (these are floors, like the
+    envelope/reversibility composers); they never relax a stricter
+    base. A no-op when no invariant fired."""
+    if outcome is None:
+        return base
+    decision, rule, reason = outcome
+    if _LEGACY_RANK[decision] < _LEGACY_RANK[base.decision]:
+        return replace(base, decision=decision, rule=rule, reason=reason)
+    return base
 
 
 def _cap_uses_for(
@@ -1017,6 +1115,13 @@ def _decide_impl(
                 f"@ dial={risk_preference.value} -> {selected.value}"
             )
 
+    # Four-axis conflict invariants (decision D-conflict / §R4c):
+    # always-on integrity + confidentiality-confinement floors computed
+    # from the propagating axes. Composed most-restrictively into both
+    # the legacy-only and the v2 return paths below — they only ratchet
+    # stricter, never relax. Dormant when the caller passes no axes.
+    conflict_outcome = _conflict_invariant_outcome(axis_a, axis_b, action)
+
     if relax_inputs:
         inspected: RelaxInspectionResult = inspect_relax_inputs(relax_inputs)
         if inspected.has_refusal:
@@ -1066,6 +1171,7 @@ def _decide_impl(
                 envelope_rule=envelope_rule,
                 envelope_reason=envelope_reason,
             )
+        result = _compose_with_conflict_invariant(result, conflict_outcome)
         return _maybe_first_use_escalation(
             result,
             action=action,
@@ -1103,6 +1209,7 @@ def _decide_impl(
             envelope_rule=envelope_rule,
             envelope_reason=envelope_reason,
         )
+    composed = _compose_with_conflict_invariant(composed, conflict_outcome)
     final = replace(
         composed,
         axis_a_snapshot=axis_a,
