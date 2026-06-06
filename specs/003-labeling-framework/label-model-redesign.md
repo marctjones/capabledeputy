@@ -12,6 +12,41 @@ Design priority order: **correct > simple-given-correct > small diff.**
 We never trade correctness for simplicity; we do trade compatibility and
 diff size for both.
 
+## TL;DR — the new model, and how it differs
+
+A session accumulates **labels** describing *the data it has touched*; the
+**action** being decided and its **context** are kept separate from those
+labels. Labels are **two propagating axes** — **A** (`category × tier`) and
+**B** (`provenance`). The action kind (**C** = `EffectClass` Operation) and
+request context (**D** = recipient/auth/purpose) are *decision inputs, not
+propagating labels*. Labels are **applied by 3 sources** (binding
+resolution / operation inherent declaration / raise-only inspector) and
+**removed by 1** (certified declassifiers only); each operation declares a
+**tag-transfer function**.
+
+| Dimension | Original (flat `Label` enum) | New (clean four-axis) |
+|---|---|---|
+| Structure | one flat set fusing 4 concerns into 8 values | 4 separated axes (2 propagate + operation + context) |
+| Category vs tier | fused (`confidential.personal`) | independent — tier is its own total order → **BLP** |
+| Provenance/integrity | a flat `untrusted.*` label | Axis B lattice; integrity floor moved onto the **operation** → **Biba** |
+| Effect/action | an `egress.*` label *inside the session set* | Axis C is the **Operation**, never taint; enum + `subtype` |
+| Context | not represented | Axis D decision input (purpose session-scoped) |
+| Extensibility | hardcoded 8 (new category ⇒ edit Python) | open catalog in `labels.yaml` |
+| Per-label metadata | none | each tag carries `risk_ids` + `assigned_by` |
+| Apply | `frozenset` **union** (add-only, unprincipled) | 3 declared sources + per-operation tag-transfer |
+| Remove | no discipline | **certified declassifiers only** (structural) |
+| Decision input | `decide(frozenset[Label])` | `decide(labels, operation, context, capabilities)` |
+| Backwards compat | — | **none**: flat enum deleted, `state.db` wiped, no migration |
+
+**The two changes that matter most:** (1) **un-fusing the axes** — the
+original crammed sensitivity, integrity, action, and context into one
+`frozenset`; separating them by lifecycle is what makes BLP / Biba / true
+NI *expressible* (the in-scope-but-unbuildable risks the flat enum
+blocked). (2) **a real apply/remove discipline** — three ways in
+(raise-only except authoritative bindings), one way out (certified
+declassifiers), made explicit per operation, replacing blind set-union
+with no removal rule.
+
 ## 1. The problem we're fixing (grounded)
 
 - The enforcement engine still types its core input as
