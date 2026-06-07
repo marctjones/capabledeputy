@@ -7,8 +7,13 @@ implementation raises NotImplementedError at first call — never
 silently best-effort.
 
 Members:
-- source_port.py      (deferred to T075 — US6)
-- version_write_port.py (deferred to T075 — US6)
-- sandbox_actuator.py (deferred to T085 — US6)
+- source_port.py      (port defined; concrete provider deferred to T075 — US6)
+- version_write_port.py (port defined; concrete provider deferred to T075 — US6)
+- sandbox_actuator.py (port; concrete impl DONE — PodmanSandboxActuator in
+  podman_sandbox.py, the ephemeral `EXECUTE.sandbox` runtime. Its
+  persistent counterpart for `EXECUTE.devbox` is PodmanDevbox in
+  podman_devbox.py — the two are complementary, not alternatives.)
+- policy_script_host.py (port + SafePythonScriptHost ref + StarlarkScriptHost
+  sandbox — DONE; Starlark via the optional capabledeputy[starlark] extra)
 - inspector_port.py   (T121 — Phase 2a, here)
 """
