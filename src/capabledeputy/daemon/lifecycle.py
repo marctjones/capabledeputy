@@ -53,6 +53,31 @@ def max_delegation_depth() -> int:
     return v if v > 0 else DEFAULT_MAX_DELEGATION_DEPTH
 
 
+# Issue #2 — operator-set default for the per-turn agent-loop iteration
+# cap. A request that omits `max_iterations` falls back to this; a
+# non-positive / unparseable env value falls back to the built-in
+# default (fail-safe: never an unbounded loop).
+DEFAULT_AGENT_MAX_ITERATIONS = 50
+
+
+def agent_max_iterations() -> int:
+    """Configured default agent-loop iteration cap (Issue #2).
+
+    Deterministic, operator-set via `CAPDEP_AGENT_MAX_ITERATIONS`; falls
+    back to `DEFAULT_AGENT_MAX_ITERATIONS`. A per-request `max_iterations`
+    (e.g. `/spawn --max-iters N`) still overrides this default."""
+    import os
+
+    raw = os.environ.get("CAPDEP_AGENT_MAX_ITERATIONS")
+    if raw is None:
+        return DEFAULT_AGENT_MAX_ITERATIONS
+    try:
+        v = int(raw)
+    except ValueError:
+        return DEFAULT_AGENT_MAX_ITERATIONS
+    return v if v > 0 else DEFAULT_AGENT_MAX_ITERATIONS
+
+
 # 003 Phase 1 T005: load_v09_configs is fail-closed (refuses daemon
 # start on missing or unparseable file). Per-loader schema validation
 # (e.g., labels.yaml category shape) lands per-feature in Phases 2+;

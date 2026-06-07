@@ -59,6 +59,8 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         "decision",
         # Cookbook Pattern ⑥ — shadow mode.
         "enforcement",
+        # Issue #2 — agent-loop abnormal termination (cap fire / thrash).
+        "agent",
     }
     for et in EventType:
         head, sep, _ = et.value.partition(".")
@@ -123,6 +125,9 @@ def test_event_type_taxonomy_matches_design() -> None:
         # Cookbook Pattern ⑥ — shadow mode.
         "policy.shadowed",
         "enforcement.mode_changed",
+        # Issue #2 — agent-loop abnormal termination.
+        "agent.loop_exceeded",
+        "agent.loop_thrashing",
     }
     actual = {et.value for et in EventType}
     assert actual == expected, f"missing: {expected - actual}, extra: {actual - expected}"

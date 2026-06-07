@@ -109,12 +109,13 @@ def load_static_resources(path: Path) -> StaticResourcePublisher:
             raise ResourceError(f"resources[{i}].labels must be a list")
         tags = LabelState()  # default: no labels
         if labels_raw:
-            from capabledeputy.policy.labels import _LEGACY_LABEL_STRINGS_TO_TAGS
+            from capabledeputy.policy.labels import legacy_label_strings_to_tags
 
+            known_labels = legacy_label_strings_to_tags()
             flat_labels = frozenset(str(label) for label in labels_raw)
             # Validate all labels are known before composing
             for label_str in flat_labels:
-                if label_str not in _LEGACY_LABEL_STRINGS_TO_TAGS:
+                if label_str not in known_labels:
                     raise ResourceError(
                         f"resources[{i}] unknown label: {label_str!r}",
                     )

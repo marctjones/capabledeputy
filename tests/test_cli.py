@@ -42,3 +42,14 @@ def test_daemon_help_runs() -> None:
     result = runner.invoke(app, ["daemon", "--help"])
     assert result.exit_code == 0
     assert "daemon" in result.stdout.lower()
+
+
+def test_policy_models_surfaces_biba_gap() -> None:
+    # Issue #53 — `capdep policy models` must loudly surface that Biba is
+    # one-direction only, so no operator assumes full Biba. Static
+    # command; needs no running daemon.
+    result = runner.invoke(app, ["policy", "models"])
+    assert result.exit_code == 0
+    out = result.output
+    assert "Biba" in out
+    assert "GAP" in out

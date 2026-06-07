@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Self
 
 from capabledeputy.policy.axis_d import DecisionContext
@@ -252,39 +253,121 @@ def inherit(parent: LabelState, child: LabelState) -> LabelState:
 # Conversion from legacy flat-label string values to the new `LabelState`
 # representation. `EGRESS_*` are Axis-C **effects**, not propagating tags
 # (the un-fusing), so they map to the empty state.
-_LEGACY_LABEL_STRINGS_TO_TAGS: dict[str, LabelState] = {
-    "confidential.health": LabelState(
-        a=frozenset(
-            {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")},
-        ),
-    ),
-    "confidential.financial": LabelState(
-        a=frozenset(
-            {CategoryTag("financial", Tier.REGULATED, assignment_provenance="source-declared")},
-        ),
-    ),
-    "confidential.personal": LabelState(
-        a=frozenset(
-            {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")},
-        ),
-    ),
-    "untrusted.external": LabelState(
-        b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
-    ),
-    "untrusted.user_input": LabelState(
-        b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
-    ),
-    "trusted.user_direct": LabelState(
-        b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)}),
-    ),
-    "egress.email": LabelState(),  # Axis-C effect, not a propagating tag
-    "egress.purchase": LabelState(),
+#
+# Issue #50 — catalog-aware tier resolution. The flat-string path
+# (servers.d config, cross-host fallback, legacy bundles) must carry the
+# *real* tier from configs/labels.yaml, not a flattened REGULATED — a
+# lossy tier weakens BLP clearance checks and the envelope dial for every
+# label that arrives this way. We resolve each category's `default_tier`
+# from the catalog, cached on first use, and fail-safe to REGULATED when
+# the catalog is absent / unparseable / silent on a category.
+_CONFIDENTIAL_LABEL_CATEGORY: dict[str, str] = {
+    "confidential.health": "health",
+    "confidential.financial": "financial",
+    "confidential.personal": "personal",
 }
+_CATEGORY_TIER_CACHE: dict[str, Tier] | None = None
+
+
+def _category_default_tiers() -> dict[str, Tier]:
+    """Load category→default_tier from configs/labels.yaml (Issue #50).
+
+    Configs-dir resolution mirrors the daemon's (`CAPDEP_CONFIGS_DIR`
+    env, else `configs/`). Inlined rather than importing the daemon so
+    the policy layer keeps no upward dependency. Fail-safe to an empty
+    map (callers then fall back to REGULATED)."""
+    import os
+
+    from capabledeputy.policy.resolution import ResolutionError, load_categories
+
+    base = os.environ.get("CAPDEP_CONFIGS_DIR")
+    path = (Path(base) if base else Path("configs")) / "labels.yaml"
+    try:
+        cats = load_categories(path)
+    except (ResolutionError, OSError):
+        return {}
+    return {cid: c.default_tier for cid, c in cats.items()}
+
+
+def _category_tier(category: str, default: Tier = Tier.REGULATED) -> Tier:
+    global _CATEGORY_TIER_CACHE
+    if _CATEGORY_TIER_CACHE is None:
+        _CATEGORY_TIER_CACHE = _category_default_tiers()
+    return _CATEGORY_TIER_CACHE.get(category, default)
+
+
+def reset_category_tier_cache() -> None:
+    """Drop the cached catalog tiers (tests / operator config reload)."""
+    global _CATEGORY_TIER_CACHE
+    _CATEGORY_TIER_CACHE = None
+
+
+def legacy_label_strings_to_tags() -> dict[str, LabelState]:
+    """Map each legacy flat-label string to the `LabelState` it denotes.
+
+    confidential.* tiers are resolved from the category catalog
+    (Issue #50); provenance/egress entries are catalog-independent.
+    Built fresh per call but backed by the tier cache, so it stays cheap
+    to call repeatedly."""
+    tags: dict[str, LabelState] = {
+        label: LabelState(
+            a=frozenset(
+                {
+                    CategoryTag(
+                        category,
+                        _category_tier(category),
+                        assignment_provenance="source-declared",
+                    ),
+                },
+            ),
+        )
+        for label, category in _CONFIDENTIAL_LABEL_CATEGORY.items()
+    }
+    tags.update(
+        {
+            "untrusted.external": LabelState(
+                b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+            ),
+            "untrusted.user_input": LabelState(
+                b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+            ),
+            "trusted.user_direct": LabelState(
+                b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)}),
+            ),
+            "egress.email": LabelState(),  # Axis-C effect, not a propagating tag
+            "egress.purchase": LabelState(),
+        },
+    )
+    return tags
 
 
 def tags_for_label_string(label_str: str) -> LabelState:
     """The propagating `LabelState` a legacy flat-label string denotes."""
-    return _LEGACY_LABEL_STRINGS_TO_TAGS.get(label_str, LabelState())
+    return legacy_label_strings_to_tags().get(label_str, LabelState())
+
+
+def legacy_labels_present(state: LabelState) -> list[str]:
+    """Reverse of `legacy_label_strings_to_tags`: the legacy flat strings a
+    `LabelState` carries, for backward-compatible serialization to clients.
+
+    Matched by Axis-A **category** and Axis-B provenance **level** only —
+    NOT by tier or assignment-provenance metadata. The legacy strings
+    (e.g. `confidential.health`) encode just the category, so a health tag
+    serializes to `confidential.health` whatever its resolved tier
+    (Issue #50: tiers now come from the catalog, so a tier-sensitive match
+    would spuriously drop labels). Egress entries are effects, not
+    propagating tags, so they never appear. Sorted for stable output."""
+    cats = {t.category for t in state.a}
+    levels = {t.level for t in state.b}
+    present: list[str] = []
+    for label_str, tags in legacy_label_strings_to_tags().items():
+        if not tags.a and not tags.b:
+            continue
+        if all(c.category in cats for c in tags.a) and all(
+            p.level in levels for p in tags.b
+        ):
+            present.append(label_str)
+    return sorted(present)
 
 
 def tags_for_labels_strings(labels: frozenset[str]) -> LabelState:

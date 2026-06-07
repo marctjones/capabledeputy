@@ -38,6 +38,15 @@ class EventType(StrEnum):
     # operator/agent can see proactively that the turn is about to
     # outgrow its budget.
     LLM_CONTEXT_WARNING = "llm.context_warning"
+    # Issue #2 — the agent loop terminated abnormally. AGENT_LOOP_EXCEEDED
+    # fires when the iteration cap (`max_iterations`) is hit;
+    # AGENT_LOOP_THRASHING fires earlier when the same (tool, args) is
+    # proposed repeatedly within one turn. Both carry the last-N tool
+    # calls (name + args) so the pathological turn is inspectable /
+    # replayable from the audit log instead of vanishing into an opaque
+    # RPC error. `capdep audit ... --filter loop` surfaces them.
+    AGENT_LOOP_EXCEEDED = "agent.loop_exceeded"
+    AGENT_LOOP_THRASHING = "agent.loop_thrashing"
     # Issue 003 / Q4 (spec.md §Clarifications 2026-05-25, SC-023):
     # decide() latency exceeded the p95 ≤ 50 ms OR p99.9 ≤ 250 ms
     # target over the recent window. Payload carries:

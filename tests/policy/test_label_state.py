@@ -139,6 +139,56 @@ def test_tags_for_labels_empty_is_empty() -> None:
     assert tags_for_labels_strings(frozenset()) == LabelState()
 
 
+def test_string_path_resolves_tier_from_catalog(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue #50 — the flat-string path must carry the catalog's
+    default_tier, not a flattened REGULATED. With a catalog that puts
+    health at `restricted`, the string `confidential.health` resolves to
+    a RESTRICTED tag (was hardcoded REGULATED, which weakened BLP)."""
+    from capabledeputy.policy.labels import reset_category_tier_cache
+
+    (tmp_path / "labels.yaml").write_text(
+        "categories:\n"
+        "  - id: health\n"
+        "    kind: stable_core\n"
+        "    default_tier: restricted\n"
+        "  - id: personal\n"
+        "    kind: stable_core\n"
+        "    default_tier: regulated\n",
+    )
+    monkeypatch.setenv("CAPDEP_CONFIGS_DIR", str(tmp_path))
+    reset_category_tier_cache()
+    try:
+        health = tags_for_labels_strings(frozenset({"confidential.health"}))
+        (health_tag,) = health.a
+        assert health_tag.tier == Tier.RESTRICTED
+        personal = tags_for_labels_strings(frozenset({"confidential.personal"}))
+        (personal_tag,) = personal.a
+        assert personal_tag.tier == Tier.REGULATED
+    finally:
+        reset_category_tier_cache()
+
+
+def test_string_path_fails_safe_to_regulated_without_catalog(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue #50 — when the catalog is absent/silent, fail-safe to
+    REGULATED rather than crashing or under-classifying."""
+    from capabledeputy.policy.labels import reset_category_tier_cache
+
+    monkeypatch.setenv("CAPDEP_CONFIGS_DIR", str(tmp_path))  # no labels.yaml
+    reset_category_tier_cache()
+    try:
+        health = tags_for_labels_strings(frozenset({"confidential.health"}))
+        (health_tag,) = health.a
+        assert health_tag.tier == Tier.REGULATED
+    finally:
+        reset_category_tier_cache()
+
+
 def test_certified_declassifier_removes_a_tag() -> None:
     state = LabelState(
         a=frozenset({CategoryTag("health", Tier.RESTRICTED), CategoryTag("work", Tier.SENSITIVE)})

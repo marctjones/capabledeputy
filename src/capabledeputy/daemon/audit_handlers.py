@@ -30,10 +30,17 @@ def make_audit_handlers(audit: AuditWriter) -> dict[str, Handler]:
 
 def _filter(events: list[Event], params: dict[str, Any]) -> list[Event]:
     event_type = params.get("event_type")
+    event_type_contains = params.get("event_type_contains")
     session_id = params.get("session_id")
 
     if event_type is not None:
         events = [e for e in events if e.event_type.value == event_type]
+    if event_type_contains is not None:
+        # Issue #2 — substring filter so `capdep audit --filter loop`
+        # surfaces both agent.loop_exceeded and agent.loop_thrashing
+        # (and any other family) without an exact type. Case-insensitive.
+        needle = str(event_type_contains).lower()
+        events = [e for e in events if needle in e.event_type.value.lower()]
     if session_id is not None:
         sid = str(session_id)
         events = [e for e in events if e.session_id and str(e.session_id) == sid]

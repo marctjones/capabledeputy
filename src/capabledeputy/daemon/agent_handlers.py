@@ -26,18 +26,9 @@ def _serialize_recovery_step(step: Any) -> dict[str, Any]:
 def _outcome_to_dict(outcome: ToolCallOutcome) -> dict[str, Any]:
     # Convert tags_added (LabelState) back to legacy label strings for
     # backward compatibility with clients.
-    from capabledeputy.policy.labels import _LEGACY_LABEL_STRINGS_TO_TAGS
+    from capabledeputy.policy.labels import legacy_labels_present
 
-    labels_added = []
-    for label_str, tags in _LEGACY_LABEL_STRINGS_TO_TAGS.items():
-        # Egress labels map to empty LabelState, skip them
-        if not tags.a and not tags.b:
-            continue
-        # Check if this label's tags are all present in the added state
-        if all(cat in outcome.tags_added.a for cat in tags.a) and all(
-            prov in outcome.tags_added.b for prov in tags.b
-        ):
-            labels_added.append(label_str)
+    labels_added = legacy_labels_present(outcome.tags_added)
 
     return {
         "decision": outcome.decision.value,
@@ -76,6 +67,8 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
         # flag would otherwise cancel the *next* turn before it
         # started.
         app.cancellation_flags[session_uuid] = False
+        from capabledeputy.daemon.lifecycle import agent_max_iterations
+
         try:
             result = await run_turn(
                 session_id=session_uuid,
@@ -85,7 +78,9 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
                 registry=app.registry,
                 graph=app.graph,
                 audit=app.audit,
-                max_iterations=int(params.get("max_iterations", 50)),
+                max_iterations=int(
+                    params.get("max_iterations") or agent_max_iterations(),
+                ),
                 force_mode=force_mode,
                 cancel_check=lambda sid=session_uuid: app.cancellation_flags.get(
                     sid,

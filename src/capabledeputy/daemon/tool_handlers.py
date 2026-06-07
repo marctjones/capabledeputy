@@ -77,7 +77,7 @@ def make_tool_handlers(
     if tool_client is not None:
 
         async def tool_call(params: dict[str, Any]) -> dict[str, Any]:
-            from capabledeputy.policy.labels import _LEGACY_LABEL_STRINGS_TO_TAGS
+            from capabledeputy.policy.labels import legacy_labels_present
 
             outcome = await tool_client.call_tool(
                 session_id=UUID(params["session_id"]),
@@ -85,24 +85,15 @@ def make_tool_handlers(
                 args=params.get("args", {}),
             )
             # Convert tags_added (LabelState) back to legacy label strings for
-            # backward compatibility with MCP clients.
-            labels_added = []
-            for label_str, tags in _LEGACY_LABEL_STRINGS_TO_TAGS.items():
-                # Egress labels map to empty LabelState, skip them
-                if not tags.a and not tags.b:
-                    continue
-                # Check if this label's tags are all present in the added state
-                if all(cat in outcome.tags_added.a for cat in tags.a) and all(
-                    prov in outcome.tags_added.b for prov in tags.b
-                ):
-                    labels_added.append(label_str)
+            # backward compatibility with MCP clients (matched by category /
+            # provenance level).
             return {
                 "decision": outcome.decision.value,
                 "output": outcome.output,
                 "rule": outcome.rule,
                 "reason": outcome.reason,
                 "error": outcome.error,
-                "labels_added": sorted(labels_added),
+                "labels_added": legacy_labels_present(outcome.tags_added),
             }
 
         handlers["tool.call"] = tool_call

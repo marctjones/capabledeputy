@@ -124,6 +124,67 @@ def policy_show(
     console.print(kind_table)
 
 
+# Issue #53 — make the Biba gap (and every other scoped deviation) loud
+# and operator-discoverable, so nobody assumes a model is more complete
+# than it is. Source of truth: docs/security-models.md +
+# docs/security-alignment-assessment.md. (model, scope, status).
+_MODEL_COVERAGE: tuple[tuple[str, str, str], ...] = (
+    (
+        "Bell-LaPadula (confidentiality)",
+        "read-up containment: data a session touched can't egress below its level",
+        "scoped",
+    ),
+    (
+        "Biba (integrity)",
+        "ONE DIRECTION ONLY: low-integrity (untrusted) data is blocked from "
+        "flowing/writing up. There is NO integrity-clearance / no-read-down. "
+        "Do NOT assume full Biba duality.",
+        "gap",
+    ),
+    (
+        "Brewer-Nash (conflict-of-interest)",
+        "session-scoped conflict invariants (not a global per-principal history)",
+        "scoped",
+    ),
+    (
+        "Clark-Wilson (well-formed transactions)",
+        "declassification / cross-session merge / egress are gated transactions",
+        "core",
+    ),
+    (
+        "Object-capability (confused-deputy)",
+        "unforgeable tokens held by the runtime; authority only attenuates",
+        "core",
+    ),
+    (
+        "Information-flow control (Denning)",
+        "INTRANSITIVE noninterference; transitive NI is undecidable and a non-goal",
+        "scoped",
+    ),
+)
+
+
+@policy_app.command("models")
+def policy_models() -> None:
+    """Show which security models are enforced and — loudly — where each
+    is scoped or has a known gap (Issue #53). Use this before assuming a
+    model is fully covered; Biba in particular is one-direction only."""
+    status_style = {"core": "green", "scoped": "yellow", "gap": "red"}
+    table = Table(title="Security-model coverage (scope is honest, not aspirational)")
+    table.add_column("Model")
+    table.add_column("Status")
+    table.add_column("Scope / known gap")
+    for model, scope, status in _MODEL_COVERAGE:
+        style = status_style.get(status, "white")
+        table.add_row(model, f"[{style}]{status.upper()}[/{style}]", scope)
+    console.print(table)
+    err_console.print(
+        "[bold red]⚠ Biba is one-direction only[/bold red] — untrusted data is "
+        "kept from flowing up, but there is no integrity-clearance / no-read-down. "
+        "See docs/security-models.md and docs/security-alignment-assessment.md.",
+    )
+
+
 @policy_app.command("validate")
 def policy_validate() -> None:
     """Validate the active policy bundle's invariants."""

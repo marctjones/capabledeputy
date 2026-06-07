@@ -64,3 +64,42 @@ def test_dispatcher_refuses_when_neither_pattern_available() -> None:
             has_accepts_handles_tool=False,
             has_sandbox_actuator=False,
         )
+
+
+@pytest.mark.xfail(
+    reason=(
+        "Issue #52 — KNOWN GAP: the per-turn select_mode() does NOT consult "
+        "tier, so a restricted-tier session silently runs under Pattern (2)/(1) "
+        "instead of auto-selecting Pattern (3) REFERENCE. select_mode_for_restricted "
+        "is currently only a spawn-time refusal gate; its chosen mode is discarded. "
+        "This xfail flips to xpass once select_mode() integrates the restricted floor."
+    ),
+    strict=True,
+)
+def test_select_mode_auto_selects_reference_for_restricted() -> None:
+    """End-to-end intent (FR-047): a restricted-tier label_state whose tool
+    surface offers handles must drive the *turn* mode to REFERENCE — not
+    just be permitted at spawn. Anchors the gap until the wiring lands."""
+    from capabledeputy.mode.dispatcher import select_mode
+    from capabledeputy.policy.labels import CategoryTag, LabelState
+    from capabledeputy.policy.tiers import Tier
+    from capabledeputy.tools.registry import ToolDefinition, ToolRegistry
+
+    async def _noop(_args: dict) -> dict:
+        return {}
+
+    reg = ToolRegistry()
+    # Bypass register()'s full schema validation — select_mode only reads
+    # accepts_handles off registry.list(); this keeps the anchor minimal.
+    reg._tools["sealed.run"] = ToolDefinition(
+        name="sealed.run",
+        description="handle-aware tool",
+        capability_kind="EXECUTE",
+        handler=_noop,
+        accepts_handles=True,
+        handle_arg_names=("ref",),
+    )
+    restricted = LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)}))
+
+    mode, _reason = select_mode(restricted, reg)
+    assert mode == ExecutionMode.REFERENCE

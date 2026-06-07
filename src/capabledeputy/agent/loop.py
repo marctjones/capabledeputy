@@ -11,6 +11,8 @@ the inheritance.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from uuid import UUID
@@ -124,6 +126,43 @@ tool calls. Be concise and honest about what you did and didn't do.
 
 class AgentLoopExceededError(RuntimeError):
     pass
+
+
+# Issue #2 — loop-thrash detection. When the agent proposes the *same*
+# tool with the *same* arguments this many times within a single turn,
+# we stop early with an AGENT_LOOP_THRASHING audit event rather than
+# burning the rest of the iteration budget on a confirmed non-converging
+# loop. 3 is deliberately conservative: a couple of legitimate retries
+# (e.g. a transient tool error) stay under it.
+_THRASH_REPEAT_THRESHOLD = 3
+# How many of the most-recent (tool, args) calls to retain in the
+# abnormal-termination audit payload so the pathological turn is
+# replayable. Bounded so the audit record stays scannable.
+_LAST_CALLS_RETAINED = 12
+
+# Operator-facing recovery hint appended to the AgentLoopExceededError
+# message so the RPC error in chat tells the user what to do, not just
+# that the cap fired.
+_LOOP_RECOVERY_HINT = (
+    " — increase max_iterations (/spawn --max-iters N or "
+    "CAPDEP_AGENT_MAX_ITERATIONS), refine your intent, or split the "
+    "request into smaller sub-turns"
+)
+
+
+def _call_signature(tool_name: str, args: dict) -> str:
+    """Stable (tool_name, args) signature for thrash detection.
+
+    Serializes args deterministically (sorted keys, `default=str` so
+    non-JSON values still hash) and digests them so the signature is a
+    short, comparable string regardless of arg size.
+    """
+    try:
+        payload = json.dumps(args, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        payload = repr(args)
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+    return f"{tool_name}:{digest}"
 
 
 class ContextOverflowError(RuntimeError):
@@ -348,7 +387,18 @@ async def run_turn(
             interrupt_event = evt
     if interrupt_reason == "max_iterations":
         raise AgentLoopExceededError(
-            f"agent loop exceeded {max_iterations} iterations",
+            f"agent loop exceeded {max_iterations} iterations"
+            f"{_LOOP_RECOVERY_HINT}",
+        )
+    if interrupt_reason == "agent_loop_thrashing":
+        # Issue #2 — the loop was stopped early because the agent kept
+        # proposing the same tool call. Surface a clearer cause than a
+        # bare cap-fire so the operator knows it's a non-converging loop,
+        # not a budget that was simply too small.
+        raise AgentLoopExceededError(
+            "agent loop stopped: the assistant repeated the same tool "
+            f"call {_THRASH_REPEAT_THRESHOLD} times without progress (thrashing)"
+            f"{_LOOP_RECOVERY_HINT}",
         )
     if interrupt_reason == "user_cancelled" and interrupt_event is not None:
         # Issue #23 — synthesize an AgentTurnResult so the daemon RPC
@@ -563,6 +613,12 @@ async def run_turn_streaming(
     # the audit log stays scannable.
     context_warning_emitted = False
     last_model: str | None = None
+    # Issue #2 — loop-thrash detection + replayable abnormal-termination.
+    # `call_counts` tallies identical (tool, args) signatures across the
+    # whole turn; `recent_calls` keeps the last-N proposed calls (name +
+    # args) for the audit payload when the loop ends abnormally.
+    call_counts: dict[str, int] = {}
+    recent_calls: list[dict[str, object]] = []
 
     while iteration < max_iterations:
         iteration += 1
@@ -798,6 +854,46 @@ async def run_turn_streaming(
             # name passes through untouched and ToolNotFoundError fires
             # below with the unmatched string in the message.
             real_name = reverse_map.get(tool_call.name, tool_call.name)
+
+            # Issue #2 — record the proposed call and detect thrash
+            # (same tool + same args repeated) BEFORE dispatching, so a
+            # confirmed non-converging loop stops without burning the
+            # rest of the iteration budget on a call we already know the
+            # outcome of.
+            signature = _call_signature(real_name, tool_call.args)
+            call_counts[signature] = call_counts.get(signature, 0) + 1
+            recent_calls.append(
+                {
+                    "iteration": iteration,
+                    "tool_name": real_name,
+                    "args": tool_call.args,
+                },
+            )
+            del recent_calls[:-_LAST_CALLS_RETAINED]
+            if call_counts[signature] >= _THRASH_REPEAT_THRESHOLD:
+                await audit.write(
+                    Event(
+                        event_type=EventType.AGENT_LOOP_THRASHING,
+                        session_id=session_id,
+                        turn_id=len(session.history),
+                        step_id=iteration,
+                        payload={
+                            "iteration": iteration,
+                            "repeated_tool": real_name,
+                            "repeat_count": call_counts[signature],
+                            "threshold": _THRASH_REPEAT_THRESHOLD,
+                            "last_calls": list(recent_calls),
+                        },
+                    ),
+                )
+                yield TurnInterrupted(
+                    iteration=iteration,
+                    reason="agent_loop_thrashing",
+                    partial_content=(last_response.content if last_response else ""),
+                    partial_outcomes=tuple(tool_outcomes),
+                )
+                return
+
             yield ToolDispatched(
                 iteration=iteration,
                 tool_name=real_name,
@@ -828,10 +924,28 @@ async def run_turn_streaming(
                 ),
             )
 
-    # Loop exceeded max_iterations. Yield the terminal TurnInterrupted
-    # so streaming consumers can render the partial state; run_turn
-    # wrapper detects this and raises AgentLoopExceededError for
-    # backwards compatibility.
+    # Loop exceeded max_iterations. Issue #2 — audit the cap-fire with
+    # the last-N tool calls so the pathological turn is inspectable /
+    # replayable instead of vanishing into an opaque RPC error. Then
+    # yield the terminal TurnInterrupted so streaming consumers can
+    # render the partial state; the run_turn wrapper detects this and
+    # raises AgentLoopExceededError for backwards compatibility.
+    await audit.write(
+        Event(
+            event_type=EventType.AGENT_LOOP_EXCEEDED,
+            session_id=session_id,
+            turn_id=len(session.history),
+            step_id=iteration,
+            payload={
+                "max_iterations": max_iterations,
+                "iterations": iteration,
+                "last_finish_reason": (
+                    last_response.finish_reason.value if last_response else None
+                ),
+                "last_calls": list(recent_calls),
+            },
+        ),
+    )
     partial_content = last_response.content if last_response else ""
     yield TurnInterrupted(
         iteration=iteration,

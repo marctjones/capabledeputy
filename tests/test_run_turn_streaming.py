@@ -165,17 +165,24 @@ async def test_max_iterations_yields_terminal_interrupted_event(
     # registry is empty; the loop will iterate until cap regardless.
     from capabledeputy.llm.types import ToolCall
 
-    def _ever_more() -> LLMResponse:
+    # Issue #2 — vary the args each iteration so the loop hits the
+    # *iteration cap* (max_iterations) rather than tripping the
+    # thrash guard, which fires only on a repeated (tool, args).
+    def _ever_more(n: int) -> LLMResponse:
         return LLMResponse(
             content="thinking",
-            tool_calls=[ToolCall(id=str(uuid4()), name="nope", args={})],
+            tool_calls=[ToolCall(id=str(uuid4()), name="nope", args={"n": n})],
             finish_reason=FinishReason.TOOL_CALLS,
             model="stub",
         )
 
     class _LoopForeverLLM:
+        def __init__(self) -> None:
+            self._n = 0
+
         async def respond(self, messages, tools):
-            return _ever_more()
+            self._n += 1
+            return _ever_more(self._n)
 
     events = []
     async for evt in run_turn_streaming(
