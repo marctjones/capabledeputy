@@ -14,9 +14,16 @@ Enable them with a `decision_inspectors:` block in your daemon config — see
 ```
 action           = {"kind": str, "target": str, "amount": int|None}
 session          = {"purpose": str, "categories": [str], "tiers": [str],
-                    "provenance": [str], "risk_preference": str}
+                    "provenance": [str], "risk_preference": str,
+                    "history": {"counts_by_kind": {kind: int},
+                                "used_kinds": [str], "total_uses": int}}
 proposed_outcome = {"decision": str, "rule": str, "reason": str}
 ```
+
+`session["history"]` (#48) is a bounded, read-only, session-*cumulative*
+summary — enough for frequency caps ("N sends this session"). It is
+clock-free (scripts have no clock), so time-windowed rates
+("> N / hour") are not expressible yet.
 
 `decision` / a relax-or-tighten `to` is one of:
 `"allow" | "require_approval" | "override_required" | "deny"`.
@@ -31,10 +38,9 @@ proposed_outcome = {"decision": str, "rule": str, "reason": str}
 ## Current limitations (tracked)
 
 - **No clock** — time-of-day logic (e.g. after-hours) must use the
-  `after_hours_purchase_tightener` builtin, not a script.
-- **No history** — frequency / aggregation logic ("> N sends/hour",
-  "N reads → bump tier") needs the read-only session-history summary from
-  #48, not yet threaded into `session`.
+  `after_hours_purchase_tightener` builtin, not a script. Time-*windowed*
+  frequency ("> N / hour") is likewise not expressible; cumulative
+  session counts via `session["history"]` are (#48, done).
 - **No relationship groups / reversibility fields** in `session` yet — so
   relationship-aware relax and reversible-write auto are not yet
   expressible as scripts (use rules/builtins for now).
@@ -46,3 +52,5 @@ proposed_outcome = {"decision": str, "rule": str, "reason": str}
   regulated data.
 - `purpose_scoped_relax.star` — RELAX: grant autonomy for a benign,
   opted-in purpose (edit the purpose name + action kinds for your setup).
+- `frequency_cap.star` — TIGHTEN: require approval once an action kind has
+  been used N times this session (uses `session["history"]`, #48).

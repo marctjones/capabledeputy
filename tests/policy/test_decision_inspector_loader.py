@@ -165,6 +165,57 @@ async def test_script_inspector_tightens() -> None:
     assert out.to == Decision.REQUIRE_APPROVAL
 
 
+_FREQ_SCRIPT = """
+def inspect(action, session, proposed_outcome):
+    if proposed_outcome["decision"] != "allow":
+        return abstain()
+    counts = session["history"]["counts_by_kind"]
+    if action["kind"] == "SEND_EMAIL" and counts.get("SEND_EMAIL", 0) >= 3:
+        return tighten(to="require_approval", rule="freq-cap", rationale="too many")
+    return abstain()
+"""
+
+
+async def test_history_summary_enables_frequency_cap(tmp_path) -> None:
+    """#48 — the read-only history summary in `session` lets a script
+    express a cumulative frequency cap."""
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from capabledeputy.policy.capabilities import Capability
+
+    (insp,) = load_decision_inspectors(
+        {"decision_inspectors": [{"source": _FREQ_SCRIPT, "runtime": "python-reference"}]},
+    )
+
+    cap = Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*")
+    now = datetime.now(UTC)
+
+    def _session(n_uses: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            capability_set=frozenset({cap}),
+            cap_uses={str(cap.audit_id): tuple(now for _ in range(n_uses))},
+            used_kinds=frozenset({CapabilityKind.SEND_EMAIL}),
+        )
+
+    # 3 prior sends ⇒ at the cap ⇒ tighten.
+    out = await insp.inspect(
+        action=Action(kind=CapabilityKind.SEND_EMAIL, target="x@y.com"),
+        session=_session(3),
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+    assert isinstance(out, DecisionTighten)
+    assert out.to == Decision.REQUIRE_APPROVAL
+
+    # Under the threshold ⇒ abstain.
+    out2 = await insp.inspect(
+        action=Action(kind=CapabilityKind.SEND_EMAIL, target="x@y.com"),
+        session=_session(1),
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+    assert out2 is None
+
+
 def test_script_path_relative_to_base_dir(tmp_path) -> None:
     (tmp_path / "p.py").write_text(_RELAX_SCRIPT)
     cfg = {

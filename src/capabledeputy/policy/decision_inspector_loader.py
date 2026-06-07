@@ -85,6 +85,36 @@ def _action_to_dict(action: Any) -> dict[str, Any]:
     }
 
 
+def _history_summary(session: Any) -> dict[str, Any]:
+    """A bounded, read-only history summary (#48) so scripts can express
+    frequency / aggregation logic ("> N sends this session"). Cumulative,
+    clock-free: `counts_by_kind` sums gated uses per capability kind from
+    `cap_uses` (keyed by capability audit_id → kind via the capability
+    set). `used_kinds` is the set of kinds exercised so far.
+    """
+    cap_uses = getattr(session, "cap_uses", None) or {}
+    caps = getattr(session, "capability_set", None) or frozenset()
+    aid_to_kind = {
+        str(c.audit_id): getattr(c.kind, "value", str(c.kind))
+        for c in caps
+        if hasattr(c, "audit_id")
+    }
+    counts_by_kind: dict[str, int] = {}
+    for aid, stamps in cap_uses.items():
+        kind = aid_to_kind.get(str(aid))
+        if kind is None:
+            continue
+        counts_by_kind[kind] = counts_by_kind.get(kind, 0) + len(stamps)
+    used_kinds = sorted(
+        {getattr(k, "value", str(k)) for k in getattr(session, "used_kinds", None) or ()},
+    )
+    return {
+        "counts_by_kind": counts_by_kind,
+        "used_kinds": used_kinds,
+        "total_uses": sum(counts_by_kind.values()),
+    }
+
+
 def _session_to_dict(session: Any) -> dict[str, Any]:
     label_state = getattr(session, "label_state", None)
     categories: list[str] = []
@@ -102,6 +132,8 @@ def _session_to_dict(session: Any) -> dict[str, Any]:
         "tiers": tiers,
         "provenance": provenance,
         "risk_preference": getattr(session, "risk_preference_at_spawn", "cautious"),
+        # #48 — bounded read-only history summary for frequency/aggregation.
+        "history": _history_summary(session),
     }
 
 
