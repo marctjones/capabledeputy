@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import threading
 import time
-from typing import Any
+from typing import ClassVar
 
 import pytest
 
@@ -34,7 +34,6 @@ from capabledeputy.substrate.podman_sandbox import (
 )
 from capabledeputy.substrate.sandbox_actuator import SandboxProgress
 
-
 # --- FakePopen ---------------------------------------------------------------
 
 
@@ -47,7 +46,7 @@ class FakePopen:
     optional `kill_returncode` (the exit code observed if killed).
     """
 
-    seen_argvs: list[list[str]] = []
+    seen_argvs: ClassVar[list[list[str]]] = []
 
     def __init__(
         self,
@@ -69,7 +68,7 @@ class FakePopen:
         self._start = time.monotonic()
 
     # --- knobs ---
-    scripted_lines: list[bytes] = [b"hello\n"]
+    scripted_lines: ClassVar[list[bytes]] = [b"hello\n"]
     scripted_exit_code: int = 0
     scripted_delay_seconds: float = 0.0
     kill_returncode: int = 137
@@ -687,7 +686,7 @@ def test_read_output_round_trip(fake_podman: None) -> None:
         podman_bin="/fake/podman",
     )
     rid = a.create_region()
-    result = a.execute(
+    a.execute(
         region_id=rid,
         argv=("true",),
         env={},

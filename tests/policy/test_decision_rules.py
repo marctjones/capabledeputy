@@ -23,27 +23,30 @@ from capabledeputy.policy.decision_rules import (
     refuse_non_deterministic_relax_input,
 )
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     AxisD,
     CategoryTag,
+    LabelState,
     ProvenanceLevel,
     ProvenanceTag,
 )
 from capabledeputy.policy.tiers import Tier
 
 
-def _empty_axes() -> tuple[AxisA, AxisB, AxisD]:
-    return AxisA(), AxisB(), AxisD()
+def _empty_label_state() -> LabelState:
+    return LabelState()
+
+
+def _empty_axes() -> tuple[LabelState, AxisD]:
+    # Helper for tests still using axis pattern; returns label_state + axis_d
+    return LabelState(), AxisD()
 
 
 def test_empty_rule_set_default_is_suggest() -> None:
     """SC-003: empty rule set ⇒ never AUTO; default is SUGGEST."""
-    axis_a, axis_b, axis_d = _empty_axes()
+    labels, axis_d = _empty_axes()
     result = evaluate(
         rules=DecisionRules(rules=()),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="COMMUNICATE",
         target="user@example.com",
@@ -54,11 +57,10 @@ def test_empty_rule_set_default_is_suggest() -> None:
 
 def test_empty_rule_set_can_default_to_deny() -> None:
     """Stricter cells configure default_when_no_match=DENY explicitly."""
-    axis_a, axis_b, axis_d = _empty_axes()
+    labels, axis_d = _empty_axes()
     result = evaluate(
         rules=DecisionRules(rules=()),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="ADMINISTER",
         target="*",
@@ -69,12 +71,11 @@ def test_empty_rule_set_can_default_to_deny() -> None:
 
 def test_default_auto_refused() -> None:
     """FR-011 hard floor: AUTO cannot be the default."""
-    axis_a, axis_b, axis_d = _empty_axes()
+    labels, axis_d = _empty_axes()
     with pytest.raises(DecisionRuleError, match="never-auto"):
         evaluate(
             rules=DecisionRules(rules=()),
-            axis_a=axis_a,
-            axis_b=axis_b,
+            labels=labels,
             axis_d=axis_d,
             effect_class="OBSERVE",
             target="x",
@@ -91,11 +92,10 @@ def test_unratified_rule_has_zero_effect() -> None:
         rationale="cron backup",
         human_ratified_by=None,  # unratified
     )
-    axis_a, axis_b, axis_d = _empty_axes()
+    labels, axis_d = _empty_axes()
     result = evaluate(
         rules=DecisionRules(rules=(rule,)),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="MUTATE_LOCAL",
         target="/tmp/backup",
@@ -118,8 +118,7 @@ def test_ratified_rule_matches_and_fires() -> None:
         rationale="cron backup at 2am, expected",
         human_ratified_by="marc",
     )
-    axis_a = AxisA()
-    axis_b = AxisB()
+    labels = LabelState()
     axis_d = AxisD(
         initiator="cron-configured-by-principal",
         authentication="principal-direct",
@@ -127,8 +126,7 @@ def test_ratified_rule_matches_and_fires() -> None:
     )
     result = evaluate(
         rules=DecisionRules(rules=(rule,)),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="MUTATE_LOCAL",
         target="/var/backups",
@@ -158,8 +156,7 @@ def test_unauth_inbound_does_not_match_backup_rule() -> None:
     )
     result = evaluate(
         rules=DecisionRules(rules=(rule,)),
-        axis_a=AxisA(),
-        axis_b=AxisB(),
+        labels=LabelState(),
         axis_d=axis_d,
         effect_class="MUTATE_LOCAL",
         target="/var/backups",
@@ -187,8 +184,7 @@ def test_multiple_matching_rules_compose_most_restrictive() -> None:
     )
     result = evaluate(
         rules=DecisionRules(rules=(permissive, strict)),
-        axis_a=AxisA(),
-        axis_b=AxisB(),
+        labels=LabelState(),
         axis_d=AxisD(),
         effect_class="FETCH",
         target="https://example.com",
@@ -205,24 +201,22 @@ def test_predicate_axis_a_category_must_match() -> None:
         rationale="only fires for health data",
         human_ratified_by="marc",
     )
-    health_axis = AxisA(
-        categories=(CategoryTag(category="health", tier=Tier.REGULATED),),
+    health_state = LabelState(
+        a=frozenset({CategoryTag(category="health", tier=Tier.REGULATED)}),
     )
-    other_axis = AxisA(
-        categories=(CategoryTag(category="personal", tier=Tier.SENSITIVE),),
+    other_state = LabelState(
+        a=frozenset({CategoryTag(category="personal", tier=Tier.SENSITIVE)}),
     )
     r_match = evaluate(
         rules=DecisionRules(rules=(rule,)),
-        axis_a=health_axis,
-        axis_b=AxisB(),
+        labels=health_state,
         axis_d=AxisD(),
         effect_class="OBSERVE",
         target="x",
     )
     r_miss = evaluate(
         rules=DecisionRules(rules=(rule,)),
-        axis_a=other_axis,
-        axis_b=AxisB(),
+        labels=other_state,
         axis_d=AxisD(),
         effect_class="OBSERVE",
         target="x",
@@ -239,20 +233,18 @@ def test_predicate_axis_b_provenance_must_match() -> None:
         rationale="trusted provenance",
         human_ratified_by="marc",
     )
-    trusted = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
-    untrusted = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),))
+    trusted = LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}))
+    untrusted = LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}))
     r_match = evaluate(
         rules=DecisionRules(rules=(rule,)),
-        axis_a=AxisA(),
-        axis_b=trusted,
+        labels=trusted,
         axis_d=AxisD(),
         effect_class="OBSERVE",
         target="x",
     )
     r_miss = evaluate(
         rules=DecisionRules(rules=(rule,)),
-        axis_a=AxisA(),
-        axis_b=untrusted,
+        labels=untrusted,
         axis_d=AxisD(),
         effect_class="OBSERVE",
         target="x",
@@ -307,12 +299,11 @@ def test_time_window_rule_does_not_fire_without_now_hour() -> None:
     this fix the rule would silently match regardless of time, which
     is fail-OPEN for any AUTO time-window rule."""
     rules = _time_window_rule((22, 6))
-    a, b, d = _empty_axes()
+    labels, axis_d = _empty_axes()
     result = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
-        axis_d=d,
+        labels=labels,
+        axis_d=axis_d,
         effect_class="send_email",
         target="x@example.com",
         # now_hour omitted — fail-closed
@@ -325,12 +316,11 @@ def test_time_window_rule_fires_inside_window() -> None:
     """At 23:00 the wrap-midnight window 22..6 matches and the rule's
     REQUIRE_APPROVAL composes."""
     rules = _time_window_rule((22, 6))
-    a, b, d = _empty_axes()
+    labels, axis_d = _empty_axes()
     result = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
-        axis_d=d,
+        labels=labels,
+        axis_d=axis_d,
         effect_class="send_email",
         target="x@example.com",
         now_hour=23,
@@ -343,12 +333,11 @@ def test_time_window_rule_silent_outside_window() -> None:
     """At 14:00 (well outside 22..6) the rule does not match;
     composition falls through to default SUGGEST."""
     rules = _time_window_rule((22, 6))
-    a, b, d = _empty_axes()
+    labels, axis_d = _empty_axes()
     result = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
-        axis_d=d,
+        labels=labels,
+        axis_d=axis_d,
         effect_class="send_email",
         target="x@example.com",
         now_hour=14,

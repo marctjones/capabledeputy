@@ -18,7 +18,7 @@ from capabledeputy.approval.signer import (
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.capabilities import Capability
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState
 
 # Cookbook P2.1 — window during which two requests with the same
 # (session, action, target) are considered siblings. 5 seconds is
@@ -254,13 +254,18 @@ class ApprovalQueue:
         action: ApprovalAction,
         payload: str,
         target: str,
-        labels_in: frozenset[Label],
-        labels_out: frozenset[Label] = frozenset(),
+        labels_in: LabelState = None,
+        labels_out: LabelState = None,
         capability_requested: Capability | None = None,
         justification: str = "",
         ttl_seconds: int | None = None,
         rule: str | None = None,
     ) -> ApprovalRequest:
+        # Default-tolerant on labels
+        if labels_in is None:
+            labels_in = LabelState()
+        if labels_out is None:
+            labels_out = LabelState()
         sibling_group_id = self._find_sibling_group(
             from_session=from_session,
             action=action,
@@ -299,7 +304,7 @@ class ApprovalQueue:
                         "approval_id": request.id,
                         "action": action.value,
                         "target": target,
-                        "labels_in": sorted(label.value for label in labels_in),
+                        "labels_in": labels_in.to_dict(),
                         "justification": justification,
                     },
                 ),
@@ -409,12 +414,24 @@ class ApprovalQueue:
                 raise ApprovalSignatureRequiredError(
                     f"approval {request_id} requires a signature",
                 )
+            # Convert LabelState to a set of label string values for canonical_payload
+            request_label_values = set()
+            # Axis A: category labels
+            for cat_tag in request.labels_in.a:
+                request_label_values.add(f"confidential.{cat_tag.category}")
+            # Axis B: provenance labels
+            for prov_tag in request.labels_in.b:
+                if prov_tag.level.value == "external-untrusted":
+                    request_label_values.add("untrusted.external")
+                elif prov_tag.level.value == "principal-direct":
+                    request_label_values.add("trusted.user_direct")
+
             message = canonical_payload(
                 approval_id=request.id,
                 action=request.action.value,
                 target=request.target,
                 payload=request.payload,
-                labels_in=frozenset(label.value for label in request.labels_in),
+                labels_in=frozenset(request_label_values),
             )
             try:
                 ok = signer_for_verify.verify(message, signature)

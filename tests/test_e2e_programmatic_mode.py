@@ -21,7 +21,11 @@ from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse
 from capabledeputy.mode.dispatcher import ExecutionMode
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+)
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.programmatic import dry_run_for_bundle, dry_run_program
 from capabledeputy.programmatic.value import LabeledValue
 
@@ -54,7 +58,7 @@ saved = call("memory.write", key="copy", value=note["value"])
         },
     )
     app.graph._sessions[s.id] = replace(s, capability_set=caps)
-    app.memory.write("source", "hello world", frozenset())
+    app.memory.write("source", "hello world", LabelState())
 
     handlers = make_agent_handlers(app)
     result = await handlers["session.send"](
@@ -86,12 +90,24 @@ labs = call("memory.read", key="rx")
 sent = call("email.send", to="random@example.com", subject="x", body="y")
 """
     # Pre-populate so memory.read returns the labeled value.
-    app.memory.write("rx", "lisinopril 10mg", frozenset({Label.CONFIDENTIAL_HEALTH}))
+    app.memory.write(
+        "rx",
+        "lisinopril 10mg",
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
+    )
 
     initial_scope = {
         "_taint": LabeledValue(
             raw=None,
-            labels=frozenset({Label.CONFIDENTIAL_HEALTH}),
+            label_state=LabelState(
+                a=frozenset(
+                    {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+                )
+            ),
         ),
     }
     report = await dry_run_program(src, app.registry, initial_scope=initial_scope)
@@ -120,7 +136,15 @@ c = call("purchase.queue", vendor="vendor-c", item="z", amount=30)
     initial_scope = {
         "_taint": LabeledValue(
             raw=None,
-            labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+            label_state=LabelState(
+                a=frozenset(
+                    {
+                        CategoryTag(
+                            "financial", Tier.REGULATED, assignment_provenance="source-declared"
+                        )
+                    }
+                )
+            ),
         ),
     }
     impact = await dry_run_for_bundle(src, app.registry, initial_scope=initial_scope)

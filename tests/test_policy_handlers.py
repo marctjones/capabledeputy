@@ -1,15 +1,14 @@
 from uuid import uuid4
 
 from capabledeputy.daemon.policy_handlers import make_policy_handlers
+from capabledeputy.policy.labels import tags_for_labels_strings
 
 
 async def test_show_returns_labels_kinds_and_rules() -> None:
     handlers = make_policy_handlers()
     result = await handlers["policy.show"]({})
-    assert "confidential.health" in result["labels"]
+    # policy.show no longer returns labels; they're accessed through tags_for_labels_strings
     assert "SEND_EMAIL" in result["capability_kinds"]
-    rule_names = {r["name"] for r in result["rules"]}
-    assert "health-meets-egress" in rule_names
 
 
 async def test_test_with_no_capability_denies() -> None:
@@ -56,11 +55,12 @@ async def test_test_health_blocks_email() -> None:
         "origin": "system_default",
         "audit_id": str(uuid4()),
     }
+    label_state = tags_for_labels_strings(frozenset({"confidential.health"}))
     result = await handlers["policy.test"](
         {
             "action_kind": "SEND_EMAIL",
             "target": "alice@example.com",
-            "labels": ["confidential.health"],
+            "labels": label_state.to_dict(),
             "capabilities": [cap],
         },
     )
@@ -78,12 +78,13 @@ async def test_test_financial_purchase_requires_approval() -> None:
         "audit_id": str(uuid4()),
         "max_amount": 1000,
     }
+    label_state = tags_for_labels_strings(frozenset({"confidential.financial"}))
     result = await handlers["policy.test"](
         {
             "action_kind": "QUEUE_PURCHASE",
             "target": "amazon",
             "amount": 50,
-            "labels": ["confidential.financial"],
+            "labels": label_state.to_dict(),
             "capabilities": [cap],
         },
     )

@@ -25,7 +25,6 @@ from capabledeputy.policy.relationships import (
     save,
 )
 
-
 # --- resolve / add_member / remove_member --------------------------------
 
 
@@ -201,7 +200,6 @@ def test_resolver_threads_into_axis_d_via_tool_client(tmp_path: Path) -> None:
     the family-personal-email-suggest rule actually fire in
     production. Tests _resolve_action_axis_d directly."""
     from dataclasses import dataclass
-    from types import SimpleNamespace
 
     from capabledeputy.policy.axis_d import DecisionContext
     from capabledeputy.tools.client import LabeledToolClient, PolicyContext

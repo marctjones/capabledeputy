@@ -15,20 +15,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from capabledeputy.policy.labels import AxisA, AxisB
+from capabledeputy.policy.labels import LabelState
 
 
 @dataclass(frozen=True)
-class InspectorDelta:
+class InspectorRaiseResult:
     """A taint-raising delta returned by a RaiseOnlyInspector. Empty
-    deltas (no axes set) are valid and mean 'nothing to raise'.
+    state (no categories or provenance) is valid and means 'nothing to raise'.
     The runtime composes via most_restrictive_inherit, which is
     monotone-only — so an inspector can only ever raise, even if it
     were to attempt to lower (the composition would discard the
     lowering)."""
 
-    axis_a_raise: AxisA = field(default_factory=AxisA)
-    axis_b_raise: AxisB = field(default_factory=AxisB)
+    raise_state: LabelState = field(default_factory=LabelState)
 
 
 class RaiseOnlyInspector(Protocol):
@@ -43,9 +42,8 @@ class RaiseOnlyInspector(Protocol):
         self,
         *,
         value: object,
-        current_axis_a: AxisA,
-        current_axis_b: AxisB,
-    ) -> InspectorDelta:
-        """Return a delta whose axes may raise (add categories,
-        provenance levels, integrity-floor) but MUST NOT lower."""
+        current_label_state: LabelState,
+    ) -> InspectorRaiseResult:
+        """Return a raise result whose label state may raise (add categories,
+        provenance levels) but MUST NOT lower."""
         ...

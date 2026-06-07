@@ -87,18 +87,11 @@ def _legacy_tool() -> ToolDefinition:
 
 async def _make_session_with_caps(graph: SessionGraph, caps: set[Capability]) -> Any:
     s = await graph.new()
-    s = s.__class__(
-        id=s.id,
-        parent=s.parent,
-        status=s.status,
-        label_set=s.label_set,
+    from dataclasses import replace as _replace
+
+    s = _replace(
+        s,
         capability_set=frozenset(caps),
-        history=s.history,
-        declassification_log=s.declassification_log,
-        created_at=s.created_at,
-        updated_at=s.updated_at,
-        owner=s.owner,
-        intent=s.intent,
     )
     graph._sessions[s.id] = s
     return s

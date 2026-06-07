@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.upstream.adapter import LabeledMcpAdapter
 from capabledeputy.upstream.config import UpstreamServerConfig
 
@@ -58,11 +58,13 @@ class _FakeSession:
         return _FakeReadResourceResult(contents)
 
 
-def _make_adapter(session, *, inherent_labels=frozenset()):
+def _make_adapter(session, *, inherent_tags=None):
+    if inherent_tags is None:
+        inherent_tags = LabelState()
     config = UpstreamServerConfig(
         name="bundled-test",
         command=("echo",),
-        inherent_labels=inherent_labels,
+        inherent_tags=inherent_tags,
     )
     return LabeledMcpAdapter(config=config, session=session)
 
@@ -101,10 +103,10 @@ async def test_list_upstream_resources_propagates_inherent_labels() -> None:
     )
     adapter = _make_adapter(
         session,
-        inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+        inherent_tags=LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
     )
     catalog = await adapter.list_upstream_resources()
-    assert "untrusted.external" in catalog[0]["labels"]
+    assert "external-untrusted" in catalog[0]["labels"]
 
 
 @pytest.mark.asyncio
@@ -153,10 +155,10 @@ async def test_read_upstream_resource_propagates_inherent_labels() -> None:
     )
     adapter = _make_adapter(
         session,
-        inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+        inherent_tags=LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
     )
     result = await adapter.read_upstream_resource("upstream://x.md")
-    assert "untrusted.external" in result["labels"]
+    assert "external-untrusted" in result["labels"]
 
 
 @pytest.mark.asyncio

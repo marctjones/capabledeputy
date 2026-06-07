@@ -19,15 +19,42 @@ We do not defend against:
 
 ## 3. Theoretical Foundations
 
-CapableDeputy synthesizes five classical models:
+CapableDeputy synthesizes five classical models. These are **tracked
+frameworks, not loose inspiration** — every enforcement mechanism traces to a
+named model, and where the faithful form is undecidable or incompatible with a
+useful agent, the model is implemented in a **scoped / approximate** form that
+is documented as a deliberate deviation rather than hidden. The authoritative
+faithful-vs-approximate ledger is [`docs/security-models.md`](docs/security-models.md);
+the grounded "how close is the code, really" read is
+[`docs/security-alignment-assessment.md`](docs/security-alignment-assessment.md).
 
-- **Bell-LaPadula** for confidentiality classification — the lattice of label sets is partially ordered.
-- **Biba** for integrity — untrusted-source data must be declassified through approved transformations before it can flow into trusted contexts.
-- **Brewer-Nash (Chinese Wall)** for dynamic conflict-of-interest — once a session has read certain label classes, conflicting classes become unavailable in that session.
-- **Clark-Wilson** for well-formed transactions — declassification, cross-session merges, and externally-visible actions are gated transactions, not free operations.
-- **Object-Capability Model (Mark Miller's E)** — capabilities are unforgeable tokens held by the runtime, never by the LLM. The LLM *requests*; the runtime *grants*.
+- **Bell-LaPadula** for confidentiality — the lattice of label sets is
+  partially ordered and reads/flows respect it. *Scope:* the enforced property
+  is **read-up containment** (data a session has touched cannot egress below
+  its level); the full ★-property write-down rule is approximated, not
+  literally enforced.
+- **Biba** for integrity — untrusted-source data is prevented from flowing
+  into trusted contexts without passing an approved transformation. *Scope:*
+  this is the **one-direction** integrity guarantee (low-integrity ↛ high);
+  full Biba duality is not pursued, and "declassification through approved
+  transformations" is a gated Clark-Wilson transaction, not an automatic
+  cleanse.
+- **Brewer-Nash (Chinese Wall)** for dynamic conflict-of-interest — once a
+  session has read certain label classes, conflicting classes become
+  unavailable. *Scope:* the wall is **session-scoped** (enforced as always-on
+  conflict invariants in the engine), not a global per-principal history.
+- **Clark-Wilson** for well-formed transactions — declassification,
+  cross-session merges, and externally-visible actions are gated transactions
+  with separation of duty, not free operations.
+- **Object-Capability Model (Mark Miller's E)** — capabilities are unforgeable
+  tokens held by the runtime, never by the LLM. The LLM *requests*; the runtime
+  *grants*. Authority only attenuates across delegation.
 
-Layered above these is **information flow control** with provenance tracking: every value carries the union of labels of every value that contributed to it.
+Layered above these is **information flow control** with provenance tracking:
+every value carries the union of labels of every value that contributed to it.
+The flow-control property is **intransitive noninterference** — transitive NI
+is not decidable for a system that performs useful work, so it is an explicit
+non-goal, not an unmet aspiration (see §15.x).
 
 ## 4. Architecture Overview
 
@@ -566,6 +593,69 @@ Each scenario must produce a clean trace inspectable via `capdep trace`.
 - **Container-deployable.** All paths are env-overridable (`CAPDEP_SOCKET`, `CAPDEP_STATE_DB`, `CAPDEP_AUDIT_LOG`, `CAPDEP_DATA_DIR`) so container deployment is a configuration change, not a refactor. v0.2 ships the Containerfile and quadlet (ROADMAP.md); v0.1 keeps the architecture ready.
 
 ## 15. Open Questions / Future Work
+
+### 15.x Known limitations & inherent gaps
+
+An honest control surface names what it cannot do. These split into three
+kinds: **inherent** (no implementation can remove them), **scoped
+deviations** (a faithful model traded for a useful agent — see §3), and
+**live gaps** (genuine weaknesses we must not make worse, and ideally
+improve). The grounded scorecard backing this section is
+[`docs/security-alignment-assessment.md`](docs/security-alignment-assessment.md).
+
+**Inherent (cannot be engineered away):**
+
+- **Transitive noninterference is undecidable** for a system that does useful
+  work. We enforce *intransitive* NI and treat full NI as a non-goal, not a
+  backlog item.
+- **The general safety question of an access-control model is undecidable**
+  (Harrison–Ruzzo–Ullman). We rely on a fixed, audited invariant set rather
+  than deciding arbitrary reachability.
+- **Control, not correctness.** CapableDeputy governs *effects* — what the
+  agent is allowed to do — never the *content quality* of model output.
+  Accuracy, bias/fairness, reasoning soundness, and content safety are out of
+  scope by construction; nothing here should be read as a correctness claim.
+- **Containment is not declassification.** Contained (tainted) data stays
+  contained. The system can refuse to let it out; it can never *cleanse* it.
+  Only an explicit, human-gated Clark-Wilson declassification transaction
+  lowers a label — there is no silent downgrade.
+- **Model interpretability is not pursued.** The LLM is untrusted *as a black
+  box*; the design's safety does not depend on understanding why it proposed
+  an action, only on gating the action.
+
+**Scoped model deviations (faithful → useful; documented in §3 and
+`security-models.md`):** read-up-only BLP, one-direction Biba, session-scoped
+Brewer-Nash, intransitive NI.
+
+**Live gaps we actively watch (so the design improves them, not worsens
+them):**
+
+- **Decision fatigue → rubber-stamping.** Coarse declarative policy forces
+  too many approval prompts; humans cope by always-approving, which is the
+  practical way human oversight (P5) erodes. The mitigation is *more
+  expressive* policy that asks **less often and more meaningfully** — the
+  Starlark `DecisionInspector` layer (below), bounded so a script can only
+  relax within the envelope cell and never cross a structural floor.
+- **The labeling oracle is systemic weakness #1.** Every IFC guarantee rides
+  on correct labels; mislabeled data ⇒ the defense is *silently absent*
+  (governance-scope contingency #1). Broadening label coverage (more
+  `SourcePort` bindings, catalog-aware tiers, a raise-only LLM labeler) does
+  more for real-world safety than any additional model.
+- **The decision-refinement layer is dormant.** The `DecisionInspector`
+  chokepoint and the sandboxed Starlark `PolicyScriptHost` are built and
+  tested, but `decision_inspectors` is never populated in the daemon and no
+  loader compiles operator scripts. Until a config-driven loader wires it in,
+  operators have only the conjunctive `RulePredicate` (no negation,
+  arithmetic, frequency, or cross-field logic). This is the single
+  highest-leverage fix and the direct lever on decision fatigue.
+- **Purpose-contamination is only partially delivered.** Preventing sensitive
+  data from influencing a decision it has no bearing on (the Purpose Handle,
+  spec 003) is designed and partly shipped; until complete, purpose-scoping is
+  a contingency, not a guarantee.
+- **Frequency / aggregation policy needs threaded history.** Hermetic Starlark
+  inspectors see only `action / session / proposed_outcome`; rate-limit and
+  aggregation defenses require first threading a read-only history summary into
+  the `session` dict.
 
 ### Shipped in v0.2 (DONE)
 

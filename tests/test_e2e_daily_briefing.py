@@ -26,7 +26,18 @@ from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+    ProvenanceLevel,
+    ProvenanceTag,
+)
+from capabledeputy.policy.tiers import Tier
+
+_PERSONAL_UNTRUSTED = LabelState(
+    a=frozenset({CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}),
+    b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+)
 
 
 async def test_daily_briefing_via_schema_extraction(tmp_path: Path) -> None:
@@ -103,7 +114,7 @@ async def test_daily_briefing_via_schema_extraction(tmp_path: Path) -> None:
     app.memory.write(
         "briefing.source",
         raw_source,
-        frozenset({Label.CONFIDENTIAL_PERSONAL, Label.UNTRUSTED_EXTERNAL}),
+        _PERSONAL_UNTRUSTED,
     )
 
     s = await app.graph.new(intent="daily-briefing demo")
@@ -142,8 +153,8 @@ async def test_daily_briefing_via_schema_extraction(tmp_path: Path) -> None:
     # The session's label state — the extract path doesn't propagate
     # the source's labels because the schema is the declassification.
     final = app.graph.get(UUID(str(s.id)))
-    assert Label.CONFIDENTIAL_PERSONAL not in final.label_set
-    assert Label.UNTRUSTED_EXTERNAL not in final.label_set
+    assert not any(t.category == "personal" for t in final.label_state.a)
+    assert ProvenanceLevel.EXTERNAL_UNTRUSTED not in {t.level for t in final.label_state.b}
 
 
 async def test_daily_briefing_naive_path_blocks_egress(tmp_path: Path) -> None:

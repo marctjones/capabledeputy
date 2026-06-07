@@ -15,7 +15,7 @@ import pytest
 
 from capabledeputy.app import App
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import ProvenanceLevel, ProvenanceTag
 from capabledeputy.tools.registry import ToolNotFoundError
 
 
@@ -51,13 +51,16 @@ async def test_enforcement_unchanged_when_preview_disabled(_started) -> None:
     """The whole point: disabling preview is NOT a security control.
     A tainted session still denies egress deterministically with the
     preview tool entirely absent."""
+    from capabledeputy.policy.labels import LabelState
+
     app = await _started(False)
     s = await app.graph.new()
     cap = Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*")
+    label_state = LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}))
     app.graph._sessions[s.id] = replace(
         s,
         capability_set=frozenset({cap}),
-        label_set=frozenset({Label.UNTRUSTED_EXTERNAL}),
+        label_state=label_state,
     )
     outcome = await app.tool_client.call_tool(
         s.id,

@@ -13,8 +13,9 @@ from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.rules import Decision
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
@@ -174,7 +175,15 @@ async def test_label_accumulation_blocks_subsequent_egress(writer: AuditWriter) 
         capability_set=frozenset({read_cap, write_cap, purchase_cap}),
     )
 
-    memory.write("labs", "BP=120/80", frozenset({Label.CONFIDENTIAL_HEALTH}))
+    memory.write(
+        "labs",
+        "BP=120/80",
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
+    )
 
     llm = FakeLLMClient(
         [
@@ -212,12 +221,22 @@ async def test_label_accumulation_blocks_subsequent_egress(writer: AuditWriter) 
     )
     assert len(result.tool_outcomes) == 2
     assert result.tool_outcomes[0].decision == Decision.ALLOW
-    assert Label.CONFIDENTIAL_HEALTH in result.tool_outcomes[0].labels_added
+    # Check that the health category tag was propagated (via tags_added)
+    health_tag = next(
+        (t for t in result.tool_outcomes[0].tags_added.a if t.category == "health"),
+        None,
+    )
+    assert health_tag is not None, "health category should have been propagated"
     assert result.tool_outcomes[1].decision == Decision.DENY
     assert result.tool_outcomes[1].rule == "health-meets-egress"
 
     after = graph.get(s.id)
-    assert Label.CONFIDENTIAL_HEALTH in after.label_set
+    # Check that the session's label_state (axis_a) has the health category
+    health_in_session = next(
+        (t for t in after.label_state.a if t.category == "health"),
+        None,
+    )
+    assert health_in_session is not None, "health category should be in session after read"
 
 
 async def test_tool_not_found_handled_gracefully(writer: AuditWriter) -> None:
@@ -271,6 +290,108 @@ async def test_max_iterations_raises(writer: AuditWriter) -> None:
             audit=writer,
             max_iterations=3,
         )
+
+
+async def test_max_iterations_audits_loop_exceeded(writer: AuditWriter) -> None:
+    # Issue #2 — a cap-fire must leave a replayable audit record with the
+    # last-N tool calls, not vanish into an opaque RPC error. Vary the
+    # args each iteration so thrash detection does NOT fire first.
+    graph, registry, client, _, _ = await _setup(writer)
+    s = await graph.new()
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
+
+    responses = [
+        LLMResponse(
+            content="",
+            tool_calls=(ToolCall(id=f"c{i}", name="memory.read", args={"key": str(i)}),),
+            finish_reason=FinishReason.TOOL_CALLS,
+        )
+        for i in range(3)
+    ]
+    llm = FakeLLMClient(responses)
+
+    with pytest.raises(AgentLoopExceededError):
+        await run_turn(
+            session_id=s.id,
+            user_message="loop",
+            llm=llm,
+            tool_client=client,
+            registry=registry,
+            graph=graph,
+            audit=writer,
+            max_iterations=3,
+        )
+
+    events = await writer.read_all()
+    exceeded = [e for e in events if e.event_type == EventType.AGENT_LOOP_EXCEEDED]
+    assert len(exceeded) == 1
+    payload = exceeded[0].payload
+    assert payload["max_iterations"] == 3
+    assert payload["iterations"] == 3
+    # The last-N tool-call trail is present and replayable.
+    assert len(payload["last_calls"]) == 3
+    assert payload["last_calls"][-1]["tool_name"] == "memory.read"
+
+
+async def test_thrash_detection_stops_early_and_audits(writer: AuditWriter) -> None:
+    # Issue #2 — the same (tool, args) repeated should trip the thrash
+    # guard BEFORE burning the whole iteration budget, with a clear
+    # AGENT_LOOP_THRASHING audit event.
+    graph, registry, client, _, _ = await _setup(writer)
+    s = await graph.new()
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
+
+    looping_response = LLMResponse(
+        content="",
+        tool_calls=(ToolCall(id="c", name="memory.read", args={"key": "x"}),),
+        finish_reason=FinishReason.TOOL_CALLS,
+    )
+    # Budget of 10, but identical calls should stop at the 3rd.
+    llm = FakeLLMClient([looping_response] * 10)
+
+    with pytest.raises(AgentLoopExceededError):
+        await run_turn(
+            session_id=s.id,
+            user_message="loop",
+            llm=llm,
+            tool_client=client,
+            registry=registry,
+            graph=graph,
+            audit=writer,
+            max_iterations=10,
+        )
+
+    # Stopped early: the LLM was consulted exactly 3 times, not 10.
+    assert len(llm.calls) == 3
+    events = await writer.read_all()
+    thrash = [e for e in events if e.event_type == EventType.AGENT_LOOP_THRASHING]
+    assert len(thrash) == 1
+    assert thrash[0].payload["repeated_tool"] == "memory.read"
+    assert thrash[0].payload["repeat_count"] == 3
+    # The cap-fire event must NOT also fire — we stopped before the cap.
+    assert not [e for e in events if e.event_type == EventType.AGENT_LOOP_EXCEEDED]
+
+
+def test_agent_max_iterations_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Issue #2 — operator-set default via env, fail-safe on bad values.
+    from capabledeputy.daemon.lifecycle import (
+        DEFAULT_AGENT_MAX_ITERATIONS,
+        agent_max_iterations,
+    )
+
+    monkeypatch.delenv("CAPDEP_AGENT_MAX_ITERATIONS", raising=False)
+    assert agent_max_iterations() == DEFAULT_AGENT_MAX_ITERATIONS
+
+    monkeypatch.setenv("CAPDEP_AGENT_MAX_ITERATIONS", "7")
+    assert agent_max_iterations() == 7
+
+    # Non-positive / unparseable → default (never an unbounded loop).
+    monkeypatch.setenv("CAPDEP_AGENT_MAX_ITERATIONS", "0")
+    assert agent_max_iterations() == DEFAULT_AGENT_MAX_ITERATIONS
+    monkeypatch.setenv("CAPDEP_AGENT_MAX_ITERATIONS", "nonsense")
+    assert agent_max_iterations() == DEFAULT_AGENT_MAX_ITERATIONS
 
 
 async def test_audit_emits_llm_events(writer: AuditWriter) -> None:

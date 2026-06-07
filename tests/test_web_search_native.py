@@ -11,16 +11,16 @@ Covers:
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
+from uuid import uuid4
 
 import httpx
+import pytest
 
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.tools.native.web import WebMock, make_web_tools
 from capabledeputy.tools.registry import ToolContext
-from uuid import uuid4
 
 
 class MockAsyncContextManager:
@@ -50,7 +50,7 @@ def tool_context() -> ToolContext:
     """Tool context for test calls."""
     return ToolContext(
         session_id=uuid4(),
-        label_set=frozenset(),
+        label_state=LabelState(),
     )
 
 
@@ -61,7 +61,7 @@ def test_web_search_tool_registration(mock: WebMock) -> None:
 
     assert search_tool is not None
     assert search_tool.capability_kind == CapabilityKind.WEB_FETCH
-    assert search_tool.inherent_labels == frozenset({Label.UNTRUSTED_EXTERNAL})
+    assert ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED) in search_tool.inherent_tags.b
     assert search_tool.effect_class == "data.read_remote"
     assert search_tool.default_reversibility == {"degree": "reversible", "agent": "system"}
     assert search_tool.tool_provenance == "operator-curated"
@@ -97,7 +97,7 @@ async def test_empty_query_rejection(mock: WebMock, tool_context: ToolContext) -
     result = await search_tool.handler({"query": ""}, tool_context)
     assert result.output["ok"] is False
     assert "non-empty" in result.output["error"]
-    assert Label.UNTRUSTED_EXTERNAL in result.additional_labels
+    assert ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED) in result.additional_tags.b
 
 
 @pytest.mark.asyncio
@@ -123,7 +123,9 @@ async def test_count_bounds_too_large(mock: WebMock, tool_context: ToolContext) 
 
 
 @pytest.mark.asyncio
-async def test_count_bounds_valid(mock: WebMock, tool_context: ToolContext, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_count_bounds_valid(
+    mock: WebMock, tool_context: ToolContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Count in [1, 20] passes bounds check."""
     monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
 
@@ -241,7 +243,7 @@ async def test_ddg_fallback_no_key(
     assert result.output["ok"] is True
     assert result.output["backend"] == "duckduckgo"
     assert mock_client_instance.call_args is not None
-    args, kwargs = mock_client_instance.call_args
+    args, _kwargs = mock_client_instance.call_args
     assert "duckduckgo.com" in args[0]
 
 
@@ -272,7 +274,7 @@ async def test_network_error_handling(
 
     assert result.output["ok"] is False
     assert "search failed" in result.output["error"]
-    assert Label.UNTRUSTED_EXTERNAL in result.additional_labels
+    assert ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED) in result.additional_tags.b
 
 
 @pytest.mark.asyncio
@@ -368,10 +370,10 @@ async def test_untrusted_external_label_always_applied(
     search_tool = next((t for t in tools if t.name == "web.search"), None)
 
     result = await search_tool.handler({"query": ""}, tool_context)
-    assert Label.UNTRUSTED_EXTERNAL in result.additional_labels
+    assert ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED) in result.additional_tags.b
 
     result = await search_tool.handler({"query": "test", "count": 100}, tool_context)
-    assert Label.UNTRUSTED_EXTERNAL in result.additional_labels
+    assert ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED) in result.additional_tags.b
 
 
 def test_web_fetch_tool_still_works(mock: WebMock) -> None:
@@ -381,5 +383,5 @@ def test_web_fetch_tool_still_works(mock: WebMock) -> None:
 
     assert fetch_tool is not None
     assert fetch_tool.capability_kind == CapabilityKind.WEB_FETCH
-    assert fetch_tool.inherent_labels == frozenset({Label.UNTRUSTED_EXTERNAL})
+    assert ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED) in fetch_tool.inherent_tags.b
     assert fetch_tool.target_arg == "url"

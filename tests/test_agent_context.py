@@ -11,8 +11,13 @@ from capabledeputy.agent.context import (
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.llm.types import ToolDescription
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.labels import Label
-from capabledeputy.policy.rules import Decision
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+    ProvenanceLevel,
+    ProvenanceTag,
+)
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.model import Session
 from capabledeputy.tools.registry import ToolDefinition
 
@@ -32,15 +37,13 @@ def empty_session() -> Session:
 def rich_session() -> Session:
     """Create a session with labels and metadata."""
     return Session.new(
-        label_set=frozenset(
-            {
-                Label.UNTRUSTED_EXTERNAL,
-                Label.CONFIDENTIAL_FINANCIAL,
-            }
-        ),
         intent="financial-review",
         clearance_profile_id="tier_2",
         risk_preference_at_spawn="balanced",
+        label_state=LabelState(
+            a=frozenset({CategoryTag(category="financial", tier=Tier.REGULATED)}),
+            b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+        ),
     )
 
 
@@ -135,7 +138,9 @@ class TestLLMContextDeterminism:
         ctx1 = build_llm_context(empty_session, tools, registry, events)
 
         session_with_label = Session.new(
-            label_set=frozenset({Label.UNTRUSTED_EXTERNAL}),
+            label_state=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+            ),
         )
         ctx2 = build_llm_context(session_with_label, tools, registry, events)
 
@@ -195,8 +200,10 @@ class TestRichSession:
 
         ctx = build_llm_context(rich_session, tools, registry, events)
 
-        # Labels should be sorted
-        assert "Current labels: confidential.financial, untrusted.external" in ctx.system_prompt
+        # Labels should be sorted - four-axis format: category:X@tier, provenance:Y
+        assert "Current labels:" in ctx.system_prompt
+        assert "category:financial@regulated" in ctx.system_prompt
+        assert "provenance:external-untrusted" in ctx.system_prompt
 
     def test_rich_session_includes_metadata(
         self,
@@ -241,11 +248,8 @@ class TestToolInclusionAndHints:
         tool_desc, tool_defn = email_tool
 
         session = Session.new(
-            label_set=frozenset(
-                {
-                    Label.UNTRUSTED_EXTERNAL,
-                    Label.EGRESS_EMAIL,
-                }
+            label_state=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
             ),
         )
 
@@ -266,11 +270,8 @@ class TestToolInclusionAndHints:
         tool_desc, tool_defn = email_tool
 
         session = Session.new(
-            label_set=frozenset(
-                {
-                    Label.CONFIDENTIAL_FINANCIAL,
-                    Label.EGRESS_EMAIL,
-                }
+            label_state=LabelState(
+                a=frozenset({CategoryTag(category="financial", tier=Tier.REGULATED)}),
             ),
         )
 

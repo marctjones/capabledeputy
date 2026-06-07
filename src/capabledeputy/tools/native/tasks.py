@@ -28,10 +28,22 @@ from uuid import uuid4
 
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+)
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
-_PERSONAL = frozenset({Label.CONFIDENTIAL_PERSONAL})
+_PERSONAL_TAGS = LabelState(
+    a=frozenset(
+        {
+            CategoryTag(
+                category="personal", tier=Tier.REGULATED, assignment_provenance="source-declared"
+            )
+        }
+    )
+)
 
 
 @dataclass(frozen=True)
@@ -103,7 +115,7 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
         )
         return ToolResult(
             output={"id": task.id, "title": task.title},
-            additional_labels=_PERSONAL,
+            additional_tags=_PERSONAL_TAGS,
         )
 
     async def tasks_list(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
@@ -113,12 +125,12 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
             output={
                 "tasks": [{"id": t.id, "title": t.title, "done": t.done} for t in items],
             },
-            additional_labels=_PERSONAL,
+            additional_tags=_PERSONAL_TAGS,
         )
 
     async def tasks_complete(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
         ok = store.complete(str(args["id"]))
-        return ToolResult(output={"completed": ok}, additional_labels=_PERSONAL)
+        return ToolResult(output={"completed": ok}, additional_tags=_PERSONAL_TAGS)
 
     async def tasks_edit(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
         ok = store.edit(
@@ -126,11 +138,11 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
             title=args.get("title"),
             notes=args.get("notes"),
         )
-        return ToolResult(output={"edited": ok}, additional_labels=_PERSONAL)
+        return ToolResult(output={"edited": ok}, additional_tags=_PERSONAL_TAGS)
 
     async def tasks_delete(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
         ok = store.remove(str(args["id"]))
-        return ToolResult(output={"deleted": ok}, additional_labels=_PERSONAL)
+        return ToolResult(output={"deleted": ok}, additional_tags=_PERSONAL_TAGS)
 
     return [
         ToolDefinition(
@@ -148,7 +160,7 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.CREATE_FS,
             handler=tasks_add,
             target_arg="title",
-            inherent_labels=_PERSONAL,
+            inherent_tags=_PERSONAL_TAGS,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -171,7 +183,7 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
             ),
             capability_kind=CapabilityKind.READ_FS,
             handler=tasks_list,
-            inherent_labels=_PERSONAL,
+            inherent_tags=_PERSONAL_TAGS,
             parameters_schema={
                 "type": "object",
                 "properties": {"include_done": {"type": "boolean"}},
@@ -194,7 +206,7 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.MODIFY_FS,
             handler=tasks_complete,
             target_arg="id",
-            inherent_labels=_PERSONAL,
+            inherent_tags=_PERSONAL_TAGS,
             parameters_schema={
                 "type": "object",
                 "properties": {"id": {"type": "string"}},
@@ -218,7 +230,7 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.MODIFY_FS,
             handler=tasks_edit,
             target_arg="id",
-            inherent_labels=_PERSONAL,
+            inherent_tags=_PERSONAL_TAGS,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -245,7 +257,7 @@ def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.DELETE_FS,
             handler=tasks_delete,
             target_arg="id",
-            inherent_labels=_PERSONAL,
+            inherent_tags=_PERSONAL_TAGS,
             parameters_schema={
                 "type": "object",
                 "properties": {"id": {"type": "string"}},

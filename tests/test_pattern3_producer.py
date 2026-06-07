@@ -35,7 +35,7 @@ async def test_wrap_output_substitutes_sensitive_keys() -> None:
         session_id=sid,
         output={"record": "patient's full medical history", "key": "alice"},
         sensitive_keys=("record",),
-        labels=ResolvedLabels(axis_a=("health",), axis_b=("source-declared",)),
+        labels=ResolvedLabels(axis_a=("health",), axis_b=("principal-direct",)),
     )
     # 'record' is now a UUID string; 'key' is unchanged.
     assert is_planner_safe_token(out["record"])
@@ -99,8 +99,10 @@ async def test_make_handle_wrapper_wraps_tool_handler() -> None:
         labels=ResolvedLabels(axis_a=("personal",)),
     )
 
+    from capabledeputy.policy.labels import LabelState
+
     sid = uuid4()
-    ctx = ToolContext(session_id=sid, label_set=frozenset())
+    ctx = ToolContext(session_id=sid, label_state=LabelState())
     result = await wrapped({"key": "alice"}, ctx)
     assert isinstance(result, ToolResult)
     assert is_planner_safe_token(result.output["secret_value"])

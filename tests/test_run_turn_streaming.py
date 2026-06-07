@@ -25,19 +25,14 @@ from capabledeputy.agent.events import (
     IterationStarted,
     LLMRequestSent,
     LLMResponseReceived,
-    ToolDispatched,
-    ToolReturned,
     TurnCompleted,
     TurnInterrupted,
 )
 from capabledeputy.agent.loop import AgentLoopExceededError, run_turn, run_turn_streaming
 from capabledeputy.audit.writer import AuditWriter
-from capabledeputy.llm.client import LLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, Message, ToolDescription
-from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
-from capabledeputy.session.model import Session
-from capabledeputy.tools.client import LabeledToolClient, ToolCallOutcome
+from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.registry import ToolRegistry
 
 
@@ -67,7 +62,9 @@ class _StubLLM:
 
 
 @pytest.fixture
-async def session_setup(tmp_path: Path) -> tuple[UUID, SessionGraph, AuditWriter, ToolRegistry, LabeledToolClient]:
+async def session_setup(
+    tmp_path: Path,
+) -> tuple[UUID, SessionGraph, AuditWriter, ToolRegistry, LabeledToolClient]:
     """Spin up the minimum machinery the agent loop needs."""
     audit = AuditWriter(tmp_path / "audit.jsonl")
     graph = SessionGraph(audit=audit)
@@ -83,14 +80,16 @@ async def test_no_tool_calls_yields_terminal_completed_event(
     """A simple turn with no tool calls produces:
     IterationStarted → LLMRequestSent → LLMResponseReceived → TurnCompleted."""
     sid, graph, audit, registry, tool_client = session_setup
-    llm = _StubLLM([
-        LLMResponse(
-            content="hello world",
-            tool_calls=[],
-            finish_reason=FinishReason.STOP,
-            model="stub-model",
-        ),
-    ])
+    llm = _StubLLM(
+        [
+            LLMResponse(
+                content="hello world",
+                tool_calls=[],
+                finish_reason=FinishReason.STOP,
+                model="stub-model",
+            ),
+        ]
+    )
 
     events = []
     async for evt in run_turn_streaming(
@@ -127,14 +126,16 @@ async def test_run_turn_wrapper_returns_same_result(
     and returns the same AgentTurnResult that the TurnCompleted
     event carried."""
     sid, graph, audit, registry, tool_client = session_setup
-    llm = _StubLLM([
-        LLMResponse(
-            content="hello",
-            tool_calls=[],
-            finish_reason=FinishReason.STOP,
-            model="stub",
-        ),
-    ])
+    llm = _StubLLM(
+        [
+            LLMResponse(
+                content="hello",
+                tool_calls=[],
+                finish_reason=FinishReason.STOP,
+                model="stub",
+            ),
+        ]
+    )
 
     result = await run_turn(
         session_id=sid,
@@ -164,17 +165,24 @@ async def test_max_iterations_yields_terminal_interrupted_event(
     # registry is empty; the loop will iterate until cap regardless.
     from capabledeputy.llm.types import ToolCall
 
-    def _ever_more() -> LLMResponse:
+    # Issue #2 — vary the args each iteration so the loop hits the
+    # *iteration cap* (max_iterations) rather than tripping the
+    # thrash guard, which fires only on a repeated (tool, args).
+    def _ever_more(n: int) -> LLMResponse:
         return LLMResponse(
             content="thinking",
-            tool_calls=[ToolCall(id=str(uuid4()), name="nope", args={})],
+            tool_calls=[ToolCall(id=str(uuid4()), name="nope", args={"n": n})],
             finish_reason=FinishReason.TOOL_CALLS,
             model="stub",
         )
 
     class _LoopForeverLLM:
+        def __init__(self) -> None:
+            self._n = 0
+
         async def respond(self, messages, tools):
-            return _ever_more()
+            self._n += 1
+            return _ever_more(self._n)
 
     events = []
     async for evt in run_turn_streaming(
@@ -215,14 +223,16 @@ async def test_completed_event_appears_exactly_once_per_clean_turn(
     Combined with the max_iterations test, this guarantees exactly
     one terminal event (completed XOR interrupted XOR errored)."""
     sid, graph, audit, registry, tool_client = session_setup
-    llm = _StubLLM([
-        LLMResponse(
-            content="done",
-            tool_calls=[],
-            finish_reason=FinishReason.STOP,
-            model="stub",
-        ),
-    ])
+    llm = _StubLLM(
+        [
+            LLMResponse(
+                content="done",
+                tool_calls=[],
+                finish_reason=FinishReason.STOP,
+                model="stub",
+            ),
+        ]
+    )
 
     completed_count = 0
     interrupted_count = 0
@@ -250,14 +260,16 @@ async def test_iteration_events_carry_correct_index(
     """IterationStarted should fire at iteration=1 on the first
     iter (1-indexed, matching audit step_id convention)."""
     sid, graph, audit, registry, tool_client = session_setup
-    llm = _StubLLM([
-        LLMResponse(
-            content="ok",
-            tool_calls=[],
-            finish_reason=FinishReason.STOP,
-            model="stub",
-        ),
-    ])
+    llm = _StubLLM(
+        [
+            LLMResponse(
+                content="ok",
+                tool_calls=[],
+                finish_reason=FinishReason.STOP,
+                model="stub",
+            ),
+        ]
+    )
 
     iter_starts = []
     async for evt in run_turn_streaming(

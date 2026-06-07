@@ -1,12 +1,12 @@
 from uuid import uuid4
 
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState, Tier
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
 from capabledeputy.tools.registry import ToolContext
 
 
-def _ctx(label_set: frozenset[Label] = frozenset()) -> ToolContext:
-    return ToolContext(session_id=uuid4(), label_set=label_set)
+def _ctx(label_state: LabelState | None = None) -> ToolContext:
+    return ToolContext(session_id=uuid4(), label_state=label_state or LabelState())
 
 
 async def test_write_then_read_round_trips_value() -> None:
@@ -22,22 +22,36 @@ async def test_write_records_label_set_at_call_time() -> None:
     store = LabeledMemoryStore()
     tools = {t.name: t for t in make_memory_tools(store)}
 
-    ctx = _ctx(frozenset({Label.CONFIDENTIAL_HEALTH, Label.CONFIDENTIAL_PERSONAL}))
-    await tools["memory.write"].handler({"key": "k", "value": "x"}, ctx)
-    assert store.labels_of("k") == frozenset(
-        {Label.CONFIDENTIAL_HEALTH, Label.CONFIDENTIAL_PERSONAL},
+    label_state = LabelState(
+        a=frozenset(
+            {
+                CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared"),
+                CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared"),
+            }
+        )
     )
+    ctx = _ctx(label_state)
+    await tools["memory.write"].handler({"key": "k", "value": "x"}, ctx)
+    assert store.labels_of("k") == label_state
 
 
 async def test_read_returns_labels_as_additional() -> None:
     store = LabeledMemoryStore()
     tools = {t.name: t for t in make_memory_tools(store)}
 
-    write_ctx = _ctx(frozenset({Label.CONFIDENTIAL_HEALTH}))
+    write_label_state = LabelState(
+        a=frozenset(
+            {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+        )
+    )
+    write_ctx = _ctx(write_label_state)
     await tools["memory.write"].handler({"key": "k", "value": "v"}, write_ctx)
 
     read_result = await tools["memory.read"].handler({"key": "k"}, _ctx())
-    assert Label.CONFIDENTIAL_HEALTH in read_result.additional_labels
+    assert (
+        CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")
+        in read_result.additional_tags.a
+    )
 
 
 async def test_read_unknown_returns_not_found() -> None:
@@ -46,25 +60,36 @@ async def test_read_unknown_returns_not_found() -> None:
 
     result = await tools["memory.read"].handler({"key": "missing"}, _ctx())
     assert result.output == {"found": False}
-    assert result.additional_labels == frozenset()
+    assert result.additional_tags == LabelState()
 
 
 async def test_overwrite_replaces_value_and_labels() -> None:
     store = LabeledMemoryStore()
     tools = {t.name: t for t in make_memory_tools(store)}
 
+    health_label_state = LabelState(
+        a=frozenset(
+            {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+        )
+    )
+    personal_label_state = LabelState(
+        a=frozenset(
+            {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        )
+    )
+
     await tools["memory.write"].handler(
         {"key": "k", "value": "first"},
-        _ctx(frozenset({Label.CONFIDENTIAL_HEALTH})),
+        _ctx(health_label_state),
     )
     await tools["memory.write"].handler(
         {"key": "k", "value": "second"},
-        _ctx(frozenset({Label.CONFIDENTIAL_PERSONAL})),
+        _ctx(personal_label_state),
     )
 
     read = await tools["memory.read"].handler({"key": "k"}, _ctx())
     assert read.output == {"found": True, "value": "second"}
-    assert read.additional_labels == frozenset({Label.CONFIDENTIAL_PERSONAL})
+    assert read.additional_tags == personal_label_state
 
 
 async def test_keys_lists_all_keys_sorted() -> None:

@@ -166,8 +166,8 @@ def test_evidence_bundle_summary_counts() -> None:
         },
     ]
     bundle = build_evidence_bundle(audit_events)
-    # untrusted-meets-egress → AC-4, SC-7 (2 controls × 1 event each = 2)
-    # capability-expired → AC-3, AC-6, AC-2(2) (3 controls × 1 event each = 3)
+    # untrusted-meets-egress → AC-4, SC-7 (2 controls x 1 event each = 2)
+    # capability-expired → AC-3, AC-6, AC-2(2) (3 controls x 1 event each = 3)
     # Total evidence records = 5
     total = sum(len(v) for v in bundle.values())
     assert total == 5

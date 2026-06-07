@@ -51,7 +51,6 @@ async def test_pattern_library_auto_approves_matching_submission(
         action=ApprovalAction.SEND_EMAIL,
         payload="Updated prescription summary attached.",
         target="spouse@example.com",
-        labels_in=frozenset(),
         justification="recurring family update",
     )
     assert matching.status.value == "approved"
@@ -65,7 +64,6 @@ async def test_pattern_library_auto_approves_matching_submission(
         action=ApprovalAction.SEND_EMAIL,
         payload="hi",
         target="random-stranger@example.com",
-        labels_in=frozenset(),
     )
     assert pending.status.value == "pending"
 

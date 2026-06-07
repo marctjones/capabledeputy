@@ -28,7 +28,7 @@ from typing import Any
 
 import yaml
 
-from capabledeputy.policy.labels import AxisA, AxisB, AxisD
+from capabledeputy.policy.labels import AxisD, LabelState
 
 
 class RuleOutcome(StrEnum):
@@ -114,8 +114,7 @@ class RulePredicate:
     def matches(
         self,
         *,
-        axis_a: AxisA,
-        axis_b: AxisB,
+        labels: LabelState,
         axis_d: AxisD,
         effect_class: str,
         target: str,
@@ -126,14 +125,14 @@ class RulePredicate:
         if self.effect_class is not None and self.effect_class != effect_class:
             return False
         # Multi-category AND-semantics: every category in
-        # axis_a_categories must be present on the session's axis_a.
+        # axis_a_categories must be present on the session's labels.
         # The singular axis_a_category is folded in as an additional
         # required member.
         required_categories: list[str] = list(self.axis_a_categories)
         if self.axis_a_category is not None:
             required_categories.append(self.axis_a_category)
         if required_categories:
-            present = {c.category for c in axis_a.categories}
+            present = {c.category for c in labels.a}
             for req in required_categories:
                 if req not in present:
                     return False
@@ -155,7 +154,7 @@ class RulePredicate:
                 # Wrap-midnight window (e.g., 22..6).
                 return False
         if self.axis_b_provenance is not None and not any(
-            e.level.value == self.axis_b_provenance for e in axis_b.entries
+            e.level.value == self.axis_b_provenance for e in labels.b
         ):
             return False
         if self.axis_d_initiator is not None and axis_d.initiator != self.axis_d_initiator:
@@ -209,8 +208,7 @@ class EvaluationResult:
 def evaluate(
     *,
     rules: DecisionRules,
-    axis_a: AxisA,
-    axis_b: AxisB,
+    labels: LabelState,
     axis_d: AxisD,
     effect_class: str,
     target: str,
@@ -241,8 +239,7 @@ def evaluate(
             # FR-014 — unratified rules have zero effect. Skip silently.
             continue
         if rule.predicate.matches(
-            axis_a=axis_a,
-            axis_b=axis_b,
+            labels=labels,
             axis_d=axis_d,
             effect_class=effect_class,
             target=target,

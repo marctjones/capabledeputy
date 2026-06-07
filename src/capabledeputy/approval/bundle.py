@@ -37,6 +37,17 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
+from capabledeputy.policy.labels import LabelState
+
+# Bundle wire format version. v1 carried only the lossy flat
+# category/level-string fields (`inherent_labels`/`arg_labels`), which
+# drop tier + risk_ids and merge categories with provenance levels into
+# one set. v2 ADDS the structured four-axis `inherent_tags`/`arg_tags`
+# (`LabelState`) alongside them (additive — the flat fields stay for
+# back-compat). Readers prefer the structured fields when present and
+# fall back to the flat strings for v1 bundles.
+BUNDLE_FORMAT_VERSION = 2
+
 # Roadmap v2 #6 — default bundle TTL in seconds. 24 hours unless
 # overridden. Set to 0 (or empty string) to produce immortal
 # bundles (back-compat / explicit operator choice).
@@ -96,6 +107,9 @@ class BundledApproval:
     arg_labels: frozenset[str]
     rule: str | None
     reason: str | None
+    # v2 structured arg taint (four-axis); preserves tier + risk_ids the
+    # flat `arg_labels` strings drop. Empty for v1 bundles read back.
+    arg_tags: LabelState = field(default_factory=LabelState)
     state: GateState = GateState.PENDING
 
     def with_state(self, state: GateState) -> BundledApproval:
@@ -118,6 +132,11 @@ class WorkflowStep:
     rule: str | None
     reason: str | None
     line: int | None
+    # v2 structured four-axis taint (preserves tier + risk_ids + the
+    # category/provenance distinction the flat *_labels strings lose).
+    # Empty for v1 bundles read back through from_dict.
+    inherent_tags: LabelState = field(default_factory=LabelState)
+    arg_tags: LabelState = field(default_factory=LabelState)
 
 
 def hash_program(source: str) -> str:
@@ -221,6 +240,7 @@ class WorkflowImpact:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "format_version": BUNDLE_FORMAT_VERSION,
             "bundle_id": str(self.bundle_id),
             "program_hash": self.program_hash,
             "created_at": self.created_at.isoformat(),
@@ -233,6 +253,9 @@ class WorkflowImpact:
                     "arg_labels": sorted(s.arg_labels),
                     "decision": s.decision,
                     "inherent_labels": sorted(s.inherent_labels),
+                    # v2 structured four-axis taint (lossless).
+                    "inherent_tags": s.inherent_tags.to_dict(),
+                    "arg_tags": s.arg_tags.to_dict(),
                     "rule": s.rule,
                     "reason": s.reason,
                     "line": s.line,
@@ -245,6 +268,7 @@ class WorkflowImpact:
                     "tool": g.tool_name,
                     "args": g.args,
                     "arg_labels": sorted(g.arg_labels),
+                    "arg_tags": g.arg_tags.to_dict(),
                     "rule": g.rule,
                     "reason": g.reason,
                     "state": g.state.value,

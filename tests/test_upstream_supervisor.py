@@ -26,10 +26,12 @@ from capabledeputy.upstream.supervisor import (
 
 
 def _make_config(name: str = "test") -> UpstreamServerConfig:
+    from capabledeputy.policy.labels import LabelState
+
     return UpstreamServerConfig(
         name=name,
         command=("false",),  # never actually invoked in these tests
-        inherent_labels=frozenset(),
+        inherent_tags=LabelState(),
         tool_overrides={},
         isolation=None,
         env={},

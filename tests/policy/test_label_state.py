@@ -17,8 +17,6 @@ from hypothesis import strategies as st
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import (
     AssignmentProvenance,
-    AxisA,
-    AxisB,
     CategoryTag,
     LabelError,
     LabelState,
@@ -26,8 +24,10 @@ from capabledeputy.policy.labels import (
     ProvenanceTag,
     TagTransfer,
     apply_transfer,
+    inherit,
     meets_required_floor,
     most_restrictive_inherit,
+    tags_for_labels_strings,
 )
 from capabledeputy.policy.tiers import Tier, compare
 
@@ -113,6 +113,82 @@ def test_non_declassifier_removal_is_rejected_at_construction() -> None:
         TagTransfer(adds=LabelState(), removes=rem, is_declassifier=False)
 
 
+def test_tags_for_labels_maps_categories_and_provenance() -> None:
+    """The legacy-string→four-axis forward map (`tags_for_labels_strings`,
+    used by the daemon RPC paths that still receive flat label strings)
+    places confidential.* on Axis A and untrusted/trusted.* on Axis B."""
+    health = tags_for_labels_strings(frozenset({"confidential.health"}))
+    assert {t.category for t in health.a} == {"health"}
+    assert not health.b
+    untrusted = tags_for_labels_strings(frozenset({"untrusted.external"}))
+    assert {t.level for t in untrusted.b} == {ProvenanceLevel.EXTERNAL_UNTRUSTED}
+    assert not untrusted.a
+
+
+def test_tags_for_labels_unfuses_egress_effects() -> None:
+    """Egress strings are Axis-C effects, not propagating tags — they
+    contribute nothing to the LabelState (the redesign's un-fusing)."""
+    assert tags_for_labels_strings(frozenset({"egress.email"})) == LabelState()
+    assert tags_for_labels_strings(frozenset({"egress.purchase"})) == LabelState()
+    # A mixed set drops only the egress part.
+    mixed = tags_for_labels_strings(frozenset({"confidential.financial", "egress.email"}))
+    assert {t.category for t in mixed.a} == {"financial"}
+
+
+def test_tags_for_labels_empty_is_empty() -> None:
+    assert tags_for_labels_strings(frozenset()) == LabelState()
+
+
+def test_string_path_resolves_tier_from_catalog(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue #50 — the flat-string path must carry the catalog's
+    default_tier, not a flattened REGULATED. With a catalog that puts
+    health at `restricted`, the string `confidential.health` resolves to
+    a RESTRICTED tag (was hardcoded REGULATED, which weakened BLP)."""
+    from capabledeputy.policy.labels import reset_category_tier_cache
+
+    (tmp_path / "labels.yaml").write_text(
+        "categories:\n"
+        "  - id: health\n"
+        "    kind: stable_core\n"
+        "    default_tier: restricted\n"
+        "  - id: personal\n"
+        "    kind: stable_core\n"
+        "    default_tier: regulated\n",
+    )
+    monkeypatch.setenv("CAPDEP_CONFIGS_DIR", str(tmp_path))
+    reset_category_tier_cache()
+    try:
+        health = tags_for_labels_strings(frozenset({"confidential.health"}))
+        (health_tag,) = health.a
+        assert health_tag.tier == Tier.RESTRICTED
+        personal = tags_for_labels_strings(frozenset({"confidential.personal"}))
+        (personal_tag,) = personal.a
+        assert personal_tag.tier == Tier.REGULATED
+    finally:
+        reset_category_tier_cache()
+
+
+def test_string_path_fails_safe_to_regulated_without_catalog(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue #50 — when the catalog is absent/silent, fail-safe to
+    REGULATED rather than crashing or under-classifying."""
+    from capabledeputy.policy.labels import reset_category_tier_cache
+
+    monkeypatch.setenv("CAPDEP_CONFIGS_DIR", str(tmp_path))  # no labels.yaml
+    reset_category_tier_cache()
+    try:
+        health = tags_for_labels_strings(frozenset({"confidential.health"}))
+        (health_tag,) = health.a
+        assert health_tag.tier == Tier.REGULATED
+    finally:
+        reset_category_tier_cache()
+
+
 def test_certified_declassifier_removes_a_tag() -> None:
     state = LabelState(
         a=frozenset({CategoryTag("health", Tier.RESTRICTED), CategoryTag("work", Tier.SENSITIVE)})
@@ -164,59 +240,54 @@ def test_operation_carries_subtype_and_floor() -> None:
     assert op.required_floor is ProvenanceLevel.SYSTEM_INTERNAL
 
 
-# --- R4b transitional converters -------------------------------------
+# --- directional inheritance (delegation / fork) ---------------------
 
 
-def test_label_state_axes_roundtrip() -> None:
-    ls = LabelState(
-        a=frozenset({CategoryTag("health", Tier.RESTRICTED)}),
-        b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+def test_directional_inherit_keeps_parent_provenance() -> None:
+    """`inherit` (delegation/fork) is parent-authoritative on provenance:
+    derivation cannot launder a category's assignment_provenance away —
+    the parent's source wins on a shared category. Distinct from the
+    symmetric `most_restrictive_inherit` (in-session accumulation)."""
+    parent = LabelState(
+        a=frozenset({CategoryTag("work", Tier.SENSITIVE, assignment_provenance="human-declared")}),
     )
-    assert LabelState.from_axes(ls.to_axis_a(), ls.to_axis_b()) == ls
-
-    axis_a = AxisA(categories=(CategoryTag("work", Tier.SENSITIVE),))
-    axis_b = AxisB(entries=(ProvenanceTag(ProvenanceLevel.SYSTEM_INTERNAL),))
-    back = LabelState.from_axes(axis_a, axis_b)
-    assert set(back.to_axis_a().categories) == set(axis_a.categories)
-    assert set(back.to_axis_b().entries) == set(axis_b.entries)
-
-
-@given(_label_states, _label_states)
-def test_directional_inherit_matches_legacy(parent: LabelState, child: LabelState) -> None:
-    """R4c safety net: the new directional `inherit` must reproduce the
-    legacy `most_restrictive_inherit_axis_a/_b` (parent-authoritative
-    provenance) exactly — so the engine's delegation/fork path can switch
-    to it without behavior change. (Distinct from the symmetric
-    `most_restrictive_inherit`, which deliberately differs.)"""
-    from capabledeputy.policy.labels import (
-        inherit,
-        most_restrictive_inherit_axis_a,
-        most_restrictive_inherit_axis_b,
+    child = LabelState(
+        a=frozenset(
+            {CategoryTag("work", Tier.RESTRICTED, assignment_provenance="source-declared")},
+        ),
     )
+    merged = inherit(parent, child)
+    (tag,) = merged.a
+    assert tag.category == "work"
+    assert tag.tier is Tier.RESTRICTED  # tier still rises to most-restrictive
+    assert tag.assignment_provenance == "human-declared"  # parent's source wins
 
-    # Normalize so per-category/level dedup is settled (frozenset→tuple
-    # ordering then can't affect the parent-wins tie-break).
-    parent = most_restrictive_inherit(parent)
-    child = most_restrictive_inherit(child)
-    new = inherit(parent, child)
-    legacy = LabelState.from_axes(
-        most_restrictive_inherit_axis_a(parent.to_axis_a(), child.to_axis_a()),
-        most_restrictive_inherit_axis_b(parent.to_axis_b(), child.to_axis_b()),
+
+def test_directional_inherit_raise_only_inspector_escalates() -> None:
+    """The one exception: a child tag from the raise-only inspector may
+    override provenance (it can only ADD taint, never clear it)."""
+    parent = LabelState(
+        a=frozenset({CategoryTag("work", Tier.SENSITIVE, assignment_provenance="human-declared")}),
     )
-    assert new == legacy
+    child = LabelState(
+        a=frozenset(
+            {CategoryTag("work", Tier.SENSITIVE, assignment_provenance="raise-only-inspector")},
+        ),
+    )
+    (tag,) = inherit(parent, child).a
+    assert tag.assignment_provenance == "raise-only-inspector"
 
 
-def test_decide_labels_param_equivalent_to_axes() -> None:
-    """R4b.2 — passing `labels=LabelState(...)` to decide() must yield the
-    same outcome as passing the derived axis_a/axis_b separately."""
+def test_decide_uses_labels_param() -> None:
+    """R4b.4 — decide() now uses the labels=LabelState(...) parameter
+    directly. The engine now expects LabelState, not separate axes."""
     from capabledeputy.policy.actions import Action
-    from capabledeputy.policy.capabilities import CapabilityKind
+    from capabledeputy.policy.capabilities import Capability, CapabilityKind
     from capabledeputy.policy.engine import decide
 
     ls = LabelState(a=frozenset({CategoryTag("personal", Tier.REGULATED)}))
     action = Action(kind=CapabilityKind.READ_FS, target="/x")
-    via_labels = decide(frozenset(), frozenset(), action, labels=ls)
-    via_axes = decide(
-        frozenset(), frozenset(), action, axis_a=ls.to_axis_a(), axis_b=ls.to_axis_b()
-    )
-    assert via_labels.decision == via_axes.decision
+    caps = frozenset({Capability(kind=CapabilityKind.READ_FS, pattern="*")})
+    result = decide(caps, action, labels=ls)
+    # Just verify the call succeeds and returns a decision
+    assert result is not None

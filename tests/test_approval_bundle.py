@@ -24,13 +24,31 @@ import pytest
 from capabledeputy.app import App
 from capabledeputy.approval.bundle import GateState, render_impact_tree
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.programmatic import (
     BundleMismatchError,
     dry_run_for_bundle,
     execute_with_approved_bundle,
 )
 from capabledeputy.programmatic.value import LabeledValue
+
+
+# Helper to create label states for common test values
+def _financial_label_state() -> LabelState:
+    return LabelState(
+        a=frozenset(
+            {CategoryTag("financial", Tier.REGULATED, assignment_provenance="source-declared")}
+        )
+    )
+
+
+def _health_label_state() -> LabelState:
+    return LabelState(
+        a=frozenset(
+            {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+        )
+    )
 
 
 async def test_dry_run_collects_multiple_approval_gates_into_one_bundle(
@@ -55,7 +73,7 @@ groceries = call("purchase.queue", vendor="amazon-fresh", item="weekly", amount=
         # entering programmatic mode.
         "_session_taint": LabeledValue(
             raw=None,
-            labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+            label_state=_financial_label_state(),
         ),
     }
 
@@ -89,7 +107,7 @@ async def test_blocking_deny_makes_bundle_not_approvable(tmp_path: Path) -> None
 
     src = 'sent = call("email.send", to="alice@example.com", subject="x", body="x")\n'
     initial_scope = {
-        "_taint": LabeledValue(raw=None, labels=frozenset({Label.CONFIDENTIAL_HEALTH})),
+        "_taint": LabeledValue(raw=None, label_state=_health_label_state()),
     }
     impact = await dry_run_for_bundle(src, app.registry, initial_scope=initial_scope)
     assert impact.has_blocking_deny is True
@@ -113,7 +131,7 @@ async def test_approve_all_then_execute(tmp_path: Path) -> None:
     )
     app.graph._sessions[s.id] = replace(s, capability_set=caps)
     # Simulate the session has been tainted with financial data.
-    await app.graph.add_labels(s.id, frozenset({Label.CONFIDENTIAL_FINANCIAL}))
+    await app.graph.add_tags(s.id, _financial_label_state())
 
     src = """
 a = call("purchase.queue", vendor="vendor-a", item="x", amount=10)
@@ -122,7 +140,7 @@ b = call("purchase.queue", vendor="vendor-b", item="y", amount=20)
     initial_scope = {
         "_taint": LabeledValue(
             raw=None,
-            labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+            label_state=_financial_label_state(),
         ),
     }
     impact = await dry_run_for_bundle(src, app.registry, initial_scope=initial_scope)
@@ -165,7 +183,7 @@ async def test_program_hash_mismatch_aborts(tmp_path: Path) -> None:
     s = await app.graph.new()
     cap = Capability(kind=CapabilityKind.QUEUE_PURCHASE, pattern="*", max_amount=1_000)
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
-    await app.graph.add_labels(s.id, frozenset({Label.CONFIDENTIAL_FINANCIAL}))
+    await app.graph.add_tags(s.id, _financial_label_state())
 
     src_v1 = 'a = call("purchase.queue", vendor="benign", item="x", amount=10)\n'
     src_v2 = 'a = call("purchase.queue", vendor="EVIL", item="x", amount=10)\n'
@@ -174,7 +192,7 @@ async def test_program_hash_mismatch_aborts(tmp_path: Path) -> None:
         src_v1,
         app.registry,
         initial_scope={
-            "_taint": LabeledValue(raw=None, labels=frozenset({Label.CONFIDENTIAL_FINANCIAL})),
+            "_taint": LabeledValue(raw=None, label_state=_financial_label_state()),
         },
     )
     approved = impact.approve_all()
@@ -205,7 +223,7 @@ async def test_bundle_with_blocking_deny_refuses_execution(tmp_path: Path) -> No
 
     src = 'call("email.send", to="x@example.com", subject="s", body="b")\n'
     initial = {
-        "_taint": LabeledValue(raw=None, labels=frozenset({Label.CONFIDENTIAL_HEALTH})),
+        "_taint": LabeledValue(raw=None, label_state=_health_label_state()),
     }
     impact = await dry_run_for_bundle(src, app.registry, initial_scope=initial)
     assert impact.has_blocking_deny is True
@@ -243,7 +261,7 @@ async def test_render_impact_tree_human_readable(tmp_path: Path) -> None:
 
     src = 'call("purchase.queue", vendor="v", item="i", amount=10)\n'
     initial = {
-        "_taint": LabeledValue(raw=None, labels=frozenset({Label.CONFIDENTIAL_FINANCIAL})),
+        "_taint": LabeledValue(raw=None, label_state=_financial_label_state()),
     }
     impact = await dry_run_for_bundle(src, app.registry, initial_scope=initial)
     rendered = render_impact_tree(impact)
@@ -268,7 +286,7 @@ async def test_partial_approval_executes_only_approved_gates(tmp_path: Path) -> 
     s = await app.graph.new()
     cap = Capability(kind=CapabilityKind.QUEUE_PURCHASE, pattern="*", max_amount=1_000)
     app.graph._sessions[s.id] = _replace(s, capability_set=frozenset({cap}))
-    await app.graph.add_labels(s.id, frozenset({Label.CONFIDENTIAL_FINANCIAL}))
+    await app.graph.add_tags(s.id, _financial_label_state())
 
     src = """
 a = call("purchase.queue", vendor="approved-vendor", item="x", amount=10)
@@ -277,7 +295,7 @@ b = call("purchase.queue", vendor="rejected-vendor", item="y", amount=20)
     initial = {
         "_taint": LabeledValue(
             raw=None,
-            labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+            label_state=_financial_label_state(),
         ),
     }
     impact = await dry_run_for_bundle(src, app.registry, initial_scope=initial)

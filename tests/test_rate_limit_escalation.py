@@ -65,7 +65,6 @@ def test_cautious_session_rate_exceeded_denies() -> None:
     cap = _make_cap_with_rate()
     cap_uses = {str(cap.audit_id): _stamps_at_max(cap, now)}
     result = decide(
-        frozenset(),
         frozenset({cap}),
         Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
         used_kinds=frozenset({CapabilityKind.SEND_EMAIL}),
@@ -87,7 +86,6 @@ def test_balanced_session_rate_exceeded_escalates() -> None:
     cap = _make_cap_with_rate()
     cap_uses = {str(cap.audit_id): _stamps_at_max(cap, now)}
     result = decide(
-        frozenset(),
         frozenset({cap}),
         Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
         used_kinds=frozenset({CapabilityKind.SEND_EMAIL}),
@@ -114,7 +112,6 @@ def test_under_rate_limit_unaffected_by_escalation_flag() -> None:
 
     for flag in (False, True):
         result = decide(
-            frozenset(),
             frozenset({cap}),
             Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
             used_kinds=frozenset({CapabilityKind.SEND_EMAIL}),
@@ -135,7 +132,6 @@ def test_rate_exceeded_reason_text_differs_between_paths() -> None:
     action = Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com")
 
     deny = decide(
-        frozenset(),
         frozenset({cap}),
         action,
         used_kinds=frozenset({CapabilityKind.SEND_EMAIL}),
@@ -144,7 +140,6 @@ def test_rate_exceeded_reason_text_differs_between_paths() -> None:
         rate_limit_escalation=False,
     )
     escalate = decide(
-        frozenset(),
         frozenset({cap}),
         action,
         used_kinds=frozenset({CapabilityKind.SEND_EMAIL}),
@@ -176,7 +171,6 @@ def test_risk_preference_drives_escalation_flag(
     cap = _make_cap_with_rate()
     cap_uses = {str(cap.audit_id): _stamps_at_max(cap, now)}
     result = decide(
-        frozenset(),
         frozenset({cap}),
         Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
         used_kinds=frozenset({CapabilityKind.SEND_EMAIL}),

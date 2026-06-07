@@ -32,7 +32,8 @@ from capabledeputy.approval.queue import (
     ApprovalStateError,
 )
 from capabledeputy.audit.writer import AuditWriter
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 
 
 @pytest.fixture
@@ -55,7 +56,7 @@ async def _submit(
         action=ApprovalAction.SEND_EMAIL,
         payload="body",
         target="x@example.com",
-        labels_in=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        labels_in=LabelState(a=frozenset({CategoryTag("personal", Tier.REGULATED)})),
         ttl_seconds=ttl_seconds,
     )
 
@@ -202,8 +203,8 @@ def test_to_dict_includes_expires_at() -> None:
         action=ApprovalAction.SEND_EMAIL,
         payload="body",
         target="x@example.com",
-        labels_in=frozenset(),
-        labels_out=frozenset(),
+        labels_in=LabelState(),
+        labels_out=LabelState(),
         capability_requested=None,
         justification="",
         expires_at=now,
@@ -220,8 +221,8 @@ def test_immortal_request_serializes_null_expires_at() -> None:
         action=ApprovalAction.SEND_EMAIL,
         payload="body",
         target="x@example.com",
-        labels_in=frozenset(),
-        labels_out=frozenset(),
+        labels_in=LabelState(),
+        labels_out=LabelState(),
         capability_requested=None,
         justification="",
         expires_at=None,

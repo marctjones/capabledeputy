@@ -43,7 +43,14 @@ def audit_main(
     ctx: typer.Context,
     event_type: Annotated[
         str | None,
-        typer.Option("--type", help="Filter by event type, e.g. session.created"),
+        typer.Option("--type", help="Filter by exact event type, e.g. session.created"),
+    ] = None,
+    event_type_contains: Annotated[
+        str | None,
+        typer.Option(
+            "--filter",
+            help="Filter by event-type substring, e.g. `loop` or `approval`",
+        ),
     ] = None,
     session_id: Annotated[
         str | None,
@@ -65,6 +72,8 @@ def audit_main(
     params: dict[str, Any] = {"limit": limit}
     if event_type:
         params["event_type"] = event_type
+    if event_type_contains:
+        params["event_type_contains"] = event_type_contains
     if session_id:
         params["session_id"] = session_id
 

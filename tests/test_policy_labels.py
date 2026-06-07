@@ -1,29 +1,35 @@
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState, ProvenanceLevel, ProvenanceTag
+from capabledeputy.policy.tiers import Tier
 
 
-def test_label_taxonomy_matches_design() -> None:
-    expected = {
-        "confidential.health",
-        "confidential.financial",
-        "confidential.personal",
-        "untrusted.external",
-        "untrusted.user_input",
-        "trusted.user_direct",
-        "egress.email",
-        "egress.purchase",
-    }
-    actual = {label.value for label in Label}
-    assert actual == expected
+def test_label_state_to_dict_and_from_dict() -> None:
+    """Test LabelState serialization."""
+    state = LabelState(
+        a=frozenset({CategoryTag(category="health", tier=Tier.REGULATED)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+    )
+    d = state.to_dict()
+    restored = LabelState.from_dict(d)
+    assert restored == state
 
 
-def test_label_namespaces_are_dotted() -> None:
-    valid_namespaces = {"confidential", "untrusted", "trusted", "egress"}
-    for label in Label:
-        head, sep, _ = label.value.partition(".")
-        assert sep == "."
-        assert head in valid_namespaces
+def test_label_state_from_dict_empty() -> None:
+    """Empty or None dict yields LabelState()."""
+    assert LabelState.from_dict(None) == LabelState()
+    assert LabelState.from_dict({}) == LabelState()
 
 
-def test_label_string_value_is_full_dotted_form() -> None:
-    assert str(Label.CONFIDENTIAL_HEALTH) == "confidential.health"
-    assert Label("confidential.health") is Label.CONFIDENTIAL_HEALTH
+def test_category_tag_to_dict_and_from_dict() -> None:
+    """Test CategoryTag serialization."""
+    tag = CategoryTag(category="health", tier=Tier.REGULATED, risk_ids=("R1", "R2"))
+    d = tag.to_dict()
+    restored = CategoryTag.from_dict(d)
+    assert restored == tag
+
+
+def test_provenance_tag_to_dict_and_from_dict() -> None:
+    """Test ProvenanceTag serialization."""
+    tag = ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)
+    d = tag.to_dict()
+    restored = ProvenanceTag.from_dict(d)
+    assert restored == tag

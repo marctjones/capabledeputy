@@ -10,8 +10,8 @@ verifier can walk the chain and detect any single-line edit, insertion,
 deletion, or reorder. The first line of a fresh file carries
 prev_hash=None. Rotation does NOT reset the chain: the new active
 file's first line carries the hash of the rotated file's final line.
-The verifier today only walks the active file; cross-file verification
-is a follow-up (the active-file chain is still cryptographic).
+The verifier walks the active file by default and the full kept history
+(active + rotated archives) under `verify_audit_chain(..., include_rotated=True)`.
 """
 
 from __future__ import annotations

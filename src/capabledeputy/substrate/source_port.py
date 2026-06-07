@@ -39,3 +39,17 @@ class SourcePort(ABC):
         """Return the id the auditor should log for `target`. May be
         the same as `canonicalize_resource` or a more specific value
         (e.g., a resource-id resolved from a path)."""
+
+
+# Provider registry. New source substrates (gmail, sharepoint, s3, …)
+# add a branch here + a module implementing `SourcePort`; callers select
+# by `kind` (e.g. from daemon.yaml). The port import stays free of the
+# concrete impls (lazy import) so there is no cycle.
+def get_source_port(kind: str, **kwargs: object) -> SourcePort:
+    """Construct a SourcePort provider. Fail-closed on unknown kind
+    (Constitution VI) — never silently no-op the canonical-id guarantee."""
+    if kind == "git":
+        from capabledeputy.substrate.git_source import GitSourcePort
+
+        return GitSourcePort(**kwargs)  # type: ignore[arg-type]
+    raise ValueError(f"unknown source-port provider {kind!r}; known: ['git']")

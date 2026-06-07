@@ -19,7 +19,7 @@ from anyio.to_thread import run_sync as run_in_thread
 
 from capabledeputy.session.model import Session
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 8
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     parent_id TEXT,
     status TEXT NOT NULL,
     intent TEXT,
-    label_set TEXT NOT NULL,
     capability_set TEXT NOT NULL,
     history TEXT NOT NULL,
     declassification_log TEXT NOT NULL,
@@ -45,13 +44,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     revoked_audit_ids TEXT NOT NULL DEFAULT '[]',
     -- 003 v0.9 four-axis storage shape (T008, FR-045). axis_c lives on
     -- capability_set/ToolDefinition, not on the session.
-    axis_a TEXT NOT NULL DEFAULT '[]',
-    axis_b TEXT NOT NULL DEFAULT '[]',
+    -- R4b.4: collapsed axis_a + axis_b into label_state.
+    label_state TEXT NOT NULL DEFAULT '{}',
     axis_d TEXT NOT NULL DEFAULT '{}',
     purpose_handle TEXT NOT NULL DEFAULT 'unset',
     reference_handles TEXT NOT NULL DEFAULT '{}',
     risk_preference_at_spawn TEXT NOT NULL DEFAULT 'cautious',
     effective_isolation_region_id TEXT NULL,
+    clearance_profile_id TEXT NULL,
     -- Cookbook Pattern ⑥ — STRICT (default) | SHADOW.
     enforcement_mode TEXT NOT NULL DEFAULT 'strict',
     -- Cookbook §4 #6 — first-action-of-kind prompt.
@@ -136,118 +136,6 @@ CREATE INDEX IF NOT EXISTS idx_override_grants_expires ON override_grants(expire
 """
 
 
-# 003 T011 — legacy label_set -> axis_a/axis_b mapping (FR-024 forward-
-# only). REGULATED chosen for the confidential.* legacy values: preserves
-# the "sensitive, needs approval" semantics without escalating to
-# RESTRICTED (which would suddenly require Pattern ③ at spawn — a
-# usability regression for migrated sessions). EGRESS_* values are
-# effect-class signals and stay in the legacy label_set column for
-# audit; they don't map to axis_a/axis_b.
-_LEGACY_TO_AXIS_A: dict[str, dict[str, str]] = {
-    "confidential.health": {"category": "health", "tier": "regulated"},
-    "confidential.financial": {"category": "financial", "tier": "regulated"},
-    "confidential.personal": {"category": "personal", "tier": "regulated"},
-}
-_LEGACY_TO_AXIS_B: dict[str, dict[str, object]] = {
-    "untrusted.external": {"level": "external-untrusted", "integrity_floor": False},
-    "untrusted.user_input": {"level": "external-untrusted", "integrity_floor": False},
-    "trusted.user_direct": {"level": "principal-direct", "integrity_floor": False},
-}
-
-# 003 T047 — legacy trust prefix -> Axis-D initiator+authentication.
-# We have no faithful record of the actual initiator on legacy rows,
-# so the migration picks conservative values derived from the trust
-# prefix that *was* recorded:
-#   * trusted.user_direct  ⇒ principal:legacy-migration / device-bound
-#   * untrusted.*          ⇒ external:legacy-untrusted / none
-# Most-restrictive composition (FR-024): if a session carries any
-# `untrusted.*` label, the untrusted axis_d wins regardless of
-# whether `trusted.user_direct` is also present — the worst-case
-# initiator drives the migration.
-_AXIS_D_TRUSTED_DEFAULT: dict[str, object] = {
-    "initiator": "principal:legacy-migration",
-    "authentication": "device-bound",
-    "counterparty": None,
-    "relationship_group_ids": [],
-    "expectedness": "anomalous",
-    "reversibility": {"degree": "irreversible", "agent": "external"},
-}
-_AXIS_D_UNTRUSTED_DEFAULT: dict[str, object] = {
-    "initiator": "external:legacy-untrusted",
-    "authentication": "none",
-    "counterparty": None,
-    "relationship_group_ids": [],
-    "expectedness": "anomalous",
-    "reversibility": {"degree": "irreversible", "agent": "external"},
-}
-_LEGACY_TRUSTED_LABELS = frozenset({"trusted.user_direct"})
-_LEGACY_UNTRUSTED_LABELS = frozenset({"untrusted.external", "untrusted.user_input"})
-
-
-def _convert_legacy_label_set(label_set_json: str) -> tuple[str, str, str]:
-    """T011/T047 legacy converter: read the v0.7 label_set JSON list and
-    return (axis_a_json, axis_b_json, axis_d_json) for backfill into
-    the new columns. Most-restrictive position per FR-024 — REGULATED
-    for confidential.*, EXTERNAL_UNTRUSTED for untrusted.*, and an
-    Axis-D initiator/authentication derived from the trust prefix.
-    Idempotent: re-running on already-converted data yields equivalent
-    output. Returns ('[]', '[]', '{}') when nothing maps."""
-    try:
-        labels = json.loads(label_set_json or "[]")
-    except json.JSONDecodeError:
-        return "[]", "[]", "{}"
-
-    axis_a_entries: list[dict[str, object]] = []
-    axis_b_entries: list[dict[str, object]] = []
-    seen_categories: set[str] = set()
-    seen_levels: set[str] = set()
-    saw_trusted = False
-    saw_untrusted = False
-
-    for label in labels:
-        if label in _LEGACY_TO_AXIS_A:
-            spec = _LEGACY_TO_AXIS_A[label]
-            cat = spec["category"]
-            if cat in seen_categories:
-                continue
-            seen_categories.add(cat)
-            axis_a_entries.append(
-                {
-                    "category": cat,
-                    "tier": spec["tier"],
-                    "risk_ids": [],
-                    "assignment_provenance": "legacy-migration",
-                },
-            )
-        elif label in _LEGACY_TO_AXIS_B:
-            spec_b = _LEGACY_TO_AXIS_B[label]
-            lvl = str(spec_b["level"])
-            if lvl in seen_levels:
-                continue
-            seen_levels.add(lvl)
-            axis_b_entries.append(spec_b)
-        if label in _LEGACY_TRUSTED_LABELS:
-            saw_trusted = True
-        if label in _LEGACY_UNTRUSTED_LABELS:
-            saw_untrusted = True
-        # EGRESS_* and unknown labels: skip; remain in legacy label_set.
-
-    # T047 — Axis-D derivation. Most-restrictive: untrusted wins if
-    # any untrusted label is present, even alongside trusted.
-    if saw_untrusted:
-        axis_d_json = json.dumps(_AXIS_D_UNTRUSTED_DEFAULT)
-    elif saw_trusted:
-        axis_d_json = json.dumps(_AXIS_D_TRUSTED_DEFAULT)
-    else:
-        axis_d_json = "{}"
-
-    return json.dumps(axis_a_entries), json.dumps(axis_b_entries), axis_d_json
-
-
-class SchemaVersionError(RuntimeError):
-    pass
-
-
 class SessionStore:
     def __init__(self, path: Path) -> None:
         self._path = path
@@ -265,6 +153,16 @@ class SessionStore:
 
     def _initialize_sync(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        # No backwards compatibility (label-model redesign, §R6). The
+        # four-axis cutover (schema v7) removes every legacy read path;
+        # a db at any other schema version is WIPED, not migrated —
+        # single-operator, local, no migration. Old sessions carried the
+        # fused flat `label_set`; there is no faithful four-axis
+        # reconstruction worth preserving, so we start clean.
+        if self._needs_wipe():
+            self._path.unlink(missing_ok=True)
+            for suffix in ("-wal", "-shm"):
+                self._path.with_name(self._path.name + suffix).unlink(missing_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA_SQL)
             row = conn.execute("SELECT version FROM schema_version").fetchone()
@@ -273,53 +171,21 @@ class SessionStore:
                     "INSERT INTO schema_version (version) VALUES (?)",
                     (SCHEMA_VERSION,),
                 )
-                return
-            current = row["version"]
-            if current == SCHEMA_VERSION:
-                # Defensive idempotent backfill — a db can land at v6
-                # via several intermediate states (an early-v6 build
-                # before axis_a was added; a v5 db that got its version
-                # stamp bumped without the column ALTERs running).
-                # Re-apply ALL the v6 ALTERs unconditionally; duplicate-
-                # column errors are caught + ignored.
-                _apply_v6_idempotent_alters(conn)
-                return
-            if current in (1, 2, 3, 4, 5):
-                if current == 1:
-                    # v1 → v2: tool_aliasing + prefer_programmatic
-                    for col in ("tool_aliasing", "prefer_programmatic"):
-                        try:
-                            conn.execute(
-                                f"ALTER TABLE sessions ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0",
-                            )
-                        except sqlite3.OperationalError as e:
-                            if "duplicate column" not in str(e).lower():
-                                raise
-                # v2..v5 → v6: apply all the column ALTERs idempotently,
-                # then backfill legacy label_set rows.
-                _apply_v6_idempotent_alters(conn)
-                # T011/T047 legacy converter: backfill axis_a/axis_b/axis_d
-                # from any existing label_set rows that haven't been
-                # converted yet.
-                rows_to_convert = conn.execute(
-                    "SELECT id, label_set FROM sessions "
-                    "WHERE axis_a = '[]' AND axis_b = '[]' AND axis_d = '{}'",
-                ).fetchall()
-                for row in rows_to_convert:
-                    axis_a_json, axis_b_json, axis_d_json = _convert_legacy_label_set(
-                        row["label_set"],
-                    )
-                    if axis_a_json == "[]" and axis_b_json == "[]" and axis_d_json == "{}":
-                        continue
-                    conn.execute(
-                        "UPDATE sessions SET axis_a = ?, axis_b = ?, axis_d = ? WHERE id = ?",
-                        (axis_a_json, axis_b_json, axis_d_json, row["id"]),
-                    )
-                conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
-                return
-            raise SchemaVersionError(
-                f"unsupported schema version {current}; expected {SCHEMA_VERSION}",
-            )
+
+    def _needs_wipe(self) -> bool:
+        """True iff an existing db is at any schema version other than
+        the current one (or is unreadable). A fresh/absent db never needs
+        a wipe — it is created clean from `_SCHEMA_SQL`."""
+        if not self._path.exists():
+            return False
+        try:
+            with self._connect() as conn:
+                row = conn.execute("SELECT version FROM schema_version").fetchone()
+        except sqlite3.DatabaseError:
+            return True  # corrupt / not-a-db / missing schema_version table
+        if row is None:
+            return True
+        return bool(row["version"] != SCHEMA_VERSION)
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -343,20 +209,19 @@ class SessionStore:
                 """
                 INSERT INTO sessions (
                     id, parent_id, status, intent,
-                    label_set, capability_set, history, declassification_log,
+                    capability_set, history, declassification_log,
                     created_at, updated_at, owner,
                     tool_aliasing, prefer_programmatic, used_kinds, cap_uses,
                     revoked_audit_ids,
-                    axis_a, axis_b, axis_d, purpose_handle,
+                    label_state, axis_d, purpose_handle,
                     reference_handles, risk_preference_at_spawn,
                     effective_isolation_region_id, enforcement_mode,
                     first_use_prompt_enabled
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status = excluded.status,
                     intent = excluded.intent,
-                    label_set = excluded.label_set,
                     capability_set = excluded.capability_set,
                     history = excluded.history,
                     declassification_log = excluded.declassification_log,
@@ -367,8 +232,7 @@ class SessionStore:
                     used_kinds = excluded.used_kinds,
                     cap_uses = excluded.cap_uses,
                     revoked_audit_ids = excluded.revoked_audit_ids,
-                    axis_a = excluded.axis_a,
-                    axis_b = excluded.axis_b,
+                    label_state = excluded.label_state,
                     axis_d = excluded.axis_d,
                     purpose_handle = excluded.purpose_handle,
                     reference_handles = excluded.reference_handles,
@@ -382,7 +246,6 @@ class SessionStore:
                     d["parent"],
                     d["status"],
                     d["intent"],
-                    json.dumps(d["label_set"]),
                     json.dumps(d["capability_set"]),
                     json.dumps(d["history"]),
                     json.dumps(d["declassification_log"]),
@@ -394,8 +257,7 @@ class SessionStore:
                     json.dumps(d["used_kinds"]),
                     json.dumps(d["cap_uses"]),
                     json.dumps(d["revoked_audit_ids"]),
-                    json.dumps(d["axis_a"]),
-                    json.dumps(d["axis_b"]),
+                    json.dumps(d["label_state"]),
                     json.dumps(d["axis_d"]),
                     d["purpose_handle"],
                     json.dumps(d["reference_handles"]),
@@ -448,7 +310,6 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "parent": row["parent_id"],
             "status": row["status"],
             "intent": row["intent"],
-            "label_set": json.loads(row["label_set"]),
             "capability_set": json.loads(row["capability_set"]),
             "history": json.loads(row["history"]),
             "declassification_log": json.loads(row["declassification_log"]),
@@ -460,8 +321,7 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "used_kinds": json.loads(row["used_kinds"]),
             "cap_uses": json.loads(row["cap_uses"]),
             "revoked_audit_ids": json.loads(row["revoked_audit_ids"]),
-            "axis_a": json.loads(str(_col("axis_a", "[]"))),
-            "axis_b": json.loads(str(_col("axis_b", "[]"))),
+            "label_state": json.loads(str(_col("label_state", "{}"))),
             "axis_d": json.loads(str(_col("axis_d", "{}"))),
             "purpose_handle": _col("purpose_handle", "unset"),
             "reference_handles": json.loads(str(_col("reference_handles", "{}"))),
@@ -471,70 +331,3 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "first_use_prompt_enabled": bool(_col("first_use_prompt_enabled", 0)),
         },
     )
-
-
-def _apply_v6_idempotent_alters(conn: sqlite3.Connection) -> None:
-    """Apply the v6 schema ALTERs idempotently — duplicate-column errors
-    are caught + ignored. Safe to call on:
-      - a freshly-created v6 db (no-op, every column already exists)
-      - a v5 db being upgraded (all columns added)
-      - an early-v6 db that was stamped before some columns existed
-        (the missing columns get added; the rest no-op)
-
-    Centralizes the column list so the same set is applied from both
-    the "upgrading from v1..v5" branch AND the defensive "already
-    at v6 but maybe inconsistent" branch in _initialize_sync.
-    """
-    for col, default in (
-        ("used_kinds", "'[]'"),
-        ("cap_uses", "'{}'"),
-        ("revoked_audit_ids", "'[]'"),
-        ("axis_a", "'[]'"),
-        ("axis_b", "'[]'"),
-        ("axis_d", "'{}'"),
-        ("purpose_handle", "'unset'"),
-        ("reference_handles", "'{}'"),
-        ("risk_preference_at_spawn", "'cautious'"),
-    ):
-        try:
-            conn.execute(
-                f"ALTER TABLE sessions ADD COLUMN {col} TEXT NOT NULL DEFAULT {default}",
-            )
-        except sqlite3.OperationalError as e:
-            if "duplicate column" not in str(e).lower():
-                raise
-    for col in ("effective_isolation_region_id", "clearance_profile_id"):
-        try:
-            conn.execute(
-                f"ALTER TABLE sessions ADD COLUMN {col} TEXT NULL",
-            )
-        except sqlite3.OperationalError as e:
-            if "duplicate column" not in str(e).lower():
-                raise
-    # Cookbook Pattern ⑥ — enforcement_mode is per-session and the
-    # idempotent-ALTER pattern lets legacy sessions deserialize as
-    # STRICT (matching pre-Pattern-⑥ behavior).
-    try:
-        conn.execute(
-            "ALTER TABLE sessions ADD COLUMN enforcement_mode TEXT NOT NULL DEFAULT 'strict'",
-        )
-    except sqlite3.OperationalError as e:
-        if "duplicate column" not in str(e).lower():
-            raise
-    # Cookbook §4 #6 — first-action-of-kind prompt opt-in flag.
-    # Default 0 (off) so legacy sessions and any session without
-    # explicit operator opt-in behave exactly as before.
-    try:
-        conn.execute(
-            "ALTER TABLE sessions ADD COLUMN first_use_prompt_enabled INTEGER NOT NULL DEFAULT 0",
-        )
-    except sqlite3.OperationalError as e:
-        if "duplicate column" not in str(e).lower():
-            raise
-    try:
-        conn.execute(
-            "ALTER TABLE override_grants ADD COLUMN state TEXT NOT NULL DEFAULT 'active'",
-        )
-    except sqlite3.OperationalError as e:
-        if "duplicate column" not in str(e).lower():
-            raise

@@ -33,7 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from capabledeputy.policy.labels import AxisB, ProvenanceLevel
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel
 from capabledeputy.policy.reversibility import (
     ReversalAgent,
     ReversibilityDegree,
@@ -141,20 +141,20 @@ def is_control_plane_effect(effect_class: str) -> bool:
 def control_plane_admissible(
     *,
     effect_class: str,
-    axis_b: AxisB,
+    labels: LabelState,
 ) -> bool:
     """True iff the effect is admissible on the control plane for
     this session's provenance posture. Non-control-plane effects are
     always admissible by this check (other gates apply).
 
-    The rule (FR-018): if any AxisB entry is external-untrusted, the
+    The rule (FR-018): if any entry in labels.b is external-untrusted, the
     session is tainted and cannot reach the control plane. Otherwise
-    admissible. A session that has no AxisB at all (empty entries)
+    admissible. A session that has no provenance at all (empty labels.b)
     is considered untainted (the default ingest path; the bind step
     is what raises taint)."""
     if not is_control_plane_effect(effect_class):
         return True
-    return all(entry.level is not ProvenanceLevel.EXTERNAL_UNTRUSTED for entry in axis_b.entries)
+    return all(entry.level is not ProvenanceLevel.EXTERNAL_UNTRUSTED for entry in labels.b)
 
 
 # --- FR-019: reversibility-weighted gating ---------------------------

@@ -15,16 +15,28 @@ Design:
   - Host enforces resource limits: step count, memory, timeout
   - Errors surface in audit, don't crash the chokepoint
 
-This commit lands the PORT + a pure-Python reference implementation
-(SafePythonScriptHost — uses RestrictedPython-style AST inspection +
-small evaluator). Operators that need the real Starlark / Wasm
-guarantees configure starlark-rust + PyO3 (P3 deferred work) or
-wasmtime-py (P4 deferred work).
+Two implementations live here:
 
-The pure-Python reference is NOT a security boundary; it's a
-*structural* enforcement of the same policy language operators
-would write for Starlark/Wasm. Trust comes from the operator
-authoring + reviewing the script, not the runtime sandbox.
+  - ``SafePythonScriptHost`` — pure-Python reference. NOT a security
+    boundary; best-effort AST filtering of Python. Useful for
+    prototyping the policy-language contract.
+  - ``StarlarkScriptHost`` — the real sandbox (spec-004 P3), backed by
+    starlark-rust via the ``starlark-pyo3`` binding (optional extra
+    ``capabledeputy[starlark]``). Starlark is a *language-level* sandbox:
+    a policy script has NO access to Python builtins, ``import``, the
+    filesystem, the network, or any host object except the plain
+    ``action`` / ``session`` / ``proposed_outcome`` dicts and the
+    ``relax`` / ``tighten`` / ``abstain`` helpers. That language
+    isolation is the boundary the AST-filtered Python host cannot give.
+
+Both share one policy-language contract: a script defines
+``inspect(action, session, proposed_outcome)`` returning
+``relax(...)`` / ``tighten(...)`` / ``abstain()``.
+
+Trust model + residual risks for the Starlark host are documented in
+``specs/004-mcp-and-substrate/starlark-policy-host-threat-model.md``
+(the WebAssembly/wasmtime host was dropped — Starlark covers the same
+operator need at lower complexity; see ROADMAP).
 """
 
 from __future__ import annotations
@@ -146,16 +158,22 @@ class SafePythonScriptHost:
                     f"policy script {name!r} may not use `import` "
                     "(pure-Python ref host enforces hermetic execution)",
                 )
-            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-                if node.value.id == "__builtins__":
-                    raise ValueError(
-                        f"policy script {name!r} may not reference __builtins__",
-                    )
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                if node.func.id in ("eval", "exec", "compile", "__import__", "open"):
-                    raise ValueError(
-                        f"policy script {name!r} may not call {node.func.id!r}",
-                    )
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "__builtins__"
+            ):
+                raise ValueError(
+                    f"policy script {name!r} may not reference __builtins__",
+                )
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in ("eval", "exec", "compile", "__import__", "open")
+            ):
+                raise ValueError(
+                    f"policy script {name!r} may not call {node.func.id!r}",
+                )
 
         # Compile to bytecode for later exec
         try:
@@ -282,3 +300,151 @@ class SafePythonScriptHost:
             rationale=str(result.get("rationale", "")),
             steps_used=steps["count"],
         )
+
+
+# Starlark prelude: the policy-language helpers, defined IN Starlark so a
+# script's `relax(...)` / `tighten(...)` / `abstain()` return the same
+# dict shape the SafePythonScriptHost helpers produce. Prepended to the
+# operator's source before parsing. (Starlark has no kw-only `*` syntax,
+# so these take ordinary params; callers may still pass them by keyword.)
+_STARLARK_PRELUDE = """
+def relax(to, rule, rationale=""):
+    return {"kind": "relax", "to": to, "rule": rule, "rationale": rationale}
+
+def tighten(to, rule, rationale=""):
+    return {"kind": "tighten", "to": to, "rule": rule, "rationale": rationale}
+
+def abstain():
+    return None
+"""
+
+
+class PolicyScriptHostUnavailableError(RuntimeError):
+    """Raised when a host's runtime dependency is not installed — e.g.
+    the Starlark host without the `capabledeputy[starlark]` extra. A
+    typed error (Constitution VI fail-closed) so the daemon surfaces a
+    clean message instead of an opaque ImportError."""
+
+
+def _import_starlark() -> Any:
+    try:
+        import starlark  # optional runtime dep (capabledeputy[starlark]), imported lazily
+    except ImportError as e:  # pragma: no cover - exercised only without the extra
+        raise PolicyScriptHostUnavailableError(
+            "the Starlark policy host requires the 'starlark' runtime; "
+            "install it with `pip install capabledeputy[starlark]` "
+            "(starlark-pyo3).",
+        ) from e
+    return starlark
+
+
+class StarlarkScriptHost:
+    """Real sandboxed policy host backed by starlark-rust (via
+    starlark-pyo3). Language-level isolation: a script cannot import,
+    open files, touch the network, or reach any Python builtin — only
+    the injected `action`/`session`/`proposed_outcome` dicts and the
+    `relax`/`tighten`/`abstain` helpers are in scope.
+
+    Security boundary (see the threat-model doc):
+      - No I/O, no `import`, no host objects — enforced by the Starlark
+        language itself, not by best-effort filtering.
+      - Deterministic; no clock / randomness inside the script.
+      - Residual risk: starlark-pyo3 2026.1 does not expose a hard
+        step/CPU budget, so a pathological loop (e.g. over a huge
+        `range`) can burn CPU. Mitigations: operator authors + reviews
+        the script (it lives in the daemon-owned policies/ dir), Starlark
+        forbids recursion + `while`, and evaluation runs off the event
+        loop in a worker thread. A hard step limit lands if/when the
+        binding exposes one.
+    """
+
+    runtime_kind: str = "starlark"
+
+    def compile(self, name: str, source: str) -> PolicyScript:
+        if "def inspect(" not in source:
+            raise ValueError(
+                f"policy script {name!r} must define `def inspect(...)`",
+            )
+        starlark = _import_starlark()
+        full_source = _STARLARK_PRELUDE + "\n" + source
+        try:
+            ast = starlark.parse(f"<policy:{name}>", full_source)
+            module = starlark.Module()
+            # Evaluating the module top-to-bottom binds the prelude
+            # helpers + the script's `inspect`; freezing yields an
+            # immutable, repeatedly-callable module (deterministic, no
+            # per-call state).
+            starlark.eval(module, ast, starlark.Globals.standard())
+            frozen = module.freeze()
+        except Exception as e:  # starlark.StarlarkError + parse/eval errors
+            raise ValueError(
+                f"policy script {name!r} failed to compile (Starlark): {e}",
+            ) from e
+        return PolicyScript(
+            name=name,
+            source=source,
+            runtime_kind=self.runtime_kind,
+            compiled_marker=frozen,
+        )
+
+    async def evaluate(
+        self,
+        script: PolicyScript,
+        *,
+        action: dict[str, Any],
+        session: dict[str, Any],
+        proposed_outcome: dict[str, Any],
+    ) -> ScriptOutcome:
+        import anyio
+
+        frozen = script.compiled_marker
+        try:
+            # Run off the event loop — the call into Rust is synchronous.
+            result = await anyio.to_thread.run_sync(
+                lambda: frozen.call("inspect", action, session, proposed_outcome),
+            )
+        except Exception as e:
+            return ScriptOutcome(kind="error", error=str(e))
+
+        if result is None:
+            return ScriptOutcome(kind="abstain")
+        if not isinstance(result, dict):
+            return ScriptOutcome(
+                kind="error",
+                error=f"script {script.name!r} returned non-dict: {type(result).__name__}",
+            )
+        kind = result.get("kind", "")
+        if kind not in ("relax", "tighten"):
+            return ScriptOutcome(
+                kind="error",
+                error=f"script {script.name!r} returned unknown kind {kind!r}",
+            )
+        return ScriptOutcome(
+            kind=kind,
+            to_decision=str(result.get("to", "")),
+            rule=str(result.get("rule", "")),
+            rationale=str(result.get("rationale", "")),
+        )
+
+
+# Host registry — maps a runtime_kind to its implementation. The daemon's
+# HostFactory consults this when loading operator policy scripts (the
+# script's extension / front-matter selects the runtime). New runtimes
+# register here without touching the chokepoint.
+_HOST_FACTORIES: dict[str, Any] = {
+    SafePythonScriptHost.runtime_kind: SafePythonScriptHost,
+    StarlarkScriptHost.runtime_kind: StarlarkScriptHost,
+}
+
+
+def get_script_host(runtime_kind: str) -> PolicyScriptHost:
+    """Return a PolicyScriptHost for `runtime_kind` ("starlark" |
+    "python-reference"). Fail-closed on an unknown kind (Constitution VI)
+    — never silently fall back to the non-sandboxed Python host."""
+    factory = _HOST_FACTORIES.get(runtime_kind)
+    if factory is None:
+        raise ValueError(
+            f"unknown policy-script runtime {runtime_kind!r}; "
+            f"known: {sorted(_HOST_FACTORIES)}",
+        )
+    return factory()

@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, most_restrictive_inherit
 from capabledeputy.upstream.config import (
     UpstreamServerConfig,
     UpstreamToolOverride,
@@ -77,7 +77,7 @@ class CustomKindDecl:
     description: str = ""
     destructive: bool = False
     pattern_anchor: str = ""  # "user_id", "channel_id", "path", etc.
-    add_labels: frozenset[Label] = field(default_factory=frozenset)
+    add_tags: LabelState = field(default_factory=LabelState)
     declared_by_file: str = ""  # filename for error messages
 
     @classmethod
@@ -89,19 +89,19 @@ class CustomKindDecl:
                 "'<namespace>:<path>' (lowercase, e.g. 'slack:dm.send'). "
                 "Built-in flat kinds like READ_FS are reserved for capdep core.",
             )
-        labels_raw = raw.get("add_labels") or []
+        tags_raw = raw.get("add_tags") or {}
         try:
-            labels = frozenset(Label(s) for s in labels_raw)
-        except ValueError as e:
+            tags = LabelState.from_dict(tags_raw)
+        except (ValueError, KeyError) as e:
             raise ServerYamlError(
-                f"{filename}: kind {name!r} declares unknown label: {e}",
+                f"{filename}: kind {name!r} declares invalid tags: {e}",
             ) from e
         return cls(
             name=name,
             description=str(raw.get("description", "")),
             destructive=bool(raw.get("destructive", False)),
             pattern_anchor=str(raw.get("pattern_anchor", "")),
-            add_labels=labels,
+            add_tags=tags,
             declared_by_file=filename,
         )
 
@@ -131,14 +131,14 @@ class ServerYamlConfig:
 
         # Connection bits + isolation — reuse the existing config parsing.
         command = tuple(str(a) for a in (raw.get("command") or []))
-        inherent_labels = frozenset(Label(s) for s in raw.get("inherent_labels", []) or [])
+        inherent_tags = LabelState.from_dict(raw.get("inherent_tags", {}))
         env_raw = raw.get("env") or {}
         env = {str(k): expand_env_value(str(v)) for k, v in env_raw.items()}
         isolation = _parse_isolation(raw.get("isolation"))
 
         # Tool mappings — accept both the new short form (tool_mappings:
         # {tool_name: kind_string}) AND the legacy form (tool_overrides:
-        # {tool_name: {capability_kind: ..., additional_labels: ...}}).
+        # {tool_name: {capability_kind: ..., additional_tags: ...}}).
         tool_overrides: dict[str, UpstreamToolOverride] = {}
 
         # New short form
@@ -150,7 +150,7 @@ class ServerYamlConfig:
                 # registered yet. Stored as string; resolved by the
                 # daemon's CustomKindRegistry consultation.
                 capability_kind=None,
-                additional_labels=frozenset(),
+                additional_tags=LabelState(),
             )
             # Stash the raw kind-string on a side channel for resolution
             # at registration time. (See _resolve_tool_mappings.)
@@ -165,22 +165,20 @@ class ServerYamlConfig:
         for tool_name, ov in overrides_raw.items():
             kind_str = ov.get("capability_kind")
             kind = CapabilityKind(kind_str) if kind_str else None
-            extra = frozenset(Label(s) for s in ov.get("additional_labels", []))
+            extra = LabelState.from_dict(ov.get("additional_tags", {}))
             tool_overrides[str(tool_name)] = UpstreamToolOverride(
                 capability_kind=kind,
-                additional_labels=extra,
+                additional_tags=extra,
             )
 
         # Custom kinds
         kinds_raw = raw.get("kinds") or []
-        custom_kinds = tuple(
-            CustomKindDecl.from_dict(k, filename=filename) for k in kinds_raw
-        )
+        custom_kinds = tuple(CustomKindDecl.from_dict(k, filename=filename) for k in kinds_raw)
 
         server_config = UpstreamServerConfig(
             name=name,
             command=command,
-            inherent_labels=inherent_labels,
+            inherent_tags=inherent_tags,
             tool_overrides=tool_overrides,
             isolation=isolation,
             env=env,
@@ -217,7 +215,7 @@ def _override_with_raw_kind(
     # kind string from a side-channel dict (see CustomKindRegistry).
     return _OverrideWithCustomKind(
         capability_kind=None,
-        additional_labels=override.additional_labels,
+        additional_tags=override.additional_tags,
         _custom_kind_name=raw_kind,
     )
 
@@ -239,7 +237,7 @@ class OverrideFile:
     overrides_server: str
     kinds: tuple[CustomKindDecl, ...] = ()
     tool_mappings: dict[str, str] = field(default_factory=dict)
-    inherent_labels: frozenset[Label] = field(default_factory=frozenset)
+    inherent_tags: LabelState = field(default_factory=LabelState)
     source_file: str = ""
 
     @classmethod
@@ -252,12 +250,12 @@ class OverrideFile:
         kinds_raw = raw.get("kinds") or []
         kinds = tuple(CustomKindDecl.from_dict(k, filename=filename) for k in kinds_raw)
         mappings = {str(k): str(v) for k, v in (raw.get("tool_mappings") or {}).items()}
-        labels = frozenset(Label(s) for s in raw.get("inherent_labels", []) or [])
+        tags = LabelState.from_dict(raw.get("inherent_tags", {}))
         return cls(
             overrides_server=target,
             kinds=kinds,
             tool_mappings=mappings,
-            inherent_labels=labels,
+            inherent_tags=tags,
             source_file=filename,
         )
 
@@ -375,8 +373,7 @@ def load_servers_d(
             )
         if not raw.get("overrides_server"):
             raise ServerYamlError(
-                f"{path.name}: override file (99-*.yaml) must declare "
-                f"`overrides_server: <name>`",
+                f"{path.name}: override file (99-*.yaml) must declare `overrides_server: <name>`",
             )
         ov = OverrideFile.from_dict(raw, filename=path.name)
         if ov.overrides_server not in server_names:
@@ -409,7 +406,7 @@ def apply_overrides(
     Override semantics:
     - `kinds`: add or replace specific kinds by name
     - `tool_mappings`: add or override specific tool→kind mappings
-    - `inherent_labels`: ADD to (not replace) the server's labels
+    - `inherent_tags`: compose with (not replace) the server's tags
     """
     by_name = {c.name: c for c in configs}
     for ov in overrides:
@@ -427,22 +424,22 @@ def apply_overrides(
                 resolved = CapabilityKind(raw_kind)
                 merged_overrides[tool_name] = UpstreamToolOverride(
                     capability_kind=resolved,
-                    additional_labels=frozenset(),
+                    additional_tags=LabelState(),
                 )
             except ValueError:
                 merged_overrides[tool_name] = _OverrideWithCustomKind(
                     capability_kind=None,
-                    additional_labels=frozenset(),
+                    additional_tags=LabelState(),
                     _custom_kind_name=raw_kind,
                 )
 
-        # Merge inherent labels (union)
-        merged_labels = base.server_config.inherent_labels | ov.inherent_labels
+        # Merge inherent tags (most-restrictive composition)
+        merged_tags = most_restrictive_inherit(base.server_config.inherent_tags, ov.inherent_tags)
 
         merged_server = replace(
             base.server_config,
             tool_overrides=merged_overrides,
-            inherent_labels=merged_labels,
+            inherent_tags=merged_tags,
         )
         by_name[ov.overrides_server] = replace(
             base,

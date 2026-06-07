@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from capabledeputy.policy.labels import LabelState
 from capabledeputy.substrate.declassifier_port import (
     apply_declassifier_chain,
 )
@@ -17,8 +18,7 @@ def test_redactor_skips_non_string() -> None:
     redactor = RegexRedactor()
     result = redactor.declassify(
         value={"key": "value"},
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert result is None
 
@@ -27,8 +27,7 @@ def test_redactor_passes_through_clean_text() -> None:
     redactor = RegexRedactor()
     result = redactor.declassify(
         value="hello world",
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert result is None
 
@@ -37,8 +36,7 @@ def test_redactor_redacts_ssn() -> None:
     redactor = RegexRedactor()
     result = redactor.declassify(
         value="The SSN is 123-45-6789 for record.",
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert result is not None
     assert "123-45-6789" not in result.transformed_value
@@ -52,8 +50,7 @@ def test_redactor_redacts_multiple_pii_types() -> None:
     text = "Call 555-123-4567 or email alice@example.com about SSN 999-88-7777."
     result = redactor.declassify(
         value=text,
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert result is not None
     # All three should be redacted
@@ -71,8 +68,7 @@ def test_redactor_lowers_pii_to_none() -> None:
     redactor = RegexRedactor(lower_to_tier="none")
     result = redactor.declassify(
         value="SSN: 123-45-6789",
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert result is not None
     lowered = result.lower_axis_a_categories
@@ -88,8 +84,7 @@ def test_projector_skips_non_dict() -> None:
     proj = SchemaProjector(allowed_keys=("a", "b"))
     result = proj.declassify(
         value="not a dict",
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert result is None
 
@@ -99,8 +94,7 @@ def test_projector_without_schema_skips() -> None:
     proj = SchemaProjector(allowed_keys=())
     result = proj.declassify(
         value={"a": 1, "b": 2},
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert result is None
 
@@ -115,8 +109,7 @@ def test_projector_keeps_allowed_drops_rest() -> None:
     }
     result = proj.declassify(
         value=input_value,
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert result is not None
     assert result.transformed_value == {"name": "transaction", "amount": 50}
@@ -126,12 +119,11 @@ def test_projector_keeps_allowed_drops_rest() -> None:
     assert result.structural_proof_kind == "schema-projected"
 
 
-def test_projector_lowers_axis_b_to_trusted() -> None:
+def test_projector_lowers_provenance_level_to_trusted() -> None:
     proj = SchemaProjector(allowed_keys=("ok",), lower_axis_b_level="trusted")
     result = proj.declassify(
         value={"ok": "yes", "noise": "bad"},
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert result is not None
     assert result.lower_axis_b_level == "trusted"
@@ -142,8 +134,7 @@ def test_projector_skips_when_no_keys_match() -> None:
     proj = SchemaProjector(allowed_keys=("nope",))
     result = proj.declassify(
         value={"a": 1, "b": 2},
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert result is None
 
@@ -175,8 +166,7 @@ def test_chain_redactor_then_projector() -> None:
     final, applied = apply_declassifier_chain(
         (proj, redactor),  # projector runs first; output is a dict
         value=input_value,
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     # Projector ran, projected the dict; redactor sees dict input
     # and skips (not a string).
@@ -192,8 +182,7 @@ def test_chain_empty_list_returns_input_unchanged() -> None:
     final, applied = apply_declassifier_chain(
         (),
         value="anything",
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert final == "anything"
     assert applied == []
@@ -207,8 +196,7 @@ def test_chain_all_abstain_returns_input_unchanged() -> None:
     final, applied = apply_declassifier_chain(
         (redactor, proj),
         value="clean text",
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert final == "clean text"
     assert applied == []
@@ -229,8 +217,7 @@ def test_chain_sequential_application() -> None:
     final, applied = apply_declassifier_chain(
         (r1, r2),
         value=text,
-        current_axis_a=None,
-        current_axis_b=None,
+        current_label_state=LabelState(),
     )
     assert isinstance(final, str)
     assert "123-45-6789" not in final

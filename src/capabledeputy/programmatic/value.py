@@ -1,14 +1,14 @@
-"""LabeledValue: wraps any Python value with a frozenset of Labels.
+"""LabeledValue: wraps any Python value with a four-axis LabelState.
 
 Every value that flows through the interpreter is a LabeledValue. Binary
-operators, function calls, attribute access, and indexing all union the
-labels of their operands so that an output's label set is at least the
+operators, function calls, attribute access, and indexing all compose the
+label_state of their operands so that an output's tags are at least the
 union of every input that contributed to it (DESIGN.md §3 — provenance
 tracking).
 
 Helper `unwrap` strips wrappers recursively (descending into containers)
 to produce the plain Python value the underlying tool / builtin needs.
-Helper `labels_of` collects the union of labels from a (possibly nested)
+Helper `tags_of` collects the composition of tags from a (possibly nested)
 value without unwrapping.
 """
 
@@ -17,24 +17,27 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, most_restrictive_inherit
 
 
 @dataclass(frozen=True)
 class LabeledValue:
     raw: Any
-    labels: frozenset[Label] = field(default_factory=frozenset)
+    label_state: LabelState = field(default_factory=LabelState)
 
-    def with_labels(self, extra: frozenset[Label]) -> LabeledValue:
-        if not extra or extra <= self.labels:
+    def with_tags(self, extra: LabelState) -> LabeledValue:
+        composed = most_restrictive_inherit(self.label_state, extra)
+        if composed == self.label_state:
             return self
-        return LabeledValue(raw=self.raw, labels=self.labels | extra)
+        return LabeledValue(raw=self.raw, label_state=composed)
 
 
-def lv(raw: Any, labels: frozenset[Label] = frozenset()) -> LabeledValue:
+def lv(raw: Any, label_state: LabelState | None = None) -> LabeledValue:
+    if label_state is None:
+        label_state = LabelState()
     if isinstance(raw, LabeledValue):
-        return raw.with_labels(labels)
-    return LabeledValue(raw=raw, labels=labels)
+        return raw.with_tags(label_state)
+    return LabeledValue(raw=raw, label_state=label_state)
 
 
 def unwrap(v: Any) -> Any:
@@ -51,24 +54,32 @@ def unwrap(v: Any) -> Any:
     return v
 
 
-def labels_of(v: Any) -> frozenset[Label]:
+def tags_of(v: Any) -> LabelState:
+    if isinstance(v, LabelState):
+        return v
     if isinstance(v, LabeledValue):
-        return v.labels | labels_of(v.raw)
+        return most_restrictive_inherit(v.label_state, tags_of(v.raw))
     if isinstance(v, (list, tuple, set)):
-        out: frozenset[Label] = frozenset()
+        states: list[LabelState] = []
         for x in v:
-            out = out | labels_of(x)
-        return out
+            states.append(tags_of(x))
+        return most_restrictive_inherit(*states) if states else LabelState()
     if isinstance(v, dict):
-        out = frozenset()
+        states: list[LabelState] = []
         for k, val in v.items():
-            out = out | labels_of(k) | labels_of(val)
-        return out
-    return frozenset()
+            states.append(tags_of(k))
+            states.append(tags_of(val))
+        return most_restrictive_inherit(*states) if states else LabelState()
+    return LabelState()
 
 
-def union_labels(*values: Any) -> frozenset[Label]:
-    out: frozenset[Label] = frozenset()
+def union_tags(*values: Any) -> LabelState:
+    states: list[LabelState] = []
     for value in values:
-        out = out | labels_of(value)
-    return out
+        states.append(tags_of(value))
+    return most_restrictive_inherit(*states) if states else LabelState()
+
+
+# Backward-compat aliases for evaluator.py (which is not in the migration scope)
+labels_of = tags_of
+union_labels = union_tags

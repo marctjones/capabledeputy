@@ -25,7 +25,8 @@ from capabledeputy.app import App
 from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.litellm_client import LiteLLMClient
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 
 _NEEDS_KEY = pytest.mark.skipif(
     not os.environ.get("ANTHROPIC_API_KEY"),
@@ -47,7 +48,11 @@ async def _run_prescription(
     app.memory.write(
         "labs",
         "BP=120/80, prescription: lisinopril 10mg daily; please refill at pharmacy.",
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")},
+            ),
+        ),
     )
 
     s = await app.graph.new(
@@ -79,11 +84,12 @@ async def _run_prescription(
     )
 
     final = app.graph.get(s.id)
+    session_categories = sorted(ct.category for ct in final.label_state.a)
     return {
         "iterations": result["iterations"],
         "outcomes": result["tool_outcomes"],
         "content": result["content"],
-        "session_labels": sorted(label.value for label in final.label_set),
+        "session_labels": session_categories,
         "purchases_queued": len(app.purchase_queue.all()),
     }
 
@@ -114,7 +120,7 @@ async def test_real_llm_aliasing_on_vs_off(tmp_path: Path) -> None:
 
     # Security invariant — both runs must respect health-meets-egress.
     for label_run in (off, on):
-        if "confidential.health" in label_run["session_labels"]:
+        if "health" in label_run["session_labels"]:
             assert label_run["purchases_queued"] == 0, (
                 f"PHI-tainted egress slipped through: {label_run!r}"
             )

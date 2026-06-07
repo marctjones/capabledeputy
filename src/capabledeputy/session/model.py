@@ -1,7 +1,7 @@
 """Session and supporting data types (DESIGN.md §6).
 
-Migrated in Phase 2c from frozenset[str] placeholders to frozenset[Label]
-and frozenset[Capability]. The Session shape is otherwise unchanged.
+DeclassEvent stores label strings; capabilities use four-axis LabelState for
+composition and security reasoning.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Any, Self
 from uuid import UUID, uuid4
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import AxisA, AxisB, AxisD, Label, LabelState
+from capabledeputy.policy.labels import AxisD, LabelState
 
 
 class SessionStatus(StrEnum):
@@ -87,16 +87,16 @@ class Turn:
 @dataclass(frozen=True)
 class DeclassEvent:
     audit_id: UUID
-    from_labels: frozenset[Label]
-    to_labels: frozenset[Label]
+    from_labels: frozenset[str]
+    to_labels: frozenset[str]
     reason: str
     timestamp: datetime = field(default_factory=_utcnow)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "audit_id": str(self.audit_id),
-            "from_labels": sorted(label.value for label in self.from_labels),
-            "to_labels": sorted(label.value for label in self.to_labels),
+            "from_labels": sorted(self.from_labels),
+            "to_labels": sorted(self.to_labels),
             "reason": self.reason,
             "timestamp": self.timestamp.isoformat(),
         }
@@ -105,8 +105,8 @@ class DeclassEvent:
     def from_dict(cls, d: dict[str, Any]) -> Self:
         return cls(
             audit_id=UUID(d["audit_id"]),
-            from_labels=frozenset(Label(s) for s in d["from_labels"]),
-            to_labels=frozenset(Label(s) for s in d["to_labels"]),
+            from_labels=frozenset(str(s) for s in d["from_labels"]),
+            to_labels=frozenset(str(s) for s in d["to_labels"]),
             reason=d["reason"],
             timestamp=datetime.fromisoformat(d["timestamp"]),
         )
@@ -117,7 +117,6 @@ class Session:
     id: UUID
     parent: UUID | None
     status: SessionStatus
-    label_set: frozenset[Label]
     capability_set: frozenset[Capability]
     history: tuple[Turn, ...]
     declassification_log: tuple[DeclassEvent, ...]
@@ -138,10 +137,10 @@ class Session:
     revoked_audit_ids: frozenset[UUID] = field(default_factory=frozenset)
     # 003 v0.9 labeling — T010. Four-axis representation. axis_c lives
     # on Capability.kind / ToolDefinition.effect_class, not here.
-    # Defaults are safe: empty axes + 'unset' purpose ⇒ admits no
+    # Defaults are safe: empty state + 'unset' purpose ⇒ admits no
     # consequential effects (FR-046 fail-closed at decide()).
-    axis_a: AxisA = field(default_factory=AxisA)
-    axis_b: AxisB = field(default_factory=AxisB)
+    # R4b.4: collapsed axis_a + axis_b into single label_state field.
+    label_state: LabelState = field(default_factory=LabelState)
     axis_d: AxisD = field(default_factory=AxisD)
     purpose_handle: str = "unset"
     reference_handles: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -175,7 +174,6 @@ class Session:
         parent: UUID | None = None,
         owner: str | None = None,
         intent: str | None = None,
-        label_set: frozenset[Label] = frozenset(),
         capability_set: frozenset[Capability] = frozenset(),
         history: tuple[Turn, ...] = (),
         declassification_log: tuple[DeclassEvent, ...] = (),
@@ -184,8 +182,7 @@ class Session:
         used_kinds: frozenset[CapabilityKind] = frozenset(),
         cap_uses: dict[str, tuple[datetime, ...]] | None = None,
         revoked_audit_ids: frozenset[UUID] = frozenset(),
-        axis_a: AxisA | None = None,
-        axis_b: AxisB | None = None,
+        label_state: LabelState | None = None,
         axis_d: AxisD | None = None,
         purpose_handle: str = "unset",
         reference_handles: dict[str, dict[str, Any]] | None = None,
@@ -199,7 +196,6 @@ class Session:
             id=uuid4(),
             parent=parent,
             status=SessionStatus.ACTIVE,
-            label_set=label_set,
             capability_set=capability_set,
             history=history,
             declassification_log=declassification_log,
@@ -212,8 +208,7 @@ class Session:
             used_kinds=used_kinds,
             cap_uses=cap_uses if cap_uses is not None else {},
             revoked_audit_ids=revoked_audit_ids,
-            axis_a=axis_a if axis_a is not None else AxisA(),
-            axis_b=axis_b if axis_b is not None else AxisB(),
+            label_state=label_state if label_state is not None else LabelState(),
             axis_d=axis_d if axis_d is not None else AxisD(),
             purpose_handle=purpose_handle,
             reference_handles=reference_handles if reference_handles is not None else {},
@@ -227,14 +222,6 @@ class Session:
     def is_terminal(self) -> bool:
         return self.status in _TERMINAL_STATUSES
 
-    @property
-    def label_state(self) -> LabelState:
-        """R4b transitional: the bundled four-axis label state (Axis A +
-        Axis B). Reads through the separate axis_a/axis_b fields until
-        they are collapsed into a single stored LabelState in R4b's later
-        steps."""
-        return LabelState.from_axes(self.axis_a, self.axis_b)
-
     def with_status(self, status: SessionStatus) -> Self:
         return replace(self, status=status, updated_at=_utcnow())
 
@@ -243,7 +230,6 @@ class Session:
             "id": str(self.id),
             "parent": str(self.parent) if self.parent else None,
             "status": self.status.value,
-            "label_set": sorted(label.value for label in self.label_set),
             "capability_set": sorted(
                 (c.to_dict() for c in self.capability_set),
                 key=lambda d: d["audit_id"],
@@ -262,8 +248,8 @@ class Session:
             },
             "revoked_audit_ids": sorted(str(a) for a in self.revoked_audit_ids),
             # 003 v0.9 four-axis additions (T010). axis_c lives on caps.
-            "axis_a": self.axis_a.to_dict(),
-            "axis_b": self.axis_b.to_dict(),
+            # R4b.4: collapsed axis_a + axis_b into label_state.
+            "label_state": self.label_state.to_dict(),
             "axis_d": self.axis_d.to_dict(),
             "purpose_handle": self.purpose_handle,
             "reference_handles": self.reference_handles,
@@ -280,7 +266,6 @@ class Session:
             id=UUID(d["id"]),
             parent=UUID(d["parent"]) if d.get("parent") else None,
             status=SessionStatus(d["status"]),
-            label_set=frozenset(Label(s) for s in d["label_set"]),
             capability_set=frozenset(Capability.from_dict(c) for c in d["capability_set"]),
             history=tuple(Turn.from_dict(t) for t in d["history"]),
             declassification_log=tuple(
@@ -300,8 +285,8 @@ class Session:
             revoked_audit_ids=frozenset(UUID(a) for a in d.get("revoked_audit_ids", ())),
             # 003 v0.9 four-axis additions — default-tolerant per
             # Constitution §Sec. Constraints (T010 / FR-045).
-            axis_a=AxisA.from_dict(d.get("axis_a") or []),
-            axis_b=AxisB.from_dict(d.get("axis_b") or []),
+            # R4b.4: collapsed axis_a + axis_b into label_state.
+            label_state=LabelState.from_dict(d.get("label_state")),
             axis_d=AxisD.from_dict(d.get("axis_d")),
             purpose_handle=str(d.get("purpose_handle", "unset")),
             reference_handles=dict(d.get("reference_handles") or {}),

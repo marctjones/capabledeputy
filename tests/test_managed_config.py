@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -10,7 +9,6 @@ import yaml
 
 from capabledeputy.cli._managed_config import (
     IMAP_BLOCK_BODY,
-    IMAP_BLOCK_ID,
     has_managed_block,
     imap_credentials_present,
     remove_managed_block,
@@ -197,7 +195,7 @@ def test_register_default_assistant_surface_writes_all_blocks(xdg_tmp: Path) -> 
     # The file parses as YAML and lists all five upstream servers
     parsed = yaml.safe_load(text)
     names = {s["name"] for s in parsed["upstream_servers"]}
-    assert {"bundled-fs", "bundled-memory", "bundled-git", "bundled-fetch", "bundled-search"}.issubset(names)
+    assert {"bundled-fs", "bundled-memory", "bundled-git", "bundled-fetch", "bundled-search"}.issubset(names)  # noqa: E501
     # status messages report one line per block + a sandbox-skipped message
     assert any("bundled-fs" in m for m in msgs)
     assert any("sandbox skipped" in m for m in msgs)
@@ -336,7 +334,7 @@ def test_gworkspace_block_coexists_with_imap_and_bundled(xdg_tmp: Path) -> None:
     parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
     names = {s["name"] for s in parsed["upstream_servers"]}
     # Bundled five + imap (named `mail`) + gworkspace (named `gws`)
-    assert {"mail", "bundled-fs", "bundled-memory", "bundled-git", "bundled-fetch", "bundled-search", "gws"}.issubset(names)
+    assert {"mail", "bundled-fs", "bundled-memory", "bundled-git", "bundled-fetch", "bundled-search", "gws"}.issubset(names)  # noqa: E501
 
 
 def test_gws_cli_available_returns_false_when_missing(

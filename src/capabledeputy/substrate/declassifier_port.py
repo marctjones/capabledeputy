@@ -43,6 +43,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from capabledeputy.policy.labels import LabelState
+
 
 @dataclass(frozen=True)
 class DeclassifyResult:
@@ -88,16 +90,14 @@ class DeclassifyingTransformer(Protocol):
         self,
         *,
         value: Any,
-        current_axis_a: Any,
-        current_axis_b: Any,
+        current_label_state: LabelState,
         context: dict[str, Any] | None = None,
     ) -> DeclassifyResult | None:
         """Transform value (optionally) and lower labels (optionally).
 
         Args:
             value: Current value (from upstream tool or prior declassifier).
-            current_axis_a: Session's current AxisA categories.
-            current_axis_b: Session's current AxisB level.
+            current_label_state: Session's current four-axis LabelState.
             context: Operator-supplied context (e.g., destination URI).
 
         Returns:
@@ -109,8 +109,7 @@ class DeclassifyingTransformer(Protocol):
 def apply_declassifier_chain(
     declassifiers: tuple[DeclassifyingTransformer, ...],
     value: Any,
-    current_axis_a: Any,
-    current_axis_b: Any,
+    current_label_state: LabelState,
     context: dict[str, Any] | None = None,
 ) -> tuple[Any, list[DeclassifyResult]]:
     """Apply declassifiers in operator-declared order.
@@ -124,20 +123,18 @@ def apply_declassifier_chain(
     """
     current_value = value
     applied: list[DeclassifyResult] = []
-    current_axa = current_axis_a
-    current_axb = current_axis_b
+    current_state = current_label_state
     for transformer in declassifiers:
         result = transformer.declassify(
             value=current_value,
-            current_axis_a=current_axa,
-            current_axis_b=current_axb,
+            current_label_state=current_state,
             context=context,
         )
         if result is None:
             continue
         applied.append(result)
         current_value = result.transformed_value
-        # Note: actual axis lowering is applied by host code (the
+        # Note: actual label lowering is applied by host code (the
         # chokepoint integration), not here — this function returns
         # the desired deltas for the host to apply with monotone-aware
         # composition. The transformer pipeline only transforms values.

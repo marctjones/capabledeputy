@@ -1,13 +1,13 @@
 """Information-flow labels (DESIGN.md §7.1; 003 four-axis extension).
 
-The v0.7 flat `Label` enum is retained for backward-compat reads of
-sessions on the legacy SCHEMA_VERSION 5 storage shape — but new code
-MUST consume the four-axis representation (AxisA / AxisB / AxisC /
-AxisD) introduced for v0.9. The legacy enum will be removed at
-SCHEMA_VERSION 7 (FR-024 forward-only).
+New code MUST consume the four-axis representation (AxisC / AxisD) and the
+bundled two-axis propagating label representation (LabelState) introduced
+for v0.9. SCHEMA_VERSION 7 and forward use only four-axis representations;
+the v0.7 flat Label enum (and backward-compat converters) have been removed
+(FR-024 forward-only).
 
-Axis A — Data Category (this file: AxisA, Category schema).
-Axis B — Provenance Lattice (this file: AxisB, ProvenanceLevel).
+Axis A — Data Category (this file: CategoryTag schema).
+Axis B — Provenance Lattice (this file: ProvenanceTag).
 Axis C — Effect Class (lives on ToolDefinition + Capability.kind).
 Axis D — Decision Context (policy/axis_d.py: DecisionContext, aliased as AxisD).
 
@@ -22,26 +22,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Self
 
 from capabledeputy.policy.axis_d import DecisionContext
 from capabledeputy.policy.tiers import Tier, max_of
-
-
-class Label(StrEnum):
-    """LEGACY v0.7 flat label set — retained for backward-compat reads
-    only. New code uses AxisA/AxisB/AxisD instead. Scheduled for
-    removal at SCHEMA_VERSION 7 (FR-024 forward-only)."""
-
-    CONFIDENTIAL_HEALTH = "confidential.health"
-    CONFIDENTIAL_FINANCIAL = "confidential.financial"
-    CONFIDENTIAL_PERSONAL = "confidential.personal"
-    UNTRUSTED_EXTERNAL = "untrusted.external"
-    UNTRUSTED_USER_INPUT = "untrusted.user_input"
-    TRUSTED_USER_DIRECT = "trusted.user_direct"
-    EGRESS_EMAIL = "egress.email"
-    EGRESS_PURCHASE = "egress.purchase"
-
 
 # --- Axis B: Provenance lattice (FR-004) -----------------------------
 
@@ -49,7 +34,8 @@ class Label(StrEnum):
 class ProvenanceLevel(StrEnum):
     """Three-level provenance lattice, monotone order:
     PRINCIPAL_DIRECT > SYSTEM_INTERNAL > EXTERNAL_UNTRUSTED.
-    Integrity-floor flag attaches at the AxisB level, not here."""
+    The integrity floor is a property of the Operation
+    (`Operation.required_floor`), not of the provenance level."""
 
     PRINCIPAL_DIRECT = "principal-direct"
     SYSTEM_INTERNAL = "system-internal"
@@ -121,65 +107,25 @@ class CategoryTag:
         )
 
 
-@dataclass(frozen=True)
-class AxisA:
-    """Session-level Axis A label set: a list of categories with
-    their resolved tiers. Empty means 'no labeled categories in
-    this session'. Composition with other AxisA values is
-    most-restrictive per-category via most_restrictive_inherit."""
-
-    categories: tuple[CategoryTag, ...] = field(default_factory=tuple)
-
-    def to_dict(self) -> list[dict[str, Any]]:
-        return [c.to_dict() for c in self.categories]
-
-    @classmethod
-    def from_dict(cls, raw: list[dict[str, Any]] | None) -> Self:
-        if not raw:
-            return cls(categories=())
-        return cls(categories=tuple(CategoryTag.from_dict(d) for d in raw))
-
-
 # --- Axis B: Provenance set + integrity floor (FR-004) --------------
 
 
 @dataclass(frozen=True)
 class ProvenanceTag:
     """One Axis-B label: a provenance level present in the session. 003
-    redesign canonical leaf type (was AxisBEntry). NOTE: `integrity_floor`
-    is retained transitionally for serialization compatibility; the
-    redesign moves the floor to the Operation (`required_floor`) and it
-    will be dropped from the data tag in a later R4 step."""
+    redesign canonical leaf type (was AxisBEntry). R4b.4: integrity_floor
+    removed (moved to Operation.required_floor)."""
 
     level: ProvenanceLevel
-    integrity_floor: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return {"level": self.level.value, "integrity_floor": self.integrity_floor}
+        return {"level": self.level.value}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Self:
         return cls(
             level=ProvenanceLevel(d["level"]),
-            integrity_floor=bool(d.get("integrity_floor", False)),
         )
-
-
-@dataclass(frozen=True)
-class AxisB:
-    """Session-level Axis B label set: which provenance levels are
-    present + whether any step demands an integrity floor."""
-
-    entries: tuple[ProvenanceTag, ...] = field(default_factory=tuple)
-
-    def to_dict(self) -> list[dict[str, Any]]:
-        return [e.to_dict() for e in self.entries]
-
-    @classmethod
-    def from_dict(cls, raw: list[dict[str, Any]] | None) -> Self:
-        if not raw:
-            return cls(entries=())
-        return cls(entries=tuple(ProvenanceTag.from_dict(d) for d in raw))
 
 
 # --- 003 redesign: LabelState (the propagating labels) + apply/remove --
@@ -222,18 +168,27 @@ class LabelState:
     a: frozenset[CategoryTag] = frozenset()
     b: frozenset[ProvenanceTag] = frozenset()
 
-    # R4b transitional converters: the engine + Session still carry the
-    # separate AxisA/AxisB pair; these bridge to/from the bundled form
-    # while call sites migrate. AxisA/AxisB are deleted at the end of R4.
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a dict for storage/serialization.
+
+        Format: {"a": [CategoryTag.to_dict() for each], "b": [ProvenanceTag.to_dict() for each]}
+        """
+        return {
+            "a": [t.to_dict() for t in sorted(self.a, key=lambda x: x.category)],
+            "b": [t.to_dict() for t in sorted(self.b, key=lambda x: x.level.value)],
+        }
+
     @classmethod
-    def from_axes(cls, axis_a: AxisA, axis_b: AxisB) -> LabelState:
-        return cls(a=frozenset(axis_a.categories), b=frozenset(axis_b.entries))
-
-    def to_axis_a(self) -> AxisA:
-        return AxisA(categories=tuple(self.a))
-
-    def to_axis_b(self) -> AxisB:
-        return AxisB(entries=tuple(self.b))
+    def from_dict(cls, d: dict[str, Any] | None) -> LabelState:
+        """Deserialize from a dict. Default-tolerant: missing keys or None become
+        empty LabelState()."""
+        if d is None:
+            return cls()
+        a_list = d.get("a", [])
+        b_list = d.get("b", [])
+        a = frozenset(CategoryTag.from_dict(x) for x in a_list) if a_list else frozenset()
+        b = frozenset(ProvenanceTag.from_dict(x) for x in b_list) if b_list else frozenset()
+        return cls(a=a, b=b)
 
 
 def _compose_a(*sets: frozenset[CategoryTag]) -> frozenset[CategoryTag]:
@@ -268,8 +223,7 @@ def inherit(parent: LabelState, child: LabelState) -> LabelState:
     and `assignment_provenance` stays the **parent's** ("derivation cannot
     launder provenance away" — a Provenance-security / FR-022 property),
     *unless* the child's is `raise-only-inspector` (which only adds taint).
-    Axis B: union of levels; `integrity_floor` = OR. Ports the legacy
-    `most_restrictive_inherit_axis_a/_b` semantics onto `LabelState`."""
+    Axis B: union of levels."""
     by_cat: dict[str, CategoryTag] = {t.category: t for t in parent.a}
     for cc in child.a:
         pc = by_cat.get(cc.category)
@@ -289,15 +243,140 @@ def inherit(parent: LabelState, child: LabelState) -> LabelState:
         )
     by_lvl: dict[ProvenanceLevel, ProvenanceTag] = {e.level: e for e in parent.b}
     for ce in child.b:
-        pe = by_lvl.get(ce.level)
-        if pe is None:
+        if ce.level not in by_lvl:
             by_lvl[ce.level] = ce
-        else:
-            by_lvl[ce.level] = ProvenanceTag(
-                level=ce.level,
-                integrity_floor=pe.integrity_floor or ce.integrity_floor,
-            )
     return LabelState(a=frozenset(by_cat.values()), b=frozenset(by_lvl.values()))
+
+
+# --- Apply source #2: operation/tool inherent declaration (FR-013, §R5) --
+#
+# Conversion from legacy flat-label string values to the new `LabelState`
+# representation. `EGRESS_*` are Axis-C **effects**, not propagating tags
+# (the un-fusing), so they map to the empty state.
+#
+# Issue #50 — catalog-aware tier resolution. The flat-string path
+# (servers.d config, cross-host fallback, legacy bundles) must carry the
+# *real* tier from configs/labels.yaml, not a flattened REGULATED — a
+# lossy tier weakens BLP clearance checks and the envelope dial for every
+# label that arrives this way. We resolve each category's `default_tier`
+# from the catalog, cached on first use, and fail-safe to REGULATED when
+# the catalog is absent / unparseable / silent on a category.
+_CONFIDENTIAL_LABEL_CATEGORY: dict[str, str] = {
+    "confidential.health": "health",
+    "confidential.financial": "financial",
+    "confidential.personal": "personal",
+}
+_CATEGORY_TIER_CACHE: dict[str, Tier] | None = None
+
+
+def _category_default_tiers() -> dict[str, Tier]:
+    """Load category→default_tier from configs/labels.yaml (Issue #50).
+
+    Configs-dir resolution mirrors the daemon's (`CAPDEP_CONFIGS_DIR`
+    env, else `configs/`). Inlined rather than importing the daemon so
+    the policy layer keeps no upward dependency. Fail-safe to an empty
+    map (callers then fall back to REGULATED)."""
+    import os
+
+    from capabledeputy.policy.resolution import ResolutionError, load_categories
+
+    base = os.environ.get("CAPDEP_CONFIGS_DIR")
+    path = (Path(base) if base else Path("configs")) / "labels.yaml"
+    try:
+        cats = load_categories(path)
+    except (ResolutionError, OSError):
+        return {}
+    return {cid: c.default_tier for cid, c in cats.items()}
+
+
+def _category_tier(category: str, default: Tier = Tier.REGULATED) -> Tier:
+    global _CATEGORY_TIER_CACHE
+    if _CATEGORY_TIER_CACHE is None:
+        _CATEGORY_TIER_CACHE = _category_default_tiers()
+    return _CATEGORY_TIER_CACHE.get(category, default)
+
+
+def reset_category_tier_cache() -> None:
+    """Drop the cached catalog tiers (tests / operator config reload)."""
+    global _CATEGORY_TIER_CACHE
+    _CATEGORY_TIER_CACHE = None
+
+
+def legacy_label_strings_to_tags() -> dict[str, LabelState]:
+    """Map each legacy flat-label string to the `LabelState` it denotes.
+
+    confidential.* tiers are resolved from the category catalog
+    (Issue #50); provenance/egress entries are catalog-independent.
+    Built fresh per call but backed by the tier cache, so it stays cheap
+    to call repeatedly."""
+    tags: dict[str, LabelState] = {
+        label: LabelState(
+            a=frozenset(
+                {
+                    CategoryTag(
+                        category,
+                        _category_tier(category),
+                        assignment_provenance="source-declared",
+                    ),
+                },
+            ),
+        )
+        for label, category in _CONFIDENTIAL_LABEL_CATEGORY.items()
+    }
+    tags.update(
+        {
+            "untrusted.external": LabelState(
+                b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+            ),
+            "untrusted.user_input": LabelState(
+                b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+            ),
+            "trusted.user_direct": LabelState(
+                b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)}),
+            ),
+            "egress.email": LabelState(),  # Axis-C effect, not a propagating tag
+            "egress.purchase": LabelState(),
+        },
+    )
+    return tags
+
+
+def tags_for_label_string(label_str: str) -> LabelState:
+    """The propagating `LabelState` a legacy flat-label string denotes."""
+    return legacy_label_strings_to_tags().get(label_str, LabelState())
+
+
+def legacy_labels_present(state: LabelState) -> list[str]:
+    """Reverse of `legacy_label_strings_to_tags`: the legacy flat strings a
+    `LabelState` carries, for backward-compatible serialization to clients.
+
+    Matched by Axis-A **category** and Axis-B provenance **level** only —
+    NOT by tier or assignment-provenance metadata. The legacy strings
+    (e.g. `confidential.health`) encode just the category, so a health tag
+    serializes to `confidential.health` whatever its resolved tier
+    (Issue #50: tiers now come from the catalog, so a tier-sensitive match
+    would spuriously drop labels). Egress entries are effects, not
+    propagating tags, so they never appear. Sorted for stable output."""
+    cats = {t.category for t in state.a}
+    levels = {t.level for t in state.b}
+    present: list[str] = []
+    for label_str, tags in legacy_label_strings_to_tags().items():
+        if not tags.a and not tags.b:
+            continue
+        if all(c.category in cats for c in tags.a) and all(
+            p.level in levels for p in tags.b
+        ):
+            present.append(label_str)
+    return sorted(present)
+
+
+def tags_for_labels_strings(labels: frozenset[str]) -> LabelState:
+    """Compose the four-axis taint denoted by a flat label string set. Empty
+    set ⇒ empty state. The result is the apply-source-#2 delta the
+    dispatch chokepoint raises into the session's `LabelState`."""
+    if not labels:
+        return LabelState()
+    return most_restrictive_inherit(*(tags_for_label_string(label) for label in labels))
 
 
 def meets_required_floor(state: LabelState, required_floor: ProvenanceLevel | None) -> bool:
@@ -351,56 +430,3 @@ def apply_transfer(state: LabelState, transfer: TagTransfer) -> LabelState:
 # AxisD is an alias for backward compatibility with Session serialization.
 
 AxisD = DecisionContext
-
-
-# --- T118 most_restrictive_inherit (FR-013) -------------------------
-
-
-def most_restrictive_inherit_axis_a(parent: AxisA, child: AxisA) -> AxisA:
-    """Per-category most-restrictive merge of two AxisA sets.
-
-    For each category present in either side: tier = max(parent.tier,
-    child.tier); risk_ids = set-union; assignment_provenance = the
-    strictest source (parent wins as the more-authoritative source —
-    derivation cannot wash provenance away). FR-013 non-enumerated
-    inheritance per T118.
-    """
-    by_category: dict[str, CategoryTag] = {c.category: c for c in parent.categories}
-    for cc in child.categories:
-        if cc.category not in by_category:
-            by_category[cc.category] = cc
-            continue
-        pc = by_category[cc.category]
-        merged_risks = tuple(sorted(set(pc.risk_ids) | set(cc.risk_ids)))
-        # Parent's assignment_provenance is the more-authoritative
-        # source for derived data; only escalate to child's if child's
-        # is "raise-only-inspector" (which only adds taint, never clears).
-        merged_provenance = (
-            cc.assignment_provenance
-            if cc.assignment_provenance == "raise-only-inspector"
-            else pc.assignment_provenance
-        )
-        by_category[cc.category] = CategoryTag(
-            category=cc.category,
-            tier=max_of(pc.tier, cc.tier),
-            risk_ids=merged_risks,
-            assignment_provenance=merged_provenance,
-        )
-    return AxisA(categories=tuple(by_category.values()))
-
-
-def most_restrictive_inherit_axis_b(parent: AxisB, child: AxisB) -> AxisB:
-    """Most-restrictive merge of two AxisB sets: union of provenance
-    levels (taint never washes away); integrity_floor=True iff either
-    side had it. FR-013 non-enumerated inheritance per T118."""
-    by_level: dict[ProvenanceLevel, ProvenanceTag] = {e.level: e for e in parent.entries}
-    for ce in child.entries:
-        if ce.level not in by_level:
-            by_level[ce.level] = ce
-            continue
-        pe = by_level[ce.level]
-        by_level[ce.level] = ProvenanceTag(
-            level=ce.level,
-            integrity_floor=pe.integrity_floor or ce.integrity_floor,
-        )
-    return AxisB(entries=tuple(by_level.values()))

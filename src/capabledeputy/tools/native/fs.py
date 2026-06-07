@@ -32,13 +32,47 @@ per-process; an agent can chunk explicitly via successive calls.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from dataclasses import replace as _dc_replace
 from pathlib import Path
 from typing import Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.fs_labeling import FsLabeler
+from capabledeputy.policy.labels import (
+    LabelState,
+    ProvenanceLevel,
+    ProvenanceTag,
+    most_restrictive_inherit,
+)
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
+
+_FsHandler = Callable[[dict[str, Any], ToolContext], Awaitable[ToolResult]]
+
+
+def _with_fs_labels(base: _FsHandler, labeler: FsLabeler | None) -> _FsHandler:
+    """Wrap a read handler so matched fs-label rules (#5) raise Axis-A
+    category labels on the returned result's `additional_tags`. Raise-only
+    by construction (most_restrictive_inherit). A no-op labeler returns
+    the base handler unchanged."""
+    if labeler is None or not labeler.rules:
+        return base
+
+    async def handler(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
+        result = await base(args, ctx)
+        out = result.output
+        if not (isinstance(out, dict) and out.get("ok")):
+            return result
+        path = str(args.get("path", ""))
+        content = out.get("text") if labeler.any_content_rules else None
+        extra = labeler.labels_for(path, content=content)
+        if not extra.a and not extra.b:
+            return result
+        merged = most_restrictive_inherit(result.additional_tags, extra)
+        return _dc_replace(result, additional_tags=merged)
+
+    return handler
 
 _MAX_BYTES = 64 * 1024
 
@@ -75,7 +109,9 @@ async def _fs_read_handler(args: dict[str, Any], _ctx: ToolContext) -> ToolResul
         return ToolResult(output={"ok": False, "error": f"read failed: {e}"})
     return ToolResult(
         output={"ok": True, "path": raw_path, "uri": uri, "text": text},
-        additional_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
+        additional_tags=LabelState(
+            b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+        ),
     )
 
 
@@ -117,7 +153,9 @@ async def _fs_read_pdf_handler(args: dict[str, Any], _ctx: ToolContext) -> ToolR
             "text": text[:_MAX_BYTES],
             "truncated": len(text) > _MAX_BYTES,
         },
-        additional_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
+        additional_tags=LabelState(
+            b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+        ),
     )
 
 
@@ -202,7 +240,12 @@ async def _fs_modify_handler(args: dict[str, Any], _ctx: ToolContext) -> ToolRes
     )
 
 
-def make_fs_tools() -> list[ToolDefinition]:
+def make_fs_tools(labeler: FsLabeler | None = None) -> list[ToolDefinition]:
+    """Build the filesystem tools. When `labeler` is provided (loaded from
+    configs/fs_label_rules.yaml, #5), read results carry the matched
+    Axis-A category labels so local-file data participates in IFC."""
+    read_handler = _with_fs_labels(_fs_read_handler, labeler)
+    read_pdf_handler = _with_fs_labels(_fs_read_pdf_handler, labeler)
     return [
         ToolDefinition(
             name="fs.read",
@@ -215,13 +258,15 @@ def make_fs_tools() -> list[ToolDefinition]:
                 f"{_MAX_BYTES} bytes per read."
             ),
             capability_kind=CapabilityKind.READ_FS,
-            handler=_fs_read_handler,
+            handler=read_handler,
             target_arg="path",
             effect_class="data.read_local",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
             surfaces_destination_id=True,
-            inherent_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
+            inherent_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -243,13 +288,15 @@ def make_fs_tools() -> list[ToolDefinition]:
                 "(absolute). Bounded at 8x the text read cap."
             ),
             capability_kind=CapabilityKind.READ_FS,
-            handler=_fs_read_pdf_handler,
+            handler=read_pdf_handler,
             target_arg="path",
             effect_class="data.read_local",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
             surfaces_destination_id=True,
-            inherent_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
+            inherent_tags=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
             parameters_schema={
                 "type": "object",
                 "properties": {

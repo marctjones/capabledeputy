@@ -6,8 +6,8 @@ Optional fields:
 
   - `capability_kind`: one of READ_FS / WRITE_FS / SEND_EMAIL / WEB_FETCH
     / CALENDAR_READ / CALENDAR_WRITE / QUEUE_PURCHASE. Default READ_FS.
-  - `inherent_labels`: list of label strings (`confidential.health`, ...)
-    that the skill's output carries.
+  - `inherent_tags`: dict with keys "a" and "b" for Axis-A and Axis-B
+    tags that the skill's output carries (four-axis LabelState format).
   - `parameters`: JSON schema (dict) for the tool's call args. Default
     is `{"type": "object"}`.
   - `target_arg`: which arg holds the policy target string. Default
@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState
 
 
 class SkillParseError(ValueError):
@@ -45,7 +45,7 @@ class Skill:
     name: str
     description: str
     capability_kind: CapabilityKind = CapabilityKind.READ_FS
-    inherent_labels: frozenset[Label] = field(default_factory=frozenset)
+    inherent_tags: LabelState = field(default_factory=LabelState)
     parameters_schema: dict[str, Any] = field(
         default_factory=lambda: {"type": "object", "properties": {}, "required": []},
     )
@@ -96,11 +96,11 @@ def parse_skill_text(text: str, *, source_path: Path | None = None) -> Skill:
     except ValueError as e:
         raise SkillParseError(f"unknown capability_kind: {kind_str}") from e
 
-    label_strs = front.get("inherent_labels") or []
+    tags_raw = front.get("inherent_tags") or {}
     try:
-        inherent_labels = frozenset(Label(s) for s in label_strs)
-    except ValueError as e:
-        raise SkillParseError(f"unknown label: {e}") from e
+        inherent_tags = LabelState.from_dict(tags_raw)
+    except (ValueError, KeyError, TypeError) as e:
+        raise SkillParseError(f"invalid tags: {e}") from e
 
     params = front.get("parameters") or {"type": "object", "properties": {}, "required": []}
     if not isinstance(params, dict):
@@ -118,7 +118,7 @@ def parse_skill_text(text: str, *, source_path: Path | None = None) -> Skill:
         name=name,
         description=description,
         capability_kind=capability_kind,
-        inherent_labels=inherent_labels,
+        inherent_tags=inherent_tags,
         parameters_schema=params,
         target_arg=target_arg,
         schema_name=schema_name,

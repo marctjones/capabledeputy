@@ -23,7 +23,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 from _policy_harness import Expect, Scenario, final, run_suite, tc, tool_turn
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
 from capabledeputy.tools.native.inbox import InboundMessage
 
 TITLE = "business workflows"
@@ -231,7 +230,7 @@ SCENARIOS: list[Scenario] = [
         caps=frozenset(
             {Capability(kind=K.QUEUE_PURCHASE, pattern="*", max_amount=10_000)},
         ),
-        session_labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        session_labels=frozenset({"confidential.financial"}),
         responses=[
             tool_turn(
                 "buy",

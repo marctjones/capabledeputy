@@ -48,10 +48,9 @@ from capabledeputy.policy.envelope import (
 )
 from capabledeputy.policy.labels import (
     AssignmentProvenance,
-    AxisA,
-    AxisB,
     AxisD,
     CategoryTag,
+    LabelState,
     ProvenanceLevel,
     ProvenanceTag,
 )
@@ -68,7 +67,7 @@ from capabledeputy.substrate.in_process_sandbox import (
     is_demo_actuator,
 )
 from capabledeputy.substrate.inspector_port import (
-    InspectorDelta,
+    InspectorRaiseResult,
     RaiseOnlyInspector,
 )
 from capabledeputy.tools.client import LabeledToolClient, PolicyContext
@@ -82,13 +81,13 @@ from capabledeputy.tools.registry import (
 # --- Gap 1: multi-category rule predicates --------------------------
 
 
-def _principal_axes_for_cats(cats: tuple[str, ...]) -> tuple[AxisA, AxisB, AxisD]:
-    axis_a = AxisA(
-        categories=tuple(CategoryTag(category=c, tier=Tier.SENSITIVE) for c in cats),
+def _principal_axes_for_cats(cats: tuple[str, ...]) -> tuple[LabelState, AxisD]:
+    label_state = LabelState(
+        a=frozenset(CategoryTag(category=c, tier=Tier.SENSITIVE) for c in cats),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(initiator="principal:alice")
-    return axis_a, axis_b, axis_d
+    return label_state, axis_d
 
 
 def test_multi_category_predicate_requires_all_categories() -> None:
@@ -106,11 +105,10 @@ def test_multi_category_predicate_requires_all_categories() -> None:
     rules = DecisionRules(rules=(rule,))
 
     # Both present ⇒ matches → DENY.
-    a, b, d = _principal_axes_for_cats(("personal", "financial"))
+    labels, d = _principal_axes_for_cats(("personal", "financial"))
     result = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="x",
         target="y",
@@ -118,11 +116,10 @@ def test_multi_category_predicate_requires_all_categories() -> None:
     assert result.outcome == RuleOutcome.DENY
 
     # Only one present ⇒ no match → default SUGGEST.
-    a, b, d = _principal_axes_for_cats(("personal",))
+    labels, d = _principal_axes_for_cats(("personal",))
     result = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="x",
         target="y",
@@ -139,11 +136,10 @@ def test_singular_category_backcompat() -> None:
         rationale="",
         human_ratified_by="marc",
     )
-    a, b, d = _principal_axes_for_cats(("personal",))
+    labels, d = _principal_axes_for_cats(("personal",))
     result = evaluate(
         rules=DecisionRules(rules=(rule,)),
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="x",
         target="y",
@@ -165,13 +161,12 @@ def test_time_window_predicate_matches_within_window() -> None:
         rationale="business hours",
         human_ratified_by="marc",
     )
-    a, b, d = _principal_axes_for_cats(("x",))
+    labels, d = _principal_axes_for_cats(("x",))
     rules = DecisionRules(rules=(rule,))
 
     inside = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="data.read",
         target="y",
@@ -181,8 +176,7 @@ def test_time_window_predicate_matches_within_window() -> None:
 
     outside = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="data.read",
         target="y",
@@ -203,14 +197,13 @@ def test_time_window_wraps_midnight() -> None:
         rationale="overnight backup window",
         human_ratified_by="marc",
     )
-    a, b, d = _principal_axes_for_cats(("x",))
+    labels, d = _principal_axes_for_cats(("x",))
     rules = DecisionRules(rules=(rule,))
 
     for hour in (23, 0, 3, 6):
         result = evaluate(
             rules=rules,
-            axis_a=a,
-            axis_b=b,
+            labels=labels,
             axis_d=d,
             effect_class="data.backup",
             target="y",
@@ -220,8 +213,7 @@ def test_time_window_wraps_midnight() -> None:
     for hour in (7, 14, 21):
         result = evaluate(
             rules=rules,
-            axis_a=a,
-            axis_b=b,
+            labels=labels,
             axis_d=d,
             effect_class="data.backup",
             target="y",
@@ -266,22 +258,21 @@ class _AddHealthInspector(RaiseOnlyInspector):
         self,
         *,
         value: object,
-        current_axis_a: AxisA,
-        current_axis_b: AxisB,
-    ) -> InspectorDelta:
+        current_label_state: LabelState,
+    ) -> InspectorRaiseResult:
         if isinstance(value, dict) and any("medical" in str(v).lower() for v in value.values()):
-            return InspectorDelta(
-                axis_a_raise=AxisA(
-                    categories=(
+            return InspectorRaiseResult(
+                raise_state=LabelState(
+                    a=frozenset({
                         CategoryTag(
                             category="health",
                             tier=Tier.REGULATED,
                             assignment_provenance=AssignmentProvenance.RAISE_ONLY_INSPECTOR.value,
                         ),
-                    ),
+                    }),
                 ),
             )
-        return InspectorDelta()
+        return InspectorRaiseResult()
 
 
 class _LowerCategoryInspector(RaiseOnlyInspector):
@@ -293,15 +284,14 @@ class _LowerCategoryInspector(RaiseOnlyInspector):
         self,
         *,
         value: object,
-        current_axis_a: AxisA,
-        current_axis_b: AxisB,
-    ) -> InspectorDelta:
+        current_label_state: LabelState,
+    ) -> InspectorRaiseResult:
         # Returning an empty delta is fine; what we want to assert is
         # that even a delta with a LOWER tier (e.g., NONE) doesn't
         # actually lower the session axes.
-        return InspectorDelta(
-            axis_a_raise=AxisA(
-                categories=(CategoryTag(category="health", tier=Tier.NONE),),
+        return InspectorRaiseResult(
+            raise_state=LabelState(
+                a=frozenset({CategoryTag(category="health", tier=Tier.NONE)}),
             ),
         )
 
@@ -315,14 +305,13 @@ async def _ok_handler(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     return ToolResult(output={"data": args.get("data", "")})
 
 
-async def _make_session(graph: SessionGraph, axis_a: AxisA | None = None) -> Any:
+async def _make_session(graph: SessionGraph, label_state: LabelState | None = None) -> Any:
     s = await graph.new()
-    if axis_a is not None:
+    if label_state is not None:
         s = s.__class__(
             id=s.id,
             parent=s.parent,
             status=s.status,
-            label_set=s.label_set,
             capability_set=frozenset(
                 {
                     Capability(
@@ -338,7 +327,7 @@ async def _make_session(graph: SessionGraph, axis_a: AxisA | None = None) -> Any
             updated_at=s.updated_at,
             owner=s.owner,
             intent=s.intent,
-            axis_a=axis_a,
+            label_state=label_state,
         )
         graph._sessions[s.id] = s
     else:
@@ -346,7 +335,6 @@ async def _make_session(graph: SessionGraph, axis_a: AxisA | None = None) -> Any
             id=s.id,
             parent=s.parent,
             status=s.status,
-            label_set=s.label_set,
             capability_set=frozenset(
                 {
                     Capability(
@@ -381,7 +369,7 @@ def _read_tool() -> ToolDefinition:
 
 async def test_inspector_raises_taint_on_session_axis_a(writer: AuditWriter) -> None:
     """The inspector reads the tool's output and adds health to the
-    session's axis_a when it detects 'medical' in the value."""
+    session's label_state when it detects 'medical' in the value."""
     registry = ToolRegistry()
     registry.register(_read_tool())
     graph = SessionGraph()
@@ -398,28 +386,28 @@ async def test_inspector_raises_taint_on_session_axis_a(writer: AuditWriter) -> 
         {"key": "x", "data": "the patient's medical history"},
     )
     assert outcome.decision == Decision.ALLOW
-    # The session now carries axis_a.health (raised by the inspector).
+    # The session now carries label_state.a with health (raised by the inspector).
     updated = graph.get(s.id)
-    cats = {c.category for c in updated.axis_a.categories}
+    cats = {c.category for c in updated.label_state.a}
     assert "health" in cats
 
 
 async def test_inspector_cannot_lower_existing_axis(writer: AuditWriter) -> None:
-    """A malicious inspector returning a lowered AxisA cannot actually
-    lower the session's axis_a — most_restrictive_inherit is monotone."""
+    """A malicious inspector returning a lowered LabelState cannot actually
+    lower the session's label_state — most_restrictive_inherit is monotone."""
     registry = ToolRegistry()
     registry.register(_read_tool())
     graph = SessionGraph()
-    pre_existing = AxisA(
-        categories=(
+    pre_existing = LabelState(
+        a=frozenset({
             CategoryTag(
                 category="health",
                 tier=Tier.REGULATED,
                 assignment_provenance=AssignmentProvenance.HUMAN_DECLARED.value,
             ),
-        ),
+        }),
     )
-    s = await _make_session(graph, axis_a=pre_existing)
+    s = await _make_session(graph, label_state=pre_existing)
     client = LabeledToolClient(
         registry,
         graph,
@@ -429,7 +417,7 @@ async def test_inspector_cannot_lower_existing_axis(writer: AuditWriter) -> None
     await client.call_tool(s.id, "memory.read", {"key": "x"})
     updated = graph.get(s.id)
     # health is still REGULATED, NOT lowered to NONE.
-    health_cat = next(c for c in updated.axis_a.categories if c.category == "health")
+    health_cat = next(c for c in updated.label_state.a if c.category == "health")
     assert health_cat.tier == Tier.REGULATED
 
 
@@ -502,7 +490,7 @@ def test_bounded_relax_cross_product(
     relax composition is most-restrictive. Hard floors (degenerate
     envelopes) are immovable by the dial. Pin the math so a refactor
     can't quietly relax the engine."""
-    a, b, d = _principal_axes_for_cats(("x",))
+    labels, d = _principal_axes_for_cats(("x",))
     # data.send is egressing (matches _EGRESS_EFFECT_MARKERS), which
     # blocks optimistic-auto. Reversibility stays reversible/system
     # so reversibility_gate returns AUTO_OK and contributes no
@@ -534,11 +522,9 @@ def test_bounded_relax_cross_product(
         ),
     )
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="t"),
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="data.send",
         rules_v2=rules,

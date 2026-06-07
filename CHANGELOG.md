@@ -4,6 +4,223 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [0.16.0] — 2026-06-07
+
+Policy expressiveness & labeling. The dormant decision-refinement layer is
+now **live**, the labeling oracle covers **local files and email**, every
+decision is **explainable**, and the documented model gaps are hardened —
+plus a credential vault and the v0.15.2-dev substrate work. Folds in the
+unreleased 0.15.2 items.
+
+### Decision-refinement layer (EPIC #41 — now active)
+
+- **Feature (#46): the refinement layer is ON.** A daemon-config
+  `decision_inspectors:` block (`policy/decision_inspector_loader.py`) is
+  loaded into `PolicyContext`: builtins (`self_egress_relaxer`,
+  `after_hours_purchase_tightener`) + operator scripts compiled via
+  `get_script_host(runtime)` and wrapped in an async `ScriptDecisionInspector`.
+  The chokepoint awaits async inspectors. Fail-closed at load; eval-time
+  errors caught + audited as abstain.
+- **Security (review fix): bounded relax.** A DecisionInspector `relax`
+  can only soften a `REQUIRE_APPROVAL` base to `ALLOW`; `DENY` /
+  `OVERRIDE_REQUIRED` are structural floors and non-relaxable (FR-026).
+  Attempts are refused + audited — closes a hole where a script could
+  relax a structural DENY → ALLOW.
+- **Feature (#48): frequency policy.** Inspectors receive a bounded,
+  read-only `session["history"]` (per-kind cumulative counts) so scripts
+  can express "N sends this session → require approval."
+- **Feature (#47): starter library.** Five reviewed Starlark scripts
+  (`sensitive_egress_confirm`, `purpose_scoped_relax`, `frequency_cap`,
+  `relationship_relax`) + the two builtins; `configs/policies/` +
+  `configs/decision-inspectors.example.yaml`. Relationship-aware relax
+  resolves the target's RelationshipGroups into `action["relationship_groups"]`.
+- **Feature (#49): `capdep why`.** Explains a decision — base rule +
+  reason, v2 outcome + matched rule ids, the correlated inspector
+  adjustment, and any relaxation refusal.
+
+### Labeling oracle (EPIC #42 — core)
+
+- **Feature (#50): catalog-aware tiers.** The flat-string label path
+  resolves each category's tier from `labels.yaml` instead of flattening
+  to `REGULATED` (health/financial are `restricted`), restoring BLP
+  clearance strength on that path.
+- **Feature (#5): dynamic filesystem labeling.** `policy/fs_labeling.py`
+  attaches raise-only Axis-A category labels to `fs.read`/`fs.read_pdf`
+  (path-prefix / filename-glob / content-regex tiers), so local-file data
+  participates in IFC. `configs/fs_label_rules.example.yaml` + RFC.
+- **Feature (#34): email labeling.** `policy/email_labeling.py` — a
+  raise-only per-message labeler (from_domain / from_address / subject /
+  body) wired through a generic `result_labeler` hook on the upstream
+  adapter; design in `docs/email-labeling-design.md`.
+- **Docs (#33):** `docs/google-workspace-capability-mapping.md`.
+
+### Gap hardening (EPIC #43) & reliability
+
+- **Fix (#52): restricted-tier mode floor.** `select_mode` now routes a
+  `restricted`-tier turn to Pattern ③ REFERENCE / ⑤ SEALED (or fails
+  closed), instead of silently de-escalating to Pattern ②/①.
+- **Feature (#53): loud Biba gap.** `capdep policy models` prints each
+  model's honest scope and flags Biba's one-direction limit.
+- **Fix (#2): agent-loop auditability.** `AGENT_LOOP_EXCEEDED` /
+  `AGENT_LOOP_THRASHING` audit events with the last-N tool calls; a thrash
+  guard stops repeated identical calls early; `agent_max_iterations`
+  configurable; `capdep audit --filter`.
+
+### Credential vault
+
+- **Feature (#13, spawn-time): credential vault.**
+  `upstream/credential_vault.py` — a mode-0600 vault holds upstream
+  secrets out of the daemon config, the daemon's broad env, the audit log,
+  and the LLM context; injected into each server's spawn env, audited by
+  ref (`credential.injected`). Per-call echo-resistance deferred to
+  container isolation (#15/#16).
+
+### Docs
+
+- `docs/security-alignment-assessment.md` (grounded model/pattern/principle
+  scorecard), `docs/implementation-plan.md` (milestones + dependency
+  graph), README "How it works — and its honest limits" + DESIGN §3/§15.x
+  honest-limitations sections.
+
+### Substrate (was 0.15.2-dev)
+
+- **Feature: sandboxed Starlark policy host.** `StarlarkScriptHost`
+  (`substrate/policy_script_host.py`) is the real `PolicyScriptHost`
+  sandbox, backed by starlark-rust via the `starlark-pyo3` binding —
+  shipped as the optional extra `capabledeputy[starlark]`. Unlike the
+  best-effort AST-filtered `SafePythonScriptHost`, Starlark gives
+  *language-level* isolation: a policy script has no imports, no Python
+  builtins, and no I/O — only the injected action/session/proposed_outcome
+  dicts and the `relax`/`tighten`/`abstain` helpers (same contract as the
+  reference host). New `get_script_host(runtime_kind)` registry/factory
+  (fail-closed on unknown). The runtime is lazily imported and raises a
+  typed `PolicyScriptHostUnavailableError` when the extra is absent.
+  Threat model + residual risks (no hard step/CPU budget yet) documented
+  in `specs/004-mcp-and-substrate/starlark-policy-host-threat-model.md`.
+  (WebAssembly/wasmtime host dropped — Starlark covers the need.)
+- **Feature (#12): git-backed substrate providers.** First concrete
+  implementations behind the source/version-write ports:
+  `GitVersionedWritePort` (`substrate/git_versioned_write.py`) commits
+  each write to a git repo and surfaces a `<commit>:<path>`
+  `prior_version_handle` that `read_prior_version_hash` resolves with
+  `git show` — so `verify_write_discipline` earns `reversible/system`
+  (FR-044). `GitSourcePort` (`substrate/git_source.py`) canonicalizes
+  targets to stable `git:<repo-relative>` ids, fail-closed on path
+  escapes (FR-048). Selected via `get_source_port`/
+  `get_versioned_write_port` registries (modular — new backends plug in
+  behind the same ports). (Clarification: the Podman `SandboxActuator`
+  was already implemented; it is the ephemeral `EXECUTE.sandbox` runtime,
+  complementary to `PodmanDevbox`'s persistent `EXECUTE.devbox`, not a
+  replacement. Modal/Firecracker actuators remain deferred to v1.1+.)
+- **Docs**: `specs/004-mcp-and-substrate/substrate-provider-candidates.md`
+  — candidate providers behind each substrate port (Gmail/Drive/SharePoint/
+  S3 source + versioned-write, gVisor/Firecracker/Modal actuators, …),
+  with what each does, why, and the value to a typical user's workflow,
+  plus the autonomy (`reversible/system`) and anti-confused-deputy
+  mechanics that make each worth building.
+- **Test**: fixed the flaky `test_run_status_stop_lifecycle` (socket-wait
+  timeout was 2s vs the daemon's ~8s startup); suite is fully green.
+
+## [0.15.1] — 2026-06-06
+
+Post-0.15.0 cleanup of deferred redesign debt (no behavior change).
+
+- **R4b.4**: collapsed `Session.axis_a`/`axis_b` into a single
+  `label_state: LabelState` field (store schema → v8) and **deleted** the
+  now-internal `AxisA`/`AxisB` wrapper classes, the
+  `most_restrictive_inherit_axis_a/_b` legacy functions, and the
+  `LabelState.from_axes`/`to_axis_a`/`to_axis_b` converters. `decide()`,
+  `decision_rules.evaluate`/`RulePredicate.matches`,
+  `assurance.control_plane_admissible`, the raise-only `inspector_port`,
+  and `PolicyDecision` (now `labels_snapshot`) all type directly on
+  `LabelState`. Also removed the vestigial `ProvenanceTag.integrity_floor`
+  flag (the integrity floor is an `Operation.required_floor`). Pure
+  internal-representation tidy-up; enforcement unchanged, suite green.
+- **Fix**: `ToolCallRecord.{arg,inherent}_labels` are flat category/level
+  strings post-R7 (bundle wire format), not `Label`; corrected a latent
+  `label.value` serialization in `programmatic_handlers`.
+- **Chore**: repo-wide `ruff check` now clean (was 69 pre-existing) —
+  auto-fixes, collapsible-ifs, `contextlib.suppress`, `ClassVar`, and
+  `noqa`-with-reason for intentional cases (descriptive domain exceptions,
+  cycle-avoidance late imports, MCP tool-annotation field names).
+- **Docs**: refreshed stale audit docstrings — cross-rotation chain
+  verification (`verify_audit_chain(..., include_rotated=True)`, CLI
+  `capdep audit verify --include-rotated`) is already implemented + tested.
+
+## [0.15.0] — 2026-06-06
+
+Completes the spec-003 label-model redesign: the four-axis `LabelState`
+model is now the **sole** label model and the legacy flat `Label` enum is
+**deleted** (no backwards compatibility; `state.db` wiped on cutover at
+schema v7). BLP/Biba/confused-deputy enforcement is unchanged — it moved
+to always-on four-axis engine invariants, proven equivalent to the flat
+rules before the flat path was removed. The only remaining vestige is the
+internal `AxisA`/`AxisB` representation behind `LabelState` (collapsing
+those into a single stored field is deferred polish, tracked for 0.15.x).
+See `specs/003-labeling-framework/label-model-redesign.md`.
+
+### Label-model redesign (continued — no backwards compatibility)
+- **R4c**: the four always-on conflict invariants are ported off the flat
+  `Label` set onto the propagating axes as engine invariants
+  (`engine._conflict_invariant_outcome`): Axis-B `external-untrusted`
+  provenance + egress ⇒ DENY (integrity / confused-deputy); Axis-A
+  `health`/`financial` category + egress ⇒ DENY / REQUIRE_APPROVAL
+  (confidentiality confinement). Computed from `LabelState`, composed
+  most-restrictively, and proven to agree outcome-for-outcome with the
+  legacy `CONFLICT_RULES` (`tests/policy/test_conflict_invariant_four_axis.py`).
+  Additive — both legs enforce until R4d removes the flat one. (These are
+  information-flow invariants, not Brewer-Nash/Chinese-Wall COI rules
+  despite the legacy naming.)
+- **R5**: wired apply-source #2 (operation/tool inherent declaration →
+  session four-axis state). The dispatch chokepoint now raises the
+  equivalent `LabelState` taint via the new `SessionGraph.add_tags`
+  (monotone `most_restrictive_inherit`) from the same declaration set it
+  feeds to the flat `add_labels`, using the canonical `labels.tags_for_labels`
+  forward map (confidential.* → Axis A category, untrusted/trusted.* →
+  Axis B provenance; `egress.*` un-fused to nothing — effects are not
+  propagating tags). The session's `label_state` now accumulates
+  equivalently to the flat `label_set`, so the R4c four-axis invariants
+  enforce in the real daemon — not just under direct `labels=` test
+  inputs — which is the precondition for deleting the flat leg (R4d).
+  Removal stays declassifier-only (the existing `TagTransfer` /
+  `apply_transfer` structural rule). Tests: four-axis taint propagation
+  through the chokepoint + the forward-map un-fusing.
+- **R6**: session store moves to schema **v7** with **no migration**. The
+  v1–v5 upgrade ladder and the legacy `label_set → axis_a/axis_b/axis_d`
+  backfill (`_convert_legacy_label_set`, `_LEGACY_TO_AXIS_*`, the Axis-D
+  trust-prefix defaults, `_apply_v6_idempotent_alters`, `SchemaVersionError`)
+  are deleted. A db at any other schema version is **wiped and recreated
+  clean** (`_needs_wipe`), per the single-operator no-backwards-compat
+  mandate. `clearance_profile_id` is added to the base `CREATE TABLE` so
+  wiped/fresh dbs match the full column shape. The four-axis state
+  (`axis_a`/`axis_b`/`axis_d`, i.e. `LabelState` + context) is the
+  authoritative persisted form; the flat `label_set` column remains only
+  until the enum is deleted (R7).
+- **R7 prep** (additive, no behavior change): native tools now declare
+  four-axis `inherent_tags` alongside the legacy flat `inherent_labels`
+  (inert until the flip). The authoritative, file-by-file R7 atomic-flip
+  spec is `specs/003-labeling-framework/r7-flip-plan.md`.
+- **R7 (the flip): the flat `Label` enum is DELETED.** The four-axis
+  `LabelState` is now the *only* label model — no backwards compatibility.
+  Removed across ~15 src subsystems + the test suite: the `Label` enum,
+  `ConflictRule`/`CONFLICT_RULES` (the four conflict invariants live only
+  in the engine gate now), `Session.label_set` (field + column +
+  serialization), `SessionGraph.add_labels`, `PolicyDecision.effective_labels`,
+  `decide()`'s flat `label_set`/`rules` params, `ToolResult.additional_labels`
+  → `additional_tags: LabelState`, `ToolContext.label_set` →
+  `label_state`, `ToolDefinition.inherent_labels`/`arg_inherent_labels` →
+  `inherent_tags`/`arg_inherent_tags`, `kind_add_labels` → `kind_add_tags`,
+  and the flat-carrying fields on `LabeledValue`, `Resource`,
+  `ApprovalRequest`, plus the four-axis rewrites of `select_mode` and the
+  agent-context conflict heuristics. The (test-only) `tenancy`/
+  multi-tenant flat-label engine was dropped. `decide()`'s `labels=`
+  bridge for legacy label *strings* survives as `tags_for_labels_strings`
+  for the daemon RPC wire only. **No enforcement behavior changed** — the
+  four-axis path already enforced equivalently (R4c/R5). Grep-gate:
+  `frozenset[Label]` has zero occurrences. Suite green. Executed via
+  parallel migration workflows (core → leaves → tests) with manual
+  reconciliation; the redesign is complete.
+
 ## [0.14.0] — 2026-06-06
 
 Ships the responsible-AI / CORE-PRO governance work, the agentic risk-register
@@ -158,6 +375,9 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.16.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.16.0
+[0.15.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.15.1
+[0.15.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.15.0
 [0.14.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.14.0
 [0.13.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.13.1
 [0.13.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.13.0

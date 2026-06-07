@@ -26,9 +26,9 @@ def _record_to_dict(record: ToolCallRecord) -> dict[str, Any]:
     return {
         "tool": record.tool_name,
         "args": record.args,
-        "arg_labels": sorted(label.value for label in record.arg_labels),
+        "arg_labels": sorted(record.arg_labels),
         "decision": record.decision.value,
-        "inherent_labels": sorted(label.value for label in record.inherent_labels),
+        "inherent_labels": sorted(record.inherent_labels),
         "rule": record.rule,
         "reason": record.reason,
         "line": record.line,
@@ -77,7 +77,7 @@ def make_programmatic_handlers(app: App) -> dict[str, Handler]:
                 if result.return_value is None
                 else {
                     "raw": result.return_value.raw,
-                    "labels": sorted(label.value for label in result.return_value.labels),
+                    "label_state": result.return_value.label_state.to_dict(),
                 }
             ),
         }

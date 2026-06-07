@@ -21,7 +21,6 @@ def _tool_to_dict(tool: ToolDefinition) -> dict[str, Any]:
         "capability_kind": kind_name(tool.capability_kind),
         "target_arg": tool.target_arg,
         "amount_arg": tool.amount_arg,
-        "inherent_labels": sorted(label.value for label in tool.inherent_labels),
         "parameters_schema": tool.parameters_schema,
     }
 
@@ -48,11 +47,11 @@ def make_tool_handlers(
             amount=tool.extract_amount(args),
         )
         decision = decide(
-            session.label_set,
             session.capability_set,
             action,
             used_kinds=session.used_kinds,
             cap_uses=session.cap_uses,
+            labels=session.label_state,
         )
         return {
             "decision": decision.decision.value,
@@ -61,7 +60,6 @@ def make_tool_handlers(
             "matched_capability": (
                 decision.matched_capability.to_dict() if decision.matched_capability else None
             ),
-            "effective_labels": sorted(label.value for label in decision.effective_labels),
             "tool": _tool_to_dict(tool),
             "action": {
                 "kind": kind_name(action.kind),
@@ -79,18 +77,23 @@ def make_tool_handlers(
     if tool_client is not None:
 
         async def tool_call(params: dict[str, Any]) -> dict[str, Any]:
+            from capabledeputy.policy.labels import legacy_labels_present
+
             outcome = await tool_client.call_tool(
                 session_id=UUID(params["session_id"]),
                 tool_name=params["tool"],
                 args=params.get("args", {}),
             )
+            # Convert tags_added (LabelState) back to legacy label strings for
+            # backward compatibility with MCP clients (matched by category /
+            # provenance level).
             return {
                 "decision": outcome.decision.value,
                 "output": outcome.output,
                 "rule": outcome.rule,
                 "reason": outcome.reason,
-                "labels_added": sorted(label.value for label in outcome.labels_added),
                 "error": outcome.error,
+                "labels_added": legacy_labels_present(outcome.tags_added),
             }
 
         handlers["tool.call"] = tool_call

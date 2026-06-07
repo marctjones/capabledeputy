@@ -53,6 +53,31 @@ def max_delegation_depth() -> int:
     return v if v > 0 else DEFAULT_MAX_DELEGATION_DEPTH
 
 
+# Issue #2 — operator-set default for the per-turn agent-loop iteration
+# cap. A request that omits `max_iterations` falls back to this; a
+# non-positive / unparseable env value falls back to the built-in
+# default (fail-safe: never an unbounded loop).
+DEFAULT_AGENT_MAX_ITERATIONS = 50
+
+
+def agent_max_iterations() -> int:
+    """Configured default agent-loop iteration cap (Issue #2).
+
+    Deterministic, operator-set via `CAPDEP_AGENT_MAX_ITERATIONS`; falls
+    back to `DEFAULT_AGENT_MAX_ITERATIONS`. A per-request `max_iterations`
+    (e.g. `/spawn --max-iters N`) still overrides this default."""
+    import os
+
+    raw = os.environ.get("CAPDEP_AGENT_MAX_ITERATIONS")
+    if raw is None:
+        return DEFAULT_AGENT_MAX_ITERATIONS
+    try:
+        v = int(raw)
+    except ValueError:
+        return DEFAULT_AGENT_MAX_ITERATIONS
+    return v if v > 0 else DEFAULT_AGENT_MAX_ITERATIONS
+
+
 # 003 Phase 1 T005: load_v09_configs is fail-closed (refuses daemon
 # start on missing or unparseable file). Per-loader schema validation
 # (e.g., labels.yaml category shape) lands per-feature in Phases 2+;
@@ -159,6 +184,25 @@ def _resolve_daemon_config(config_path: Path | None) -> Path | None:
     if user_default.is_file():
         return user_default
     return None
+
+
+def _read_daemon_config(path: Path) -> dict[str, Any]:
+    """Parse a daemon config file (YAML or JSON) into a dict. Empty /
+    unreadable → empty dict (the caller treats absent blocks as 'no
+    config'). Block-specific loaders (sandbox, decision_inspectors) then
+    apply their own fail-closed validation to the parsed body."""
+    if not path.is_file():
+        return {}
+    text = path.read_text(encoding="utf-8")
+    if path.suffix in {".yaml", ".yml"}:
+        import yaml
+
+        raw = yaml.safe_load(text) or {}
+    else:
+        import json
+
+        raw = json.loads(text) or {}
+    return raw if isinstance(raw, dict) else {}
 
 
 def _report_admission(manager: UpstreamManager) -> None:
@@ -341,6 +385,37 @@ async def run_daemon(
                 file=_sys.stderr,
             )
 
+    # Issue #46 — turn the decision-refinement layer ON. Load any
+    # operator-authored `decision_inspectors:` from the daemon config
+    # (builtins + Starlark scripts), compile them fail-closed, and attach
+    # to the PolicyContext. Without this the chokepoint's
+    # `decision_inspectors` stays empty and the Starlark host can't affect
+    # a real decision (the dormant-layer gap from the alignment
+    # assessment). A misconfigured entry refuses daemon start.
+    if resolved_pre_app is not None and policy_context is not None:
+        import sys as _sys_di
+
+        from capabledeputy.policy.decision_inspector_loader import (
+            load_decision_inspectors,
+        )
+
+        raw_cfg = _read_daemon_config(resolved_pre_app)
+        inspectors = load_decision_inspectors(
+            raw_cfg,
+            base_dir=resolved_pre_app.parent,
+        )
+        if inspectors:
+            policy_context = dataclasses.replace(
+                policy_context,
+                decision_inspectors=inspectors,
+            )
+            print(
+                f"[policy] decision-refinement layer ON — "
+                f"{len(inspectors)} inspector(s): "
+                f"{', '.join(getattr(i, 'name', '?') for i in inspectors)}",
+                file=_sys_di.stderr,
+            )
+
     # Populate ANTHROPIC_API_KEY from CLAUDEAPI.KEY in the cwd if it isn't
     # already set, so users don't need to re-export the env var each shell.
     import sys as _sys_for_key
@@ -382,6 +457,13 @@ async def run_daemon(
     skills_env = os.environ.get("CAPDEP_SKILLS_DIR")
     skills_dir = Path(skills_env) if skills_env else None
 
+    # Issue #5 — dynamic filesystem labeling. Load the operator's
+    # fs_label_rules.yaml (absent ⇒ no-op labeler) so fs reads attach
+    # Axis-A category labels and local-file data participates in IFC.
+    from capabledeputy.policy.fs_labeling import load_fs_label_rules
+
+    fs_labeler = load_fs_label_rules(_resolve_v09_configs_dir() / "fs_label_rules.yaml")
+
     app = App(
         state_db_path=state_db_path,
         audit_log_path=audit_log_path,
@@ -391,6 +473,7 @@ async def run_daemon(
         enable_policy_preview=enable_policy_preview,
         policy_context=policy_context,
         purposes=purposes_registry,
+        fs_labeler=fs_labeler,
     )
     await app.startup()
 
@@ -522,9 +605,57 @@ async def run_daemon(
             file=__import__("sys").stderr,
         )
 
+    # Issue #34 — load the per-message email labeler (absent ⇒ no-op) and
+    # hand it to the manager so Gmail (and any email-shaped) reads get
+    # per-message Axis-A category labels on top of the server's floor.
+    from capabledeputy.policy.email_labeling import load_email_label_rules
+
+    email_labeler = load_email_label_rules(
+        _resolve_v09_configs_dir() / "email_label_rules.yaml",
+    )
+
+    # Issue #13 — credential vault. Resolve each upstream server's secrets
+    # from the mode-0600 vault and merge them into that server's spawn env,
+    # so credentials stay out of the committed config and the daemon's
+    # broad environment. The audit records only the vault REF, never the
+    # value. (Per-call / env-echo resistance for a tool that dumps its own
+    # env needs container isolation — #15/#16; documented in the vault.)
+    if upstream_configs:
+        from capabledeputy.audit.events import Event, EventType
+        from capabledeputy.upstream.credential_vault import (
+            default_vault_path,
+            load_credential_vault,
+        )
+
+        vault = load_credential_vault(default_vault_path())
+        if vault.entries:
+            merged_configs = []
+            for cfg in upstream_configs:
+                secret_env = vault.env_for(cfg.name)
+                if secret_env:
+                    cfg = dataclasses.replace(cfg, env={**cfg.env, **secret_env})
+                    await app.audit.write(
+                        Event(
+                            event_type=EventType.CREDENTIAL_INJECTED,
+                            payload={
+                                "server": cfg.name,
+                                "refs": vault.refs_for(cfg.name),
+                                "capability_kinds": list(
+                                    vault.entries[cfg.name].capability_kinds,
+                                ),
+                            },
+                        ),
+                    )
+                merged_configs.append(cfg)
+            upstream_configs = merged_configs
+
     try:
         if upstream_configs:
-            async with UpstreamManager(upstream_configs, app.registry) as manager:
+            async with UpstreamManager(
+                upstream_configs,
+                app.registry,
+                email_labeler=email_labeler,
+            ) as manager:
                 # Stash manager on app so /server (daemon.info RPC) can
                 # read per-upstream-server status. App doesn't strongly
                 # depend on the manager type — duck-typed `server_status`.

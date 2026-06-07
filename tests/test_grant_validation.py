@@ -24,7 +24,6 @@ import pytest
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.grant_validation import validate_grant_pattern
 
-
 # --- wildcard + special-cases -------------------------------------------
 
 

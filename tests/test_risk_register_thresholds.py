@@ -15,8 +15,8 @@ import pytest
 from capabledeputy.policy.risk_register import (
     RiskRegister,
     RiskRegisterEntry,
-    Threshold,
     RiskRegisterError,
+    Threshold,
 )
 
 
@@ -293,7 +293,7 @@ class TestIntegration:
         assert len(register) > 0
 
         # Every entry should have a threshold in the live config.
-        for risk_id, entry in register.entries.items():
+        for risk_id, _entry in register.entries.items():
             threshold = register.get_threshold(risk_id)
             # Due to FR-028, all entries in the live config should have thresholds.
             # (But the test is resilient to entries without them.)

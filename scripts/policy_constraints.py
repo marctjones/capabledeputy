@@ -35,6 +35,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     RateLimit,
 )
+from capabledeputy.policy.labels import LabelState
 
 TITLE = "capability constraints (v0.7)"
 
@@ -43,7 +44,7 @@ _PAST = datetime.now(UTC) - timedelta(hours=1)
 
 
 def _seed(app: object) -> None:
-    app.memory.write("k", "v", frozenset())  # type: ignore[attr-defined]
+    app.memory.write("k", "v", LabelState())  # type: ignore[attr-defined]
 
 
 SCENARIOS: list[Scenario] = [

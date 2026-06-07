@@ -10,14 +10,19 @@ from capabledeputy.daemon.handlers import Handler
 
 def make_memory_handlers(app: App) -> dict[str, Handler]:
     async def memory_entries(params: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "entries": [
+        from capabledeputy.policy.labels import legacy_labels_present
+
+        entries = []
+        for key in app.memory.keys():  # noqa: SIM118 (custom list API)
+            # Convert LabelState back to legacy label strings for metadata
+            # display (matched by category / provenance level).
+            label_state = app.memory.label_state_of(key)
+            entries.append(
                 {
                     "key": key,
-                    "labels": sorted(label.value for label in app.memory.labels_of(key)),
+                    "labels": legacy_labels_present(label_state),
                 }
-                for key in app.memory.keys()  # noqa: SIM118
-            ],
-        }
+            )
+        return {"entries": entries}
 
     return {"memory.entries": memory_entries}

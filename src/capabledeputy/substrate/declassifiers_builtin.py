@@ -54,8 +54,7 @@ class RegexRedactor:
         self,
         *,
         value: Any,
-        current_axis_a: Any,
-        current_axis_b: Any,
+        current_label_state: Any,  # LabelState
         context: dict[str, Any] | None = None,
     ) -> DeclassifyResult | None:
         if not isinstance(value, str):
@@ -103,14 +102,13 @@ class SchemaProjector:
 
     name: str = "SchemaProjector"
     allowed_keys: tuple[str, ...] = ()
-    lower_axis_b_level: str = "trusted"
+    lower_axis_b_level: str = "principal-direct"
 
     def declassify(
         self,
         *,
         value: Any,
-        current_axis_a: Any,
-        current_axis_b: Any,
+        current_label_state: Any,  # LabelState
         context: dict[str, Any] | None = None,
     ) -> DeclassifyResult | None:
         if not isinstance(value, dict):

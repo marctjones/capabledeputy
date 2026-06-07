@@ -31,7 +31,7 @@ from _policy_harness import (
 )
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState
 
 TITLE = "REQUIRE_APPROVAL paths"
 
@@ -39,8 +39,8 @@ K = CapabilityKind
 
 
 def _seed_mem(app: object) -> None:
-    app.memory.write("stale", "v", frozenset())  # type: ignore[attr-defined]
-    app.memory.write("doomed", "v", frozenset())  # type: ignore[attr-defined]
+    app.memory.write("stale", "v", LabelState())  # type: ignore[attr-defined]
+    app.memory.write("doomed", "v", LabelState())  # type: ignore[attr-defined]
 
 
 SCENARIOS: list[Scenario] = [
@@ -50,7 +50,7 @@ SCENARIOS: list[Scenario] = [
         caps=frozenset(
             {Capability(kind=K.QUEUE_PURCHASE, pattern="*", max_amount=10_000)},
         ),
-        session_labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        session_labels=frozenset({"confidential.financial"}),
         responses=[
             tool_turn(
                 "queue purchase",

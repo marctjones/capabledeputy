@@ -90,7 +90,6 @@ def test_active_grant_short_circuits_to_allow() -> None:
     grant = _active_grant(session_id=sid)
     store.add(grant)
     result = decide(
-        frozenset(),  # no labels
         frozenset(),  # no capabilities — grant carries the authority
         Action(kind=CapabilityKind.SEND_EMAIL, target="alice@example.com"),
         override_grants=store,
@@ -116,7 +115,6 @@ def test_expired_grant_does_not_short_circuit() -> None:
     )
     result = decide(
         frozenset(),
-        frozenset(),
         Action(kind=CapabilityKind.SEND_EMAIL, target="alice@example.com"),
         override_grants=store,
         session_id=sid,
@@ -133,7 +131,6 @@ def test_grant_for_different_session_does_not_short_circuit() -> None:
     store.add(_active_grant(session_id=session_a))
     result = decide(
         frozenset(),
-        frozenset(),
         Action(kind=CapabilityKind.SEND_EMAIL, target="alice@example.com"),
         override_grants=store,
         session_id=session_b,
@@ -148,7 +145,6 @@ def test_grant_for_different_action_does_not_short_circuit() -> None:
     store = OverrideGrantStore()
     store.add(_active_grant(session_id=sid, action_kind=CapabilityKind.SEND_EMAIL))
     result = decide(
-        frozenset(),
         frozenset(),
         Action(kind=CapabilityKind.READ_FS, target="alice@example.com"),
         override_grants=store,
@@ -165,7 +161,6 @@ def test_no_session_id_passed_skips_grant_lookup() -> None:
     store = OverrideGrantStore()
     store.add(_active_grant(session_id=sid))
     result = decide(
-        frozenset(),
         frozenset(),
         Action(kind=CapabilityKind.SEND_EMAIL, target="alice@example.com"),
         override_grants=store,

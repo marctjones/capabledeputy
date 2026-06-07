@@ -65,7 +65,7 @@ async def test_apply_accountant_seeds_memory(app: App) -> None:
     for entry in scenario.memory:
         stored = app.memory.read(entry.key)
         assert stored is not None
-        assert stored.labels == entry.labels
+        assert stored.label_state == entry.label_state
 
 
 async def test_apply_untrusted_research_grants_web_fetch_cap(app: App) -> None:

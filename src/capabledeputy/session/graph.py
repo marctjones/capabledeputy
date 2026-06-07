@@ -25,7 +25,7 @@ from capabledeputy.policy.capabilities import (
 from capabledeputy.policy.capabilities import (
     kind_name as _kind_name_of,
 )
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, most_restrictive_inherit
 from capabledeputy.policy.purposes import (
     UNSET_PURPOSE_HANDLE,
     Purposes,
@@ -339,7 +339,8 @@ class SessionGraph:
             parent=parent_id,
             owner=parent.owner,
             intent=intent,
-            label_set=parent.label_set,
+            label_state=parent.label_state,
+            axis_d=parent.axis_d,
             capability_set=parent.capability_set,
             history=parent.history,
             declassification_log=parent.declassification_log,
@@ -429,16 +430,28 @@ class SessionGraph:
         )
         return updated
 
-    async def add_labels(
+    async def add_tags(
         self,
         session_id: UUID,
-        labels: frozenset[Label],
+        delta: LabelState,
     ) -> Session:
+        """Apply source #2 (§R5): raise a four-axis `LabelState` delta
+        into the session via `most_restrictive_inherit` (monotone — only
+        adds taint, never removes). The four-axis counterpart of
+        `add_labels`; the dispatch chokepoint calls both so the session's
+        `label_state` accumulates equivalently to the flat `label_set`
+        until the flat leg is deleted (R4d/R7)."""
+        if not delta.a and not delta.b:
+            return self.get(session_id)
         session = self.get(session_id)
-        if not labels or labels.issubset(session.label_set):
+        composed = most_restrictive_inherit(session.label_state, delta)
+        if composed == session.label_state:
             return session
-        new_set = session.label_set | labels
-        updated = replace(session, label_set=new_set, updated_at=datetime.now(UTC))
+        updated = replace(
+            session,
+            label_state=composed,
+            updated_at=datetime.now(UTC),
+        )
         await self._save(updated)
         self._sessions[session_id] = updated
         return updated

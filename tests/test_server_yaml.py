@@ -11,8 +11,6 @@ from capabledeputy.upstream.server_yaml import (
     CustomKindRegistry,
     InvalidKindNameError,
     KindCollisionError,
-    OverrideFile,
-    ServerYamlConfig,
     ServerYamlError,
     UnknownOverrideTargetError,
     apply_overrides,
@@ -42,7 +40,10 @@ def test_load_single_server_yaml(tmp_path: Path) -> None:
     """Single yaml in servers.d/ loads cleanly."""
     d = tmp_path / "servers.d"
     d.mkdir()
-    _write_yaml(d, "slack.yaml", """
+    _write_yaml(
+        d,
+        "slack.yaml",
+        """
 schema_version: 1
 name: slack
 command: ["npx", "slack-mcp-server"]
@@ -56,7 +57,8 @@ kinds:
 tool_mappings:
   send_dm: slack:dm.send
   search_messages: slack:read
-""")
+""",
+    )
     configs, overrides, registry = load_servers_d(d)
     assert len(configs) == 1
     assert configs[0].name == "slack"
@@ -73,20 +75,28 @@ def test_two_files_declaring_same_kind_refused(tmp_path: Path) -> None:
     custom-kind name raise KindCollisionError."""
     d = tmp_path / "servers.d"
     d.mkdir()
-    _write_yaml(d, "a.yaml", """
+    _write_yaml(
+        d,
+        "a.yaml",
+        """
 schema_version: 1
 name: a
 command: ["x"]
 kinds:
   - name: shared:thing
-""")
-    _write_yaml(d, "b.yaml", """
+""",
+    )
+    _write_yaml(
+        d,
+        "b.yaml",
+        """
 schema_version: 1
 name: b
 command: ["y"]
 kinds:
   - name: shared:thing
-""")
+""",
+    )
     with pytest.raises(KindCollisionError, match="shared:thing"):
         load_servers_d(d)
 
@@ -95,48 +105,72 @@ def test_unknown_override_target_refused(tmp_path: Path) -> None:
     """An override file referencing a non-existent server is refused."""
     d = tmp_path / "servers.d"
     d.mkdir()
-    _write_yaml(d, "slack.yaml", """
+    _write_yaml(
+        d,
+        "slack.yaml",
+        """
 schema_version: 1
 name: slack
 command: ["x"]
-""")
-    _write_yaml(d, "99-notion-overrides.yaml", """
+""",
+    )
+    _write_yaml(
+        d,
+        "99-notion-overrides.yaml",
+        """
 schema_version: 1
 overrides_server: notion
-""")
+""",
+    )
     with pytest.raises(UnknownOverrideTargetError, match="notion"):
         load_servers_d(d)
 
 
 def test_override_file_patches_kinds(tmp_path: Path) -> None:
-    """An override file can patch a kind's labels/destructive without
+    """An override file can patch a kind's tags/destructive without
     modifying the vendor file."""
     d = tmp_path / "servers.d"
     d.mkdir()
-    _write_yaml(d, "slack.yaml", """
+    _write_yaml(
+        d,
+        "slack.yaml",
+        """
 schema_version: 1
 name: slack
 command: ["x"]
 kinds:
   - name: slack:read
     destructive: false
-    add_labels: [untrusted.external]
-""")
-    _write_yaml(d, "99-slack-overrides.yaml", """
+    add_tags:
+      b:
+        - level: external-untrusted
+""",
+    )
+    _write_yaml(
+        d,
+        "99-slack-overrides.yaml",
+        """
 schema_version: 1
 overrides_server: slack
 kinds:
   - name: slack:read
     destructive: false
-    add_labels: [untrusted.external, confidential.financial]
-""")
-    configs, overrides, registry = load_servers_d(d)
+    add_tags:
+      a:
+        - category: financial
+          tier: regulated
+      b:
+        - level: external-untrusted
+""",
+    )
+    configs, overrides, _ = load_servers_d(d)
     merged = apply_overrides(configs, overrides)
     assert len(merged) == 1
     # The override's version of slack:read wins
     slack_read = next(k for k in merged[0].custom_kinds if k.name == "slack:read")
-    label_strs = {l.value for l in slack_read.add_labels}
-    assert "confidential.financial" in label_strs
+    # Check that the tags merged correctly
+    assert any(c.category == "financial" for c in slack_read.add_tags.a)
+    assert any(p.level.value == "external-untrusted" for p in slack_read.add_tags.b)
 
 
 def test_override_in_non_99_file_refused(tmp_path: Path) -> None:
@@ -144,10 +178,14 @@ def test_override_in_non_99_file_refused(tmp_path: Path) -> None:
     refused — the convention is the load-order signal."""
     d = tmp_path / "servers.d"
     d.mkdir()
-    _write_yaml(d, "my-override.yaml", """
+    _write_yaml(
+        d,
+        "my-override.yaml",
+        """
 schema_version: 1
 overrides_server: slack
-""")
+""",
+    )
     with pytest.raises(ServerYamlError, match=r"99-"):
         load_servers_d(d)
 
@@ -166,7 +204,10 @@ def test_legacy_tool_overrides_syntax_still_works(tmp_path: Path) -> None:
     `tool_mappings:`."""
     d = tmp_path / "servers.d"
     d.mkdir()
-    _write_yaml(d, "gws.yaml", """
+    _write_yaml(
+        d,
+        "gws.yaml",
+        """
 schema_version: 1
 name: gws
 command: ["x"]
@@ -174,7 +215,8 @@ tool_overrides:
   gmail.list:
     capability_kind: GMAIL_READ
     additional_labels: [untrusted.external]
-""")
+""",
+    )
     configs, _, _ = load_servers_d(d)
     assert "gmail.list" in configs[0].server_config.tool_overrides
     ov = configs[0].server_config.tool_overrides["gmail.list"]
@@ -186,11 +228,15 @@ def test_unsupported_schema_version_refused(tmp_path: Path) -> None:
     """Old/future schema versions raise — operator gets a clear error."""
     d = tmp_path / "servers.d"
     d.mkdir()
-    _write_yaml(d, "future.yaml", """
+    _write_yaml(
+        d,
+        "future.yaml",
+        """
 schema_version: 99
 name: future
 command: ["x"]
-""")
+""",
+    )
     with pytest.raises(ServerYamlError, match="schema_version 99"):
         load_servers_d(d)
 

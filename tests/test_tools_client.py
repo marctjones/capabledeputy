@@ -7,7 +7,13 @@ from capabledeputy.audit.events import EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+    ProvenanceLevel,
+    ProvenanceTag,
+    Tier,
+)
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient
@@ -31,7 +37,11 @@ async def _ok_handler(args: dict[str, Any], context: ToolContext) -> ToolResult:
 async def _labeling_handler(args: dict[str, Any], context: ToolContext) -> ToolResult:
     return ToolResult(
         output={"value": args.get("payload", "x")},
-        additional_labels=frozenset({Label.CONFIDENTIAL_HEALTH}),
+        additional_tags=LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
 
 
@@ -46,7 +56,7 @@ async def _capture_context_handler(
     return ToolResult(
         output={
             "session_id": str(context.session_id),
-            "label_count": len(context.label_set),
+            "label_count": len(context.label_state.a) + len(context.label_state.b),
         },
     )
 
@@ -77,12 +87,13 @@ async def test_allow_dispatches_and_returns_output(writer: AuditWriter) -> None:
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="/home/*")
     s = await graph.new()
     await graph._save(s)
-    s = await graph.add_labels(s.id, frozenset())
+    s = await graph.add_tags(s.id, LabelState())
     graph._sessions[s.id] = s.__class__(  # type: ignore[misc]
         id=s.id,
         parent=s.parent,
         status=s.status,
-        label_set=s.label_set,
+        label_state=s.label_state,
+        axis_d=s.axis_d,
         capability_set=frozenset({cap}),
         history=s.history,
         declassification_log=s.declassification_log,
@@ -132,12 +143,20 @@ async def test_deny_on_brewer_nash_conflict(writer: AuditWriter) -> None:
     )
     cap = Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*")
     s = await graph.new()
-    s = await graph.add_labels(s.id, frozenset({Label.CONFIDENTIAL_HEALTH}))
+    s = await graph.add_tags(
+        s.id,
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
+    )
     graph._sessions[s.id] = s.__class__(
         id=s.id,
         parent=s.parent,
         status=s.status,
-        label_set=s.label_set,
+        label_state=s.label_state,
+        axis_d=s.axis_d,
         capability_set=frozenset({cap}),
         history=s.history,
         declassification_log=s.declassification_log,
@@ -163,7 +182,9 @@ async def test_inherent_labels_propagate_to_session(writer: AuditWriter) -> None
             operations=(Operation(EffectClass.FETCH),),
             risk_ids=("RISK-INDIRECT-INJECTION",),
             target_arg="url",
-            inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+            inherent_tags=LabelState(
+                b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
         ),
     )
     cap = Capability(kind=CapabilityKind.WEB_FETCH, pattern="*")
@@ -172,7 +193,8 @@ async def test_inherent_labels_propagate_to_session(writer: AuditWriter) -> None
         id=s.id,
         parent=s.parent,
         status=s.status,
-        label_set=s.label_set,
+        label_state=s.label_state,
+        axis_d=s.axis_d,
         capability_set=frozenset({cap}),
         history=s.history,
         declassification_log=s.declassification_log,
@@ -184,9 +206,9 @@ async def test_inherent_labels_propagate_to_session(writer: AuditWriter) -> None
 
     outcome = await client.call_tool(s.id, "web.fetch", {"url": "https://x.com"})
     assert outcome.decision == Decision.ALLOW
-    assert Label.UNTRUSTED_EXTERNAL in outcome.labels_added
+    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {t.level for t in outcome.tags_added.b}
     after = graph.get(s.id)
-    assert Label.UNTRUSTED_EXTERNAL in after.label_set
+    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {t.level for t in after.label_state.b}
 
 
 async def test_handler_additional_labels_propagate(writer: AuditWriter) -> None:
@@ -208,7 +230,8 @@ async def test_handler_additional_labels_propagate(writer: AuditWriter) -> None:
         id=s.id,
         parent=s.parent,
         status=s.status,
-        label_set=s.label_set,
+        label_state=s.label_state,
+        axis_d=s.axis_d,
         capability_set=frozenset({cap}),
         history=s.history,
         declassification_log=s.declassification_log,
@@ -220,7 +243,10 @@ async def test_handler_additional_labels_propagate(writer: AuditWriter) -> None:
 
     outcome = await client.call_tool(s.id, "memory.read", {"key": "x"})
     assert outcome.decision == Decision.ALLOW
-    assert Label.CONFIDENTIAL_HEALTH in outcome.labels_added
+    assert (
+        CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")
+        in outcome.tags_added.a
+    )
 
 
 async def test_handler_exception_returns_error(writer: AuditWriter) -> None:
@@ -242,7 +268,8 @@ async def test_handler_exception_returns_error(writer: AuditWriter) -> None:
         id=s.id,
         parent=s.parent,
         status=s.status,
-        label_set=s.label_set,
+        label_state=s.label_state,
+        axis_d=s.axis_d,
         capability_set=frozenset({cap}),
         history=s.history,
         declassification_log=s.declassification_log,
@@ -277,7 +304,8 @@ async def test_audit_events_are_emitted(writer: AuditWriter) -> None:
         id=s.id,
         parent=s.parent,
         status=s.status,
-        label_set=s.label_set,
+        label_state=s.label_state,
+        axis_d=s.axis_d,
         capability_set=frozenset({cap}),
         history=s.history,
         declassification_log=s.declassification_log,
@@ -376,12 +404,20 @@ async def test_context_carries_session_state(writer: AuditWriter) -> None:
     )
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     s = await graph.new()
-    s = await graph.add_labels(s.id, frozenset({Label.CONFIDENTIAL_PERSONAL}))
+    s = await graph.add_tags(
+        s.id,
+        LabelState(
+            a=frozenset(
+                {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
+    )
     graph._sessions[s.id] = s.__class__(
         id=s.id,
         parent=s.parent,
         status=s.status,
-        label_set=s.label_set,
+        label_state=s.label_state,
+        axis_d=s.axis_d,
         capability_set=frozenset({cap}),
         history=s.history,
         declassification_log=s.declassification_log,

@@ -21,7 +21,10 @@ from datetime import datetime
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.llm.types import ToolDescription
 from capabledeputy.policy.capabilities import kind_name
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    LabelState,
+    ProvenanceLevel,
+)
 from capabledeputy.session.model import Session
 from capabledeputy.tools.registry import ToolDefinition
 
@@ -54,11 +57,18 @@ def _compute_context_hash(system_prompt: str) -> str:
 
 
 def _session_labels_str(session: Session) -> str:
-    """Format session's label set as human-readable string."""
-    if not session.label_set:
+    """Format session's four-axis label state as human-readable string."""
+    if not session.label_state.a and not session.label_state.b:
         return "none"
     # Sort labels for determinism
-    return ", ".join(sorted(label.value for label in session.label_set))
+    parts = []
+    if session.label_state.a:
+        for tag in sorted(session.label_state.a, key=lambda t: t.category):
+            parts.append(f"category:{tag.category}@{tag.tier.value}")
+    if session.label_state.b:
+        for tag in sorted(session.label_state.b, key=lambda t: t.level):
+            parts.append(f"provenance:{tag.level}")
+    return ", ".join(parts)
 
 
 def _session_profile_str(session: Session) -> str:
@@ -87,39 +97,48 @@ def _session_caps_str(session: Session) -> str:
 
 def _likely_outcome_for_tool(
     tool: ToolDefinition,
-    label_set: frozenset[Label],
+    label_state: LabelState,
 ) -> str:
     """Heuristic: estimate likely policy outcome for this tool given
-    current session labels.
+    current session label state, mirroring the four-axis conflict
+    invariant.
 
     Returns one of: "likely AUTO", "likely DENY", "likely REQUIRE_APPROVAL",
     "ALLOW likely", or "???".
     """
-    # Egress tools with untrusted content -> DENY
-    if (Label.UNTRUSTED_EXTERNAL in label_set or Label.UNTRUSTED_USER_INPUT in label_set) and (
-        Label.EGRESS_EMAIL in label_set or Label.EGRESS_PURCHASE in label_set
-    ):
+    # Reconstruct action-like check for egress detection from tool effect_class
+    # and invoke the four-axis conflict invariant gate.
+    # For simplicity, assume no tool-specific overrides; we just check the
+    # confidentiality + provenance + effect signals.
+
+    # Check provenance + egress: EXTERNAL_UNTRUSTED with any egress -> DENY
+    has_untrusted = any(tag.level == ProvenanceLevel.EXTERNAL_UNTRUSTED for tag in label_state.b)
+    has_egress = tool.effect_class and tool.effect_class.startswith("egress")
+
+    if has_untrusted and has_egress:
         return "likely DENY (untrusted-meets-egress)"
 
-    # Health label with egress -> DENY
-    if Label.CONFIDENTIAL_HEALTH in label_set and (
-        Label.EGRESS_EMAIL in label_set or Label.EGRESS_PURCHASE in label_set
-    ):
+    # Check health + egress -> DENY
+    has_health = any(tag.category == "health" for tag in label_state.a)
+    if has_health and has_egress:
         return "likely DENY (health-meets-egress)"
 
-    # Financial + email -> DENY
+    # Check financial + email egress -> DENY
+    has_financial = any(tag.category == "financial" for tag in label_state.a)
     if (
-        Label.CONFIDENTIAL_FINANCIAL in label_set
-        and Label.EGRESS_EMAIL in label_set
+        has_financial
         and kind_name(tool.capability_kind) == "SEND_EMAIL"
+        and tool.effect_class
+        and "email" in tool.effect_class
     ):
         return "likely DENY (financial-meets-email)"
 
-    # Financial + purchase -> REQUIRE_APPROVAL
+    # Check financial + purchase egress -> REQUIRE_APPROVAL
     if (
-        Label.CONFIDENTIAL_FINANCIAL in label_set
-        and Label.EGRESS_PURCHASE in label_set
+        has_financial
         and kind_name(tool.capability_kind) == "QUEUE_PURCHASE"
+        and tool.effect_class
+        and "purchase" in tool.effect_class
     ):
         return "likely REQUIRE_APPROVAL (financial-meets-purchase)"
 
@@ -142,12 +161,12 @@ def _likely_outcome_for_tool(
 def _format_tool_line(
     tool_desc: ToolDescription,
     tool_def: ToolDefinition | None,
-    label_set: frozenset[Label],
+    label_state: LabelState,
 ) -> str:
     """Format a single tool line for the context, including outcome hint."""
     hint = "???"
     if tool_def is not None:
-        hint = _likely_outcome_for_tool(tool_def, label_set)
+        hint = _likely_outcome_for_tool(tool_def, label_state)
 
     # Tool line format: name [CAPABILITY_KIND] hint
     kind = kind_name(tool_def.capability_kind) if tool_def else "UNKNOWN"
@@ -246,7 +265,7 @@ def build_llm_context(
     tool_lines = []
     for tool_desc in available_tools:
         tool_def = tool_registry.get(tool_desc.name)
-        line = _format_tool_line(tool_desc, tool_def, session.label_set)
+        line = _format_tool_line(tool_desc, tool_def, session.label_state)
         tool_lines.append(line)
 
     tools_section = "\n".join(tool_lines) if tool_lines else "No tools available."

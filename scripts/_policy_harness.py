@@ -23,7 +23,7 @@ from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import tags_for_labels_strings
 
 
 def tc(call_id: str, name: str, **args: object) -> ToolCall:
@@ -61,7 +61,7 @@ class Scenario:
     caps: frozenset[Capability]
     responses: list[LLMResponse]
     expect: list[Expect]
-    session_labels: frozenset[Label] = frozenset()
+    session_labels: frozenset[str] = frozenset()
     # Optional seeding hook: receives the started App; use it to write
     # labeled memory, add inbox messages, create calendar events, etc.
     pre: Callable[[App], None] | None = field(default=None)
@@ -86,14 +86,44 @@ async def run_scenario(sc: Scenario) -> list[str]:
         )
         await app.startup()
 
+        # Issue #52 — restricted-tier sessions (e.g. confidential.health /
+        # .financial, now restricted via the catalog, #50) require a
+        # Pattern ③/⑤ mode or the per-turn select_mode fails closed
+        # (FR-047). A real restricted session only exists because it
+        # passed the spawn-time gate with such a mode available; this
+        # harness seeds label_state out-of-band, bypassing that gate, so
+        # we register an inert handle-aware tool here to stand in for it.
+        # REFERENCE mode runs the normal turn loop (no reversibility
+        # lift), so the engine decisions under test are unchanged.
+        from capabledeputy.policy.effect_class import EffectClass, Operation
+        from capabledeputy.tools.registry import ToolDefinition
+
+        async def _handle_noop(_args: dict) -> dict:
+            return {}
+
+        app.registry._tools.setdefault(
+            "ref.noop",
+            ToolDefinition(
+                name="ref.noop",
+                description="inert handle-aware tool (harness FR-047 mode floor)",
+                capability_kind="EXECUTE",
+                handler=_handle_noop,
+                operations=(Operation(EffectClass.FETCH, subtype="ref.noop"),),
+                risk_ids=("RISK-HEALTH-LEAK",),
+                accepts_handles=True,
+                handle_arg_names=("ref",),
+            ),
+        )
+
         if sc.pre is not None:
             sc.pre(app)
 
         s = await app.graph.new(intent=f"harness:{sc.name}")
+        seed = tags_for_labels_strings(sc.session_labels)
         app.graph._sessions[s.id] = replace(
             s,
             capability_set=sc.caps,
-            label_set=sc.session_labels,
+            label_state=seed,
         )
 
         handlers = make_agent_handlers(app)

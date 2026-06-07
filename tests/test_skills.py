@@ -17,7 +17,7 @@ import pytest
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState, Tier
 from capabledeputy.skills import (
     Skill,
     SkillParseError,
@@ -33,7 +33,16 @@ def _skill_text(**overrides: Any) -> str:
         "name": "skill.test",
         "description": "test skill",
         "capability_kind": "READ_FS",
-        "inherent_labels": ["confidential.health"],
+        "inherent_tags": {
+            "a": [
+                {
+                    "category": "health",
+                    "tier": "regulated",
+                    "assignment_provenance": "source-declared",
+                }
+            ],
+            "b": [],
+        },
         "target_arg": "text",
         "parameters": {"type": "object", "properties": {"text": {"type": "string"}}},
     }
@@ -50,7 +59,10 @@ def test_parser_reads_required_fields() -> None:
     assert skill.name == "skill.test"
     assert skill.description == "test skill"
     assert skill.capability_kind == CapabilityKind.READ_FS
-    assert Label.CONFIDENTIAL_HEALTH in skill.inherent_labels
+    assert (
+        CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")
+        in skill.inherent_tags.a
+    )
 
 
 def test_parser_renders_placeholders() -> None:
@@ -75,12 +87,14 @@ def test_parser_unknown_label_errors() -> None:
         ---
         name: skill.bad
         description: x
-        inherent_labels: [not_a_real_label]
+        inherent_tags:
+          a:
+            - invalid_tag_structure
         ---
         body
         """,
     )
-    with pytest.raises(SkillParseError, match="label"):
+    with pytest.raises(SkillParseError, match="tags"):
         parse_skill_text(text)
 
 
@@ -108,10 +122,13 @@ async def test_skill_to_tool_returns_text_with_inherent_labels() -> None:
 
     from uuid import uuid4
 
-    ctx = ToolContext(session_id=uuid4(), label_set=frozenset())
+    ctx = ToolContext(session_id=uuid4(), label_state=LabelState())
     result = await tool.handler({"text": "raw prescription"}, ctx)
     assert result.output == {"text": "lisinopril 10mg daily."}
-    assert Label.CONFIDENTIAL_HEALTH in result.additional_labels
+    assert (
+        CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")
+        in result.additional_tags.a
+    )
 
 
 async def test_skill_to_tool_refuses_tool_call_emission() -> None:
@@ -132,7 +149,7 @@ async def test_skill_to_tool_refuses_tool_call_emission() -> None:
     tool = skill_to_tool(skill, llm)
     from uuid import uuid4
 
-    ctx = ToolContext(session_id=uuid4(), label_set=frozenset())
+    ctx = ToolContext(session_id=uuid4(), label_state=LabelState())
     result = await tool.handler({"text": "x"}, ctx)
     assert "error" in result.output
     assert "tool_calls" in result.output["error"]
@@ -167,7 +184,7 @@ async def test_skill_to_tool_with_schema_uses_extractor() -> None:
     tool = skill_to_tool(skill, llm)
     from uuid import uuid4
 
-    ctx = ToolContext(session_id=uuid4(), label_set=frozenset())
+    ctx = ToolContext(session_id=uuid4(), label_state=LabelState())
     result = await tool.handler({"text": "lisinopril 10mg daily"}, ctx)
     assert result.output["medication_name"] == "lisinopril"
     assert result.output["dosage_mg"] == 10.0

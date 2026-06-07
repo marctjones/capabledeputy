@@ -72,7 +72,7 @@ def test_default_search_paths_includes_cwd_and_user_config() -> None:
     assert paths[0] == Path.cwd() / DEFAULT_KEY_FILENAME
     assert USER_CONFIG_KEY_PATH in paths
     # USER_CONFIG_KEY_PATH should match the documented ~/.config/anthropic/api.key
-    assert USER_CONFIG_KEY_PATH == Path.home() / ".config" / "anthropic" / "api.key"
+    assert Path.home() / ".config" / "anthropic" / "api.key" == USER_CONFIG_KEY_PATH
 
 
 def test_user_config_path_used_when_cwd_file_absent(

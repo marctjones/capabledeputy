@@ -100,7 +100,9 @@ class DecisionContext:
         counterparty: str | None = None,
         relationship_group_ids: frozenset[str] | None = None,
         expectedness: Literal["expected", "anomalous"] = "anomalous",
-        reversibility_degree: Literal["reversible", "costly-reversible", "irreversible"] = "irreversible",
+        reversibility_degree: Literal[
+            "reversible", "costly-reversible", "irreversible"
+        ] = "irreversible",
         reversibility_agent: Literal["system", "human", "external"] = "external",
         # Backward-compat: old field names
         authentication: str | None = None,
@@ -200,7 +202,9 @@ class DecisionContext:
 
         # Initiator authentication: support both new and old field names.
         # Try new name first, fall back to old "authentication" field.
-        auth_str = str(d.get("initiator_authentication") or d.get("authentication", "unauthenticated"))
+        auth_str = str(
+            d.get("initiator_authentication") or d.get("authentication", "unauthenticated")
+        )
         try:
             auth = AuthLevel(auth_str)
         except (ValueError, KeyError):
@@ -242,9 +246,7 @@ class DecisionContext:
             initiator=str(d.get("initiator", "unset")),
             initiator_authentication=auth,
             counterparty=d.get("counterparty"),
-            relationship_group_ids=frozenset(
-                str(g) for g in d.get("relationship_group_ids", [])
-            ),
+            relationship_group_ids=frozenset(str(g) for g in d.get("relationship_group_ids", [])),
             expectedness=expectedness_str,  # type: ignore
             reversibility_degree=rev_degree_str,  # type: ignore
             reversibility_agent=rev_agent_str,  # type: ignore

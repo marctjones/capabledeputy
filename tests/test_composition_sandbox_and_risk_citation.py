@@ -25,10 +25,9 @@ from capabledeputy.policy.engine import (
     decide,
 )
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     AxisD,
     CategoryTag,
+    LabelState,
     ProvenanceLevel,
     ProvenanceTag,
 )
@@ -51,13 +50,13 @@ def _wide_cap() -> Capability:
     )
 
 
-def _axes(category: str = "data", risk_ids: tuple[str, ...] = ()) -> tuple[AxisA, AxisB, AxisD]:
-    axis_a = AxisA(
-        categories=(CategoryTag(category=category, tier=Tier.SENSITIVE, risk_ids=risk_ids),),
+def _labels(category: str = "data", risk_ids: tuple[str, ...] = ()) -> tuple[LabelState, AxisD]:
+    labels = LabelState(
+        a=frozenset({CategoryTag(category=category, tier=Tier.SENSITIVE, risk_ids=risk_ids)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(initiator="principal:alice")
-    return axis_a, axis_b, axis_d
+    return labels, axis_d
 
 
 # --- Sandbox-without-actuator (#6) ----------------------------------
@@ -67,13 +66,11 @@ def test_execute_sandbox_without_actuator_returns_override_required() -> None:
     """The spec is explicit: EXECUTE.sandbox with no actuator port ⇒
     OVERRIDE_REQUIRED. Caller's path: wire a sandbox provider in
     spec 004 OR route through Pattern (3) handles."""
-    axis_a, axis_b, axis_d = _axes()
+    labels, axis_d = _labels()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="EXECUTE.sandbox",
         rules_v2=DecisionRules(rules=()),
@@ -88,13 +85,11 @@ def test_execute_sandbox_with_actuator_runs_normal_path() -> None:
     """When the operator wires a sandbox provider, EXECUTE.sandbox
     falls through to the normal v2 pipeline (here REQUIRE_APPROVAL
     on the never-auto default)."""
-    axis_a, axis_b, axis_d = _axes()
+    labels, axis_d = _labels()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="EXECUTE.sandbox",
         rules_v2=DecisionRules(rules=()),
@@ -106,13 +101,11 @@ def test_execute_sandbox_with_actuator_runs_normal_path() -> None:
 
 def test_non_sandbox_effect_unaffected() -> None:
     """The check only fires for EXECUTE.sandbox effect_class."""
-    axis_a, axis_b, axis_d = _axes()
+    labels, axis_d = _labels()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write",
         rules_v2=DecisionRules(rules=()),
@@ -132,13 +125,11 @@ def test_execute_devbox_without_manager_returns_override_required() -> None:
     when no manager is wired."""
     from capabledeputy.policy.engine import DEVBOX_NO_MANAGER_RULE
 
-    axis_a, axis_b, axis_d = _axes()
+    labels, axis_d = _labels()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="py-dev"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="EXECUTE.devbox",
         rules_v2=DecisionRules(rules=()),
@@ -156,13 +147,11 @@ def test_execute_devbox_with_manager_runs_normal_path() -> None:
     default)."""
     from capabledeputy.policy.engine import DEVBOX_NO_MANAGER_RULE
 
-    axis_a, axis_b, axis_d = _axes()
+    labels, axis_d = _labels()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="py-dev"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="EXECUTE.devbox",
         rules_v2=DecisionRules(rules=()),
@@ -179,13 +168,11 @@ def test_devbox_gate_does_not_fire_for_sandbox_effect() -> None:
     the sandbox rule, not the devbox rule."""
     from capabledeputy.policy.engine import DEVBOX_NO_MANAGER_RULE
 
-    axis_a, axis_b, axis_d = _axes()
+    labels, axis_d = _labels()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="EXECUTE.sandbox",
         rules_v2=DecisionRules(rules=()),
@@ -213,15 +200,13 @@ def _register() -> RiskRegister:
 
 
 def test_orphan_risk_citation_refuses() -> None:
-    """An axis_a category citing a risk-id not in the register refuses
+    """A category citing a risk-id not in the register refuses
     the decision at runtime, even with valid capabilities (FR-015)."""
-    axis_a, axis_b, axis_d = _axes(risk_ids=("RISK-DOES-NOT-EXIST",))
+    labels, axis_d = _labels(risk_ids=("RISK-DOES-NOT-EXIST",))
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write",
         rules_v2=DecisionRules(rules=()),
@@ -234,13 +219,11 @@ def test_orphan_risk_citation_refuses() -> None:
 
 def test_known_risk_id_passes() -> None:
     """A cited id that exists in the register doesn't trigger refusal."""
-    axis_a, axis_b, axis_d = _axes(risk_ids=("RISK-PII-001",))
+    labels, axis_d = _labels(risk_ids=("RISK-PII-001",))
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write",
         rules_v2=DecisionRules(rules=()),
@@ -252,13 +235,11 @@ def test_known_risk_id_passes() -> None:
 
 def test_no_risk_register_skips_check() -> None:
     """Without a register wired, no orphan check fires — back-compat."""
-    axis_a, axis_b, axis_d = _axes(risk_ids=("RISK-DOES-NOT-EXIST",))
+    labels, axis_d = _labels(risk_ids=("RISK-DOES-NOT-EXIST",))
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write",
         rules_v2=DecisionRules(rules=()),
@@ -271,13 +252,11 @@ def test_no_risk_register_skips_check() -> None:
 def test_empty_risk_ids_does_not_refuse() -> None:
     """Categories without any risk_ids pass the orphan check (they're
     a separate SC-001 lint problem caught at CI, not runtime)."""
-    axis_a, axis_b, axis_d = _axes(risk_ids=())
+    labels, axis_d = _labels(risk_ids=())
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write",
         rules_v2=DecisionRules(rules=()),

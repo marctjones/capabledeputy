@@ -23,7 +23,8 @@ from capabledeputy.daemon.tool_handlers import make_tool_handlers
 from capabledeputy.ipc.client import DaemonClient
 from capabledeputy.mcp_server.server import discover_tools, dispatch_tool
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 
 
 def _text(result: object) -> str:
@@ -154,7 +155,13 @@ async def test_dispatch_tool_deny_returns_policy_message(paths: dict[str, Path])
 
 async def test_dispatch_tool_includes_labels_added_in_response(paths: dict[str, Path]) -> None:
     daemon, app = await _build_daemon(paths)
-    app.memory.write("labs", "x", frozenset({Label.CONFIDENTIAL_HEALTH}))
+    app.memory.write(
+        "labs",
+        "x",
+        LabelState(
+            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+        ),
+    )
     s = await app.graph.new()
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
@@ -189,7 +196,13 @@ async def test_full_mcp_scenario_blocks_egress_after_health_read(
     via MCP. First call: read health data (allowed, propagates label).
     Second call: try to purchase (denied by health-meets-egress)."""
     daemon, app = await _build_daemon(paths)
-    app.memory.write("rx", "lisinopril 10mg", frozenset({Label.CONFIDENTIAL_HEALTH}))
+    app.memory.write(
+        "rx",
+        "lisinopril 10mg",
+        LabelState(
+            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+        ),
+    )
     s = await app.graph.new(intent="claude-code mcp test")
     read_cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     purchase_cap = Capability(

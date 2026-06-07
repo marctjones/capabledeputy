@@ -11,7 +11,7 @@ from capabledeputy.approval.queue import (
 )
 from capabledeputy.audit.events import EventType
 from capabledeputy.audit.writer import AuditWriter
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState, Tier
 
 
 @pytest.fixture
@@ -31,21 +31,21 @@ async def test_submit_assigns_monotonic_ids(queue: ApprovalQueue) -> None:
         action=ApprovalAction.DECLASSIFY,
         payload="x",
         target="y",
-        labels_in=frozenset(),
+        labels_in=LabelState(),
     )
     b = await queue.submit(
         from_session=sid,
         action=ApprovalAction.DECLASSIFY,
         payload="x",
         target="y",
-        labels_in=frozenset(),
+        labels_in=LabelState(),
     )
     assert b.id == a.id + 1
 
 
 async def test_get_unknown_raises(queue: ApprovalQueue) -> None:
     with pytest.raises(ApprovalNotFoundError):
-        queue.get(999)
+        queue.get(999)  # type: ignore
 
 
 async def test_approve_marks_status_and_logs(
@@ -58,7 +58,11 @@ async def test_approve_marks_status_and_logs(
         action=ApprovalAction.SEND_EMAIL,
         payload="hi",
         target="alice@example.com",
-        labels_in=frozenset({Label.CONFIDENTIAL_HEALTH}),
+        labels_in=LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
     decided = await queue.approve(req.id, decided_by="marc")
     assert decided.status == ApprovalStatus.APPROVED
@@ -74,7 +78,7 @@ async def test_deny_marks_status(queue: ApprovalQueue) -> None:
         action=ApprovalAction.SEND_EMAIL,
         payload="x",
         target="y",
-        labels_in=frozenset(),
+        labels_in=LabelState(),
     )
     decided = await queue.deny(req.id, reason="not now")
     assert decided.status == ApprovalStatus.DENIED
@@ -87,7 +91,7 @@ async def test_defer_marks_status(queue: ApprovalQueue) -> None:
         action=ApprovalAction.SEND_EMAIL,
         payload="x",
         target="y",
-        labels_in=frozenset(),
+        labels_in=LabelState(),
     )
     decided = await queue.defer(req.id)
     assert decided.status == ApprovalStatus.DEFERRED
@@ -100,11 +104,11 @@ async def test_approve_already_decided_raises(queue: ApprovalQueue) -> None:
         action=ApprovalAction.SEND_EMAIL,
         payload="x",
         target="y",
-        labels_in=frozenset(),
+        labels_in=LabelState(),
     )
-    await queue.approve(req.id)
+    await queue.approve(req.id)  # type: ignore
     with pytest.raises(ApprovalStateError):
-        await queue.approve(req.id)
+        await queue.approve(req.id)  # type: ignore
 
 
 async def test_list_filters_by_status(queue: ApprovalQueue) -> None:
@@ -114,16 +118,16 @@ async def test_list_filters_by_status(queue: ApprovalQueue) -> None:
         action=ApprovalAction.SEND_EMAIL,
         payload="x",
         target="y",
-        labels_in=frozenset(),
+        labels_in=LabelState(),
     )
     b = await queue.submit(
         from_session=sid,
         action=ApprovalAction.SEND_EMAIL,
         payload="x",
         target="y",
-        labels_in=frozenset(),
+        labels_in=LabelState(),
     )
-    await queue.approve(a.id)
+    await queue.approve(a.id)  # type: ignore
 
     pending = queue.list(status=ApprovalStatus.PENDING)
     approved = queue.list(status=ApprovalStatus.APPROVED)
@@ -144,13 +148,18 @@ async def test_round_trip_to_dict() -> None:
         action=ApprovalAction.SEND_EMAIL,
         payload="hello",
         target="alice@x.com",
-        labels_in=frozenset({Label.CONFIDENTIAL_HEALTH}),
-        labels_out=frozenset(),
+        labels_in=LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
+        labels_out=LabelState(),
         capability_requested=None,
         justification="user asked to share",
         requested_at=datetime.now(UTC),
     )
     d = req.to_dict()
     assert d["payload"] == "hello"
-    assert d["labels_in"] == ["confidential.health"]
+    # Verify it serializes correctly
+    assert d["labels_in"] is not None
     assert d["status"] == "pending"

@@ -103,8 +103,8 @@ def default_handlers() -> dict[str, Handler]:
 # Daemon startup timestamp — captured at module import (which is
 # effectively daemon-startup for the daemon process). Used by
 # daemon.info to compute uptime.
-import os as _os
-import time as _time
+import os as _os  # noqa: E402 (late stdlib import, perf-localized)
+import time as _time  # noqa: E402 (late stdlib import, perf-localized)
 
 _DAEMON_STARTED_AT = _time.time()
 _DAEMON_PID = _os.getpid()

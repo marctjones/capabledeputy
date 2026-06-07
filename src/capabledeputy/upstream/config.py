@@ -10,10 +10,10 @@ Each upstream server gets:
     image with different credentials end up as distinct prefixed
     tools (e.g. ``github-work.list_issues`` vs.
     ``github-personal.list_issues``).
-  - inherent_labels: labels added to ANY tool result from this server
-    (e.g., a fetch server gets `untrusted.external`)
+  - inherent_tags: LabelState tags added to ANY tool result from this server
+    (e.g., a fetch server gets untrusted.external provenance)
   - tool_overrides: optional per-tool config (capability_kind override,
-    additional inherent labels)
+    additional inherent tags)
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState
 from capabledeputy.upstream.isolation import ContainerIsolation, VolumeMount
 
 _ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
@@ -51,14 +51,14 @@ def expand_env_value(value: str, environ: dict[str, str] | None = None) -> str:
 @dataclass(frozen=True)
 class UpstreamToolOverride:
     capability_kind: CapabilityKind | None = None
-    additional_labels: frozenset[Label] = field(default_factory=frozenset)
+    additional_tags: LabelState = field(default_factory=LabelState)
 
 
 @dataclass(frozen=True)
 class UpstreamServerConfig:
     name: str
     command: tuple[str, ...]
-    inherent_labels: frozenset[Label] = field(default_factory=frozenset)
+    inherent_tags: LabelState = field(default_factory=LabelState)
     tool_overrides: dict[str, UpstreamToolOverride] = field(default_factory=dict)
     isolation: ContainerIsolation | None = None
     # Per-server environment variables, applied when spawning the
@@ -88,16 +88,16 @@ def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
     for entry in servers_raw:
         name = str(entry["name"])
         command = tuple(str(a) for a in entry["command"])
-        inherent_labels = frozenset(Label(s) for s in entry.get("inherent_labels", []))
+        inherent_tags = LabelState.from_dict(entry.get("inherent_tags", {}))
         overrides_raw = entry.get("tool_overrides", {}) or {}
         overrides: dict[str, UpstreamToolOverride] = {}
         for tool_name, ov in overrides_raw.items():
             kind_str = ov.get("capability_kind")
             kind = CapabilityKind(kind_str) if kind_str else None
-            extra = frozenset(Label(s) for s in ov.get("additional_labels", []))
+            extra = LabelState.from_dict(ov.get("additional_tags", {}))
             overrides[tool_name] = UpstreamToolOverride(
                 capability_kind=kind,
-                additional_labels=extra,
+                additional_tags=extra,
             )
         isolation = _parse_isolation(entry.get("isolation"))
         env_raw = entry.get("env") or {}
@@ -106,7 +106,7 @@ def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
             UpstreamServerConfig(
                 name=name,
                 command=command,
-                inherent_labels=inherent_labels,
+                inherent_tags=inherent_tags,
                 tool_overrides=overrides,
                 isolation=isolation,
                 env=env,

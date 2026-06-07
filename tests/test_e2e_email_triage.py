@@ -29,8 +29,10 @@ from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.tools.native.inbox import InboundMessage
+
+_UNTRUSTED = LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}))
 
 
 async def test_triage_via_schema_then_approval_gated_reply(tmp_path: Path) -> None:
@@ -102,7 +104,7 @@ async def test_triage_via_schema_then_approval_gated_reply(tmp_path: Path) -> No
     app.memory.write(
         "inbox.m1",
         inbound.body,
-        frozenset({Label.UNTRUSTED_EXTERNAL}),
+        _UNTRUSTED,
     )
 
     s = await app.graph.new(intent="triage demo")
@@ -136,7 +138,7 @@ async def test_triage_via_schema_then_approval_gated_reply(tmp_path: Path) -> No
             "action": "SEND_EMAIL",
             "payload": "Reviewing today, will respond by Friday EOD. — m",
             "target": "alice@example.com",
-            "labels_in": [Label.UNTRUSTED_EXTERNAL.value],
+            "labels_in": ["untrusted.external"],
             "justification": "reply to high-urgency proposal review",
         },
     )

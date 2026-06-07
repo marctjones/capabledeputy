@@ -15,6 +15,8 @@ from enum import StrEnum
 from typing import Any, Self
 from uuid import UUID, uuid4
 
+from capabledeputy.policy.labels import LabelState
+
 
 class CapabilityKind(StrEnum):
     READ_FS = "READ_FS"
@@ -195,21 +197,24 @@ def is_destructive_kind(kind: CapabilityKind | str) -> bool:
     return False
 
 
-def kind_add_labels(kind: CapabilityKind | str) -> frozenset:
-    """Labels declared by a custom kind's yaml `add_labels` field.
-    Built-in kinds get their label propagation from the policy
-    engine's hardcoded rules (this returns empty for them).
+def kind_add_tags(kind: CapabilityKind | str) -> LabelState:
+    """Tags declared by a custom kind's yaml `add_tags` field.
+    Built-in kinds get their tag propagation from the policy
+    engine's hardcoded conflict-invariant gate (this returns empty for them).
 
-    Returns an empty frozenset if no labels are declared.
+    Returns an empty LabelState if no tags are declared.
     """
     if isinstance(kind, CapabilityKind):
-        return frozenset()
+        return LabelState()
     if _CUSTOM_KIND_REGISTRY is None:
-        return frozenset()
+        return LabelState()
     decl = _CUSTOM_KIND_REGISTRY.get(kind)
     if decl is None:
-        return frozenset()
-    return decl.add_labels
+        return LabelState()
+    # New style: add_tags is LabelState directly
+    if hasattr(decl, "add_tags"):
+        return decl.add_tags
+    return LabelState()
 
 
 class CapabilityExpiry(StrEnum):

@@ -26,7 +26,11 @@ from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+)
+from capabledeputy.policy.tiers import Tier
 
 
 async def test_notes_compartments_stay_separate(tmp_path: Path) -> None:
@@ -44,12 +48,20 @@ async def test_notes_compartments_stay_separate(tmp_path: Path) -> None:
     app.memory.write(
         "notes.grocery",
         "milk, eggs, bread",
-        frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        LabelState(
+            a=frozenset(
+                {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
     app.memory.write(
         "notes.lab-results",
         "BP 120/80; LDL 110",
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
 
     # Personal session: grocery list lookup.
@@ -76,8 +88,8 @@ async def test_notes_compartments_stay_separate(tmp_path: Path) -> None:
         {"session_id": str(personal.id), "message": "What's on my grocery list?"},
     )
     final_personal = app.graph.get(personal.id)
-    assert Label.CONFIDENTIAL_PERSONAL in final_personal.label_set
-    assert Label.CONFIDENTIAL_HEALTH not in final_personal.label_set
+    assert any(tag.category == "personal" for tag in final_personal.label_state.a)
+    assert not any(tag.category == "health" for tag in final_personal.label_state.a)
 
     # Health session: lab-results lookup. Separate session, separate
     # compartment. Health labels apply only here.
@@ -106,10 +118,10 @@ async def test_notes_compartments_stay_separate(tmp_path: Path) -> None:
         {"session_id": str(health.id), "message": "Read my lab results."},
     )
     final_health = app.graph.get(health.id)
-    assert Label.CONFIDENTIAL_HEALTH in final_health.label_set
+    assert any(tag.category == "health" for tag in final_health.label_state.a)
     # Critically: this session NEVER gained the personal label even
     # though both notes share the same memory store.
-    assert Label.CONFIDENTIAL_PERSONAL not in final_health.label_set
+    assert not any(tag.category == "personal" for tag in final_health.label_state.a)
 
 
 async def test_notes_personal_egress_works_health_egress_blocks(
@@ -126,12 +138,20 @@ async def test_notes_personal_egress_works_health_egress_blocks(
     app.memory.write(
         "notes.book-rec",
         "you should read 'Designing Data-Intensive Applications'",
-        frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        LabelState(
+            a=frozenset(
+                {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
     app.memory.write(
         "notes.med-list",
         "lisinopril 10mg daily",
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
 
     caps = frozenset(

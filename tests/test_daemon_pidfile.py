@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import signal
 import subprocess
@@ -110,10 +111,8 @@ def _reaper(proc: subprocess.Popen) -> None:
     assert on `is_process_alive`."""
     if proc.poll() is None:
         proc.kill()
-    try:
+    with contextlib.suppress(subprocess.TimeoutExpired):
         proc.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        pass
 
 
 def test_terminate_with_escalation_term_succeeds(tmp_path: Path) -> None:
@@ -121,7 +120,7 @@ def test_terminate_with_escalation_term_succeeds(tmp_path: Path) -> None:
     SIGTERM is sent and the process exits within the grace window.
     Reap before checking is_process_alive so zombie state doesn't
     confuse the assertion."""
-    proc = subprocess.Popen(  # noqa: S603
+    proc = subprocess.Popen(
         [sys.executable, "-c", "import time\nwhile True: time.sleep(0.1)"],
     )
     try:
@@ -146,7 +145,7 @@ def test_terminate_with_escalation_term_succeeds(tmp_path: Path) -> None:
 def test_terminate_with_escalation_kill_needed(tmp_path: Path) -> None:
     """Spawn a subprocess that ignores SIGTERM; verify escalation to
     SIGKILL happens."""
-    proc = subprocess.Popen(  # noqa: S603
+    proc = subprocess.Popen(
         [
             sys.executable,
             "-c",

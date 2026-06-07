@@ -16,7 +16,7 @@ from capabledeputy.audit.events import EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.substrate.declassifiers_builtin import (
@@ -32,11 +32,13 @@ from capabledeputy.tools.registry import (
 )
 
 
-def _make_tool_returning(value, inherent_labels=frozenset()):
-    """Build a synthetic tool that returns a fixed value with given inherent labels."""
+def _make_tool_returning(value, inherent_tags=None):
+    """Build a synthetic tool that returns a fixed value with given inherent tags."""
+    if inherent_tags is None:
+        inherent_tags = LabelState()
 
     async def _handler(args, _ctx: ToolContext) -> ToolResult:
-        return ToolResult(output=value, additional_labels=inherent_labels)
+        return ToolResult(output=value)
 
     return ToolDefinition(
         name="test.return",
@@ -45,7 +47,7 @@ def _make_tool_returning(value, inherent_labels=frozenset()):
         handler=_handler,
         parameters_schema={"type": "object", "properties": {}},
         target_arg=None,
-        inherent_labels=inherent_labels,
+        inherent_tags=inherent_tags,
         operations=(Operation(EffectClass.FETCH),),
         risk_ids=("RISK-INDIRECT-INJECTION",),
     )
@@ -93,7 +95,7 @@ async def test_declassifier_runs_and_transforms_value(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_declassifier_reduces_label_propagation(tmp_path: Path) -> None:
-    """When a declassifier lowers axis_b to 'trusted', untrusted labels
+    """When a declassifier lowers provenance level to 'trusted', untrusted labels
     drop from the per-result propagation."""
     writer = AuditWriter(tmp_path / "audit.jsonl")
     graph = SessionGraph(audit=writer)
@@ -103,7 +105,7 @@ async def test_declassifier_reduces_label_propagation(tmp_path: Path) -> None:
     # untrusted.external label from propagation.
     tool = _make_tool_returning(
         {"summary": "fact", "noise": "drop me"},
-        inherent_labels=frozenset({Label.UNTRUSTED_EXTERNAL}),
+        inherent_tags=LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
     )
     registry = ToolRegistry()
     registry.register(tool)
@@ -127,7 +129,8 @@ async def test_declassifier_reduces_label_propagation(tmp_path: Path) -> None:
     outcome = await client.call_tool(s.id, "test.return", {})
     assert outcome.decision == Decision.ALLOW
     # The untrusted.external label was dropped from this result's propagation
-    assert Label.UNTRUSTED_EXTERNAL not in outcome.labels_added
+    # Check that no external-untrusted provenance tags were added
+    assert not any(tag.level == ProvenanceLevel.EXTERNAL_UNTRUSTED for tag in outcome.tags_added.b)
 
 
 @pytest.mark.asyncio

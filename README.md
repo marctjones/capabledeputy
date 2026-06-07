@@ -6,7 +6,7 @@ A structurally secure runtime for personal AI agents.
 
 CapableDeputy is an AI agent runtime built as a faithful implementation of recognized security models — a reference monitor, an information-flow lattice, and the object-capability model — with the LLM treated as an untrusted component *outside* the trusted computing base. Every action the agent takes flows through one deterministic capability and information-flow chokepoint, escalates to programmatic execution when stakes warrant, and surfaces every cross-compartment data flow through human-auditable approval gates.
 
-**Status:** Alpha — **v0.14.0 released** (governance/CORE-PRO docs, agentic risk register, label-model redesign R1–R4b.3). The label-model redesign continues on `003-labeling-framework` (clean four-axis model, no backwards compatibility; see [docs/responsible-ai-frameworks.md](docs/responsible-ai-frameworks.md) and [specs/003-labeling-framework/label-model-redesign.md](specs/003-labeling-framework/label-model-redesign.md)). See [CHANGELOG.md](CHANGELOG.md) for what shipped and [ROADMAP.md](ROADMAP.md) for the plan.
+**Status:** Alpha — **v0.16.0 released**. The spec-003 label-model redesign is **complete** (clean four-axis `LabelState`, no backwards compatibility), and v0.16.0 activates the **decision-refinement layer** (operator Starlark/builtin inspectors, bounded-relax), extends the **labeling oracle** to local files and email, adds **`capdep why`** explainability and a **credential vault**, and hardens the documented model gaps (restricted-tier Pattern ③/⑤ floor, loud Biba). BLP/Biba/confused-deputy enforcement is always-on four-axis engine invariants. See [docs/responsible-ai-frameworks.md](docs/responsible-ai-frameworks.md) and [specs/003-labeling-framework/label-model-redesign.md](specs/003-labeling-framework/label-model-redesign.md). See [CHANGELOG.md](CHANGELOG.md) for what shipped and [ROADMAP.md](ROADMAP.md) for the plan.
 
 ## Why
 
@@ -33,6 +33,59 @@ CapableDeputy is deliberately narrow. It is a **runtime control at the intersect
 
 Why all three at once: a running agent collapses what were three mostly *design-time* governance disciplines into a single *runtime* problem — the right decision depends on the live context (purpose, recipient, sensitivity, reversibility) of each action. CapableDeputy resolves that context per action at one deterministic, LLM-isolated chokepoint: the *protection strength* adapts to context, the *mechanism deciding it* does not. The decision-layer rationale and its grounding in adaptive-governance / Contextual Integrity theory is in **[docs/trust-model.md](docs/trust-model.md)** (§9).
 
+## How it works — and its honest limits
+
+**The mechanism, in one paragraph.** Every action the agent proposes is
+stopped at one deterministic chokepoint *outside* the LLM. There the engine
+reads four orthogonal axes — the data's **category × sensitivity tier**, its
+**provenance** (principal-direct ▸ system-internal ▸ external-untrusted), the
+**effect** the action would have (read / reversible-write / irreversible /
+egress …), and the **decision context** (recipient, purpose, time) — and
+returns one of *allow · require-approval · deny*. Confidentiality (Bell-LaPadula),
+integrity (Biba), conflict-of-interest (Brewer-Nash), and confused-deputy
+defense (object-capability) are **always-on engine invariants**, not
+per-attack rules: an action with no policy-allowed path is denied regardless
+of *why* the model proposed it. The default is **fail-closed**. When stakes or
+ambiguity rise, the runtime escalates from turn-level inheritance to a
+quarantined dual-LLM split or to programmatic execution, and surfaces every
+cross-compartment flow to a human approval gate.
+
+**What this does *not* claim.** The guarantees are about **control of effects,
+not correctness of content** — CapableDeputy will not tell you whether the
+agent's answer is *right*, *unbiased*, or *well-reasoned*; that is out of scope
+by design. Several of the classical models are deliberately implemented in
+**scoped/approximate form** (read-up-only BLP, one-direction Biba,
+*session-scoped* Brewer-Nash, *intransitive* noninterference) because the
+faithful forms are either undecidable or incompatible with a useful agent —
+these are documented as deviations, not hidden. And three limits are
+**inherent**: transitive noninterference and the general safety question of an
+access-control system are not decidable; model interpretability is not
+pursued; and containment is **not** declassification — contained data stays
+contained, it is never silently *cleansed*.
+
+**The gaps we actively watch** (so the design doesn't make them worse, and
+ideally makes them better):
+
+- **Decision fatigue** — coarse policy pushes real workflows toward
+  "always-approve," and rubber-stamped approvals are the practical way human
+  oversight erodes. The fix is *more expressive policy* (the Starlark
+  decision-inspector layer), so the human is asked less often and more
+  meaningfully — not more often.
+- **The labeling oracle** — every information-flow guarantee rides on data
+  being labeled correctly; mislabeled data means the defense is *silently
+  absent*. Broadening label coverage matters more for real safety than any
+  new model.
+- **A dormant refinement layer** — the `DecisionInspector` chokepoint and the
+  sandboxed Starlark policy host are built and tested but **not yet wired into
+  the daemon**, so today operators express policy only through the coarser
+  declarative rules. Wiring this is the single highest-leverage next step.
+- **Purpose-contamination** — keeping sensitive data from influencing
+  decisions it has no bearing on is designed but only partially delivered.
+
+The full, grounded model-by-model / pattern-by-pattern / principle-by-principle
+read — strengths, weaknesses, and prioritized fixes — is in
+**[docs/security-alignment-assessment.md](docs/security-alignment-assessment.md)**.
+
 ## Documentation
 
 - [docs/governance-scope.md](docs/governance-scope.md) — **what CapableDeputy is expected to do (and not)** — scope, AI-gov coverage, contingencies
@@ -40,6 +93,7 @@ Why all three at once: a running agent collapses what were three mostly *design-
 - [docs/llm-flow-patterns.md](docs/llm-flow-patterns.md) — the named planner↔labeled-data flow patterns and their selector
 - [docs/trust-model.md](docs/trust-model.md) — decision layer: who authorizes, and the adaptive-context / Contextual Integrity grounding
 - [docs/responsible-ai-frameworks.md](docs/responsible-ai-frameworks.md) — **the actionable core of responsible AI: keeping the human in control of the agent's actions, not policing model correctness** — the eight enforced principles, the human in/on/over-the-loop ladder, and what is deliberately out of scope
+- [docs/security-alignment-assessment.md](docs/security-alignment-assessment.md) — **grounded alignment scorecard** — how the code actually lines up with each security model, flow pattern, and AI-safety principle, with strengths, live gaps, and prioritized fixes
 
 - [docs/SURFACES.md](docs/SURFACES.md) — **which command do I use?** (chat vs console vs tui vs demo vs …) — start here
 - [DESIGN.md](DESIGN.md) — full design specification

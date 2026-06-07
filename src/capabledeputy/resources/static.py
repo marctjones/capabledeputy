@@ -22,7 +22,7 @@ from pathlib import Path
 
 import yaml
 
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState, tags_for_labels_strings
 
 
 class ResourceError(RuntimeError):
@@ -38,7 +38,7 @@ class Resource:
     description: str
     mime_type: str
     content_path: Path
-    labels: frozenset[Label] = field(default_factory=frozenset)
+    tags: LabelState = field(default_factory=LabelState)
 
     def to_catalog_entry(self) -> dict[str, object]:
         """JSON-friendly dict suitable for resources.list output."""
@@ -47,7 +47,7 @@ class Resource:
             "name": self.name,
             "description": self.description,
             "mime_type": self.mime_type,
-            "labels": sorted(label.value for label in self.labels),
+            "tags": self.tags.to_dict(),
         }
 
 
@@ -107,12 +107,19 @@ def load_static_resources(path: Path) -> StaticResourcePublisher:
         labels_raw = item.get("labels") or []
         if not isinstance(labels_raw, list):
             raise ResourceError(f"resources[{i}].labels must be a list")
-        try:
-            labels = frozenset(Label(str(label)) for label in labels_raw)
-        except ValueError as e:
-            raise ResourceError(
-                f"resources[{i}] unknown label: {e}",
-            ) from e
+        tags = LabelState()  # default: no labels
+        if labels_raw:
+            from capabledeputy.policy.labels import legacy_label_strings_to_tags
+
+            known_labels = legacy_label_strings_to_tags()
+            flat_labels = frozenset(str(label) for label in labels_raw)
+            # Validate all labels are known before composing
+            for label_str in flat_labels:
+                if label_str not in known_labels:
+                    raise ResourceError(
+                        f"resources[{i}] unknown label: {label_str!r}",
+                    )
+            tags = tags_for_labels_strings(flat_labels)
         out.append(
             Resource(
                 uri=uri,
@@ -120,7 +127,7 @@ def load_static_resources(path: Path) -> StaticResourcePublisher:
                 description=str(item.get("description", "")),
                 mime_type=str(item.get("mime_type", "text/plain")),
                 content_path=content_path,
-                labels=labels,
+                tags=tags,
             ),
         )
     return StaticResourcePublisher(resources=tuple(out))

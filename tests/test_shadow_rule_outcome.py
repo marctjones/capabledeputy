@@ -39,11 +39,11 @@ from capabledeputy.policy.decision_rules import (
     RulePredicate,
     evaluate,
 )
-from capabledeputy.policy.labels import AxisA, AxisB, AxisD
+from capabledeputy.policy.labels import AxisD, LabelState
 
 
-def _axes() -> tuple[AxisA, AxisB, AxisD]:
-    return AxisA(), AxisB(), AxisD()
+def _label_state() -> LabelState:
+    return LabelState()
 
 
 def _make_rule(
@@ -84,11 +84,11 @@ def test_shadow_only_match_falls_to_default() -> None:
     falls to the never-auto default. shadowed_rule_ids surfaces
     what would have fired so the operator can verify intent."""
     rules = DecisionRules(rules=(_make_rule("shadow-test", outcome=RuleOutcome.SHADOW),))
-    a, b, d = _axes()
+    labels = _label_state()
+    d = AxisD()
     result = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="send_email",
         target="x@example.com",
@@ -109,11 +109,11 @@ def test_shadow_does_not_block_live_rule() -> None:
             _make_rule("shadow-auto", outcome=RuleOutcome.SHADOW),
         ),
     )
-    a, b, d = _axes()
+    labels = _label_state()
+    d = AxisD()
     result = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="send_email",
         target="x@example.com",
@@ -133,11 +133,11 @@ def test_shadow_excluded_from_most_restrictive() -> None:
             _make_rule("real-auto", outcome=RuleOutcome.AUTO),
         ),
     )
-    a, b, d = _axes()
+    labels = _label_state()
+    d = AxisD()
     result = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="send_email",
         target="x@example.com",
@@ -157,11 +157,11 @@ def test_multiple_shadow_rules_all_recorded() -> None:
             _make_rule("real-suggest", outcome=RuleOutcome.SUGGEST),
         ),
     )
-    a, b, d = _axes()
+    labels = _label_state()
+    d = AxisD()
     result = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="send_email",
         target="x@example.com",
@@ -173,11 +173,11 @@ def test_no_match_no_shadow_no_changes() -> None:
     """Back-compat: when no rule matches at all, shadowed_rule_ids
     is empty and the result is indistinguishable from pre-cookbook."""
     rules = DecisionRules(rules=())
-    a, b, d = _axes()
+    labels = _label_state()
+    d = AxisD()
     result = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="send_email",
         target="x@example.com",
@@ -234,19 +234,18 @@ def test_rationale_distinguishes_shadow_only_from_no_match() -> None:
         rules=(_make_rule("only-shadow", outcome=RuleOutcome.SHADOW),),
     )
     rules_no_match = DecisionRules(rules=())
-    a, b, d = _axes()
+    labels = _label_state()
+    d = AxisD()
     r_shadow = evaluate(
         rules=rules_shadow_only,
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="send_email",
         target="x@example.com",
     )
     r_empty = evaluate(
         rules=rules_no_match,
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="send_email",
         target="x@example.com",
@@ -278,11 +277,11 @@ def test_shadow_does_not_alter_live_outcomes(outcome: RuleOutcome) -> None:
             _make_rule("ignore-me", outcome=RuleOutcome.SHADOW),
         ),
     )
-    a, b, d = _axes()
+    labels = _label_state()
+    d = AxisD()
     result = evaluate(
         rules=rules,
-        axis_a=a,
-        axis_b=b,
+        labels=labels,
         axis_d=d,
         effect_class="send_email",
         target="x@example.com",

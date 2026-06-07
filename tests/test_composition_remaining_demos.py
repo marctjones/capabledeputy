@@ -36,11 +36,9 @@ from capabledeputy.policy.envelope import (
     RiskPreference,
 )
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     AxisD,
     CategoryTag,
-    Label,
+    LabelState,
     ProvenanceLevel,
     ProvenanceTag,
 )
@@ -64,21 +62,21 @@ def _wide_cap(kind: CapabilityKind = CapabilityKind.WRITE_FS) -> Capability:
     )
 
 
-def _principal_axes(category: str = "proprietary_work") -> tuple[AxisA, AxisB, AxisD]:
-    axis_a = AxisA(
-        categories=(CategoryTag(category=category, tier=Tier.SENSITIVE),),
+def _principal_axes(category: str = "proprietary_work") -> tuple[LabelState, LabelState, AxisD]:
+    label_state = LabelState(
+        a=frozenset({CategoryTag(category=category, tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(initiator="principal:alice", authentication="device-bound")
-    return axis_a, axis_b, axis_d
+    return label_state, label_state, axis_d
 
 
-def _tainted_axis_b() -> AxisB:
-    return AxisB(
-        entries=(
+def _tainted_label_state() -> LabelState:
+    return LabelState(
+        b=frozenset({
             ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),
             ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),
-        ),
+        }),
     )
 
 
@@ -88,7 +86,7 @@ def _tainted_axis_b() -> AxisB:
 def test_dial_picks_strictest_under_cautious() -> None:
     """Cell envelope [REQUIRE_APPROVAL, AUTO]. Cautious dial picks
     REQUIRE_APPROVAL even though AUTO is in-envelope."""
-    axis_a, axis_b, axis_d = _principal_axes()
+    labels, _, axis_d = _principal_axes()
     cell = CellKey(
         category="proprietary_work",
         effect="data.write_scratch",
@@ -105,11 +103,9 @@ def test_dial_picks_strictest_under_cautious() -> None:
         },
     )
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write_scratch",
         rules_v2=DecisionRules(rules=()),
@@ -130,7 +126,7 @@ def test_dial_picks_loosest_under_permissive() -> None:
     """Same envelope, permissive dial picks AUTO. But the
     reversibility gate's optimistic-auto already produced ALLOW for
     this case, so the dial doesn't change the decision."""
-    axis_a, axis_b, axis_d = _principal_axes()
+    labels, _, axis_d = _principal_axes()
     cell = CellKey(
         category="proprietary_work",
         effect="data.write_scratch",
@@ -147,11 +143,9 @@ def test_dial_picks_loosest_under_permissive() -> None:
         },
     )
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write_scratch",
         rules_v2=DecisionRules(rules=()),
@@ -171,7 +165,7 @@ def test_dial_picks_loosest_under_permissive() -> None:
 def test_hard_floor_envelope_immovable_by_dial() -> None:
     """SC-010 — a hard-floor envelope (strictest == loosest == DENY)
     is immovable. Even permissive dial returns DENY."""
-    axis_a, axis_b, axis_d = _principal_axes()
+    labels, _, axis_d = _principal_axes()
     cell = CellKey(
         category="proprietary_work",
         effect="data.write_scratch",
@@ -188,11 +182,9 @@ def test_hard_floor_envelope_immovable_by_dial() -> None:
         },
     )
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.write_scratch",
         rules_v2=DecisionRules(rules=()),
@@ -213,13 +205,11 @@ def test_hard_floor_envelope_immovable_by_dial() -> None:
 def test_tainted_session_refused_for_administer_effect() -> None:
     """SC-005 — external-untrusted in AxisB ⇒ ADMINISTER effects
     refused with CONTROL_PLANE_TAINTED_RULE."""
-    axis_a, _, axis_d = _principal_axes()
+    _, _, axis_d = _principal_axes()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=_tainted_axis_b(),
+        labels=_tainted_label_state(),
         axis_d=axis_d,
         effect_class=ControlPlaneEffect.LABEL_EDIT.value,
         rules_v2=DecisionRules(rules=()),
@@ -233,13 +223,11 @@ def test_clean_session_allowed_for_administer_effect() -> None:
     """A clean (principal-direct only) session may exercise admin
     effects — this is a v2-default REQUIRE_APPROVAL since no rule
     matched, but NOT a DENY."""
-    axis_a, axis_b, axis_d = _principal_axes()
+    labels, _, axis_d = _principal_axes()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,  # clean
+        labels=labels,  # clean
         axis_d=axis_d,
         effect_class=ControlPlaneEffect.LABEL_EDIT.value,
         rules_v2=DecisionRules(rules=()),
@@ -252,13 +240,11 @@ def test_tainted_session_data_plane_effect_unaffected() -> None:
     """Only ADMINISTER effects are gated by control-plane reflexivity.
     A data-plane effect on a tainted session still goes through the
     normal pipeline."""
-    axis_a, _, axis_d = _principal_axes()
+    labels, _, axis_d = _principal_axes()
     result = decide(
-        frozenset({Label.TRUSTED_USER_DIRECT}),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=_tainted_axis_b(),
+        labels=LabelState(a=labels.a, b=_tainted_label_state().b),
         axis_d=axis_d,
         effect_class="data.write_scratch",  # data-plane
         rules_v2=DecisionRules(rules=()),
@@ -275,17 +261,15 @@ def test_tainted_session_data_plane_effect_unaffected() -> None:
 def test_clearance_refuses_read_up() -> None:
     """A profile cleared to REGULATED cannot read a RESTRICTED-tier
     datum (FR-008)."""
-    axis_a = AxisA(
-        categories=(CategoryTag(category="health", tier=Tier.RESTRICTED),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="health", tier=Tier.RESTRICTED)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(initiator="principal:alice")
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.read",
         rules_v2=DecisionRules(rules=()),
@@ -298,17 +282,15 @@ def test_clearance_refuses_read_up() -> None:
 
 def test_clearance_open_when_below_max() -> None:
     """A SENSITIVE-tier read under REGULATED clearance is fine."""
-    axis_a = AxisA(
-        categories=(CategoryTag(category="x", tier=Tier.SENSITIVE),),
+    labels = LabelState(
+        a=frozenset({CategoryTag(category="x", tier=Tier.SENSITIVE)}),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
-    axis_b = AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),))
     axis_d = AxisD(initiator="principal:alice")
     result = decide(
-        frozenset({Label.TRUSTED_USER_DIRECT}),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.read",
         rules_v2=DecisionRules(rules=()),
@@ -321,16 +303,14 @@ def test_clearance_open_when_below_max() -> None:
 def test_integrity_floor_refuses_below_floor_input() -> None:
     """An integrity-floored step refuses an external-untrusted input
     (FR-004 Biba no-read-down)."""
-    axis_a, _, axis_d = _principal_axes()
-    axis_b = AxisB(
-        entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),),
-    )
+    labels, _, axis_d = _principal_axes()
     result = decide(
-        frozenset(),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=LabelState(
+            a=labels.a,
+            b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+        ),
         axis_d=axis_d,
         effect_class="data.process",
         rules_v2=DecisionRules(rules=()),
@@ -343,13 +323,11 @@ def test_integrity_floor_refuses_below_floor_input() -> None:
 
 def test_integrity_floor_admits_above_floor_input() -> None:
     """principal-direct is ABOVE the system-internal floor — admitted."""
-    axis_a, axis_b, axis_d = _principal_axes()
+    labels, _, axis_d = _principal_axes()
     result = decide(
-        frozenset({Label.TRUSTED_USER_DIRECT}),
         frozenset({_wide_cap()}),
         Action(kind=CapabilityKind.WRITE_FS, target="/x"),
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="data.process",
         rules_v2=DecisionRules(rules=()),

@@ -42,7 +42,7 @@ async def test_fork_inherits_parent_state(graph: SessionGraph) -> None:
     assert child.parent == parent.id
     assert child.id != parent.id
     assert child.status == SessionStatus.ACTIVE
-    assert child.label_set == parent.label_set
+    assert child.label_state == parent.label_state
     assert child.capability_set == parent.capability_set
     assert child.history == parent.history
 

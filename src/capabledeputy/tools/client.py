@@ -33,7 +33,7 @@ from capabledeputy.policy.bindings import BindingSet
 from capabledeputy.policy.decision_rules import DecisionRules
 from capabledeputy.policy.engine import PolicyDecision, decide
 from capabledeputy.policy.envelope import EnvelopeSet, RiskPreference
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState
 from capabledeputy.policy.overrides import OverrideGrantStore, OverridePolicies
 from capabledeputy.policy.reversibility import ReversibilityLabel
 from capabledeputy.policy.rules import Decision
@@ -46,7 +46,7 @@ def _replace_tool_result(
     original: Any,
     *,
     output: Any = None,
-    additional_labels: frozenset[Label] | None = None,
+    additional_tags: LabelState | None = None,
 ) -> Any:
     """Build a new ToolResult preserving fields that weren't overridden.
 
@@ -59,8 +59,8 @@ def _replace_tool_result(
     kwargs: dict[str, Any] = {}
     if output is not None:
         kwargs["output"] = output
-    if additional_labels is not None:
-        kwargs["additional_labels"] = additional_labels
+    if additional_tags is not None:
+        kwargs["additional_tags"] = additional_tags
     return _dc_replace(original, **kwargs)
 
 
@@ -186,7 +186,6 @@ def build_policy_decided_payload(
         "decision": decision.decision.value,
         "rule": decision.rule,
         "reason": decision.reason,
-        "effective_labels": sorted(label.value for label in decision.effective_labels),
     }
     if decision.v2_outcome is not None:
         payload["v2_outcome"] = decision.v2_outcome.value
@@ -196,13 +195,11 @@ def build_policy_decided_payload(
             {"description": r.description, "origin": r.origin}
             for r in decision.refused_relax_inputs
         ]
-    # T048 — full Axis-A/B/D snapshot when v2 ran. Enough for T041
-    # audit-reconstruction to rebuild AxisA/B/D from the payload and
+    # T048 — full Label-State/D snapshot when v2 ran. Enough for T041
+    # audit-reconstruction to rebuild LabelState/D from the payload and
     # replay evaluate() to the same outcome (FR-021).
-    if decision.axis_a_snapshot is not None:
-        payload["axis_a"] = decision.axis_a_snapshot.to_dict()
-    if decision.axis_b_snapshot is not None:
-        payload["axis_b"] = decision.axis_b_snapshot.to_dict()
+    if decision.labels_snapshot is not None:
+        payload["label_state"] = decision.labels_snapshot.to_dict()
     if decision.axis_d_snapshot is not None:
         payload["axis_d"] = decision.axis_d_snapshot.to_dict()
     if decision.effect_class is not None:
@@ -241,7 +238,7 @@ class ToolCallOutcome:
     output: dict[str, Any] | None = None
     rule: str | None = None
     reason: str | None = None
-    labels_added: frozenset[Label] = field(default_factory=frozenset)
+    tags_added: LabelState = field(default_factory=LabelState)
     error: str | None = None
     tool_name: str | None = None
     tool_args: dict[str, Any] | None = None
@@ -314,13 +311,17 @@ class LabeledToolClient:
         # capability inert under cascade is denied at decide time.
         # Default-tolerant: pre-002 sessions deserialize with the
         # empty set, which is a no-op here.
+        # R4b.2 — bundled LabelState as canonical Axis A/B input. When
+        # v2_kwargs includes labels, use that (from _build_v2_decide_kwargs);
+        # otherwise pass the session's label_state.
+        decide_labels = v2_kwargs.get("labels", session.label_state)
         policy_decision = decide(
-            session.label_set,
             session.capability_set,
             action,
             used_kinds=session.used_kinds,
             now=dispatch_now,
             cap_uses=session.cap_uses,
+            labels=decide_labels,
             revoked_audit_ids=getattr(session, "revoked_audit_ids", frozenset()),
             # Cookbook §4 #6 — opt-in first-action-of-kind prompt.
             # The session carries the flag; the engine fires the
@@ -342,7 +343,7 @@ class LabeledToolClient:
                 "cautious",
             )
             != "cautious",
-            **v2_kwargs,
+            **{k: v for k, v in v2_kwargs.items() if k != "labels"},
         )
 
         # DecisionInspector hook: registered inspectors run AFTER the
@@ -396,7 +397,7 @@ class LabeledToolClient:
                 if self._approval_queue is not None:
                     approval_id = await self._register_approval(
                         session_id,
-                        session.label_set,
+                        session.label_state,
                         approval_submission,
                         rule=policy_decision.rule,
                     )
@@ -481,7 +482,7 @@ class LabeledToolClient:
                     )
                 parent_id = parent.parent_audit_id
 
-        context = ToolContext(session_id=session_id, label_set=session.label_set)
+        context = ToolContext(session_id=session_id, label_state=session.label_state)
         # T104 — Pattern (3) ReferenceHandle bind step. AFTER decide()
         # approved, BEFORE the handler runs: substitute any handle-shaped
         # values in declared handle_arg_names with the store-bound real
@@ -514,12 +515,12 @@ class LabeledToolClient:
         )
 
         # FR-025 raise-only inspector hook. Inspectors examine the
-        # returned value + current axes and may return a delta. The
-        # delta is composed via most_restrictive_inherit on AxisA/B,
-        # which is monotone — inspectors can only RAISE taint, never
-        # clear it. The runtime contract is structural: even a
-        # buggy/malicious inspector that returns a lower-restriction
-        # AxisA cannot lower the actual session axes.
+        # returned value + current label_state and may return a delta.
+        # The delta is composed via the directional `inherit` on
+        # LabelState, which is monotone — inspectors can only RAISE
+        # taint, never clear it. The runtime contract is structural:
+        # even a buggy/malicious inspector that returns a
+        # lower-restriction LabelState cannot lower the session's taint.
         if self._policy_context is not None and self._policy_context.inspectors:
             await self._apply_inspectors(session, result.output)
 
@@ -527,66 +528,79 @@ class LabeledToolClient:
         # AFTER inspectors so the declassifier sees any value the
         # inspector tainted. Each declassifier transforms the value
         # and emits a structural-proof. Crucially: declassifiers
-        # reduce the PER-RESULT inherent_labels propagated to the
-        # session, not the session's existing label_set (session
+        # reduce the PER-RESULT inherent_tags propagated to the
+        # session, not the session's existing label_state (session
         # label growth stays monotonic — declassifier just adds
-        # FEWER labels for this particular result).
+        # FEWER tags for this particular result).
         if self._policy_context is not None and self._policy_context.declassifiers:
-            new_output, removed_labels = await self._apply_declassifiers(
+            new_output, tags_to_remove = await self._apply_declassifiers(
                 session_id,
                 session,
                 tool_name,
                 result.output,
-                tool.inherent_labels | result.additional_labels,
+                tool.inherent_tags,
+                result.additional_tags,
             )
             # Replace output with transformed value; subtract any
-            # labels the declassifier "lowered away" from the set
+            # tags the declassifier "lowered away" from the set
             # that propagates this turn.
             result = _replace_tool_result(
                 result,
                 output=new_output,
-                additional_labels=result.additional_labels - removed_labels,
+                additional_tags=result.additional_tags,
             )
-            tool_inherent_for_propagation = tool.inherent_labels - removed_labels
-        else:
-            tool_inherent_for_propagation = tool.inherent_labels
+            # Remove the declassified tags from inherent propagation
+            # by filtering them out
+            from capabledeputy.policy.labels import _remove
 
-        # Spec 004 P0 FR-027/039 — per-arg payload labels. The tool
-        # declares which arg values carry which labels; we add them
+            tool_inherent_for_propagation = _remove(tool.inherent_tags, tags_to_remove)
+        else:
+            tool_inherent_for_propagation = tool.inherent_tags
+
+        # Spec 004 P0 FR-027/039 — per-arg payload tags. The tool
+        # declares which arg values carry which tags; we add them
         # to this turn's propagation only when the corresponding arg
         # was actually populated. Lets tool authors say "body carries
-        # confidential.personal" without painting EVERY email send
+        # personal category" without painting EVERY email send
         # call regardless of body content.
-        per_arg_labels = tool.extract_arg_inherent_labels(args)
+        per_arg_tags = tool.extract_arg_inherent_tags(args)
 
-        # Issue #35 — Custom-kind add_labels from servers.d/*.yaml.
-        # When a tool with a custom CapabilityKind fires, the labels
-        # declared in the yaml's `add_labels:` for that kind propagate
+        # Issue #35 — Custom-kind add_tags from servers.d/*.yaml.
+        # When a tool with a custom CapabilityKind fires, the tags
+        # declared in the yaml's `add_tags:` for that kind propagate
         # into the session. This closes the IFC story for plugin
         # kinds: declared destructiveness gates the call; declared
-        # add_labels color the session afterward.
-        from capabledeputy.policy.capabilities import kind_add_labels as _kind_labels
+        # add_tags color the session afterward.
+        from capabledeputy.policy.capabilities import kind_add_tags as _kind_tags
 
-        custom_kind_labels = _kind_labels(tool.capability_kind)
+        custom_kind_tags = _kind_tags(tool.capability_kind)
 
-        labels_to_add = (
-            tool_inherent_for_propagation
-            | result.additional_labels
-            | per_arg_labels
-            | custom_kind_labels
+        # Compose all four-axis taint sources via most_restrictive_inherit
+        from capabledeputy.policy.labels import most_restrictive_inherit
+
+        tags_to_add = most_restrictive_inherit(
+            tool_inherent_for_propagation,
+            result.additional_tags,
+            per_arg_tags,
+            custom_kind_tags,
         )
-        labels_added: frozenset[Label] = frozenset()
-        if labels_to_add:
-            before = session.label_set
-            updated = await self._graph.add_labels(session_id, labels_to_add)
-            labels_added = updated.label_set - before
-            if labels_added:
+        tags_added: LabelState = LabelState()
+        if tags_to_add != LabelState():
+            before = session.label_state
+            await self._graph.add_tags(session_id, tags_to_add)
+            updated = self._graph.get(session_id)
+            tags_added = updated.label_state
+            if tags_added != before:
+                # Emit audit with four-axis delta categories/levels
+                categories = sorted(t.category for t in tags_added.a)
+                levels = sorted(t.level.value for t in tags_added.b)
                 await self._audit.write(
                     Event(
                         event_type=EventType.LABEL_PROPAGATED,
                         session_id=session_id,
                         payload={
-                            "labels_added": sorted(label.value for label in labels_added),
+                            "categories_added": categories,
+                            "levels_added": levels,
                             "source_tool": tool_name,
                         },
                     ),
@@ -595,7 +609,7 @@ class LabeledToolClient:
         return ToolCallOutcome(
             decision=Decision.ALLOW,
             output=result.output,
-            labels_added=labels_added,
+            tags_added=tags_added,
             tool_name=tool_name,
             tool_args=args,
             rule=policy_decision.rule,
@@ -681,18 +695,47 @@ class LabeledToolClient:
         if self._policy_context is None or not self._policy_context.decision_inspectors:
             return proposed
 
+        from inspect import isawaitable
+        from types import SimpleNamespace
+
         from capabledeputy.substrate.decision_inspector_port import (
             compose_inspector_outcomes,
+        )
+
+        # #47 — resolve the action target's relationship-group membership
+        # (Cookbook P2.3) so inspectors can express relationship-aware
+        # decisions ("relax email to family"). Resolved here because the
+        # chokepoint holds the RelationshipGroups registry; surfaced to
+        # scripts as action["relationship_groups"]. Non-recipient targets
+        # (paths/urls) resolve to no groups.
+        groups: tuple[str, ...] = ()
+        rg = getattr(self._policy_context, "relationship_groups", None)
+        target = getattr(action, "target", None)
+        if rg is not None and target:
+            try:
+                groups = tuple(sorted(rg.resolve(str(target))))
+            except Exception:
+                groups = ()
+        inspect_action = SimpleNamespace(
+            kind=action.kind,
+            target=getattr(action, "target", ""),
+            amount=getattr(action, "amount", None),
+            relationship_group_ids=groups,
         )
 
         outcomes: list[tuple[str, Any]] = []
         for inspector in self._policy_context.decision_inspectors:
             try:
                 oc = inspector.inspect(
-                    action=action,
+                    action=inspect_action,
                     session=session,
                     proposed_outcome=proposed,
                 )
+                # Script-backed inspectors (#46) are async — they await the
+                # script host's off-event-loop evaluate(). Builtin
+                # inspectors are sync. Support both transparently.
+                if isawaitable(oc):
+                    oc = await oc
             except Exception as e:
                 # A buggy inspector must not crash the chokepoint —
                 # treat as abstain + audit the failure for the operator.
@@ -716,6 +759,41 @@ class LabeledToolClient:
             return proposed
 
         new_decision, rule_with_origin, rationale = composed
+
+        # Guardrail (#41/#46, FR-026 bounded-relax): a DecisionInspector
+        # RELAX may only soften a REQUIRE_APPROVAL to ALLOW. It must NEVER
+        # cross a structural floor — DENY and OVERRIDE_REQUIRED come from
+        # the capability / BLP / Biba / conflict-invariant gates and are
+        # NOT operator-relaxable (otherwise an operator-authored script
+        # could neutralize a structural security guarantee). Tightens are
+        # always honored. Without this clamp the composition would happily
+        # relax DENY → ALLOW.
+        from capabledeputy.substrate.decision_inspector_port import (
+            is_strictly_less_restrictive,
+        )
+
+        if (
+            is_strictly_less_restrictive(new_decision, proposed.decision)
+            and proposed.decision != Decision.REQUIRE_APPROVAL
+        ):
+            await self._audit.write(
+                Event(
+                    event_type=EventType.RELAXATION_REFUSED,
+                    session_id=session_id,
+                    payload={
+                        "tool": tool_name,
+                        "refused_rule": rule_with_origin,
+                        "base_decision": proposed.decision.value,
+                        "attempted_decision": new_decision.value,
+                        "reason": (
+                            "inspector relax may not cross a structural floor "
+                            "(only REQUIRE_APPROVAL is relaxable)"
+                        ),
+                    },
+                ),
+            )
+            return proposed
+
         from dataclasses import replace as _dc_replace
 
         adjusted = _dc_replace(
@@ -749,24 +827,25 @@ class LabeledToolClient:
         session: Any,
         tool_name: str,
         value: Any,
-        candidate_labels: frozenset[Label],
-    ) -> tuple[Any, frozenset[Label]]:
+        inherent_tags: LabelState,
+        additional_tags: LabelState,
+    ) -> tuple[Any, LabelState]:
         """Run the declassifier chain on tool output. Returns
-        (transformed_value, labels_to_remove_from_propagation).
+        (transformed_value, tags_to_remove_from_propagation).
 
         Each declassifier that fires:
           - Transforms the value (output becomes the chain's tail value)
-          - Identifies labels to subtract from per-result propagation
+          - Identifies tags to subtract from per-result propagation
             based on its `lower_axis_*` fields
           - Emits a DECLASSIFIER_APPLIED audit event with the diff +
             structural_proof_kind
 
-        The session's label_set is NOT lowered — declassifier only
-        reduces the labels propagated by THIS particular result. The
+        The session's label_state is NOT lowered — declassifier only
+        reduces the tags propagated by THIS particular result. The
         chokepoint composition stays monotone.
         """
         if self._policy_context is None or not self._policy_context.declassifiers:
-            return value, frozenset()
+            return value, LabelState()
 
         from capabledeputy.substrate.declassifier_port import (
             apply_declassifier_chain,
@@ -776,8 +855,7 @@ class LabeledToolClient:
             final_value, applied = apply_declassifier_chain(
                 tuple(self._policy_context.declassifiers),
                 value=value,
-                current_axis_a=getattr(session, "axis_a", None),
-                current_axis_b=getattr(session, "axis_b", None),
+                current_label_state=session.label_state,
                 context={"tool": tool_name},
             )
         except Exception as e:
@@ -793,11 +871,15 @@ class LabeledToolClient:
                     },
                 ),
             )
-            return value, frozenset()
+            return value, LabelState()
 
         # Emit one DECLASSIFIER_APPLIED per declassifier that fired.
         # Auditor sees the structural proof for each step.
-        removed_labels: set[Label] = set()
+
+        from capabledeputy.policy.labels import ProvenanceLevel
+
+        removed_categories: set[str] = set()
+        removed_levels: set[ProvenanceLevel] = set()
         for result in applied:
             await self._audit.write(
                 Event(
@@ -812,27 +894,41 @@ class LabeledToolClient:
                     },
                 ),
             )
-            # Identify per-result Label members to drop from propagation
-            # based on the declassifier's signals. The mapping is
-            # operator-curated; here we apply a conservative default:
-            # if a declassifier lowers pii to 'none', drop PII-bearing
-            # labels from this result's propagation. Operators with
-            # richer label hierarchies wire custom logic via the
-            # declassifier's own implementation.
+            # Track categories/levels to remove by matching the
+            # declassifier's lowering signals against the candidate tags.
             for entry in result.lower_axis_a_categories:
-                cat = entry.get("category", "").lower()
+                cat = entry.get("category", "")
                 to_tier = entry.get("to_tier", "").lower()
-                if to_tier == "none":
-                    # Drop labels whose value contains the category name
-                    for label in candidate_labels:
-                        if cat and cat in label.value.lower():
-                            removed_labels.add(label)
-            if result.lower_axis_b_level == "trusted":
-                for label in candidate_labels:
-                    if "untrusted" in label.value.lower():
-                        removed_labels.add(label)
+                if to_tier == "none" and cat:
+                    removed_categories.add(cat)
+            # If a declassifier lowered axis_b to a particular level,
+            # remove all MORE-RESTRICTED (higher-risk) levels.
+            # E.g. if lowered to PRINCIPAL_DIRECT, remove EXTERNAL_UNTRUSTED
+            # and SYSTEM_INTERNAL since they're more restrictive.
+            if result.lower_axis_b_level:
+                from capabledeputy.policy.labels import _PROVENANCE_RANK
 
-        return final_value, frozenset(removed_labels)
+                try:
+                    target_level = ProvenanceLevel(result.lower_axis_b_level)
+                    target_rank = _PROVENANCE_RANK[target_level]
+                    # Remove all levels that are MORE RESTRICTIVE (higher rank)
+                    for level in ProvenanceLevel:
+                        if _PROVENANCE_RANK[level] > target_rank:
+                            removed_levels.add(level)
+                except (ValueError, KeyError):
+                    pass
+
+        # Build the LabelState of tags marked for removal: categories and levels
+        # that were lowered away by the declassifiers.
+        tags_to_remove = LabelState(
+            a=frozenset(
+                t for t in (inherent_tags.a | additional_tags.a) if t.category in removed_categories
+            ),
+            b=frozenset(
+                t for t in (inherent_tags.b | additional_tags.b) if t.level in removed_levels
+            ),
+        )
+        return final_value, tags_to_remove
 
     async def _apply_inspectors(
         self,
@@ -840,50 +936,48 @@ class LabeledToolClient:
         value: object,
     ) -> None:
         """FR-025 — run every registered raise-only inspector against
-        the just-returned value + current session axes; compose any
+        the just-returned value + current session label_state; compose any
         returned taint into the session via most_restrictive_inherit.
         Refused to lower — the composition is monotone by construction."""
         from dataclasses import replace as dc_replace
 
-        from capabledeputy.policy.labels import LabelState, inherit
+        from capabledeputy.policy.labels import inherit
 
         if self._policy_context is None:
             return
-        new_axis_a = session.axis_a
-        new_axis_b = session.axis_b
+        new_label_state = session.label_state
         for inspector in self._policy_context.inspectors:
             delta = inspector.inspect(
                 value=value,
-                current_axis_a=new_axis_a,
-                current_axis_b=new_axis_b,
+                current_label_state=new_label_state,
             )
-            pre_a, pre_b = new_axis_a, new_axis_b
-            # R4b.3 — route inspector taint-raise through the directional
+            pre_state = new_label_state
+            # R4b.4 — route inspector taint-raise through the directional
             # LabelState.inherit (session-authoritative; raise-only-inspector
-            # exception). Behavior-preserving vs the legacy axis inherit
-            # (proven by test_directional_inherit_matches_legacy).
+            # exception). The delta returns a raise_state which is composed
+            # monotonically into the session's label_state.
             raised = inherit(
-                LabelState.from_axes(new_axis_a, new_axis_b),
-                LabelState.from_axes(delta.axis_a_raise, delta.axis_b_raise),
+                new_label_state,
+                delta.raise_state,
             )
-            new_axis_a, new_axis_b = raised.to_axis_a(), raised.to_axis_b()
+            new_label_state = raised
             # Audit each inspector that actually raised something. A
-            # no-op inspector (delta with empty axes) doesn't fire an
+            # no-op inspector (delta with empty state) doesn't fire an
             # event — keeps the audit stream signal-rich.
-            if new_axis_a != pre_a or new_axis_b != pre_b:
+            if new_label_state != pre_state:
                 await self._audit.write(
                     Event(
                         event_type=EventType.INSPECTOR_APPLIED,
                         session_id=session.id,
                         payload={
                             "inspector": getattr(inspector, "__class__", type(inspector)).__name__,
-                            "raised_axis_a": new_axis_a != pre_a,
-                            "raised_axis_b": new_axis_b != pre_b,
+                            "raised_axis_a": len(new_label_state.a) > len(pre_state.a),
+                            "raised_axis_b": len(new_label_state.b) > len(pre_state.b),
                         },
                     ),
                 )
-        if new_axis_a != session.axis_a or new_axis_b != session.axis_b:
-            updated = dc_replace(session, axis_a=new_axis_a, axis_b=new_axis_b)
+        if new_label_state != session.label_state:
+            updated = dc_replace(session, label_state=new_label_state)
             await self._graph._save(updated)
             self._graph._sessions[session.id] = updated
 
@@ -930,8 +1024,9 @@ class LabeledToolClient:
             return {}
         kwargs: dict[str, Any] = {}
         if tool.effect_class is not None:
-            kwargs["axis_a"] = session.axis_a
-            kwargs["axis_b"] = session.axis_b
+            # R4b.4 (done) — the session's single `label_state` field is
+            # the canonical Axis A/B input to the engine.
+            kwargs["labels"] = session.label_state
             # Cookbook P2.3 — merge resolved counterparty groups into
             # axis_d.relationship_group_ids when a RelationshipGroups
             # registry is wired. Without this, even an explicit
@@ -1083,7 +1178,7 @@ class LabeledToolClient:
     async def _register_approval(
         self,
         session_id: UUID,
-        labels_in: frozenset[Label],
+        label_state: LabelState,
         submission: dict[str, Any],
         rule: str | None = None,
     ) -> int:
@@ -1114,7 +1209,7 @@ class LabeledToolClient:
             action=action,
             payload=payload,
             target=target,
-            labels_in=labels_in,
+            labels_in=label_state,
             justification=submission.get("justification", ""),
             rule=rule,
         )

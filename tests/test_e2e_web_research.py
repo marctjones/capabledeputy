@@ -22,7 +22,7 @@ from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import ProvenanceLevel
 
 
 async def test_web_research_summarizes_through_schema_and_blocks_egress(
@@ -149,7 +149,7 @@ async def test_web_research_summarizes_through_schema_and_blocks_egress(
 
     # Untrusted label propagated into the session as a result of the fetch.
     final = app.graph.get(s.id)
-    assert Label.UNTRUSTED_EXTERNAL in final.label_set
+    assert any(tag.level == ProvenanceLevel.EXTERNAL_UNTRUSTED for tag in final.label_state.b)
 
     # The injection text in the fetched page never reached the
     # quarantined extractor's call site as a tool argument; the

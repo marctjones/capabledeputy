@@ -31,7 +31,7 @@ from _policy_harness import (
 )
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import tags_for_labels_strings
 from capabledeputy.tools.native.inbox import InboundMessage
 
 TITLE = "DENY paths (all denying rules)"
@@ -55,7 +55,7 @@ def _seed_health(app: object) -> None:
     app.memory.write(  # type: ignore[attr-defined]
         "rx",
         "lisinopril 10mg daily",
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        tags_for_labels_strings(frozenset({"confidential.health"})),
     )
 
 
@@ -104,7 +104,7 @@ SCENARIOS: list[Scenario] = [
         name="untrusted-user-input-meets-email",
         why="UNTRUSTED_USER_INPUT label + email egress -> DENY.",
         caps=frozenset({_EMAIL}),
-        session_labels=frozenset({Label.UNTRUSTED_USER_INPUT}),
+        session_labels=frozenset({"untrusted.user_input"}),
         responses=[
             tool_turn(
                 "email",
@@ -154,7 +154,7 @@ SCENARIOS: list[Scenario] = [
         name="financial-meets-email",
         why="CONFIDENTIAL_FINANCIAL session + email egress -> DENY.",
         caps=frozenset({_EMAIL}),
-        session_labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        session_labels=frozenset({"confidential.financial"}),
         responses=[
             tool_turn(
                 "email statement",

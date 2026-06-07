@@ -102,7 +102,6 @@ def _annotations_for(tool: dict[str, Any]) -> mcp_types.ToolAnnotations | None:
 def _tool_meta(tool: dict[str, Any]) -> dict[str, Any]:
     return {
         "io.capabledeputy/capability_kind": tool["capability_kind"],
-        "io.capabledeputy/inherent_labels": tool.get("inherent_labels", []),
     }
 
 
@@ -222,7 +221,6 @@ async def _try_elicit_and_approve(
             "action": "SEND_EMAIL",
             "payload": str(args.get("body", "")),
             "target": str(args.get("to", "")),
-            "labels_in": deny_result.get("effective_labels", []),
             "justification": "user-approved via MCP elicitation",
         },
     )

@@ -28,7 +28,7 @@ from capabledeputy.approval.queue import (
     ApprovalQueue,
 )
 from capabledeputy.audit.writer import AuditWriter
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState, Tier
 
 
 @pytest.fixture
@@ -53,7 +53,11 @@ async def _submit(
         action=action,
         payload=payload,
         target=target,
-        labels_in=frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        labels_in=LabelState(
+            a=frozenset(
+                {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
 
 

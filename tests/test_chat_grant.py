@@ -75,7 +75,6 @@ def test_grant_ttl_zero_is_immediately_expired_when_decided(
     cap = Capability.from_dict(grant["params"]["capability"])
     assert cap.expires_at is not None
     r = decide(
-        frozenset(),
         frozenset({cap}),
         Action(kind=cap.kind, target="/x"),
         now=cap.expires_at,  # exactly the deadline ⇒ expired (half-open)

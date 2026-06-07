@@ -1,0 +1,31 @@
+# Credential vault (Issue #13) — keep upstream-server secrets OUT of the
+# daemon config and the daemon's environment.
+#
+# Install to `$XDG_CONFIG_HOME/capabledeputy/secrets/vault.yaml` (default
+# `~/.config/capabledeputy/secrets/vault.yaml`) and `chmod 600` it — the
+# daemon REFUSES to load a group/other-readable vault (fail-closed).
+#
+# Each entry's `env` map is injected into that upstream server's subprocess
+# environment at spawn. The daemon config references the server by name
+# only; the secret values live here. The audit log records the vault REF
+# (`server:ENVVAR`), never the value.
+#
+# Migration from env-at-spawn: move the secret values your daemon config
+# put under each server's `env:` (or `${VAR}` references) into a vault
+# entry keyed by the server `name`, then drop them from the config.
+#
+# Scope caveat: stdio MCP servers are long-lived, so secrets materialize at
+# spawn (not per call). A tool that dumps its own env can still surface its
+# secret — per-call / echo-resistance needs container-per-call isolation
+# (#15/#16). The vault still keeps secrets out of configs, the daemon's
+# global env, the audit log, and the LLM context.
+
+credentials:
+  - server: gmail
+    env:
+      GOOGLE_OAUTH_TOKEN: "REPLACE-WITH-REAL-TOKEN"
+    capability_kinds: [GMAIL_READ, SEND_EMAIL]
+
+  - server: some-api
+    env:
+      SOME_API_KEY: "REPLACE-WITH-REAL-KEY"

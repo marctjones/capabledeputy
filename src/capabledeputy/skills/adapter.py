@@ -8,8 +8,8 @@ The handler:
   3. Otherwise calls the LLM directly with the rendered prompt as the
      user message and a fixed quarantined-style system prompt, returning
      `{"text": <response>}`.
-  4. Either way, the skill's declared `inherent_labels` are surfaced as
-     `additional_labels` so they propagate into the calling session.
+  4. Either way, the skill's declared `inherent_tags` are surfaced as
+     `additional_tags` so they propagate into the calling session.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def skill_to_tool(skill: Skill, llm: LLMClient) -> ToolDefinition:
                 return ToolResult(output={"error": str(e)})
             return ToolResult(
                 output=json.loads(value.model_dump_json()),
-                additional_labels=skill.inherent_labels,
+                additional_tags=skill.inherent_tags,
             )
 
         response = await llm.respond(
@@ -72,7 +72,7 @@ def skill_to_tool(skill: Skill, llm: LLMClient) -> ToolDefinition:
             )
         return ToolResult(
             output={"text": response.content},
-            additional_labels=skill.inherent_labels,
+            additional_tags=skill.inherent_tags,
         )
 
     op, op_risks, op_surfaces = default_operation_for_kind(skill.capability_kind)
@@ -82,7 +82,7 @@ def skill_to_tool(skill: Skill, llm: LLMClient) -> ToolDefinition:
         capability_kind=skill.capability_kind,
         handler=handler,
         target_arg=skill.target_arg,
-        inherent_labels=skill.inherent_labels,
+        inherent_tags=skill.inherent_tags,
         parameters_schema=skill.parameters_schema,
         operations=(op,),
         risk_ids=op_risks,

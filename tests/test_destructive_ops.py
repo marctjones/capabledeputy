@@ -31,8 +31,9 @@ from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.actions import Action
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.engine import DESTRUCTIVE_OP_RULE, decide
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.rules import Decision
+from capabledeputy.policy.tiers import Tier
 
 
 def _action(kind: CapabilityKind, target: str = "/x") -> Action:
@@ -42,9 +43,8 @@ def _action(kind: CapabilityKind, target: str = "/x") -> Action:
 def test_read_allows_unconditionally() -> None:
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     result = decide(
-        label_set=frozenset(),
-        capabilities=frozenset({cap}),
-        action=_action(CapabilityKind.READ_FS),
+        frozenset({cap}),
+        _action(CapabilityKind.READ_FS),
     )
     assert result.decision == Decision.ALLOW
 
@@ -54,9 +54,8 @@ def test_create_allows_without_destructive_flag() -> None:
     cap = Capability(kind=CapabilityKind.CREATE_FS, pattern="*")
     assert cap.allows_destructive is False  # default OFF
     result = decide(
-        label_set=frozenset(),
-        capabilities=frozenset({cap}),
-        action=_action(CapabilityKind.CREATE_FS),
+        frozenset({cap}),
+        _action(CapabilityKind.CREATE_FS),
     )
     assert result.decision == Decision.ALLOW
 
@@ -64,9 +63,8 @@ def test_create_allows_without_destructive_flag() -> None:
 def test_modify_requires_approval_by_default() -> None:
     cap = Capability(kind=CapabilityKind.MODIFY_FS, pattern="*")
     result = decide(
-        label_set=frozenset(),
-        capabilities=frozenset({cap}),
-        action=_action(CapabilityKind.MODIFY_FS),
+        frozenset({cap}),
+        _action(CapabilityKind.MODIFY_FS),
     )
     assert result.decision == Decision.REQUIRE_APPROVAL
     assert result.rule == DESTRUCTIVE_OP_RULE
@@ -75,9 +73,8 @@ def test_modify_requires_approval_by_default() -> None:
 def test_delete_requires_approval_by_default() -> None:
     cap = Capability(kind=CapabilityKind.DELETE_FS, pattern="*")
     result = decide(
-        label_set=frozenset(),
-        capabilities=frozenset({cap}),
-        action=_action(CapabilityKind.DELETE_FS),
+        frozenset({cap}),
+        _action(CapabilityKind.DELETE_FS),
     )
     assert result.decision == Decision.REQUIRE_APPROVAL
     assert result.rule == DESTRUCTIVE_OP_RULE
@@ -90,9 +87,8 @@ def test_allows_destructive_bypasses_gate() -> None:
         allows_destructive=True,
     )
     result = decide(
-        label_set=frozenset(),
-        capabilities=frozenset({cap}),
-        action=_action(CapabilityKind.MODIFY_FS),
+        frozenset({cap}),
+        _action(CapabilityKind.MODIFY_FS),
     )
     assert result.decision == Decision.ALLOW
 
@@ -112,9 +108,8 @@ def test_legacy_write_fs_capability_still_matches_granular_kinds() -> None:
         CapabilityKind.DELETE_FS,
     ):
         result = decide(
-            label_set=frozenset(),
-            capabilities=frozenset({cap}),
-            action=_action(action_kind),
+            frozenset({cap}),
+            _action(action_kind),
         )
         assert result.decision == Decision.ALLOW, f"WRITE_FS should cover {action_kind}"
 
@@ -125,16 +120,14 @@ def test_legacy_write_fs_without_destructive_flag_still_gates() -> None:
     cap = Capability(kind=CapabilityKind.WRITE_FS, pattern="*")
     # CREATE — no gate.
     result_create = decide(
-        label_set=frozenset(),
-        capabilities=frozenset({cap}),
-        action=_action(CapabilityKind.CREATE_FS),
+        frozenset({cap}),
+        _action(CapabilityKind.CREATE_FS),
     )
     assert result_create.decision == Decision.ALLOW
     # MODIFY — gate fires.
     result_modify = decide(
-        label_set=frozenset(),
-        capabilities=frozenset({cap}),
-        action=_action(CapabilityKind.MODIFY_FS),
+        frozenset({cap}),
+        _action(CapabilityKind.MODIFY_FS),
     )
     assert result_modify.decision == Decision.REQUIRE_APPROVAL
 
@@ -147,9 +140,13 @@ def test_conflict_rule_short_circuits_destructive_gate() -> None:
         pattern="*",
     )
     result = decide(
-        label_set=frozenset({Label.CONFIDENTIAL_HEALTH}),
-        capabilities=frozenset({cap}),
-        action=Action(kind=CapabilityKind.SEND_EMAIL, target="alice@example.com"),
+        frozenset({cap}),
+        Action(kind=CapabilityKind.SEND_EMAIL, target="alice@example.com"),
+        labels=LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
     )
     assert result.decision == Decision.DENY
     assert result.rule == "health-meets-egress"

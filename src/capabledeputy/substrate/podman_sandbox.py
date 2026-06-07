@@ -58,14 +58,14 @@ from capabledeputy.substrate.sandbox_actuator import (
 )
 
 
-class PodmanNotAvailable(RuntimeError):
+class PodmanNotAvailable(RuntimeError):  # noqa: N818 (descriptive domain exception)
     """Raised when the `podman` binary cannot be found on PATH or
     fails a basic version check. The daemon should refuse to start
     if Podman is selected but unavailable — silent fallback to the
     demo actuator would violate Principle VI (fail-closed)."""
 
 
-class UnknownRegion(KeyError):
+class UnknownRegion(KeyError):  # noqa: N818 (descriptive domain exception)
     """`region_id` is not registered with this actuator. Either it
     was never created via `create_region()` or it was already
     discarded."""

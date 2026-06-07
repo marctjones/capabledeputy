@@ -21,10 +21,9 @@ from capabledeputy.policy.decision_rules import (
     evaluate,
 )
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     AxisD,
     CategoryTag,
+    LabelState,
     ProvenanceLevel,
     ProvenanceTag,
 )
@@ -59,15 +58,14 @@ def test_empty_rule_set_yields_only_suggest_for_default_suggest() -> None:
         _EFFECT_CLASSES,
         _TARGETS,
     ):
-        axis_a = AxisA(
-            categories=(CategoryTag(category=cat, tier=Tier.SENSITIVE),),
+        labels = LabelState(
+            a=frozenset({CategoryTag(category=cat, tier=Tier.SENSITIVE)}),
+            b=frozenset({ProvenanceTag(level=prov)}),
         )
-        axis_b = AxisB(entries=(ProvenanceTag(level=prov),))
         axis_d = AxisD(initiator=init)
         result = evaluate(
             rules=rules,
-            axis_a=axis_a,
-            axis_b=axis_b,
+            labels=labels,
             axis_d=axis_d,
             effect_class=eff,
             target=target,
@@ -88,17 +86,14 @@ def test_empty_rule_set_yields_only_deny_for_default_deny() -> None:
     """A stricter cell may default to DENY. Still never AUTO."""
     rules = DecisionRules(rules=())
     for cat in _CATEGORIES:
-        axis_a = AxisA(
-            categories=(CategoryTag(category=cat, tier=Tier.PROHIBITED),),
-        )
-        axis_b = AxisB(
-            entries=(ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),),
+        labels = LabelState(
+            a=frozenset({CategoryTag(category=cat, tier=Tier.PROHIBITED)}),
+            b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
         )
         axis_d = AxisD(initiator="inbound:unauthenticated")
         result = evaluate(
             rules=rules,
-            axis_a=axis_a,
-            axis_b=axis_b,
+            labels=labels,
             axis_d=axis_d,
             effect_class="send_email",
             target="x",
@@ -122,11 +117,13 @@ def test_unratified_rules_cannot_produce_auto_even_if_they_match() -> None:
     )
     rules = DecisionRules(rules=(universal_unratified_auto,))
     for cat in _CATEGORIES:
-        axis_a = AxisA(categories=(CategoryTag(category=cat, tier=Tier.SENSITIVE),))
+        labels = LabelState(
+            a=frozenset({CategoryTag(category=cat, tier=Tier.SENSITIVE)}),
+            b=frozenset({ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL)}),
+        )
         result = evaluate(
             rules=rules,
-            axis_a=axis_a,
-            axis_b=AxisB(entries=(ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL),)),
+            labels=labels,
             axis_d=AxisD(),
             effect_class="send_email",
             target="any",

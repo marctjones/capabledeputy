@@ -16,8 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from capabledeputy.policy.risk_register import load as load_register, RiskRegisterError
-
+from capabledeputy.policy.risk_register import load as load_register
 
 _QUANTIFICATION_REQUIRED_FRAMEWORKS = frozenset(
     {
@@ -61,7 +60,7 @@ class TestRiskRegisterThresholdSchema:
                     f"{quantified_frameworks} but has no threshold field"
                 )
 
-        assert not failures, f"threshold compliance failures:\n" + "\n".join(
+        assert not failures, "threshold compliance failures:\n" + "\n".join(
             f"  - {f}" for f in failures
         )
 
@@ -127,11 +126,11 @@ class TestRiskRegisterThresholdSchema:
             if framework == "FAIR" and entry.threshold.magnitude_band_min:
                 assert (
                     entry.threshold.magnitude_band_min in valid_magnitude_bands
-                ), f"{risk_id}: invalid FAIR magnitude_band_min {entry.threshold.magnitude_band_min!r}"
+                ), f"{risk_id}: invalid FAIR magnitude_band_min {entry.threshold.magnitude_band_min!r}"  # noqa: E501
             elif framework == "NIST-AI-RMF" and entry.threshold.impact_tier_min:
                 assert (
                     entry.threshold.impact_tier_min in valid_impact_tiers
-                ), f"{risk_id}: invalid NIST-AI-RMF impact_tier_min {entry.threshold.impact_tier_min!r}"
+                ), f"{risk_id}: invalid NIST-AI-RMF impact_tier_min {entry.threshold.impact_tier_min!r}"  # noqa: E501
             elif framework == "EU-AI-Act" and entry.threshold.risk_class_min:
                 assert (
                     entry.threshold.risk_class_min in valid_risk_classes
@@ -143,7 +142,7 @@ class TestRiskRegisterThresholdSchema:
             elif framework == "OWASP-RiskRating" and entry.threshold.severity_min:
                 assert (
                     entry.threshold.severity_min in valid_severities
-                ), f"{risk_id}: invalid OWASP-RiskRating severity_min {entry.threshold.severity_min!r}"
+                ), f"{risk_id}: invalid OWASP-RiskRating severity_min {entry.threshold.severity_min!r}"  # noqa: E501
 
     def test_no_orphan_framework_refs(self, risk_register_path: Path) -> None:
         """SC-001: every entry must cite at least one external framework (SC-001)."""

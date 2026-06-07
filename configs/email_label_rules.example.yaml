@@ -1,0 +1,29 @@
+# Incoming-email labeling rules (Issue #34, FR-024/FR-025).
+#
+# Copy to `email_label_rules.yaml` to turn it on. Each rule RAISES a
+# message's Axis-A category above the server-wide floor
+# (untrusted.external + confidential.personal) when sender/subject/body
+# matches. Raise-only — a rule can escalate, never lower; the floor always
+# applies. See docs/email-labeling-design.md.
+#
+# Match facets (a rule fires if ANY matches):
+#   from_domain   : str | [str]   — matched against the sender's @domain
+#   from_address  : str | [str]   — substring of the sender field
+#   subject_regex : str | [str]   — case-insensitive search of the subject
+#   body_regex    : str | [str]   — case-insensitive search of the body
+#
+# Labels: "confidential.<category>" (tier from labels.yaml, #50).
+
+email_label_rules:
+  - match:
+      from_domain: ["chase.com", "fidelity.com", "americanexpress.com"]
+    labels: [confidential.financial]
+
+  - match:
+      subject_regex: ["statement", "invoice", "payment due", "tax"]
+    labels: [confidential.financial]
+
+  - match:
+      from_domain: ["myhealth.example", "labcorp.com"]
+      body_regex: ["MRN", "diagnosis", "prescription"]
+    labels: [confidential.health]

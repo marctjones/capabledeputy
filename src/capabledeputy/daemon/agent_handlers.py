@@ -24,17 +24,23 @@ def _serialize_recovery_step(step: Any) -> dict[str, Any]:
 
 
 def _outcome_to_dict(outcome: ToolCallOutcome) -> dict[str, Any]:
+    # Convert tags_added (LabelState) back to legacy label strings for
+    # backward compatibility with clients.
+    from capabledeputy.policy.labels import legacy_labels_present
+
+    labels_added = legacy_labels_present(outcome.tags_added)
+
     return {
         "decision": outcome.decision.value,
         "rule": outcome.rule,
         "reason": outcome.reason,
-        "labels_added": sorted(label.value for label in outcome.labels_added),
         "error": outcome.error,
         "output": outcome.output,
         "tool_name": outcome.tool_name,
         "tool_args": outcome.tool_args,
         "approval_submission": outcome.approval_submission,
         "approval_id": outcome.approval_id,
+        "labels_added": sorted(labels_added),
         # Issue #3 — Recovery steps surface to the chat REPL and to
         # the agent via policy.preview's output. Empty list when no
         # synthesis fired (ALLOW or unsupported rule).
@@ -61,6 +67,8 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
         # flag would otherwise cancel the *next* turn before it
         # started.
         app.cancellation_flags[session_uuid] = False
+        from capabledeputy.daemon.lifecycle import agent_max_iterations
+
         try:
             result = await run_turn(
                 session_id=session_uuid,
@@ -70,10 +78,13 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
                 registry=app.registry,
                 graph=app.graph,
                 audit=app.audit,
-                max_iterations=int(params.get("max_iterations", 50)),
+                max_iterations=int(
+                    params.get("max_iterations") or agent_max_iterations(),
+                ),
                 force_mode=force_mode,
                 cancel_check=lambda sid=session_uuid: app.cancellation_flags.get(
-                    sid, False,
+                    sid,
+                    False,
                 ),
             )
         finally:

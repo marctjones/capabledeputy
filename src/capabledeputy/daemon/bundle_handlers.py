@@ -29,6 +29,7 @@ from capabledeputy.approval.bundle import (
     render_impact_tree,
 )
 from capabledeputy.daemon.handlers import Handler
+from capabledeputy.policy.labels import LabelState
 from capabledeputy.programmatic import (
     dry_run_for_bundle,
     execute_with_approved_bundle,
@@ -65,6 +66,9 @@ def _impact_from_dict(d: dict[str, Any]) -> WorkflowImpact:
                 arg_labels=frozenset(s["arg_labels"]),
                 decision=s["decision"],
                 inherent_labels=frozenset(s["inherent_labels"]),
+                # v2 structured tags; absent in v1 bundles -> empty LabelState.
+                inherent_tags=LabelState.from_dict(s.get("inherent_tags")),
+                arg_tags=LabelState.from_dict(s.get("arg_tags")),
                 rule=s.get("rule"),
                 reason=s.get("reason"),
                 line=s.get("line"),
@@ -77,6 +81,7 @@ def _impact_from_dict(d: dict[str, Any]) -> WorkflowImpact:
                 tool_name=g["tool"],
                 args=g["args"],
                 arg_labels=frozenset(g["arg_labels"]),
+                arg_tags=LabelState.from_dict(g.get("arg_tags")),
                 rule=g.get("rule"),
                 reason=g.get("reason"),
                 state=GateState(g["state"]),

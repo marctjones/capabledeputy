@@ -13,7 +13,7 @@ from pathlib import Path
 
 from capabledeputy.app import App
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState
 from capabledeputy.tools.native.calendar import (
     CalendarEvent,
     CalendarStore,
@@ -27,7 +27,7 @@ from capabledeputy.tools.registry import ToolContext
 def _ctx() -> ToolContext:
     from uuid import uuid4
 
-    return ToolContext(session_id=uuid4(), label_set=frozenset())
+    return ToolContext(session_id=uuid4(), label_state=LabelState())
 
 
 async def test_calendar_events_today_returns_personal_label() -> None:
@@ -45,7 +45,7 @@ async def test_calendar_events_today_returns_personal_label() -> None:
     list_tool = tools["calendar.events_today"]
     result = await list_tool.handler({}, _ctx())
     assert len(result.output["events"]) == 1
-    assert Label.CONFIDENTIAL_PERSONAL in list_tool.inherent_labels
+    assert any(c.category == "personal" for c in list_tool.inherent_tags.a)
 
 
 async def test_calendar_create_event_persists() -> None:
@@ -79,7 +79,7 @@ async def test_inbox_list_returns_untrusted_label() -> None:
     [list_tool, _read_tool] = make_inbox_tools(inbox)
     result = await list_tool.handler({}, _ctx())
     assert len(result.output["messages"]) == 1
-    assert Label.UNTRUSTED_EXTERNAL in result.additional_labels
+    assert any(t.level.value == "external-untrusted" for t in result.additional_tags.b)
 
 
 async def test_inbox_read_marks_read_and_returns_body() -> None:
@@ -97,7 +97,7 @@ async def test_inbox_read_marks_read_and_returns_body() -> None:
     result = await read_tool.handler({"id": "m1"}, _ctx())
     assert result.output["found"] is True
     assert "buy 100 shares" in result.output["body"]
-    assert Label.UNTRUSTED_EXTERNAL in result.additional_labels
+    assert any(t.level.value == "external-untrusted" for t in result.additional_tags.b)
     msg = inbox.get("m1")
     assert msg is not None
     assert msg.unread is False
@@ -110,7 +110,7 @@ async def test_web_fetch_returns_untrusted_label() -> None:
     fetch_tool = tools["web.fetch"]
     result = await fetch_tool.handler({"url": "https://example.com"}, _ctx())
     assert result.output["found"] is True
-    assert Label.UNTRUSTED_EXTERNAL in result.additional_labels
+    assert any(t.level.value == "external-untrusted" for t in result.additional_tags.b)
 
 
 async def test_web_fetch_unknown_url_returns_not_found() -> None:

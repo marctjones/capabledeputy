@@ -76,7 +76,7 @@ def make_resources_tools(publisher: StaticResourcePublisher) -> list[ToolDefinit
                 "size": size,
                 "content": content,
             },
-            additional_labels=resource.labels,
+            additional_tags=resource.tags,
         )
 
     return [
@@ -96,7 +96,6 @@ def make_resources_tools(publisher: StaticResourcePublisher) -> list[ToolDefinit
             capability_kind=CapabilityKind.READ_FS,
             handler=resources_list,
             target_arg="prefix",
-            inherent_labels=frozenset(),
             parameters_schema={
                 "type": "object",
                 "properties": {"prefix": {"type": "string"}},
@@ -120,7 +119,6 @@ def make_resources_tools(publisher: StaticResourcePublisher) -> list[ToolDefinit
             capability_kind=CapabilityKind.READ_FS,
             handler=resources_read,
             target_arg="uri",
-            inherent_labels=frozenset(),
             parameters_schema={
                 "type": "object",
                 "properties": {"uri": {"type": "string"}},

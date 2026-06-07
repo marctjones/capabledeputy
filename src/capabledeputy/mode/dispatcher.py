@@ -20,7 +20,8 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import LabelState
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.model import Session
 from capabledeputy.tools.registry import ToolDefinition, ToolRegistry
 
@@ -46,11 +47,11 @@ class ModeSelectionError(RuntimeError):
     is available."""
 
 
-_CONFIDENTIAL_LABELS: frozenset[Label] = frozenset(
+_CONFIDENTIAL_CATEGORIES: frozenset[str] = frozenset(
     {
-        Label.CONFIDENTIAL_HEALTH,
-        Label.CONFIDENTIAL_FINANCIAL,
-        Label.CONFIDENTIAL_PERSONAL,
+        "health",
+        "financial",
+        "personal",
     },
 )
 
@@ -60,25 +61,36 @@ _RAW_LABELED_DATA_TOOLS: frozenset[str] = frozenset(
 
 
 def select_mode(
-    label_set: frozenset[Label],
+    label_state: LabelState,
     registry: ToolRegistry,
     *,
     prefer_programmatic: bool = False,
     force_mode: ExecutionMode | None = None,
+    has_sandbox_actuator: bool = False,
 ) -> tuple[ExecutionMode, str]:
     """Pick the execution mode for an upcoming turn.
 
-    Three layers of override, in order of decreasing strength:
+    Layers of override, in order of decreasing strength:
 
       1. `force_mode` — caller (CLI `--mode`) explicitly demands a mode
          for this turn only.
       2. `prefer_programmatic` — session-level flag set at session.new
          time; takes precedence over the auto-escalation heuristic so
          users can opt into programmatic for a whole session.
-      3. Auto-heuristic — confidential labels present + a quarantined
+      3. Restricted-tier floor (FR-047, Issue #52) — if ANY Axis-A tag is
+         at `restricted` tier, the turn MUST run under Pattern ③
+         (REFERENCE, when a handle-aware tool is present) or Pattern ⑤
+         (SEALED, when a SandboxActuator is wired), never ①/② which would
+         land raw restricted data in the planner. Neither available ⇒
+         `ModeSelectionError` (fail-closed). This mirrors the spawn-time
+         gate but now also *drives the per-turn mode*, which it did not
+         before (#52): previously a restricted session silently ran under
+         Pattern ②/①.
+      4. Auto-heuristic — confidential categories present + a quarantined
          extractor registered → DUAL_LLM. Otherwise TURN_LEVEL.
 
     Returns (mode, reason) so the audit record explains the choice.
+    Raises ModeSelectionError only for the restricted-tier fail-closed.
     """
     if force_mode is not None:
         return force_mode, f"forced by caller: {force_mode.value}"
@@ -89,7 +101,19 @@ def select_mode(
             "session prefers programmatic mode; planner will emit a program",
         )
 
-    if not label_set & _CONFIDENTIAL_LABELS:
+    # Restricted-tier floor (FR-047 / #52) — evaluated before the
+    # confidential-category heuristic so a restricted tag can never
+    # de-escalate to DUAL_LLM/TURN_LEVEL.
+    if any(tag.tier == Tier.RESTRICTED for tag in label_state.a):
+        return select_mode_for_restricted(
+            has_accepts_handles_tool=tool_surface_offers_handles(registry.list()),
+            has_sandbox_actuator=has_sandbox_actuator,
+        )
+
+    # Check if any category in label_state.a matches confidential categories
+    has_confidential = any(tag.category in _CONFIDENTIAL_CATEGORIES for tag in label_state.a)
+
+    if not has_confidential:
         return ExecutionMode.TURN_LEVEL, "no confidential labels in session"
 
     has_quarantined = any(tool.name.startswith("quarantined.") for tool in registry.list())

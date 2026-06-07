@@ -81,7 +81,7 @@ def test_tail_reads_only_active_file(tmp_path: Path) -> None:
     writer = AuditWriter(log, max_size_bytes=400, max_rotated=2)
 
     async def run() -> list[Event]:
-        for i in range(30):
+        for _i in range(30):
             await writer.write(_make_event(payload_size=80))
         return await writer.tail(limit=100)
 

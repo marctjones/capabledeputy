@@ -23,10 +23,9 @@ from capabledeputy.policy.decision_rules import (
     evaluate,
 )
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
     AxisD,
     CategoryTag,
+    LabelState,
     ProvenanceLevel,
     ProvenanceTag,
 )
@@ -51,21 +50,22 @@ def _cron_backup_rule() -> DecisionRule:
     )
 
 
-def _common_axes() -> tuple[AxisA, AxisB]:
+def _common_label_state() -> LabelState:
     """Both scenarios share Axis A (proprietary work) and Axis B
     (system-internal — the data we're backing up was already in
     our own systems)."""
-    axis_a = AxisA(
-        categories=(CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),),
+    return LabelState(
+        a=frozenset({
+            CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),
+        }),
+        b=frozenset({
+            ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL),
+        }),
     )
-    axis_b = AxisB(
-        entries=(ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL),),
-    )
-    return axis_a, axis_b
 
 
 def test_cron_initiated_backup_resolves_to_auto() -> None:
-    axis_a, axis_b = _common_axes()
+    labels = _common_label_state()
     axis_d = AxisD.from_dict(
         {
             "initiator": "cron:backup-job",
@@ -77,8 +77,7 @@ def test_cron_initiated_backup_resolves_to_auto() -> None:
     rules = DecisionRules(rules=(_cron_backup_rule(),))
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="backup_storage",
         target="s3://backups/db-snapshot",
@@ -91,7 +90,7 @@ def test_unauth_inbound_same_effect_does_not_match_cron_rule() -> None:
     """The same effect_class + same target, but initiator/expectedness
     diverge. The cron rule does not match — the never-auto default
     (SUGGEST) holds."""
-    axis_a, axis_b = _common_axes()
+    labels = _common_label_state()
     axis_d = AxisD.from_dict(
         {
             "initiator": "inbound:unauthenticated",
@@ -103,8 +102,7 @@ def test_unauth_inbound_same_effect_does_not_match_cron_rule() -> None:
     rules = DecisionRules(rules=(_cron_backup_rule(),))
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="backup_storage",
         target="s3://backups/db-snapshot",
@@ -117,7 +115,7 @@ def test_cron_initiated_but_unexpected_does_not_match() -> None:
     """Cron initiator alone is not enough — expectedness must also be
     `expected` (an ExpectationBinding match). Cron that fires at the
     wrong window is `anomalous` and the rule does not match."""
-    axis_a, axis_b = _common_axes()
+    labels = _common_label_state()
     axis_d = AxisD.from_dict(
         {
             "initiator": "cron:backup-job",
@@ -129,8 +127,7 @@ def test_cron_initiated_but_unexpected_does_not_match() -> None:
     rules = DecisionRules(rules=(_cron_backup_rule(),))
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="backup_storage",
         target="s3://backups/db-snapshot",
@@ -144,7 +141,7 @@ def test_authenticated_inbound_principal_is_not_cron() -> None:
     differs — so it falls to never-auto SUGGEST. A separate rule for
     `principal:alice` would be needed to grant her AUTO; that's the
     whole point of FR-031 asymmetry (per-cell rules, not heuristic)."""
-    axis_a, axis_b = _common_axes()
+    labels = _common_label_state()
     axis_d = AxisD.from_dict(
         {
             "initiator": "principal:alice",
@@ -156,8 +153,7 @@ def test_authenticated_inbound_principal_is_not_cron() -> None:
     rules = DecisionRules(rules=(_cron_backup_rule(),))
     result = evaluate(
         rules=rules,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        labels=labels,
         axis_d=axis_d,
         effect_class="backup_storage",
         target="s3://backups/db-snapshot",

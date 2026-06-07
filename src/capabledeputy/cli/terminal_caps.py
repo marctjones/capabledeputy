@@ -46,7 +46,7 @@ class TerminalCaps:
     mouse: bool  # mouse reporting available
 
     # Named terminal (for nicer messages + targeted optimizations)
-    family: str  # "ghostty" | "kitty" | "iterm2" | "wezterm" | "alacritty" | "xterm" | "vscode" | "dumb" | "unknown"
+    family: str  # "ghostty" | "kitty" | "iterm2" | "wezterm" | "alacritty" | "xterm" | "vscode" | "dumb" | "unknown"  # noqa: E501
 
 
 def _has_env_value(name: str, *needles: str) -> bool:
