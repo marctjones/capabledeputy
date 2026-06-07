@@ -960,9 +960,8 @@ class LabeledToolClient:
             return {}
         kwargs: dict[str, Any] = {}
         if tool.effect_class is not None:
-            # R4b.4 — the bundled LabelState is the canonical Axis A/B
-            # input. Session still stores axis_a/axis_b separately until
-            # the collapse step; `.label_state` bridges them.
+            # R4b.4 (done) — the session's single `label_state` field is
+            # the canonical Axis A/B input to the engine.
             kwargs["labels"] = session.label_state
             # Cookbook P2.3 — merge resolved counterparty groups into
             # axis_d.relationship_group_ids when a RelationshipGroups

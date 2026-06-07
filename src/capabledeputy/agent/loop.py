@@ -30,6 +30,7 @@ from capabledeputy.llm.types import (
 )
 from capabledeputy.mode.dispatcher import (
     ExecutionMode,
+    ModeSelectionError,
     filter_tools_for_mode,
     select_mode,
     visible_tools,
@@ -390,6 +391,14 @@ async def run_turn(
             f"agent loop exceeded {max_iterations} iterations"
             f"{_LOOP_RECOVERY_HINT}",
         )
+    if interrupt_reason == "mode_refused_restricted":
+        # Issue #52 — fail-closed: restricted tier with no Pattern ③/⑤
+        # mode available. Surface the typed error to RPC callers.
+        raise ModeSelectionError(
+            interrupt_event.partial_content
+            if interrupt_event and interrupt_event.partial_content
+            else "restricted-tier session has no Pattern (3)/(5) mode available",
+        )
     if interrupt_reason == "agent_loop_thrashing":
         # Issue #2 — the loop was stopped early because the agent kept
         # proposing the same tool call. Surface a clearer cause than a
@@ -472,12 +481,45 @@ async def run_turn_streaming(
 
     # Mode selection happens BEFORE history is mutated so the
     # programmatic loop can take over cleanly when selected.
-    mode, mode_reason = select_mode(
-        session.label_state,
-        registry,
-        prefer_programmatic=session.prefer_programmatic,
-        force_mode=force_mode,
-    )
+    #
+    # Issue #52 — a restricted-tier session must run under Pattern ③/⑤,
+    # so select_mode needs to know whether a SandboxActuator is wired
+    # (the Pattern ⑤ precondition). We read it off the policy context.
+    pc = tool_client.policy_context
+    has_sandbox_actuator = bool(pc is not None and pc.sandbox_actuator_wired)
+    try:
+        mode, mode_reason = select_mode(
+            session.label_state,
+            registry,
+            prefer_programmatic=session.prefer_programmatic,
+            force_mode=force_mode,
+            has_sandbox_actuator=has_sandbox_actuator,
+        )
+    except ModeSelectionError as e:
+        # FR-047 fail-closed (#52): the session reached restricted tier
+        # but no Pattern ③/⑤ mode is available (e.g. it escalated
+        # mid-session past the spawn-time gate). Refuse the turn rather
+        # than running restricted data through a planner-exposing mode.
+        await audit.write(
+            Event(
+                event_type=EventType.MODE_SELECTED,
+                session_id=session_id,
+                turn_id=len(session.history),
+                step_id=0,
+                payload={
+                    "refused": True,
+                    "tier": "restricted",
+                    "reason": str(e),
+                },
+            ),
+        )
+        yield TurnInterrupted(
+            iteration=0,
+            reason="mode_refused_restricted",
+            partial_content=str(e),
+            partial_outcomes=(),
+        )
+        return
 
     if mode == ExecutionMode.PROGRAMMATIC:
         # Local import to avoid a circular: programmatic_loop imports from

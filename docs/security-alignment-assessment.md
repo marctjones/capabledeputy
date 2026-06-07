@@ -103,7 +103,7 @@ approximation (documented); **N/P** = deliberately not pursued.
 | Denning lattice / IFC | Partial (Priority) | four-axis labels, monotone `most_restrictive_inherit`, dynamic taint | **open category set, not a total-order lattice**; no formal join/dominance operator (pending) |
 | Bell-LaPadula | Approx | dynamic **read-up refusal** via tier × clearance profile (FR-008) | **no write-down** enforcement; static *-property N/P |
 | Biba | Approx | scoped **one-direction** integrity (provenance floor, untrusted-meets-egress) (FR-004) | **no write-up / no integrity clearances**; doc flags this as *"the most under-served model and easiest to wrongly assume covered"* |
-| Noninterference | Approx | *intransitive* NI by construction + certified declassifiers (dual-LLM schema, human one-shot) | whole-system transitive NI impossible (and N/P); per-tier true NI needs pattern ③ auto-selection (mechanism shipped; verify it's invoked) |
+| Noninterference | Approx | *intransitive* NI by construction + certified declassifiers (dual-LLM schema, human one-shot); per-tier: `restricted` now auto-selects pattern ③/⑤ in per-turn dispatch (#52, fixed) | whole-system transitive NI impossible (and N/P) |
 | Provenance security | Approx | taint + single-parent delegation graph, immutable audit | single-parent (not multi-parent DAG); completeness contingent on reference-monitor totality |
 | HRU safety | N/P | sidestepped by the capability model | general safety is undecidable (correctly not pursued) |
 
@@ -115,7 +115,7 @@ approximation (documented); **N/P** = deliberately not pursued.
 |---|---|---|---|
 | ① Tainted-context (turn-level) | Shipped | no *silent* egress, structural at chokepoint | unsafe for adversarial sources alone (mitigated by ②) |
 | ② Quarantined / dual-LLM | Shipped | schema-*is*-declassifier; planner never sees raw bytes; + P1.7 char/entropy constraints | a confidential read with no quarantined extractor falls back to ① (weaker exposure, still fail-closed on egress) |
-| ③ Reference handles | Mechanism shipped (`reference_handle.py`, `_bind_reference_handles`, `select_mode_for_restricted`) | planner holds opaque handles; bind audited | **verify** the restricted-tier path actually invokes `select_mode_for_restricted` end-to-end; until then `restricted` can fall to ② (intransitive) |
+| ③ Reference handles | Shipped + wired (`reference_handle.py`, `_bind_reference_handles`, `select_mode_for_restricted`, and `select_mode` per-turn integration, #52) | planner holds opaque handles; bind audited; `restricted` tier now auto-selects ③ (or ⑤) per turn, fail-closed if neither available | — |
 | ④ Programmatic / code-mediated | Shipped | planner authors a program, not data handling; dry-run vs policy; bundle TTL | never auto-selected from labels (deliberate — planner can't pick weaker protection) |
 | ⑤ Sealed-effect / sandbox | Shipped | disposable, egress-free; Podman actuator | **containment ≠ declassification** (output keeps source labels) — a real footgun if assumed otherwise |
 | Cookbook P1.1–P1.8 (security) | All shipped | fail-closed time-window, devbox gate, dual-LLM precondition, first-use prompt, hash-chain audit, output constraints, grant validation | — |
@@ -170,8 +170,12 @@ reversibility, accountability* — never whether model output is true / fair
 3. **Biba under-implementation** flagged by the docs themselves as the
    easiest to wrongly assume covered.
 4. **Purpose-contamination unbuilt** (a real EU-AI-Act/GDPR-relevant gap).
-5. **Pattern ③ end-to-end auto-selection** for `restricted` needs
-   verification; if not invoked, `restricted` gets weaker-than-intended NI.
+5. ~~Pattern ③ end-to-end auto-selection for `restricted`~~ — **fixed (#52)**:
+   `select_mode` now enforces the restricted-tier floor per turn (③/⑤ or
+   fail-closed). Note the consequence: with catalog-aware tiers (#50)
+   making health/financial `restricted`, any session touching them now
+   requires a Pattern ③/⑤ mode (the spawn gate already guaranteed this
+   for real sessions).
 
 **Where it actively undermines a model/principle (honest list):**
 - Mostly it *under-covers* rather than *contradicts*. The genuine
@@ -192,19 +196,20 @@ reversibility, accountability* — never whether model output is true / fair
    relaxes the architecture already assumes. *Guardrail: scripts refine,
    never override structural floors; relax bounded by the envelope cell.*
 2. **Grow the labeling oracle** (P2, P3, P7, IFC). Ship real
-   `SourcePort`/binding coverage (the git/Gmail/Drive providers), make
-   string→tier resolution catalog-aware (don't hardcode `REGULATED`), and
+   `SourcePort`/binding coverage (the git/Gmail/Drive providers), and
    wire the raise-only LLM labeler so untrusted/sensitive reads get tagged
    even when the operator didn't pre-bind. This attacks weakness #2 — the
-   highest-leverage *safety* improvement.
-3. **Verify + close Pattern ③ auto-selection for `restricted`**
-   (Noninterference, P3). Confirm `select_mode_for_restricted` is invoked
-   on the restricted path end-to-end; otherwise restricted silently uses ②.
+   highest-leverage *safety* improvement. *(String→tier resolution is now
+   catalog-aware — #50, done.)*
+3. ~~Verify + close Pattern ③ auto-selection for `restricted`~~ —
+   **done (#52)**: `select_mode` enforces the restricted-tier ③/⑤ floor
+   per turn, fail-closed when neither is available.
 4. **Thread a read-only session-history summary into inspector inputs**
    (T4 aggregation, frequency policy). Without it, neither YAML nor
    Starlark can express "N reads → bump tier" / "> N sends/hour."
-5. **Make the Biba gap loud** (integrity). Either add a scoped write-up
-   guard or surface a startup/CLI notice so no operator assumes full Biba.
+5. ~~Make the Biba gap loud~~ — **done (#53)**: `capdep policy models`
+   prints each model's honest scope and flags Biba's one-direction limit
+   in red.
 6. **Surface purpose-contamination as a visible residual** (P4). Even
    without full enforcement, flag decisions where inadmissible-category
    data is in-context (a "contamination-suspected" audit signal) so it's

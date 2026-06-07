@@ -66,40 +66,62 @@ def test_dispatcher_refuses_when_neither_pattern_available() -> None:
         )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Issue #52 — KNOWN GAP: the per-turn select_mode() does NOT consult "
-        "tier, so a restricted-tier session silently runs under Pattern (2)/(1) "
-        "instead of auto-selecting Pattern (3) REFERENCE. select_mode_for_restricted "
-        "is currently only a spawn-time refusal gate; its chosen mode is discarded. "
-        "This xfail flips to xpass once select_mode() integrates the restricted floor."
-    ),
-    strict=True,
-)
-def test_select_mode_auto_selects_reference_for_restricted() -> None:
-    """End-to-end intent (FR-047): a restricted-tier label_state whose tool
-    surface offers handles must drive the *turn* mode to REFERENCE — not
-    just be permitted at spawn. Anchors the gap until the wiring lands."""
-    from capabledeputy.mode.dispatcher import select_mode
-    from capabledeputy.policy.labels import CategoryTag, LabelState
-    from capabledeputy.policy.tiers import Tier
+def _registry_with(*, handles: bool):
+    """Minimal registry whose tool may declare accepts_handles. Bypasses
+    register()'s full schema validation — select_mode only reads
+    accepts_handles off registry.list()."""
     from capabledeputy.tools.registry import ToolDefinition, ToolRegistry
 
     async def _noop(_args: dict) -> dict:
         return {}
 
     reg = ToolRegistry()
-    # Bypass register()'s full schema validation — select_mode only reads
-    # accepts_handles off registry.list(); this keeps the anchor minimal.
-    reg._tools["sealed.run"] = ToolDefinition(
-        name="sealed.run",
-        description="handle-aware tool",
+    reg._tools["t"] = ToolDefinition(
+        name="t",
+        description="x",
         capability_kind="EXECUTE",
         handler=_noop,
-        accepts_handles=True,
-        handle_arg_names=("ref",),
+        accepts_handles=handles,
+        handle_arg_names=("ref",) if handles else (),
     )
-    restricted = LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)}))
+    return reg
 
-    mode, _reason = select_mode(restricted, reg)
+
+def _restricted_state():
+    from capabledeputy.policy.labels import CategoryTag, LabelState
+    from capabledeputy.policy.tiers import Tier
+
+    return LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)}))
+
+
+def test_select_mode_auto_selects_reference_for_restricted() -> None:
+    """Issue #52 — a restricted-tier label_state whose tool surface offers
+    handles drives the *turn* mode to REFERENCE (Pattern ③), not just
+    permits it at spawn."""
+    from capabledeputy.mode.dispatcher import select_mode
+
+    mode, reason = select_mode(_restricted_state(), _registry_with(handles=True))
     assert mode == ExecutionMode.REFERENCE
+    assert "Pattern (3)" in reason
+
+
+def test_select_mode_falls_to_sealed_for_restricted_with_sandbox_only() -> None:
+    """Issue #52 — no handle-aware tool but a SandboxActuator is wired ⇒
+    SEALED (Pattern ⑤)."""
+    from capabledeputy.mode.dispatcher import select_mode
+
+    mode, _reason = select_mode(
+        _restricted_state(),
+        _registry_with(handles=False),
+        has_sandbox_actuator=True,
+    )
+    assert mode == ExecutionMode.SEALED
+
+
+def test_select_mode_refuses_restricted_when_no_protective_mode() -> None:
+    """Issue #52 — restricted tier with neither Pattern ③ nor ⑤ available
+    fails closed (FR-047), never silently de-escalating to ②/①."""
+    from capabledeputy.mode.dispatcher import select_mode
+
+    with pytest.raises(ModeSelectionError):
+        select_mode(_restricted_state(), _registry_with(handles=False))
