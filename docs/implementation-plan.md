@@ -26,9 +26,17 @@ Two themes drive priority, both from `docs/security-alignment-assessment.md`:
 | #52 | Restricted-tier Pattern ③/⑤ floor in per-turn select_mode | v0.17 / #43 |
 | #53 | `capdep policy models` — loud Biba gap | v0.17 / #43 |
 | #46 | DecisionInspector / Starlark loader (layer is now LIVE) | v0.16 / #41 |
-| #47 | Starlark starter library (partial — see deps) | v0.16 / #41 |
+| #48 | Read-only session-history summary → inspectors (frequency policy) | v0.16 / #41 |
+| #49 | `capdep why` — explain the rule/floor/inspector that fired | v0.17 / #43 |
+| #47 | Starlark starter library (4 scripts + 2 builtins; 2 scripts blocked) | v0.16 / #41 |
 | #5 | Dynamic filesystem labeling | v0.16 / #42 |
-| #33, #34 | Design docs: Workspace capability mapping + email labeling | v0.16 / #42 |
+| #33 | Design: Workspace capability mapping | v0.16 / #42 |
+| #34 | Email labeling — design + content-rule impl (raise-only labeler) | v0.16 / #42 |
+| #13 | Credential vault (spawn-time; per-call needs #15/#16) | v0.17 |
+
+**EPIC #41 essentially complete** (layer live, frequency policy, `capdep why`).
+**EPIC #42 core shipped** (catalog tiers, fs + email labelers); remaining
+is #51 (canonical ids) + the identity-dependent email layers.
 
 ---
 
@@ -126,9 +134,16 @@ Deferred provider backends + formal work. Pull forward on demand.
 agent-loop cancel (#23/#31/#32) ── coordinate with #2's loop changes
 ```
 
-## Recommended next 3
+## Recommended next 3 (refreshed)
 
-1. **#48** — small, unblocks the rest of #47; finishes the refinement epic.
-2. **email labeler** (impl of #34) — reuse the #5 labeler; biggest
-   remaining labeling-oracle win after fs.
-3. **#13** credential vault — top standalone P1; independent, ships value.
+1. **#51** SourcePort canonical ids (Gmail/Drive/Calendar) — unblocks the
+   identity-dependent layers of #33/#34 (external-recipient gates,
+   Message-ID binding, sender-provenance) and hardens confused-deputy.
+2. **#54** purpose-contamination visible audit residual (P2) — closes the
+   most-cited honest gap (P4) with a visible signal, even pre-enforcement.
+3. **#11** quarantined-extract schema library (P2) — EmailForwardable /
+   WebPagePublicFacts; complements the email labeler + dual-LLM path.
+
+Container-per-call isolation (#15/#16) is the prerequisite for the
+*remaining* halves of #13 (echo-resistance) — pull it forward if
+credential echo-resistance becomes a priority.
