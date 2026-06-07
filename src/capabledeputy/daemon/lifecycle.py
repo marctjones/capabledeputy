@@ -457,6 +457,13 @@ async def run_daemon(
     skills_env = os.environ.get("CAPDEP_SKILLS_DIR")
     skills_dir = Path(skills_env) if skills_env else None
 
+    # Issue #5 — dynamic filesystem labeling. Load the operator's
+    # fs_label_rules.yaml (absent ⇒ no-op labeler) so fs reads attach
+    # Axis-A category labels and local-file data participates in IFC.
+    from capabledeputy.policy.fs_labeling import load_fs_label_rules
+
+    fs_labeler = load_fs_label_rules(_resolve_v09_configs_dir() / "fs_label_rules.yaml")
+
     app = App(
         state_db_path=state_db_path,
         audit_log_path=audit_log_path,
@@ -466,6 +473,7 @@ async def run_daemon(
         enable_policy_preview=enable_policy_preview,
         policy_context=policy_context,
         purposes=purposes_registry,
+        fs_labeler=fs_labeler,
     )
     await app.startup()
 

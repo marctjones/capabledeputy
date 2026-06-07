@@ -1,0 +1,39 @@
+# Dynamic filesystem labeling rules (Issue #5, FR-024/FR-025).
+#
+# Copy to `fs_label_rules.yaml` in your configs dir to turn it on. Each
+# rule attaches Axis-A category labels to `fs.read` / `fs.read_pdf`
+# results when the path (or, for content rules, the file body) matches.
+# Labels are RAISE-ONLY — they escalate a session's sensitivity, never
+# lower it — so a label, once attached at read time, propagates through
+# every later policy decision (an exfil pivot is then blocked at egress).
+#
+# Match facets (a rule fires if ANY facet matches):
+#   path_prefix   : str | [str]   — matched on the expanduser'd path
+#   filename_glob : str | [str]   — fnmatch on the basename
+#   content_regex : str | [str]   — searched in the file body (opt-in tier)
+#
+# Labels: "confidential.<category>" (tier resolved from labels.yaml, #50)
+# or a provenance string (untrusted.external / trusted.user_direct).
+# An empty/absent file means fs labeling is off.
+
+fs_label_rules:
+  - match:
+      path_prefix: "~/Documents/Financial/"
+    labels: [confidential.financial]
+
+  - match:
+      path_prefix: ["~/.ssh/", "~/.aws/", "~/.gnupg/"]
+    labels: [confidential.credentials]
+
+  - match:
+      filename_glob: ["*.key", "*.pem", "id_rsa*", "*password*"]
+    labels: [confidential.credentials]
+
+  # Content tier (opt-in): only consulted when the file body is read.
+  - match:
+      content_regex: "BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY"
+    labels: [confidential.credentials]
+
+  - match:
+      path_prefix: "~/Documents/Medical/"
+    labels: [confidential.health]

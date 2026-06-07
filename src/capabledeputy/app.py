@@ -41,7 +41,12 @@ class App:
         policy_context: PolicyContext | None = None,
         purposes: Purposes | None = None,
         resources: StaticResourcePublisher | None = None,
+        fs_labeler: Any = None,
     ) -> None:
+        # Issue #5 — dynamic filesystem labeling. When provided (loaded
+        # from configs/fs_label_rules.yaml), fs reads attach Axis-A
+        # category labels so local-file data participates in IFC.
+        self._fs_labeler = fs_labeler
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(state_db_path or default_state_db_path())
         # Resolve quarantined LLM first so we can signal availability
@@ -125,7 +130,7 @@ class App:
             self.registry.register(tool)
         for tool in make_tasks_tools(self.tasks):
             self.registry.register(tool)
-        for tool in make_fs_tools():
+        for tool in make_fs_tools(self._fs_labeler):
             self.registry.register(tool)
         for tool in make_resources_tools(self.resources):
             self.registry.register(tool)
