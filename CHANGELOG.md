@@ -4,9 +4,87 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
-## [Unreleased] — 0.15.2
+## [0.16.0] — 2026-06-07
 
-- **Feature (#13): sandboxed Starlark policy host.** `StarlarkScriptHost`
+Policy expressiveness & labeling. The dormant decision-refinement layer is
+now **live**, the labeling oracle covers **local files and email**, every
+decision is **explainable**, and the documented model gaps are hardened —
+plus a credential vault and the v0.15.2-dev substrate work. Folds in the
+unreleased 0.15.2 items.
+
+### Decision-refinement layer (EPIC #41 — now active)
+
+- **Feature (#46): the refinement layer is ON.** A daemon-config
+  `decision_inspectors:` block (`policy/decision_inspector_loader.py`) is
+  loaded into `PolicyContext`: builtins (`self_egress_relaxer`,
+  `after_hours_purchase_tightener`) + operator scripts compiled via
+  `get_script_host(runtime)` and wrapped in an async `ScriptDecisionInspector`.
+  The chokepoint awaits async inspectors. Fail-closed at load; eval-time
+  errors caught + audited as abstain.
+- **Security (review fix): bounded relax.** A DecisionInspector `relax`
+  can only soften a `REQUIRE_APPROVAL` base to `ALLOW`; `DENY` /
+  `OVERRIDE_REQUIRED` are structural floors and non-relaxable (FR-026).
+  Attempts are refused + audited — closes a hole where a script could
+  relax a structural DENY → ALLOW.
+- **Feature (#48): frequency policy.** Inspectors receive a bounded,
+  read-only `session["history"]` (per-kind cumulative counts) so scripts
+  can express "N sends this session → require approval."
+- **Feature (#47): starter library.** Five reviewed Starlark scripts
+  (`sensitive_egress_confirm`, `purpose_scoped_relax`, `frequency_cap`,
+  `relationship_relax`) + the two builtins; `configs/policies/` +
+  `configs/decision-inspectors.example.yaml`. Relationship-aware relax
+  resolves the target's RelationshipGroups into `action["relationship_groups"]`.
+- **Feature (#49): `capdep why`.** Explains a decision — base rule +
+  reason, v2 outcome + matched rule ids, the correlated inspector
+  adjustment, and any relaxation refusal.
+
+### Labeling oracle (EPIC #42 — core)
+
+- **Feature (#50): catalog-aware tiers.** The flat-string label path
+  resolves each category's tier from `labels.yaml` instead of flattening
+  to `REGULATED` (health/financial are `restricted`), restoring BLP
+  clearance strength on that path.
+- **Feature (#5): dynamic filesystem labeling.** `policy/fs_labeling.py`
+  attaches raise-only Axis-A category labels to `fs.read`/`fs.read_pdf`
+  (path-prefix / filename-glob / content-regex tiers), so local-file data
+  participates in IFC. `configs/fs_label_rules.example.yaml` + RFC.
+- **Feature (#34): email labeling.** `policy/email_labeling.py` — a
+  raise-only per-message labeler (from_domain / from_address / subject /
+  body) wired through a generic `result_labeler` hook on the upstream
+  adapter; design in `docs/email-labeling-design.md`.
+- **Docs (#33):** `docs/google-workspace-capability-mapping.md`.
+
+### Gap hardening (EPIC #43) & reliability
+
+- **Fix (#52): restricted-tier mode floor.** `select_mode` now routes a
+  `restricted`-tier turn to Pattern ③ REFERENCE / ⑤ SEALED (or fails
+  closed), instead of silently de-escalating to Pattern ②/①.
+- **Feature (#53): loud Biba gap.** `capdep policy models` prints each
+  model's honest scope and flags Biba's one-direction limit.
+- **Fix (#2): agent-loop auditability.** `AGENT_LOOP_EXCEEDED` /
+  `AGENT_LOOP_THRASHING` audit events with the last-N tool calls; a thrash
+  guard stops repeated identical calls early; `agent_max_iterations`
+  configurable; `capdep audit --filter`.
+
+### Credential vault
+
+- **Feature (#13, spawn-time): credential vault.**
+  `upstream/credential_vault.py` — a mode-0600 vault holds upstream
+  secrets out of the daemon config, the daemon's broad env, the audit log,
+  and the LLM context; injected into each server's spawn env, audited by
+  ref (`credential.injected`). Per-call echo-resistance deferred to
+  container isolation (#15/#16).
+
+### Docs
+
+- `docs/security-alignment-assessment.md` (grounded model/pattern/principle
+  scorecard), `docs/implementation-plan.md` (milestones + dependency
+  graph), README "How it works — and its honest limits" + DESIGN §3/§15.x
+  honest-limitations sections.
+
+### Substrate (was 0.15.2-dev)
+
+- **Feature: sandboxed Starlark policy host.** `StarlarkScriptHost`
   (`substrate/policy_script_host.py`) is the real `PolicyScriptHost`
   sandbox, backed by starlark-rust via the `starlark-pyo3` binding —
   shipped as the optional extra `capabledeputy[starlark]`. Unlike the
@@ -297,6 +375,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.16.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.16.0
 [0.15.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.15.1
 [0.15.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.15.0
 [0.14.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.14.0
