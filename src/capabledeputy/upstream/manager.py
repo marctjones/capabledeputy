@@ -19,6 +19,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from types import TracebackType
+from typing import Any
 
 from capabledeputy.tools.registry import ToolRegistry
 from capabledeputy.upstream.adapter import LabeledMcpAdapter
@@ -55,11 +56,19 @@ class UpstreamManager:
         self,
         configs: list[UpstreamServerConfig],
         registry: ToolRegistry,
+        email_labeler: Any = None,
     ) -> None:
         self._configs = configs
         self._registry = registry
         self._sessions: list[LiveSession] = []
         self._adapters: list[LabeledMcpAdapter] = []
+        # Issue #34 — per-message email labeling. When provided (loaded
+        # from configs/email_label_rules.yaml), every upstream read result
+        # is run through the labeler; it returns empty for non-email
+        # output (no from/subject), so applying it to all servers is a
+        # safe, raise-only enrichment on top of each server's inherent-tag
+        # floor.
+        self._email_labeler = email_labeler
         # Per-server status tracker (operator visibility via /server).
         self._status: dict[str, UpstreamServerStatus] = {}
 
@@ -119,7 +128,18 @@ class UpstreamManager:
         live = LiveSession(config, spawn_logger=_stderr_logger)
         await live.start()
         self._sessions.append(live)
-        adapter = LabeledMcpAdapter(config=config, session=live)
+        result_labeler = None
+        if self._email_labeler is not None and getattr(self._email_labeler, "rules", ()):
+            labeler = self._email_labeler
+
+            def result_labeler(_name: str, _args: dict, output: Any) -> Any:
+                return labeler.labels_for_output(output)
+
+        adapter = LabeledMcpAdapter(
+            config=config,
+            session=live,
+            result_labeler=result_labeler,
+        )
         await adapter.register_tools(self._registry)
         self._adapters.append(adapter)
 

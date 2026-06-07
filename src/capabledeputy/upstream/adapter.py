@@ -229,11 +229,19 @@ class LabeledMcpAdapter:
         self,
         config: UpstreamServerConfig,
         session: SessionLike,
+        result_labeler: Any = None,
     ) -> None:
         self._config = config
         self._session = session
         self._registered_names: list[str] = []
         self._rejected_tools: list[str] = []
+        # Issue #34 — optional per-result labeler. Called as
+        # result_labeler(tool_name, args, output) -> LabelState and merged
+        # (raise-only) into the result's additional_tags. The email
+        # labeler is wired here for Gmail-classed servers so incoming mail
+        # gets per-message Axis-A category labels on top of the server's
+        # inherent-tag floor. None ⇒ no per-result labeling.
+        self._result_labeler = result_labeler
 
     @property
     def name(self) -> str:
@@ -407,6 +415,17 @@ class LabeledMcpAdapter:
             additional = LabelState()
             if getattr(result, "isError", False):
                 output = {"upstream_error": True, **output}
+            elif self._result_labeler is not None:
+                # Raise-only: merge any per-message labels the labeler
+                # derives from the output (#34). Failures never break the
+                # read — labeling is best-effort enrichment on top of the
+                # server's inherent-tag floor.
+                try:
+                    extra = self._result_labeler(upstream_name, args, output)
+                except Exception:
+                    extra = LabelState()
+                if extra is not None and (extra.a or extra.b):
+                    additional = most_restrictive_inherit(additional, extra)
 
             output = _maybe_truncate_output(output)
             return ToolResult(output=output, additional_tags=additional)

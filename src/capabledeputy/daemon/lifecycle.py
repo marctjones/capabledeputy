@@ -605,9 +605,22 @@ async def run_daemon(
             file=__import__("sys").stderr,
         )
 
+    # Issue #34 — load the per-message email labeler (absent ⇒ no-op) and
+    # hand it to the manager so Gmail (and any email-shaped) reads get
+    # per-message Axis-A category labels on top of the server's floor.
+    from capabledeputy.policy.email_labeling import load_email_label_rules
+
+    email_labeler = load_email_label_rules(
+        _resolve_v09_configs_dir() / "email_label_rules.yaml",
+    )
+
     try:
         if upstream_configs:
-            async with UpstreamManager(upstream_configs, app.registry) as manager:
+            async with UpstreamManager(
+                upstream_configs,
+                app.registry,
+                email_labeler=email_labeler,
+            ) as manager:
                 # Stash manager on app so /server (daemon.info RPC) can
                 # read per-upstream-server status. App doesn't strongly
                 # depend on the manager type — duck-typed `server_status`.
