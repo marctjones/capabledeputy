@@ -737,6 +737,41 @@ class LabeledToolClient:
             return proposed
 
         new_decision, rule_with_origin, rationale = composed
+
+        # Guardrail (#41/#46, FR-026 bounded-relax): a DecisionInspector
+        # RELAX may only soften a REQUIRE_APPROVAL to ALLOW. It must NEVER
+        # cross a structural floor — DENY and OVERRIDE_REQUIRED come from
+        # the capability / BLP / Biba / conflict-invariant gates and are
+        # NOT operator-relaxable (otherwise an operator-authored script
+        # could neutralize a structural security guarantee). Tightens are
+        # always honored. Without this clamp the composition would happily
+        # relax DENY → ALLOW.
+        from capabledeputy.substrate.decision_inspector_port import (
+            is_strictly_less_restrictive,
+        )
+
+        if (
+            is_strictly_less_restrictive(new_decision, proposed.decision)
+            and proposed.decision != Decision.REQUIRE_APPROVAL
+        ):
+            await self._audit.write(
+                Event(
+                    event_type=EventType.RELAXATION_REFUSED,
+                    session_id=session_id,
+                    payload={
+                        "tool": tool_name,
+                        "refused_rule": rule_with_origin,
+                        "base_decision": proposed.decision.value,
+                        "attempted_decision": new_decision.value,
+                        "reason": (
+                            "inspector relax may not cross a structural floor "
+                            "(only REQUIRE_APPROVAL is relaxable)"
+                        ),
+                    },
+                ),
+            )
+            return proposed
+
         from dataclasses import replace as _dc_replace
 
         adjusted = _dc_replace(

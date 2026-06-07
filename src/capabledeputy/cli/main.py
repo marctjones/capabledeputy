@@ -557,7 +557,8 @@ def _explain_decision(
     nearest preceding decision-inspector adjustment for the same tool."""
     payload = decided.get("payload", {})
     tool_name = payload.get("tool")
-    idx = events.index(decided)
+    # Identity-based locate — robust to two decisions with equal payloads.
+    idx = next((i for i, e in enumerate(events) if e is decided), len(events))
     inspector_adjustment = None
     for prior in reversed(events[:idx]):
         et = prior.get("event_type")

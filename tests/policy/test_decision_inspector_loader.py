@@ -266,6 +266,54 @@ async def test_chokepoint_awaits_async_script_inspector(tmp_path) -> None:
     assert "self-test-relax" in (adjusted.rule or "")
 
 
+async def test_chokepoint_refuses_relax_of_structural_floor(tmp_path) -> None:
+    """Security guardrail (#41/#46): a script relax must NOT cross a
+    structural DENY floor — it may only soften REQUIRE_APPROVAL to ALLOW."""
+    from capabledeputy.audit.writer import AuditWriter
+    from capabledeputy.policy.engine import PolicyDecision
+    from capabledeputy.session.graph import SessionGraph
+    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
+
+    # A greedy script that always tries to relax to ALLOW.
+    greedy = (
+        "def inspect(action, session, proposed_outcome):\n"
+        '    return relax(to="allow", rule="greedy", rationale="always allow")\n'
+    )
+    audit = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(audit=audit)
+    (insp,) = load_decision_inspectors(
+        {"decision_inspectors": [{"source": greedy, "runtime": "python-reference"}]},
+    )
+    client = LabeledToolClient(
+        ToolRegistry(),
+        graph,
+        audit,
+        policy_context=PolicyContext(decision_inspectors=(insp,)),
+    )
+    action = Action(kind=CapabilityKind.SEND_EMAIL, target="x@y.com")
+
+    # DENY base ⇒ relax refused, stays DENY.
+    denied = await client._apply_decision_inspectors(
+        None, object(), action, "email.send",
+        PolicyDecision(decision=Decision.DENY, rule="blp-floor"),
+    )
+    assert denied.decision == Decision.DENY
+
+    # OVERRIDE_REQUIRED base ⇒ also refused.
+    over = await client._apply_decision_inspectors(
+        None, object(), action, "email.send",
+        PolicyDecision(decision=Decision.OVERRIDE_REQUIRED, rule="override-floor"),
+    )
+    assert over.decision == Decision.OVERRIDE_REQUIRED
+
+    # REQUIRE_APPROVAL base ⇒ the legitimate relax goes through.
+    relaxed = await client._apply_decision_inspectors(
+        None, object(), action, "email.send",
+        PolicyDecision(decision=Decision.REQUIRE_APPROVAL, rule="approval"),
+    )
+    assert relaxed.decision == Decision.ALLOW
+
+
 async def test_chokepoint_survives_buggy_script(tmp_path) -> None:
     """A script that errors at evaluation must be caught + audited as
     abstain, never crash the chokepoint (fail-safe at runtime)."""
