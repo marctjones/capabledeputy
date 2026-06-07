@@ -614,6 +614,41 @@ async def run_daemon(
         _resolve_v09_configs_dir() / "email_label_rules.yaml",
     )
 
+    # Issue #13 — credential vault. Resolve each upstream server's secrets
+    # from the mode-0600 vault and merge them into that server's spawn env,
+    # so credentials stay out of the committed config and the daemon's
+    # broad environment. The audit records only the vault REF, never the
+    # value. (Per-call / env-echo resistance for a tool that dumps its own
+    # env needs container isolation — #15/#16; documented in the vault.)
+    if upstream_configs:
+        from capabledeputy.audit.events import Event, EventType
+        from capabledeputy.upstream.credential_vault import (
+            default_vault_path,
+            load_credential_vault,
+        )
+
+        vault = load_credential_vault(default_vault_path())
+        if vault.entries:
+            merged_configs = []
+            for cfg in upstream_configs:
+                secret_env = vault.env_for(cfg.name)
+                if secret_env:
+                    cfg = dataclasses.replace(cfg, env={**cfg.env, **secret_env})
+                    await app.audit.write(
+                        Event(
+                            event_type=EventType.CREDENTIAL_INJECTED,
+                            payload={
+                                "server": cfg.name,
+                                "refs": vault.refs_for(cfg.name),
+                                "capability_kinds": list(
+                                    vault.entries[cfg.name].capability_kinds,
+                                ),
+                            },
+                        ),
+                    )
+                merged_configs.append(cfg)
+            upstream_configs = merged_configs
+
     try:
         if upstream_configs:
             async with UpstreamManager(

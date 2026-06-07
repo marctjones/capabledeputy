@@ -61,6 +61,8 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         "enforcement",
         # Issue #2 — agent-loop abnormal termination (cap fire / thrash).
         "agent",
+        # Issue #13 — credential-vault injection.
+        "credential",
     }
     for et in EventType:
         head, sep, _ = et.value.partition(".")
@@ -128,6 +130,8 @@ def test_event_type_taxonomy_matches_design() -> None:
         # Issue #2 — agent-loop abnormal termination.
         "agent.loop_exceeded",
         "agent.loop_thrashing",
+        # Issue #13 — credential-vault injection.
+        "credential.injected",
     }
     actual = {et.value for et in EventType}
     assert actual == expected, f"missing: {expected - actual}, extra: {actual - expected}"
