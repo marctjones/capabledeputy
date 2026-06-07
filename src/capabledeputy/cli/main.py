@@ -481,6 +481,104 @@ def trace_command(
         )
 
 
+@app.command("why")
+def why_command(
+    session_id: Annotated[
+        str | None,
+        typer.Option("--session", help="Filter to one session id"),
+    ] = None,
+    tool: Annotated[
+        str | None,
+        typer.Option("--tool", help="Filter to one tool name"),
+    ] = None,
+    last: Annotated[
+        int,
+        typer.Option(help="How many recent decisions to explain"),
+    ] = 1,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Explain a policy decision (#49): the rule / floor / inspector that
+    fired. Reads the audit log and, for each recent `policy.decided`, shows
+    the base rule + reason, the v2 outcome + matched rule ids, and any
+    decision-inspector adjustment or relaxation refusal that shaped it."""
+    import json as _json
+
+    client = DaemonClient(default_socket_path())
+    params: dict[str, object] = {"limit": 2000}
+    if session_id:
+        params["session_id"] = session_id
+    events = anyio.run(client.call, "audit.list", params)["events"]
+
+    decided = [e for e in events if e.get("event_type") == "policy.decided"]
+    if tool:
+        decided = [e for e in decided if e.get("payload", {}).get("tool") == tool]
+    if not decided:
+        err_console.print("[yellow]no matching policy decisions in the audit log[/yellow]")
+        raise typer.Exit(code=1)
+
+    explanations = [_explain_decision(d, events) for d in decided[-last:]]
+
+    if json_output:
+        console.print(_json.dumps(explanations, indent=2))
+        return
+
+    for ex in explanations:
+        color = {"allow": "green", "deny": "red", "require_approval": "yellow"}.get(
+            ex["decision"],
+            "white",
+        )
+        console.print(
+            f"\n[bold]{ex['tool']}[/bold] → [{color}]{ex['decision']}[/{color}]",
+        )
+        if ex.get("rule"):
+            console.print(f"  rule: {ex['rule']}")
+        if ex.get("reason"):
+            console.print(f"  reason: {ex['reason']}")
+        if ex.get("v2_outcome"):
+            console.print(f"  v2 outcome: {ex['v2_outcome']}")
+        if ex.get("v2_matched_rule_ids"):
+            console.print(f"  matched rules: {', '.join(ex['v2_matched_rule_ids'])}")
+        adj = ex.get("inspector_adjustment")
+        if adj:
+            console.print(
+                f"  [cyan]inspector:[/cyan] {adj['applied_rule']} "
+                f"({adj['original_decision']} → {adj['adjusted_decision']})"
+                + (f" — {adj['rationale']}" if adj.get("rationale") else ""),
+            )
+        if ex.get("relaxation_refused"):
+            console.print("  [red]relaxation refused (FR-031 asymmetry)[/red]")
+
+
+def _explain_decision(
+    decided: dict[str, Any],
+    events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Assemble the explanation for one `policy.decided`, correlating the
+    nearest preceding decision-inspector adjustment for the same tool."""
+    payload = decided.get("payload", {})
+    tool_name = payload.get("tool")
+    idx = events.index(decided)
+    inspector_adjustment = None
+    for prior in reversed(events[:idx]):
+        et = prior.get("event_type")
+        if et in ("policy.decided",):
+            break  # don't cross into the previous decision
+        if et == "decision_inspector.applied" and prior.get("payload", {}).get("tool") == tool_name:
+            inspector_adjustment = prior.get("payload")
+            break
+    return {
+        "tool": tool_name,
+        "decision": payload.get("decision", "?"),
+        "rule": payload.get("rule"),
+        "reason": payload.get("reason"),
+        "v2_outcome": payload.get("v2_outcome"),
+        "v2_matched_rule_ids": payload.get("v2_matched_rule_ids", []),
+        "inspector_adjustment": inspector_adjustment,
+        "relaxation_refused": bool(payload.get("refused_relax_inputs")),
+        "timestamp": decided.get("timestamp"),
+    }
+
+
 console = Console()
 err_console = Console(stderr=True)
 
