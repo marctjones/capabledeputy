@@ -98,8 +98,11 @@ operator-written policy scripts. Two implementations:
 - `SafePythonScriptHost` — pure-Python reference; AST-validated,
   step-counted, hermetic. NOT a security boundary; useful for
   prototyping the operator's policy language.
-- Starlark host via `starlark-rust + PyO3` — deferred but the port
-  is in place; drop-in replacement when needed.
+- `StarlarkScriptHost` — the real sandbox, via `starlark-rust` (the
+  `starlark-pyo3` binding; optional extra `capabledeputy[starlark]`).
+  Language-level isolation: no imports, builtins, or I/O. Pick a host
+  via `get_script_host(runtime_kind)` (fail-closed on unknown). Trust
+  model + residual risks: `specs/004-mcp-and-substrate/starlark-policy-host-threat-model.md`.
 
 Operator scripts implement the `inspect(action, session,
 proposed_outcome)` shape:

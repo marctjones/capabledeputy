@@ -4,6 +4,25 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [Unreleased] — 0.15.2
+
+- **Feature (#13): sandboxed Starlark policy host.** `StarlarkScriptHost`
+  (`substrate/policy_script_host.py`) is the real `PolicyScriptHost`
+  sandbox, backed by starlark-rust via the `starlark-pyo3` binding —
+  shipped as the optional extra `capabledeputy[starlark]`. Unlike the
+  best-effort AST-filtered `SafePythonScriptHost`, Starlark gives
+  *language-level* isolation: a policy script has no imports, no Python
+  builtins, and no I/O — only the injected action/session/proposed_outcome
+  dicts and the `relax`/`tighten`/`abstain` helpers (same contract as the
+  reference host). New `get_script_host(runtime_kind)` registry/factory
+  (fail-closed on unknown). The runtime is lazily imported and raises a
+  typed `PolicyScriptHostUnavailableError` when the extra is absent.
+  Threat model + residual risks (no hard step/CPU budget yet) documented
+  in `specs/004-mcp-and-substrate/starlark-policy-host-threat-model.md`.
+  (WebAssembly/wasmtime host dropped — Starlark covers the need.)
+- **Test**: fixed the flaky `test_run_status_stop_lifecycle` (socket-wait
+  timeout was 2s vs the daemon's ~8s startup); suite is fully green.
+
 ## [0.15.1] — 2026-06-06
 
 Post-0.15.0 cleanup of deferred redesign debt (no behavior change).

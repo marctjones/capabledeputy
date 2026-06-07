@@ -1,6 +1,6 @@
 [project]
 name = "capabledeputy"
-version = "0.15.1"
+version = "0.15.2.dev0"
 description = "Structurally secure runtime for personal AI agents — a capable deputy, never a confused one."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -42,6 +42,14 @@ dependencies = [
     "google-auth-httplib2>=0.4.0",
 ]
 
+[project.optional-dependencies]
+# Sandboxed policy-script runtime (spec-004 P3). Optional: only operators
+# who author Starlark policy scripts need it. `StarlarkScriptHost` lazily
+# imports it and raises a clear error when the extra is absent, so the
+# core install does not pay the cost. Install with `capabledeputy[starlark]`.
+# Binding: starlark-pyo3 (PyO3 wrapper over starlark-rust); module `starlark`.
+starlark = ["starlark-pyo3>=2026.1"]
+
 [project.scripts]
 capdep = "capabledeputy.cli.main:app"
 
@@ -59,6 +67,9 @@ dev = [
     "pyright>=1.1.385",
     "hypothesis>=6.115",
     "pexpect>=4.9.0",
+    # so the StarlarkScriptHost tests run in CI/dev (the runtime dep
+    # itself is an optional extra for end users).
+    "starlark-pyo3>=2026.1",
 ]
 
 [tool.ruff]
