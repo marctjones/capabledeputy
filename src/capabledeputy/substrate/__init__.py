@@ -18,4 +18,8 @@ Members:
 - policy_script_host.py (port + SafePythonScriptHost ref + StarlarkScriptHost
   sandbox — DONE; Starlark via the optional capabledeputy[starlark] extra)
 - inspector_port.py   (T121 — Phase 2a, here)
+
+Candidate future providers (what to add behind each port, why, and the
+value to a typical user's workflow):
+``specs/004-mcp-and-substrate/substrate-provider-candidates.md``.
 """

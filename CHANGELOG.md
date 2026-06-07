@@ -34,6 +34,12 @@ breaking changes).
   was already implemented; it is the ephemeral `EXECUTE.sandbox` runtime,
   complementary to `PodmanDevbox`'s persistent `EXECUTE.devbox`, not a
   replacement. Modal/Firecracker actuators remain deferred to v1.1+.)
+- **Docs**: `specs/004-mcp-and-substrate/substrate-provider-candidates.md`
+  — candidate providers behind each substrate port (Gmail/Drive/SharePoint/
+  S3 source + versioned-write, gVisor/Firecracker/Modal actuators, …),
+  with what each does, why, and the value to a typical user's workflow,
+  plus the autonomy (`reversible/system`) and anti-confused-deputy
+  mechanics that make each worth building.
 - **Test**: fixed the flaky `test_run_status_stop_lifecycle` (socket-wait
   timeout was 2s vs the daemon's ~8s startup); suite is fully green.
 
