@@ -34,3 +34,17 @@ class VersionedWritePort(ABC):
         """Read the pre-write state's hash for verification. Return
         None if the handle has expired or never existed — the policy
         verifier converts that into IRREVERSIBLE/EXTERNAL."""
+
+
+# Provider registry. New backends (s3-object-lock, sharepoint, …) add a
+# branch here + a module implementing `VersionedWritePort`; callers select
+# by `kind` (e.g. from daemon.yaml). Lazy import keeps this port module
+# free of its concrete providers.
+def get_versioned_write_port(kind: str, **kwargs: object) -> VersionedWritePort:
+    """Construct a VersionedWritePort provider. Fail-closed on unknown
+    kind (Constitution VI)."""
+    if kind == "git":
+        from capabledeputy.substrate.git_versioned_write import GitVersionedWritePort
+
+        return GitVersionedWritePort(**kwargs)  # type: ignore[arg-type]
+    raise ValueError(f"unknown versioned-write provider {kind!r}; known: ['git']")

@@ -7,8 +7,10 @@ implementation raises NotImplementedError at first call — never
 silently best-effort.
 
 Members:
-- source_port.py      (port defined; concrete provider deferred to T075 — US6)
-- version_write_port.py (port defined; concrete provider deferred to T075 — US6)
+- source_port.py      (port + GitSourcePort provider — git_source.py; more
+  backends via `get_source_port(kind)`)
+- version_write_port.py (port + GitVersionedWritePort provider —
+  git_versioned_write.py; more backends via `get_versioned_write_port(kind)`)
 - sandbox_actuator.py (port; concrete impl DONE — PodmanSandboxActuator in
   podman_sandbox.py, the ephemeral `EXECUTE.sandbox` runtime. Its
   persistent counterpart for `EXECUTE.devbox` is PodmanDevbox in

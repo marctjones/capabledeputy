@@ -20,6 +20,20 @@ breaking changes).
   Threat model + residual risks (no hard step/CPU budget yet) documented
   in `specs/004-mcp-and-substrate/starlark-policy-host-threat-model.md`.
   (WebAssembly/wasmtime host dropped — Starlark covers the need.)
+- **Feature (#12): git-backed substrate providers.** First concrete
+  implementations behind the source/version-write ports:
+  `GitVersionedWritePort` (`substrate/git_versioned_write.py`) commits
+  each write to a git repo and surfaces a `<commit>:<path>`
+  `prior_version_handle` that `read_prior_version_hash` resolves with
+  `git show` — so `verify_write_discipline` earns `reversible/system`
+  (FR-044). `GitSourcePort` (`substrate/git_source.py`) canonicalizes
+  targets to stable `git:<repo-relative>` ids, fail-closed on path
+  escapes (FR-048). Selected via `get_source_port`/
+  `get_versioned_write_port` registries (modular — new backends plug in
+  behind the same ports). (Clarification: the Podman `SandboxActuator`
+  was already implemented; it is the ephemeral `EXECUTE.sandbox` runtime,
+  complementary to `PodmanDevbox`'s persistent `EXECUTE.devbox`, not a
+  replacement. Modal/Firecracker actuators remain deferred to v1.1+.)
 - **Test**: fixed the flaky `test_run_status_stop_lifecycle` (socket-wait
   timeout was 2s vs the daemon's ~8s startup); suite is fully green.
 
