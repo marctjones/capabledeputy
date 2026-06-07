@@ -82,6 +82,9 @@ def _action_to_dict(action: Any) -> dict[str, Any]:
         "kind": kind,
         "target": (getattr(action, "target", "") or ""),
         "amount": getattr(action, "amount", None),
+        # #47 — relationship-group membership of the target (resolved at
+        # the chokepoint), so scripts can do relationship-aware relaxes.
+        "relationship_groups": sorted(getattr(action, "relationship_group_ids", ()) or ()),
     }
 
 

@@ -696,16 +696,38 @@ class LabeledToolClient:
             return proposed
 
         from inspect import isawaitable
+        from types import SimpleNamespace
 
         from capabledeputy.substrate.decision_inspector_port import (
             compose_inspector_outcomes,
+        )
+
+        # #47 — resolve the action target's relationship-group membership
+        # (Cookbook P2.3) so inspectors can express relationship-aware
+        # decisions ("relax email to family"). Resolved here because the
+        # chokepoint holds the RelationshipGroups registry; surfaced to
+        # scripts as action["relationship_groups"]. Non-recipient targets
+        # (paths/urls) resolve to no groups.
+        groups: tuple[str, ...] = ()
+        rg = getattr(self._policy_context, "relationship_groups", None)
+        target = getattr(action, "target", None)
+        if rg is not None and target:
+            try:
+                groups = tuple(sorted(rg.resolve(str(target))))
+            except Exception:
+                groups = ()
+        inspect_action = SimpleNamespace(
+            kind=action.kind,
+            target=getattr(action, "target", ""),
+            amount=getattr(action, "amount", None),
+            relationship_group_ids=groups,
         )
 
         outcomes: list[tuple[str, Any]] = []
         for inspector in self._policy_context.decision_inspectors:
             try:
                 oc = inspector.inspect(
-                    action=action,
+                    action=inspect_action,
                     session=session,
                     proposed_outcome=proposed,
                 )

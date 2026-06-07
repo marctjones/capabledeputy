@@ -216,6 +216,64 @@ async def test_history_summary_enables_frequency_cap(tmp_path) -> None:
     assert out2 is None
 
 
+_REL_SCRIPT = """
+def inspect(action, session, proposed_outcome):
+    if proposed_outcome["decision"] != "require_approval":
+        return abstain()
+    if "family" in action["relationship_groups"] and action["kind"] == "SEND_EMAIL":
+        return relax(to="allow", rule="family-relax", rationale="vetted")
+    return abstain()
+"""
+
+
+async def test_relationship_groups_resolved_into_inspector(tmp_path) -> None:
+    """#47 — the chokepoint resolves the target's relationship groups and
+    surfaces them to scripts as action['relationship_groups'], enabling a
+    relationship-aware relax."""
+    from capabledeputy.audit.writer import AuditWriter
+    from capabledeputy.policy.engine import PolicyDecision
+    from capabledeputy.policy.relationships import RelationshipGroup, RelationshipGroups
+    from capabledeputy.session.graph import SessionGraph
+    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
+
+    audit = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(audit=audit)
+    (insp,) = load_decision_inspectors(
+        {"decision_inspectors": [{"source": _REL_SCRIPT, "runtime": "python-reference"}]},
+    )
+    rg = RelationshipGroups(
+        groups={
+            "family": RelationshipGroup(
+                group_id="family",
+                member_principal_ids=frozenset({"spouse@home.example"}),
+            ),
+        },
+    )
+    client = LabeledToolClient(
+        ToolRegistry(),
+        graph,
+        audit,
+        policy_context=PolicyContext(decision_inspectors=(insp,), relationship_groups=rg),
+    )
+    proposed = PolicyDecision(decision=Decision.REQUIRE_APPROVAL, rule="approval")
+
+    # Recipient in the family group ⇒ relax to ALLOW.
+    out = await client._apply_decision_inspectors(
+        None, object(),
+        Action(kind=CapabilityKind.SEND_EMAIL, target="spouse@home.example"),
+        "email.send", proposed,
+    )
+    assert out.decision == Decision.ALLOW
+
+    # A stranger ⇒ no relax, stays REQUIRE_APPROVAL.
+    out2 = await client._apply_decision_inspectors(
+        None, object(),
+        Action(kind=CapabilityKind.SEND_EMAIL, target="stranger@elsewhere.example"),
+        "email.send", proposed,
+    )
+    assert out2.decision == Decision.REQUIRE_APPROVAL
+
+
 def test_script_path_relative_to_base_dir(tmp_path) -> None:
     (tmp_path / "p.py").write_text(_RELAX_SCRIPT)
     cfg = {
