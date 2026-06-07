@@ -695,6 +695,8 @@ class LabeledToolClient:
         if self._policy_context is None or not self._policy_context.decision_inspectors:
             return proposed
 
+        from inspect import isawaitable
+
         from capabledeputy.substrate.decision_inspector_port import (
             compose_inspector_outcomes,
         )
@@ -707,6 +709,11 @@ class LabeledToolClient:
                     session=session,
                     proposed_outcome=proposed,
                 )
+                # Script-backed inspectors (#46) are async — they await the
+                # script host's off-event-loop evaluate(). Builtin
+                # inspectors are sync. Support both transparently.
+                if isawaitable(oc):
+                    oc = await oc
             except Exception as e:
                 # A buggy inspector must not crash the chokepoint —
                 # treat as abstain + audit the failure for the operator.

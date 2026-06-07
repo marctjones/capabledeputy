@@ -186,6 +186,25 @@ def _resolve_daemon_config(config_path: Path | None) -> Path | None:
     return None
 
 
+def _read_daemon_config(path: Path) -> dict[str, Any]:
+    """Parse a daemon config file (YAML or JSON) into a dict. Empty /
+    unreadable → empty dict (the caller treats absent blocks as 'no
+    config'). Block-specific loaders (sandbox, decision_inspectors) then
+    apply their own fail-closed validation to the parsed body."""
+    if not path.is_file():
+        return {}
+    text = path.read_text(encoding="utf-8")
+    if path.suffix in {".yaml", ".yml"}:
+        import yaml
+
+        raw = yaml.safe_load(text) or {}
+    else:
+        import json
+
+        raw = json.loads(text) or {}
+    return raw if isinstance(raw, dict) else {}
+
+
 def _report_admission(manager: UpstreamManager) -> None:
     """Surface the strict-mode admission outcome to the daemon log so
     the operator can see which upstream tools were registered and which
@@ -364,6 +383,37 @@ async def run_daemon(
                 f"{len(specs)} region spec(s): "
                 f"{', '.join(s.spec_id for s in specs)}",
                 file=_sys.stderr,
+            )
+
+    # Issue #46 — turn the decision-refinement layer ON. Load any
+    # operator-authored `decision_inspectors:` from the daemon config
+    # (builtins + Starlark scripts), compile them fail-closed, and attach
+    # to the PolicyContext. Without this the chokepoint's
+    # `decision_inspectors` stays empty and the Starlark host can't affect
+    # a real decision (the dormant-layer gap from the alignment
+    # assessment). A misconfigured entry refuses daemon start.
+    if resolved_pre_app is not None and policy_context is not None:
+        import sys as _sys_di
+
+        from capabledeputy.policy.decision_inspector_loader import (
+            load_decision_inspectors,
+        )
+
+        raw_cfg = _read_daemon_config(resolved_pre_app)
+        inspectors = load_decision_inspectors(
+            raw_cfg,
+            base_dir=resolved_pre_app.parent,
+        )
+        if inspectors:
+            policy_context = dataclasses.replace(
+                policy_context,
+                decision_inspectors=inspectors,
+            )
+            print(
+                f"[policy] decision-refinement layer ON — "
+                f"{len(inspectors)} inspector(s): "
+                f"{', '.join(getattr(i, 'name', '?') for i in inspectors)}",
+                file=_sys_di.stderr,
             )
 
     # Populate ANTHROPIC_API_KEY from CLAUDEAPI.KEY in the cwd if it isn't

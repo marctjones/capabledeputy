@@ -1,0 +1,49 @@
+# Decision-inspector configuration (Issue #46) — the operator-authored
+# policy-refinement layer. Add a `decision_inspectors:` block to your
+# daemon config (the file resolved by --config / CAPDEP_CONFIG /
+# ~/.config/capabledeputy/daemon.yaml) to turn it on.
+#
+# Inspectors run AFTER the standard policy decision and may RELAX (loosen)
+# or TIGHTEN (strengthen) the outcome. Composition is monotone — TIGHTEN
+# beats RELAX, and a relax is bounded by the envelope cell and can never
+# cross a structural DENY floor. A malformed entry or a script that fails
+# to COMPILE refuses daemon start (fail-closed); a script that ERRORS at
+# evaluation is caught, audited, and treated as abstain.
+#
+# Copy the block below into your daemon config and edit to taste.
+
+decision_inspectors:
+  # --- builtins (reviewed, shipped in-repo) -------------------------------
+
+  # Auto-allow self-addressed email (the approval prompt is friction when
+  # the operator is the recipient). Only relaxes REQUIRE_APPROVAL.
+  - builtin: self_egress_relaxer
+    self_addresses: ["me@example.com", "me@work.example.com"]
+    action_kinds: ["SEND_EMAIL"]
+
+  # Require approval for late-night purchases that would otherwise
+  # auto-allow (tired-operator / compromised-session insurance). Uses the
+  # daemon clock — only builtins may read time; scripts are hermetic.
+  - builtin: after_hours_purchase_tightener
+    start_hour_utc: 22
+    end_hour_utc: 6
+    action_kinds: ["QUEUE_PURCHASE"]
+
+  # --- operator scripts (compiled in the sandboxed Starlark host) ---------
+  # `script:` paths are resolved relative to this config file's directory.
+  # `runtime:` defaults to "starlark" (the real language-level sandbox);
+  # "python-reference" is an AST-filtered ref host for prototyping only —
+  # NOT a security boundary.
+
+  - script: policies/sensitive_egress_confirm.star
+    runtime: starlark
+
+  - script: policies/purpose_scoped_relax.star
+    runtime: starlark
+
+  # Inline source is also supported (handy for one-liners / tests):
+  # - source: |
+  #     def inspect(action, session, proposed_outcome):
+  #         return abstain()
+  #   name: noop
+  #   runtime: starlark
