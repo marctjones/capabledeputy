@@ -35,7 +35,7 @@ legacy-path-only, or confirms-fires rather than tries-to-break) · ⬜ empty.
 | Biba (one-direction integrity) | ⬜ | — | no write-up / no-read-down attempt; "most under-served" |
 | Brewer-Nash (conflict) | 🟡 | no (legacy) | invariants fire; no boundary/adversarial probe |
 | Clark-Wilson (gated txn, sep-of-duty) | 🟡 | partial | destructive-op gate + override demo + certified-declassification txn (slice #2); dual-control e2e still demo-only |
-| Object-capability (confused-deputy) | ✅ | no (legacy) | no-cap + out-of-scope (pressure suite) — wants ③ redirection too |
+| Object-capability (confused-deputy) | ✅ | no (legacy) | no-cap + out-of-scope (pressure suite); override pinned-destination (trust-profile B/D) + ③ redirection (slice #3) |
 | IFC / sticky labels (Denning) | ✅ | no (legacy) | multi-step taint + accumulation (pressure suite) |
 | Noninterference (per-tier) | ⬜ | — | Pattern ③ restricted floor (#52) never exercised e2e |
 
@@ -44,7 +44,7 @@ legacy-path-only, or confirms-fires rather than tries-to-break) · ⬜ empty.
 |---|---|---|
 | ① turn-level | ✅ | everywhere |
 | ② dual-LLM (quarantine / declassify) | ⬜ | **no e2e test at all** — the safe-disclosure path |
-| ③ reference-handle (redirection-resist) | 🟡 | `data_blind_disclosure` demo only; no adversarial redirect attempt |
+| ③ reference-handle (redirection-resist) | ✅ | **slice #3** — adversarial redirect attempt: forged handle binds nothing, cross-session theft discloses nothing (end-to-end via dispatcher), value frozen at issue (no repoint path), data-blind planner. `test_pattern3_redirection_resistance.py` |
 | ⑤ sealed (containment) | ⬜ | **no test** — containment ≠ declassification footgun |
 
 ### AI-safety principles
@@ -98,8 +98,13 @@ Do ONE workflow class end-to-end (not all-unblock-then-all-build):
 2. ~~Certified declassification~~ — **DONE (slice #2)**: certified
    declassifier lowers taint so a denied read can egress; uncertified removal
    refused. Surfaced + fixed F9.
-3. **Pattern ③ redirection-resistance (adversarial).** ← *next slice.*
-   Injected "send to attacker" can't redirect a handle-bound destination.
+3. ~~Pattern ③ redirection-resistance (adversarial)~~ — **DONE (slice #3)**:
+   forged-handle / cross-session-theft / frozen-binding / data-blind all proven
+   end-to-end through the dispatcher. No bug found — confirms the guarantee
+   holds adversarially.
+4. **Pattern ② dual-LLM declassify e2e.** ← *next slice.* Confidential read →
+   quarantined extract → schema-declassified summary egresses; planner never
+   sees raw.
 4. **Pattern ② dual-LLM declassify e2e.** Confidential read → quarantined
    extract → schema-declassified summary egresses; planner never sees raw.
 5. **Operator DSL + envelope dial on real config.** RulePredicate decisions,
@@ -202,11 +207,27 @@ Everything else is iteration between the gates.
   lowering `inherent_tags`, leaving the propagated `additional_tags` tainted,
   so the hinge was silently inert. Matrix cell ✅; Clark-Wilson 🟡→partial.
 
-## Immediate next: slice #3 = Pattern ③ redirection-resistance
+- **Trust-profile arc (FR-049, A–D) — DONE, shipped in v0.17.0.** Not a single
+  matrix cell but a cross-cutting capability: `managed`|`personal` profile;
+  operator-root solo override; structural floors override-targetable; standing
+  rules cross own-data floors; grouped override. Hardened the untrusted-egress
+  ceiling and proved **override pinned-destination redirection-resistance**
+  (B/D) — which fed the object-capability row. The hard line: untrusted content
+  can at most raise an override request, never auto-trigger/redirect.
 
-A handle/reference-bound destination must resist an injected "send to
-attacker@evil" redirect: the planner operates on an opaque handle, the real
-target is resolved by the trusted substrate, so prompt-injected content can't
-repoint it. Model (capability + reference-handle pattern): authority rides the
-handle, not the model-visible string. Adversarial: injected redirect fails to
-change where the effect lands.
+- **#3 — Pattern ③ reference-handle redirection-resistance — DONE.** The
+  adversarial half the demo lacked, end-to-end through the dispatcher: a forged
+  handle binds nothing (only the opaque token flows), a cross-session-stolen
+  handle discloses nothing, the handle→value binding is frozen at issue (no
+  planner-reachable repoint), and the planner only ever holds an opaque UUID.
+  No bug found — confirms the guarantee holds adversarially.
+  `test_pattern3_redirection_resistance.py`. Matrix cell ✅.
+
+## Immediate next: slice #4 = Pattern ② dual-LLM declassify (e2e)
+
+Confidential read → quarantined extraction by an isolated LLM that never reaches
+the planner's privilege → schema-constrained declassified summary egresses;
+the planner never sees the raw confidential content. Model (dual-LLM / CaMeL
+quarantine pattern): the privileged planner and the untrusted-content processor
+are different principals. Adversarial: injection inside the quarantined content
+cannot escalate to a planner action.
