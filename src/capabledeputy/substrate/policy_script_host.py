@@ -395,12 +395,14 @@ class StarlarkScriptHost:
         session: dict[str, Any],
         proposed_outcome: dict[str, Any],
     ) -> ScriptOutcome:
-        import anyio
+        from anyio.to_thread import run_sync
 
         frozen = script.compiled_marker
         try:
             # Run off the event loop — the call into Rust is synchronous.
-            result = await anyio.to_thread.run_sync(
+            # (import run_sync directly: pyright mis-resolves the
+            # `anyio.to_thread` attribute chain on some stub versions.)
+            result = await run_sync(
                 lambda: frozen.call("inspect", action, session, proposed_outcome),
             )
         except Exception as e:

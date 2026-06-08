@@ -17,7 +17,7 @@ from capabledeputy.cli import terminal_caps
 
 
 @pytest.fixture(autouse=True)
-def reset_caps_cache() -> None:
+def reset_caps_cache():
     """Each test starts with a fresh capability cache."""
     terminal_caps.reset_cache()
     yield

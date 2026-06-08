@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Any
@@ -128,12 +129,14 @@ class UpstreamManager:
         live = LiveSession(config, spawn_logger=_stderr_logger)
         await live.start()
         self._sessions.append(live)
-        result_labeler = None
+        result_labeler: Callable[[str, dict[str, Any], Any], Any] | None = None
         if self._email_labeler is not None and getattr(self._email_labeler, "rules", ()):
             labeler = self._email_labeler
 
-            def result_labeler(_name: str, _args: dict, output: Any) -> Any:
+            def _result_labeler(_name: str, _args: dict[str, Any], output: Any) -> Any:
                 return labeler.labels_for_output(output)
+
+            result_labeler = _result_labeler
 
         adapter = LabeledMcpAdapter(
             config=config,

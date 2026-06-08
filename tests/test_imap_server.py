@@ -11,9 +11,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from capabledeputy.mcp_servers import imap
+from capabledeputy.mcp_servers._common import ToolHandler
 
 
-def _handler(name: str):
+def _handler(name: str) -> ToolHandler:
     for t in imap.tools():
         if t.name == name:
             return t.handler
@@ -125,6 +126,7 @@ async def test_list_threads_uses_gmail_xgm_raw(mock_imap_cfg) -> None:
             {"query": "is:unread", "max_results": 10},
         )
 
+    assert isinstance(result, dict)
     # The SEARCH call used X-GM-RAW for Gmail
     search_calls = [c for c in client.uid.call_args_list if c.args[0] == "SEARCH"]
     assert search_calls
@@ -164,6 +166,7 @@ async def test_list_threads_parses_uids_and_headers(mock_imap_cfg) -> None:
             {"query": "", "max_results": 5},
         )
 
+    assert isinstance(result, dict)
     assert result["count"] == 2
     assert result["messages"][0]["from"] == "alice@example.com"
     assert result["messages"][0]["subject"] == "Test"
@@ -190,6 +193,7 @@ async def test_read_message_extracts_body(mock_imap_cfg) -> None:
     ):
         result = await _handler("imap.read_message")({"uid": "100"})
 
+    assert isinstance(result, dict)
     assert result["found"] is True
     assert "Hello, this is the body." in result["body"]
     assert result["from"] == "alice@example.com"
@@ -206,6 +210,7 @@ async def test_read_message_returns_not_found_on_no_data(mock_imap_cfg) -> None:
     ):
         result = await _handler("imap.read_message")({"uid": "999"})
 
+    assert isinstance(result, dict)
     assert result["found"] is False
 
 
@@ -223,6 +228,7 @@ async def test_send_uses_smtps_for_port_465(mock_imap_cfg) -> None:
             {"to": "alice@example.com", "subject": "hi", "body": "hello"},
         )
 
+    assert isinstance(result, dict)
     smtp_client.login.assert_called_once_with("you@gmail.com", "apppassword")
     smtp_client.send_message.assert_called_once()
     assert result["sent"] is True
@@ -269,6 +275,7 @@ async def test_send_uses_starttls_for_port_587(monkeypatch) -> None:
             {"to": "alice@example.com", "subject": "hi", "body": "hello"},
         )
 
+    assert isinstance(result, dict)
     smtp_client.starttls.assert_called_once()
     smtp_client.login.assert_called_once()
     assert result["sent"] is True
@@ -292,6 +299,7 @@ async def test_list_folders_parses_imap_list(mock_imap_cfg) -> None:
     ):
         result = await _handler("imap.list_folders")({})
 
+    assert isinstance(result, dict)
     assert "INBOX" in result["folders"]
     assert "[Gmail]/Sent Mail" in result["folders"]
     assert result["count"] >= 3
@@ -308,6 +316,7 @@ async def test_archive_uses_gmail_labels_for_gmail(mock_imap_cfg) -> None:
     ):
         result = await _handler("imap.archive")({"uid": "100"})
 
+    assert isinstance(result, dict)
     # Gmail-specific: STORE -X-GM-LABELS \\Inbox
     store_calls = [c for c in client.uid.call_args_list if c.args[0] == "STORE"]
     assert store_calls
@@ -326,6 +335,7 @@ async def test_mark_read_sets_seen_flag(mock_imap_cfg) -> None:
     ):
         result = await _handler("imap.mark_read")({"uid": "100"})
 
+    assert isinstance(result, dict)
     # STORE +FLAGS (\\Seen)
     store_calls = [c for c in client.uid.call_args_list if c.args[0] == "STORE"]
     assert store_calls

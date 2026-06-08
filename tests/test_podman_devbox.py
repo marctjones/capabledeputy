@@ -391,9 +391,11 @@ def test_list_session_returns_workspace_path(devbox: PodmanDevbox) -> None:
     # Host workspace path ends in `/<spec>/work` and is under the
     # test's tmp workspace root — i.e. the entry surfaces a real
     # host path, not the container-side `/work`.
-    assert e["workspace_host_path"].endswith("/dev/work")
-    assert "devbox-state" in e["workspace_host_path"]
-    assert str(sid) in e["workspace_host_path"]
+    workspace_path = e["workspace_host_path"]
+    assert isinstance(workspace_path, str)
+    assert workspace_path.endswith("/dev/work")
+    assert "devbox-state" in workspace_path
+    assert str(sid) in workspace_path
     assert e["is_alive"] is True
 
 

@@ -97,7 +97,9 @@ purposes:
         encoding="utf-8",
     )
     purposes = load(cfg)
-    assert purposes.get("minimal").bindings == ()
+    minimal = purposes.get("minimal")
+    assert minimal is not None
+    assert minimal.bindings == ()
 
 
 # ---------- composition semantics ----------

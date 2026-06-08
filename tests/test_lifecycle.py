@@ -41,7 +41,15 @@ async def test_run_status_stop_lifecycle(tmp_path: Path) -> None:
     socket_path = tmp_path / "lifecycle.sock"
 
     async with anyio.create_task_group() as tg:
-        tg.start_soon(run_daemon, socket_path)
+        # Pin the state DB + audit log to tmp_path: the default paths are
+        # under $XDG_STATE_HOME and may be unwritable / shared in CI
+        # ("unable to open database file"); isolating them also deflakes.
+        tg.start_soon(
+            run_daemon,
+            socket_path,
+            tmp_path / "state.db",
+            tmp_path / "audit.jsonl",
+        )
         await _wait_for_socket(socket_path)
 
         status = await daemon_status(socket_path)

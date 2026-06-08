@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 import mcp.types as mcp_types
+import pytest
 from mcp.server.lowlevel import Server
 from mcp.shared.memory import create_connected_server_and_client_session
 
@@ -165,7 +166,13 @@ async def test_gws_config_disables_outbound_send() -> None:
     from capabledeputy.upstream.config import load_config_file
 
     repo = Path(__file__).resolve().parents[1]
-    cfg = load_config_file(repo / "configs" / "google-workspace-local.yaml")[0]
+    cfg_path = repo / "configs" / "google-workspace-local.yaml"
+    if not cfg_path.is_file():
+        # google-workspace-local.yaml is the operator's own instance config
+        # (gitignored); absent in a clean checkout / CI. The disable LOGIC is
+        # covered by test_managed_gws_block_disables_send + test_email_kinds.
+        pytest.skip("google-workspace-local.yaml (local-only, gitignored) not present")
+    cfg = load_config_file(cfg_path)[0]
     assert "send_gmail_message" in cfg.disabled_tools
     assert "send_gmail_draft" in cfg.disabled_tools
     # Name-independent guard: no SEND_EMAIL tool can register at all.

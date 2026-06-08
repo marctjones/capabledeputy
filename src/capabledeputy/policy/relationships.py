@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import yaml
 
@@ -139,7 +139,9 @@ class RelationshipGroups:
         if not groups:
             return DEFAULT_TIER
         ranked = [self.tier_for(gid, principal_id) for gid in groups]
-        return max(ranked, key=TIER_ORDER.index)
+        # max() over a list of the Literal type widens to str under pyright;
+        # the element is always a ReputationTier, so narrow it back.
+        return cast("ReputationTier", max(ranked, key=TIER_ORDER.index))
 
     def set_tier(
         self,

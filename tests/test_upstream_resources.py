@@ -52,6 +52,9 @@ class _FakeSession:
         return _FakeListResourcesResult(self._resources)
 
     async def read_resource(self, uri):
+        # The real ClientSession.read_resource takes an AnyUrl; the adapter
+        # passes one. Normalize to str so the fixture's str-keyed maps match.
+        uri = str(uri)
         if uri in self._raise_on:
             raise RuntimeError(f"resource missing: {uri}")
         contents = self._content_for.get(uri, [])

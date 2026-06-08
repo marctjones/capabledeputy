@@ -257,7 +257,7 @@ async def test_bundle_execute_refuses_expired_bundle(
         graph = None
         audit = None
 
-    handlers = make_bundle_handlers(_AppStub())
+    handlers = make_bundle_handlers(_AppStub())  # type: ignore[arg-type]
     bundle_execute = handlers["programmatic.bundle_execute"]
 
     # Construct an expired-at-birth bundle: created two days

@@ -25,15 +25,18 @@ def fake_podman(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
     drive what `podman ps` returns."""
     invocations: list[list[str]] = []
 
-    def fake_run(argv, **kwargs):
-        invocations.append(list(argv))
-        if "ps" in argv:
-            lines = fake_run.podman_ps_lines
-            stdout = b"\n".join(lines) + b"\n" if lines else b""
-            return subprocess.CompletedProcess(argv, 0, stdout, b"")
-        return subprocess.CompletedProcess(argv, 0, b"", b"")
+    class FakeRun:
+        def __init__(self):
+            self.podman_ps_lines: list[bytes] = []
 
-    fake_run.podman_ps_lines = []  # type: ignore[attr-defined]
+        def __call__(self, argv, **kwargs):  # type: ignore[misc]
+            invocations.append(list(argv))
+            if "ps" in argv:
+                stdout = b"\n".join(self.podman_ps_lines) + b"\n" if self.podman_ps_lines else b""
+                return subprocess.CompletedProcess(argv, 0, stdout, b"")
+            return subprocess.CompletedProcess(argv, 0, b"", b"")
+
+    fake_run = FakeRun()
     monkeypatch.setattr(subprocess, "run", fake_run)
     return invocations
 

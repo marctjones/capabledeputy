@@ -39,14 +39,17 @@ async def test_fs_create_then_read_then_delete(tmp_path: Path) -> None:
     delete = _h(fs_server, "fs.delete")
 
     r1 = await create({"path": str(p), "content": "hi"})
+    assert isinstance(r1, dict)
     assert r1["created"] is True
     assert r1["size"] == 2
 
     r2 = await read({"path": str(p)})
+    assert isinstance(r2, dict)
     assert r2["content"] == "hi"
     assert r2["size"] == 2
 
     r3 = await delete({"path": str(p)})
+    assert isinstance(r3, dict)
     assert r3["deleted"] is True
     assert not p.exists()
 
@@ -78,6 +81,7 @@ async def test_fs_list(tmp_path: Path) -> None:
     (tmp_path / "b.txt").write_text("bb")
     (tmp_path / "subdir").mkdir()
     r = await _h(fs_server, "fs.list")({"path": str(tmp_path)})
+    assert isinstance(r, dict)
     names = [e["name"] for e in r["entries"]]
     assert names == ["a.txt", "b.txt", "subdir"]
     types = {e["name"]: e["type"] for e in r["entries"]}
@@ -104,22 +108,28 @@ async def test_memory_create_read_list_delete(memory_db: Path) -> None:
     delete = _h(memory_server, "memory.delete")
 
     r1 = await create({"key": "alpha", "value": "first"})
+    assert isinstance(r1, dict)
     assert r1["key"] == "alpha"
     r2 = await create({"key": "beta", "value": "second"})
+    assert isinstance(r2, dict)
     assert r2["key"] == "beta"
 
     r3 = await read({"key": "alpha"})
+    assert isinstance(r3, dict)
     assert r3["value"] == "first"
 
     r4 = await list_({})
+    assert isinstance(r4, dict)
     assert r4["count"] == 2
     assert {e["key"] for e in r4["entries"]} == {"alpha", "beta"}
 
     r5 = await list_({"prefix": "be"})
+    assert isinstance(r5, dict)
     assert r5["count"] == 1
     assert r5["entries"][0]["key"] == "beta"
 
     r6 = await delete({"key": "alpha"})
+    assert isinstance(r6, dict)
     assert r6["deleted"] is True
 
     with pytest.raises(ValueError, match="no such key"):
@@ -161,15 +171,18 @@ def git_repo(tmp_path: Path) -> Path:
 @pytest.mark.asyncio
 async def test_git_status_log_branches(git_repo: Path) -> None:
     status = await _h(git_server, "git.status")({"repo_path": str(git_repo)})
+    assert isinstance(status, dict)
     assert status["returncode"] == 0
     # Clean tree after the init commit
     assert "## " in status["stdout"]  # branch line
 
     log = await _h(git_server, "git.log")({"repo_path": str(git_repo), "max_count": 5})
+    assert isinstance(log, dict)
     assert log["returncode"] == 0
     assert "init" in log["stdout"]
 
     branches = await _h(git_server, "git.branch_list")({"repo_path": str(git_repo)})
+    assert isinstance(branches, dict)
     assert branches["returncode"] == 0
 
 

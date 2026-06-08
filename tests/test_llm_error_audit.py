@@ -177,7 +177,7 @@ class _BigContextStubLLM:
         self.call_count += 1
         return LLMResponse(
             content="ok",
-            tool_calls=[],
+            tool_calls=(),
             finish_reason=FinishReason.STOP,
             model="claude-haiku-4-5-20251001",
         )
@@ -233,7 +233,7 @@ class _StubLLM:
     async def respond(self, messages, tools) -> LLMResponse:
         return LLMResponse(
             content="done",
-            tool_calls=[],
+            tool_calls=(),
             finish_reason=FinishReason.STOP,
             model="claude-haiku-4-5-20251001",
         )
@@ -285,7 +285,7 @@ async def test_soft_warning_fires_and_injects_system_notice(session_setup, monke
             received_messages.append(list(messages))
             return LLMResponse(
                 content="acknowledged your notice",
-                tool_calls=[],
+                tool_calls=(),
                 finish_reason=FinishReason.STOP,
                 model="claude-haiku-4-5-20251001",
             )

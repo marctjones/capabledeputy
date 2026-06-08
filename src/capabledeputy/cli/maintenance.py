@@ -37,6 +37,7 @@ import sys
 from pathlib import Path
 from typing import Annotated
 
+import anyio
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -131,7 +132,7 @@ def _live_session_ids() -> set[str]:
     "treat everything as orphan" decision the operator can override."""
     try:
         client = DaemonClient(default_socket_path())
-        result = client.call("session.list")
+        result = anyio.run(client.call, "session.list")
         return {s["id"] for s in result.get("sessions", [])}
     except (DaemonNotRunningError, Exception):
         return set()

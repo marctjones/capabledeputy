@@ -254,8 +254,8 @@ class ApprovalQueue:
         action: ApprovalAction,
         payload: str,
         target: str,
-        labels_in: LabelState = None,
-        labels_out: LabelState = None,
+        labels_in: LabelState | None = None,
+        labels_out: LabelState | None = None,
         capability_requested: Capability | None = None,
         justification: str = "",
         ttl_seconds: int | None = None,
@@ -309,13 +309,13 @@ class ApprovalQueue:
                     },
                 ),
             )
-        rule = self.patterns.find_match(request)
-        if rule is not None:
-            self.patterns.increment_use(rule.id)
+        matched = self.patterns.find_match(request)
+        if matched is not None:
+            self.patterns.increment_use(matched.id)
             await self.approve(
                 request.id,
-                decided_by=f"pattern:{rule.id}",
-                decision_scope={"matched_rule": str(rule.id)},
+                decided_by=f"pattern:{matched.id}",
+                decision_scope={"matched_rule": str(matched.id)},
             )
             return self._requests[request.id]
         return request

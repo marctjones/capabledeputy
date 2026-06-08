@@ -64,7 +64,10 @@ def build_server(server_name: str, tools: list[ToolDescriptor]) -> Server:
         for t in tools:
             annotations = None
             if t.annotations is not None:
-                annotations = mcp_types.ToolAnnotations(**t.annotations)
+                # t.annotations is dict[str, bool] (hint flags only, never
+                # `title`); unpacking into ToolAnnotations' heterogeneous
+                # fields is sound here but pyright can't prove it.
+                annotations = mcp_types.ToolAnnotations(**t.annotations)  # type: ignore[arg-type]
             out.append(
                 mcp_types.Tool(
                     name=t.name,

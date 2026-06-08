@@ -216,9 +216,9 @@ def test_resolver_threads_into_axis_d_via_tool_client(tmp_path: Path) -> None:
     # Construct a minimal LabeledToolClient — we only need
     # _resolve_action_axis_d, which doesn't touch registry/graph.
     client = LabeledToolClient(
-        registry=None,  # type: ignore[arg-type]
-        graph=None,
-        audit=None,
+        registry=None,  # type: ignore[reportArgumentType]
+        graph=None,  # type: ignore[reportArgumentType]
+        audit=None,  # type: ignore[reportArgumentType]
         policy_context=pc,
     )
 
@@ -244,9 +244,9 @@ def test_resolver_noop_when_no_registry_wired() -> None:
 
     pc = PolicyContext()  # no relationship_groups
     client = LabeledToolClient(
-        registry=None,  # type: ignore[arg-type]
-        graph=None,
-        audit=None,
+        registry=None,  # type: ignore[reportArgumentType]
+        graph=None,  # type: ignore[reportArgumentType]
+        audit=None,  # type: ignore[reportArgumentType]
         policy_context=pc,
     )
 
@@ -282,9 +282,9 @@ def test_resolver_preserves_existing_session_memberships() -> None:
     )
     pc = PolicyContext(relationship_groups=rg)
     client = LabeledToolClient(
-        registry=None,  # type: ignore[arg-type]
-        graph=None,
-        audit=None,
+        registry=None,  # type: ignore[reportArgumentType]
+        graph=None,  # type: ignore[reportArgumentType]
+        audit=None,  # type: ignore[reportArgumentType]
         policy_context=pc,
     )
 

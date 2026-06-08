@@ -107,10 +107,10 @@ async def test_manager_captures_registered_server_status() -> None:
     )
     mgr = UpstreamManager([config], ToolRegistry())
     # Manually walk the registration path without the supervisor
-    adapter = LabeledMcpAdapter(config=config, session=session)
+    adapter = LabeledMcpAdapter(config=config, session=session)  # type: ignore[arg-type]
     await adapter.register_tools(mgr._registry)
     mgr._adapters.append(adapter)
-    mgr._sessions.append(session)
+    mgr._sessions.append(session)  # type: ignore[arg-type]
     # Mirror what __aenter__ does
     import time as _time
 
@@ -134,7 +134,7 @@ def test_adapter_exposes_registered_names() -> None:
     """The adapter's public `registered_names` property is needed by
     the manager to compute the count without poking internals."""
     config = UpstreamServerConfig(name="empty", command=("x",))
-    adapter = LabeledMcpAdapter(config=config, session=_StubSession([]))
+    adapter = LabeledMcpAdapter(config=config, session=_StubSession([]))  # type: ignore[arg-type]
     # Before any registration, both lists are empty
     assert adapter.registered_names == []
     assert adapter.rejected_tools == []

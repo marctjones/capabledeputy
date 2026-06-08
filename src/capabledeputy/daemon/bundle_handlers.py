@@ -106,6 +106,9 @@ def make_bundle_handlers(app: App) -> dict[str, Handler]:
         session_id = UUID(params["session_id"])
         impact = _impact_from_dict(params["impact"])
         if impact.is_expired():
+            # is_expired() is False when expires_at is None, so it is
+            # guaranteed set here (an immortal bundle never expires).
+            assert impact.expires_at is not None
             err = BundleExpiredError(impact.bundle_id, impact.expires_at)
             return {
                 "ok": False,

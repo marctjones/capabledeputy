@@ -38,7 +38,7 @@ from capabledeputy.upstream.server_yaml import CustomKindDecl, CustomKindRegistr
 
 
 @pytest.fixture(autouse=True)
-def isolated_registry() -> None:
+def isolated_registry():
     """Each test starts with a fresh empty registry. The registry is
     process-global so leakage between tests must be prevented."""
     reset_custom_kind_registry()

@@ -89,7 +89,10 @@ async def test_adapter_result_labeler_hook() -> None:
     """The generic result_labeler hook on the upstream adapter merges
     per-message labels (raise-only) into the read result's additional_tags."""
     from types import SimpleNamespace
+    from uuid import UUID
 
+    from capabledeputy.policy.labels import LabelState
+    from capabledeputy.tools.registry import ToolContext
     from capabledeputy.upstream.adapter import LabeledMcpAdapter
     from capabledeputy.upstream.config import UpstreamServerConfig
 
@@ -106,19 +109,23 @@ async def test_adapter_result_labeler_hook() -> None:
     cfg = UpstreamServerConfig(name="gmail", command=("x",))
     adapter = LabeledMcpAdapter(
         cfg,
-        _Session(),
+        _Session(),  # type: ignore[arg-type]
         result_labeler=lambda _n, _a, output: lab.labels_for_output(output),
     )
     handler = adapter._make_handler("get_gmail_message")
-    r1 = await handler({"id": "1"}, None)
+    context = ToolContext(
+        session_id=UUID("00000000-0000-0000-0000-000000000000"),
+        label_state=LabelState(),
+    )
+    r1 = await handler({"id": "1"}, context)
     assert {t.category for t in r1.additional_tags.a} == {"financial"}
     # A labeler error must not break the read (best-effort enrichment).
     adapter2 = LabeledMcpAdapter(
         cfg,
-        _Session(),
+        _Session(),  # type: ignore[arg-type]
         result_labeler=lambda _n, _a, _o: (_ for _ in ()).throw(RuntimeError("boom")),
     )
     h2 = adapter2._make_handler("get_gmail_message")
-    r2 = await h2({"id": "1"}, None)
+    r2 = await h2({"id": "1"}, context)
     assert r2.output  # still returns the message
     assert not r2.additional_tags.a  # no labels, but no crash

@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any
 import anyio
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from pydantic import AnyUrl
 
 if TYPE_CHECKING:
     from capabledeputy.upstream.config import UpstreamServerConfig
@@ -255,7 +256,9 @@ class LiveSession:
     async def list_resources(self) -> Any:
         return await self._with_retry(lambda s: s.list_resources())
 
-    async def read_resource(self, uri: str) -> Any:
+    async def read_resource(self, uri: AnyUrl) -> Any:
+        # Mirrors mcp.ClientSession.read_resource(uri: AnyUrl) so SessionLike
+        # (ClientSession | LiveSession) is a coherent union for callers.
         return await self._with_retry(lambda s: s.read_resource(uri))
 
     async def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> Any:

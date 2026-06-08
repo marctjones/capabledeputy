@@ -132,7 +132,7 @@ async def test_shadow_rewrite_turns_deny_into_allow(tmp_path: Path) -> None:
     writer = AuditWriter(audit_path)
     client = LabeledToolClient(
         registry=None,  # type: ignore[arg-type]
-        graph=None,
+        graph=None,  # type: ignore[arg-type]
         audit=writer,
         policy_context=PolicyContext(),
     )
@@ -190,7 +190,7 @@ async def test_shadow_does_not_rewrite_allow(tmp_path: Path) -> None:
     writer = AuditWriter(audit_path)
     client = LabeledToolClient(
         registry=None,  # type: ignore[arg-type]
-        graph=None,
+        graph=None,  # type: ignore[arg-type]
         audit=writer,
         policy_context=PolicyContext(),
     )
@@ -245,7 +245,7 @@ async def test_shadow_does_not_bypass_capability_structural_deny(
     writer = AuditWriter(tmp_path / "audit.jsonl")
     client = LabeledToolClient(
         registry=None,  # type: ignore[arg-type]
-        graph=None,
+        graph=None,  # type: ignore[arg-type]
         audit=writer,
         policy_context=PolicyContext(),
     )
@@ -293,7 +293,7 @@ async def test_strict_mode_does_not_rewrite(tmp_path: Path) -> None:
     writer = AuditWriter(tmp_path / "audit.jsonl")
     client = LabeledToolClient(
         registry=None,  # type: ignore[arg-type]
-        graph=None,
+        graph=None,  # type: ignore[arg-type]
         audit=writer,
         policy_context=PolicyContext(),
     )

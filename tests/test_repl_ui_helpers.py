@@ -8,7 +8,7 @@ assert the color-coded compartment band without a daemon.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from prompt_toolkit.formatted_text import to_plain_text
 
@@ -24,6 +24,7 @@ from capabledeputy.cli.chat import (
     _tool_icon,
     console,
 )
+from capabledeputy.cli.completer import CompletionCache
 
 
 def test_label_style_palette() -> None:
@@ -439,12 +440,12 @@ def test_toolbar_picks_up_context_from_state() -> None:
     focus = {"id": sid, "label": sid[:8]}
 
     # Without context state — no segment
-    render_off = _make_bottom_toolbar(cache, focus, state={})
+    render_off = _make_bottom_toolbar(cast(CompletionCache, cache), focus, state={})
     assert "ctx " not in to_plain_text(render_off())
 
     # With context state — segment present
     render_on = _make_bottom_toolbar(
-        cache,
+        cast(CompletionCache, cache),
         focus,
         state={"context_tokens": 50_000, "context_window": 200_000},
     )
@@ -824,7 +825,7 @@ def test_make_bottom_toolbar_renders_usage_when_state_populated() -> None:
     )
     focus = {"id": sid, "label": sid[:8]}
     render = _make_bottom_toolbar(
-        cache,
+        cast(CompletionCache, cache),
         focus,
         state={
             "session_prompt_tokens": 1200,
