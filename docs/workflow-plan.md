@@ -34,7 +34,7 @@ legacy-path-only, or confirms-fires rather than tries-to-break) · ⬜ empty.
 | Bell-LaPadula (read-up containment) | 🟡 | no (legacy) | egress-deny proven; clearance/tier-resolution + write-down untested |
 | Biba (one-direction integrity) | ⬜ | — | no write-up / no-read-down attempt; "most under-served" |
 | Brewer-Nash (conflict) | 🟡 | no (legacy) | invariants fire; no boundary/adversarial probe |
-| Clark-Wilson (gated txn, sep-of-duty) | 🟡 | no | destructive-op gate + override demo; declassification txn + dual-control e2e untested |
+| Clark-Wilson (gated txn, sep-of-duty) | 🟡 | partial | destructive-op gate + override demo + certified-declassification txn (slice #2); dual-control e2e still demo-only |
 | Object-capability (confused-deputy) | ✅ | no (legacy) | no-cap + out-of-scope (pressure suite) — wants ③ redirection too |
 | IFC / sticky labels (Denning) | ✅ | no (legacy) | multi-step taint + accumulation (pressure suite) |
 | Noninterference (per-tier) | ⬜ | — | Pattern ③ restricted floor (#52) never exercised e2e |
@@ -70,7 +70,7 @@ legacy-path-only, or confirms-fires rather than tries-to-break) · ⬜ empty.
 | Operator policy DSL (`rules.yaml`) | ⬜ | no test asserts a RulePredicate decision |
 | Envelope dial (FR-030) | ⬜ | demo only; no adversarial real-config test |
 | Frequency / aggregation at scale | 🟡 | one inspector unit test |
-| Certified declassification | ⬜ | the trust hinge — untested |
+| Certified declassification | ✅ | **RESOLVED (slice #2)** — certified declassifier lowers untrusted taint so a previously-denied read can egress; uncertified taint-removal refused (Constitution VI). Surfaced + fixed F9. `test_sanctioned_declassification_lowers_taint_enabling_egress`, `test_uncertified_taint_removal_is_refused`. |
 | **Real-config legitimate egress (F2)** | ✅ | **RESOLVED (slice #1)** — irreversible egress DENIES by default, allowed via single-use human override grant; `test_v2_legitimate_egress_allowed_via_override_grant`. See F8 for the UX question. |
 
 ---
@@ -95,10 +95,11 @@ Do ONE workflow class end-to-end (not all-unblock-then-all-build):
 1. ~~F2 — real-config legitimate egress~~ — **DONE (slice #1)**: production
    path works via single-use override grant; deny-by-default is by design
    (FR-019). See F8.
-2. **Certified declassification.** ← *next slice.* The only sanctioned taint-lowering; abuse
-   attempts must fail. Untested = highest residual risk.
-3. **Pattern ③ redirection-resistance (adversarial).** Injected "send to
-   attacker" can't redirect a handle-bound destination.
+2. ~~Certified declassification~~ — **DONE (slice #2)**: certified
+   declassifier lowers taint so a denied read can egress; uncertified removal
+   refused. Surfaced + fixed F9.
+3. **Pattern ③ redirection-resistance (adversarial).** ← *next slice.*
+   Injected "send to attacker" can't redirect a handle-bound destination.
 4. **Pattern ② dual-LLM declassify e2e.** Confidential read → quarantined
    extract → schema-declassified summary egresses; planner never sees raw.
 5. **Operator DSL + envelope dial on real config.** RulePredicate decisions,
@@ -158,6 +159,15 @@ Everything else is iteration between the gates.
   declassification path to isolate.
 - **F7** catalogue circularity → why "model-derived" is criterion #2 and the
   1126 are slated for prune.
+- **F9 — declassifier only lowered `inherent_tags`, not `additional_tags`
+  (FIXED).** The certified declassifier removed taint from a tool's *inherent*
+  label but left the same tag on the *propagated* `additional_tags`, so a
+  declassified read still tainted the session EXTERNAL_UNTRUSTED and egress was
+  still denied — the trust hinge was silently inert. Fix: apply `_remove(...)`
+  to `additional_tags` and to the propagation set in `tools/client.py`.
+  Probe before: `provenance after read={'external-untrusted'}`; after: `set()`.
+  This is *why* slice #2 was the highest residual risk — the cell wasn't just
+  untested, the machinery underneath it didn't work.
 - **F8 — irreversible egress override-vs-approval (RESOLVED by design
   change).** Operator decision: most irreversible **communication** egress
   (email) routes to human **APPROVAL** by default; operator-configured
@@ -182,11 +192,21 @@ Everything else is iteration between the gates.
   Tests: approval default, purchase-still-deny, super-sensitive→override,
   override-resolves-super-sensitive (single-use). Matrix cell ✅.
 
-## Immediate next: slice #2 = certified declassification
+- **#2 — Certified declassification — DONE.** Real-config workflow: a raw
+  external read taints the session → egress DENIED (`untrusted-meets-egress`);
+  routed through a certified `SchemaProjector` declassifier the taint is
+  lowered → egress is no longer untrusted-blocked (drops to the ordinary
+  approval default). Adversarial half: an uncertified `TagTransfer` that tries
+  to remove taint is refused (`LabelError`, Constitution VI), while a certified
+  transfer lowers it. **Surfaced + fixed F9** — the declassifier was only
+  lowering `inherent_tags`, leaving the propagated `additional_tags` tainted,
+  so the hinge was silently inert. Matrix cell ✅; Clark-Wilson 🟡→partial.
 
-The trust hinge — the only sanctioned way to *lower* taint. Build a
-real-config workflow where a certified declassifier transforms tainted
-output to a strictly-lower label (the sanctioned path) AND an *uncertified*
-attempt to remove taint is refused (the adversarial half). Model
-(Clark-Wilson): declassification is a gated transaction, never a free
-operation. Pressures the cell every IFC guarantee ultimately depends on.
+## Immediate next: slice #3 = Pattern ③ redirection-resistance
+
+A handle/reference-bound destination must resist an injected "send to
+attacker@evil" redirect: the planner operates on an opaque handle, the real
+target is resolved by the trusted substrate, so prompt-injected content can't
+repoint it. Model (capability + reference-handle pattern): authority rides the
+handle, not the model-visible string. Adversarial: injected redirect fails to
+change where the effect lands.

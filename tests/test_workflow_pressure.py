@@ -260,6 +260,76 @@ async def test_model_confidential_read_blocks_external_egress(tmp_path) -> None:
 
 
 # ============================================================ #
+# F. CERTIFIED DECLASSIFICATION — the trust hinge: the ONLY sanctioned way
+#    to LOWER taint. Slice #2.
+# ============================================================ #
+
+
+async def test_sanctioned_declassification_lowers_taint_enabling_egress(tmp_path) -> None:
+    """Model (IFC + Clark-Wilson): reading external data normally taints the
+    session EXTERNAL_UNTRUSTED → egress denied. Routing the read through a
+    CERTIFIED declassifier (schema projection) lowers the taint, so egress is
+    no longer untrusted-blocked. This is the only sanctioned path out."""
+    from capabledeputy.substrate.declassifiers_builtin import SchemaProjector
+    from capabledeputy.tools.client import PolicyContext
+
+    async def _read_then_email(declassifiers):
+        app = App(
+            state_db_path=tmp_path / f"s{len(declassifiers)}.db",
+            audit_log_path=tmp_path / f"a{len(declassifiers)}.jsonl",
+            policy_context=PolicyContext(declassifiers=declassifiers),
+        )
+        await app.startup()
+        s = await _session(app)
+        f = tmp_path / "ext.txt"
+        f.write_text("external content")
+        await _call(app, s.id, "fs.read", {"path": str(f)})
+        return await _call(
+            app, s.id, "email.send", {"to": "x@y.example", "subject": "s", "body": "b"},
+        )
+
+    # Raw read → untrusted taint → egress DENIED.
+    raw = await _read_then_email(())
+    assert raw.decision.value == "deny"
+    assert raw.rule == "untrusted-meets-egress"
+
+    # Routed through a CERTIFIED declassifier → taint lowered → not
+    # untrusted-blocked (gated by the ordinary egress-approval default).
+    projector = SchemaProjector(
+        allowed_keys=("text", "ok", "path", "uri"),
+        lower_axis_b_level="principal-direct",
+    )
+    declassed = await _read_then_email((projector,))
+    assert declassed.decision.value != "deny" or declassed.rule != "untrusted-meets-egress"
+    assert declassed.decision.value == "require_approval"
+
+
+def test_uncertified_taint_removal_is_refused() -> None:
+    """Constitution VI: ONLY a certified declassifier may remove a tag. A
+    non-declassifier transfer that tries to clear taint is refused — the
+    adversarial half (you can't just drop a label to escape an egress gate)."""
+    import pytest
+
+    from capabledeputy.policy.labels import (
+        LabelError,
+        LabelState,
+        TagTransfer,
+        apply_transfer,
+    )
+
+    tainted = LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}))
+    remove = LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}))
+
+    # Uncertified removal → refused (at construction or apply).
+    with pytest.raises(LabelError):
+        apply_transfer(tainted, TagTransfer(removes=remove, is_declassifier=False))
+
+    # A CERTIFIED declassifier transfer IS allowed and lowers the taint.
+    cleared = apply_transfer(tainted, TagTransfer(removes=remove, is_declassifier=True))
+    assert not cleared.b
+
+
+# ============================================================ #
 # E. v2 PIPELINE PRESSURE — exercise the REAL operator config (the layer
 #    the 1126 never touch), and pin a non-obvious behavior it produces.
 # ============================================================ #

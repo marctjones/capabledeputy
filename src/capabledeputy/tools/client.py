@@ -547,18 +547,19 @@ class LabeledToolClient:
                 tool.inherent_tags,
                 result.additional_tags,
             )
-            # Replace output with transformed value; subtract any
-            # tags the declassifier "lowered away" from the set
-            # that propagates this turn.
+            # Replace output with transformed value; subtract any tags the
+            # declassifier "lowered away" from the set that propagates this
+            # turn — from BOTH the tool's inherent_tags AND the result's
+            # additional_tags (F9 fix). Most real taint (fs reads, the fs/
+            # email labelers) arrives via additional_tags; removing only
+            # from inherent left it undeclassifiable.
+            from capabledeputy.policy.labels import _remove
+
             result = _replace_tool_result(
                 result,
                 output=new_output,
-                additional_tags=result.additional_tags,
+                additional_tags=_remove(result.additional_tags, tags_to_remove),
             )
-            # Remove the declassified tags from inherent propagation
-            # by filtering them out
-            from capabledeputy.policy.labels import _remove
-
             tool_inherent_for_propagation = _remove(tool.inherent_tags, tags_to_remove)
         else:
             tool_inherent_for_propagation = tool.inherent_tags
