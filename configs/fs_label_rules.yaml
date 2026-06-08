@@ -1,0 +1,44 @@
+# Dynamic filesystem labeling rules — SHIPPED DEFAULT (active).
+#
+# Issue #5, FR-024/FR-025. This is the default ruleset a fresh deployment
+# runs (usability-hardening slice U1a). It is deliberately HIGH-PRECISION:
+# it labels only locations/patterns that are almost always sensitive, so the
+# engine gates the right things and benign reads flow without friction.
+#
+# Labels are RAISE-ONLY — a rule can escalate a session's sensitivity, never
+# lower it (an unknown category resolves to the highest tier, so a typo can
+# only over-classify). Extend freely with your own paths; precision over
+# recall keeps approval fatigue down. An empty/removed file turns fs labeling
+# off entirely.
+#
+# Match facets (a rule fires if ANY facet matches):
+#   path_prefix   : str | [str]   — matched on the expanduser'd path
+#   filename_glob : str | [str]   — fnmatch on the basename
+#   content_regex : str | [str]   — searched in the file body (opt-in tier)
+#
+# Labels: "confidential.<category>" (tier resolved from labels.yaml).
+
+fs_label_rules:
+  # --- financial ---
+  - match:
+      path_prefix: ["~/Documents/Financial/", "~/Documents/Tax/", "~/Documents/Taxes/"]
+    labels: [confidential.financial]
+
+  # --- credentials (universal, high-precision) ---
+  - match:
+      path_prefix: ["~/.ssh/", "~/.aws/", "~/.gnupg/"]
+    labels: [confidential.credentials]
+
+  - match:
+      filename_glob: ["*.key", "*.pem", "id_rsa*", "id_ecdsa*", "*password*", "*.kdbx"]
+    labels: [confidential.credentials]
+
+  # Content tier (opt-in): only consulted when the file body is read.
+  - match:
+      content_regex: "BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY"
+    labels: [confidential.credentials]
+
+  # --- health ---
+  - match:
+      path_prefix: ["~/Documents/Medical/", "~/Documents/Health/"]
+    labels: [confidential.health]

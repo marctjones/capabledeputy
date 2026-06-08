@@ -58,6 +58,13 @@ categories:
     default_tier: regulated
     resolution_mode: context-up
     risk_ids: [RISK-PROP-LEAK]
+  - id: credentials
+    kind: stable_core
+    c_impact: high
+    i_impact: high
+    default_tier: restricted
+    resolution_mode: fixed-high        # secrets are always high; profiles cannot lower
+    risk_ids: [RISK-PRIVILEGE-ESCALATION, RISK-DATA-EXFIL-AGENT-TOOLS]
 
 # Reversibility / mutability label catalogs are populated in a later
 # step (they also require risk_id citations under SC-001).

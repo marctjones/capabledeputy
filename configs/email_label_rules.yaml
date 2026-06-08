@@ -1,0 +1,41 @@
+# Incoming-email labeling rules — SHIPPED DEFAULT (active).
+#
+# Issue #34, FR-024/FR-025. This is the default ruleset a fresh deployment
+# runs (usability-hardening slice U1a). Each rule RAISES a message's Axis-A
+# category above the server-wide floor (untrusted.external +
+# confidential.personal) when sender/subject/body matches.
+#
+# RAISE-ONLY — a rule can escalate, never lower; the floor always applies.
+# Deliberately HIGH-PRECISION so benign mail flows without friction. The
+# sender domains below are illustrative starters — add your own banks,
+# clinics, and brokers. An empty/removed file turns email labeling off.
+#
+# Match facets (a rule fires if ANY matches):
+#   from_domain   : str | [str]   — matched against the sender's @domain
+#   from_address  : str | [str]   — substring of the sender field
+#   subject_regex : str | [str]   — case-insensitive search of the subject
+#   body_regex    : str | [str]   — case-insensitive search of the body
+#
+# Labels: "confidential.<category>" (tier from labels.yaml).
+
+email_label_rules:
+  # --- financial: known institutions (extend with your own) ---
+  - match:
+      from_domain:
+        - chase.com
+        - fidelity.com
+        - americanexpress.com
+        - vanguard.com
+        - schwab.com
+    labels: [confidential.financial]
+
+  # --- financial: universal subject cues ---
+  - match:
+      subject_regex: ["statement", "invoice", "payment due", "tax", "1099", "w-2"]
+    labels: [confidential.financial]
+
+  # --- health: clinic domain AND a clinical body cue (precision) ---
+  - match:
+      from_domain: ["myhealth.example", "labcorp.com", "questdiagnostics.com"]
+      body_regex: ["MRN", "diagnosis", "prescription", "lab results"]
+    labels: [confidential.health]
