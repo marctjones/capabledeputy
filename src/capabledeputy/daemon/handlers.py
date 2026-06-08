@@ -165,7 +165,9 @@ def make_info_handler(app: Any) -> Handler:
         audit_path_str = ""
         try:
             audit_path = getattr(app.audit, "_path", None) or getattr(
-                app.audit, "path", None,
+                app.audit,
+                "path",
+                None,
             )
             if audit_path is not None:
                 p = Path(audit_path)
@@ -205,16 +207,18 @@ def make_info_handler(app: Any) -> Handler:
         mgr = getattr(app, "upstream_manager", None)
         if mgr is not None and hasattr(mgr, "server_status"):
             for status in sorted(mgr.server_status.values(), key=lambda s: s.name):
-                upstream_servers_status.append({
-                    "name": status.name,
-                    "state": status.state,
-                    "registered_at_epoch": status.registered_at_epoch,
-                    "registered_tool_count": status.registered_tool_count,
-                    "rejected_tool_count": status.rejected_tool_count,
-                    "rejected_tool_names": list(status.rejected_tool_names),
-                    "error": status.error,
-                    "command": list(status.command),
-                })
+                upstream_servers_status.append(
+                    {
+                        "name": status.name,
+                        "state": status.state,
+                        "registered_at_epoch": status.registered_at_epoch,
+                        "registered_tool_count": status.registered_tool_count,
+                        "rejected_tool_count": status.rejected_tool_count,
+                        "rejected_tool_names": list(status.rejected_tool_names),
+                        "error": status.error,
+                        "command": list(status.command),
+                    }
+                )
 
         # Python + OS info — small + useful for "what's actually running"
         import platform

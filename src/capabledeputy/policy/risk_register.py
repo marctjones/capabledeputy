@@ -158,9 +158,7 @@ class RiskRegister:
             residual_impact = residual_for_framework.get("impact")
             threshold_min = threshold.impact_min
             if residual_impact and threshold_min:
-                return impact_order.get(residual_impact, 0) >= impact_order.get(
-                    threshold_min, 0
-                )
+                return impact_order.get(residual_impact, 0) >= impact_order.get(threshold_min, 0)
 
         elif threshold.framework == "OWASP-RiskRating":
             # severity_min: low < medium < high < critical

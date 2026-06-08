@@ -106,9 +106,7 @@ class TestGetThreshold:
 class TestThresholdCrossed:
     """Test threshold_crossed() method with framework-specific logic."""
 
-    def test_nist_ai_rmf_threshold_not_crossed(
-        self, sample_register: RiskRegister
-    ) -> None:
+    def test_nist_ai_rmf_threshold_not_crossed(self, sample_register: RiskRegister) -> None:
         """NIST-AI-RMF: residual tier below threshold."""
         residual = {
             "NIST-AI-RMF": {"impact_tier": "tier-1"},
@@ -116,9 +114,7 @@ class TestThresholdCrossed:
         crossed = sample_register.threshold_crossed("RISK-PII-NIST", residual)
         assert not crossed
 
-    def test_nist_ai_rmf_threshold_crossed_equal(
-        self, sample_register: RiskRegister
-    ) -> None:
+    def test_nist_ai_rmf_threshold_crossed_equal(self, sample_register: RiskRegister) -> None:
         """NIST-AI-RMF: residual tier equals threshold."""
         residual = {
             "NIST-AI-RMF": {"impact_tier": "tier-2"},
@@ -126,9 +122,7 @@ class TestThresholdCrossed:
         crossed = sample_register.threshold_crossed("RISK-PII-NIST", residual)
         assert crossed
 
-    def test_nist_ai_rmf_threshold_crossed_above(
-        self, sample_register: RiskRegister
-    ) -> None:
+    def test_nist_ai_rmf_threshold_crossed_above(self, sample_register: RiskRegister) -> None:
         """NIST-AI-RMF: residual tier above threshold."""
         residual = {
             "NIST-AI-RMF": {"impact_tier": "tier-4"},
@@ -160,9 +154,7 @@ class TestThresholdCrossed:
         crossed = sample_register.threshold_crossed("RISK-PROP-FAIR", residual)
         assert crossed
 
-    def test_eu_ai_act_threshold_not_crossed(
-        self, sample_register: RiskRegister
-    ) -> None:
+    def test_eu_ai_act_threshold_not_crossed(self, sample_register: RiskRegister) -> None:
         """EU-AI-Act: residual risk class below threshold."""
         residual = {
             "EU-AI-Act": {"risk_class": "limited"},
@@ -170,9 +162,7 @@ class TestThresholdCrossed:
         crossed = sample_register.threshold_crossed("RISK-EU-AI", residual)
         assert not crossed
 
-    def test_eu_ai_act_threshold_crossed_equal(
-        self, sample_register: RiskRegister
-    ) -> None:
+    def test_eu_ai_act_threshold_crossed_equal(self, sample_register: RiskRegister) -> None:
         """EU-AI-Act: residual risk class equals threshold."""
         residual = {
             "EU-AI-Act": {"risk_class": "high"},
@@ -180,9 +170,7 @@ class TestThresholdCrossed:
         crossed = sample_register.threshold_crossed("RISK-EU-AI", residual)
         assert crossed
 
-    def test_eu_ai_act_threshold_crossed_above(
-        self, sample_register: RiskRegister
-    ) -> None:
+    def test_eu_ai_act_threshold_crossed_above(self, sample_register: RiskRegister) -> None:
         """EU-AI-Act: residual risk class above threshold."""
         residual = {
             "EU-AI-Act": {"risk_class": "prohibited"},

@@ -55,12 +55,16 @@ def _common_label_state() -> LabelState:
     (system-internal — the data we're backing up was already in
     our own systems)."""
     return LabelState(
-        a=frozenset({
-            CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),
-        }),
-        b=frozenset({
-            ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(category="proprietary_work", tier=Tier.SENSITIVE),
+            }
+        ),
+        b=frozenset(
+            {
+                ProvenanceTag(level=ProvenanceLevel.SYSTEM_INTERNAL),
+            }
+        ),
     )
 
 

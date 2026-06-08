@@ -68,10 +68,14 @@ async def test_history_and_label_set_persist(store_path: Path) -> None:
     store = SessionStore(store_path)
     s = Session.new(
         label_state=LabelState(
-            a=frozenset({
-                CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared"),
-                CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared"),
-            })
+            a=frozenset(
+                {
+                    CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared"),
+                    CategoryTag(
+                        "personal", Tier.REGULATED, assignment_provenance="source-declared"
+                    ),
+                }
+            )
         ),
         capability_set=frozenset(
             {Capability(kind=CapabilityKind.READ_FS, pattern="/health/*")},

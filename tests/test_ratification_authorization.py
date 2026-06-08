@@ -205,10 +205,7 @@ def test_unauthorized_attester_refused(
         confirmed=True,
     )
     assert isinstance(attest_result, RatificationRefusal)
-    assert (
-        attest_result.reason
-        is RatificationRefusalReason.ATTESTER_UNAUTHORIZED
-    )
+    assert attest_result.reason is RatificationRefusalReason.ATTESTER_UNAUTHORIZED
 
 
 # --- AI principals MUST be refused (FR-014 last-line) -------------------

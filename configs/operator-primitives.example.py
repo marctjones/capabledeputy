@@ -84,10 +84,12 @@ def build_policy_context(
     if llm_client is not None:
         inner_sampling = LiteLLMSamplingMediator(llm_client=llm_client)
         sampling_mediator = AllowlistSamplingMediator(
-            allowed_servers=frozenset(set(
-                # Add upstream MCP server names the operator wants to allow
-                # sampling from. Empty set = refuse all.
-            )),
+            allowed_servers=frozenset(
+                set(
+                    # Add upstream MCP server names the operator wants to allow
+                    # sampling from. Empty set = refuse all.
+                )
+            ),
             inner=inner_sampling,
         )
     else:

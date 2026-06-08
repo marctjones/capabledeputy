@@ -207,8 +207,7 @@ class LiveSession:
                         await self._respawn_with_backoff()
                     except Exception as e:
                         raise UpstreamDead(
-                            f"upstream {self._config.name!r} is down and "
-                            f"respawn failed: {e}",
+                            f"upstream {self._config.name!r} is down and respawn failed: {e}",
                         ) from e
             assert self._session is not None
             return await op(self._session)

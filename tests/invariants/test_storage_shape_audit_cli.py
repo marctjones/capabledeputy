@@ -31,8 +31,7 @@ def _make_clean_v6_store(tmp_path: Path) -> Path:
         """,
     )
     label_state_json = (
-        '{"a":[{"category":"personal","tier":"regulated"}],'
-        '"b":[{"level":"principal-direct"}]}'
+        '{"a":[{"category":"personal","tier":"regulated"}],"b":[{"level":"principal-direct"}]}'
     )
     conn.execute(
         "INSERT INTO sessions (id, label_state, axis_d) VALUES (?, ?, ?)",

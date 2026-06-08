@@ -37,9 +37,7 @@ def user_config_dir() -> Path:
     """XDG-aware config dir for capdep. Same resolution as the
     `imap-setup` / `gworkspace-setup` commands so the secrets and the
     daemon config live side-by-side."""
-    return (
-        Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "capabledeputy"
-    )
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "capabledeputy"
 
 
 def user_default_daemon_config_path() -> Path:
@@ -152,11 +150,7 @@ def write_managed_block(
     end_idx = next((i for i, ln in enumerate(lines) if ln.strip() == end.strip()), -1)
 
     if begin_idx >= 0 and end_idx >= 0 and end_idx > begin_idx:
-        new_lines = (
-            lines[:begin_idx]
-            + new_block.rstrip("\n").split("\n")
-            + lines[end_idx + 1 :]
-        )
+        new_lines = lines[:begin_idx] + new_block.rstrip("\n").split("\n") + lines[end_idx + 1 :]
         new_content = "\n".join(new_lines)
         if not new_content.endswith("\n"):
             new_content += "\n"
@@ -220,11 +214,7 @@ def write_top_level_managed_block(
     end_idx = next((i for i, ln in enumerate(lines) if ln.strip() == end), -1)
 
     if begin_idx >= 0 and end_idx >= 0 and end_idx > begin_idx:
-        new_lines = (
-            lines[:begin_idx]
-            + new_block.rstrip("\n").split("\n")
-            + lines[end_idx + 1 :]
-        )
+        new_lines = lines[:begin_idx] + new_block.rstrip("\n").split("\n") + lines[end_idx + 1 :]
         new_content = "\n".join(new_lines)
         if not new_content.endswith("\n"):
             new_content += "\n"
@@ -266,7 +256,9 @@ def register_default_assistant_surface(
         include_sandbox = podman_available()
     if include_sandbox:
         replaced, changed = write_top_level_managed_block(
-            path, SANDBOX_BLOCK_ID, SANDBOX_BLOCK_BODY,
+            path,
+            SANDBOX_BLOCK_ID,
+            SANDBOX_BLOCK_BODY,
         )
         if changed and replaced:
             messages.append("refreshed sandbox (podman, scratch region)")

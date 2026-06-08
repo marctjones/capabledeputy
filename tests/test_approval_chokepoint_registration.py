@@ -32,9 +32,11 @@ async def app(tmp_path: Path) -> App:
 
 def _financial_label_state() -> LabelState:
     return LabelState(
-        a=frozenset({
-            CategoryTag("financial", Tier.REGULATED, assignment_provenance="source-declared"),
-        })
+        a=frozenset(
+            {
+                CategoryTag("financial", Tier.REGULATED, assignment_provenance="source-declared"),
+            }
+        )
     )
 
 

@@ -307,8 +307,7 @@ class PodmanSandboxActuator(SandboxActuator):
             region = self._regions.get(region_id)
         if region is None:
             raise UnknownRegion(
-                f"sandbox region {region_id!r} is not live "
-                f"(never created or already discarded)",
+                f"sandbox region {region_id!r} is not live (never created or already discarded)",
             )
 
         # Prepare per-execution scratch dirs for /in (RO) and /out (RW)
@@ -338,7 +337,11 @@ class PodmanSandboxActuator(SandboxActuator):
             )
 
         run_argv = self._build_run_argv(
-            region, argv, env, in_dir=in_dir, out_dir=out_dir,
+            region,
+            argv,
+            env,
+            in_dir=in_dir,
+            out_dir=out_dir,
         )
         emit = _safe_emit(progress_callback)
         emit(SandboxProgress(kind="lifecycle", payload="image_check"))
@@ -371,6 +374,7 @@ class PodmanSandboxActuator(SandboxActuator):
         # Write stdin in a worker so a slow consumer can't deadlock us.
         stdin_writer: threading.Thread | None = None
         if stdin_bytes is not None and proc.stdin is not None:
+
             def _write_stdin() -> None:
                 try:
                     assert proc.stdin is not None
@@ -408,10 +412,14 @@ class PodmanSandboxActuator(SandboxActuator):
                 pass
 
         t_out = threading.Thread(
-            target=_drain, args=(proc.stdout, "stdout", stdout_bytes), daemon=True,
+            target=_drain,
+            args=(proc.stdout, "stdout", stdout_bytes),
+            daemon=True,
         )
         t_err = threading.Thread(
-            target=_drain, args=(proc.stderr, "stderr", stderr_bytes), daemon=True,
+            target=_drain,
+            args=(proc.stderr, "stderr", stderr_bytes),
+            daemon=True,
         )
         t_out.start()
         t_err.start()
@@ -760,6 +768,7 @@ def _safe_emit(cb: ProgressCallback | None):
     """Wrap a user-provided callback so callback exceptions can't
     break the actuator's I/O loop. A noisy observer is a bug, but
     it must not corrupt the container's stdout/stderr capture."""
+
     def _emit(event: SandboxProgress) -> None:
         if cb is None:
             return

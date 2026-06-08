@@ -112,9 +112,13 @@ def test_voicemail_not_mistaken_for_gmail() -> None:
 
 def test_calendar_unchanged() -> None:
     """Existing CALENDAR_* classifications still work."""
+
     # readOnlyHint=True path
     class _Annotations:
         readOnlyHint = True  # noqa: N815 (MCP tool-annotation protocol field name)
         destructiveHint = False  # noqa: N815 (MCP tool-annotation protocol field name)
 
-    assert _infer_capability_kind(_Annotations(), "calendar.events.list") == CapabilityKind.CALENDAR_READ  # noqa: E501
+    assert (
+        _infer_capability_kind(_Annotations(), "calendar.events.list")
+        == CapabilityKind.CALENDAR_READ
+    )

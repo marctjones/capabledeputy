@@ -28,9 +28,7 @@ def test_new_session_inherits_supplied_fields() -> None:
     s = Session.new(
         owner="marc",
         intent="research",
-        label_state=LabelState(
-            b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})
-        ),
+        label_state=LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
         capability_set=frozenset({cap}),
     )
     assert s.owner == "marc"
@@ -65,10 +63,14 @@ def test_session_round_trip_through_dict() -> None:
         owner="marc",
         intent="test",
         label_state=LabelState(
-            a=frozenset({
-                CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared"),
-                CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared"),
-            })
+            a=frozenset(
+                {
+                    CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared"),
+                    CategoryTag(
+                        "personal", Tier.REGULATED, assignment_provenance="source-declared"
+                    ),
+                }
+            )
         ),
         capability_set=frozenset({cap}),
         history=(Turn(turn_id=0, role="user", content="hello", timestamp=datetime.now(UTC)),),
@@ -80,10 +82,12 @@ def test_session_round_trip_through_dict() -> None:
 def test_session_dict_serializes_label_set_sorted() -> None:
     s = Session.new(
         label_state=LabelState(
-            a=frozenset({
-                CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared"),
-            }),
-            b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            a=frozenset(
+                {
+                    CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared"),
+                }
+            ),
+            b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
         ),
     )
     d = s.to_dict()

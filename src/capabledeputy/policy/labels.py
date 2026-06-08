@@ -363,9 +363,7 @@ def legacy_labels_present(state: LabelState) -> list[str]:
     for label_str, tags in legacy_label_strings_to_tags().items():
         if not tags.a and not tags.b:
             continue
-        if all(c.category in cats for c in tags.a) and all(
-            p.level in levels for p in tags.b
-        ):
+        if all(c.category in cats for c in tags.a) and all(p.level in levels for p in tags.b):
             present.append(label_str)
     return sorted(present)
 

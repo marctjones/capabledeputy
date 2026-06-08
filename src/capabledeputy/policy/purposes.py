@@ -132,10 +132,12 @@ def _legacy_global_dial(legacy_path: Path | None) -> str | None:
         return None
     try:
         import json
+
         raw = json.loads(legacy_path.read_text(encoding="utf-8"))
         value = raw.get("value") if isinstance(raw, dict) else None
         if isinstance(value, str) and value in _VALID_DIAL_VALUES:
             import sys
+
             print(
                 f"[purposes] legacy {legacy_path} consulted for default "
                 f"risk_preference_dial={value!r}. Copy that value into each "

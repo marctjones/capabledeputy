@@ -183,9 +183,7 @@ class _BigContextStubLLM:
         )
 
 
-async def test_hard_limit_yields_context_overflow(
-    session_setup, monkeypatch
-) -> None:
+async def test_hard_limit_yields_context_overflow(session_setup, monkeypatch) -> None:
     """When estimate >= 90% of the window, the loop yields
     TurnInterrupted(reason='context_overflow') and does NOT call the LLM."""
     sid, graph, audit, audit_path, registry, tool_client = session_setup
@@ -267,9 +265,7 @@ async def test_normal_turn_audits_no_llm_error(session_setup) -> None:
 # --- soft warning ---------------------------------------------------------
 
 
-async def test_soft_warning_fires_and_injects_system_notice(
-    session_setup, monkeypatch
-) -> None:
+async def test_soft_warning_fires_and_injects_system_notice(session_setup, monkeypatch) -> None:
     """When estimate is between 80% and 90% of window, LLM_CONTEXT_WARNING
     fires AND a system message gets injected for the LLM."""
     sid, graph, audit, audit_path, registry, tool_client = session_setup

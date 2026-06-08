@@ -210,8 +210,7 @@ class OverridePolicyEntry:
         # so a misconfiguration can't yield an all-day bypass.
         if self.expiry_seconds <= 0:
             raise OverridePolicyValidationError(
-                f"OverridePolicyEntry expiry_seconds must be positive "
-                f"(got {self.expiry_seconds})",
+                f"OverridePolicyEntry expiry_seconds must be positive (got {self.expiry_seconds})",
             )
         if self.expiry_seconds > OVERRIDE_EXPIRY_MAX_SECONDS:
             raise OverridePolicyValidationError(
@@ -658,7 +657,9 @@ class OverrideGrantStore:
                     attester_principal_ids=frozenset(
                         entry_raw.get("attester_principal_ids", []),
                     ),
-                    expiry_seconds=int(entry_raw.get("expiry_seconds", OVERRIDE_EXPIRY_DEFAULT_SECONDS)),  # noqa: E501
+                    expiry_seconds=int(
+                        entry_raw.get("expiry_seconds", OVERRIDE_EXPIRY_DEFAULT_SECONDS)
+                    ),
                     friction_level=(
                         FrictionLevel(entry_raw["friction_level"])
                         if entry_raw.get("friction_level")

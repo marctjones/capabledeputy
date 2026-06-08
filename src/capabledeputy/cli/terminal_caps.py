@@ -98,9 +98,12 @@ def detect() -> TerminalCaps:
     # Truecolor: explicit COLORTERM signal is authoritative. Some
     # terminals (kitty, Ghostty, modern iTerm2) support truecolor but
     # don't set COLORTERM — name-match those families.
-    truecolor = (
-        _has_env_value("COLORTERM", "truecolor", "24bit")
-        or fam in ("ghostty", "kitty", "iterm2", "wezterm", "alacritty")
+    truecolor = _has_env_value("COLORTERM", "truecolor", "24bit") or fam in (
+        "ghostty",
+        "kitty",
+        "iterm2",
+        "wezterm",
+        "alacritty",
     )
 
     # Hyperlinks (OSC 8): supported by every named modern family +
@@ -108,16 +111,12 @@ def detect() -> TerminalCaps:
     # "yes" for xterm because the escape is silently swallowed on
     # non-supporting terminals (no broken rendering).
     hyperlinks = (
-        fam in ("ghostty", "kitty", "iterm2", "wezterm", "alacritty", "xterm", "vscode")
-        and is_tty
+        fam in ("ghostty", "kitty", "iterm2", "wezterm", "alacritty", "xterm", "vscode") and is_tty
     )
 
     # Clipboard (OSC 52): same set as hyperlinks, modulo vscode which
     # doesn't typically support it without explicit setting.
-    clipboard = (
-        fam in ("ghostty", "kitty", "iterm2", "wezterm", "alacritty", "xterm")
-        and is_tty
-    )
+    clipboard = fam in ("ghostty", "kitty", "iterm2", "wezterm", "alacritty", "xterm") and is_tty
 
     # Graphics: separate protocols.
     #   sixel: WezTerm, mintty, some xterm builds

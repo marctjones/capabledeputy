@@ -174,9 +174,7 @@ async def test_e2e_audit_event_carries_provider_usage(memory_write_turn) -> None
     present so the consumer's int() coercion is exercised end-to-end
     and the drift detector catches a regression."""
     events = _read_audit(memory_write_turn["audit_path"])
-    response_events = [
-        e for e in events if e.get("event_type") == "llm.response_received"
-    ]
+    response_events = [e for e in events if e.get("event_type") == "llm.response_received"]
     assert response_events, "expected at least one llm.response_received event"
     payload = response_events[0]["payload"]
     assert "prompt_tokens" in payload

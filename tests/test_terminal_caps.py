@@ -16,7 +16,10 @@ def isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Drop the env vars that influence detection so each test starts
     from a known baseline. Tests selectively set what they need."""
     for k in (
-        "TERM", "TERM_PROGRAM", "COLORTERM", "KITTY_WINDOW_ID",
+        "TERM",
+        "TERM_PROGRAM",
+        "COLORTERM",
+        "KITTY_WINDOW_ID",
     ):
         monkeypatch.delenv(k, raising=False)
     terminal_caps.reset_cache()

@@ -74,6 +74,7 @@ def _with_fs_labels(base: _FsHandler, labeler: FsLabeler | None) -> _FsHandler:
 
     return handler
 
+
 _MAX_BYTES = 64 * 1024
 
 

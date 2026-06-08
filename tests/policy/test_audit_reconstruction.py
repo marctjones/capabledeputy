@@ -71,13 +71,15 @@ def _rule() -> DecisionRule:
 
 def _labels_and_axis_d() -> tuple[LabelState, AxisD]:
     labels = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="personal",
-                tier=Tier.SENSITIVE,
-                assignment_provenance="human-declared",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="personal",
+                    tier=Tier.SENSITIVE,
+                    assignment_provenance="human-declared",
+                ),
+            }
+        ),
         b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
     axis_d = AxisD(

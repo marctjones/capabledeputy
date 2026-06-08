@@ -19,22 +19,26 @@ from capabledeputy.policy.tiers import Tier
 
 def test_assignment_provenance_parent_dominates() -> None:
     parent = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="health",
-                tier=Tier.REGULATED,
-                assignment_provenance="curated-mcp",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="health",
+                    tier=Tier.REGULATED,
+                    assignment_provenance="curated-mcp",
+                ),
+            }
+        ),
     )
     child = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="health",
-                tier=Tier.REGULATED,
-                assignment_provenance="source-declared",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="health",
+                    tier=Tier.REGULATED,
+                    assignment_provenance="source-declared",
+                ),
+            }
+        ),
     )
     merged = inherit(parent, child)
     assert next(iter(merged.a)).assignment_provenance == "curated-mcp"
@@ -47,22 +51,26 @@ def test_raise_only_inspector_does_not_clear_taint() -> None:
     the merged tier is at least as high as the higher of the two
     inputs, and the provenance flips to raise-only-inspector."""
     parent = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="proprietary_work",
-                tier=Tier.REGULATED,
-                assignment_provenance="curated-mcp",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="proprietary_work",
+                    tier=Tier.REGULATED,
+                    assignment_provenance="curated-mcp",
+                ),
+            }
+        ),
     )
     inspector = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="proprietary_work",
-                tier=Tier.RESTRICTED,  # inspector raised the tier
-                assignment_provenance="raise-only-inspector",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="proprietary_work",
+                    tier=Tier.RESTRICTED,  # inspector raised the tier
+                    assignment_provenance="raise-only-inspector",
+                ),
+            }
+        ),
     )
     merged = inherit(parent, inspector)
     tag = next(iter(merged.a))
@@ -72,22 +80,26 @@ def test_raise_only_inspector_does_not_clear_taint() -> None:
 
 def test_provenance_preserved_when_new_category_added() -> None:
     parent = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="health",
-                tier=Tier.REGULATED,
-                assignment_provenance="source-declared",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="health",
+                    tier=Tier.REGULATED,
+                    assignment_provenance="source-declared",
+                ),
+            }
+        ),
     )
     child = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="finance",
-                tier=Tier.REGULATED,
-                assignment_provenance="curated-mcp",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="finance",
+                    tier=Tier.REGULATED,
+                    assignment_provenance="curated-mcp",
+                ),
+            }
+        ),
     )
     merged = inherit(parent, child)
     by_cat = {c.category: c for c in merged.a}

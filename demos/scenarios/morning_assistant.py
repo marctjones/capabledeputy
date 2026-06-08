@@ -79,7 +79,9 @@ async def test_morning_assistant(tmp_path) -> None:
     user("Email me a reminder to call the dentist.")
     ai("Sending you a note…")
     out = await _dispatch(
-        app, s.id, "email.send",
+        app,
+        s.id,
+        "email.send",
         {"to": "me@home.example", "subject": "Reminder", "body": "Call the dentist"},
     )
     tool("email.send → me@home.example")
@@ -100,7 +102,9 @@ async def test_morning_assistant(tmp_path) -> None:
     user("Email my lab results to my friend.")
     ai("Preparing to send…")
     out = await _dispatch(
-        app, health.id, "email.send",
+        app,
+        health.id,
+        "email.send",
         {"to": "friend@social.example", "subject": "Labs", "body": "<results>"},
     )
     tool("email.send → friend@social.example")
@@ -120,7 +124,9 @@ async def test_morning_assistant(tmp_path) -> None:
     user("Order a phone charger from Amazon.")
     ai("Queuing the purchase…")
     out = await _dispatch(
-        app, s.id, "purchase.queue",
+        app,
+        s.id,
+        "purchase.queue",
         {"vendor": "amazon", "item": "phone charger", "amount": 19},
     )
     tool("purchase.queue(amazon, $19)")
@@ -137,7 +143,9 @@ async def test_morning_assistant(tmp_path) -> None:
     user("Use my saved card to buy the annual subscription.")
     ai("This involves your financial data — routing for confirmation…")
     out = await _dispatch(
-        app, fin.id, "purchase.queue",
+        app,
+        fin.id,
+        "purchase.queue",
         {"vendor": "service", "item": "subscription", "amount": 99},
     )
     tool("purchase.queue(service, $99)")

@@ -263,13 +263,15 @@ class _AddHealthInspector(RaiseOnlyInspector):
         if isinstance(value, dict) and any("medical" in str(v).lower() for v in value.values()):
             return InspectorRaiseResult(
                 raise_state=LabelState(
-                    a=frozenset({
-                        CategoryTag(
-                            category="health",
-                            tier=Tier.REGULATED,
-                            assignment_provenance=AssignmentProvenance.RAISE_ONLY_INSPECTOR.value,
-                        ),
-                    }),
+                    a=frozenset(
+                        {
+                            CategoryTag(
+                                category="health",
+                                tier=Tier.REGULATED,
+                                assignment_provenance=AssignmentProvenance.RAISE_ONLY_INSPECTOR.value,
+                            ),
+                        }
+                    ),
                 ),
             )
         return InspectorRaiseResult()
@@ -399,13 +401,15 @@ async def test_inspector_cannot_lower_existing_axis(writer: AuditWriter) -> None
     registry.register(_read_tool())
     graph = SessionGraph()
     pre_existing = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="health",
-                tier=Tier.REGULATED,
-                assignment_provenance=AssignmentProvenance.HUMAN_DECLARED.value,
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="health",
+                    tier=Tier.REGULATED,
+                    assignment_provenance=AssignmentProvenance.HUMAN_DECLARED.value,
+                ),
+            }
+        ),
     )
     s = await _make_session(graph, label_state=pre_existing)
     client = LabeledToolClient(
