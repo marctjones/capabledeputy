@@ -71,7 +71,7 @@ legacy-path-only, or confirms-fires rather than tries-to-break) · ⬜ empty.
 | Envelope dial (FR-030) | ⬜ | demo only; no adversarial real-config test |
 | Frequency / aggregation at scale | 🟡 | one inspector unit test |
 | Certified declassification | ⬜ | the trust hinge — untested |
-| **Real-config legitimate egress (F2)** | ⬜ | **everything "✅/🟡" above is legacy-path; production path denies egress by default** |
+| **Real-config legitimate egress (F2)** | ✅ | **RESOLVED (slice #1)** — irreversible egress DENIES by default, allowed via single-use human override grant; `test_v2_legitimate_egress_allowed_via_override_grant`. See F8 for the UX question. |
 
 ---
 
@@ -92,10 +92,10 @@ Do ONE workflow class end-to-end (not all-unblock-then-all-build):
    is the next slice. Findings surfaced re-rank the backlog.
 
 **Risk-ordered backlog** (the empty/partial cells, highest first):
-1. **F2 — real-config legitimate egress.** Prove an envelope/reversibility
-   grant *allows* a legitimate send on the production config (or confirm
-   deny-by-default is intended). *Everything depends on this — Gate A.*
-2. **Certified declassification.** The only sanctioned taint-lowering; abuse
+1. ~~F2 — real-config legitimate egress~~ — **DONE (slice #1)**: production
+   path works via single-use override grant; deny-by-default is by design
+   (FR-019). See F8.
+2. **Certified declassification.** ← *next slice.* The only sanctioned taint-lowering; abuse
    attempts must fail. Untested = highest residual risk.
 3. **Pattern ③ redirection-resistance (adversarial).** Injected "send to
    attacker" can't redirect a handle-bound destination.
@@ -158,15 +158,33 @@ Everything else is iteration between the gates.
   declassification path to isolate.
 - **F7** catalogue circularity → why "model-derived" is criterion #2 and the
   1126 are slated for prune.
+- **F8 — irreversible egress is override-gated, not approval-queued
+  (DESIGN QUESTION).** On the real config, `reversibility_gate` returns DENY
+  for any irreversible effect (FR-019: social-commitment forces
+  irreversible) — the *only* path to ALLOW is a single-use human **override
+  grant**, not the approval queue. Very safe, but it means the agent can't
+  send *any* email or make *any* purchase without a per-action override —
+  potentially high friction. *Open product question:* should some
+  irreversible egress route to REQUIRE_APPROVAL (approve-at-the-moment)
+  instead of DENY→override? Slice #1 proved the override path works
+  (`test_v2_legitimate_egress_allowed_via_override_grant`); the UX call is
+  the operator's. Note: the demos + the 1126 catalogue run the legacy path
+  and therefore *misrepresent* this — they show email auto-allowing.
 
 ---
 
-## Immediate next: slice #1 = F2 (real-config legitimate egress)
+## Slice log
 
-Gate A's prerequisite. Build a workflow on the real config where an
-operator envelope/reversibility grant makes a *legitimate* `email.send`
-resolve to ALLOW or REQUIRE_APPROVAL (not the default
-`reversibility-irreversible` DENY) — proving the production egress path
-works, or escalating F2 as a real product blocker. This is the first
-vertical slice; its result determines whether the rest of the matrix is
-even reachable on the production path.
+- **#1 — F2 / real-config egress — DONE.** Proved irreversible egress denies
+  by default and the override path allows it (single-use). Result: the
+  production path works *by design*; surfaced F8 (the UX question). Matrix
+  cell ✅.
+
+## Immediate next: slice #2 = certified declassification
+
+The trust hinge — the only sanctioned way to *lower* taint. Build a
+real-config workflow where a certified declassifier transforms tainted
+output to a strictly-lower label (the sanctioned path) AND an *uncertified*
+attempt to remove taint is refused (the adversarial half). Model
+(Clark-Wilson): declassification is a gated transaction, never a free
+operation. Pressures the cell every IFC guarantee ultimately depends on.

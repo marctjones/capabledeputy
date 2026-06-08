@@ -284,3 +284,73 @@ async def test_v2_real_config_denies_irreversible_egress_by_default(tmp_path) ->
     out = await _call(app, s.id, "email.send", {"to": "x@y.example", "subject": "s", "body": "b"})
     assert out.decision.value == "deny"
     assert out.rule == "reversibility-irreversible"
+
+
+async def test_v2_legitimate_egress_allowed_via_override_grant(tmp_path) -> None:
+    """SLICE #1 / F2 resolution. On the real v2 config an irreversible egress
+    (email.send) is DENIED by default (reversibility-irreversible, FR-019),
+    and the SANCTIONED path to allow it is a human override grant — proving
+    the production egress path works, by design, with human authorization.
+    Model (Clark-Wilson): an irreversible effect is a gated transaction that
+    requires explicit authorization; the grant is single-use (FR-038)."""
+    from datetime import UTC, datetime, timedelta
+
+    from capabledeputy.daemon.lifecycle import build_policy_context_from_configs
+    from capabledeputy.policy.overrides import (
+        FrictionLevel,
+        GrantState,
+        HardFloor,
+        OverrideGrant,
+        OverridePolicy,
+        OverridePolicyEntry,
+    )
+
+    pc, _ = build_policy_context_from_configs(state_db_path=tmp_path / "s.db")
+    app = App(
+        state_db_path=tmp_path / "s.db",
+        audit_log_path=tmp_path / "a.jsonl",
+        policy_context=pc,
+    )
+    await app.startup()
+    s = await _session(app, caps=frozenset({Capability(kind=K.SEND_EMAIL, pattern="*")}))
+    to = "accountant@firm.example"
+
+    # 1) No override → the production default DENIES the irreversible send.
+    denied = await _call(app, s.id, "email.send", {"to": to, "subject": "Q3", "body": "..."})
+    assert denied.decision.value == "deny"
+    assert denied.rule == "reversibility-irreversible"
+
+    # 2) The operator grants a single-use override for this exact action.
+    from uuid import uuid4
+
+    pc.override_grants.add(
+        OverrideGrant(
+            id=uuid4(),
+            session_id=s.id,
+            action_kind=K.SEND_EMAIL,
+            target=to,
+            target_category_tier=("personal", "restricted"),
+            hard_floor_crossed=HardFloor.MAX_TIER_CLEARANCE,
+            invoker_principal="operator",
+            attester_principal=None,
+            policy_at_grant=OverridePolicyEntry(
+                floor=HardFloor.MAX_TIER_CLEARANCE,
+                policy=OverridePolicy.SINGLE_AUTHORIZED,
+                authorized_principal_ids=frozenset({"operator"}),
+                expiry_seconds=300,
+            ),
+            friction_level=FrictionLevel.MEDIUM,
+            state=GrantState.ACTIVE,
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        ),
+    )
+
+    # 3) Now the legitimate send is ALLOWED — the production path works.
+    allowed = await _call(app, s.id, "email.send", {"to": to, "subject": "Q3", "body": "..."})
+    assert allowed.decision.value == "allow"
+    assert allowed.rule == "override-grant-active"
+
+    # 4) Single-use (FR-038): a second send falls back to the default DENY.
+    again = await _call(app, s.id, "email.send", {"to": to, "subject": "Q3", "body": "..."})
+    assert again.decision.value == "deny"
+    assert again.rule == "reversibility-irreversible"
