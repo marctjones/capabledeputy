@@ -1,235 +1,265 @@
 # Security-model / flow-pattern / AI-principle alignment assessment
 
-A grounded read of how the implementation lines up with the three frames
-it commits to — the **security models** (`security-models.md`), the **LLM
-flow patterns** (`llm-flow-patterns.md`), and the **responsible-AI
-principles** (`responsible-ai-frameworks.md`) — plus what the new Starlark
-host changes. Written 2026-06; reflects the code at `v0.15.2-*`.
+A grounded, current read of how the **implementation** *and* the **shipped
+default policies** line up with the three frames memsafe commits to — the
+**security models** (`security-models.md`), the **LLM flow patterns**
+(`llm-flow-patterns.md`), and the **responsible-AI principles**
+(`responsible-ai-frameworks.md`). Refreshed 2026-06-08 against `main` at
+v0.18-dev (post trust-profile A–D, FR-019 egress amendment, certified-
+declassification fix, and assurance slices #2–#4). Supersedes the
+pre-v0.16 version of this doc.
+
+This assessment rates **two columns separately** — `Impl` (what the engine
+code enforces) and `Default` (what the *shipped* configs actually turn on) —
+because the gap between them is the whole story. Legend: 🟢 strong · 🟡
+partial · 🔴 weak.
 
 ## TL;DR
 
-- **The architecture is unusually faithful and unusually honest.** Where a
-  model can't be fully met it is scoped to an *approximate* form and the
-  gap is documented in-repo, not hidden. Fail-closed is the global default.
-- **The biggest live gap is not a model deviation — it's that the whole
-  decision-refinement layer is dormant.** The `DecisionInspector`
-  chokepoint and the Starlark `PolicyScriptHost` are built and tested, but
-  **nothing in the daemon loads or registers them** (`decision_inspectors`
-  is always the empty default; no `get_script_host` call in `daemon/` or
-  `app`). So today operators express policy only through the *declarative*
-  `RulePredicate`, which cannot do negation, arithmetic, frequency, or
-  cross-field logic. That coarseness pushes real workflows toward
-  "always-approve," and approval fatigue is the practical thing that
-  erodes human oversight (P5).
-- **So: yes, we should write better policies — but first wire the host.**
-  The single highest-leverage change is a config-driven loader that
-  compiles operator scripts into `DecisionInspector`s. Then the nuance the
-  cookbook describes (relationship-aware relax, after-hours tighten,
-  frequency caps, per-purpose relaxers) becomes expressible.
-- **Systemic weakness #1 is the labeling oracle.** Every IFC guarantee
-  rides on correct labels; mislabeled data ⇒ defense is *silently absent*
-  (governance-scope contingency #1). Strengthening label coverage (more
-  `SourcePort` bindings, catalog-aware tiers, the raise-only LLM labeler)
-  does more for real-world safety than any new model.
+- **memsafe has two layers, and they earn different grades.** An *always-on
+  structural core* of engine invariants (reference monitor, the four conflict
+  floors, object-capability, IFC propagation, fail-closed defaults, hash-
+  chained audit) is config-independent and genuinely strong. A *configurable
+  layer* (rules, purposes, clearance, envelopes, inspectors, labeling) is
+  strong **in code** but, in a few load-bearing places, **inert in the
+  shipped defaults**.
+- **The single highest-leverage gap is the labeling oracle shipping off.**
+  The content-scan labelers (`email_label_rules`, `fs_label_rules`) ship as
+  `.example` only. Every model in §1 rides on accurate labels, so this one
+  default gap silently degrades IFC, BLP, *and* Brewer-Nash at once — and it
+  *also causes approval fatigue* (mislabeled-benign data gets over-gated).
+- **The decision-inspector layer is now wired (v0.16, #46) but ships with no
+  inspectors.** It's live in code, inert by default — so the fatigue-reducing
+  relaxes the architecture assumes are the operator's homework.
+- **Weakest in code:** the integrity/blast-radius corner — Biba, non-
+  interference, and P8 containment are jointly soft (see §4).
+- **What's not a gap:** the system never *permanently* blocks an intended
+  action. Under the `personal` trust profile (v0.17), the operator is root of
+  trust and can override any floor with friction; the human-in-the-loop is a
+  decision point, not a wall.
 
 ---
 
-## 1. Starlark: should we redo policies? can we write better ones?
+## 0. The two layers
 
-### What changed
-`StarlarkScriptHost` gives a real, language-level sandbox for
-operator-authored decision logic: a script defines
-`inspect(action, session, proposed_outcome)` returning
-`relax/tighten/abstain`, with no imports, no builtins, no I/O. The
-`DecisionInspector` port + `_apply_decision_inspectors` chokepoint
-(`tools/client.py`) already run inspectors after the base decision and
-compose them most-restrictively (tighten beats relax).
-
-### The blocker (must fix first)
-`decision_inspectors` is **never populated** in the daemon. No loader
-turns a `.star` file into a registered inspector. Until that exists, a
-Starlark policy cannot affect any real decision — and neither can the
-already-shipped builtin inspectors (`SelfEgressRelaxer`,
-`AfterHoursPurchaseTightener`). **Action:** add a `policies:` block to the
-daemon config + a loader in `daemon/lifecycle.py` that, per entry, calls
-`get_script_host(kind).compile(...)` and wraps the compiled script in a
-`DecisionInspector` adapter (bridging `ScriptOutcome` → `DecisionRelax/
-Tighten`), appended to `PolicyContext.decision_inspectors`.
-
-### What better policies become possible (and the RulePredicate can't do)
-The declarative `RulePredicate` is conjunctive-only: AND across fixed
-axis fields, a single time window, exact-match values. It cannot express
-negation, arithmetic (`amount > X`), frequency ("> N sends/hour"),
-"2nd Tuesday", or cross-field conditionals ("if counterparty ∉ family
-*and* after hours → tighten"). Those are exactly Starlark's sweet spot —
-e.g. one script replaces 6 RulePredicates + an exclude rule.
-
-### Hard guardrails on Starlark policy (so it strengthens, not weakens)
-1. **A script is a `DecisionInspector`, never a replacement for the
-   structural floors.** The four always-on conflict invariants, BLP/Biba
-   gates, capability checks, and envelope hard-floor cells run *before*
-   inspectors and a script-`relax` must not be able to cross them. Compose
-   so that `relax` is bounded by the envelope cell (FR-026 bounded-relax)
-   and can never override a DENY floor.
-2. **Inspectors can only see what we pass them.** Today that's
-   `action/session/proposed_outcome` dicts — *no* session history or
-   external state (Starlark is hermetic by design). Frequency/aggregation
-   policies (defense T4) require us to first thread a read-only history
-   summary into the `session` dict; without that the script can't do
-   rate logic either.
-3. **Keep `relax` scarce, `tighten` liberal.** A relax is an autonomy
-   grant; a tighten is a safety add. The most-restrictive composition
-   already enforces tighten-wins — lean on it.
-
-**Verdict:** don't rewrite the existing YAML rules (they're fine, hard
-floors belong there). *Add* a Starlark inspector layer for the nuanced,
-fatigue-reducing relaxes/tightens the YAML can't express — after wiring.
-
----
-
-## 2. Security-model alignment
-
-Legend: **Structural** = enforced by construction; **Approx** = scoped
-approximation (documented); **N/P** = deliberately not pursued.
-
-| Model | Status | Aligns well | Can't / deviates |
+| Layer | What's in it | Config-dependent? | Overall |
 |---|---|---|---|
-| Reference Monitor | Structural | single `decide()` chokepoint, *strengthened* by LLM-isolation (model is outside the TCB) | totality depends on all dispatch routing through the chokepoint |
-| Object-capability | Structural (scoped) | unforgeable, scoped, time/rate/prior-use attenuation; control-plane model-unreachable (stricter than classic ocap) | **single-parent tree, not a DAG**; US2 cascade-revoke computed at decide(), not eager |
-| Clark-Wilson (core) | Structural | destructive-op gate + human approval (authorizer is human, beyond CW) + pattern ④ as TP | full UDI/CDI/TP/IVP formalism **N/P** (deliberate) |
-| Gold-standard audit | Structural | append-only hash-chained log + pure-function `decide()` ⇒ replayable; cross-rotation verify | explains *decision/flow*, **not model cognition** (deliberate non-goal) |
-| Least privilege / fail-closed | Structural | never-auto default, undecidable-subset refusal, CI-gated against fail-open | rides on correct labels (see §6) |
-| Brewer-Nash | Structural (Priority) | four always-on conflict invariants computed from the axes | **per-session, not per-user-lifetime** COI history |
-| Denning lattice / IFC | Partial (Priority) | four-axis labels, monotone `most_restrictive_inherit`, dynamic taint | **open category set, not a total-order lattice**; no formal join/dominance operator (pending) |
-| Bell-LaPadula | Approx | dynamic **read-up refusal** via tier × clearance profile (FR-008) | **no write-down** enforcement; static *-property N/P |
-| Biba | Approx | scoped **one-direction** integrity (provenance floor, untrusted-meets-egress) (FR-004) | **no write-up / no integrity clearances**; doc flags this as *"the most under-served model and easiest to wrongly assume covered"* |
-| Noninterference | Approx | *intransitive* NI by construction + certified declassifiers (dual-LLM schema, human one-shot); per-tier: `restricted` now auto-selects pattern ③/⑤ in per-turn dispatch (#52, fixed) | whole-system transitive NI impossible (and N/P) |
-| Provenance security | Approx | taint + single-parent delegation graph, immutable audit | single-parent (not multi-parent DAG); completeness contingent on reference-monitor totality |
-| HRU safety | N/P | sidestepped by the capability model | general safety is undecidable (correctly not pursued) |
+| **Structural core** | `decide()` chokepoint; the four conflict invariants; capability match + attenuation + cascade-revoke; IFC label propagation; reversibility gate; never-auto default; hash-chained audit | No — fires regardless of config | 🟢 |
+| **Configurable layer** | clearance profiles, purposes/admissibility, decision rules, envelopes + dial, decision inspectors, the labeling oracle, override/ratification policy, source bindings | Yes — only as strong as the shipped/authored config | 🟡 (uneven) |
+
+Everything strong in this assessment lives in (or is guaranteed by) the
+structural core. Everything soft is either a code gap in the core (Biba, NI,
+containment) or a *default-inert* spot in the configurable layer.
 
 ---
 
-## 3. Flow-pattern alignment
+## 1. Security-model alignment
 
-| Pattern | Status | Aligns well | Gap |
+| Model | Impl | Default | Where it stands |
 |---|---|---|---|
-| ① Tainted-context (turn-level) | Shipped | no *silent* egress, structural at chokepoint | unsafe for adversarial sources alone (mitigated by ②) |
-| ② Quarantined / dual-LLM | Shipped | schema-*is*-declassifier; planner never sees raw bytes; + P1.7 char/entropy constraints | a confidential read with no quarantined extractor falls back to ① (weaker exposure, still fail-closed on egress) |
-| ③ Reference handles | Shipped + wired (`reference_handle.py`, `_bind_reference_handles`, `select_mode_for_restricted`, and `select_mode` per-turn integration, #52) | planner holds opaque handles; bind audited; `restricted` tier now auto-selects ③ (or ⑤) per turn, fail-closed if neither available | — |
-| ④ Programmatic / code-mediated | Shipped | planner authors a program, not data handling; dry-run vs policy; bundle TTL | never auto-selected from labels (deliberate — planner can't pick weaker protection) |
-| ⑤ Sealed-effect / sandbox | Shipped | disposable, egress-free; Podman actuator | **containment ≠ declassification** (output keeps source labels) — a real footgun if assumed otherwise |
-| Cookbook P1.1–P1.8 (security) | All shipped | fail-closed time-window, devbox gate, dual-LLM precondition, first-use prompt, hash-chain audit, output constraints, grant validation | — |
-| Cookbook P2.1–P2.8 (approval-reduction) | All shipped | sibling-grouping, shadow mode, auto-narrowing, ttl grants, rate-limit-as-friction, rule shadow | their *payoff* depends on expressive relax policy — which is the dormant inspector layer |
-| Approval profiles A–F | Shipped (policy patterns) | sensible default outcomes per workflow class | several profiles assume relationship-aware relaxes that need the inspector layer to realize fully |
+| Reference monitor (total mediation) | 🟢 | 🟢 | Single always-on `decide()` chokepoint; every tool call gates before the handler runs; no unmediated path. Caveat: session shadow-mode (operator opt-in) logs-but-allows by design. |
+| Bell-LaPadula (read-up) | 🟢 | 🟢 | Clearance check is code-gated on `profiles`, but `profiles.yaml` **ships 4 clearance ceilings**, so read-up refusal is live out of the box. Deliberate: no write-down / static \*-property. Minor gap: no startup guard that profiles loaded. |
+| **Biba (integrity)** | 🟡 | 🔴 | Mechanism exists (integrity-floor check + provenance lattice + FR-018 control-plane reflexivity) but needs a per-operation `required_floor` few tools declare, and there is **no session-wide integrity taint**. The repo's own "most under-served" flag is accurate. |
+| Brewer-Nash (conflict) | 🟢 | 🟢 | Four always-on conflict invariants (`untrusted/health/financial × egress`) computed from the axes, regardless of config. `personal` profile may suppress 3 of 4 over the operator's *own* data — never `untrusted-meets-egress`. |
+| Clark-Wilson (gated txn + sep-of-duty) | 🟢 | 🟡 | Destructive-op gate + certified-declassification transaction always-on. Separation-of-duty (dual-control) is config-gated and **DISALLOWED by default** (managed posture) — safe, but no forced second human out of the box. |
+| Object-capability (confused-deputy) | 🟢 | 🟢 | No ambient authority; scoped/attenuated caps; cascade-revoke; reference-handle destinations pinned. In-process handle store is a known boundary (spec 004). |
+| IFC / sticky labels (Denning) | 🟢 (A+B) | 🟡 | Propagation + taint accumulation always-on — **but the labels it rides on are thin by default** because the content-scan oracle ships `.example`-only. Axis C/D not yet sticky. |
+| Noninterference | 🔴 | 🔴 | Only read-up refusal; no session-to-session effect isolation or side-channel reasoning. Intransitive NI holds by declassifier design; transitive NI is an explicit non-goal. |
 
 ---
 
-## 4. AI-safety-principle alignment (the 8 enforceable principles)
+## 2. Flow-pattern alignment
 
-| # | Principle | Grade | Can't / deviation |
+| Pattern | Impl | Default | Where it stands |
 |---|---|---|---|
-| P1 | Least authority / bounded autonomy | Strong | single-parent delegation; tool-poisoning is substrate-level (out of scope) |
-| P2 | Trusted/untrusted separation | Strong | **consequence-guard, not injection detection** ("an injected instruction can't cause unauthorized effect" — not "no injection"); one-direction Biba |
-| P3 | Confidentiality / controlled flow | Strong | can't stop purpose-contamination; intransitive (not pure) NI |
-| P4 | Purpose limitation | **Partial (honest)** | read-admissibility only; **purpose-contamination unbuilt** (R5; risk_register `RISK-PURPOSE-CONTAMINATION`) |
-| P5 | Human oversight of consequential effects | Strong (by construction) | the practical risk is *rubber-stamp fatigue*, not a model gap |
-| P6 | Accountability / traceability | Strong | decision/flow only (not model cognition); append-only vs GDPR-erasure tension |
-| P7 | Fail-safe defaults | Strong (CI-gated) | rides on correct labeling at source |
-| P8 | Containment / blast-radius | Strong | containment is **not** declassification (explicit, to prevent false inference) |
-
-Scope claim is explicit and worth restating: **"control, not correctness."**
-The system governs *who authorizes, what is touched, where data flows,
-reversibility, accountability* — never whether model output is true / fair
-/ unbiased (that would require trusting a classifier). It is also
-**operator-centric, not data-subject-centric** (aligns with privacy
-*principles*, does not discharge DSAR/erasure *obligations*).
+| ① turn-level gating | 🟢 | 🟢 | Every turn through the chokepoint. |
+| ② dual-LLM quarantine / declassify | 🟢 | 🟡 | Extractor + `quarantined.extract` tool + schema-is-declassifier ship and are adversarially proven (slice #4). But **automatic** declassification-on-read is config-gated; absent a wired declassifier a confidential read falls back to ① (still fail-closed on egress). |
+| ③ reference-handle (redirection-resist) | 🟢 | 🟢 | `handle_store` is in the default `PolicyContext`; `restricted` tier auto-selects ③/⑤ per turn (#52), fail-closed if neither available. Adversarially proven (slice #3). |
+| ④ programmatic / code-mediated | 🟢 | 🟢 | Planner authors a program; dry-run vs policy; bundle TTL. Never auto-selected from labels (deliberate). |
+| ⑤ sealed containment | 🟢 | 🟡 | Podman actuator hardened (`--net=none`, `--cap-drop=ALL`, read-only, fail-closed → `OVERRIDE_REQUIRED` if unwired). **Not wired by default and not mandatory** for sensitive work; only *recommended* via `purposes.yaml`. Footgun (pre-disclosed): containment ≠ declassification. |
 
 ---
 
-## 5. Combined assessment — strengths & weaknesses
+## 3. AI-safety-principle alignment
 
-**Strengths (in combination):**
-- The three frames reinforce each other: the security models give the
-  *what*, the flow patterns the *how*, the AI principles the *why/scope*.
-  A single mechanism often satisfies several at once (e.g. the conflict
-  invariants = Brewer-Nash + P3 + intransitive-NI floor).
-- Fail-closed + LLM-isolation + pure-function `decide()` + append-only
-  audit form a coherent, *replayable*, model-distrusting core. This is the
-  load-bearing strength and it is genuinely structural.
-- Radical honesty: approximate models are labeled approximate; non-goals
-  (interpretability, content safety, transitive NI, HRU) are stated, not
-  fudged. This is itself a safety property (no false assurance).
+| Principle | Impl | Default | Where it stands |
+|---|---|---|---|
+| P1 least authority | 🟢 | 🟡 | Strong scoping/attenuation; egress caps deliberately *not* preloaded (every send → approval), UNSET purpose fails closed. |
+| P2 trusted/untrusted separation | 🟢 | 🟢 | Provenance floor; untrusted-egress **never** rule-relaxable (refused at load *and* compose). It's a consequence-guard, not injection detection. |
+| P3 confidentiality / controlled flow | 🟢 | 🟢 | Health/financial/untrusted egress floors + a shipped PHI-egress DENY rule. |
+| P4 purpose limitation | 🟢 | 🟡 | Admissibility enforced *at spawn when a purpose is named*; 4 purposes ship. Bare session = UNSET (admits reads, refuses consequential effects). Purpose-**contamination** (in-context mixing) is unbuilt. |
+| P5 human oversight | 🟢 | 🟢 | Never-auto default + approval/override/ratification FSMs; model can suggest but never author an AUTO (FR-031). Real risk is *fatigue*, not a gap. |
+| P6 accountability / traceability | 🟢 | 🟢 | Hash-chained append-only audit, pure replayable `decide()`, tamper-evident verifier across rotations. |
+| P7 fail-safe defaults | 🟢 | 🟢 | Fail-closed on no-cap / malformed config / unlabeled / missing actuator; managed + empty override/ratification all refuse. |
+| P8 containment / blast-radius | 🟡 | 🟡 | Session isolation + reversibility gating + cascade-revoke, **but fork inherits parent caps/labels** (by design, FR-058) rather than fresh-slate, and sealed execution is optional. |
 
-**Weaknesses / where it under-delivers in practice:**
-1. **Dormant decision-refinement layer** → only coarse YAML policy → more
-   "always-approve" → **approval fatigue → rubber-stamping**, which is the
-   real-world erosion of P5/human-oversight. (Most important.)
-2. **Labeling oracle dependency** → mislabeled data silently disables the
-   whole IFC edifice (governance contingency #1). Coverage of `SourcePort`
-   bindings is thin (`source_bindings.yaml` ships empty).
-3. **Biba under-implementation** flagged by the docs themselves as the
-   easiest to wrongly assume covered.
-4. **Purpose-contamination unbuilt** (a real EU-AI-Act/GDPR-relevant gap).
-5. ~~Pattern ③ end-to-end auto-selection for `restricted`~~ — **fixed (#52)**:
-   `select_mode` now enforces the restricted-tier floor per turn (③/⑤ or
-   fail-closed). Note the consequence: with catalog-aware tiers (#50)
-   making health/financial `restricted`, any session touching them now
-   requires a Pattern ③/⑤ mode (the spawn gate already guaranteed this
-   for real sessions).
-
-**Where it actively undermines a model/principle (honest list):**
-- Mostly it *under-covers* rather than *contradicts*. The genuine
-  self-undermining risks are: (a) anyone reading "sandboxed ⇒ safe to
-  send" (containment≠declassification) — a labeled footgun; (b) assuming
-  Biba/NI are fuller than they are; (c) the dormant inspector layer making
-  the *documented* approval-reduction patterns (P2.x, profiles A–F) not
-  actually reduce approvals, which then undermines the oversight model via
-  fatigue. None of these is a logic contradiction; all are
-  expectation/coverage gaps that the docs largely pre-disclose.
+**Scope claim (unchanged, worth restating): "control, not correctness."** The
+system governs *who authorizes, what is touched, where data flows,
+reversibility, accountability* — never whether model output is true / fair /
+unbiased. It is **operator-centric, not data-subject-centric** (aligns with
+privacy *principles*; does not discharge DSAR/erasure *obligations*).
 
 ---
 
-## 6. What would strengthen alignment (prioritized)
+## 4. The intersection of the three frames
 
-1. **Wire the DecisionInspector / Starlark loader** (P5, P2.x, profiles).
-   Turns the dormant layer on; lets operators express the fatigue-reducing
-   relaxes the architecture already assumes. *Guardrail: scripts refine,
-   never override structural floors; relax bounded by the envelope cell.*
-2. **Grow the labeling oracle** (P2, P3, P7, IFC). Ship real
-   `SourcePort`/binding coverage (the git/Gmail/Drive providers), and
-   wire the raise-only LLM labeler so untrusted/sensitive reads get tagged
-   even when the operator didn't pre-bind. This attacks weakness #2 — the
-   highest-leverage *safety* improvement. *(String→tier resolution is now
-   catalog-aware — #50, done.)*
-3. ~~Verify + close Pattern ③ auto-selection for `restricted`~~ —
-   **done (#52)**: `select_mode` enforces the restricted-tier ③/⑤ floor
-   per turn, fail-closed when neither is available.
-4. **Thread a read-only session-history summary into inspector inputs**
-   (T4 aggregation, frequency policy). Without it, neither YAML nor
-   Starlark can express "N reads → bump tier" / "> N sends/hour."
-5. ~~Make the Biba gap loud~~ — **done (#53)**: `capdep policy models`
-   prints each model's honest scope and flags Biba's one-direction limit
-   in red.
-6. **Surface purpose-contamination as a visible residual** (P4). Even
-   without full enforcement, flag decisions where inadmissible-category
-   data is in-context (a "contamination-suspected" audit signal) so it's
-   not silently invisible.
+**Positive intersection — one mechanism, many guarantees.** The four always-on
+conflict invariants are *simultaneously* Brewer-Nash ∩ P3-confidentiality ∩
+the intransitive-noninterference floor — and they make patterns ②/③ *defense-
+in-depth rather than load-bearing*. The reference monitor + capability model +
+hash-chained audit jointly discharge P1+P6+P7 with zero config. This is why
+the strong cells cluster: they are the *same* structural core seen through
+three lenses. This core is config-independent and solid.
 
-## 7. Everyday-practice usefulness (consistent with the design)
+**Negative intersection #1 — the integrity/containment corner is jointly
+soft.** Three frames are weak *in the same place*: **Biba** (model) ∩ **P8
+containment** (principle) ∩ **⑤ sealed-by-default** (pattern). Biba has no
+session-wide integrity taint, P8's fork inherits authority, ⑤ isn't mandatory.
+A *low-integrity, bounded-blast-radius* guarantee is the one corner where no
+frame carries the others.
 
-- **A Starlark policy starter library** (once wired): after-hours-tighten,
-  relationship-aware relax, per-purpose autonomy, frequency caps,
-  reversible-write auto — the cookbook profiles as drop-in scripts.
-- **Shadow-mode for new inspectors/rules** (already have P2.2/P2.8): let
-  operators A/B a policy against real traffic before enforcing — removes
-  the fear that tuning autonomy weakens safety.
-- **More `VersionedWritePort` backends** (Drive/git/S3): each turns a write
-  surface from always-prompt into act-but-undoably (`reversible/system`),
-  directly cutting approvals without weakening safety — the cleanest
-  fatigue win.
-- **More `SourcePort` backends** (Gmail/Drive/calendar): canonical ids cut
-  false approvals *and* harden the surfaces people actually use against
-  confused-deputy redirection.
-- **Operator-facing "why" surfacing**: the audit already explains every
-  decision; expose a `capdep why <decision>` that prints the rule/floor/
-  inspector that fired, to build operator trust and speed approvals.
+**Negative intersection #2 — the default labeling gap sits *underneath* all of
+§1.** IFC, BLP, and Brewer-Nash are only as good as the labels on the data,
+and the content-scan oracle ships off by default. So a fresh deployment
+silently degrades *every model in §1 at once* on any data that lacks an
+inherent tag. It is not a code weakness (the engine is correct); it is that
+the shipped defaults leave the foundation unconfigured — and it is the only
+default gap that propagates across the whole security-model axis.
+
+---
+
+## 5. Warning the human — current surfaces and the missing tier
+
+**What exists (reactive, at decision time):** when an action is gated, the
+human gets the engine-authored `rationale` + the *specific rule/floor that
+fired* (e.g. `health-meets-egress`), structured pasteable `recovery_steps`
+(Issue #3), and `capdep why <decision>` to replay why. Crossing a hard floor
+requires **typed friction acknowledgment** of the specific irreversible effect
+(`override request --friction-confirmed`, scaled LOW/MEDIUM/MAXIMAL). So the
+human is never asked to confirm blind — they always see *what* and *why*.
+
+**What's missing:**
+1. **No proactive / pre-flight warning.** The warning fires when the action is
+   *attempted and gated*, not *before the human commits to a plan*. There is
+   no "you're about to set up a flow that will hit a floor" anticipation.
+2. **No non-blocking advisory tier.** The decision lattice is
+   `ALLOW < REQUIRE_APPROVAL < OVERRIDE_REQUIRED < DENY`. There is no
+   **WARN-and-proceed**: a borderline action is either silently allowed or it
+   *blocks* on an approval. (`SUGGEST` exists as a rule outcome but collapses
+   to `REQUIRE_APPROVAL`.)
+3. **No model/principle-level framing for the human.** The surfaced reason is
+   the operational rule name, not "this violates Brewer-Nash / purpose
+   limitation." `capdep policy models` documents model scope but isn't wired
+   into live decisions.
+
+This missing **advisory/WARN tier is itself one of the best anti-fatigue
+levers** — see §6.
+
+---
+
+## 6. Fixing the weak spots without causing approval fatigue
+
+**The governing principle: fatigue comes from gating the *wrong* things, not
+from gating too little.** The cure is **accuracy + reversibility + expressive
+relax + non-blocking advisories** — never loosening the structural floors.
+Every fix below *reduces or holds* the approval count while keeping or
+improving safety, and none of them can permanently stop an intended action
+(the human can always deliberately override).
+
+Four levers, then the per-weak-spot mapping:
+
+- **Lever A — accurate labels.** Gate only what's genuinely sensitive; let
+  benign flows pass. Mislabeling causes *both* over-gating (fatigue) and
+  under-gating (unsafe), so this lever cuts fatigue and raises safety at once.
+- **Lever B — reversibility → act-but-undoably.** Reversible/system-revertible
+  effects (git write, draft, scratch) should *auto-execute*, not prompt — the
+  human isn't blocked because the action is undoable.
+- **Lever C — sealed containment, auto-selected and invisible.** Risky-but-
+  reversible execution runs in a disposable sandbox *transparently*;
+  containment *replaces* the approval rather than adding one.
+- **Lever D — expressive, bounded relax + a WARN tier.** Encode "in this
+  situation it's fine" once (inspectors/envelopes/relationship-aware), and let
+  borderline cases *proceed with a loud audited advisory* instead of blocking.
+
+### Per weak spot
+
+1. **Default labeling oracle (off) — highest leverage, *reduces* fatigue.**
+   Ship conservative `fs_/email_label_rules` **on by default** and wire the
+   raise-only LLM labeler so unbound reads still get tagged. Anti-fatigue
+   because it stops the binary "trust everything (unsafe) vs approve
+   everything (fatigue)": accurate labels are what let "send my grocery list"
+   auto-go while "send my lab results" gets gated. *(Lever A.)* Guard against
+   over-labeling: keep default rules high-precision; pair with declassification
+   paths so a label can be deliberately lowered.
+
+2. **Inspector layer (inert) — the dedicated anti-fatigue layer.** Ship a
+   *starter library of conservative relax inspectors on by default*: self-
+   egress relax (emailing yourself never needs approval), reversible-scratch
+   auto, relationship-aware relax for known family/work recipients *within the
+   envelope*. This is the cleanest direct fatigue cut. *(Lever D.)* Guardrail
+   already enforced: a relax is bounded by the envelope cell and can never
+   cross a DENY floor.
+
+3. **Reversibility catalog (empty) — turn approvals into undoable acts.**
+   Populate the reversibility labels and add `VersionedWritePort` backends
+   (Drive/git/S3) so more write surfaces are `reversible/system` →
+   optimistic-auto. Each backend converts an always-prompt surface into act-
+   but-undoably. *(Lever B.)*
+
+4. **Biba (weak) — make it *targeted and loud*, not blanket.** Do **not**
+   impose integrity floors on everything (that blocks normal work). Declare
+   `required_floor` only on genuinely integrity-critical ops (signing, moving
+   money, editing policy/config — the control plane already has FR-018), and
+   add session-integrity-taint that gates *only* those critical ops after an
+   untrusted read — always with a declassification path to proceed
+   deliberately. Fatigue stays near zero because the gate fires rarely and
+   always has a deliberate way through.
+
+5. **P8 containment / ⑤ optional — let containment *remove* approvals.** Keep
+   fork-inherit (it's the usable choice). Make the sandbox the *frictionless
+   default* for execute/code work: auto-select ⑤, run transparently, and turn
+   "approve this code execution" into "it ran in a disposable container,
+   here's the result." *(Lever C.)*
+
+6. **The missing WARN tier — the structural anti-fatigue fix.** Add a non-
+   blocking **advisory** outcome between ALLOW and REQUIRE_APPROVAL: the action
+   proceeds, but a prominent, audited "heads-up: egressing personal data /
+   this is irreversible" is surfaced. Use it for the large middle band that is
+   currently force-gated to approval but isn't truly dangerous. Couple it with
+   **pre-flight warnings** (`capdep why --dry-run <planned action>`) so the
+   human sees a floor *before* committing. This converts a class of blocking
+   prompts into informed-proceed, which is precisely the fatigue cut — while
+   the genuinely irreversible-and-sensitive cases stay on approval/override.
+
+7. **Purpose-contamination (unbuilt) — surface, don't gate (yet).** Emit a
+   `contamination-suspected` *audit signal* (zero friction) when inadmissible-
+   category data is in-context. Visibility first; escalate to a gate only if a
+   real pattern emerges. *(Lever D, observability form.)*
+
+8. **Envelopes (3 cells) / override / ratification (empty) — give the dial and
+   the human room.** Expand the default envelope grid with sensible
+   `{strictest, loosest}` bounds so the cautious↔permissive dial *and* the
+   inspectors have room to reduce approvals safely; ship an easy ratification
+   CLI flow so operator-authored relaxes are quick to apply. These are what
+   make the system *tunable toward less friction* without touching floors.
+
+### Priority order (leverage × fatigue-reduction)
+
+1. **Default labeling oracle on + raise-only labeler** — fixes the §1
+   foundation *and* cuts false approvals. (Lever A.)
+2. **Starter relax-inspector library on by default** — the most direct fatigue
+   cut. (Lever D.)
+3. **WARN/advisory tier + pre-flight `--dry-run` warnings** — converts the
+   force-to-approval middle band into informed-proceed, and answers the
+   "warn the human" gap directly. (Lever D.)
+4. **Reversibility catalog + more VersionedWritePort backends** — approvals →
+   undoable acts. (Lever B.)
+5. **Auto-select + transparent sandbox for execute/code** — containment
+   replaces approval; closes part of the P8/⑤ corner. (Lever C.)
+6. **Targeted Biba floors + session integrity-taint on critical ops only** —
+   closes the integrity corner without blanket friction.
+7. **Contamination audit signal; expand envelopes; easy ratification.**
+
+Noninterference (transitive) is left as a documented non-goal; the
+intersection-#1 corner is closed by #5 + #6 above to the extent the threat
+model needs.
