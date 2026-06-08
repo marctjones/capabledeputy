@@ -39,6 +39,7 @@ from capabledeputy.tui.inline.model import (
     render_entry,
 )
 from capabledeputy.tui.inline.status import TrustState, render_status
+from capabledeputy.tui.inline.view import ConsoleView
 
 _HELP = (
     "commands:  /flow  data lineage · /why  last reason · /clear  log · /help\n"
@@ -48,9 +49,11 @@ _HELP = (
 
 class ConsoleDriver(Protocol):
     """Feeds one turn into the console. Calls the view methods on `console`
-    and awaits `console.request_decision(...)` for any gated action."""
+    and awaits `console.request_decision(...)` for any gated action. Typed
+    against `ConsoleView`, so the same driver runs against the real UI or the
+    headless automation harness unchanged."""
 
-    async def run_turn(self, text: str, console: InlineConsole) -> None: ...
+    async def run_turn(self, text: str, console: ConsoleView) -> None: ...
 
 
 class OverrideConfirmScreen(ModalScreen[bool]):

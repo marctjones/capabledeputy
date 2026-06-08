@@ -11,7 +11,6 @@ drop-in for the same `ConsoleDriver` protocol.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.engine import PolicyDecision
@@ -32,6 +31,7 @@ from capabledeputy.tui.inline.model import (
     UntrustedBlock,
 )
 from capabledeputy.tui.inline.status import TrustState
+from capabledeputy.tui.inline.view import ConsoleView
 
 _HEALTH = LabelState(
     a=frozenset({CategoryTag("health", Tier.RESTRICTED)}),
@@ -56,7 +56,7 @@ class DemoDriver:
         if self._delay:
             await asyncio.sleep(self._delay)
 
-    async def run_turn(self, text: str, console: Any) -> None:
+    async def run_turn(self, text: str, console: ConsoleView) -> None:
         console.append(AgentMessage("Reading your labs and preparing a recap…"))
         await self._beat()
 
