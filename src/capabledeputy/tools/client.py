@@ -34,7 +34,11 @@ from capabledeputy.policy.decision_rules import DecisionRules
 from capabledeputy.policy.engine import PolicyDecision, decide
 from capabledeputy.policy.envelope import EnvelopeSet, RiskPreference
 from capabledeputy.policy.labels import LabelState
-from capabledeputy.policy.overrides import OverrideGrantStore, OverridePolicies
+from capabledeputy.policy.overrides import (
+    OverrideGrantStore,
+    OverridePolicies,
+    TrustProfile,
+)
 from capabledeputy.policy.reversibility import ReversibilityLabel
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
@@ -1111,6 +1115,14 @@ class LabeledToolClient:
         kwargs["devbox_manager_wired"] = self._policy_context.devbox_manager_wired
         kwargs["egress_override_categories"] = self._policy_context.egress_override_categories
         kwargs["egress_override_tiers"] = self._policy_context.egress_override_tiers
+        # Slice C (FR-049) — the `personal` trust profile lets a human-
+        # ratified `crosses_floor` rule cross a structural floor over the
+        # operator's own data. Read off the loaded Override Policy.
+        op = self._policy_context.override_policies
+        if op is not None:
+            kwargs["trust_profile_is_personal"] = (
+                op.trust_profile is TrustProfile.PERSONAL
+            )
         return kwargs
 
     async def _bind_reference_handles(

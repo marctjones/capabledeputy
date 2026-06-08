@@ -296,14 +296,35 @@ def _conflict_invariant_outcome(
 def _compose_with_conflict_invariant(
     base: PolicyDecision,
     outcome: tuple[Decision, str, str] | None,
+    *,
+    crossed_floors: frozenset[str] = frozenset(),
+    personal: bool = False,
 ) -> PolicyDecision:
     """Compose a four-axis conflict-invariant outcome with the base
     decision. Most-restrictive wins (these are floors, like the
     envelope/reversibility composers); they never relax a stricter
-    base. A no-op when no invariant fired."""
+    base. A no-op when no invariant fired.
+
+    Slice C (FR-049): under the `personal` trust profile, a human-
+    ratified rule that explicitly named this structural floor in
+    `crosses_floor` SUPPRESSES the floor — the rule's relaxation over the
+    operator's OWN data stands. Two hard guards make this safe:
+      - It is gated on `personal`; `managed` never suppresses (the floor
+        re-applies exactly as before).
+      - `untrusted-meets-egress` is NEVER suppressible here, even if its id
+        somehow reached `crossed_floors` — defense in depth on top of the
+        load-time refusal in decision_rules._validate_crosses_floor. A
+        standing rule can never auto-cross the untrusted floor.
+    """
     if outcome is None:
         return base
     decision, rule, reason = outcome
+    if (
+        personal
+        and rule in crossed_floors
+        and rule != PROVENANCE_EGRESS_RULE  # untrusted floor never rule-crossable
+    ):
+        return base
     if _LEGACY_RANK[decision] < _LEGACY_RANK[base.decision]:
         return replace(base, decision=decision, rule=rule, reason=reason)
     return base
@@ -768,6 +789,7 @@ def _decide_impl(
     labels: LabelState | None = None,
     egress_override_categories: frozenset[str] = frozenset(),
     egress_override_tiers: frozenset[str] = frozenset(),
+    trust_profile_is_personal: bool = False,
 ) -> PolicyDecision:
     """Internal decision impl. The public `decide()` wraps this and
     adds recovery-step synthesis (Issue #3) on the resulting
@@ -1187,7 +1209,12 @@ def _decide_impl(
             envelope_rule=envelope_rule,
             envelope_reason=envelope_reason,
         )
-    composed = _compose_with_conflict_invariant(composed, conflict_outcome)
+    composed = _compose_with_conflict_invariant(
+        composed,
+        conflict_outcome,
+        crossed_floors=v2.crossed_floors,
+        personal=trust_profile_is_personal,
+    )
     final = replace(
         composed,
         labels_snapshot=labels,
