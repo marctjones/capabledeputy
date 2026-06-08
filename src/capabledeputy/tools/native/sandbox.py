@@ -108,10 +108,7 @@ def make_sandbox_tools(policy_context, audit=None) -> list[ToolDefinition]:
             else:
                 return ToolResult(
                     output={
-                        "error": (
-                            f"input {name!r} must be a string or "
-                            "{base64: '...'} object"
-                        ),
+                        "error": (f"input {name!r} must be a string or {{base64: '...'}} object"),
                     },
                 )
 

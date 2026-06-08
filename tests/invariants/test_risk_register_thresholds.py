@@ -124,25 +124,29 @@ class TestRiskRegisterThresholdSchema:
 
             framework = entry.threshold.framework
             if framework == "FAIR" and entry.threshold.magnitude_band_min:
-                assert (
-                    entry.threshold.magnitude_band_min in valid_magnitude_bands
-                ), f"{risk_id}: invalid FAIR magnitude_band_min {entry.threshold.magnitude_band_min!r}"  # noqa: E501
+                assert entry.threshold.magnitude_band_min in valid_magnitude_bands, (
+                    f"{risk_id}: invalid FAIR magnitude_band_min "
+                    f"{entry.threshold.magnitude_band_min!r}"
+                )
             elif framework == "NIST-AI-RMF" and entry.threshold.impact_tier_min:
-                assert (
-                    entry.threshold.impact_tier_min in valid_impact_tiers
-                ), f"{risk_id}: invalid NIST-AI-RMF impact_tier_min {entry.threshold.impact_tier_min!r}"  # noqa: E501
+                assert entry.threshold.impact_tier_min in valid_impact_tiers, (
+                    f"{risk_id}: invalid NIST-AI-RMF impact_tier_min "
+                    f"{entry.threshold.impact_tier_min!r}"
+                )
             elif framework == "EU-AI-Act" and entry.threshold.risk_class_min:
-                assert (
-                    entry.threshold.risk_class_min in valid_risk_classes
-                ), f"{risk_id}: invalid EU-AI-Act risk_class_min {entry.threshold.risk_class_min!r}"
+                assert entry.threshold.risk_class_min in valid_risk_classes, (
+                    f"{risk_id}: invalid EU-AI-Act risk_class_min "
+                    f"{entry.threshold.risk_class_min!r}"
+                )
             elif framework == "FIPS-199" and entry.threshold.impact_min:
-                assert (
-                    entry.threshold.impact_min in valid_impacts
-                ), f"{risk_id}: invalid FIPS-199 impact_min {entry.threshold.impact_min!r}"
+                assert entry.threshold.impact_min in valid_impacts, (
+                    f"{risk_id}: invalid FIPS-199 impact_min {entry.threshold.impact_min!r}"
+                )
             elif framework == "OWASP-RiskRating" and entry.threshold.severity_min:
-                assert (
-                    entry.threshold.severity_min in valid_severities
-                ), f"{risk_id}: invalid OWASP-RiskRating severity_min {entry.threshold.severity_min!r}"  # noqa: E501
+                assert entry.threshold.severity_min in valid_severities, (
+                    f"{risk_id}: invalid OWASP-RiskRating severity_min "
+                    f"{entry.threshold.severity_min!r}"
+                )
 
     def test_no_orphan_framework_refs(self, risk_register_path: Path) -> None:
         """SC-001: every entry must cite at least one external framework (SC-001)."""

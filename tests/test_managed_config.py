@@ -58,7 +58,7 @@ def test_rewrite_same_body_is_noop(xdg_tmp: Path) -> None:
 def test_rewrite_different_body_replaces_in_place(xdg_tmp: Path) -> None:
     path = user_default_daemon_config_path()
     write_managed_block(path, "imap", IMAP_BLOCK_BODY)
-    new_body = "  - name: mail2\n    command: [\"echo\", \"hi\"]\n    strict: true\n"
+    new_body = '  - name: mail2\n    command: ["echo", "hi"]\n    strict: true\n'
     replaced, changed = write_managed_block(path, "imap", new_body)
     assert replaced is True
     assert changed is True
@@ -94,7 +94,7 @@ def test_two_blocks_coexist(xdg_tmp: Path) -> None:
     path = user_default_daemon_config_path()
     write_managed_block(path, "imap", IMAP_BLOCK_BODY)
     gworkspace_body = (
-        '  - name: gws\n'
+        "  - name: gws\n"
         '    command: ["npx", "gws-mcp-server", "--services", "gmail"]\n'
         "    strict: false\n"
     )
@@ -195,7 +195,13 @@ def test_register_default_assistant_surface_writes_all_blocks(xdg_tmp: Path) -> 
     # The file parses as YAML and lists all five upstream servers
     parsed = yaml.safe_load(text)
     names = {s["name"] for s in parsed["upstream_servers"]}
-    assert {"bundled-fs", "bundled-memory", "bundled-git", "bundled-fetch", "bundled-search"}.issubset(names)  # noqa: E501
+    assert {
+        "bundled-fs",
+        "bundled-memory",
+        "bundled-git",
+        "bundled-fetch",
+        "bundled-search",
+    }.issubset(names)
     # status messages report one line per block + a sandbox-skipped message
     assert any("bundled-fs" in m for m in msgs)
     assert any("sandbox skipped" in m for m in msgs)
@@ -334,7 +340,15 @@ def test_gworkspace_block_coexists_with_imap_and_bundled(xdg_tmp: Path) -> None:
     parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
     names = {s["name"] for s in parsed["upstream_servers"]}
     # Bundled five + imap (named `mail`) + gworkspace (named `gws`)
-    assert {"mail", "bundled-fs", "bundled-memory", "bundled-git", "bundled-fetch", "bundled-search", "gws"}.issubset(names)  # noqa: E501
+    assert {
+        "mail",
+        "bundled-fs",
+        "bundled-memory",
+        "bundled-git",
+        "bundled-fetch",
+        "bundled-search",
+        "gws",
+    }.issubset(names)
 
 
 def test_gws_cli_available_returns_false_when_missing(

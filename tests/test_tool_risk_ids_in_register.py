@@ -19,8 +19,7 @@ _ID = re.compile(r'"([^"]+)"')
 def test_all_tool_risk_ids_exist_in_register() -> None:
     root = Path(__file__).resolve().parent.parent
     register = {
-        e["id"]
-        for e in json.loads((root / "configs/risk_register.json").read_text())["entries"]
+        e["id"] for e in json.loads((root / "configs/risk_register.json").read_text())["entries"]
     }
     orphans: list[tuple[str, str]] = []
     for path in (root / "src/capabledeputy").rglob("*.py"):

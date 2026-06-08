@@ -93,8 +93,10 @@ def test_user_config_path_used_when_cwd_file_absent(
     # at module-import time so we have to call the helper that re-derives.
     # To keep the test hermetic, pass the explicit fallback path the loader
     # WOULD have looked at if it re-derived after the monkeypatch.
-    found = load_anthropic_api_key(search_paths=[
-        tmp_path / "no-cwd-key.KEY",  # cwd-local: missing
-        user_key_file,                  # user-config: present
-    ])
+    found = load_anthropic_api_key(
+        search_paths=[
+            tmp_path / "no-cwd-key.KEY",  # cwd-local: missing
+            user_key_file,  # user-config: present
+        ]
+    )
     assert found == "from-user-config"

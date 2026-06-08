@@ -70,13 +70,15 @@ def _team_sharepoint_binding() -> SourceLocationLabelBinding:
 
 def _personal_label_state() -> LabelState:
     return LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="personal",
-                tier=Tier.REGULATED,
-                assignment_provenance="human-declared",
-            ),
-        })
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="personal",
+                    tier=Tier.REGULATED,
+                    assignment_provenance="human-declared",
+                ),
+            }
+        )
     )
 
 

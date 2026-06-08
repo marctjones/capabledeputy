@@ -101,9 +101,7 @@ def test_tools_command_runs() -> None:
         # explicit "no tools registered" — either means the command
         # executed; an UNKNOWN-COMMAND error would mean it didn't.
         assert (
-            "tool(s) available" in out
-            or "no tools registered" in out
-            or "no tools match" in out
+            "tool(s) available" in out or "no tools registered" in out or "no tools match" in out
         ), f"/tools produced unexpected output: {out!r}"
     finally:
         child.sendline("/quit")
@@ -161,19 +159,16 @@ def test_grant_then_caps_round_trip() -> None:
         grant_out = _strip_ansi(child.before)
         # Either the grant succeeded ("granted") or it was already
         # present from the auto-grant defaults — both are acceptable.
-        assert (
-            "grant" in grant_out.lower()
-            or "already" in grant_out.lower()
-        ), f"unexpected /grant output: {grant_out!r}"
+        assert "grant" in grant_out.lower() or "already" in grant_out.lower(), (
+            f"unexpected /grant output: {grant_out!r}"
+        )
 
         child.sendline("/caps")
         child.expect(r"chat>", timeout=10)
         caps_out = _strip_ansi(child.before)
         # /caps should list READ_FS at minimum (auto-grant defaults
         # ensure it's there even without our /grant).
-        assert "READ_FS" in caps_out, (
-            f"/caps missing READ_FS; got: {caps_out!r}"
-        )
+        assert "READ_FS" in caps_out, f"/caps missing READ_FS; got: {caps_out!r}"
     finally:
         child.sendline("/quit")
         child.close()
@@ -195,7 +190,5 @@ def test_capdep_chat_binary_exists() -> None:
         timeout=30,
     )
     # --help must exit 0 and mention the chat subcommand
-    assert result.returncode == 0, (
-        f"capdep chat --help failed: {result.stderr}"
-    )
+    assert result.returncode == 0, f"capdep chat --help failed: {result.stderr}"
     assert "session" in result.stdout.lower() or "chat" in result.stdout.lower()

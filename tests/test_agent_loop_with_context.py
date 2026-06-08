@@ -169,13 +169,15 @@ class TestSystemPromptReplacement:
         s_labeled = replace(
             s,
             label_state=LabelState(
-                a=frozenset({
-                    CategoryTag(
-                        "personal",
-                        Tier.REGULATED,
-                        assignment_provenance="source-declared",
-                    ),
-                })
+                a=frozenset(
+                    {
+                        CategoryTag(
+                            "personal",
+                            Tier.REGULATED,
+                            assignment_provenance="source-declared",
+                        ),
+                    }
+                )
             ),
             clearance_profile_id="tier_1",
             intent="calendar-review",

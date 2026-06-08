@@ -87,23 +87,51 @@ def _one_call(name: str, why: str, caps, labels, call, exp) -> Scenario:
 
 # --- realistic vocabulary (drives the count + the natural framing) --------
 _RECIPIENTS = [
-    "me@home.example", "mom@family.example", "partner@home.example",
-    "boss@work.example", "accountant@firm.example", "drwho@clinic.example",
-    "newsletter@news.example", "stranger@unknown.example", "team@work.example",
-    "vendor@shop.example", "friend@social.example", "landlord@rentals.example",
+    "me@home.example",
+    "mom@family.example",
+    "partner@home.example",
+    "boss@work.example",
+    "accountant@firm.example",
+    "drwho@clinic.example",
+    "newsletter@news.example",
+    "stranger@unknown.example",
+    "team@work.example",
+    "vendor@shop.example",
+    "friend@social.example",
+    "landlord@rentals.example",
 ]
 _EMAIL_TASKS = [
-    "send a quick note", "share an update", "reply to the thread",
-    "forward the document", "send the summary", "follow up",
+    "send a quick note",
+    "share an update",
+    "reply to the thread",
+    "forward the document",
+    "send the summary",
+    "follow up",
 ]
 _VENDORS = ["amazon", "target", "instacart", "etsy", "bestbuy", "apple", "uber-eats", "doordash"]
 _ITEMS = [
-    "wireless mouse", "groceries", "phone charger", "coffee beans", "notebook",
-    "desk lamp", "headphones", "running shoes", "vitamins", "birthday gift",
+    "wireless mouse",
+    "groceries",
+    "phone charger",
+    "coffee beans",
+    "notebook",
+    "desk lamp",
+    "headphones",
+    "running shoes",
+    "vitamins",
+    "birthday gift",
 ]
 _NOTE_KEYS = [
-    "grocery-list", "trip-ideas", "reading-list", "project-plan", "gift-ideas",
-    "passwords-hint", "meeting-notes", "recipes", "goals-2026", "todo",
+    "grocery-list",
+    "trip-ideas",
+    "reading-list",
+    "project-plan",
+    "gift-ideas",
+    "passwords-hint",
+    "meeting-notes",
+    "recipes",
+    "goals-2026",
+    "todo",
 ]
 
 
@@ -161,23 +189,33 @@ def _scenarios() -> list[Scenario]:
     for key in _NOTE_KEYS:
         n += 1
         sc = _one_call(
-            f"note-read-{key}-{n}", f"[OK] read note '{key}' -> allow.",
-            rd_cap, frozenset(), tc(f"r{n}", "memory.read", key=key), ("allow", None),
+            f"note-read-{key}-{n}",
+            f"[OK] read note '{key}' -> allow.",
+            rd_cap,
+            frozenset(),
+            tc(f"r{n}", "memory.read", key=key),
+            ("allow", None),
         )
         sc.pre = seed
         out.append(sc)
         n += 1
         sc = _one_call(
-            f"note-update-{key}-{n}", f"[GATED] overwrite note '{key}' (destructive) -> approval.",
-            mod_cap, frozenset(), tc(f"u{n}", "memory.update", key=key, value="z"),
+            f"note-update-{key}-{n}",
+            f"[GATED] overwrite note '{key}' (destructive) -> approval.",
+            mod_cap,
+            frozenset(),
+            tc(f"u{n}", "memory.update", key=key, value="z"),
             ("require_approval", "destructive-op-needs-approval"),
         )
         sc.pre = seed
         out.append(sc)
         n += 1
         sc = _one_call(
-            f"note-delete-{key}-{n}", f"[GATED] delete note '{key}' (destructive) -> approval.",
-            del_cap, frozenset(), tc(f"d{n}", "memory.delete", key=key),
+            f"note-delete-{key}-{n}",
+            f"[GATED] delete note '{key}' (destructive) -> approval.",
+            del_cap,
+            frozenset(),
+            tc(f"d{n}", "memory.delete", key=key),
             ("require_approval", "destructive-op-needs-approval"),
         )
         sc.pre = seed
@@ -190,8 +228,10 @@ def _scenarios() -> list[Scenario]:
             _one_call(
                 f"email-no-capability-{rcpt.split('@')[0]}-{n}",
                 "[BLOCKED] send with NO SEND_EMAIL capability -> deny (confused-deputy).",
-                frozenset(), frozenset(),
-                tc(f"e{n}", "email.send", to=rcpt, subject="s", body="b"), ("deny", None),
+                frozenset(),
+                frozenset(),
+                tc(f"e{n}", "email.send", to=rcpt, subject="s", body="b"),
+                ("deny", None),
             ),
         )
     # Capability scoped to a domain NONE of the recipients belong to, so
@@ -204,7 +244,8 @@ def _scenarios() -> list[Scenario]:
                 "[BLOCKED] capability scoped to a domain the recipient isn't in -> deny.",
                 frozenset({Capability(kind=K.SEND_EMAIL, pattern="*@allowlisted.example")}),
                 frozenset(),
-                tc(f"e{n}", "email.send", to=rcpt, subject="s", body="b"), ("deny", None),
+                tc(f"e{n}", "email.send", to=rcpt, subject="s", body="b"),
+                ("deny", None),
             ),
         )
     for vendor in _VENDORS:

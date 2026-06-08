@@ -17,9 +17,7 @@ import demos.scenarios as _scenarios_pkg
 import pytest
 
 _DEMO_MODULES = sorted(
-    name
-    for _, name, _ in pkgutil.iter_modules(_scenarios_pkg.__path__)
-    if not name.startswith("_")
+    name for _, name, _ in pkgutil.iter_modules(_scenarios_pkg.__path__) if not name.startswith("_")
 )
 
 

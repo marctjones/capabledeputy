@@ -41,9 +41,13 @@ def _stub_caps(family: str, is_tty: bool = True) -> terminal_caps.TerminalCaps:
 
 
 def test_mode_line_always_picks_line() -> None:
-    with patch.object(chat_module, "_repl_loop") as line, patch.object(
-        chat_module, "_run_rich_surface",
-    ) as rich:
+    with (
+        patch.object(chat_module, "_repl_loop") as line,
+        patch.object(
+            chat_module,
+            "_run_rich_surface",
+        ) as rich,
+    ):
         chat_module._dispatch_surface("sid", "line")
     line.assert_called_once_with("sid", no_stream=False)
     rich.assert_not_called()
@@ -51,9 +55,13 @@ def test_mode_line_always_picks_line() -> None:
 
 def test_mode_rich_with_tty_picks_rich(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(terminal_caps, "caps", lambda: _stub_caps("ghostty"))
-    with patch.object(chat_module, "_repl_loop") as line, patch.object(
-        chat_module, "_run_rich_surface",
-    ) as rich:
+    with (
+        patch.object(chat_module, "_repl_loop") as line,
+        patch.object(
+            chat_module,
+            "_run_rich_surface",
+        ) as rich,
+    ):
         chat_module._dispatch_surface("sid", "rich")
     rich.assert_called_once_with("sid")
     line.assert_not_called()
@@ -64,7 +72,9 @@ def test_mode_rich_without_tty_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     import typer
 
     monkeypatch.setattr(
-        terminal_caps, "caps", lambda: _stub_caps("ghostty", is_tty=False),
+        terminal_caps,
+        "caps",
+        lambda: _stub_caps("ghostty", is_tty=False),
     )
     with pytest.raises(typer.Exit):
         chat_module._dispatch_surface("sid", "rich")
@@ -74,9 +84,13 @@ def test_mode_auto_picks_rich_on_modern_terminal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(terminal_caps, "caps", lambda: _stub_caps("kitty"))
-    with patch.object(chat_module, "_repl_loop") as line, patch.object(
-        chat_module, "_run_rich_surface",
-    ) as rich:
+    with (
+        patch.object(chat_module, "_repl_loop") as line,
+        patch.object(
+            chat_module,
+            "_run_rich_surface",
+        ) as rich,
+    ):
         chat_module._dispatch_surface("sid", "auto")
     rich.assert_called_once_with("sid")
     line.assert_not_called()
@@ -86,9 +100,13 @@ def test_mode_auto_picks_line_on_basic_terminal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(terminal_caps, "caps", lambda: _stub_caps("xterm"))
-    with patch.object(chat_module, "_repl_loop") as line, patch.object(
-        chat_module, "_run_rich_surface",
-    ) as rich:
+    with (
+        patch.object(chat_module, "_repl_loop") as line,
+        patch.object(
+            chat_module,
+            "_run_rich_surface",
+        ) as rich,
+    ):
         chat_module._dispatch_surface("sid", "auto")
     line.assert_called_once_with("sid", no_stream=False)
     rich.assert_not_called()
@@ -98,9 +116,13 @@ def test_mode_auto_picks_line_on_dumb_terminal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(terminal_caps, "caps", lambda: _stub_caps("dumb", is_tty=False))
-    with patch.object(chat_module, "_repl_loop") as line, patch.object(
-        chat_module, "_run_rich_surface",
-    ) as rich:
+    with (
+        patch.object(chat_module, "_repl_loop") as line,
+        patch.object(
+            chat_module,
+            "_run_rich_surface",
+        ) as rich,
+    ):
         chat_module._dispatch_surface("sid", "auto")
     line.assert_called_once_with("sid", no_stream=False)
     rich.assert_not_called()
@@ -112,11 +134,17 @@ def test_mode_auto_picks_line_when_not_a_tty(
     """Even a modern-terminal family loses to non-tty (ssh-without-tty,
     pytest stdout capture, output piped to a file). Auto picks line."""
     monkeypatch.setattr(
-        terminal_caps, "caps", lambda: _stub_caps("ghostty", is_tty=False),
+        terminal_caps,
+        "caps",
+        lambda: _stub_caps("ghostty", is_tty=False),
     )
-    with patch.object(chat_module, "_repl_loop") as line, patch.object(
-        chat_module, "_run_rich_surface",
-    ) as rich:
+    with (
+        patch.object(chat_module, "_repl_loop") as line,
+        patch.object(
+            chat_module,
+            "_run_rich_surface",
+        ) as rich,
+    ):
         chat_module._dispatch_surface("sid", "auto")
     line.assert_called_once_with("sid", no_stream=False)
     rich.assert_not_called()
@@ -134,9 +162,13 @@ def test_each_modern_family_picks_rich(monkeypatch: pytest.MonkeyPatch) -> None:
     actually dispatch to rich."""
     for fam in ("ghostty", "kitty", "iterm2", "wezterm", "alacritty"):
         monkeypatch.setattr(terminal_caps, "caps", lambda f=fam: _stub_caps(f))
-        with patch.object(chat_module, "_repl_loop") as line, patch.object(
-            chat_module, "_run_rich_surface",
-        ) as rich:
+        with (
+            patch.object(chat_module, "_repl_loop") as line,
+            patch.object(
+                chat_module,
+                "_run_rich_surface",
+            ) as rich,
+        ):
             chat_module._dispatch_surface("sid", "auto")
         assert rich.call_count == 1, f"{fam}: expected rich; line was called"
         assert line.call_count == 0, f"{fam}: line was called when rich expected"
@@ -145,9 +177,13 @@ def test_each_modern_family_picks_rich(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_unknown_terminal_picks_line(monkeypatch: pytest.MonkeyPatch) -> None:
     """Unknown / weird terminal families fall back to line for safety."""
     monkeypatch.setattr(terminal_caps, "caps", lambda: _stub_caps("screen.linux"))
-    with patch.object(chat_module, "_repl_loop") as line, patch.object(
-        chat_module, "_run_rich_surface",
-    ) as rich:
+    with (
+        patch.object(chat_module, "_repl_loop") as line,
+        patch.object(
+            chat_module,
+            "_run_rich_surface",
+        ) as rich,
+    ):
         chat_module._dispatch_surface("sid", "auto")
     line.assert_called_once_with("sid", no_stream=False)
     rich.assert_not_called()

@@ -1120,9 +1120,7 @@ class LabeledToolClient:
         # operator's own data. Read off the loaded Override Policy.
         op = self._policy_context.override_policies
         if op is not None:
-            kwargs["trust_profile_is_personal"] = (
-                op.trust_profile is TrustProfile.PERSONAL
-            )
+            kwargs["trust_profile_is_personal"] = op.trust_profile is TrustProfile.PERSONAL
         return kwargs
 
     async def _bind_reference_handles(

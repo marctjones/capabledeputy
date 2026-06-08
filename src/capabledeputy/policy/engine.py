@@ -1148,11 +1148,7 @@ def _decide_impl(
         revoked_audit_ids,
         rate_limit_escalation=rate_limit_escalation,
     )
-    if (
-        axis_d is None
-        or effect_class is None
-        or rules_v2 is None
-    ):
+    if axis_d is None or effect_class is None or rules_v2 is None:
         # Even on the legacy-only path, the reversibility / envelope
         # gates apply when the caller supplied them.
         result = legacy

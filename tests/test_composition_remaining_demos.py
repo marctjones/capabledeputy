@@ -73,10 +73,12 @@ def _principal_axes(category: str = "proprietary_work") -> tuple[LabelState, Lab
 
 def _tainted_label_state() -> LabelState:
     return LabelState(
-        b=frozenset({
-            ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),
-            ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),
-        }),
+        b=frozenset(
+            {
+                ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),
+                ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),
+            }
+        ),
     )
 
 

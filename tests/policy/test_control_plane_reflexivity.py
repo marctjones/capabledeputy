@@ -54,10 +54,12 @@ def test_tainted_session_refused_for_label_edit() -> None:
     """SC-005 — a session with external-untrusted provenance cannot
     touch label declarations."""
     tainted = LabelState(
-        b=frozenset({
-            ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),
-            ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),
-        }),
+        b=frozenset(
+            {
+                ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT),
+                ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),
+            }
+        ),
     )
     assert not control_plane_admissible(
         effect_class=ControlPlaneEffect.LABEL_EDIT.value,

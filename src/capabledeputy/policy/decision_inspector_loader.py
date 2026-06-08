@@ -237,8 +237,7 @@ def _load_script(
         script = host.compile(name, source)
     except (ValueError, PolicyScriptHostUnavailableError) as e:
         raise DecisionInspectorConfigError(
-            f"decision_inspectors[{index}]: script {name!r} ({runtime}) "
-            f"failed to compile: {e}",
+            f"decision_inspectors[{index}]: script {name!r} ({runtime}) failed to compile: {e}",
         ) from e
     return ScriptDecisionInspector(name, host, script)
 
@@ -274,8 +273,7 @@ def load_decision_inspectors(
             inspectors.append(_load_script(i, entry, base_dir))
         else:
             raise DecisionInspectorConfigError(
-                f"decision_inspectors[{i}] must declare one of "
-                "'builtin', 'script', or 'source'",
+                f"decision_inspectors[{i}] must declare one of 'builtin', 'script', or 'source'",
             )
     return tuple(inspectors)
 

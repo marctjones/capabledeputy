@@ -54,7 +54,9 @@ def test_default_dial_constants_are_canonical() -> None:
 def test_explicit_dial_value_honored(tmp_path: Path) -> None:
     """A Purpose entry with `risk_preference_dial: permissive` produces a
     Purpose whose dial is `permissive`."""
-    p = _write_purposes_yaml(tmp_path, """
+    p = _write_purposes_yaml(
+        tmp_path,
+        """
 purposes:
   - purpose_id: daily-briefing
     label: Daily Briefing
@@ -64,7 +66,8 @@ purposes:
     label: Tax Prep
     admissible_categories: [financial]
     risk_preference_dial: cautious
-""")
+""",
+    )
     purposes = load_purposes(p)
     assert purposes.get("daily-briefing").risk_preference_dial == "balanced"
     assert purposes.get("tax-prep").risk_preference_dial == "cautious"
@@ -72,12 +75,15 @@ purposes:
 
 def test_dial_omitted_falls_back_to_safety_default(tmp_path: Path) -> None:
     """No dial declared + no legacy file ⇒ defaults to `cautious`."""
-    p = _write_purposes_yaml(tmp_path, """
+    p = _write_purposes_yaml(
+        tmp_path,
+        """
 purposes:
   - purpose_id: chat
     label: General chat
     admissible_categories: [personal]
-""")
+""",
+    )
     purposes = load_purposes(p)
     assert purposes.get("chat").risk_preference_dial == "cautious"
 
@@ -85,11 +91,14 @@ purposes:
 def test_dial_invalid_value_refused(tmp_path: Path) -> None:
     """Bogus dial values (e.g. `whatever`) are refused at load time
     with a clear FR-030 reference in the error."""
-    p = _write_purposes_yaml(tmp_path, """
+    p = _write_purposes_yaml(
+        tmp_path,
+        """
 purposes:
   - purpose_id: bad
     risk_preference_dial: whatever
-""")
+""",
+    )
     with pytest.raises(PurposeError, match="FR-030"):
         load_purposes(p)
 
@@ -104,7 +113,9 @@ def test_legacy_risk_preference_supplies_fallback(tmp_path: Path) -> None:
     legacy = tmp_path / "risk_preference.json"
     legacy.write_text(json.dumps({"value": "permissive", "version": 1}))
 
-    p = _write_purposes_yaml(tmp_path, """
+    p = _write_purposes_yaml(
+        tmp_path,
+        """
 purposes:
   - purpose_id: legacy-default-applies
     label: Should inherit legacy permissive
@@ -113,7 +124,8 @@ purposes:
     label: Explicit balanced should win
     admissible_categories: [public]
     risk_preference_dial: balanced
-""")
+""",
+    )
     purposes = load_purposes(p, legacy_risk_preference_path=legacy)
     # No explicit dial → fallback to legacy value
     assert purposes.get("legacy-default-applies").risk_preference_dial == "permissive"
@@ -127,22 +139,28 @@ def test_legacy_invalid_value_ignored(tmp_path: Path) -> None:
     legacy = tmp_path / "risk_preference.json"
     legacy.write_text(json.dumps({"value": "nonsense"}))
 
-    p = _write_purposes_yaml(tmp_path, """
+    p = _write_purposes_yaml(
+        tmp_path,
+        """
 purposes:
   - purpose_id: chat
     admissible_categories: [public]
-""")
+""",
+    )
     purposes = load_purposes(p, legacy_risk_preference_path=legacy)
     assert purposes.get("chat").risk_preference_dial == "cautious"
 
 
 def test_legacy_file_absent_is_ok(tmp_path: Path) -> None:
     """Missing legacy file is not an error — fallback to safety default."""
-    p = _write_purposes_yaml(tmp_path, """
+    p = _write_purposes_yaml(
+        tmp_path,
+        """
 purposes:
   - purpose_id: chat
     admissible_categories: [public]
-""")
+""",
+    )
     purposes = load_purposes(p, legacy_risk_preference_path=tmp_path / "nonexistent.json")
     assert purposes.get("chat").risk_preference_dial == "cautious"
 

@@ -444,7 +444,6 @@ def get_script_host(runtime_kind: str) -> PolicyScriptHost:
     factory = _HOST_FACTORIES.get(runtime_kind)
     if factory is None:
         raise ValueError(
-            f"unknown policy-script runtime {runtime_kind!r}; "
-            f"known: {sorted(_HOST_FACTORIES)}",
+            f"unknown policy-script runtime {runtime_kind!r}; known: {sorted(_HOST_FACTORIES)}",
         )
     return factory()

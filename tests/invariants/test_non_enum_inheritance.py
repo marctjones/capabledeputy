@@ -41,22 +41,26 @@ def test_axis_a_tier_is_most_restrictive() -> None:
 @pytest.mark.invariant
 def test_axis_a_risk_ids_set_union() -> None:
     parent = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="finance",
-                tier=Tier.REGULATED,
-                risk_ids=("R001", "R002"),
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="finance",
+                    tier=Tier.REGULATED,
+                    risk_ids=("R001", "R002"),
+                ),
+            }
+        ),
     )
     child = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="finance",
-                tier=Tier.REGULATED,
-                risk_ids=("R002", "R003"),
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="finance",
+                    tier=Tier.REGULATED,
+                    risk_ids=("R002", "R003"),
+                ),
+            }
+        ),
     )
     merged = most_restrictive_inherit(parent, child)
     assert set(next(iter(merged.a)).risk_ids) == {"R001", "R002", "R003"}
@@ -67,22 +71,26 @@ def test_axis_a_provenance_parent_wins_by_default() -> None:
     """Default rule: parent's assignment_provenance dominates a child's
     — derivation cannot wash provenance away."""
     parent = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="personal",
-                tier=Tier.SENSITIVE,
-                assignment_provenance="curated-mcp",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="personal",
+                    tier=Tier.SENSITIVE,
+                    assignment_provenance="curated-mcp",
+                ),
+            }
+        ),
     )
     child = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="personal",
-                tier=Tier.SENSITIVE,
-                assignment_provenance="source-declared",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="personal",
+                    tier=Tier.SENSITIVE,
+                    assignment_provenance="source-declared",
+                ),
+            }
+        ),
     )
     merged = inherit(parent, child)
     assert next(iter(merged.a)).assignment_provenance == "curated-mcp"
@@ -93,22 +101,26 @@ def test_axis_a_provenance_raise_only_inspector_escalates() -> None:
     """Exception to parent-wins: raise-only-inspector escalates,
     because it represents added taint (inspector found something)."""
     parent = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="proprietary_work",
-                tier=Tier.REGULATED,
-                assignment_provenance="curated-mcp",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="proprietary_work",
+                    tier=Tier.REGULATED,
+                    assignment_provenance="curated-mcp",
+                ),
+            }
+        ),
     )
     child = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="proprietary_work",
-                tier=Tier.REGULATED,
-                assignment_provenance="raise-only-inspector",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="proprietary_work",
+                    tier=Tier.REGULATED,
+                    assignment_provenance="raise-only-inspector",
+                ),
+            }
+        ),
     )
     merged = inherit(parent, child)
     assert next(iter(merged.a)).assignment_provenance == "raise-only-inspector"

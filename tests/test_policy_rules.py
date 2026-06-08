@@ -19,6 +19,7 @@ from capabledeputy.policy.tiers import Tier
 def test_conflict_invariant_untrusted_email_egress() -> None:
     """Axis-B external-untrusted + email egress → DENY."""
     from capabledeputy.policy.labels import LabelState
+
     labels = LabelState(b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}))
     action = Action(kind=CapabilityKind.SEND_EMAIL, target="x@y.com")
     outcome = _conflict_invariant_outcome(labels=labels, action=action)
@@ -31,6 +32,7 @@ def test_conflict_invariant_untrusted_email_egress() -> None:
 def test_conflict_invariant_health_email_egress() -> None:
     """Axis-A health category + email egress → DENY."""
     from capabledeputy.policy.labels import LabelState
+
     labels = LabelState(a=frozenset({CategoryTag(category="health", tier=Tier.REGULATED)}))
     action = Action(kind=CapabilityKind.SEND_EMAIL, target="x@y.com")
     outcome = _conflict_invariant_outcome(labels=labels, action=action)
@@ -43,6 +45,7 @@ def test_conflict_invariant_health_email_egress() -> None:
 def test_conflict_invariant_financial_email_egress() -> None:
     """Axis-A financial category + email egress → DENY."""
     from capabledeputy.policy.labels import LabelState
+
     labels = LabelState(a=frozenset({CategoryTag(category="financial", tier=Tier.REGULATED)}))
     action = Action(kind=CapabilityKind.SEND_EMAIL, target="x@y.com")
     outcome = _conflict_invariant_outcome(labels=labels, action=action)
@@ -55,6 +58,7 @@ def test_conflict_invariant_financial_email_egress() -> None:
 def test_conflict_invariant_financial_purchase_egress() -> None:
     """Axis-A financial category + purchase egress → REQUIRE_APPROVAL."""
     from capabledeputy.policy.labels import LabelState
+
     labels = LabelState(a=frozenset({CategoryTag(category="financial", tier=Tier.REGULATED)}))
     action = Action(kind=CapabilityKind.QUEUE_PURCHASE, target="amazon", amount=100)
     outcome = _conflict_invariant_outcome(labels=labels, action=action)
@@ -67,6 +71,7 @@ def test_conflict_invariant_financial_purchase_egress() -> None:
 def test_conflict_invariant_no_egress_action() -> None:
     """Non-egress actions return None."""
     from capabledeputy.policy.labels import LabelState
+
     labels = LabelState(a=frozenset({CategoryTag(category="health", tier=Tier.REGULATED)}))
     action = Action(kind=CapabilityKind.READ_FS, target="/file")
     outcome = _conflict_invariant_outcome(labels=labels, action=action)
@@ -76,6 +81,7 @@ def test_conflict_invariant_no_egress_action() -> None:
 def test_conflict_invariant_personal_category_allows() -> None:
     """Personal category + egress is allowed (only health/financial conflict)."""
     from capabledeputy.policy.labels import LabelState
+
     labels = LabelState(a=frozenset({CategoryTag(category="personal", tier=Tier.REGULATED)}))
     action = Action(kind=CapabilityKind.SEND_EMAIL, target="x@y.com")
     outcome = _conflict_invariant_outcome(labels=labels, action=action)

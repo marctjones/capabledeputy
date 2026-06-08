@@ -107,9 +107,11 @@ async def test_require_approval_outcome_carries_resolved_submission(
         max_amount=10_000,
     )
     financial_label_state = LabelState(
-        a=frozenset({
-            CategoryTag("financial", Tier.REGULATED, assignment_provenance="source-declared"),
-        })
+        a=frozenset(
+            {
+                CategoryTag("financial", Tier.REGULATED, assignment_provenance="source-declared"),
+            }
+        )
     )
     app.graph._sessions[s.id] = replace(
         s,

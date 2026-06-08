@@ -57,13 +57,15 @@ def _send_action() -> Action:
 
 def _label_state_personal() -> LabelState:
     return LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="personal",
-                tier=Tier.SENSITIVE,
-                assignment_provenance="human-declared",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="personal",
+                    tier=Tier.SENSITIVE,
+                    assignment_provenance="human-declared",
+                ),
+            }
+        ),
         b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
     )
 
@@ -182,13 +184,15 @@ def test_v2_auto_cannot_override_legacy_deny() -> None:
     cap = _send_email_cap()
     rules_v2 = DecisionRules(rules=(_ratified_auto_rule(),))
     tainted_labels = LabelState(
-        a=frozenset({
-            CategoryTag(
-                category="personal",
-                tier=Tier.SENSITIVE,
-                assignment_provenance="human-declared",
-            ),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="personal",
+                    tier=Tier.SENSITIVE,
+                    assignment_provenance="human-declared",
+                ),
+            }
+        ),
         b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
     )
     result = decide(

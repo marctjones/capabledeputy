@@ -23,10 +23,14 @@ from bs4 import BeautifulSoup
 # weasyprint's pyenv shim only resolves under the version that has it
 # installed; prefer the explicit binary, fall back to PATH.
 WEASYPRINT = next(
-    (p for p in (
-        str(Path.home() / ".pyenv/versions/3.12.9/bin/weasyprint"),
-        shutil.which("weasyprint") or "",
-    ) if p and Path(p).exists()),
+    (
+        p
+        for p in (
+            str(Path.home() / ".pyenv/versions/3.12.9/bin/weasyprint"),
+            shutil.which("weasyprint") or "",
+        )
+        if p and Path(p).exists()
+    ),
     "weasyprint",
 )
 
@@ -42,8 +46,16 @@ PAGES = [
 
 # Classes/ids whose subtrees are site chrome, not content.
 CHROME_HINTS = (
-    "masthead", "footer", "nav", "menu", "cookie", "sidebar",
-    "breadcrumb", "skip-link", "site-header", "site-footer",
+    "masthead",
+    "footer",
+    "nav",
+    "menu",
+    "cookie",
+    "sidebar",
+    "breadcrumb",
+    "skip-link",
+    "site-header",
+    "site-footer",
 )
 
 PRINT_CSS = """
@@ -104,7 +116,9 @@ def main() -> int:
         try:
             raw = subprocess.run(
                 ["curl", "-sSL", "-A", UA, "--max-time", "45", url],
-                capture_output=True, text=True, check=True,
+                capture_output=True,
+                text=True,
+                check=True,
             ).stdout
             if len(raw) < 500:
                 print(f"  ! {slug}: short response ({len(raw)}B) — skipping")
@@ -114,7 +128,9 @@ def main() -> int:
             html_path.write_text(clean(raw, url), encoding="utf-8")
             subprocess.run(
                 [WEASYPRINT, str(html_path), str(pdf_path)],
-                check=True, capture_output=True, text=True,
+                check=True,
+                capture_output=True,
+                text=True,
             )
             kb = pdf_path.stat().st_size // 1024
             print(f"  ✓ {slug}: {html_path}  +  {pdf_path} ({kb} KB)")

@@ -388,8 +388,7 @@ async def run_turn(
             interrupt_event = evt
     if interrupt_reason == "max_iterations":
         raise AgentLoopExceededError(
-            f"agent loop exceeded {max_iterations} iterations"
-            f"{_LOOP_RECOVERY_HINT}",
+            f"agent loop exceeded {max_iterations} iterations{_LOOP_RECOVERY_HINT}",
         )
     if interrupt_reason == "mode_refused_restricted":
         # Issue #52 — fail-closed: restricted tier with no Pattern ③/⑤

@@ -18,11 +18,13 @@ def test_categories_are_distinct_in_label_state() -> None:
     """FR-003: distinct categories occupy distinct slots; one does
     not subsume another (lattice compartments, not a hierarchy)."""
     state = LabelState(
-        a=frozenset({
-            CategoryTag(category="health", tier=Tier.REGULATED),
-            CategoryTag(category="financial", tier=Tier.REGULATED),
-            CategoryTag(category="personal", tier=Tier.SENSITIVE),
-        }),
+        a=frozenset(
+            {
+                CategoryTag(category="health", tier=Tier.REGULATED),
+                CategoryTag(category="financial", tier=Tier.REGULATED),
+                CategoryTag(category="personal", tier=Tier.SENSITIVE),
+            }
+        ),
     )
     ids = {c.category for c in state.a}
     assert ids == {"health", "financial", "personal"}

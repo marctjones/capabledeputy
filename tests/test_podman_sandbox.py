@@ -161,6 +161,7 @@ def test_spec_relative_mount_target_rejected() -> None:
 def test_construct_requires_podman_present(monkeypatch: pytest.MonkeyPatch) -> None:
     def always_fail(argv, **kwargs):
         raise FileNotFoundError
+
     monkeypatch.setattr(subprocess, "run", always_fail)
     with pytest.raises(PodmanNotAvailable):
         PodmanSandboxActuator(
@@ -282,7 +283,9 @@ def test_execute_mounts_emit_v_args(fake_podman: None) -> None:
 
 def test_execute_env_allowlist(fake_podman: None) -> None:
     spec = PodmanRegionSpec(
-        spec_id="x", image="alpine", env_allowlist=("FOO",),
+        spec_id="x",
+        image="alpine",
+        env_allowlist=("FOO",),
     )
     a = PodmanSandboxActuator((spec,), podman_bin="/fake/podman")
     rid = a.create_region()
@@ -428,7 +431,10 @@ def test_cancel_during_execute_kills_container(fake_podman: None) -> None:
 
     threading.Thread(target=issue_cancel, daemon=True).start()
     result = a.execute(
-        region_id=rid, argv=("sleep", "1"), env={}, timeout_seconds=10,
+        region_id=rid,
+        argv=("sleep", "1"),
+        env={},
+        timeout_seconds=10,
     )
     assert result.cancelled is True
     assert result.exit_code == 137
@@ -459,7 +465,10 @@ def test_timeout_kills_and_marks_timed_out(fake_podman: None) -> None:
     a._force_remove_container = force  # type: ignore[assignment]
 
     result = a.execute(
-        region_id=rid, argv=("sleep", "30"), env={}, timeout_seconds=1,
+        region_id=rid,
+        argv=("sleep", "30"),
+        env={},
+        timeout_seconds=1,
     )
     assert result.timed_out is True
     assert result.cancelled is False
@@ -641,7 +650,9 @@ def test_harvest_outputs_empty_dir(tmp_path) -> None:
 
 def test_harvest_outputs_collects_files_with_previews(tmp_path) -> None:
     spec = PodmanRegionSpec(
-        spec_id="x", image="alpine", output_preview_bytes=10,
+        spec_id="x",
+        image="alpine",
+        output_preview_bytes=10,
     )
     (tmp_path / "a.txt").write_text("hello world this is long")
     (tmp_path / "b.json").write_text('{"k": 1}')
@@ -666,7 +677,9 @@ def test_harvest_outputs_respects_max_files(tmp_path) -> None:
 
 def test_harvest_outputs_respects_total_bytes(tmp_path) -> None:
     spec = PodmanRegionSpec(
-        spec_id="x", image="alpine", output_max_total_bytes=10,
+        spec_id="x",
+        image="alpine",
+        output_max_total_bytes=10,
     )
     (tmp_path / "a.txt").write_bytes(b"x" * 8)
     (tmp_path / "b.txt").write_bytes(b"y" * 8)
@@ -745,7 +758,8 @@ def test_discard_region_cleans_harvest_dir(fake_podman: None) -> None:
 
 
 @pytest.mark.skipif(
-    shutil.which("podman") is None, reason="real podman binary not present",
+    shutil.which("podman") is None,
+    reason="real podman binary not present",
 )
 def test_real_podman_round_trip_files(tmp_path) -> None:
     """End-to-end: pass a script in via inputs, have it read the
@@ -781,7 +795,8 @@ def test_real_podman_round_trip_files(tmp_path) -> None:
 
 
 @pytest.mark.skipif(
-    shutil.which("podman") is None, reason="real podman binary not present",
+    shutil.which("podman") is None,
+    reason="real podman binary not present",
 )
 def test_real_podman_smoke(tmp_path) -> None:
     """If a real podman is on PATH, run `alpine:latest echo hello` and

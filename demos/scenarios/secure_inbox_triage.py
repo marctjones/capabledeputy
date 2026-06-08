@@ -97,12 +97,8 @@ class _InjectionDetector(RaiseOnlyInspector):
         if any(m in text for m in self.MARKERS):
             return InspectorRaiseResult(
                 raise_state=LabelState(
-                    a=frozenset(
-                        {CategoryTag("untrusted", Tier.SENSITIVE)}
-                    ),
-                    b=frozenset(
-                        {ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}
-                    ),
+                    a=frozenset({CategoryTag("untrusted", Tier.SENSITIVE)}),
+                    b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
                 ),
             )
         return InspectorRaiseResult()

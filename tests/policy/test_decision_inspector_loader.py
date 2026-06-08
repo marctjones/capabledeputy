@@ -259,17 +259,21 @@ async def test_relationship_groups_resolved_into_inspector(tmp_path) -> None:
 
     # Recipient in the family group ⇒ relax to ALLOW.
     out = await client._apply_decision_inspectors(
-        None, object(),
+        None,
+        object(),
         Action(kind=CapabilityKind.SEND_EMAIL, target="spouse@home.example"),
-        "email.send", proposed,
+        "email.send",
+        proposed,
     )
     assert out.decision == Decision.ALLOW
 
     # A stranger ⇒ no relax, stays REQUIRE_APPROVAL.
     out2 = await client._apply_decision_inspectors(
-        None, object(),
+        None,
+        object(),
         Action(kind=CapabilityKind.SEND_EMAIL, target="stranger@elsewhere.example"),
-        "email.send", proposed,
+        "email.send",
+        proposed,
     )
     assert out2.decision == Decision.REQUIRE_APPROVAL
 
@@ -352,21 +356,30 @@ async def test_chokepoint_refuses_relax_of_structural_floor(tmp_path) -> None:
 
     # DENY base ⇒ relax refused, stays DENY.
     denied = await client._apply_decision_inspectors(
-        None, object(), action, "email.send",
+        None,
+        object(),
+        action,
+        "email.send",
         PolicyDecision(decision=Decision.DENY, rule="blp-floor"),
     )
     assert denied.decision == Decision.DENY
 
     # OVERRIDE_REQUIRED base ⇒ also refused.
     over = await client._apply_decision_inspectors(
-        None, object(), action, "email.send",
+        None,
+        object(),
+        action,
+        "email.send",
         PolicyDecision(decision=Decision.OVERRIDE_REQUIRED, rule="override-floor"),
     )
     assert over.decision == Decision.OVERRIDE_REQUIRED
 
     # REQUIRE_APPROVAL base ⇒ the legitimate relax goes through.
     relaxed = await client._apply_decision_inspectors(
-        None, object(), action, "email.send",
+        None,
+        object(),
+        action,
+        "email.send",
         PolicyDecision(decision=Decision.REQUIRE_APPROVAL, rule="approval"),
     )
     assert relaxed.decision == Decision.ALLOW
@@ -440,9 +453,7 @@ def test_shipped_starter_scripts_compile() -> None:
     scripts = sorted(policies.glob("*.star"))
     assert scripts, "expected shipped starter .star scripts"
     cfg = {
-        "decision_inspectors": [
-            {"script": s.name, "runtime": "starlark"} for s in scripts
-        ],
+        "decision_inspectors": [{"script": s.name, "runtime": "starlark"} for s in scripts],
     }
     inspectors = load_decision_inspectors(cfg, base_dir=policies)
     assert len(inspectors) == len(scripts)
