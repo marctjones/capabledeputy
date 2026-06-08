@@ -43,7 +43,7 @@ legacy-path-only, or confirms-fires rather than tries-to-break) · ⬜ empty.
 | Pattern | Status | Where / gap |
 |---|---|---|
 | ① turn-level | ✅ | everywhere |
-| ② dual-LLM (quarantine / declassify) | ⬜ | **no e2e test at all** — the safe-disclosure path |
+| ② dual-LLM (quarantine / declassify) | ✅ | **slice #4** — e2e safe-disclosure (data-blind + label-non-propagation) was already in `test_quarantined_extractor`; added the ADVERSARIAL half: injection in the confidential content can't escalate (tool-call refused), can't add exfil fields (schema-stripped), can't bulk-smuggle (length-capped), planner never sees raw/injection. `test_pattern2_dual_llm_adversarial.py` |
 | ③ reference-handle (redirection-resist) | ✅ | **slice #3** — adversarial redirect attempt: forged handle binds nothing, cross-session theft discloses nothing (end-to-end via dispatcher), value frozen at issue (no repoint path), data-blind planner. `test_pattern3_redirection_resistance.py` |
 | ⑤ sealed (containment) | ⬜ | **no test** — containment ≠ declassification footgun |
 
@@ -223,11 +223,22 @@ Everything else is iteration between the gates.
   No bug found — confirms the guarantee holds adversarially.
   `test_pattern3_redirection_resistance.py`. Matrix cell ✅.
 
-## Immediate next: slice #4 = Pattern ② dual-LLM declassify (e2e)
+- **#4 — Pattern ② dual-LLM declassify — DONE.** The e2e safe-disclosure path
+  (data-blind planner + label-non-propagation) was already covered by
+  `test_quarantined_extractor`; this slice added the **adversarial** half — a
+  prompt injection embedded in the confidential CONTENT cannot weaponize the
+  quarantined extractor: (A) a tool-call emit is refused (no tools → no
+  escalation), (B) injected extra/exfil fields are stripped by schema
+  validation, (C) bulk smuggling into a string field hits the schema length cap
+  and is rejected, (D) end-to-end the planner never sees the raw payload or the
+  injection instruction and the extracted summary carries no taint (egress-safe).
+  No bug found. `test_pattern2_dual_llm_adversarial.py`. Matrix cell ✅.
 
-Confidential read → quarantined extraction by an isolated LLM that never reaches
-the planner's privilege → schema-constrained declassified summary egresses;
-the planner never sees the raw confidential content. Model (dual-LLM / CaMeL
-quarantine pattern): the privileged planner and the untrusted-content processor
-are different principals. Adversarial: injection inside the quarantined content
-cannot escalate to a planner action.
+## Immediate next: slice #5 = operator DSL + envelope dial on real config
+
+Pressure the operator's `rules.yaml` RulePredicate decisions and the
+bounded-relax envelope cell on the REAL v2 config (the refinement layer the
+1126 never touch): a human-authored AUTO rule fires for the exact cell it
+declares and NOT a neighbor; the dial selects a point within the envelope and
+never crosses `strictest`. Adversarial: a greedy rule/dial can't escape the
+cell's `{strictest, loosest}` bounds.
