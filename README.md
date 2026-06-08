@@ -98,8 +98,9 @@ read — strengths, weaknesses, and prioritized fixes — is in
 - [docs/SURFACES.md](docs/SURFACES.md) — **which command do I use?** (chat vs console vs tui vs demo vs …) — start here
 - [DESIGN.md](DESIGN.md) — full design specification
 - [ROADMAP.md](ROADMAP.md) — phased implementation plan
+- [docs/workflow-index.md](docs/workflow-index.md) — **categorized index of every workflow** — 25 narrated demos, the 1126-scenario allow/deny catalogue, and the enforcement suites, grouped by use case + security mechanism
 - [docs/demos/README.md](docs/demos/README.md) — 21 end-to-end demos
-- [demos/scenarios/README.md](demos/scenarios/README.md) — **9 narrated executable demos** (runnable via pytest)
+- [demos/scenarios/README.md](demos/scenarios/README.md) — **25 narrated executable demos** (runnable via pytest)
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and contribution guide
 
 ## Development
