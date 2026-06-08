@@ -99,6 +99,7 @@ read — strengths, weaknesses, and prioritized fixes — is in
 - [DESIGN.md](DESIGN.md) — full design specification
 - [ROADMAP.md](ROADMAP.md) — phased implementation plan
 - [docs/workflow-index.md](docs/workflow-index.md) — **categorized index of every workflow** — 25 narrated demos, the 1126-scenario allow/deny catalogue, and the enforcement suites, grouped by use case + security mechanism
+- [docs/workflow-registry.md](docs/workflow-registry.md) — the same workflows with **status + results** (implemented? tested? regression-guard vs. finding), plus the identified-but-unbuilt gaps and a findings log
 - [docs/demos/README.md](docs/demos/README.md) — 21 end-to-end demos
 - [demos/scenarios/README.md](demos/scenarios/README.md) — **25 narrated executable demos** (runnable via pytest)
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and contribution guide

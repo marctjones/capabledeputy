@@ -1,5 +1,9 @@
 # Workflow index
 
+> For **status + results** (implemented? tested? what a run reveals —
+> regression guard vs. finding), see the companion
+> [**workflow-registry.md**](workflow-registry.md).
+
 A categorized map of every workflow CapableDeputy demonstrates and tests —
 the things people actually use a personal AI assistant for, and how the
 policy engine responds (allow / require-approval / deny). Three surfaces:
