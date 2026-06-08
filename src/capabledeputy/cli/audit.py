@@ -186,7 +186,7 @@ def verify_command(
         # when the daemon was started with a non-default override.
         try:
             client = _client()
-            info = client.call("daemon.info")
+            info = anyio.run(client.call, "daemon.info")
             audit_path = info.get("audit_path")
             resolved = Path(audit_path) if audit_path else default_audit_log_path()
         except Exception:

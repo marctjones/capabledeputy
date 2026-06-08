@@ -1250,7 +1250,7 @@ def _maybe_first_use_escalation(
             decision=Decision.REQUIRE_APPROVAL,
             rule=FIRST_USE_OF_KIND_RULE,
             reason=(
-                f"first use of {action.kind.value} in this session — "
+                f"first use of {kind_name(action.kind)} in this session — "
                 "operator confirmation required (cookbook §4 #6)"
             ),
         )

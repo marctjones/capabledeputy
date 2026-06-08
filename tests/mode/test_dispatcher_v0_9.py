@@ -70,10 +70,10 @@ def _registry_with(*, handles: bool):
     """Minimal registry whose tool may declare accepts_handles. Bypasses
     register()'s full schema validation — select_mode only reads
     accepts_handles off registry.list()."""
-    from capabledeputy.tools.registry import ToolDefinition, ToolRegistry
+    from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry, ToolResult
 
-    async def _noop(_args: dict) -> dict:
-        return {}
+    async def _noop(_args: dict, _context: ToolContext) -> ToolResult:
+        return ToolResult(output={})
 
     reg = ToolRegistry()
     reg._tools["t"] = ToolDefinition(

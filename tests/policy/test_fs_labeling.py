@@ -113,7 +113,11 @@ def test_shipped_example_parses() -> None:
 async def test_fs_read_handler_attaches_labels(tmp_path) -> None:
     """End-to-end: make_fs_tools(labeler) wires the labeler so fs.read
     returns the matched Axis-A labels on additional_tags."""
+    from uuid import uuid4
+
+    from capabledeputy.policy.labels import LabelState
     from capabledeputy.tools.native.fs import make_fs_tools
+    from capabledeputy.tools.registry import ToolContext
 
     secret = tmp_path / "secret.key"
     secret.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
@@ -121,7 +125,8 @@ async def test_fs_read_handler_attaches_labels(tmp_path) -> None:
         [{"match": {"filename_glob": "*.key"}, "labels": ["confidential.credentials"]}],
     )
     tools = {t.name: t for t in make_fs_tools(lab)}
-    result = await tools["fs.read"].handler({"path": str(secret)}, None)
+    context = ToolContext(session_id=uuid4(), label_state=LabelState())
+    result = await tools["fs.read"].handler({"path": str(secret)}, context)
     assert result.output["ok"] is True
     assert {t.category for t in result.additional_tags.a} == {"credentials"}
     # Provenance from the base handler is preserved (raise-only compose).
@@ -129,10 +134,15 @@ async def test_fs_read_handler_attaches_labels(tmp_path) -> None:
 
 
 async def test_fs_read_handler_no_labeler_unchanged(tmp_path) -> None:
+    from uuid import uuid4
+
+    from capabledeputy.policy.labels import LabelState
     from capabledeputy.tools.native.fs import make_fs_tools
+    from capabledeputy.tools.registry import ToolContext
 
     f = tmp_path / "f.txt"
     f.write_text("hello")
     tools = {t.name: t for t in make_fs_tools(None)}
-    result = await tools["fs.read"].handler({"path": str(f)}, None)
+    context = ToolContext(session_id=uuid4(), label_state=LabelState())
+    result = await tools["fs.read"].handler({"path": str(f)}, context)
     assert not result.additional_tags.a  # no category labels without a labeler

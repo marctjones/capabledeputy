@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from pydantic import AnyUrl
+
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import (
     CategoryTag,
@@ -300,7 +302,7 @@ class LabeledMcpAdapter:
         the upstream config.
         """
         try:
-            result = await self._session.read_resource(uri)
+            result = await self._session.read_resource(AnyUrl(uri))
         except Exception as e:
             return {"found": False, "uri": uri, "error": str(e)}
         contents = getattr(result, "contents", [])

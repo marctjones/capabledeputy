@@ -94,7 +94,7 @@ def test_share_to_project_p_member_resolves_to_auto() -> None:
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
-        relationship_group_ids=("project-p",),
+        relationship_group_ids=frozenset({"project-p"}),
         expectedness="expected",
     )
     result = evaluate(
@@ -117,7 +117,7 @@ def test_share_to_non_member_falls_to_suggest() -> None:
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
-        relationship_group_ids=("competitors",),  # NOT project-p
+        relationship_group_ids=frozenset({"competitors"}),  # NOT project-p
         expectedness="expected",
     )
     result = evaluate(
@@ -144,7 +144,7 @@ def test_personal_email_to_family_member_resolves_to_suggest() -> None:
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
-        relationship_group_ids=("family",),
+        relationship_group_ids=frozenset({"family"}),
         expectedness="expected",
     )
     result = evaluate(
@@ -173,7 +173,7 @@ def test_personal_email_to_non_family_falls_to_default_suggest() -> None:
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
-        relationship_group_ids=(),
+        relationship_group_ids=frozenset(),
         expectedness="expected",
     )
     result = evaluate(
@@ -199,7 +199,7 @@ def test_work_email_to_workteam_member_resolves_to_suggest() -> None:
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
-        relationship_group_ids=("work-team",),
+        relationship_group_ids=frozenset({"work-team"}),
         expectedness="expected",
     )
     result = evaluate(
@@ -227,7 +227,7 @@ def test_work_email_to_family_member_falls_to_default_suggest() -> None:
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
-        relationship_group_ids=("family",),
+        relationship_group_ids=frozenset({"family"}),
         expectedness="expected",
     )
     result = evaluate(
@@ -258,7 +258,7 @@ def test_send_at_night_escalates_to_require_approval() -> None:
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
-        relationship_group_ids=("family",),
+        relationship_group_ids=frozenset({"family"}),
         expectedness="expected",
     )
     result = evaluate(
@@ -288,7 +288,7 @@ def test_phi_egress_denied_even_to_family() -> None:
     axis_d = AxisD(
         initiator="principal:alice",
         authentication="device-bound",
-        relationship_group_ids=("family",),
+        relationship_group_ids=frozenset({"family"}),
         expectedness="expected",
     )
     result = evaluate(

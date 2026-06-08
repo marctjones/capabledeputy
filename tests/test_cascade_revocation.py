@@ -229,10 +229,12 @@ async def test_pending_approval_invalidated_when_capability_cascaded(
     await graph.revoke_capability(s.id, parent.audit_id)
 
     queue = ApprovalQueue(audit=writer, graph=graph)
+    import json
+
     req = await queue.submit(
         action=ApprovalAction.SEND_EMAIL,
         target="ops@example.com",
-        payload={"body": "hello"},
+        payload=json.dumps({"body": "hello"}),
         labels_in=LabelState(),
         from_session=s.id,
         justification="test",

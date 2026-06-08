@@ -36,12 +36,12 @@ def test_compose_no_outcomes_returns_none() -> None:
 
 
 def test_compose_all_none_returns_none() -> None:
-    outcomes = [("a", None), ("b", None)]
+    outcomes: list[tuple[str, DecisionRelax | DecisionTighten | None]] = [("a", None), ("b", None)]
     assert compose_inspector_outcomes(Decision.ALLOW, outcomes) is None
 
 
 def test_compose_single_relax_wins() -> None:
-    outcomes = [
+    outcomes: list[tuple[str, DecisionRelax | DecisionTighten | None]] = [
         ("self-egress", DecisionRelax(to=Decision.ALLOW, rule="self", rationale="ok")),
     ]
     result = compose_inspector_outcomes(Decision.REQUIRE_APPROVAL, outcomes)
@@ -53,7 +53,7 @@ def test_compose_single_relax_wins() -> None:
 
 
 def test_compose_single_tighten_wins() -> None:
-    outcomes = [
+    outcomes: list[tuple[str, DecisionRelax | DecisionTighten | None]] = [
         ("after-hours", DecisionTighten(to=Decision.REQUIRE_APPROVAL, rule="ah", rationale="late")),
     ]
     result = compose_inspector_outcomes(Decision.ALLOW, outcomes)
@@ -66,7 +66,7 @@ def test_compose_single_tighten_wins() -> None:
 def test_compose_tighten_beats_relax() -> None:
     """The whole point: when one inspector wants to loosen and another
     wants to tighten, the tighten wins (most-restrictive composition)."""
-    outcomes = [
+    outcomes: list[tuple[str, DecisionRelax | DecisionTighten | None]] = [
         ("relax-er", DecisionRelax(to=Decision.ALLOW, rule="r", rationale="")),
         ("tighten-er", DecisionTighten(to=Decision.REQUIRE_APPROVAL, rule="t", rationale="")),
     ]
@@ -78,7 +78,7 @@ def test_compose_tighten_beats_relax() -> None:
 
 
 def test_compose_strictest_tighten_wins_among_tightens() -> None:
-    outcomes = [
+    outcomes: list[tuple[str, DecisionRelax | DecisionTighten | None]] = [
         ("a", DecisionTighten(to=Decision.REQUIRE_APPROVAL, rule="x", rationale="")),
         ("b", DecisionTighten(to=Decision.DENY, rule="y", rationale="")),
     ]
@@ -90,7 +90,7 @@ def test_compose_strictest_tighten_wins_among_tightens() -> None:
 
 
 def test_compose_loosest_relax_wins_among_relaxes() -> None:
-    outcomes = [
+    outcomes: list[tuple[str, DecisionRelax | DecisionTighten | None]] = [
         ("a", DecisionRelax(to=Decision.REQUIRE_APPROVAL, rule="x", rationale="")),
         ("b", DecisionRelax(to=Decision.ALLOW, rule="y", rationale="")),
     ]
@@ -104,7 +104,7 @@ def test_compose_non_monotone_outcome_ignored() -> None:
     """A 'relax' to a stricter decision (or 'tighten' to a looser one)
     is rejected at composition — these are protocol violations."""
     # Relax claiming to lower restriction, but pointing at DENY (stricter)
-    outcomes = [
+    outcomes: list[tuple[str, DecisionRelax | DecisionTighten | None]] = [
         ("bad", DecisionRelax(to=Decision.DENY, rule="x", rationale="")),
     ]
     result = compose_inspector_outcomes(Decision.ALLOW, outcomes)

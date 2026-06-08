@@ -112,10 +112,11 @@ def gws_config() -> UpstreamServerConfig:
     from capabledeputy.policy.tiers import Tier
     from capabledeputy.upstream.config import UpstreamToolOverride
 
+    tag = CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")
     read_personal = UpstreamToolOverride(
         capability_kind=CapabilityKind.READ_FS,
         additional_tags=LabelState(
-            a={CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")},
+            a=frozenset({tag}),
         ),
     )
     overrides = {

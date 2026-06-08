@@ -155,12 +155,11 @@ async def test_dispatch_tool_deny_returns_policy_message(paths: dict[str, Path])
 
 async def test_dispatch_tool_includes_labels_added_in_response(paths: dict[str, Path]) -> None:
     daemon, app = await _build_daemon(paths)
+    health_tag = CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")
     app.memory.write(
         "labs",
         "x",
-        LabelState(
-            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
-        ),
+        LabelState(a=frozenset({health_tag})),
     )
     s = await app.graph.new()
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
@@ -196,12 +195,11 @@ async def test_full_mcp_scenario_blocks_egress_after_health_read(
     via MCP. First call: read health data (allowed, propagates label).
     Second call: try to purchase (denied by health-meets-egress)."""
     daemon, app = await _build_daemon(paths)
+    health_tag = CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")
     app.memory.write(
         "rx",
         "lisinopril 10mg",
-        LabelState(
-            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
-        ),
+        LabelState(a=frozenset({health_tag})),
     )
     s = await app.graph.new(intent="claude-code mcp test")
     read_cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")

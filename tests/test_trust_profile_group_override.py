@@ -103,6 +103,7 @@ def test_group_member_is_single_use_but_siblings_unaffected() -> None:
     `a` is refused."""
     sid = uuid4()
     grant = _mint_group(_personal(), session_id=sid)
+    assert isinstance(grant, OverrideGrant)
     store = OverrideGrantStore()
     store.add(grant)
 
@@ -118,6 +119,7 @@ def test_group_grant_does_not_authorize_non_member() -> None:
     set is never crossed — even after some members are used."""
     sid = uuid4()
     grant = _mint_group(_personal(), session_id=sid)
+    assert isinstance(grant, OverrideGrant)
     store = OverrideGrantStore()
     store.add(grant)
 
@@ -163,5 +165,6 @@ def test_group_grant_works_with_db_backed_store(tmp_path) -> None:
     sid = uuid4()
     store = OverrideGrantStore(db_path=tmp_path / "grants.db")
     grant = _mint_group(_personal(), session_id=sid)
+    assert isinstance(grant, OverrideGrant)
     store.add(grant)
     assert _send(store, sid, "a@example.com").decision == Decision.ALLOW

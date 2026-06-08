@@ -43,7 +43,9 @@ def test_confidential_with_quarantined_picks_dual_llm() -> None:
     registry = _make_registry("memory.read", "quarantined.extract")
     mode, _ = select_mode(
         LabelState(
-            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
         ),
         registry,
     )
@@ -54,7 +56,9 @@ def test_confidential_without_quarantined_falls_back() -> None:
     registry = _make_registry("memory.read")
     mode, reason = select_mode(
         LabelState(
-            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
         ),
         registry,
     )
@@ -94,7 +98,9 @@ def test_each_confidential_label_triggers_dual_llm() -> None:
     for category in ("health", "financial", "personal"):
         mode, _ = select_mode(
             LabelState(
-                a={CategoryTag(category, Tier.REGULATED, assignment_provenance="source-declared")}
+                a=frozenset(
+                    {CategoryTag(category, Tier.REGULATED, assignment_provenance="source-declared")}
+                )
             ),
             registry,
         )
@@ -119,7 +125,9 @@ def test_force_mode_overrides_prefer_and_heuristic() -> None:
     # beats both.
     mode, reason = select_mode(
         LabelState(
-            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
         ),
         registry,
         prefer_programmatic=True,

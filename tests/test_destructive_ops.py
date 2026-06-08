@@ -176,7 +176,9 @@ async def test_agent_loop_modify_blocked_by_default(tmp_path: Path) -> None:
         ),
     )
     await app.startup()
-    app.memory.write("notes.x", "original", frozenset())
+    from capabledeputy.policy.labels import LabelState
+
+    app.memory.write("notes.x", "original", LabelState())
 
     s = await app.graph.new()
     cap = Capability(kind=CapabilityKind.MODIFY_FS, pattern="*")  # destructive default
@@ -219,7 +221,9 @@ async def test_agent_loop_modify_allowed_with_destructive_flag(tmp_path: Path) -
         ),
     )
     await app.startup()
-    app.memory.write("notes.x", "original", frozenset())
+    from capabledeputy.policy.labels import LabelState
+
+    app.memory.write("notes.x", "original", LabelState())
 
     s = await app.graph.new()
     cap = Capability(

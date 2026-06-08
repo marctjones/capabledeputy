@@ -19,12 +19,12 @@ from capabledeputy.policy.labels import (
 )
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.model import Session
-from capabledeputy.tools.registry import ToolDefinition
+from capabledeputy.tools.registry import ToolDefinition, ToolResult
 
 
-def _dummy_tool_handler(*args, **kwargs):
+async def _dummy_tool_handler(*args, **kwargs) -> ToolResult:
     """Dummy handler for ToolDefinition."""
-    pass
+    return ToolResult(output={})
 
 
 @pytest.fixture

@@ -65,7 +65,9 @@ def test_no_arg_labels_yields_empty() -> None:
 
 def test_populated_arg_triggers_labels() -> None:
     personal_tags = LabelState(
-        a={CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        a=frozenset(
+            {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        )
     )
     tool = _make_tool_with_arg_labels(
         {"body": personal_tags},
@@ -77,7 +79,9 @@ def test_populated_arg_triggers_labels() -> None:
 def test_empty_string_does_not_trigger() -> None:
     """An empty body should NOT fire the label."""
     personal_tags = LabelState(
-        a={CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        a=frozenset(
+            {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        )
     )
     tool = _make_tool_with_arg_labels(
         {"body": personal_tags},
@@ -106,7 +110,9 @@ def test_empty_list_does_not_trigger() -> None:
 
 def test_multiple_arg_labels_compose() -> None:
     personal_tags = LabelState(
-        a={CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        a=frozenset(
+            {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        )
     )
     untrusted_tags = LabelState(b=frozenset())  # empty for now
     tool = _make_tool_with_arg_labels(
@@ -124,7 +130,9 @@ def test_multiple_arg_labels_compose() -> None:
 def test_only_populated_args_trigger() -> None:
     """If body is populated but attachments isn't, only body's labels fire."""
     personal_tags = LabelState(
-        a={CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        a=frozenset(
+            {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        )
     )
     untrusted_tags = LabelState(b=frozenset())  # empty for now
     tool = _make_tool_with_arg_labels(
@@ -151,7 +159,9 @@ async def test_per_arg_labels_propagate_to_session(tmp_path: Path) -> None:
     graph = SessionGraph(audit=writer)
 
     personal_tags = LabelState(
-        a={CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        a=frozenset(
+            {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        )
     )
     tool = _make_tool_with_arg_labels(
         {"body": personal_tags},
@@ -188,7 +198,9 @@ async def test_empty_arg_does_not_taint_session(tmp_path: Path) -> None:
     graph = SessionGraph(audit=writer)
 
     personal_tags = LabelState(
-        a={CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        a=frozenset(
+            {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        )
     )
     tool = _make_tool_with_arg_labels(
         {"body": personal_tags},

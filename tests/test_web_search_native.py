@@ -74,6 +74,7 @@ def test_web_search_parameters_schema(mock: WebMock) -> None:
     tools = make_web_tools(mock)
     search_tool = next((t for t in tools if t.name == "web.search"), None)
 
+    assert search_tool is not None
     schema = search_tool.parameters_schema
     assert schema["type"] == "object"
     assert "query" in schema["properties"]
@@ -94,6 +95,7 @@ async def test_empty_query_rejection(mock: WebMock, tool_context: ToolContext) -
     tools = make_web_tools(mock)
     search_tool = next((t for t in tools if t.name == "web.search"), None)
 
+    assert search_tool is not None
     result = await search_tool.handler({"query": ""}, tool_context)
     assert result.output["ok"] is False
     assert "non-empty" in result.output["error"]
@@ -106,6 +108,7 @@ async def test_count_bounds_too_small(mock: WebMock, tool_context: ToolContext) 
     tools = make_web_tools(mock)
     search_tool = next((t for t in tools if t.name == "web.search"), None)
 
+    assert search_tool is not None
     result = await search_tool.handler({"query": "test", "count": 0}, tool_context)
     assert result.output["ok"] is False
     assert "must be in" in result.output["error"]
@@ -117,6 +120,7 @@ async def test_count_bounds_too_large(mock: WebMock, tool_context: ToolContext) 
     tools = make_web_tools(mock)
     search_tool = next((t for t in tools if t.name == "web.search"), None)
 
+    assert search_tool is not None
     result = await search_tool.handler({"query": "test", "count": 21}, tool_context)
     assert result.output["ok"] is False
     assert "must be in" in result.output["error"]
@@ -147,6 +151,7 @@ async def test_count_bounds_valid(
     tools = make_web_tools(mock)
     search_tool = next((t for t in tools if t.name == "web.search"), None)
 
+    assert search_tool is not None
     result = await search_tool.handler({"query": "test", "count": 5}, tool_context)
     assert result.output["ok"] is True
 
@@ -192,6 +197,7 @@ async def test_brave_backend_selection(
     tools = make_web_tools(mock)
     search_tool = next((t for t in tools if t.name == "web.search"), None)
 
+    assert search_tool is not None
     result = await search_tool.handler({"query": "test"}, tool_context)
 
     assert result.output["ok"] is True
@@ -238,6 +244,7 @@ async def test_ddg_fallback_no_key(
     tools = make_web_tools(mock)
     search_tool = next((t for t in tools if t.name == "web.search"), None)
 
+    assert search_tool is not None
     result = await search_tool.handler({"query": "test"}, tool_context)
 
     assert result.output["ok"] is True
@@ -270,6 +277,7 @@ async def test_network_error_handling(
     tools = make_web_tools(mock)
     search_tool = next((t for t in tools if t.name == "web.search"), None)
 
+    assert search_tool is not None
     result = await search_tool.handler({"query": "test"}, tool_context)
 
     assert result.output["ok"] is False
@@ -309,6 +317,7 @@ async def test_search_result_format(
     tools = make_web_tools(mock)
     search_tool = next((t for t in tools if t.name == "web.search"), None)
 
+    assert search_tool is not None
     result = await search_tool.handler({"query": "test", "count": 10}, tool_context)
 
     assert result.output["ok"] is True
@@ -352,6 +361,7 @@ async def test_count_respected(
     tools = make_web_tools(mock)
     search_tool = next((t for t in tools if t.name == "web.search"), None)
 
+    assert search_tool is not None
     result = await search_tool.handler({"query": "test", "count": 2}, tool_context)
 
     assert result.output["ok"] is True
@@ -369,6 +379,7 @@ async def test_untrusted_external_label_always_applied(
     tools = make_web_tools(mock)
     search_tool = next((t for t in tools if t.name == "web.search"), None)
 
+    assert search_tool is not None
     result = await search_tool.handler({"query": ""}, tool_context)
     assert ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED) in result.additional_tags.b
 

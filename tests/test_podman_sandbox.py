@@ -709,8 +709,9 @@ def test_read_output_round_trip(fake_podman: None) -> None:
     # FakePopen doesn't actually run the container, so /out is empty.
     # Simulate the container having written a file by dropping one
     # into the harvest dir, then re-harvesting.
-    assert a._regions[rid].harvest_dir is not None
-    out_path = _os.path.join(a._regions[rid].harvest_dir, "out", "result.txt")
+    harvest_dir = a._regions[rid].harvest_dir
+    assert harvest_dir is not None
+    out_path = _os.path.join(harvest_dir, "out", "result.txt")
     with open(out_path, "wb") as f:
         f.write(b"sandbox-produced output\n")
     _os.chmod(out_path, 0o644)

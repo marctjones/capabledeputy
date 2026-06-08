@@ -188,7 +188,7 @@ class TestSystemPromptReplacement:
         captured_prompts = []
 
         class CapturingFakeLLMClient(FakeLLMClient):
-            async def respond(self, messages, tool_descriptions):
+            async def respond(self, messages, tools):
                 if messages:
                     system_msg = next(
                         (m for m in messages if m.role == Role.SYSTEM),
@@ -196,7 +196,7 @@ class TestSystemPromptReplacement:
                     )
                     if system_msg:
                         captured_prompts.append(system_msg.content)
-                return await super().respond(messages, tool_descriptions)
+                return await super().respond(messages, tools)
 
         llm = CapturingFakeLLMClient([LLMResponse(content="response")])
 
@@ -348,7 +348,7 @@ class TestContextWithRecentDecisions:
         captured_prompts = []
 
         class CapturingLLMClient(FakeLLMClient):
-            async def respond(self, messages, tool_descriptions):
+            async def respond(self, messages, tools):
                 if messages:
                     system_msg = next(
                         (m for m in messages if m.role == Role.SYSTEM),
@@ -356,7 +356,7 @@ class TestContextWithRecentDecisions:
                     )
                     if system_msg:
                         captured_prompts.append(system_msg.content)
-                return await super().respond(messages, tool_descriptions)
+                return await super().respond(messages, tools)
 
         llm2 = CapturingLLMClient([LLMResponse(content="ok")])
 

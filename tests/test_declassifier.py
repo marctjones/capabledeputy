@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from capabledeputy.policy.labels import LabelState
 from capabledeputy.substrate.declassifier_port import (
+    DeclassifyingTransformer,
     apply_declassifier_chain,
 )
 from capabledeputy.substrate.declassifiers_builtin import (
@@ -164,7 +167,10 @@ def test_chain_redactor_then_projector() -> None:
     redactor = RegexRedactor()
 
     final, applied = apply_declassifier_chain(
-        (proj, redactor),  # projector runs first; output is a dict
+        cast(  # projector runs first; output is a dict
+            tuple[DeclassifyingTransformer, ...],
+            (proj, redactor),
+        ),
         value=input_value,
         current_label_state=LabelState(),
     )
@@ -180,7 +186,7 @@ def test_chain_redactor_then_projector() -> None:
 
 def test_chain_empty_list_returns_input_unchanged() -> None:
     final, applied = apply_declassifier_chain(
-        (),
+        cast(tuple[DeclassifyingTransformer, ...], ()),
         value="anything",
         current_label_state=LabelState(),
     )
@@ -194,7 +200,7 @@ def test_chain_all_abstain_returns_input_unchanged() -> None:
     proj = SchemaProjector(allowed_keys=("x",))
     # Input string with no PII; projector skips strings; redactor finds nothing.
     final, applied = apply_declassifier_chain(
-        (redactor, proj),
+        cast(tuple[DeclassifyingTransformer, ...], (redactor, proj)),
         value="clean text",
         current_label_state=LabelState(),
     )
@@ -215,7 +221,7 @@ def test_chain_sequential_application() -> None:
         patterns={"EMAIL": __import__("re").compile(r"\b[\w.+-]+@[\w-]+\.\w+\b")},
     )
     final, applied = apply_declassifier_chain(
-        (r1, r2),
+        cast(tuple[DeclassifyingTransformer, ...], (r1, r2)),
         value=text,
         current_label_state=LabelState(),
     )

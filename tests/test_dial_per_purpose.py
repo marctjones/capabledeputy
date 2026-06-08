@@ -69,8 +69,12 @@ purposes:
 """,
     )
     purposes = load_purposes(p)
-    assert purposes.get("daily-briefing").risk_preference_dial == "balanced"
-    assert purposes.get("tax-prep").risk_preference_dial == "cautious"
+    daily_briefing = purposes.get("daily-briefing")
+    assert daily_briefing is not None
+    assert daily_briefing.risk_preference_dial == "balanced"
+    tax_prep = purposes.get("tax-prep")
+    assert tax_prep is not None
+    assert tax_prep.risk_preference_dial == "cautious"
 
 
 def test_dial_omitted_falls_back_to_safety_default(tmp_path: Path) -> None:
@@ -85,7 +89,9 @@ purposes:
 """,
     )
     purposes = load_purposes(p)
-    assert purposes.get("chat").risk_preference_dial == "cautious"
+    chat = purposes.get("chat")
+    assert chat is not None
+    assert chat.risk_preference_dial == "cautious"
 
 
 def test_dial_invalid_value_refused(tmp_path: Path) -> None:
@@ -128,9 +134,13 @@ purposes:
     )
     purposes = load_purposes(p, legacy_risk_preference_path=legacy)
     # No explicit dial → fallback to legacy value
-    assert purposes.get("legacy-default-applies").risk_preference_dial == "permissive"
+    legacy_default = purposes.get("legacy-default-applies")
+    assert legacy_default is not None
+    assert legacy_default.risk_preference_dial == "permissive"
     # Explicit dial → wins over fallback
-    assert purposes.get("explicit-wins").risk_preference_dial == "balanced"
+    explicit = purposes.get("explicit-wins")
+    assert explicit is not None
+    assert explicit.risk_preference_dial == "balanced"
 
 
 def test_legacy_invalid_value_ignored(tmp_path: Path) -> None:
@@ -148,7 +158,9 @@ purposes:
 """,
     )
     purposes = load_purposes(p, legacy_risk_preference_path=legacy)
-    assert purposes.get("chat").risk_preference_dial == "cautious"
+    chat = purposes.get("chat")
+    assert chat is not None
+    assert chat.risk_preference_dial == "cautious"
 
 
 def test_legacy_file_absent_is_ok(tmp_path: Path) -> None:
@@ -162,7 +174,9 @@ purposes:
 """,
     )
     purposes = load_purposes(p, legacy_risk_preference_path=tmp_path / "nonexistent.json")
-    assert purposes.get("chat").risk_preference_dial == "cautious"
+    chat = purposes.get("chat")
+    assert chat is not None
+    assert chat.risk_preference_dial == "cautious"
 
 
 # --- SessionGraph inheritance (T119) -------------------------------------

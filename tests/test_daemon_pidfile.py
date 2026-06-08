@@ -23,7 +23,7 @@ from capabledeputy.ipc.pidfile import (
 
 
 @pytest.fixture(autouse=True)
-def isolate_pidfile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def isolate_pidfile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Redirect CAPDEP_PIDFILE so tests never touch the real pidfile."""
     target = tmp_path / "test-capdep-daemon.pid"
     monkeypatch.setenv("CAPDEP_PIDFILE", str(target))

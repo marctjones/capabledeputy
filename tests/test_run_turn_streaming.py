@@ -54,7 +54,7 @@ class _StubLLM:
             # list runs short.
             return LLMResponse(
                 content="(stub: out of responses)",
-                tool_calls=[],
+                tool_calls=(),
                 finish_reason=FinishReason.STOP,
                 model="stub",
             )
@@ -84,7 +84,7 @@ async def test_no_tool_calls_yields_terminal_completed_event(
         [
             LLMResponse(
                 content="hello world",
-                tool_calls=[],
+                tool_calls=(),
                 finish_reason=FinishReason.STOP,
                 model="stub-model",
             ),
@@ -130,7 +130,7 @@ async def test_run_turn_wrapper_returns_same_result(
         [
             LLMResponse(
                 content="hello",
-                tool_calls=[],
+                tool_calls=(),
                 finish_reason=FinishReason.STOP,
                 model="stub",
             ),
@@ -171,7 +171,7 @@ async def test_max_iterations_yields_terminal_interrupted_event(
     def _ever_more(n: int) -> LLMResponse:
         return LLMResponse(
             content="thinking",
-            tool_calls=[ToolCall(id=str(uuid4()), name="nope", args={"n": n})],
+            tool_calls=(ToolCall(id=str(uuid4()), name="nope", args={"n": n}),),
             finish_reason=FinishReason.TOOL_CALLS,
             model="stub",
         )
@@ -227,7 +227,7 @@ async def test_completed_event_appears_exactly_once_per_clean_turn(
         [
             LLMResponse(
                 content="done",
-                tool_calls=[],
+                tool_calls=(),
                 finish_reason=FinishReason.STOP,
                 model="stub",
             ),
@@ -264,7 +264,7 @@ async def test_iteration_events_carry_correct_index(
         [
             LLMResponse(
                 content="ok",
-                tool_calls=[],
+                tool_calls=(),
                 finish_reason=FinishReason.STOP,
                 model="stub",
             ),

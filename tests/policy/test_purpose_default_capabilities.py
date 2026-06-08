@@ -101,7 +101,9 @@ purposes:
         encoding="utf-8",
     )
     purposes = load(cfg)
-    cap = purposes.get("shopping").default_capabilities[0]
+    shopping = purposes.get("shopping")
+    assert shopping is not None
+    cap = shopping.default_capabilities[0]
     assert cap.kind == CapabilityKind.QUEUE_PURCHASE
     assert cap.max_amount == 5000
 
@@ -117,7 +119,9 @@ purposes:
         encoding="utf-8",
     )
     purposes = load(cfg)
-    assert purposes.get("minimal").default_capabilities == ()
+    minimal = purposes.get("minimal")
+    assert minimal is not None
+    assert minimal.default_capabilities == ()
 
 
 # ---------- graph wiring ----------

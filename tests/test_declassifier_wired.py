@@ -46,7 +46,6 @@ def _make_tool_returning(value, inherent_tags=None):
         capability_kind=CapabilityKind.READ_FS,
         handler=_handler,
         parameters_schema={"type": "object", "properties": {}},
-        target_arg=None,
         inherent_tags=inherent_tags,
         operations=(Operation(EffectClass.FETCH),),
         risk_ids=("RISK-INDIRECT-INJECTION",),

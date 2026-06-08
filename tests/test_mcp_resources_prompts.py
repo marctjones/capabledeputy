@@ -85,14 +85,30 @@ async def test_list_resources_exposes_memory_entries_with_labels(
         "rx",
         "lisinopril 10mg",
         LabelState(
-            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            a=frozenset(
+                {
+                    CategoryTag(
+                        "health",
+                        Tier.REGULATED,
+                        assignment_provenance="source-declared",
+                    )
+                }
+            )
         ),
     )
     app.memory.write(
         "notes",
         "groceries",
         LabelState(
-            a={CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+            a=frozenset(
+                {
+                    CategoryTag(
+                        "personal",
+                        Tier.REGULATED,
+                        assignment_provenance="source-declared",
+                    )
+                }
+            )
         ),
     )
 
@@ -125,7 +141,15 @@ async def test_read_resource_dispatches_through_policy(
         "k",
         "value",
         LabelState(
-            a={CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            a=frozenset(
+                {
+                    CategoryTag(
+                        "health",
+                        Tier.REGULATED,
+                        assignment_provenance="source-declared",
+                    )
+                }
+            )
         ),
     )
     s = await app.graph.new()
