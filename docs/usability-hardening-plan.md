@@ -23,10 +23,17 @@ wiring) · **feature** (new code in the engine/substrate).
 
 The three highest-leverage cuts. Do these first; the rest compound on them.
 
-### Slice U1 — Labeling oracle on by default ⬜
+### Slice U1 — Labeling oracle on by default — U1a ✅ · U1b ⬜
 - **Goal (Lever A):** a fresh deployment auto-labels genuinely-sensitive reads
   (financial files, health email, credentials) *without* operator config, so
   the engine gates the right things and benign reads flow.
+- **U1a DONE** (`configs/fs_label_rules.yaml` + `configs/email_label_rules.yaml`
+  now ship ACTIVE; added a proper `credentials` restricted/fixed-high category
+  to `labels.yaml` so credential rules don't under-classify to the unknown-
+  default `regulated`). Adversarial test pins: sensitive paths/senders
+  auto-label, benign reads stay UNLABELED (the precision/anti-fatigue
+  property), raise-only never under-classifies.
+  `tests/test_default_label_rules.py`.
 - **Machinery:** `policy/fs_labeling.py` + `policy/email_labeling.py` loaders
   exist and are wired in `daemon/lifecycle.py`; today they load `.example`
   rules that aren't active. **config** for U1a, **feature** for U1b.
