@@ -276,7 +276,17 @@ class GrantState(StrEnum):
 class OverrideGrant:
     """A concrete override authorization for a specific session +
     action + target. One-shot (consumed_at marks use). Non-inheritable
-    across fork/delegate (the session_id pin makes that structural)."""
+    across fork/delegate (the session_id pin makes that structural).
+
+    Slice D (FR-049) — GROUP grants. When `group_members` is non-empty the
+    grant authorizes a SET of (action_kind, target) members under a single
+    friction confirmation (FR-035 grouping applied to override, not just
+    approval). Each member is single-use: using one adds it to
+    `consumed_members`; the grant stays ACTIVE until every member is
+    consumed, then transitions to CONSUMED. The exact-member match keeps
+    the pinned-destination property — a member not in the set is never
+    authorized, so untrusted content still cannot redirect to a new target.
+    """
 
     id: UUID
     session_id: UUID
@@ -292,12 +302,50 @@ class OverrideGrant:
     expires_at: datetime
     consumed_at: datetime | None = None
     audit_id: UUID = field(default_factory=uuid4)
+    # Group grant (slice D). Empty ⇒ ordinary single grant (uses the
+    # action_kind/target fields above). Non-empty ⇒ the authorized set.
+    group_members: frozenset[tuple[CapabilityKind | str, str]] = frozenset()
+    consumed_members: frozenset[tuple[CapabilityKind | str, str]] = frozenset()
+
+    @property
+    def is_group(self) -> bool:
+        return bool(self.group_members)
 
     def is_expired(self, now: datetime) -> bool:
         return now >= self.expires_at
 
     def is_for(self, *, action_kind: CapabilityKind | str, target: str) -> bool:
+        """True if this grant authorizes (action_kind, target). For a group
+        grant the pair must be a member that has NOT been consumed yet."""
+        if self.is_group:
+            member = (action_kind, target)
+            return member in self.group_members and member not in self.consumed_members
         return self.action_kind == action_kind and self.target == target
+
+    def consume_for(
+        self,
+        *,
+        action_kind: CapabilityKind | str,
+        target: str,
+        now: datetime,
+    ) -> OverrideGrant:
+        """Return the grant after consuming (action_kind, target). A single
+        grant becomes CONSUMED. A group grant records the member and stays
+        ACTIVE until ALL members are consumed (then CONSUMED) — so one
+        friction confirmation authorizes the whole batch, each member once."""
+        from dataclasses import replace
+
+        if not self.is_group:
+            return replace(self, state=GrantState.CONSUMED, consumed_at=now)
+        new_consumed = self.consumed_members | {(action_kind, target)}
+        if new_consumed >= self.group_members:  # every member now used
+            return replace(
+                self,
+                consumed_members=new_consumed,
+                state=GrantState.CONSUMED,
+                consumed_at=now,
+            )
+        return replace(self, consumed_members=new_consumed)
 
 
 @dataclass(frozen=True)
@@ -336,6 +384,40 @@ def request_override(
     acknowledgement text; that's operator/UI work.
     """
     eff_now = now or datetime.now(UTC)
+    gated = _gate_request(
+        policies=policies,
+        floor=floor,
+        invoker=invoker,
+        friction_confirmed=friction_confirmed,
+    )
+    if isinstance(gated, OverrideRefusal):
+        return gated
+    entry = gated
+    return OverrideGrant(
+        id=uuid4(),
+        session_id=session_id,
+        action_kind=action_kind,
+        target=target,
+        target_category_tier=target_category_tier,
+        hard_floor_crossed=floor,
+        invoker_principal=invoker,
+        attester_principal=None,
+        policy_at_grant=entry,
+        friction_level=entry.effective_friction(),
+        state=_initial_state(entry),
+        expires_at=eff_now + timedelta(seconds=entry.expiry_seconds),
+    )
+
+
+def _gate_request(
+    *,
+    policies: OverridePolicies,
+    floor: HardFloor,
+    invoker: str,
+    friction_confirmed: bool,
+) -> OverridePolicyEntry | OverrideRefusal:
+    """Shared policy gate for override requests (single + group). Returns
+    the matched OverridePolicyEntry or a structured refusal."""
     entry = policies.get(floor)
     if entry is None:
         return OverrideRefusal(
@@ -362,25 +444,65 @@ def request_override(
             floor=floor,
             invoker=invoker,
         )
+    return entry
 
-    initial_state = (
+
+def _initial_state(entry: OverridePolicyEntry) -> GrantState:
+    return (
         GrantState.PENDING_ATTESTATION
         if entry.policy is OverridePolicy.DUAL_CONTROL
         else GrantState.ACTIVE
     )
+
+
+def request_group_override(
+    *,
+    policies: OverridePolicies,
+    session_id: UUID,
+    members: frozenset[tuple[CapabilityKind | str, str]],
+    target_category_tier: tuple[str, str],
+    floor: HardFloor,
+    invoker: str,
+    friction_confirmed: bool,
+    now: datetime | None = None,
+) -> OverrideGrant | OverrideRefusal:
+    """Mint a GROUP override grant (slice D / FR-035 grouping applied to
+    override). ONE friction confirmation authorizes the whole `members` set;
+    each (action_kind, target) member is single-use. Same policy gate as a
+    single request — dual-control groups start PENDING_ATTESTATION. The
+    member set is the pinned authorization: a target not in it is never
+    crossed, preserving redirection-resistance across the batch.
+
+    `members` must be non-empty (an empty group is a caller bug)."""
+    if not members:
+        raise OverrideError("request_group_override requires a non-empty members set")
+    eff_now = now or datetime.now(UTC)
+    gated = _gate_request(
+        policies=policies,
+        floor=floor,
+        invoker=invoker,
+        friction_confirmed=friction_confirmed,
+    )
+    if isinstance(gated, OverrideRefusal):
+        return gated
+    entry = gated
+    # Representative single-fields for audit/back-compat; matching uses
+    # group_members. Deterministic pick for stable audit output.
+    rep_kind, _rep_target = sorted(members, key=lambda m: (kind_name(m[0]), m[1]))[0]
     return OverrideGrant(
         id=uuid4(),
         session_id=session_id,
-        action_kind=action_kind,
-        target=target,
+        action_kind=rep_kind,
+        target=f"group:{len(members)}-members",
         target_category_tier=target_category_tier,
         hard_floor_crossed=floor,
         invoker_principal=invoker,
         attester_principal=None,
         policy_at_grant=entry,
         friction_level=entry.effective_friction(),
-        state=initial_state,
+        state=_initial_state(entry),
         expires_at=eff_now + timedelta(seconds=entry.expiry_seconds),
+        group_members=frozenset(members),
     )
 
 
@@ -566,8 +688,14 @@ class OverrideGrantStore:
 
     def _persist(self, grant: OverrideGrant) -> None:
         """UPSERT a grant into the override_grants table. No-op when
-        no db_path was wired."""
-        if self._db_path is None:
+        no db_path was wired.
+
+        Slice D: group grants are held in-memory only (the override_grants
+        schema has no member columns). A grant expires in ≤60 min, so a
+        daemon restart mid-batch simply re-prompts — acceptable, and far
+        safer than persisting a half-serialized group grant. Single grants
+        persist exactly as before."""
+        if self._db_path is None or grant.is_group:
             return
         import json
         from contextlib import closing
@@ -651,8 +779,9 @@ class OverrideGrantStore:
                 g
                 for g in self._by_id.values()
                 if g.session_id == session_id
-                and g.action_kind == action_kind
-                and g.target == target
+                # is_for() handles both single grants and group members
+                # (a group member that is still unconsumed).
+                and g.is_for(action_kind=action_kind, target=target)
                 and g.state is GrantState.ACTIVE
                 and not g.is_expired(now)
                 and g.consumed_at is None

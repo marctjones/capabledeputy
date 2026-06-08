@@ -833,16 +833,14 @@ def _decide_impl(
                 now=eff_now,
             )
             if isinstance(mint_result, Capability):
-                # FR-036 single-use: mark the grant CONSUMED so a
-                # subsequent decide() falls back to the normal policy.
-                from dataclasses import replace as _dc_replace
-
-                from capabledeputy.policy.overrides import GrantState
-
-                consumed = _dc_replace(
-                    active,
-                    state=GrantState.CONSUMED,
-                    consumed_at=eff_now,
+                # FR-036 single-use: consume the grant so a subsequent
+                # decide() falls back to the normal policy. For a GROUP grant
+                # (slice D) this consumes only THIS member; the grant stays
+                # ACTIVE for the rest of the batch until every member is used.
+                consumed = active.consume_for(
+                    action_kind=action.kind,
+                    target=action.target,
+                    now=eff_now,
                 )
                 override_grants.update(consumed)
                 return PolicyDecision(
