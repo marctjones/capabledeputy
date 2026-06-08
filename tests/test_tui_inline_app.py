@@ -17,10 +17,11 @@ from capabledeputy.policy.rules import Decision
 from capabledeputy.tui.inline.app import InlineConsole
 from capabledeputy.tui.inline.model import ApprovalPrompt
 from capabledeputy.tui.inline.status import TrustState
+from capabledeputy.tui.inline.view import ConsoleView
 
 
 class _NullDriver:
-    async def run_turn(self, text: str, console: InlineConsole) -> None:
+    async def run_turn(self, text: str, console: ConsoleView) -> None:
         return None
 
 
