@@ -76,10 +76,67 @@ class TrustProfile(StrEnum):
 
 
 class HardFloor(StrEnum):
+    """A floor the Override mechanism can target.
+
+    Two families, both override-targetable:
+      - The FR-026d *hard floors* (prohibited, admissibility-exclusion,
+        max-tier-clearance, integrity-floor) — outcomes ordinary approval
+        cannot reach.
+      - The *structural conflict floors* (slice B) — the four always-on
+        information-flow conflict invariants the engine computes from the
+        four-axis labels (untrusted/health/financial co-presence with
+        egress). Their string values are IDENTICAL to the engine's conflict
+        rule ids (engine.PROVENANCE_EGRESS_RULE etc.), so the rule a
+        decision fired ↔ the floor an operator names in `override.request`
+        is the identity map (see `structural_floor_for_rule`).
+
+    Adding a structural floor here makes it *mintable* — under the
+    `personal` trust profile the operator gets a solo-override default for
+    it (OverridePolicies.get); under `managed` it stays DISALLOWED, so the
+    structural DENY holds exactly as before. The engine's grant
+    short-circuit is floor-agnostic, so no engine change is needed: an
+    active grant for (session, kind, target) already crosses the conflict
+    invariant before it is evaluated.
+    """
+
     PROHIBITED = "prohibited"
     ADMISSIBILITY_EXCLUSION = "admissibility-exclusion"
     MAX_TIER_CLEARANCE = "max-tier-clearance"
     INTEGRITY_FLOOR = "integrity-floor"
+    # Structural conflict floors — values mirror the engine conflict rule ids.
+    PROVENANCE_EGRESS = "untrusted-meets-egress"
+    HEALTH_EGRESS = "health-meets-egress"
+    FINANCIAL_EMAIL = "financial-meets-email"
+    FINANCIAL_PURCHASE = "financial-meets-purchase"
+
+    @property
+    def is_structural(self) -> bool:
+        """True for the four structural conflict floors (slice B), False
+        for the FR-026d hard floors."""
+        return self in _STRUCTURAL_FLOORS
+
+
+_STRUCTURAL_FLOORS: frozenset[HardFloor] = frozenset(
+    {
+        HardFloor.PROVENANCE_EGRESS,
+        HardFloor.HEALTH_EGRESS,
+        HardFloor.FINANCIAL_EMAIL,
+        HardFloor.FINANCIAL_PURCHASE,
+    },
+)
+
+
+def structural_floor_for_rule(rule: str) -> HardFloor | None:
+    """Map an engine conflict-invariant rule id to the floor an operator
+    names in `override.request` to cross it. Identity map by construction
+    (the floor value IS the rule id). Returns None for non-structural rules
+    so callers can tell 'this DENY is override-targetable as a structural
+    floor' from 'this is an ordinary denial'."""
+    try:
+        floor = HardFloor(rule)
+    except ValueError:
+        return None
+    return floor if floor.is_structural else None
 
 
 class FrictionLevel(StrEnum):
@@ -98,6 +155,13 @@ _DEFAULT_FRICTION: dict[HardFloor, FrictionLevel] = {
     HardFloor.ADMISSIBILITY_EXCLUSION: FrictionLevel.MAXIMAL,
     HardFloor.MAX_TIER_CLEARANCE: FrictionLevel.MEDIUM,
     HardFloor.INTEGRITY_FLOOR: FrictionLevel.MEDIUM,
+    # Structural conflict floors (slice B). Untrusted-egress and health
+    # are the gravest (injection footgun / regulated data) ⇒ MAXIMAL;
+    # financial conflicts ⇒ MEDIUM.
+    HardFloor.PROVENANCE_EGRESS: FrictionLevel.MAXIMAL,
+    HardFloor.HEALTH_EGRESS: FrictionLevel.MAXIMAL,
+    HardFloor.FINANCIAL_EMAIL: FrictionLevel.MEDIUM,
+    HardFloor.FINANCIAL_PURCHASE: FrictionLevel.MEDIUM,
 }
 
 
