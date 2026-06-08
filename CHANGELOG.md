@@ -4,6 +4,56 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [0.18.0] — 2026-06-08
+
+Accurate-by-default labeling, assurance hardening, and a green CI. The headline
+behavior change is that the **content-scan labeling oracle now ships on by
+default** — a fresh deployment auto-labels genuinely-sensitive reads, which
+both raises safety (the foundation under every IFC/BLP/Brewer-Nash guarantee)
+and *reduces* approval fatigue (the engine gates the right things instead of
+the all-or-nothing binary). Plus two adversarial assurance slices, a full
+type-check cleanup, and three design/assessment docs.
+
+### Labeling oracle on by default (usability U1a)
+
+- **Feature: `configs/fs_label_rules.yaml` + `email_label_rules.yaml` ship
+  ACTIVE**, curated high-precision (financial/tax paths, credential dirs+globs,
+  health dirs; financial-institution senders + universal subject cues; health =
+  clinic-domain AND clinical-body-cue). Precision over recall so benign reads
+  stay unlabeled — no new friction. Labelers are raise-only (escalate, never
+  lower).
+- **Fix: added a `credentials` category** (restricted/fixed-high) to
+  `labels.yaml` — without it, `confidential.credentials` resolved to the
+  unknown-default `regulated` and under-classified secrets (caught by the
+  raise-only adversarial test).
+
+### Assurance (adversarial, on the security models)
+
+- **Pattern ③ reference-handle redirection-resistance** (slice #3): forged
+  handle binds nothing, cross-session theft discloses nothing end-to-end,
+  value frozen at issue, planner data-blind.
+- **Pattern ② dual-LLM declassification** (slice #4): a prompt injection in the
+  confidential content can't escalate (tool-call refused), can't add exfil
+  fields (schema-stripped), can't bulk-smuggle (length-capped); planner never
+  sees raw.
+
+### Quality / CI
+
+- **All 189 pre-existing pyright errors fixed** (incl. two latent bugs: async
+  `DaemonClient.call` invoked without `anyio.run`; `str` passed where the MCP
+  SDK wants `AnyUrl`). Repo `ruff format`-clean. Two env-dependent tests made
+  CI-robust. **CI now passes all four gates** (ruff check, ruff format, pyright,
+  pytest) on Python 3.12 + 3.13 — green for the first time.
+
+### Docs
+
+- Rewrote `security-alignment-assessment.md` to the current (v0.18) state with
+  an Impl-vs-Default-policy split and an intersection analysis.
+- `usability-hardening-plan.md` — anti-fatigue remediation as phased slices
+  (U1–U7) with a "no slice may loosen a floor" invariant.
+- `tui-redesign.md` — greenfield TUI design (inline conversational REPL on the
+  same stack) + a safety-alignment review of the design itself.
+
 ## [0.17.0] — 2026-06-08
 
 Human-in-control & assurance. Two threads: a **trust-profile** model that lets
@@ -445,6 +495,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.18.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.18.0
 [0.17.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.17.0
 [0.16.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.16.0
 [0.15.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.15.1
