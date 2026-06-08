@@ -74,12 +74,16 @@ one-keystroke full-screen *screens*, not always-on panes.
   (quiet/dim) · `⚑` advisory/WARN (amber, **non-blocking**) · `⛔` needs-approval
   (expands into a card) · `✗` denied (red, with the engine's pasteable recovery
   inline).
-- **Approval renders in reserved *trusted chrome*, not the scroll buffer.** An
-  inline `⛔` *notice* marks where the gate occurred, but the actionable card —
-  verbatim facts, the floor that fired, the keys — is drawn in a framework-owned
-  decision region (a docked overlay) that untrusted content can never write to.
-  Keyboard-driven, **grouped** (FR-035) into one card with per-item toggles when
-  several share a rationale. See §8.1 (security-strengthening change #1).
+- **Approval is an inline card — *trusted because the app drew it*, not because
+  it's in a separate region.** The card renders inline in the conversation
+  (the preferred feel), drawn by the app from a typed `PolicyDecision`, carrying
+  the per-session anti-spoof marker. It is unforgeable not by segregation but
+  because untrusted content is quarantine-rendered (can't draw a card) and a
+  keypress only acts on the one *armed* engine decision (§8.1). Keyboard-driven,
+  **grouped** (FR-035) into one card with per-item toggles when several share a
+  rationale. Only the gravest actions (override / prohibited / irreversible
+  egress) escalate to a brief focused confirmation; a `docked` decision surface
+  is an *optional* mode for high-assurance deployments.
 - **Override** rendered as a visibly heavier card with typed friction scaled to
   severity — unmistakable from an ordinary approval.
 
@@ -267,13 +271,21 @@ impersonating chrome) into **architecture that can't be gotten wrong**, plus a
 few defense-in-depth additions. They cost a little of the pure-inline aesthetic;
 the trade is worth it.
 
-1. **Decisions live in framework-owned trusted chrome, never in the scroll
-   buffer.** The conversation buffer (where model output and untrusted tool
-   results flow) and the *decision region* (a docked overlay the app draws) are
-   physically separate surfaces. Untrusted content cannot occupy the decision
-   region, so a spoofed approval card is structurally impossible — not merely
-   "sanitized." This is a change to §3 (inline *notice* + reserved actionable
-   card), and the strongest single hardening.
+1. **Decision cards stay INLINE (the preferred feel) and are trusted because the
+   app drew them, not because they're segregated.** "Trusted chrome" means *the
+   app rendered it from a typed `PolicyDecision`, and untrusted content cannot
+   reproduce it* — which is achieved by mechanism, not by taking over the screen:
+   (a) untrusted content is quarantine-rendered (#3) so it literally cannot draw
+   a card; (b) every real card carries the per-session anti-spoof marker (#4) a
+   forger can't know; (c) a keypress only ever acts on the one *armed* engine
+   decision (#7) — a painted fake card is inert text. Together these make an
+   inline card as unforgeable as a docked one. The residual ("a fake card shown
+   beside a real pending grave decision") is closed by **escalating only the
+   gravest actions** (override / prohibited / irreversible egress) to a brief
+   focused confirmation, and by type-the-target confirmation (#6). A fully
+   **`docked` decision surface is an optional mode** (`ui.decision_surface:
+   inline | docked`) for high-assurance / shared-terminal deployments — same
+   engine, same guarantees, different placement. Default is inline.
 2. **The decision component accepts a typed `PolicyDecision` only — never a
    string.** Engine facts and model narration travel different code paths to
    different surfaces; there is no function where model-supplied text can reach
@@ -318,13 +330,15 @@ place the otherwise-strong engine could be undermined.
 
 ## 9. Phased build (greenfield, alongside the old UI until parity)
 
-1. **REPL spine with the trust boundary built in** — inline streaming
+1. **REPL spine with the trust mechanisms built in** — inline streaming
    conversation + fixed engine-sourced status line + input, and from day one the
-   **two-surface split**: a scroll buffer for content vs. a framework-owned
-   decision region (§8.1 #1). The boundary is foundational, not a later pass.
-2. **Decision chips + the trusted decision component** — typed-`PolicyDecision`-
-   only rendering (§8.1 #2); chips are inline notices, the actionable card is
-   chrome. Encodes hard requirements #1 + #4 from the start.
+   *content/decision distinction by mechanism*: untrusted content is quarantine-
+   rendered, real chrome carries the per-session marker, keypresses bind to the
+   armed engine decision (§8.1 #1/#3/#4/#7). Foundational, not a later pass.
+2. **Inline decision cards, app-drawn from a typed `PolicyDecision`** — never
+   from a model string (§8.1 #2); only one armed at a time; grave actions
+   escalate to a brief focused confirm; `docked` is an optional mode. Encodes
+   hard requirements #1 + #4 from the start.
 3. **Visual language pass** — glyphs, semantic color, themes, motion, plus the
    per-session anti-spoof marker (§8.1 #4).
 4. **Untrusted-content quarantine rendering** — forced plaintext, gutter,
