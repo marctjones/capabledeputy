@@ -56,6 +56,25 @@ class OverridePolicy(StrEnum):
     DUAL_CONTROL = "dual-control"
 
 
+class TrustProfile(StrEnum):
+    """Deployment trust posture (spec-003 trust-profile amendment).
+
+    - `managed` (default) — fail-closed enterprise posture: a floor with no
+      explicit operator policy refuses every override (POLICY_DISALLOWED).
+      This is the historical behavior; nothing changes for existing configs.
+    - `personal` — the operator is the root of trust (self-configured,
+      non-enterprise assistant). A floor with no explicit policy defaults to
+      `single-authorized` for the declared `operator_principal`: the operator
+      may solo-override it with friction, no second attester. The model gains
+      nothing — only the human-at-keyboard's reach expands (Principle I / V).
+      Untrusted-provenance flows are NOT affected by this (operator autonomy
+      ≠ adversary autonomy); that ceiling is enforced elsewhere in the engine.
+    """
+
+    MANAGED = "managed"
+    PERSONAL = "personal"
+
+
 class HardFloor(StrEnum):
     PROHIBITED = "prohibited"
     ADMISSIBILITY_EXCLUSION = "admissibility-exclusion"
@@ -145,12 +164,35 @@ class OverridePolicyEntry:
 
 @dataclass(frozen=True)
 class OverridePolicies:
-    """Loaded override policy catalogue, keyed by hard floor."""
+    """Loaded override policy catalogue, keyed by hard floor.
+
+    `trust_profile` selects what happens for a floor with no explicit
+    entry: in `managed` (default) an unlisted floor refuses every override
+    (returns None ⇒ POLICY_DISALLOWED); in `personal` it defaults to a
+    solo `single-authorized` entry for `operator_principal` (the operator
+    may override it alone, with friction). Explicit `by_floor` entries
+    always win, so a personal operator can still pin a floor back to
+    `disallowed` or `dual-control`.
+    """
 
     by_floor: dict[HardFloor, OverridePolicyEntry]
+    trust_profile: TrustProfile = TrustProfile.MANAGED
+    operator_principal: str | None = None
 
     def get(self, floor: HardFloor) -> OverridePolicyEntry | None:
-        return self.by_floor.get(floor)
+        explicit = self.by_floor.get(floor)
+        if explicit is not None:
+            return explicit
+        if self.trust_profile is TrustProfile.PERSONAL and self.operator_principal:
+            # Operator-root default: solo override + friction for any floor
+            # the operator did not explicitly configure. Friction still
+            # scales by floor via _DEFAULT_FRICTION (friction_level=None).
+            return OverridePolicyEntry(
+                floor=floor,
+                policy=OverridePolicy.SINGLE_AUTHORIZED,
+                authorized_principal_ids=frozenset({self.operator_principal}),
+            )
+        return None
 
 
 class GrantState(StrEnum):
@@ -568,6 +610,21 @@ def load(path: Path) -> OverridePolicies:
         raise OverrideError(f"unparseable: {path} — {e}") from e
     if data is None:
         return OverridePolicies(by_floor={})
+    try:
+        trust_profile = TrustProfile(str(data.get("trust_profile", "managed")))
+    except ValueError as e:
+        raise OverrideError(f"invalid trust_profile in {path}: {e}") from e
+    operator_principal = data.get("operator_principal")
+    if operator_principal is not None:
+        operator_principal = str(operator_principal)
+    # Fail-closed: a `personal` profile is meaningless (and silently
+    # refuses every default override) without an operator principal to
+    # authorize. Refuse at load rather than degrade to managed.
+    if trust_profile is TrustProfile.PERSONAL and not operator_principal:
+        raise OverrideError(
+            f"trust_profile: personal requires operator_principal in {path} "
+            f"(the root operator who may solo-override floors).",
+        )
     raw = data.get("policies") or []
     if not isinstance(raw, list):
         raise OverrideError(f"'policies' must be a list: {path}")
@@ -597,4 +654,8 @@ def load(path: Path) -> OverridePolicies:
             ),
         )
         by_floor[floor] = entry
-    return OverridePolicies(by_floor=by_floor)
+    return OverridePolicies(
+        by_floor=by_floor,
+        trust_profile=trust_profile,
+        operator_principal=operator_principal,
+    )

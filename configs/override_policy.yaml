@@ -7,7 +7,22 @@
 # `dual-control` requires a distinct attester.
 # Owner-set; AI-read-only.
 #
+# trust_profile (spec-003 trust-profile amendment):
+#   managed   (default) — fail-closed enterprise posture. A floor with no
+#                         explicit policy below refuses every override.
+#   personal            — the operator is the root of trust (self-configured
+#                         assistant). Any floor not listed below defaults to
+#                         `single-authorized` for `operator_principal`: the
+#                         operator may solo-override it with friction, no
+#                         second attester. Explicit entries below still win,
+#                         so you can pin a grave floor back to dual-control or
+#                         disallowed. `personal` requires operator_principal.
+#                         (This expands only the HUMAN's reach — never the
+#                         model's — and does NOT relax untrusted-content flows.)
+#
 # Shape (per data-model.md):
+#   trust_profile: managed              # or: personal
+#   operator_principal: <principal-id>  # required when personal
 #   policies:
 #     - tier_or_floor: <prohibited|admissibility-exclusion|max-tier-clearance|integrity-floor>
 #       policy: <disallowed|single-authorized|dual-control>
@@ -15,4 +30,5 @@
 #       attester_principal_ids: [<principal-id>, ...]   # required for dual-control
 #       expiry_seconds: <int>   # friction-scaled to severity
 
+trust_profile: managed
 policies: []
