@@ -4,6 +4,76 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [0.17.0] — 2026-06-08
+
+Human-in-control & assurance. Two threads: a **trust-profile** model that lets
+a self-configured operator be the root of trust (override anything they own,
+with friction) without ever letting untrusted content trigger or redirect a
+flow; and a **second-generation workflow-assurance** suite that pressures the
+security models adversarially on the real operator config.
+
+### Trust profile — operator as root of trust (FR-049)
+
+- **Feature: `trust_profile` switch** (`policy/overrides.py`,
+  `configs/override_policy.yaml`) ∈ `{managed | personal}`, default `managed`.
+  `managed` is the historical fail-closed enterprise posture, **unchanged**.
+  `personal` makes the operator the root of trust: a floor with no explicit
+  Override Policy defaults to `single-authorized` (solo override + friction,
+  no second attester). Requires `operator_principal`; refused at load without
+  one. Expands only the **human's** reach — never the model's (FR-011 holds).
+- **Feature: structural conflict floors are override-targetable.** The four
+  always-on conflict invariants (untrusted/health/financial co-presence with
+  egress) became mintable Override floors (string-identical to their engine
+  rule ids). A `personal` operator can solo-override them; `managed` keeps
+  them hard. The grant short-circuit is floor-agnostic, so no engine change
+  was needed — the gap was only mintability.
+- **Feature: standing rules may cross floors over the operator's OWN data.**
+  Under `personal`, a human-ratified Decision Rule may name `crosses_floor`
+  (health/financial) to auto-cross it — cutting approval fatigue. Crossing is
+  explicit (a relaxing rule that doesn't name the floor can't cross it),
+  profile-gated (inert in `managed`), and ratified-only (FR-014).
+- **Feature: grouped override.** One friction confirmation mints a grant over
+  a SET of (action_kind, target) members (FR-035 grouping applied to
+  Override); each member single-use, the grant ACTIVE until all are consumed.
+- **Security (the hard line — operator autonomy ≠ adversary autonomy):**
+  untrusted content can at most raise an override **request** — it can never
+  auto-trigger or redirect a flow, in either profile. `untrusted-meets-egress`
+  is **never** rule-crossable (refused at load AND re-guarded at compose), and
+  every override (single or group) is pinned to an exact destination, so an
+  injected redirect to a new target is never authorized.
+
+### Certified declassification — the trust hinge (slice #2)
+
+- **Fix (F9): the certified declassifier now lowers propagated taint.** It was
+  removing taint only from a tool's `inherent_tags`, leaving the propagated
+  `additional_tags` tainted — so a declassified external read still tainted
+  the session and egress was still denied (the hinge was silently inert).
+  Routing a read through a certified `SchemaProjector` now lowers the untrusted
+  taint so a previously-denied egress proceeds; an uncertified taint-removal
+  is still refused (Constitution VI).
+
+### Egress policy (FR-019, amended)
+
+- **Change: irreversible communication egress → human approval by default.**
+  Sending email/messages routes to `REQUIRE_APPROVAL` (approve-at-the-moment)
+  rather than a hard DENY; operator-configured super-sensitive data escalates
+  to `OVERRIDE_REQUIRED` (`policy/egress_escalation.py`,
+  `configs/egress_escalation.example.yaml`). **Purchases/commitments keep the
+  stricter DENY→override.** Structural floors (BLP/Biba/conflict invariants)
+  still DENY health/financial/untrusted egress regardless.
+
+### Workflow assurance
+
+- **Tests: second-generation workflow-pressure suite** — model-derived,
+  multi-step, adversarial scenarios on the **real v2 config**
+  (`tests/test_workflow_pressure.py`), the layer the bulk catalogue never
+  touches. Plus a 1126-scenario personal-assistant catalogue, narrated demos
+  with a CI anti-rot guard, all 25 demos migrated to the four-axis model, and
+  end-to-end Starlark decision-inspector scenarios.
+- **Docs: workflow assurance plan** — coverage matrix + scorecard + two gates
+  (`docs/workflow-plan.md`), registry, and categorized index. Findings F1–F9
+  logged (incl. F9 above and several "green-but-lying" demos/tests fixed).
+
 ## [0.16.0] — 2026-06-07
 
 Policy expressiveness & labeling. The dormant decision-refinement layer is
@@ -375,6 +445,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.17.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.17.0
 [0.16.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.16.0
 [0.15.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.15.1
 [0.15.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.15.0

@@ -153,8 +153,9 @@ async def test_local_doc_qa_demo(tmp_path: Any) -> None:
     )
 
     s_after = app.graph.get(s.id)
-    labels = sorted(lbl.value for lbl in s_after.label_set)
-    audit(f"session.label_set after both reads: {labels}")
+    ls = s_after.label_state
+    labels = sorted({t.category for t in ls.a} | {t.level.value for t in ls.b})
+    audit(f"session labels after both reads: {labels}")
 
     step(3, "Save a local note — allowed, non-egressing")
     ai('call memory.create(key="q1-summary", value=…)')

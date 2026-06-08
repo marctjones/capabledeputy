@@ -56,11 +56,87 @@ class OverridePolicy(StrEnum):
     DUAL_CONTROL = "dual-control"
 
 
+class TrustProfile(StrEnum):
+    """Deployment trust posture (spec-003 trust-profile amendment).
+
+    - `managed` (default) — fail-closed enterprise posture: a floor with no
+      explicit operator policy refuses every override (POLICY_DISALLOWED).
+      This is the historical behavior; nothing changes for existing configs.
+    - `personal` — the operator is the root of trust (self-configured,
+      non-enterprise assistant). A floor with no explicit policy defaults to
+      `single-authorized` for the declared `operator_principal`: the operator
+      may solo-override it with friction, no second attester. The model gains
+      nothing — only the human-at-keyboard's reach expands (Principle I / V).
+      Untrusted-provenance flows are NOT affected by this (operator autonomy
+      ≠ adversary autonomy); that ceiling is enforced elsewhere in the engine.
+    """
+
+    MANAGED = "managed"
+    PERSONAL = "personal"
+
+
 class HardFloor(StrEnum):
+    """A floor the Override mechanism can target.
+
+    Two families, both override-targetable:
+      - The FR-026d *hard floors* (prohibited, admissibility-exclusion,
+        max-tier-clearance, integrity-floor) — outcomes ordinary approval
+        cannot reach.
+      - The *structural conflict floors* (slice B) — the four always-on
+        information-flow conflict invariants the engine computes from the
+        four-axis labels (untrusted/health/financial co-presence with
+        egress). Their string values are IDENTICAL to the engine's conflict
+        rule ids (engine.PROVENANCE_EGRESS_RULE etc.), so the rule a
+        decision fired ↔ the floor an operator names in `override.request`
+        is the identity map (see `structural_floor_for_rule`).
+
+    Adding a structural floor here makes it *mintable* — under the
+    `personal` trust profile the operator gets a solo-override default for
+    it (OverridePolicies.get); under `managed` it stays DISALLOWED, so the
+    structural DENY holds exactly as before. The engine's grant
+    short-circuit is floor-agnostic, so no engine change is needed: an
+    active grant for (session, kind, target) already crosses the conflict
+    invariant before it is evaluated.
+    """
+
     PROHIBITED = "prohibited"
     ADMISSIBILITY_EXCLUSION = "admissibility-exclusion"
     MAX_TIER_CLEARANCE = "max-tier-clearance"
     INTEGRITY_FLOOR = "integrity-floor"
+    # Structural conflict floors — values mirror the engine conflict rule ids.
+    PROVENANCE_EGRESS = "untrusted-meets-egress"
+    HEALTH_EGRESS = "health-meets-egress"
+    FINANCIAL_EMAIL = "financial-meets-email"
+    FINANCIAL_PURCHASE = "financial-meets-purchase"
+
+    @property
+    def is_structural(self) -> bool:
+        """True for the four structural conflict floors (slice B), False
+        for the FR-026d hard floors."""
+        return self in _STRUCTURAL_FLOORS
+
+
+_STRUCTURAL_FLOORS: frozenset[HardFloor] = frozenset(
+    {
+        HardFloor.PROVENANCE_EGRESS,
+        HardFloor.HEALTH_EGRESS,
+        HardFloor.FINANCIAL_EMAIL,
+        HardFloor.FINANCIAL_PURCHASE,
+    },
+)
+
+
+def structural_floor_for_rule(rule: str) -> HardFloor | None:
+    """Map an engine conflict-invariant rule id to the floor an operator
+    names in `override.request` to cross it. Identity map by construction
+    (the floor value IS the rule id). Returns None for non-structural rules
+    so callers can tell 'this DENY is override-targetable as a structural
+    floor' from 'this is an ordinary denial'."""
+    try:
+        floor = HardFloor(rule)
+    except ValueError:
+        return None
+    return floor if floor.is_structural else None
 
 
 class FrictionLevel(StrEnum):
@@ -79,6 +155,13 @@ _DEFAULT_FRICTION: dict[HardFloor, FrictionLevel] = {
     HardFloor.ADMISSIBILITY_EXCLUSION: FrictionLevel.MAXIMAL,
     HardFloor.MAX_TIER_CLEARANCE: FrictionLevel.MEDIUM,
     HardFloor.INTEGRITY_FLOOR: FrictionLevel.MEDIUM,
+    # Structural conflict floors (slice B). Untrusted-egress and health
+    # are the gravest (injection footgun / regulated data) ⇒ MAXIMAL;
+    # financial conflicts ⇒ MEDIUM.
+    HardFloor.PROVENANCE_EGRESS: FrictionLevel.MAXIMAL,
+    HardFloor.HEALTH_EGRESS: FrictionLevel.MAXIMAL,
+    HardFloor.FINANCIAL_EMAIL: FrictionLevel.MEDIUM,
+    HardFloor.FINANCIAL_PURCHASE: FrictionLevel.MEDIUM,
 }
 
 
@@ -145,12 +228,35 @@ class OverridePolicyEntry:
 
 @dataclass(frozen=True)
 class OverridePolicies:
-    """Loaded override policy catalogue, keyed by hard floor."""
+    """Loaded override policy catalogue, keyed by hard floor.
+
+    `trust_profile` selects what happens for a floor with no explicit
+    entry: in `managed` (default) an unlisted floor refuses every override
+    (returns None ⇒ POLICY_DISALLOWED); in `personal` it defaults to a
+    solo `single-authorized` entry for `operator_principal` (the operator
+    may override it alone, with friction). Explicit `by_floor` entries
+    always win, so a personal operator can still pin a floor back to
+    `disallowed` or `dual-control`.
+    """
 
     by_floor: dict[HardFloor, OverridePolicyEntry]
+    trust_profile: TrustProfile = TrustProfile.MANAGED
+    operator_principal: str | None = None
 
     def get(self, floor: HardFloor) -> OverridePolicyEntry | None:
-        return self.by_floor.get(floor)
+        explicit = self.by_floor.get(floor)
+        if explicit is not None:
+            return explicit
+        if self.trust_profile is TrustProfile.PERSONAL and self.operator_principal:
+            # Operator-root default: solo override + friction for any floor
+            # the operator did not explicitly configure. Friction still
+            # scales by floor via _DEFAULT_FRICTION (friction_level=None).
+            return OverridePolicyEntry(
+                floor=floor,
+                policy=OverridePolicy.SINGLE_AUTHORIZED,
+                authorized_principal_ids=frozenset({self.operator_principal}),
+            )
+        return None
 
 
 class GrantState(StrEnum):
@@ -170,7 +276,17 @@ class GrantState(StrEnum):
 class OverrideGrant:
     """A concrete override authorization for a specific session +
     action + target. One-shot (consumed_at marks use). Non-inheritable
-    across fork/delegate (the session_id pin makes that structural)."""
+    across fork/delegate (the session_id pin makes that structural).
+
+    Slice D (FR-049) — GROUP grants. When `group_members` is non-empty the
+    grant authorizes a SET of (action_kind, target) members under a single
+    friction confirmation (FR-035 grouping applied to override, not just
+    approval). Each member is single-use: using one adds it to
+    `consumed_members`; the grant stays ACTIVE until every member is
+    consumed, then transitions to CONSUMED. The exact-member match keeps
+    the pinned-destination property — a member not in the set is never
+    authorized, so untrusted content still cannot redirect to a new target.
+    """
 
     id: UUID
     session_id: UUID
@@ -186,12 +302,50 @@ class OverrideGrant:
     expires_at: datetime
     consumed_at: datetime | None = None
     audit_id: UUID = field(default_factory=uuid4)
+    # Group grant (slice D). Empty ⇒ ordinary single grant (uses the
+    # action_kind/target fields above). Non-empty ⇒ the authorized set.
+    group_members: frozenset[tuple[CapabilityKind | str, str]] = frozenset()
+    consumed_members: frozenset[tuple[CapabilityKind | str, str]] = frozenset()
+
+    @property
+    def is_group(self) -> bool:
+        return bool(self.group_members)
 
     def is_expired(self, now: datetime) -> bool:
         return now >= self.expires_at
 
     def is_for(self, *, action_kind: CapabilityKind | str, target: str) -> bool:
+        """True if this grant authorizes (action_kind, target). For a group
+        grant the pair must be a member that has NOT been consumed yet."""
+        if self.is_group:
+            member = (action_kind, target)
+            return member in self.group_members and member not in self.consumed_members
         return self.action_kind == action_kind and self.target == target
+
+    def consume_for(
+        self,
+        *,
+        action_kind: CapabilityKind | str,
+        target: str,
+        now: datetime,
+    ) -> OverrideGrant:
+        """Return the grant after consuming (action_kind, target). A single
+        grant becomes CONSUMED. A group grant records the member and stays
+        ACTIVE until ALL members are consumed (then CONSUMED) — so one
+        friction confirmation authorizes the whole batch, each member once."""
+        from dataclasses import replace
+
+        if not self.is_group:
+            return replace(self, state=GrantState.CONSUMED, consumed_at=now)
+        new_consumed = self.consumed_members | {(action_kind, target)}
+        if new_consumed >= self.group_members:  # every member now used
+            return replace(
+                self,
+                consumed_members=new_consumed,
+                state=GrantState.CONSUMED,
+                consumed_at=now,
+            )
+        return replace(self, consumed_members=new_consumed)
 
 
 @dataclass(frozen=True)
@@ -230,6 +384,40 @@ def request_override(
     acknowledgement text; that's operator/UI work.
     """
     eff_now = now or datetime.now(UTC)
+    gated = _gate_request(
+        policies=policies,
+        floor=floor,
+        invoker=invoker,
+        friction_confirmed=friction_confirmed,
+    )
+    if isinstance(gated, OverrideRefusal):
+        return gated
+    entry = gated
+    return OverrideGrant(
+        id=uuid4(),
+        session_id=session_id,
+        action_kind=action_kind,
+        target=target,
+        target_category_tier=target_category_tier,
+        hard_floor_crossed=floor,
+        invoker_principal=invoker,
+        attester_principal=None,
+        policy_at_grant=entry,
+        friction_level=entry.effective_friction(),
+        state=_initial_state(entry),
+        expires_at=eff_now + timedelta(seconds=entry.expiry_seconds),
+    )
+
+
+def _gate_request(
+    *,
+    policies: OverridePolicies,
+    floor: HardFloor,
+    invoker: str,
+    friction_confirmed: bool,
+) -> OverridePolicyEntry | OverrideRefusal:
+    """Shared policy gate for override requests (single + group). Returns
+    the matched OverridePolicyEntry or a structured refusal."""
     entry = policies.get(floor)
     if entry is None:
         return OverrideRefusal(
@@ -256,25 +444,65 @@ def request_override(
             floor=floor,
             invoker=invoker,
         )
+    return entry
 
-    initial_state = (
+
+def _initial_state(entry: OverridePolicyEntry) -> GrantState:
+    return (
         GrantState.PENDING_ATTESTATION
         if entry.policy is OverridePolicy.DUAL_CONTROL
         else GrantState.ACTIVE
     )
+
+
+def request_group_override(
+    *,
+    policies: OverridePolicies,
+    session_id: UUID,
+    members: frozenset[tuple[CapabilityKind | str, str]],
+    target_category_tier: tuple[str, str],
+    floor: HardFloor,
+    invoker: str,
+    friction_confirmed: bool,
+    now: datetime | None = None,
+) -> OverrideGrant | OverrideRefusal:
+    """Mint a GROUP override grant (slice D / FR-035 grouping applied to
+    override). ONE friction confirmation authorizes the whole `members` set;
+    each (action_kind, target) member is single-use. Same policy gate as a
+    single request — dual-control groups start PENDING_ATTESTATION. The
+    member set is the pinned authorization: a target not in it is never
+    crossed, preserving redirection-resistance across the batch.
+
+    `members` must be non-empty (an empty group is a caller bug)."""
+    if not members:
+        raise OverrideError("request_group_override requires a non-empty members set")
+    eff_now = now or datetime.now(UTC)
+    gated = _gate_request(
+        policies=policies,
+        floor=floor,
+        invoker=invoker,
+        friction_confirmed=friction_confirmed,
+    )
+    if isinstance(gated, OverrideRefusal):
+        return gated
+    entry = gated
+    # Representative single-fields for audit/back-compat; matching uses
+    # group_members. Deterministic pick for stable audit output.
+    rep_kind, _rep_target = sorted(members, key=lambda m: (kind_name(m[0]), m[1]))[0]
     return OverrideGrant(
         id=uuid4(),
         session_id=session_id,
-        action_kind=action_kind,
-        target=target,
+        action_kind=rep_kind,
+        target=f"group:{len(members)}-members",
         target_category_tier=target_category_tier,
         hard_floor_crossed=floor,
         invoker_principal=invoker,
         attester_principal=None,
         policy_at_grant=entry,
         friction_level=entry.effective_friction(),
-        state=initial_state,
+        state=_initial_state(entry),
         expires_at=eff_now + timedelta(seconds=entry.expiry_seconds),
+        group_members=frozenset(members),
     )
 
 
@@ -460,8 +688,14 @@ class OverrideGrantStore:
 
     def _persist(self, grant: OverrideGrant) -> None:
         """UPSERT a grant into the override_grants table. No-op when
-        no db_path was wired."""
-        if self._db_path is None:
+        no db_path was wired.
+
+        Slice D: group grants are held in-memory only (the override_grants
+        schema has no member columns). A grant expires in ≤60 min, so a
+        daemon restart mid-batch simply re-prompts — acceptable, and far
+        safer than persisting a half-serialized group grant. Single grants
+        persist exactly as before."""
+        if self._db_path is None or grant.is_group:
             return
         import json
         from contextlib import closing
@@ -545,8 +779,9 @@ class OverrideGrantStore:
                 g
                 for g in self._by_id.values()
                 if g.session_id == session_id
-                and g.action_kind == action_kind
-                and g.target == target
+                # is_for() handles both single grants and group members
+                # (a group member that is still unconsumed).
+                and g.is_for(action_kind=action_kind, target=target)
                 and g.state is GrantState.ACTIVE
                 and not g.is_expired(now)
                 and g.consumed_at is None
@@ -568,6 +803,21 @@ def load(path: Path) -> OverridePolicies:
         raise OverrideError(f"unparseable: {path} — {e}") from e
     if data is None:
         return OverridePolicies(by_floor={})
+    try:
+        trust_profile = TrustProfile(str(data.get("trust_profile", "managed")))
+    except ValueError as e:
+        raise OverrideError(f"invalid trust_profile in {path}: {e}") from e
+    operator_principal = data.get("operator_principal")
+    if operator_principal is not None:
+        operator_principal = str(operator_principal)
+    # Fail-closed: a `personal` profile is meaningless (and silently
+    # refuses every default override) without an operator principal to
+    # authorize. Refuse at load rather than degrade to managed.
+    if trust_profile is TrustProfile.PERSONAL and not operator_principal:
+        raise OverrideError(
+            f"trust_profile: personal requires operator_principal in {path} "
+            f"(the root operator who may solo-override floors).",
+        )
     raw = data.get("policies") or []
     if not isinstance(raw, list):
         raise OverrideError(f"'policies' must be a list: {path}")
@@ -597,4 +847,8 @@ def load(path: Path) -> OverridePolicies:
             ),
         )
         by_floor[floor] = entry
-    return OverridePolicies(by_floor=by_floor)
+    return OverridePolicies(
+        by_floor=by_floor,
+        trust_profile=trust_profile,
+        operator_principal=operator_principal,
+    )

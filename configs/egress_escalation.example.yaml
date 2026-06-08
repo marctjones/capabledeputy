@@ -1,0 +1,19 @@
+# Egress escalation policy (FR-019 amended).
+#
+# Irreversible COMMUNICATION egress (sending an email / message) routes to
+# human APPROVAL by default — you confirm the specific send at the moment.
+# That is the right control for most users sending their own data.
+#
+# Copy to `egress_escalation.yaml` to escalate SUPER-SENSITIVE data to an
+# OVERRIDE grant instead (you must pre-authorize it deliberately, not just
+# approve in the moment). Escalate by data category and/or sensitivity tier.
+#
+# Absent file ⇒ approval for ALL communication egress (the default).
+# Purchases / transactional commitments are NOT affected here — they keep
+# the stricter DENY→override default regardless.
+
+require_override_for:
+  # Tiers whose presence forces communication egress to override:
+  tiers: []                       # e.g. [restricted]  to force override for top-tier data
+  # Specific categories that force override:
+  categories: []                  # e.g. [proprietary_work]

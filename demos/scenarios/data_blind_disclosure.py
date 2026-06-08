@@ -52,6 +52,8 @@ async def _api_post_handler(args: dict[str, Any], _ctx: ToolContext) -> ToolResu
 
 
 def _handle_aware_tool() -> ToolDefinition:
+    from capabledeputy.policy.effect_class import EffectClass, Operation
+
     return ToolDefinition(
         name="api.post",
         description="post body to an external service",
@@ -61,6 +63,18 @@ def _handle_aware_tool() -> ToolDefinition:
         accepts_handles=True,
         handle_arg_names=("body",),
         effect_class="data.api_post",
+        # R3b registry validation requires >=1 operation + a risk id, and
+        # a handle-aware tool must list its handle arg in the schema.
+        operations=(Operation(EffectClass.COMMUNICATE, subtype="api.post"),),
+        risk_ids=("RISK-DATA-EXFIL-AGENT-TOOLS",),
+        parameters_schema={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string"},
+                "body": {"type": "string"},
+            },
+            "required": ["url", "body"],
+        },
         surfaces_destination_id=True,
     )
 

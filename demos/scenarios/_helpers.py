@@ -21,12 +21,11 @@ from typing import Any
 from capabledeputy.app import App
 from capabledeputy.audit.events import EventType
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisACategory,
-    AxisB,
-    AxisBEntry,
     AxisD,
+    CategoryTag,
+    LabelState,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.model import Session
@@ -72,15 +71,15 @@ async def make_session(
     from dataclasses import replace as dc_replace
 
     s = await app.graph.new(purpose_handle=purpose_handle)
-    axis_a = AxisA(
-        categories=tuple(AxisACategory(category=cat, tier=tier) for cat, tier in axis_a_categories),
+    # R4b.4: the session's single label_state replaces the old axis_a/axis_b.
+    label_state = LabelState(
+        a=frozenset(CategoryTag(cat, tier) for cat, tier in axis_a_categories),
+        b=frozenset({ProvenanceTag(provenance)}),
     )
-    axis_b = AxisB(entries=(AxisBEntry(level=provenance),))
     axis_d = AxisD(initiator=initiator, authentication=authentication)
     updated = dc_replace(
         s,
-        axis_a=axis_a,
-        axis_b=axis_b,
+        label_state=label_state,
         axis_d=axis_d,
         capability_set=capabilities,
         clearance_profile_id=clearance_profile_id,

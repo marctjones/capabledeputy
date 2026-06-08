@@ -146,21 +146,15 @@ async def test_runtime_activated_email_send_denies_via_reversibility_gate(
         "email.send",
         {"to": "alice@example.com", "subject": "x", "body": "y"},
     )
-    # With the live PolicyContext, the dispatch is gated. Multiple
-    # rules could fire (binding-unbound under FR-023 fail-closed for
-    # the stub configs/source_bindings.yaml; reversibility-irreversible
-    # under FR-019 for the social_commitment flag). What this test
-    # pins is that the runtime IS now defending — without the
+    # With the live PolicyContext, the dispatch is GATED — without the
     # PolicyContext threading, the same dispatch would have ALLOWED
-    # (legacy v0.7 path).
-    from capabledeputy.policy.engine import (
-        BINDING_UNBOUND_RULE,
-        REVERSIBILITY_IRREVERSIBLE_RULE,
-    )
+    # (legacy v0.7 path). Email is irreversible communication egress, so
+    # under the amended FR-019 it routes to human APPROVAL by default
+    # (binding-unbound could also fire under FR-023 fail-closed for the
+    # stub configs). What this pins is that the runtime IS now defending.
     from capabledeputy.policy.rules import Decision
 
-    assert outcome.decision == Decision.DENY
-    assert outcome.rule in (BINDING_UNBOUND_RULE, REVERSIBILITY_IRREVERSIBLE_RULE)
+    assert outcome.decision != Decision.ALLOW
 
 
 @pytest.mark.asyncio

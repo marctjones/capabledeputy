@@ -190,6 +190,24 @@ def is_social_commitment(effect_class: str) -> bool:
     return effect_class in _SOCIAL_COMMITMENT_EFFECTS
 
 
+# Communication egress (sending a message to a recipient) is, by operator
+# policy, an approve-at-the-moment gate rather than a hard DENY — the user
+# is sending their own data and a human confirmation is the right control
+# (FR-019 amended). Transactional commitments (purchases, promises) are
+# DELIBERATELY excluded — money/commitment stays at DENY→override.
+_COMMUNICATION_EGRESS_EFFECTS: frozenset[str] = frozenset(
+    {
+        "social.send_email",
+        "social.send_message",
+        "social.post_public",
+    },
+)
+
+
+def is_communication_egress(effect_class: str) -> bool:
+    return effect_class in _COMMUNICATION_EGRESS_EFFECTS
+
+
 def reversibility_gate(
     *,
     effect_class: str,

@@ -20,15 +20,17 @@ from capabledeputy.policy.capabilities import (
     CapabilityOrigin,
 )
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisACategory,
-    AxisB,
-    AxisBEntry,
+    CategoryTag,
+    LabelState,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
-from capabledeputy.substrate.inspector_port import InspectorDelta, RaiseOnlyInspector
+from capabledeputy.substrate.inspector_port import (
+    InspectorRaiseResult,
+    RaiseOnlyInspector,
+)
 from capabledeputy.tools.client import PolicyContext
 from demos.scenarios._helpers import (
     ai,
@@ -43,7 +45,7 @@ from demos.scenarios._helpers import (
 
 
 class _PromptInjectionDetector(RaiseOnlyInspector):
-    """Raise-only inspector. Returns a delta that adds the `untrusted`
+    """Raise-only inspector. Returns a raise result that adds the `untrusted`
     category + EXTERNAL_UNTRUSTED provenance when injection markers
     appear."""
 
@@ -57,20 +59,21 @@ class _PromptInjectionDetector(RaiseOnlyInspector):
         self,
         *,
         value: object,
-        current_axis_a: AxisA,
-        current_axis_b: AxisB,
-    ) -> InspectorDelta:
+        current_label_state: LabelState,
+    ) -> InspectorRaiseResult:
         text = str(value).lower()
         if any(m in text for m in self.INJECTION_MARKERS):
-            return InspectorDelta(
-                axis_a_raise=AxisA(
-                    categories=(AxisACategory(category="untrusted", tier=Tier.SENSITIVE),),
-                ),
-                axis_b_raise=AxisB(
-                    entries=(AxisBEntry(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),),
+            return InspectorRaiseResult(
+                raise_state=LabelState(
+                    a=frozenset(
+                        {CategoryTag("untrusted", Tier.SENSITIVE)}
+                    ),
+                    b=frozenset(
+                        {ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}
+                    ),
                 ),
             )
-        return InspectorDelta()
+        return InspectorRaiseResult()
 
 
 @pytest.mark.asyncio
@@ -130,28 +133,25 @@ async def test_prompt_injection_demo(tmp_path: Any) -> None:
     tool("memory.read → ok; inspector ran on the returned value.")
 
     s_after = app.graph._sessions[s.id]
-    levels = [e.level.value for e in s_after.axis_b.entries]
-    cats = [c.category for c in s_after.axis_a.categories]
+    levels = [t.level.value for t in s_after.label_state.b]
+    cats = [c.category for c in s_after.label_state.a]
     note(f"AxisB now: {levels}")
     note(f"AxisA now: {cats}")
-    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {e.level for e in s_after.axis_b.entries}
+    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {t.level for t in s_after.label_state.b}
     assert "untrusted" in cats
 
     step(3, "Proof: composition is monotone-only — cannot lower")
-    from capabledeputy.policy.labels import (
-        most_restrictive_inherit_axis_a,
-        most_restrictive_inherit_axis_b,
-    )
+    from capabledeputy.policy.labels import most_restrictive_inherit
 
-    fake_lower = InspectorDelta(
-        axis_a_raise=AxisA(),
-        axis_b_raise=AxisB(
-            entries=(AxisBEntry(level=ProvenanceLevel.PRINCIPAL_DIRECT),),
+    fake_lower = InspectorRaiseResult(
+        raise_state=LabelState(
+            a=frozenset(),
+            b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)}),
         ),
     )
-    composed = most_restrictive_inherit_axis_b(s_after.axis_b, fake_lower.axis_b_raise)
-    rendered = [lvl.value for lvl in (e.level for e in composed.entries)]
+    composed = most_restrictive_inherit(s_after.label_state, fake_lower.raise_state)
+    rendered = [t.level.value for t in composed.b]
     note(f"Compose with a 'lower' delta → AxisB stays {rendered}.")
     note("EXTERNAL_UNTRUSTED persists. FR-025 / T118 monotone composition.")
-    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {e.level for e in composed.entries}
-    _ = most_restrictive_inherit_axis_a, _dc_replace
+    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {t.level for t in composed.b}
+    _ = _dc_replace

@@ -39,16 +39,19 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisACategory,
-    AxisB,
-    AxisBEntry,
+    CategoryTag,
+    LabelState,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
-from capabledeputy.substrate.inspector_port import InspectorDelta, RaiseOnlyInspector
+from capabledeputy.substrate.inspector_port import (
+    InspectorRaiseResult,
+    RaiseOnlyInspector,
+)
 from capabledeputy.tools.client import PolicyContext
 from capabledeputy.tools.native.inbox import InboundMessage
 from capabledeputy.tools.registry import (
@@ -88,20 +91,21 @@ class _InjectionDetector(RaiseOnlyInspector):
         self,
         *,
         value: object,
-        current_axis_a: AxisA,
-        current_axis_b: AxisB,
-    ) -> InspectorDelta:
+        current_label_state: LabelState,
+    ) -> InspectorRaiseResult:
         text = str(value).lower()
         if any(m in text for m in self.MARKERS):
-            return InspectorDelta(
-                axis_a_raise=AxisA(
-                    categories=(AxisACategory(category="untrusted", tier=Tier.SENSITIVE),),
-                ),
-                axis_b_raise=AxisB(
-                    entries=(AxisBEntry(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),),
+            return InspectorRaiseResult(
+                raise_state=LabelState(
+                    a=frozenset(
+                        {CategoryTag("untrusted", Tier.SENSITIVE)}
+                    ),
+                    b=frozenset(
+                        {ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}
+                    ),
                 ),
             )
-        return InspectorDelta()
+        return InspectorRaiseResult()
 
 
 async def _email_reply_handler(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
@@ -125,15 +129,25 @@ def _make_reply_tool() -> ToolDefinition:
     return ToolDefinition(
         name="email.reply_via_handle",
         description="reply to an email; recipient resolved via Pattern ③ handle",
+        risk_ids=("RISK-DATA-EXFIL-AGENT-TOOLS", "RISK-IRREVERSIBLE-SEND"),
         capability_kind=CapabilityKind.SEND_EMAIL,
         handler=_email_reply_handler,
         target_arg="to_handle",
         accepts_handles=True,
         handle_arg_names=("to_handle",),
+        operations=(Operation(EffectClass.COMMUNICATE, subtype="email.reply"),),
         effect_class="social.send_email",
         default_reversibility={"degree": "irreversible", "agent": "external"},
         social_commitment=True,
         surfaces_destination_id=True,
+        parameters_schema={
+            "type": "object",
+            "properties": {
+                "to_handle": {"type": "string"},
+                "body": {"type": "string"},
+            },
+            "required": ["to_handle", "body"],
+        },
     )
 
 
@@ -221,8 +235,8 @@ async def test_secure_inbox_triage_demo(tmp_path: Any) -> None:
 
     step(3, "Inspect what landed on the session")
     s_after = app.graph._sessions[s.id]
-    cats = [c.category for c in s_after.axis_a.categories]
-    levels = [e.level.value for e in s_after.axis_b.entries]
+    cats = [c.category for c in s_after.label_state.a]
+    levels = [t.level.value for t in s_after.label_state.b]
     audit(f"AxisA categories now: {cats}")
     audit(f"AxisB provenance now: {levels}")
     note(
@@ -231,7 +245,7 @@ async def test_secure_inbox_triage_demo(tmp_path: Any) -> None:
         "Monotone composition guarantees this cannot be lowered."
     )
     assert "untrusted" in cats
-    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {e.level for e in s_after.axis_b.entries}
+    assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {t.level for t in s_after.label_state.b}
 
     step(4, "Operator binds the legitimate recipient as a Pattern ③ handle")
     user("issue_handle(value='anna@partner.com', for=session)")

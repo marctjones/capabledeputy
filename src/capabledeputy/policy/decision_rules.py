@@ -182,6 +182,15 @@ class DecisionRule:
     rationale: str
     risk_ids: tuple[str, ...] = field(default_factory=tuple)
     human_ratified_by: str | None = None  # FR-014 — only ratified rules fire
+    # Slice C (FR-049): a human-authored rule MAY explicitly name a
+    # structural conflict floor it is authorized to cross (over the
+    # operator's OWN data — health / financial). Honored ONLY under the
+    # `personal` trust profile (gated in the engine). `untrusted-meets-
+    # egress` can NEVER be named here — it is refused at load so untrusted
+    # content can never be auto-egressed by a standing rule (operator
+    # autonomy ≠ adversary autonomy). Identity-mapped to the engine
+    # conflict rule id (see overrides.structural_floor_for_rule).
+    crosses_floor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -203,6 +212,12 @@ class EvaluationResult:
     # SESSION grain; this is the per-RULE grain — useful for A/B-
     # testing a single rule against current behavior.
     shadowed_rule_ids: tuple[str, ...] = ()
+    # Slice C (FR-049): structural conflict floors that a matched, live,
+    # human-ratified rule explicitly authorized crossing. The engine
+    # suppresses the corresponding conflict invariant ONLY under the
+    # `personal` trust profile, and NEVER for untrusted-meets-egress
+    # (which can't even be named here — refused at load).
+    crossed_floors: frozenset[str] = frozenset()
 
 
 def evaluate(
@@ -268,6 +283,11 @@ def evaluate(
 
     composed = _most_restrictive(*(r.outcome for r in live_matched))
     ids = tuple(sorted(r.rule_id for r in live_matched))
+    # Slice C — collect the structural floors that live-matched rules are
+    # explicitly authorized to cross. (untrusted-meets-egress can never
+    # appear here; load() refuses it.) The engine gates the actual
+    # suppression on the `personal` trust profile.
+    crossed = frozenset(r.crosses_floor for r in live_matched if r.crosses_floor)
     rationale = f"matched rules={list(ids)}; composed most-restrictive={composed.value}"
     if shadowed_ids:
         rationale += f"; shadowed_rules={list(shadowed_ids)}"
@@ -276,6 +296,7 @@ def evaluate(
         matched_rule_ids=ids,
         rationale=rationale,
         shadowed_rule_ids=shadowed_ids,
+        crossed_floors=crossed,
     )
 
 
@@ -315,6 +336,7 @@ def load(path: Path) -> DecisionRules:
         if not isinstance(when_raw, dict):
             raise DecisionRuleError(f"rules[{i}].when must be a dict")
         predicate = _parse_predicate(when_raw)
+        crosses_floor = _validate_crosses_floor(item.get("crosses_floor"), i)
         parsed.append(
             DecisionRule(
                 rule_id=rid,
@@ -323,9 +345,49 @@ def load(path: Path) -> DecisionRules:
                 rationale=str(item.get("rationale", "")),
                 risk_ids=tuple(str(r) for r in (item.get("risk_ids") or [])),
                 human_ratified_by=item.get("human_ratified_by"),
+                crosses_floor=crosses_floor,
             ),
         )
     return DecisionRules(rules=tuple(parsed))
+
+
+def _validate_crosses_floor(raw: Any, i: int) -> str | None:
+    """Validate a rule's optional `crosses_floor` (Slice C / FR-049).
+
+    MUST be one of the four structural conflict floors, and MUST NOT be
+    `untrusted-meets-egress` — a standing rule can never auto-cross the
+    untrusted-provenance floor (operator autonomy ≠ adversary autonomy).
+    Refused at load, so the dangerous case is not even expressible — the
+    'by construction' exclusion. Profile-independent: refused in `managed`
+    and `personal` alike. The FR-026d hard floors are not rule-crossable
+    either (only an explicit Override Grant crosses those)."""
+    if raw is None:
+        return None
+    # Function-local import keeps decision_rules free of an import-time
+    # dependency on overrides (no cycle today, but defensive).
+    from capabledeputy.policy.overrides import (
+        HardFloor,
+        structural_floor_for_rule,
+    )
+
+    value = str(raw)
+    floor = structural_floor_for_rule(value)
+    if floor is None:
+        raise DecisionRuleError(
+            f"rules[{i}].crosses_floor={value!r} is not a structural conflict "
+            f"floor (one of: health-meets-egress, financial-meets-email, "
+            f"financial-meets-purchase). Hard floors (FR-026d) are crossable "
+            f"only by an explicit Override Grant, never a standing rule.",
+        )
+    if floor is HardFloor.PROVENANCE_EGRESS:
+        raise DecisionRuleError(
+            f"rules[{i}].crosses_floor={value!r} is refused: a standing rule "
+            f"may NEVER auto-cross the untrusted-provenance egress floor. "
+            f"Untrusted content can at most raise an override REQUEST; it can "
+            f"never auto-egress or redirect a flow (FR-049). Use a human "
+            f"Override Grant (pinned to a destination) instead.",
+        )
+    return value
 
 
 def _parse_predicate(when: dict[str, Any]) -> RulePredicate:

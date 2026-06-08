@@ -29,7 +29,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.resolution import ContextProfile
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
@@ -76,10 +76,11 @@ async def _read_under_profile(tmp_path: Any, profile_id: str) -> Any:
     app = make_app(tmp_path / profile_id, policy_context=ctx)
     await app.startup()
     # Pre-load the audit record with the proper tier expectation.
+    personal_tag = CategoryTag("personal", Tier.REGULATED)
     app.memory.write(
         "audit-q1-findings",
         "Q1 compliance findings: 3 minor, 1 major. Mitigation pending.",
-        frozenset({Label.CONFIDENTIAL_PERSONAL}),
+        LabelState(a=frozenset({personal_tag})),
     )
     s = await make_session(
         app,

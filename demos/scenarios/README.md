@@ -1,7 +1,10 @@
 # CapableDeputy Demo Scenarios
 
-Twenty-four narrated, executable demos. Each is a pytest-asyncio test
+Twenty-five narrated, executable demos. Each is a pytest-asyncio test
 that exercises one or more security properties of the policy engine.
+For a categorized map of these demos + the 1126-scenario allow/deny
+catalogue + the enforcement suites, see
+[**docs/workflow-index.md**](../../docs/workflow-index.md).
 Run with `-s` to see the operator-facing narration:
 
 ```bash

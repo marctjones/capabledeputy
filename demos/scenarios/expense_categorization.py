@@ -30,10 +30,11 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisB,
-    Label,
+    LabelState,
+    ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.overrides import (
     HardFloor,
@@ -44,7 +45,7 @@ from capabledeputy.policy.overrides import (
 )
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
-from capabledeputy.substrate.inspector_port import InspectorDelta, RaiseOnlyInspector
+from capabledeputy.substrate.inspector_port import InspectorRaiseResult, RaiseOnlyInspector
 from capabledeputy.tools.client import PolicyContext
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 from demos.scenarios._helpers import (
@@ -89,9 +90,9 @@ def _make_receipt_pdf(vendor: str, amount: float) -> bytes:
 class _FinancialContentDetector(RaiseOnlyInspector):
     """Schema-bounded financial detection. Approximates Pattern ②
     DUAL_LLM: if a returned value contains a dollar-amount pattern,
-    raise CONFIDENTIAL_FINANCIAL on the session's AxisB (provenance
-    bumped toward EXTERNAL_UNTRUSTED) — keeping the planner from
-    naively forwarding the raw amount."""
+    raise untrusted provenance on the session (provenance bumped toward
+    EXTERNAL_UNTRUSTED) — keeping the planner from naively forwarding
+    the raw amount."""
 
     _AMOUNT_RE = re.compile(r"\$\d+(?:\.\d{2})?")
 
@@ -99,15 +100,16 @@ class _FinancialContentDetector(RaiseOnlyInspector):
         self,
         *,
         value: object,
-        current_axis_a: AxisA,
-        current_axis_b: AxisB,
-    ) -> InspectorDelta:
+        current_label_state: LabelState,
+    ) -> InspectorRaiseResult:
         if not self._AMOUNT_RE.search(str(value)):
-            return InspectorDelta()
-        # Raising only AxisB here; the demo also adds the legacy
-        # CONFIDENTIAL_FINANCIAL via add_labels() below since the
-        # legacy Brewer-Nash rules operate on the legacy Label set.
-        return InspectorDelta()
+            return InspectorRaiseResult()
+        # Raising EXTERNAL_UNTRUSTED provenance via Axis B.
+        return InspectorRaiseResult(
+            raise_state=LabelState(
+                b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+            ),
+        )
 
 
 async def _accountant_email_post(args: dict[str, Any], _ctx: ToolContext) -> ToolResult:
@@ -125,7 +127,16 @@ def _make_accountant_tool() -> ToolDefinition:
         target_arg="to_handle",
         accepts_handles=True,
         handle_arg_names=("to_handle",),
-        effect_class="social.send_email",
+        parameters_schema={
+            "type": "object",
+            "properties": {
+                "to_handle": {"type": "string", "description": "Bound accountant handle UUID"},
+                "body": {"type": "string", "description": "Email body"},
+            },
+            "required": ["to_handle", "body"],
+        },
+        operations=(Operation(EffectClass.COMMUNICATE),),
+        risk_ids=("RISK-DATA-EXFIL-AGENT-TOOLS",),
         default_reversibility={"degree": "irreversible", "agent": "external"},
         social_commitment=True,
         surfaces_destination_id=True,
@@ -230,10 +241,9 @@ async def test_expense_categorization_demo(tmp_path: Any) -> None:
         tool(f"fs.read_pdf({vendor}) → '{out.output['text'].strip()}'")
     note("Inspector ran on each output — financial markers detected.")
 
-    # Inject the legacy CONFIDENTIAL_FINANCIAL label so the Brewer-Nash
-    # rule fires on the email step (legacy rules use legacy Labels;
-    # the inspector demonstrates the FR-025 v2-side mechanism).
-    await app.graph.add_labels(s.id, frozenset({Label.CONFIDENTIAL_FINANCIAL}))
+    # The inspector raised EXTERNAL_UNTRUSTED provenance on financial
+    # content. The Brewer-Nash rule uses the session's label_state to
+    # decide on financial-meets-email constraints.
 
     step(2, "Track each receipt as a task")
     for vendor, amount, _ in receipt_files:

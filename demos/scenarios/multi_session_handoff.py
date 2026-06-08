@@ -26,7 +26,10 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+)
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.client import PolicyContext
@@ -66,7 +69,7 @@ async def test_multi_session_handoff_demo(tmp_path: Any) -> None:
     app.memory.write(
         "patient-12",
         "BP 130/80, glucose normal.",
-        frozenset({Label.CONFIDENTIAL_HEALTH}),
+        LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)})),
     )
 
     parent = await make_session(
@@ -95,8 +98,8 @@ async def test_multi_session_handoff_demo(tmp_path: Any) -> None:
     assert read_out.decision is Decision.ALLOW
     policy_outcome(read_out)
     parent_after = app.graph.get(parent.id)
-    note(f"parent.label_set now: {sorted(lbl.value for lbl in parent_after.label_set)}")
-    assert Label.CONFIDENTIAL_HEALTH in parent_after.label_set
+    note(f"parent.label_state now: {sorted(tag.category for tag in parent_after.label_state.a)}")
+    assert any(tag.category == "health" for tag in parent_after.label_state.a)
     tool("memory.read → ok; PHI label propagated.")
 
     step(2, "Path A — fork a child session to draft a teammate email")
@@ -104,13 +107,13 @@ async def test_multi_session_handoff_demo(tmp_path: Any) -> None:
     child = await app.graph.fork(parent.id, intent="draft summary email")
     audit(
         f"fork emitted SESSION_FORKED. child={child.id} inherits "
-        f"label_set + capability_set from parent."
+        f"label_state + capability_set from parent."
     )
     note(
-        f"child.label_set: {sorted(lbl.value for lbl in child.label_set)} — "
-        "CONFIDENTIAL_HEALTH traveled with the fork."
+        f"child.label_state: {sorted(tag.category for tag in child.label_state.a)} — "
+        "health traveled with the fork."
     )
-    assert Label.CONFIDENTIAL_HEALTH in child.label_set
+    assert any(tag.category == "health" for tag in child.label_state.a)
 
     step(3, "Child attempts to email the summary")
     ai('call email.send(to="team@hospital.org", …) — from CHILD session')
@@ -151,10 +154,10 @@ async def test_multi_session_handoff_demo(tmp_path: Any) -> None:
         ),
     )
     note(
-        f"fresh.label_set: {sorted(lbl.value for lbl in fresh.label_set) or '[]'} "
+        f"fresh.label_state.a: {sorted(tag.category for tag in fresh.label_state.a) or '[]'} "
         "— clean by construction."
     )
-    assert Label.CONFIDENTIAL_HEALTH not in fresh.label_set
+    assert not any(tag.category == "health" for tag in fresh.label_state.a)
 
     ai('call email.send(to="team@hospital.org", …) — from FRESH session')
     fresh_send = await app.tool_client.call_tool(

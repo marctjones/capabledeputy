@@ -13,7 +13,11 @@ from typing import Any
 from uuid import UUID
 
 from capabledeputy.policy.actions import Action
-from capabledeputy.policy.assurance import EffectGate, reversibility_gate
+from capabledeputy.policy.assurance import (
+    EffectGate,
+    is_communication_egress,
+    reversibility_gate,
+)
 from capabledeputy.policy.bindings import BindingError, BindingSet
 from capabledeputy.policy.capabilities import (
     Capability,
@@ -292,14 +296,35 @@ def _conflict_invariant_outcome(
 def _compose_with_conflict_invariant(
     base: PolicyDecision,
     outcome: tuple[Decision, str, str] | None,
+    *,
+    crossed_floors: frozenset[str] = frozenset(),
+    personal: bool = False,
 ) -> PolicyDecision:
     """Compose a four-axis conflict-invariant outcome with the base
     decision. Most-restrictive wins (these are floors, like the
     envelope/reversibility composers); they never relax a stricter
-    base. A no-op when no invariant fired."""
+    base. A no-op when no invariant fired.
+
+    Slice C (FR-049): under the `personal` trust profile, a human-
+    ratified rule that explicitly named this structural floor in
+    `crosses_floor` SUPPRESSES the floor — the rule's relaxation over the
+    operator's OWN data stands. Two hard guards make this safe:
+      - It is gated on `personal`; `managed` never suppresses (the floor
+        re-applies exactly as before).
+      - `untrusted-meets-egress` is NEVER suppressible here, even if its id
+        somehow reached `crossed_floors` — defense in depth on top of the
+        load-time refusal in decision_rules._validate_crosses_floor. A
+        standing rule can never auto-cross the untrusted floor.
+    """
     if outcome is None:
         return base
     decision, rule, reason = outcome
+    if (
+        personal
+        and rule in crossed_floors
+        and rule != PROVENANCE_EGRESS_RULE  # untrusted floor never rule-crossable
+    ):
+        return base
     if _LEGACY_RANK[decision] < _LEGACY_RANK[base.decision]:
         return replace(base, decision=decision, rule=rule, reason=reason)
     return base
@@ -718,6 +743,23 @@ def _synthesize_recovery_steps(
     return ()
 
 
+def _egress_needs_override(
+    labels: LabelState | None,
+    override_categories: frozenset[str],
+    override_tiers: frozenset[str],
+) -> bool:
+    """True iff the session carries operator-configured super-sensitive data
+    (by category or by tier) that escalates communication egress from
+    APPROVAL to OVERRIDE_REQUIRED. Empty config ⇒ never (approval default)."""
+    if labels is None or (not override_categories and not override_tiers):
+        return False
+    return any(
+        tag.category in override_categories
+        or getattr(tag.tier, "value", str(tag.tier)) in override_tiers
+        for tag in labels.a
+    )
+
+
 def _decide_impl(
     capabilities: frozenset[Capability],
     action: Action,
@@ -745,6 +787,9 @@ def _decide_impl(
     first_use_prompt_enabled: bool = False,
     rate_limit_escalation: bool = False,
     labels: LabelState | None = None,
+    egress_override_categories: frozenset[str] = frozenset(),
+    egress_override_tiers: frozenset[str] = frozenset(),
+    trust_profile_is_personal: bool = False,
 ) -> PolicyDecision:
     """Internal decision impl. The public `decide()` wraps this and
     adds recovery-step synthesis (Issue #3) on the resulting
@@ -788,16 +833,14 @@ def _decide_impl(
                 now=eff_now,
             )
             if isinstance(mint_result, Capability):
-                # FR-036 single-use: mark the grant CONSUMED so a
-                # subsequent decide() falls back to the normal policy.
-                from dataclasses import replace as _dc_replace
-
-                from capabledeputy.policy.overrides import GrantState
-
-                consumed = _dc_replace(
-                    active,
-                    state=GrantState.CONSUMED,
-                    consumed_at=eff_now,
+                # FR-036 single-use: consume the grant so a subsequent
+                # decide() falls back to the normal policy. For a GROUP grant
+                # (slice D) this consumes only THIS member; the grant stays
+                # ACTIVE for the rest of the batch until every member is used.
+                consumed = active.consume_for(
+                    action_kind=action.kind,
+                    target=action.target,
+                    now=eff_now,
                 )
                 override_grants.update(consumed)
                 return PolicyDecision(
@@ -847,9 +890,36 @@ def _decide_impl(
             declared_reversibility=effective_reversibility,
         )
         if gate is EffectGate.DENY:
-            reversibility_outcome = Decision.DENY
-            reversibility_rule = REVERSIBILITY_IRREVERSIBLE_RULE
-            reversibility_reason = gate_rationale
+            # Configurable egress escalation (FR-019 amended). Irreversible
+            # COMMUNICATION egress (sending a message) is a POLICY gate, not
+            # a structural floor: by default it routes to human APPROVAL
+            # (approve-at-the-moment), and operator-configured super-sensitive
+            # data escalates to OVERRIDE_REQUIRED (pre-authorize). Purchases /
+            # commitments and all other irreversible effects keep hard DENY.
+            # (Structural floors — BLP/Biba/conflict invariants — still
+            # compose most-restrictively and win, e.g. health-meets-egress.)
+            if is_communication_egress(effect_class):
+                if _egress_needs_override(
+                    labels,
+                    egress_override_categories,
+                    egress_override_tiers,
+                ):
+                    reversibility_outcome = Decision.OVERRIDE_REQUIRED
+                    reversibility_rule = "egress-requires-override"
+                    reversibility_reason = (
+                        "super-sensitive communication egress requires a "
+                        "pre-authorized override grant"
+                    )
+                else:
+                    reversibility_outcome = Decision.REQUIRE_APPROVAL
+                    reversibility_rule = "egress-requires-approval"
+                    reversibility_reason = (
+                        "irreversible communication egress requires human approval"
+                    )
+            else:
+                reversibility_outcome = Decision.DENY
+                reversibility_rule = REVERSIBILITY_IRREVERSIBLE_RULE
+                reversibility_reason = gate_rationale
         elif gate is EffectGate.REQUIRE_APPROVAL:
             reversibility_outcome = Decision.REQUIRE_APPROVAL
             reversibility_rule = REVERSIBILITY_REQUIRES_APPROVAL_RULE
@@ -1137,7 +1207,12 @@ def _decide_impl(
             envelope_rule=envelope_rule,
             envelope_reason=envelope_reason,
         )
-    composed = _compose_with_conflict_invariant(composed, conflict_outcome)
+    composed = _compose_with_conflict_invariant(
+        composed,
+        conflict_outcome,
+        crossed_floors=v2.crossed_floors,
+        personal=trust_profile_is_personal,
+    )
     final = replace(
         composed,
         labels_snapshot=labels,

@@ -6,7 +6,7 @@ A structurally secure runtime for personal AI agents.
 
 CapableDeputy is an AI agent runtime built as a faithful implementation of recognized security models — a reference monitor, an information-flow lattice, and the object-capability model — with the LLM treated as an untrusted component *outside* the trusted computing base. Every action the agent takes flows through one deterministic capability and information-flow chokepoint, escalates to programmatic execution when stakes warrant, and surfaces every cross-compartment data flow through human-auditable approval gates.
 
-**Status:** Alpha — **v0.16.0 released**. The spec-003 label-model redesign is **complete** (clean four-axis `LabelState`, no backwards compatibility), and v0.16.0 activates the **decision-refinement layer** (operator Starlark/builtin inspectors, bounded-relax), extends the **labeling oracle** to local files and email, adds **`capdep why`** explainability and a **credential vault**, and hardens the documented model gaps (restricted-tier Pattern ③/⑤ floor, loud Biba). BLP/Biba/confused-deputy enforcement is always-on four-axis engine invariants. See [docs/responsible-ai-frameworks.md](docs/responsible-ai-frameworks.md) and [specs/003-labeling-framework/label-model-redesign.md](specs/003-labeling-framework/label-model-redesign.md). See [CHANGELOG.md](CHANGELOG.md) for what shipped and [ROADMAP.md](ROADMAP.md) for the plan.
+**Status:** Alpha — **v0.17.0 released**. v0.17.0 adds a **trust-profile** model (`managed` vs `personal`): a self-configured operator can be the **root of trust** — solo-override any floor with friction, write standing rules that cross conflict floors over their **own** data, and authorize a whole batch in one confirmation — while **untrusted content can at most raise an override request, never auto-trigger or redirect a flow** (operator autonomy ≠ adversary autonomy). It also fixes the **certified-declassification** trust hinge, routes irreversible **communication egress to human approval** by default (FR-019 amended), and lands a **second-generation workflow-assurance** suite (model-derived, adversarial, on the real config). The spec-003 label-model redesign is **complete** (clean four-axis `LabelState`); the **decision-refinement layer**, the **labeling oracle** over local files and email, **`capdep why`** explainability, and a **credential vault** shipped in v0.16.0. BLP/Biba/confused-deputy enforcement is always-on four-axis engine invariants. See [docs/responsible-ai-frameworks.md](docs/responsible-ai-frameworks.md) and [specs/003-labeling-framework/label-model-redesign.md](specs/003-labeling-framework/label-model-redesign.md). See [CHANGELOG.md](CHANGELOG.md) for what shipped and [ROADMAP.md](ROADMAP.md) for the plan.
 
 ## Why
 
@@ -98,8 +98,11 @@ read — strengths, weaknesses, and prioritized fixes — is in
 - [docs/SURFACES.md](docs/SURFACES.md) — **which command do I use?** (chat vs console vs tui vs demo vs …) — start here
 - [DESIGN.md](DESIGN.md) — full design specification
 - [ROADMAP.md](ROADMAP.md) — phased implementation plan
+- [docs/workflow-index.md](docs/workflow-index.md) — **categorized index of every workflow** — 25 narrated demos, the 1126-scenario allow/deny catalogue, and the enforcement suites, grouped by use case + security mechanism
+- [docs/workflow-plan.md](docs/workflow-plan.md) — the **executable assurance plan**: a coverage matrix (mechanisms × pressured?), a per-workflow scorecard, and two gates — the spec we execute against
+- [docs/workflow-registry.md](docs/workflow-registry.md) — the same workflows with **status + results** (implemented? tested? regression-guard vs. finding), plus the identified-but-unbuilt gaps and a findings log
 - [docs/demos/README.md](docs/demos/README.md) — 21 end-to-end demos
-- [demos/scenarios/README.md](demos/scenarios/README.md) — **9 narrated executable demos** (runnable via pytest)
+- [demos/scenarios/README.md](demos/scenarios/README.md) — **25 narrated executable demos** (runnable via pytest)
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and contribution guide
 
 ## Development

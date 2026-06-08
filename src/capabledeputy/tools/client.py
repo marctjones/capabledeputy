@@ -34,7 +34,11 @@ from capabledeputy.policy.decision_rules import DecisionRules
 from capabledeputy.policy.engine import PolicyDecision, decide
 from capabledeputy.policy.envelope import EnvelopeSet, RiskPreference
 from capabledeputy.policy.labels import LabelState
-from capabledeputy.policy.overrides import OverrideGrantStore, OverridePolicies
+from capabledeputy.policy.overrides import (
+    OverrideGrantStore,
+    OverridePolicies,
+    TrustProfile,
+)
 from capabledeputy.policy.reversibility import ReversibilityLabel
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
@@ -106,6 +110,12 @@ class PolicyContext:
     # Foundation for operator-authored decision refinement (Starlark
     # primitives, OPA consultation, etc.).
     decision_inspectors: tuple[Any, ...] = ()
+    # FR-019 (amended) egress escalation. Irreversible COMMUNICATION egress
+    # routes to human APPROVAL by default; data whose category/tier is in
+    # these sets escalates to OVERRIDE_REQUIRED (operator opts in
+    # super-sensitive). Empty ⇒ approval for all communication egress.
+    egress_override_categories: frozenset[str] = field(default_factory=frozenset)
+    egress_override_tiers: frozenset[str] = field(default_factory=frozenset)
     # DeclassifyingTransformers run on tool output AFTER inspectors,
     # BEFORE label propagation. Each transforms the value and emits a
     # structural-proof. The session sees the transformed value with
@@ -541,18 +551,19 @@ class LabeledToolClient:
                 tool.inherent_tags,
                 result.additional_tags,
             )
-            # Replace output with transformed value; subtract any
-            # tags the declassifier "lowered away" from the set
-            # that propagates this turn.
+            # Replace output with transformed value; subtract any tags the
+            # declassifier "lowered away" from the set that propagates this
+            # turn — from BOTH the tool's inherent_tags AND the result's
+            # additional_tags (F9 fix). Most real taint (fs reads, the fs/
+            # email labelers) arrives via additional_tags; removing only
+            # from inherent left it undeclassifiable.
+            from capabledeputy.policy.labels import _remove
+
             result = _replace_tool_result(
                 result,
                 output=new_output,
-                additional_tags=result.additional_tags,
+                additional_tags=_remove(result.additional_tags, tags_to_remove),
             )
-            # Remove the declassified tags from inherent propagation
-            # by filtering them out
-            from capabledeputy.policy.labels import _remove
-
             tool_inherent_for_propagation = _remove(tool.inherent_tags, tags_to_remove)
         else:
             tool_inherent_for_propagation = tool.inherent_tags
@@ -1102,6 +1113,16 @@ class LabeledToolClient:
             kwargs["risk_register"] = self._policy_context.risk_register
         kwargs["sandbox_actuator_wired"] = self._policy_context.sandbox_actuator_wired
         kwargs["devbox_manager_wired"] = self._policy_context.devbox_manager_wired
+        kwargs["egress_override_categories"] = self._policy_context.egress_override_categories
+        kwargs["egress_override_tiers"] = self._policy_context.egress_override_tiers
+        # Slice C (FR-049) — the `personal` trust profile lets a human-
+        # ratified `crosses_floor` rule cross a structural floor over the
+        # operator's own data. Read off the loaded Override Policy.
+        op = self._policy_context.override_policies
+        if op is not None:
+            kwargs["trust_profile_is_personal"] = (
+                op.trust_profile is TrustProfile.PERSONAL
+            )
         return kwargs
 
     async def _bind_reference_handles(

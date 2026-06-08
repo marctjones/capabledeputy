@@ -26,7 +26,7 @@ import policy_require_approval  # noqa: E402
 import policy_workflows  # noqa: E402
 from _policy_harness import Scenario, run_scenario  # noqa: E402
 
-_SUITES = (
+_SUITES = [
     policy_engine_harness,
     policy_allow,
     policy_deny,
@@ -34,7 +34,20 @@ _SUITES = (
     policy_constraints,
     policy_labels,
     policy_workflows,
-)
+]
+
+# The decision-inspector e2e suite (#41) uses the real Starlark sandbox —
+# include it only when the optional extra is installed so CI without it
+# still runs the rest.
+try:
+    import policy_inspectors
+    import starlark  # noqa: F401
+
+    _SUITES.append(policy_inspectors)
+except ImportError:
+    pass
+
+_SUITES = tuple(_SUITES)
 
 _CASES: list[tuple[str, Scenario]] = [(mod.__name__, sc) for mod in _SUITES for sc in mod.SCENARIOS]
 

@@ -14,7 +14,8 @@ from typing import Any
 import pytest
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.programmatic import (
     LabeledValue,
     dry_run_for_bundle,
@@ -54,8 +55,10 @@ async def test_bulk_approval_demo(tmp_path: Any) -> None:
     caps = frozenset(
         {Capability(kind=CapabilityKind.QUEUE_PURCHASE, pattern="*", max_amount=10_000)},
     )
-    app.graph._sessions[s.id] = replace(s, capability_set=caps)
-    await app.graph.add_labels(s.id, frozenset({Label.CONFIDENTIAL_FINANCIAL}))
+    # R4b.4: add label via label_state
+    financial_tag = CategoryTag("financial", Tier.RESTRICTED)
+    label_state = LabelState(a=frozenset({financial_tag}))
+    app.graph._sessions[s.id] = replace(s, capability_set=caps, label_state=label_state)
 
     src = """
 a = call("purchase.queue", vendor="vendor-a", item="GPU",     amount=8000)
@@ -67,7 +70,7 @@ e = call("purchase.queue", vendor="vendor-e", item="Monitor", amount=1200)
     initial_scope = {
         "_taint": LabeledValue(
             raw=None,
-            labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+            label_state=LabelState(a=frozenset({financial_tag})),
         ),
     }
 

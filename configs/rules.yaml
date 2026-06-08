@@ -21,6 +21,18 @@
 #       risk_ids: [<register-id>, ...]
 #       human_ratified_by: <principal-id>
 #       human_ratified_at: <ISO-8601>
+#       crosses_floor: <structural-floor-id>   # OPTIONAL — see below
+#
+# crosses_floor (FR-049, Slice C): a rule MAY explicitly name a STRUCTURAL
+# conflict floor it is authorized to cross — over the operator's OWN data:
+#   health-meets-egress | financial-meets-email | financial-meets-purchase
+# Honored ONLY under trust_profile: personal (see override_policy.yaml); in
+# `managed` it is inert (the floor re-applies). `untrusted-meets-egress` is
+# REFUSED at load — a standing rule can never auto-egress untrusted content
+# (untrusted content can at most raise an override request). The FR-026d
+# hard floors are not rule-crossable either; only an Override Grant crosses
+# those. Crossing the conflict floor does NOT bypass the egress-approval gate
+# (FR-019) — that composes independently.
 
 rules:
   # US2 scenario 2 — cron-initiated, expected-window backup (T039).

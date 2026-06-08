@@ -17,6 +17,7 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from capabledeputy.app import App
 from capabledeputy.daemon.agent_handlers import make_agent_handlers
@@ -69,6 +70,16 @@ class Scenario:
     # exercise quarantined.extract (the dual-LLM declassifier path); the
     # planner LLM never sees this, and enforcement is unaffected.
     quarantined: list[LLMResponse] | None = field(default=None)
+    # --- v0.16 feature wiring (the policy-refinement + labeling layer) ---
+    # `decision_inspectors`: a daemon-config-shaped list (builtins / Starlark
+    #   / inline source) compiled through the real loader into PolicyContext
+    #   (#46/#47/#48). `fs_label_rules`: raw fs_label_rules.yaml rules so a
+    #   read attaches Axis-A category labels (#5). `relationship_groups`:
+    #   {group_id: [member_ids]} so relationship-aware inspectors resolve
+    #   (#47). Default-empty ⇒ exact pre-v0.16 behavior.
+    decision_inspectors: list[dict[str, Any]] = field(default_factory=list)
+    fs_label_rules: list[dict[str, Any]] | None = field(default=None)
+    relationship_groups: dict[str, list[str]] | None = field(default=None)
 
 
 async def run_scenario(sc: Scenario) -> list[str]:
@@ -78,11 +89,66 @@ async def run_scenario(sc: Scenario) -> list[str]:
     failures: list[str] = []
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
+
+        # v0.16 feature wiring — build a PolicyContext + fs labeler from the
+        # scenario's declarations so the harness exercises the real
+        # decision-inspector + labeling path end-to-end (not just engine
+        # invariants). Empty declarations ⇒ policy_context=None (legacy).
+        policy_context = None
+        if sc.decision_inspectors or sc.relationship_groups:
+            import dataclasses
+
+            from capabledeputy.daemon.lifecycle import build_policy_context_from_configs
+            from capabledeputy.policy.decision_inspector_loader import (
+                load_decision_inspectors,
+            )
+
+            # Build the PolicyContext from the REAL shipped configs/ so the
+            # scenario exercises the actual operator policy (rules,
+            # envelopes, reversibility) composed WITH the inspector layer —
+            # not a hand-rolled context. Then inject the scenario's
+            # inspectors + relationship groups.
+            policy_context, _ = build_policy_context_from_configs(
+                state_db_path=tmp / "state.db",
+            )
+            inspectors = load_decision_inspectors(
+                {"decision_inspectors": sc.decision_inspectors},
+            )
+            rg = policy_context.relationship_groups
+            if sc.relationship_groups:
+                from capabledeputy.policy.relationships import (
+                    RelationshipGroup,
+                    RelationshipGroups,
+                )
+
+                rg = RelationshipGroups(
+                    groups={
+                        gid: RelationshipGroup(
+                            group_id=gid,
+                            member_principal_ids=frozenset(members),
+                        )
+                        for gid, members in sc.relationship_groups.items()
+                    },
+                )
+            policy_context = dataclasses.replace(
+                policy_context,
+                decision_inspectors=inspectors,
+                relationship_groups=rg,
+            )
+
+        fs_labeler = None
+        if sc.fs_label_rules is not None:
+            from capabledeputy.policy.fs_labeling import parse_fs_label_rules
+
+            fs_labeler = parse_fs_label_rules(sc.fs_label_rules)
+
         app = App(
             state_db_path=tmp / "state.db",
             audit_log_path=tmp / "audit.jsonl",
             llm_client=FakeLLMClient(sc.responses),
             quarantined_llm=(FakeLLMClient(sc.quarantined) if sc.quarantined is not None else None),
+            policy_context=policy_context,
+            fs_labeler=fs_labeler,
         )
         await app.startup()
 
