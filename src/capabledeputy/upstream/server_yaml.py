@@ -183,6 +183,8 @@ class ServerYamlConfig:
             isolation=isolation,
             env=env,
             strict=bool(raw.get("strict", True)),
+            disabled_tools=frozenset(str(t) for t in (raw.get("disabled_tools") or [])),
+            disabled_kinds=frozenset(str(k) for k in (raw.get("disabled_kinds") or [])),
         )
 
         return cls(

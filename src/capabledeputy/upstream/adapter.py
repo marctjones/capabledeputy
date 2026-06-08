@@ -328,6 +328,17 @@ class LabeledMcpAdapter:
         """Discover upstream tools and register wrappers; return registered names."""
         listed = await self._session.list_tools()
         for upstream_tool in listed.tools:
+            # Operator hard-disable (fail-closed) — a tool named in the
+            # config's `disabled_tools` is NEVER registered, regardless of
+            # any override or name inference. This is how an operator
+            # forbids a capability the upstream server exposes (e.g. Gmail
+            # outbound `send_gmail_message`): it never enters the registry,
+            # so the planner can't even propose it and no grant can enable
+            # it. Checked BEFORE classification.
+            if upstream_tool.name in self._config.disabled_tools:
+                self._rejected_tools.append(upstream_tool.name)
+                continue
+
             name = f"{self._config.name}.{upstream_tool.name}"
             override = self._config.tool_overrides.get(upstream_tool.name)
 
@@ -373,6 +384,18 @@ class LabeledMcpAdapter:
                 # grants might cover this tool. New deployments should
                 # use strict mode + explicit overrides).
                 kind = CapabilityKind.READ_FS
+
+            # Operator hard-disable by capability kind (name-independent) —
+            # refuse any tool that resolved to a forbidden kind, however it
+            # was classified. `disabled_kinds: {"SEND_EMAIL"}` forbids ALL
+            # outbound mail from this server regardless of the send tool's
+            # name. Compared on the kind's string value so built-in enums
+            # and custom-kind strings both match.
+            if self._config.disabled_kinds:
+                kind_str = getattr(kind, "value", str(kind))
+                if kind_str in self._config.disabled_kinds:
+                    self._rejected_tools.append(upstream_tool.name)
+                    continue
 
             additional = override.additional_tags if override else LabelState()
             inherent = most_restrictive_inherit(

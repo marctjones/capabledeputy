@@ -450,6 +450,12 @@ GWORKSPACE_BLOCK_BODY = """\
   - name: gws
     command: ["npx", "gws-mcp-server", "--services", "drive,sheets,calendar,docs,gmail"]
     inherent_labels: ["confidential.personal"]
+    # OUTBOUND MAIL DISABLED (operator policy): refuse any tool that
+    # classifies as SEND_EMAIL, regardless of name — so even if the
+    # gws-mcp-server exposes a Gmail send tool, it is never registered and
+    # the agent cannot send mail. Gmail stays read-only. Remove this to
+    # allow sending.
+    disabled_kinds: ["SEND_EMAIL"]
     tool_overrides:
       # Drive — granular kinds (Issue #33).
       # Read tools auto-classify as DRIVE_READ via the upstream adapter;

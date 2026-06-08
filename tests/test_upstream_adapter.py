@@ -102,6 +102,88 @@ async def test_register_tools_creates_namespaced_entries() -> None:
     assert len(registry) == 3
 
 
+async def test_disabled_tools_are_never_registered() -> None:
+    """Operator hard-disable: a tool in `disabled_tools` is refused even
+    when an override (or inference) would otherwise classify it. This is
+    how outbound Gmail send is forbidden — it never enters the registry,
+    so the planner can't propose it and no grant can enable it."""
+    server = _build_fake_server()
+    registry = ToolRegistry()
+    config = UpstreamServerConfig(
+        name="fakefs",
+        command=("noop",),
+        inherent_tags=LabelState(),
+        # write_file would normally register (override maps it); disable it.
+        tool_overrides={
+            "write_file": UpstreamToolOverride(capability_kind=CapabilityKind.MODIFY_FS),
+        },
+        disabled_tools=frozenset({"write_file"}),
+    )
+
+    async with create_connected_server_and_client_session(server) as session:
+        adapter = LabeledMcpAdapter(config=config, session=session)
+        names = await adapter.register_tools(registry)
+
+    assert "fakefs.write_file" not in names
+    assert "fakefs.write_file" not in registry
+    assert "write_file" in adapter.rejected_tools
+    # The other tools still register normally.
+    assert "fakefs.read_file" in names
+
+
+async def test_disabled_kinds_refuses_by_capability_kind() -> None:
+    """disabled_kinds refuses any tool that RESOLVES to a forbidden kind,
+    independent of the tool's name — the robust 'this server may not send
+    email' control. Here write_file maps to MODIFY_FS via override and is
+    refused because MODIFY_FS is disabled."""
+    server = _build_fake_server()
+    registry = ToolRegistry()
+    config = UpstreamServerConfig(
+        name="fakefs",
+        command=("noop",),
+        inherent_tags=LabelState(),
+        tool_overrides={
+            "write_file": UpstreamToolOverride(capability_kind=CapabilityKind.MODIFY_FS),
+        },
+        disabled_kinds=frozenset({"MODIFY_FS"}),
+    )
+
+    async with create_connected_server_and_client_session(server) as session:
+        adapter = LabeledMcpAdapter(config=config, session=session)
+        names = await adapter.register_tools(registry)
+
+    assert "fakefs.write_file" not in names
+    assert "write_file" in adapter.rejected_tools
+    assert "fakefs.read_file" in names  # other tools unaffected
+
+
+async def test_gws_config_disables_outbound_send() -> None:
+    """End-to-end config check: the shipped Google Workspace config
+    declares the Gmail send tools as disabled, so they can never register."""
+    from pathlib import Path
+
+    from capabledeputy.upstream.config import load_config_file
+
+    repo = Path(__file__).resolve().parents[1]
+    cfg = load_config_file(repo / "configs" / "google-workspace-local.yaml")[0]
+    assert "send_gmail_message" in cfg.disabled_tools
+    assert "send_gmail_draft" in cfg.disabled_tools
+    # Name-independent guard: no SEND_EMAIL tool can register at all.
+    assert "SEND_EMAIL" in cfg.disabled_kinds
+
+
+async def test_managed_gws_block_disables_send() -> None:
+    """The gworkspace-setup managed block forbids SEND_EMAIL, so a re-run
+    of setup can never (re-)enable outbound Gmail."""
+    import yaml
+
+    from capabledeputy.cli._managed_config import GWORKSPACE_BLOCK_BODY
+
+    parsed = yaml.safe_load(GWORKSPACE_BLOCK_BODY)
+    gws = parsed[0]
+    assert "SEND_EMAIL" in gws.get("disabled_kinds", [])
+
+
 async def test_inherent_labels_propagate_to_registered_tools() -> None:
     server = _build_fake_server()
     registry = ToolRegistry()
