@@ -73,6 +73,33 @@ async def test_armed_deny_resolves() -> None:
         assert await asyncio.wait_for(task, timeout=2) == "deny"
 
 
+async def test_flow_lineage_and_slash_commands() -> None:
+    from capabledeputy.tui.inline.app import FlowScreen
+    from capabledeputy.tui.inline.model import ToolDecision
+
+    app = _app()
+    async with app.run_test() as pilot:
+        # a tool call feeds the lineage:
+        app.append(
+            ToolDecision(
+                PolicyDecision(decision=Decision.ALLOW),
+                action_kind=CapabilityKind.READ_FS,
+                target="labs.pdf",
+            ),
+        )
+        assert app._flow and "labs.pdf" in app._flow[0][0]
+        # /flow opens the lineage screen; esc closes it:
+        app._handle_command("/flow")
+        await pilot.pause()
+        assert isinstance(app.screen, FlowScreen)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, FlowScreen)
+        # /help and an unknown command don't crash:
+        app._handle_command("/help")
+        app._handle_command("/bogus")
+
+
 async def test_halt_kill_switch_denies_an_armed_decision() -> None:
     app = _app()
     async with app.run_test() as pilot:

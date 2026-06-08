@@ -19,6 +19,7 @@ import asyncio
 from typing import Protocol
 from uuid import UUID, uuid4
 
+from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -26,10 +27,23 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, RichLog, Static
 
+from capabledeputy.policy.capabilities import kind_name
 from capabledeputy.policy.rules import Decision
-from capabledeputy.tui.inline.decision import marker_for_session
-from capabledeputy.tui.inline.model import ApprovalPrompt, Entry, Outcome, render_entry
+from capabledeputy.tui.inline.decision import SessionMarker, marker_for_session
+from capabledeputy.tui.inline.glyphs import glyph_for, style_for
+from capabledeputy.tui.inline.model import (
+    ApprovalPrompt,
+    Entry,
+    Outcome,
+    ToolDecision,
+    render_entry,
+)
 from capabledeputy.tui.inline.status import TrustState, render_status
+
+_HELP = (
+    "commands:  /flow  data lineage · /why  last reason · /clear  log · /help\n"
+    "keys:  a approve · d deny · o override · w why · ctrl+k halt · ctrl+c quit"
+)
 
 
 class ConsoleDriver(Protocol):
@@ -65,6 +79,46 @@ class OverrideConfirmScreen(ModalScreen[bool]):
         self.dismiss(event.value.strip() == self._target)
 
 
+class FlowScreen(ModalScreen[None]):
+    """The data-lineage view (§4) — shows where the session's data came from
+    and how it flowed, so the IFC/declassification story is *visible*."""
+
+    DEFAULT_CSS = """
+    FlowScreen { align: center middle; }
+    #flowbox {
+        width: 80%; height: auto; border: round $primary;
+        padding: 1 2; background: $surface;
+    }
+    """
+    BINDINGS = [  # noqa: RUF012
+        Binding("escape", "close", "close"),
+        Binding("q", "close", "close"),
+    ]
+
+    def __init__(self, flow: list[tuple[str, Decision]], marker: SessionMarker) -> None:
+        super().__init__()
+        self._flow = flow
+        self._marker = marker
+
+    def compose(self) -> ComposeResult:
+        text = Text()
+        text.append(f"{self._marker.glyph} ", style=self._marker.style)
+        text.append("data flow", style="bold")
+        text.append("    (esc to close)\n\n", style="dim")
+        if not self._flow:
+            text.append("(no tool activity yet)", style="dim")
+        else:
+            for i, (label, decision) in enumerate(self._flow):
+                if i:
+                    text.append("\n  ─▶  ", style="dim")
+                text.append(f"{glyph_for(decision)} ", style=style_for(decision))
+                text.append(label)
+        yield Static(text, id="flowbox")
+
+    def action_close(self) -> None:
+        self.dismiss()
+
+
 class InlineConsole(App[None]):
     CSS = """
     Screen { layout: vertical; }
@@ -96,6 +150,8 @@ class InlineConsole(App[None]):
         self._trust = trust or TrustState(session_name="session")
         self._armed: ApprovalPrompt | None = None
         self._armed_future: asyncio.Future[str] | None = None
+        self._flow: list[tuple[str, Decision]] = []  # lineage for /flow
+        self._last_reason: str | None = None
 
     # --- layout ---------------------------------------------------------
 
@@ -111,6 +167,11 @@ class InlineConsole(App[None]):
     # --- view methods the driver calls ---------------------------------
 
     def append(self, entry: Entry) -> None:
+        if isinstance(entry, ToolDecision):
+            label = f"{kind_name(entry.action_kind)}({entry.target})"
+            self._flow.append((label, entry.decision.decision))
+        if isinstance(entry, ApprovalPrompt) and entry.decision.reason:
+            self._last_reason = entry.decision.reason
         self.query_one("#log", RichLog).write(render_entry(entry, marker=self._marker))
 
     def set_trust(self, trust: TrustState) -> None:
@@ -184,10 +245,26 @@ class InlineConsole(App[None]):
         event.input.clear()
         if not text:
             return
+        if text.startswith("/"):
+            self._handle_command(text)
+            return
         from capabledeputy.tui.inline.model import UserMessage
 
         self.append(UserMessage(text))
         self._drive(text)
+
+    def _handle_command(self, text: str) -> None:
+        cmd = text[1:].split()[0] if len(text) > 1 else ""
+        if cmd in ("help", ""):
+            self.append(Outcome(_HELP, "dim"))
+        elif cmd == "flow":
+            self.push_screen(FlowScreen(self._flow, self._marker))
+        elif cmd == "why":
+            self.append(Outcome(f"  why: {self._last_reason or '(no recent decision)'}", "dim"))
+        elif cmd == "clear":
+            self.query_one("#log", RichLog).clear()
+        else:
+            self.append(Outcome(f"unknown command: /{cmd}  (try /help)", "red"))
 
     @work
     async def _drive(self, text: str) -> None:
