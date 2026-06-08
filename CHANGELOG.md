@@ -4,6 +4,53 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [0.19.0] — 2026-06-08
+
+A greenfield **inline console** (TUI redesign) — and a security model for the
+UI itself. Modeled on the Claude-Code conversational-REPL feel: an inline,
+streaming console where tool calls and policy decisions render *as they
+happen*, the terminal pausing only when a human is needed. Built security-first,
+because for a policy agent the presentation layer is a real attack surface.
+Launch it with **`capdep ui`**. Sole feature change of this release; built
+greenfield alongside the old `tui`/`console` commands (now deprecated).
+
+### The inline console (`src/capabledeputy/tui/inline/`)
+
+- **Streaming conversational REPL** (Textual inline mode): a fixed engine-sourced
+  status line (purpose / clearance / live taint / advisories), a streaming
+  conversation, and an input. Decisions render inline as chips and cards.
+- **Security built into the presentation layer** (see `docs/tui-redesign.md`):
+  - *Untrusted content can't impersonate chrome.* `quarantine()` strips every
+    terminal escape vector (CSI color/cursor, OSC hyperlinks + title +
+    iTerm/kitty images, DCS/sixel, controls) and renders untrusted blocks as
+    gutter plaintext — an ANSI-styled fake approval card collapses to inert
+    text.
+  - *Decision cards are drawn from a typed `PolicyDecision`, never a model
+    string* — a type-level guarantee that no model prose reaches a decision
+    surface (FR-036 / Principle V).
+  - *Armed interaction:* a keypress (`a`/`d`/`o`) resolves only the one decision
+    the app has armed; keys are inert otherwise, so a painted fake card approves
+    nothing.
+  - *Per-session anti-spoof marker* on every real card + the status line.
+  - *Fail-safe:* a `ctrl+k` kill switch resolves a pending decision toward
+    **deny, never allow**; unknown status fields render `—`, never blank.
+  - *Grave-action escalation:* `OVERRIDE_REQUIRED` opens a focused confirm that
+    requires typing the engine-provided target.
+- **`/flow` data-lineage screen** — the session's tool calls as a provenance
+  chain with per-step decision glyphs; makes the IFC/declassification story
+  *visible*.
+- **Automation harness** (`harness.py`) — a no-terminal `HeadlessConsole` records
+  a structured, assertable transcript and auto-answers prompts via a pluggable
+  decider (`approve_all` / `deny_all` / `by_rule`), so scenario scripts are
+  trivial. The driver is view-agnostic (`ConsoleView`), so the same script runs
+  against the real UI (Textual `Pilot`) or the recorder, and — once the live
+  daemon driver lands — the full server+UI stack unchanged.
+
+39 inline-console tests (adversarial quarantine, typed-decision rendering, the
+armed interaction via Pilot, the scriptable harness). Live daemon wiring and the
+remaining surfaces (`/audit`, `/sessions`, theme polish, `textual serve`) are
+tracked in `docs/tui-redesign.md` / `docs/usability-hardening-plan.md`.
+
 ## [0.18.0] — 2026-06-08
 
 Accurate-by-default labeling, assurance hardening, and a green CI. The headline
@@ -495,6 +542,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.19.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.19.0
 [0.18.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.18.0
 [0.17.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.17.0
 [0.16.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.16.0

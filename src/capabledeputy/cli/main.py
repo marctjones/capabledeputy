@@ -652,6 +652,42 @@ def console_command(
     run(session_id)
 
 
+@app.command("ui")
+def ui_command(
+    demo: Annotated[
+        bool,
+        typer.Option(
+            "--demo/--no-demo",
+            help="Run the scripted showcase (no daemon needed).",
+        ),
+    ] = True,
+) -> None:
+    """Launch the inline console (greenfield TUI redesign).
+
+    An inline, streaming, conversational REPL: a fixed engine-sourced status
+    line, decision cards drawn from typed engine decisions (never model prose),
+    quarantine-rendered untrusted content, an armed approval interaction, and a
+    ctrl+k kill switch. `--demo` runs a scripted end-to-end showcase; live
+    daemon wiring is in progress.
+    """
+    from capabledeputy.tui.inline.app import InlineConsole
+    from capabledeputy.tui.inline.demo import DemoDriver
+    from capabledeputy.tui.inline.status import TrustState
+
+    if not demo:
+        err_console.print(
+            "[yellow]live daemon wiring is in progress; running --demo.[/yellow]",
+        )
+    InlineConsole(
+        DemoDriver(),
+        trust=TrustState(
+            session_name="morning-triage",
+            purpose="daily-life",
+            clearance="restricted",
+        ),
+    ).run(inline=True)
+
+
 @app.command("dry-run")
 def dry_run_command(
     program: str = typer.Argument(..., help="Path to a programmatic-mode .py source file"),
