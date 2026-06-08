@@ -66,6 +66,18 @@ class UpstreamServerConfig:
     # resolved at parse_config time. Empty dict = inherit operator
     # shell env only.
     env: dict[str, str] = field(default_factory=dict)
+    # Operator hard-disable list: tool names here are NEVER registered,
+    # regardless of override or inference. Use to remove a capability the
+    # upstream server exposes but the operator does not want available at
+    # all (e.g. Gmail `send_gmail_message` to forbid outbound mail). The
+    # adapter refuses these fail-closed before classification.
+    disabled_tools: frozenset[str] = field(default_factory=frozenset)
+    # Operator hard-disable by CAPABILITY KIND: any tool that resolves
+    # (via override OR inference) to one of these kinds is refused —
+    # name-independent. `disabled_kinds: {"SEND_EMAIL"}` forbids ALL
+    # outbound mail from a server no matter what its send tool is called.
+    # The robust "this server may not send email" control.
+    disabled_kinds: frozenset[str] = field(default_factory=frozenset)
     # Fail-closed by default: an upstream tool that cannot be confidently
     # classified into a capability kind (no explicit override, no high-
     # confidence inference) is REFUSED registration rather than silently
@@ -102,6 +114,8 @@ def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
         isolation = _parse_isolation(entry.get("isolation"))
         env_raw = entry.get("env") or {}
         env = {str(k): expand_env_value(str(v)) for k, v in env_raw.items()}
+        disabled_tools = frozenset(str(t) for t in (entry.get("disabled_tools") or []))
+        disabled_kinds = frozenset(str(k) for k in (entry.get("disabled_kinds") or []))
         out.append(
             UpstreamServerConfig(
                 name=name,
@@ -111,6 +125,8 @@ def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
                 isolation=isolation,
                 env=env,
                 strict=bool(entry.get("strict", True)),
+                disabled_tools=disabled_tools,
+                disabled_kinds=disabled_kinds,
             ),
         )
     return out
