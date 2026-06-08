@@ -74,9 +74,12 @@ one-keystroke full-screen *screens*, not always-on panes.
   (quiet/dim) · `⚑` advisory/WARN (amber, **non-blocking**) · `⛔` needs-approval
   (expands into a card) · `✗` denied (red, with the engine's pasteable recovery
   inline).
-- **Approval as an inline permission card** — verbatim facts, the floor that
-  fired, keyboard-driven, **grouped** (FR-035) into one card with per-item
-  toggles when several share a rationale.
+- **Approval renders in reserved *trusted chrome*, not the scroll buffer.** An
+  inline `⛔` *notice* marks where the gate occurred, but the actionable card —
+  verbatim facts, the floor that fired, the keys — is drawn in a framework-owned
+  decision region (a docked overlay) that untrusted content can never write to.
+  Keyboard-driven, **grouped** (FR-035) into one card with per-item toggles when
+  several share a rationale. See §8.1 (security-strengthening change #1).
 - **Override** rendered as a visibly heavier card with typed friction scaled to
   severity — unmistakable from an ordinary approval.
 
@@ -256,15 +259,77 @@ strong engine can't see.
 
 ---
 
+## 8.1 Security-strengthening changes (adopted from the review)
+
+The §8 hard requirements are *mitigations the implementer must remember*. These
+changes turn the two load-bearing ones (a false approval card; untrusted content
+impersonating chrome) into **architecture that can't be gotten wrong**, plus a
+few defense-in-depth additions. They cost a little of the pure-inline aesthetic;
+the trade is worth it.
+
+1. **Decisions live in framework-owned trusted chrome, never in the scroll
+   buffer.** The conversation buffer (where model output and untrusted tool
+   results flow) and the *decision region* (a docked overlay the app draws) are
+   physically separate surfaces. Untrusted content cannot occupy the decision
+   region, so a spoofed approval card is structurally impossible — not merely
+   "sanitized." This is a change to §3 (inline *notice* + reserved actionable
+   card), and the strongest single hardening.
+2. **The decision component accepts a typed `PolicyDecision` only — never a
+   string.** Engine facts and model narration travel different code paths to
+   different surfaces; there is no function where model-supplied text can reach
+   a decision card. Makes hard-requirement #1 (engine-authored facts) a
+   *type-level* guarantee, not a discipline.
+3. **Untrusted content renders in a forced quarantine style.** A permanent
+   left-gutter marker, forced plaintext (no markup interpretation), and all
+   escape/control sequences stripped — including terminal hyperlinks (OSC 8) and
+   inline images (sixel/kitty), which untrusted content must never emit (a link
+   can phish, an image can paint fake chrome). Untrusted content can only ever
+   appear as visibly-quoted plaintext.
+4. **Per-session anti-spoof marker.** The trusted chrome carries a per-session
+   random accent/glyph shown in the status line, learned by the operator. A
+   "card" lacking the session's marker is, by construction, not real chrome —
+   a cheap secure-attention signal against any residual impersonation.
+5. **"Make this a rule?" goes through shadow-mode → blast-radius preview →
+   ratification.** A drafted rule first runs in **shadow** (the existing P2.8
+   rule-shadow machinery) for K turns, showing exactly what it *would have*
+   auto-allowed, before it can be promoted — and promotion is the existing
+   ratification path (single-/dual-control), never one click. Fatigue reduction
+   thus comes from *reviewed accuracy*, never from making "yes" the easy path.
+6. **Grave irreversible egress: type the engine-provided target to confirm.**
+   For the highest-severity sends/overrides, the human types the actual
+   recipient/destination (supplied by the engine, not echoed from model text)
+   into the trusted chrome — proving they read it and defeating blind approve.
+   Friction text is always entered into chrome, never reflected from content.
+7. **The UI is a re-authorized client + an always-available kill switch.** Every
+   approve/deny/override is submitted to the engine, which re-checks the
+   operator's authorization and audits it with the principal — the UI can never
+   *forge* an authorization, only request one. A global, engine-enforced
+   "halt/revoke this session" hotkey is always reachable (P8 containment from
+   the keyboard), and the status line is fixed, engine-sourced chrome that
+   cannot be scrolled away, covered, or served stale.
+
+Net effect: changes 1–3 move the presentation layer's two worst failure modes
+from "mitigated" to "structurally prevented"; 4–7 are defense-in-depth that also
+keep the anti-fatigue features (5) and human-in-control (7) from quietly eroding
+oversight. Engine-side enforcement is unchanged; the UI simply stops being a
+place the otherwise-strong engine could be undermined.
+
+---
+
 ## 9. Phased build (greenfield, alongside the old UI until parity)
 
-1. **REPL spine** — inline streaming conversation + status line + input (new
-   app; don't touch the old TUI).
-2. **Decision chips + approval/override cards** — the core interaction; encode
-   hard requirements #1 + #4 from the start.
-3. **Visual language pass** — glyphs, semantic color, themes, motion.
-4. **Untrusted-content sanitization + trusted-chrome delineation** — hard
-   requirement #2 (do *not* defer this; it is a safety property, not polish).
+1. **REPL spine with the trust boundary built in** — inline streaming
+   conversation + fixed engine-sourced status line + input, and from day one the
+   **two-surface split**: a scroll buffer for content vs. a framework-owned
+   decision region (§8.1 #1). The boundary is foundational, not a later pass.
+2. **Decision chips + the trusted decision component** — typed-`PolicyDecision`-
+   only rendering (§8.1 #2); chips are inline notices, the actionable card is
+   chrome. Encodes hard requirements #1 + #4 from the start.
+3. **Visual language pass** — glyphs, semantic color, themes, motion, plus the
+   per-session anti-spoof marker (§8.1 #4).
+4. **Untrusted-content quarantine rendering** — forced plaintext, gutter,
+   ANSI/OSC/hyperlink/image stripping (§8.1 #3 / hard requirement #2). A safety
+   property, not polish — do not defer.
 5. **Anti-fatigue layer** — grouped approvals + deliberate "make this a rule?"
    (hard requirement #3); pairs with usability U2/U3.
 6. **On-demand screens** — `/flow` (the differentiator, hard requirement #2b:
