@@ -28,7 +28,10 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import (
+    CategoryTag,
+    LabelState,
+)
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.programmatic import (
@@ -266,7 +269,10 @@ async def test_meeting_prep_routine_demo(tmp_path: Any) -> None:
     # email sends route through REQUIRE_APPROVAL (financial-meets-
     # email Brewer-Nash). That's what makes the bundle interesting:
     # several gates to review at once.
-    await app.graph.add_labels(fresh.id, frozenset({Label.CONFIDENTIAL_FINANCIAL}))
+    await app.graph.add_tags(
+        fresh.id,
+        LabelState(a=frozenset({CategoryTag("financial", Tier.RESTRICTED)})),
+    )
 
     src = """
 to_a = call("email.send", to="alice@example.com", subject="Today's agenda", body="See agenda.")
@@ -276,7 +282,7 @@ to_c = call("email.send", to="carol@example.com", subject="Today's agenda", body
     initial_scope = {
         "_taint": LabeledValue(
             raw=None,
-            labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+            label_state=LabelState(a=frozenset({CategoryTag("financial", Tier.RESTRICTED)})),
         ),
     }
     user("dry_run_for_bundle(notifications_source, …)")

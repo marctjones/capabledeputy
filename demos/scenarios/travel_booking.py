@@ -26,8 +26,9 @@ from typing import Any
 import pytest
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.rules import Decision
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.programmatic import (
     LabeledValue,
     dry_run_for_bundle,
@@ -73,12 +74,14 @@ async def test_travel_booking_demo(tmp_path: Any) -> None:
     caps = frozenset(
         {Capability(kind=CapabilityKind.QUEUE_PURCHASE, pattern="*", max_amount=5000)},
     )
-    app.graph._sessions[s.id] = replace(s, capability_set=caps)
     # The trip planning session has a financial-confidential label
     # because it touched the operator's card details (in a real flow
     # the wallet read would add this); we model that here to make the
     # bundle demonstration apples-to-apples with bulk_approval_grouped.
-    await app.graph.add_labels(s.id, frozenset({Label.CONFIDENTIAL_FINANCIAL}))
+    # R4b.4: add label via label_state
+    financial_tag = CategoryTag("financial", Tier.RESTRICTED)
+    label_state = LabelState(a=frozenset({financial_tag}))
+    app.graph._sessions[s.id] = replace(s, capability_set=caps, label_state=label_state)
 
     step(1, "Path A — one-at-a-time. Each purchase trips REQUIRE_APPROVAL.")
     user('"book my trip in pieces"')
@@ -113,7 +116,7 @@ conf   = call("purchase.queue", vendor="confco", item="Reg + workshop", amount=1
     initial_scope = {
         "_taint": LabeledValue(
             raw=None,
-            labels=frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+            label_state=label_state,
         ),
     }
     impact = await dry_run_for_bundle(src, app.registry, initial_scope=initial_scope)

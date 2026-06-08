@@ -23,7 +23,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
-from capabledeputy.policy.labels import Label
+from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.client import PolicyContext
@@ -62,10 +62,11 @@ async def test_task_compartments_demo(tmp_path: Any) -> None:
     # Pre-load a personal finance summary in the memory store with the
     # appropriate label, so memory.read propagates CONFIDENTIAL_FINANCIAL
     # onto the session.
+    financial_tag = CategoryTag("financial", Tier.RESTRICTED)
     app.memory.write(
         "checking-balance",
         "$3,420.16 as of 2026-05-20",
-        frozenset({Label.CONFIDENTIAL_FINANCIAL}),
+        LabelState(a=frozenset({financial_tag})),
     )
 
     s = await make_session(
@@ -117,8 +118,9 @@ async def test_task_compartments_demo(tmp_path: Any) -> None:
     tool("memory.read → ok; session now ALSO tagged CONFIDENTIAL_FINANCIAL.")
 
     s_after = app.graph.get(s.id)
-    labels = sorted(lbl.value for lbl in s_after.label_set)
-    audit(f"session.label_set: {labels}")
+    # R4b.4: label_set → label_state with .a (CategoryTag) and .b (ProvenanceTag)
+    a_cats = sorted(tag.category for tag in s_after.label_state.a)
+    audit(f"session.label_state.a categories: {a_cats}")
 
     step(4, "Try to email 'my week' summary combining the two")
     note(

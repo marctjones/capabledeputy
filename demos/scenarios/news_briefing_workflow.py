@@ -30,11 +30,10 @@ from capabledeputy.policy.envelope import (
     RiskPreference,
 )
 from capabledeputy.policy.labels import (
-    AxisA,
-    AxisACategory,
-    AxisB,
-    AxisBEntry,
+    CategoryTag,
+    LabelState,
     ProvenanceLevel,
+    ProvenanceTag,
 )
 from capabledeputy.policy.overrides import (
     HardFloor,
@@ -45,7 +44,7 @@ from capabledeputy.policy.overrides import (
 )
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
-from capabledeputy.substrate.inspector_port import InspectorDelta, RaiseOnlyInspector
+from capabledeputy.substrate.inspector_port import InspectorRaiseResult, RaiseOnlyInspector
 from capabledeputy.tools.client import PolicyContext
 from demos.scenarios._helpers import (
     ai,
@@ -80,20 +79,17 @@ class _NewsInjectionDetector(RaiseOnlyInspector):
         self,
         *,
         value: object,
-        current_axis_a: AxisA,
-        current_axis_b: AxisB,
-    ) -> InspectorDelta:
+        current_label_state: LabelState,
+    ) -> InspectorRaiseResult:
         text = str(value).lower()
         if any(m in text for m in self.MARKERS):
-            return InspectorDelta(
-                axis_a_raise=AxisA(
-                    categories=(AxisACategory(category="untrusted", tier=Tier.SENSITIVE),),
-                ),
-                axis_b_raise=AxisB(
-                    entries=(AxisBEntry(level=ProvenanceLevel.EXTERNAL_UNTRUSTED),),
+            return InspectorRaiseResult(
+                raise_state=LabelState(
+                    a=frozenset({CategoryTag("untrusted", Tier.SENSITIVE)}),
+                    b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
                 ),
             )
-        return InspectorDelta()
+        return InspectorRaiseResult()
 
 
 def _digest_envelope_set() -> EnvelopeSet:

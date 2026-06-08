@@ -16,7 +16,6 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
-from capabledeputy.policy.labels import Label
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.client import PolicyContext
@@ -62,7 +61,6 @@ async def test_clinical_records_demo(tmp_path: Any) -> None:
             },
         ),
     )
-    await app.graph.add_labels(s.id, frozenset({Label.CONFIDENTIAL_HEALTH}))
 
     ai('call email.send(to="team@hospital.org", …)')
     out = await app.tool_client.call_tool(
