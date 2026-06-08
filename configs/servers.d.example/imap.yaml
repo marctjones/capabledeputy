@@ -19,6 +19,11 @@ inherent_labels: []
 
 strict: true
 
+# OUTBOUND MAIL DISABLED (operator policy): refuse any tool that classifies
+# as SEND_EMAIL (imap.send) — the agent cannot send mail. Reading/organizing
+# stays enabled. Remove this line to allow sending.
+disabled_kinds: ["SEND_EMAIL"]
+
 tool_overrides:
   # Read tools — IMAP_READ kind. Default sessions auto-grant IMAP_READ *.
   # Per-tool labels color the session's IFC state after reading.

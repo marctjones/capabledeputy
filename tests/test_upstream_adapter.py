@@ -184,6 +184,24 @@ async def test_managed_gws_block_disables_send() -> None:
     assert "SEND_EMAIL" in gws.get("disabled_kinds", [])
 
 
+async def test_imap_configs_disable_outbound_send() -> None:
+    """IMAP outbound (imap.send -> SEND_EMAIL) is disabled in the managed
+    block AND the shipped curated config, so the agent can't send mail."""
+    from pathlib import Path
+
+    import yaml
+
+    from capabledeputy.cli._managed_config import IMAP_BLOCK_BODY
+    from capabledeputy.upstream.config import load_config_file
+
+    managed = yaml.safe_load(IMAP_BLOCK_BODY)[0]
+    assert "SEND_EMAIL" in managed.get("disabled_kinds", [])
+
+    repo = Path(__file__).resolve().parents[1]
+    curated = load_config_file(repo / "configs" / "curated" / "imap.yaml")[0]
+    assert "SEND_EMAIL" in curated.disabled_kinds
+
+
 async def test_inherent_labels_propagate_to_registered_tools() -> None:
     server = _build_fake_server()
     registry = ToolRegistry()

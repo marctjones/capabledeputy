@@ -308,6 +308,10 @@ IMAP_BLOCK_BODY = """\
   - name: mail
     command: ["capdep", "mcp-server-imap"]
     inherent_labels: []
+    # OUTBOUND MAIL DISABLED (operator policy): refuse any SEND_EMAIL tool
+    # (imap.send), so a re-run of `capdep imap-setup` can never enable
+    # sending. Reading/organizing mail stays enabled. Remove to allow.
+    disabled_kinds: ["SEND_EMAIL"]
     tool_overrides:
       # Issue #33 — IMAP read tools use IMAP_READ kind, not READ_FS.
       # Operators with legacy `/grant READ_FS *` keep working
