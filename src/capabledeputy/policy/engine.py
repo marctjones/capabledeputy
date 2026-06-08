@@ -13,7 +13,11 @@ from typing import Any
 from uuid import UUID
 
 from capabledeputy.policy.actions import Action
-from capabledeputy.policy.assurance import EffectGate, reversibility_gate
+from capabledeputy.policy.assurance import (
+    EffectGate,
+    is_communication_egress,
+    reversibility_gate,
+)
 from capabledeputy.policy.bindings import BindingError, BindingSet
 from capabledeputy.policy.capabilities import (
     Capability,
@@ -718,6 +722,23 @@ def _synthesize_recovery_steps(
     return ()
 
 
+def _egress_needs_override(
+    labels: LabelState | None,
+    override_categories: frozenset[str],
+    override_tiers: frozenset[str],
+) -> bool:
+    """True iff the session carries operator-configured super-sensitive data
+    (by category or by tier) that escalates communication egress from
+    APPROVAL to OVERRIDE_REQUIRED. Empty config ⇒ never (approval default)."""
+    if labels is None or (not override_categories and not override_tiers):
+        return False
+    return any(
+        tag.category in override_categories
+        or getattr(tag.tier, "value", str(tag.tier)) in override_tiers
+        for tag in labels.a
+    )
+
+
 def _decide_impl(
     capabilities: frozenset[Capability],
     action: Action,
@@ -745,6 +766,8 @@ def _decide_impl(
     first_use_prompt_enabled: bool = False,
     rate_limit_escalation: bool = False,
     labels: LabelState | None = None,
+    egress_override_categories: frozenset[str] = frozenset(),
+    egress_override_tiers: frozenset[str] = frozenset(),
 ) -> PolicyDecision:
     """Internal decision impl. The public `decide()` wraps this and
     adds recovery-step synthesis (Issue #3) on the resulting
@@ -847,9 +870,36 @@ def _decide_impl(
             declared_reversibility=effective_reversibility,
         )
         if gate is EffectGate.DENY:
-            reversibility_outcome = Decision.DENY
-            reversibility_rule = REVERSIBILITY_IRREVERSIBLE_RULE
-            reversibility_reason = gate_rationale
+            # Configurable egress escalation (FR-019 amended). Irreversible
+            # COMMUNICATION egress (sending a message) is a POLICY gate, not
+            # a structural floor: by default it routes to human APPROVAL
+            # (approve-at-the-moment), and operator-configured super-sensitive
+            # data escalates to OVERRIDE_REQUIRED (pre-authorize). Purchases /
+            # commitments and all other irreversible effects keep hard DENY.
+            # (Structural floors — BLP/Biba/conflict invariants — still
+            # compose most-restrictively and win, e.g. health-meets-egress.)
+            if is_communication_egress(effect_class):
+                if _egress_needs_override(
+                    labels,
+                    egress_override_categories,
+                    egress_override_tiers,
+                ):
+                    reversibility_outcome = Decision.OVERRIDE_REQUIRED
+                    reversibility_rule = "egress-requires-override"
+                    reversibility_reason = (
+                        "super-sensitive communication egress requires a "
+                        "pre-authorized override grant"
+                    )
+                else:
+                    reversibility_outcome = Decision.REQUIRE_APPROVAL
+                    reversibility_rule = "egress-requires-approval"
+                    reversibility_reason = (
+                        "irreversible communication egress requires human approval"
+                    )
+            else:
+                reversibility_outcome = Decision.DENY
+                reversibility_rule = REVERSIBILITY_IRREVERSIBLE_RULE
+                reversibility_reason = gate_rationale
         elif gate is EffectGate.REQUIRE_APPROVAL:
             reversibility_outcome = Decision.REQUIRE_APPROVAL
             reversibility_rule = REVERSIBILITY_REQUIRES_APPROVAL_RULE

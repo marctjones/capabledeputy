@@ -178,12 +178,13 @@ async def test_override_workflow_demo(tmp_path: Any) -> None:
         "email.send",
         {"to": "bob@example.com", "subject": "x2", "body": "y2"},
     )
-    assert out2.decision == Decision.DENY
+    assert out2.decision == Decision.REQUIRE_APPROVAL
     policy_outcome(
         out2,
         rationale=(
             "Single-use property (FR-036): the consumed grant no longer "
-            "matches; reversibility gate now refuses."
+            "matches, so the send is re-gated — irreversible communication "
+            "egress falls back to the normal approval gate (amended FR-019)."
         ),
     )
-    note("To send again Alice would file a fresh override request.")
+    note("Alice approves the second send at the moment, or files a fresh override.")

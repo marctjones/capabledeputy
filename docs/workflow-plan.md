@@ -158,27 +158,29 @@ Everything else is iteration between the gates.
   declassification path to isolate.
 - **F7** catalogue circularity → why "model-derived" is criterion #2 and the
   1126 are slated for prune.
-- **F8 — irreversible egress is override-gated, not approval-queued
-  (DESIGN QUESTION).** On the real config, `reversibility_gate` returns DENY
-  for any irreversible effect (FR-019: social-commitment forces
-  irreversible) — the *only* path to ALLOW is a single-use human **override
-  grant**, not the approval queue. Very safe, but it means the agent can't
-  send *any* email or make *any* purchase without a per-action override —
-  potentially high friction. *Open product question:* should some
-  irreversible egress route to REQUIRE_APPROVAL (approve-at-the-moment)
-  instead of DENY→override? Slice #1 proved the override path works
-  (`test_v2_legitimate_egress_allowed_via_override_grant`); the UX call is
-  the operator's. Note: the demos + the 1126 catalogue run the legacy path
-  and therefore *misrepresent* this — they show email auto-allowing.
+- **F8 — irreversible egress override-vs-approval (RESOLVED by design
+  change).** Operator decision: most irreversible **communication** egress
+  (email) routes to human **APPROVAL** by default; operator-configured
+  super-sensitive data escalates to **OVERRIDE_REQUIRED**; **purchases**
+  keep the stricter DENY→override. Implemented as an FR-019 amendment +
+  `egress_escalation.yaml`. Structural floors (BLP/Biba/conflict invariants)
+  still DENY health/financial/untrusted egress regardless — verified. Note:
+  this exposed two demos (clinical, override) that were *accidentally*
+  relying on the old reversibility-DENY rather than the rule they claimed —
+  both fixed to use their real mechanism.
 
 ---
 
 ## Slice log
 
-- **#1 — F2 / real-config egress — DONE.** Proved irreversible egress denies
-  by default and the override path allows it (single-use). Result: the
-  production path works *by design*; surfaced F8 (the UX question). Matrix
-  cell ✅.
+- **#1 — F2 / real-config egress — DONE.** Proved irreversible egress was
+  override-gated by default; surfaced F8.
+- **#1b — FR-019 amendment (F8 resolution) — DONE.** Communication egress →
+  APPROVAL by default, OVERRIDE for operator-configured super-sensitive,
+  purchases unchanged. `policy/egress_escalation.py` + config; engine +
+  PolicyContext + loader wired; sensitive-egress floors verified intact.
+  Tests: approval default, purchase-still-deny, super-sensitive→override,
+  override-resolves-super-sensitive (single-use). Matrix cell ✅.
 
 ## Immediate next: slice #2 = certified declassification
 

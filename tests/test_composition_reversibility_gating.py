@@ -154,10 +154,12 @@ def test_reversible_human_requires_approval() -> None:
 
 
 def test_social_commitment_forced_irreversible_even_if_declared_reversible() -> None:
-    """FR-019 hard rule: social.send_email is always treated
-    irreversible. A reversible/system declaration on the tool DOES
-    NOT win. Use a matching capability so the legacy path doesn't
-    DENY on missing-cap; the gate's DENY is the decision."""
+    """FR-019 hard rule: social.send_email is always treated irreversible —
+    a reversible/system declaration DOES NOT win (it would otherwise
+    AUTO-allow). Under the amended FR-019, irreversible COMMUNICATION egress
+    routes to human APPROVAL (not the old hard DENY), so the gated outcome
+    here is REQUIRE_APPROVAL — the point (declared-reversible didn't win) is
+    preserved: it's gated, not auto-allowed."""
     labels, axis_d = _empty_label_state()
     matching_cap = Capability(
         kind=CapabilityKind.WRITE_FS,
@@ -178,8 +180,7 @@ def test_social_commitment_forced_irreversible_even_if_declared_reversible() -> 
         ),
         now=_NOW,
     )
-    assert result.decision == Decision.DENY
-    assert result.rule == REVERSIBILITY_IRREVERSIBLE_RULE
+    assert result.decision == Decision.REQUIRE_APPROVAL
 
 
 def test_legacy_only_path_also_applies_gate() -> None:

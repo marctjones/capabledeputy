@@ -307,9 +307,18 @@ def build_policy_context_from_configs(
         if state_db_path is not None
         else OverrideGrantStore()
     )
+    # FR-019 (amended) egress escalation — which data escalates communication
+    # egress from approval to override (absent file ⇒ none; approval default).
+    from capabledeputy.policy.egress_escalation import load_egress_escalation
+
+    egress_override_categories, egress_override_tiers = load_egress_escalation(
+        base / "egress_escalation.yaml",
+    )
     return PolicyContext(
         rules_v2=rules_v2,
         bindings=bindings,
+        egress_override_categories=egress_override_categories,
+        egress_override_tiers=egress_override_tiers,
         override_policies=overrides,
         override_grants=grant_store,
         handle_store=ReferenceHandleStore(),

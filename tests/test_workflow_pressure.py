@@ -265,37 +265,71 @@ async def test_model_confidential_read_blocks_external_egress(tmp_path) -> None:
 # ============================================================ #
 
 
-async def test_v2_real_config_denies_irreversible_egress_by_default(tmp_path) -> None:
-    """Under the real v2 config (build_policy_context_from_configs over the
-    shipped configs/), an irreversible egress with no reversibility grant is
-    DENIED by default (reversibility-irreversible). This is a real,
-    non-obvious behavior the 1126 (legacy path) never exercise — pinned so a
-    change to the v2 reversibility default is caught."""
+async def _real_config_app(tmp_path, *, egress_override_tiers=frozenset()):
+    import dataclasses
+
     from capabledeputy.daemon.lifecycle import build_policy_context_from_configs
 
     pc, _ = build_policy_context_from_configs(state_db_path=tmp_path / "s.db")
+    pc = dataclasses.replace(pc, egress_override_tiers=egress_override_tiers)
     app = App(
         state_db_path=tmp_path / "s.db",
         audit_log_path=tmp_path / "a.jsonl",
         policy_context=pc,
     )
     await app.startup()
+    return app, pc
+
+
+async def test_v2_communication_egress_requires_approval_by_default(tmp_path) -> None:
+    """FR-019 (amended): on the real v2 config, irreversible COMMUNICATION
+    egress (email.send) routes to human APPROVAL by default — the agent can
+    send the user's own data with a confirmation, not a hard DENY."""
+    app, _ = await _real_config_app(tmp_path)
     s = await _session(app, caps=frozenset({Capability(kind=K.SEND_EMAIL, pattern="*")}))
     out = await _call(app, s.id, "email.send", {"to": "x@y.example", "subject": "s", "body": "b"})
+    assert out.decision.value == "require_approval"
+
+
+async def test_v2_purchase_keeps_irreversible_deny(tmp_path) -> None:
+    """Purchases/commitments are NOT relaxed — money stays at the stricter
+    DENY→override default (reversibility-irreversible), unlike email."""
+    app, _ = await _real_config_app(tmp_path)
+    s = await _session(
+        app, caps=frozenset({Capability(kind=K.QUEUE_PURCHASE, pattern="*", max_amount=999)}),
+    )
+    out = await _call(app, s.id, "purchase.queue", {"vendor": "v", "item": "i", "amount": 9})
     assert out.decision.value == "deny"
     assert out.rule == "reversibility-irreversible"
 
 
-async def test_v2_legitimate_egress_allowed_via_override_grant(tmp_path) -> None:
-    """SLICE #1 / F2 resolution. On the real v2 config an irreversible egress
-    (email.send) is DENIED by default (reversibility-irreversible, FR-019),
-    and the SANCTIONED path to allow it is a human override grant — proving
-    the production egress path works, by design, with human authorization.
-    Model (Clark-Wilson): an irreversible effect is a gated transaction that
-    requires explicit authorization; the grant is single-use (FR-038)."""
+async def test_v2_super_sensitive_egress_requires_override(tmp_path) -> None:
+    """Operator escalation (egress_escalation.yaml): when the session carries
+    super-sensitive data (here: a configured tier), communication egress
+    escalates from APPROVAL to OVERRIDE_REQUIRED — pre-authorize, don't just
+    approve in the moment."""
+    app, _ = await _real_config_app(tmp_path, egress_override_tiers=frozenset({"restricted"}))
+    s = await app.graph.new()
+    app.graph._sessions[s.id] = replace(
+        s,
+        capability_set=frozenset({Capability(kind=K.SEND_EMAIL, pattern="*")}),
+        # proprietary_work@restricted is sensitive but NOT in a conflict
+        # invariant, so the escalation (not a structural floor) is what fires.
+        label_state=LabelState(a=frozenset({CategoryTag("proprietary_work", Tier.RESTRICTED)})),
+    )
+    out = await _call(app, s.id, "email.send", {"to": "x@y.example", "subject": "s", "body": "b"})
+    assert out.decision.value == "override_required"
+    assert out.rule == "egress-requires-override"
+
+
+async def test_v2_super_sensitive_egress_resolved_by_override_grant(tmp_path) -> None:
+    """SLICE #1 / F2. For SUPER-SENSITIVE communication egress the operator
+    escalated to OVERRIDE_REQUIRED, the sanctioned path to send is a single-use
+    human override grant. Proves the production egress path works for the
+    strictest case, by design (Clark-Wilson gated transaction; FR-038
+    single-use)."""
     from datetime import UTC, datetime, timedelta
 
-    from capabledeputy.daemon.lifecycle import build_policy_context_from_configs
     from capabledeputy.policy.overrides import (
         FrictionLevel,
         GrantState,
@@ -305,20 +339,19 @@ async def test_v2_legitimate_egress_allowed_via_override_grant(tmp_path) -> None
         OverridePolicyEntry,
     )
 
-    pc, _ = build_policy_context_from_configs(state_db_path=tmp_path / "s.db")
-    app = App(
-        state_db_path=tmp_path / "s.db",
-        audit_log_path=tmp_path / "a.jsonl",
-        policy_context=pc,
+    app, pc = await _real_config_app(tmp_path, egress_override_tiers=frozenset({"restricted"}))
+    s = await app.graph.new()
+    app.graph._sessions[s.id] = replace(
+        s,
+        capability_set=frozenset({Capability(kind=K.SEND_EMAIL, pattern="*")}),
+        label_state=LabelState(a=frozenset({CategoryTag("proprietary_work", Tier.RESTRICTED)})),
     )
-    await app.startup()
-    s = await _session(app, caps=frozenset({Capability(kind=K.SEND_EMAIL, pattern="*")}))
-    to = "accountant@firm.example"
+    to = "external@partner.example"
 
-    # 1) No override → the production default DENIES the irreversible send.
-    denied = await _call(app, s.id, "email.send", {"to": to, "subject": "Q3", "body": "..."})
-    assert denied.decision.value == "deny"
-    assert denied.rule == "reversibility-irreversible"
+    # 1) No override → super-sensitive egress requires a pre-authorized override.
+    needs = await _call(app, s.id, "email.send", {"to": to, "subject": "Q3", "body": "..."})
+    assert needs.decision.value == "override_required"
+    assert needs.rule == "egress-requires-override"
 
     # 2) The operator grants a single-use override for this exact action.
     from uuid import uuid4
@@ -350,7 +383,7 @@ async def test_v2_legitimate_egress_allowed_via_override_grant(tmp_path) -> None
     assert allowed.decision.value == "allow"
     assert allowed.rule == "override-grant-active"
 
-    # 4) Single-use (FR-038): a second send falls back to the default DENY.
+    # 4) Single-use (FR-038): a second send falls back to override-required.
     again = await _call(app, s.id, "email.send", {"to": to, "subject": "Q3", "body": "..."})
-    assert again.decision.value == "deny"
-    assert again.rule == "reversibility-irreversible"
+    assert again.decision.value == "override_required"
+    assert again.rule == "egress-requires-override"

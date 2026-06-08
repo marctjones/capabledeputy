@@ -106,6 +106,12 @@ class PolicyContext:
     # Foundation for operator-authored decision refinement (Starlark
     # primitives, OPA consultation, etc.).
     decision_inspectors: tuple[Any, ...] = ()
+    # FR-019 (amended) egress escalation. Irreversible COMMUNICATION egress
+    # routes to human APPROVAL by default; data whose category/tier is in
+    # these sets escalates to OVERRIDE_REQUIRED (operator opts in
+    # super-sensitive). Empty ⇒ approval for all communication egress.
+    egress_override_categories: frozenset[str] = field(default_factory=frozenset)
+    egress_override_tiers: frozenset[str] = field(default_factory=frozenset)
     # DeclassifyingTransformers run on tool output AFTER inspectors,
     # BEFORE label propagation. Each transforms the value and emits a
     # structural-proof. The session sees the transformed value with
@@ -1102,6 +1108,8 @@ class LabeledToolClient:
             kwargs["risk_register"] = self._policy_context.risk_register
         kwargs["sandbox_actuator_wired"] = self._policy_context.sandbox_actuator_wired
         kwargs["devbox_manager_wired"] = self._policy_context.devbox_manager_wired
+        kwargs["egress_override_categories"] = self._policy_context.egress_override_categories
+        kwargs["egress_override_tiers"] = self._policy_context.egress_override_tiers
         return kwargs
 
     async def _bind_reference_handles(

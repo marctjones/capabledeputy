@@ -50,7 +50,7 @@ async def test_clinical_records_demo(tmp_path: Any) -> None:
     await app.startup()
     s = await make_session(
         app,
-        axis_a_categories=(("clinical", Tier.REGULATED),),
+        axis_a_categories=(("health", Tier.RESTRICTED),),
         capabilities=frozenset(
             {
                 Capability(
@@ -88,7 +88,7 @@ async def test_clinical_records_demo(tmp_path: Any) -> None:
     await blp_app.startup()
     s2 = await make_session(
         blp_app,
-        axis_a_categories=(("clinical", Tier.REGULATED),),
+        axis_a_categories=(("health", Tier.RESTRICTED),),
         capabilities=frozenset(
             {
                 Capability(

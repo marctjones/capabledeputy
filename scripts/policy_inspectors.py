@@ -54,6 +54,7 @@ _READ_WRITE = frozenset(
     },
 )
 _EMAIL = frozenset({Capability(kind=K.SEND_EMAIL, pattern="*")})
+_PURCHASE = frozenset({Capability(kind=K.QUEUE_PURCHASE, pattern="*", max_amount=100_000)})
 
 
 def _seed(app: object) -> None:
@@ -135,18 +136,20 @@ SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         name="bounded-relax-floor-refused",
-        why="A greedy relax script CANNOT cross the v2 reversibility DENY "
-        "on irreversible egress — the FR-026 structural-floor clamp.",
-        caps=_EMAIL,
+        why="A greedy relax script CANNOT cross a structural DENY floor — a "
+        "purchase is irreversible (reversibility-irreversible DENY); the "
+        "FR-026 clamp refuses the relax. (Email now routes to approval under "
+        "the amended FR-019, so purchase is the unambiguous floor.)",
+        caps=_PURCHASE,
         decision_inspectors=[{"source": _GREEDY_RELAX, "runtime": _RUNTIME}],
         responses=[
             tool_turn(
-                "email",
-                tc("e", "email.send", to="me@example.com", subject="s", body="b"),
+                "buy",
+                tc("p", "purchase.queue", vendor="amazon", item="tv", amount=900),
             ),
             final(),
         ],
-        expect=[Expect("email.send", "deny")],
+        expect=[Expect("purchase.queue", "deny")],
     ),
 ]
 
