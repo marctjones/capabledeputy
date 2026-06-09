@@ -473,10 +473,12 @@ async def run_daemon(
 
     fs_labeler = load_fs_label_rules(_resolve_v09_configs_dir() / "fs_label_rules.yaml")
 
+    from capabledeputy.llm.factory import make_llm_client
+
     app = App(
         state_db_path=state_db_path,
         audit_log_path=audit_log_path,
-        llm_client=LiteLLMClient(model=chosen_model),
+        llm_client=make_llm_client(chosen_model),
         quarantined_llm=quarantined_client,
         skills_dir=skills_dir,
         enable_policy_preview=enable_policy_preview,
