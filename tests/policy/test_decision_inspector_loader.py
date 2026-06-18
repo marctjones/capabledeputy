@@ -30,6 +30,11 @@ from capabledeputy.substrate.decision_inspectors_builtin import (
 from capabledeputy.tools.policy_hooks import ToolPolicyHooks
 
 
+@pytest.fixture(autouse=True)
+def _allow_python_reference_for_loader_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CAPDEP_ALLOW_UNSANDBOXED_POLICY_SCRIPTS", "1")
+
+
 def test_empty_config_yields_no_inspectors() -> None:
     assert load_decision_inspectors(None) == ()
     assert load_decision_inspectors({}) == ()
@@ -85,6 +90,17 @@ def test_bad_script_fails_closed_at_load() -> None:
         ],
     }
     with pytest.raises(DecisionInspectorConfigError):
+        load_decision_inspectors(cfg)
+
+
+def test_python_reference_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CAPDEP_ALLOW_UNSANDBOXED_POLICY_SCRIPTS", raising=False)
+    cfg = {
+        "decision_inspectors": [
+            {"source": _RELAX_SCRIPT, "runtime": "python-reference", "name": "unsafe"},
+        ],
+    }
+    with pytest.raises(DecisionInspectorConfigError, match="disabled by default"):
         load_decision_inspectors(cfg)
 
 
@@ -409,6 +425,79 @@ async def test_chokepoint_survives_buggy_script(tmp_path) -> None:
     )
     # Unchanged — the buggy inspector abstained (its error was audited).
     assert adjusted.decision == Decision.REQUIRE_APPROVAL
+
+
+async def test_inspector_failure_mode_can_require_approval(tmp_path) -> None:
+    """Required tighteners can fail closed instead of abstaining."""
+    from capabledeputy.audit.writer import AuditWriter
+    from capabledeputy.policy.engine import PolicyDecision
+    from capabledeputy.session.graph import SessionGraph
+
+    boom = "def inspect(action, session, proposed_outcome):\n    return undefined_name\n"
+    audit = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(audit=audit)
+    (insp,) = load_decision_inspectors(
+        {
+            "decision_inspectors": [
+                {
+                    "source": boom,
+                    "runtime": "python-reference",
+                    "name": "required-tightener",
+                    "failure_mode": "require_approval",
+                },
+            ],
+        },
+    )
+    hooks = ToolPolicyHooks(
+        policy_context=PolicyContext(decision_inspectors=(insp,)),
+        audit=audit,
+        graph=graph,
+    )
+    adjusted = await hooks.apply_decision_inspectors(
+        None,
+        object(),
+        Action(kind=CapabilityKind.SEND_EMAIL, target="x@y.com"),
+        "email.send",
+        PolicyDecision(decision=Decision.ALLOW, rule="base"),
+    )
+    assert adjusted.decision == Decision.REQUIRE_APPROVAL
+    assert adjusted.rule == "required-tightener:inspector-error"
+
+
+async def test_inspector_failure_mode_can_deny(tmp_path) -> None:
+    from capabledeputy.audit.writer import AuditWriter
+    from capabledeputy.policy.engine import PolicyDecision
+    from capabledeputy.session.graph import SessionGraph
+
+    boom = "def inspect(action, session, proposed_outcome):\n    return undefined_name\n"
+    audit = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(audit=audit)
+    (insp,) = load_decision_inspectors(
+        {
+            "decision_inspectors": [
+                {
+                    "source": boom,
+                    "runtime": "python-reference",
+                    "name": "deny-tightener",
+                    "failure_mode": "deny",
+                },
+            ],
+        },
+    )
+    hooks = ToolPolicyHooks(
+        policy_context=PolicyContext(decision_inspectors=(insp,)),
+        audit=audit,
+        graph=graph,
+    )
+    adjusted = await hooks.apply_decision_inspectors(
+        None,
+        object(),
+        Action(kind=CapabilityKind.SEND_EMAIL, target="x@y.com"),
+        "email.send",
+        PolicyDecision(decision=Decision.ALLOW, rule="base"),
+    )
+    assert adjusted.decision == Decision.DENY
+    assert adjusted.rule == "deny-tightener:inspector-error"
 
 
 def _starlark_available() -> bool:

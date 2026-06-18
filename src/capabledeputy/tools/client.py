@@ -24,7 +24,7 @@ from capabledeputy.policy.assurance import (
     should_emit_residual_risk,
 )
 from capabledeputy.policy.engine import PolicyDecision, decide
-from capabledeputy.policy.labels import LabelState
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel
 from capabledeputy.policy.overrides import (
     TrustProfile,
 )
@@ -37,6 +37,18 @@ from capabledeputy.tools.source_flow import ToolSourceFlow
 
 if TYPE_CHECKING:
     from capabledeputy.policy.context import PolicyContext
+
+
+_PROVENANCE_INTEGRITY_RANK: dict[ProvenanceLevel, int] = {
+    ProvenanceLevel.PRINCIPAL_DIRECT: 0,
+    ProvenanceLevel.SYSTEM_INTERNAL: 1,
+    ProvenanceLevel.EXTERNAL_UNTRUSTED: 2,
+}
+_INTEGRITY_FLOOR_RANK: dict[str, int] = {
+    ProvenanceLevel.EXTERNAL_UNTRUSTED.value: 0,
+    ProvenanceLevel.SYSTEM_INTERNAL.value: 1,
+    ProvenanceLevel.PRINCIPAL_DIRECT.value: 2,
+}
 
 
 def _replace_tool_result(
@@ -653,6 +665,9 @@ class LabeledToolClient:
                 derived_floor = getattr(profile, "integrity_floor_level", None)
         clearance = derived_clearance or self._policy_context.clearance_max_tier
         floor = derived_floor or self._policy_context.integrity_floor_level
+        operation_floor = self._operation_integrity_floor(tool)
+        if operation_floor is not None:
+            floor = self._stricter_integrity_floor(floor, operation_floor.value)
         if clearance is not None:
             kwargs["clearance_max_tier"] = clearance
         if floor is not None:
@@ -670,6 +685,19 @@ class LabeledToolClient:
         if op is not None:
             kwargs["trust_profile_is_personal"] = op.trust_profile is TrustProfile.PERSONAL
         return kwargs
+
+    def _operation_integrity_floor(self, tool: ToolDefinition) -> ProvenanceLevel | None:
+        floors = [op.required_floor for op in tool.operations if op.required_floor is not None]
+        if not floors:
+            return None
+
+        return min(floors, key=lambda level: _PROVENANCE_INTEGRITY_RANK[level])
+
+    def _stricter_integrity_floor(self, existing: str | None, candidate: str) -> str:
+        if existing is None:
+            return candidate
+
+        return max((existing, candidate), key=lambda level: _INTEGRITY_FLOOR_RANK.get(level, 999))
 
     async def _register_approval(
         self,

@@ -37,6 +37,7 @@ clamps a relax to the envelope — not here; this module only loads.
 
 from __future__ import annotations
 
+import os
 from inspect import isawaitable
 from pathlib import Path
 from typing import Any
@@ -67,6 +68,24 @@ class DecisionInspectorScriptError(RuntimeError):
     EVALUATION time. Raised from the adapter so the chokepoint's
     per-inspector try/except audits it and treats it as abstain — one
     buggy script never crashes a decision."""
+
+
+_FAILURE_MODES = frozenset({"abstain", "require_approval", "deny"})
+
+
+def _failure_mode(entry: dict[str, Any]) -> str:
+    mode = str(entry.get("failure_mode", "abstain")).strip().lower()
+    if mode not in _FAILURE_MODES:
+        raise DecisionInspectorConfigError(
+            "decision inspector failure_mode must be one of "
+            f"{sorted(_FAILURE_MODES)}, got {mode!r}",
+        )
+    return mode
+
+
+def _unsafe_python_reference_allowed() -> bool:
+    raw = os.environ.get("CAPDEP_ALLOW_UNSANDBOXED_POLICY_SCRIPTS", "")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 # --- hermetic input projection ---------------------------------------
@@ -166,6 +185,28 @@ def _outcome_to_adjustment(
     return DecisionTighten(to=to, rule=outcome.rule, rationale=outcome.rationale)
 
 
+class ConfiguredDecisionInspector:
+    """Wrap a builtin inspector with loader metadata such as failure mode."""
+
+    def __init__(self, inspector: Any, *, failure_mode: str = "abstain") -> None:
+        self._inspector = inspector
+        self.failure_mode = failure_mode
+        self.name = getattr(inspector, "name", type(inspector).__name__)
+
+    def inspect(
+        self,
+        *,
+        action: Any,
+        session: Any,
+        proposed_outcome: Any,
+    ) -> Any:
+        return self._inspector.inspect(
+            action=action,
+            session=session,
+            proposed_outcome=proposed_outcome,
+        )
+
+
 class ScriptDecisionInspector:
     """Adapts a compiled `PolicyScript` to the `DecisionInspector`
     protocol. `inspect` is async (it awaits the host's `evaluate`, which
@@ -173,10 +214,18 @@ class ScriptDecisionInspector:
     inspectors. Builtins stay synchronous — both are supported.
     """
 
-    def __init__(self, name: str, host: Any, script: Any) -> None:
+    def __init__(
+        self,
+        name: str,
+        host: Any,
+        script: Any,
+        *,
+        failure_mode: str = "abstain",
+    ) -> None:
         self.name = name
         self._host = host
         self._script = script
+        self.failure_mode = failure_mode
 
     async def inspect(
         self,
@@ -219,6 +268,12 @@ def _load_script(
     base_dir: Path | None,
 ) -> ScriptDecisionInspector:
     runtime = str(entry.get("runtime", "starlark"))
+    if runtime == "python-reference" and not _unsafe_python_reference_allowed():
+        raise DecisionInspectorConfigError(
+            f"decision_inspectors[{index}]: runtime 'python-reference' is not a security "
+            "boundary and is disabled by default; set "
+            "CAPDEP_ALLOW_UNSANDBOXED_POLICY_SCRIPTS=1 only for tests or local prototyping",
+        )
     if "source" in entry:
         source = str(entry["source"])
         name = str(entry.get("name", f"inline-{index}"))
@@ -239,7 +294,7 @@ def _load_script(
         raise DecisionInspectorConfigError(
             f"decision_inspectors[{index}]: script {name!r} ({runtime}) failed to compile: {e}",
         ) from e
-    return ScriptDecisionInspector(name, host, script)
+    return ScriptDecisionInspector(name, host, script, failure_mode=_failure_mode(entry))
 
 
 def load_decision_inspectors(
@@ -268,7 +323,13 @@ def load_decision_inspectors(
                 f"decision_inspectors[{i}] must be a mapping",
             )
         if "builtin" in entry:
-            inspectors.append(_load_builtin(i, entry))
+            inspector = _load_builtin(i, entry)
+            mode = _failure_mode(entry)
+            inspectors.append(
+                inspector
+                if mode == "abstain"
+                else ConfiguredDecisionInspector(inspector, failure_mode=mode),
+            )
         elif "script" in entry or "source" in entry:
             inspectors.append(_load_script(i, entry, base_dir))
         else:

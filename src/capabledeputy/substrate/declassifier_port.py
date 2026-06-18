@@ -43,7 +43,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from capabledeputy.policy.labels import LabelState
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel
+from capabledeputy.policy.tiers import Tier
+from capabledeputy.policy.tiers import compare as compare_tier
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,67 @@ class DeclassifyingTransformer(Protocol):
         ...
 
 
+class DeclassifierValidationError(RuntimeError):
+    """A declassifier result is missing auditable proof or attempts an
+    invalid label lowering. The caller must treat the transform as failed."""
+
+
+_PROVENANCE_RANK: dict[ProvenanceLevel, int] = {
+    ProvenanceLevel.PRINCIPAL_DIRECT: 0,
+    ProvenanceLevel.SYSTEM_INTERNAL: 1,
+    ProvenanceLevel.EXTERNAL_UNTRUSTED: 2,
+}
+
+
+def validate_declassify_result(result: DeclassifyResult, current_state: LabelState) -> None:
+    """Validate a declassifier's proof and requested label lowering."""
+    if not result.structural_proof_kind.strip():
+        raise DeclassifierValidationError("declassifier result missing structural_proof_kind")
+    if not result.audit_diff.strip():
+        raise DeclassifierValidationError("declassifier result missing audit_diff")
+
+    current_by_category = {tag.category: tag for tag in current_state.a}
+    for entry in result.lower_axis_a_categories:
+        category = str(entry.get("category", ""))
+        if not category:
+            raise DeclassifierValidationError("declassifier category lowering missing category")
+        current = current_by_category.get(category)
+        if current is None:
+            raise DeclassifierValidationError(
+                f"declassifier attempted to lower absent category {category!r}",
+            )
+        try:
+            to_tier = Tier(str(entry.get("to_tier", "")))
+        except ValueError as exc:
+            raise DeclassifierValidationError(
+                f"declassifier returned unknown target tier {entry.get('to_tier')!r}",
+            ) from exc
+        if compare_tier(to_tier, current.tier) >= 0:
+            raise DeclassifierValidationError(
+                f"declassifier target tier {to_tier.value!r} does not lower "
+                f"current tier {current.tier.value!r} for {category!r}",
+            )
+
+    if result.lower_axis_b_level is not None:
+        try:
+            target = ProvenanceLevel(result.lower_axis_b_level)
+        except ValueError as exc:
+            raise DeclassifierValidationError(
+                f"declassifier returned unknown provenance level {result.lower_axis_b_level!r}",
+            ) from exc
+        if not current_state.b:
+            raise DeclassifierValidationError(
+                "declassifier attempted provenance lowering with no provenance labels",
+            )
+        lowers_existing_label = any(
+            _PROVENANCE_RANK[target] < _PROVENANCE_RANK[tag.level] for tag in current_state.b
+        )
+        if not lowers_existing_label:
+            raise DeclassifierValidationError(
+                f"declassifier target provenance {target.value!r} does not lower current labels",
+            )
+
+
 def apply_declassifier_chain(
     declassifiers: tuple[DeclassifyingTransformer, ...],
     value: Any,
@@ -132,6 +195,7 @@ def apply_declassifier_chain(
         )
         if result is None:
             continue
+        validate_declassify_result(result, current_state)
         applied.append(result)
         current_value = result.transformed_value
         # Note: actual label lowering is applied by host code (the

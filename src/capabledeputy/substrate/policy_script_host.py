@@ -41,8 +41,10 @@ operator need at lower complexity; see ROADMAP).
 
 from __future__ import annotations
 
+import multiprocessing
+import queue
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,7 @@ class PolicyScript:
     runtime_kind: str
     compiled_marker: Any = None
     step_limit: int = 100_000
+    timeout_seconds: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -338,6 +341,79 @@ def _import_starlark() -> Any:
     return starlark
 
 
+def _starlark_compile_worker(output: Any, name: str, source: str) -> None:
+    """Compile and bind one Starlark policy script in a killable child process."""
+    try:
+        starlark = _import_starlark()
+        ast = starlark.parse(f"<policy:{name}>", _STARLARK_PRELUDE + "\n" + source)
+        module = starlark.Module()
+        starlark.eval(module, ast, starlark.Globals.standard())
+        module.freeze()
+        output.put(("ok", None))
+    except Exception as exc:
+        output.put(("error", str(exc)))
+
+
+def _starlark_eval_worker(
+    output: Any,
+    name: str,
+    source: str,
+    action: dict[str, Any],
+    session: dict[str, Any],
+    proposed_outcome: dict[str, Any],
+) -> None:
+    """Evaluate one Starlark policy script in a killable child process."""
+    try:
+        starlark = _import_starlark()
+        ast = starlark.parse(f"<policy:{name}>", _STARLARK_PRELUDE + "\n" + source)
+        module = starlark.Module()
+        starlark.eval(module, ast, starlark.Globals.standard())
+        frozen = module.freeze()
+        result = frozen.call("inspect", action, session, proposed_outcome)
+        if result is None:
+            output.put(("ok", None))
+            return
+        if not isinstance(result, dict):
+            output.put(("non-dict", type(result).__name__))
+            return
+        output.put(("ok", {str(k): result[k] for k in result}))
+    except Exception as exc:
+        output.put(("error", str(exc)))
+
+
+def _run_policy_subprocess(
+    target: Any,
+    args: tuple[Any, ...],
+    *,
+    name: str,
+    timeout_seconds: float,
+) -> tuple[str, Any]:
+    start_methods = multiprocessing.get_all_start_methods()
+    start_method = next(
+        method for method in ("forkserver", "spawn", "fork") if method in start_methods
+    )
+    ctx = cast(Any, multiprocessing.get_context(start_method))
+    output = ctx.Queue(maxsize=1)
+    proc = ctx.Process(target=target, args=(output, *args))
+    proc.start()
+    proc.join(timeout_seconds)
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(0.2)
+        if proc.is_alive():
+            proc.kill()
+            proc.join()
+        return (
+            "error",
+            f"policy script {name!r} exceeded timeout ({timeout_seconds:.3f}s)",
+        )
+    try:
+        status, payload = output.get_nowait()
+    except queue.Empty:
+        return ("error", f"policy script {name!r} produced no result")
+    return str(status), payload
+
+
 class StarlarkScriptHost:
     """Real sandboxed policy host backed by starlark-rust (via
     starlark-pyo3). Language-level isolation: a script cannot import,
@@ -349,42 +425,37 @@ class StarlarkScriptHost:
       - No I/O, no `import`, no host objects — enforced by the Starlark
         language itself, not by best-effort filtering.
       - Deterministic; no clock / randomness inside the script.
-      - Residual risk: starlark-pyo3 2026.1 does not expose a hard
-        step/CPU budget, so a pathological loop (e.g. over a huge
-        `range`) can burn CPU. Mitigations: operator authors + reviews
-        the script (it lives in the daemon-owned policies/ dir), Starlark
-        forbids recursion + `while`, and evaluation runs off the event
-        loop in a worker thread. A hard step limit lands if/when the
-        binding exposes one.
+      - Residual risk: starlark-pyo3 2026.1 does not expose an in-VM
+        step budget, so compile/evaluation run in a killable child
+        process with a wall-clock timeout.
     """
 
     runtime_kind: str = "starlark"
+
+    def __init__(self, *, timeout_seconds: float = 1.0) -> None:
+        self._timeout_seconds = timeout_seconds
 
     def compile(self, name: str, source: str) -> PolicyScript:
         if "def inspect(" not in source:
             raise ValueError(
                 f"policy script {name!r} must define `def inspect(...)`",
             )
-        starlark = _import_starlark()
-        full_source = _STARLARK_PRELUDE + "\n" + source
-        try:
-            ast = starlark.parse(f"<policy:{name}>", full_source)
-            module = starlark.Module()
-            # Evaluating the module top-to-bottom binds the prelude
-            # helpers + the script's `inspect`; freezing yields an
-            # immutable, repeatedly-callable module (deterministic, no
-            # per-call state).
-            starlark.eval(module, ast, starlark.Globals.standard())
-            frozen = module.freeze()
-        except Exception as e:  # starlark.StarlarkError + parse/eval errors
+        _import_starlark()
+        status, payload = _run_policy_subprocess(
+            _starlark_compile_worker,
+            (name, source),
+            name=name,
+            timeout_seconds=self._timeout_seconds,
+        )
+        if status != "ok":
             raise ValueError(
-                f"policy script {name!r} failed to compile (Starlark): {e}",
-            ) from e
+                f"policy script {name!r} failed to compile (Starlark): {payload}",
+            )
         return PolicyScript(
             name=name,
             source=source,
             runtime_kind=self.runtime_kind,
-            compiled_marker=frozen,
+            timeout_seconds=self._timeout_seconds,
         )
 
     async def evaluate(
@@ -397,17 +468,24 @@ class StarlarkScriptHost:
     ) -> ScriptOutcome:
         from anyio.to_thread import run_sync
 
-        frozen = script.compiled_marker
-        try:
-            # Run off the event loop — the call into Rust is synchronous.
-            # (import run_sync directly: pyright mis-resolves the
-            # `anyio.to_thread` attribute chain on some stub versions.)
-            result = await run_sync(
-                lambda: frozen.call("inspect", action, session, proposed_outcome),
+        def _evaluate_in_subprocess() -> tuple[str, Any]:
+            return _run_policy_subprocess(
+                _starlark_eval_worker,
+                (script.name, script.source, action, session, proposed_outcome),
+                name=script.name,
+                timeout_seconds=script.timeout_seconds,
             )
-        except Exception as e:
-            return ScriptOutcome(kind="error", error=str(e))
 
+        status, payload = await run_sync(_evaluate_in_subprocess)
+        if status == "error":
+            return ScriptOutcome(kind="error", error=str(payload))
+        if status == "non-dict":
+            return ScriptOutcome(
+                kind="error",
+                error=f"script {script.name!r} returned non-dict: {payload}",
+            )
+
+        result = payload
         if result is None:
             return ScriptOutcome(kind="abstain")
         if not isinstance(result, dict):

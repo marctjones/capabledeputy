@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from typing import cast
 
-from capabledeputy.policy.labels import LabelState
+import pytest
+
+from capabledeputy.policy.labels import CategoryTag, LabelState, ProvenanceLevel, ProvenanceTag
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.substrate.declassifier_port import (
+    DeclassifierValidationError,
     DeclassifyingTransformer,
+    DeclassifyResult,
     apply_declassifier_chain,
 )
 from capabledeputy.substrate.declassifiers_builtin import (
@@ -71,7 +76,9 @@ def test_redactor_lowers_pii_to_none() -> None:
     redactor = RegexRedactor(lower_to_tier="none")
     result = redactor.declassify(
         value="SSN: 123-45-6789",
-        current_label_state=LabelState(),
+        current_label_state=LabelState(
+            a=frozenset({CategoryTag("pii", Tier.RESTRICTED)}),
+        ),
     )
     assert result is not None
     lowered = result.lower_axis_a_categories
@@ -123,13 +130,15 @@ def test_projector_keeps_allowed_drops_rest() -> None:
 
 
 def test_projector_lowers_provenance_level_to_trusted() -> None:
-    proj = SchemaProjector(allowed_keys=("ok",), lower_axis_b_level="trusted")
+    proj = SchemaProjector(allowed_keys=("ok",), lower_axis_b_level="principal-direct")
     result = proj.declassify(
         value={"ok": "yes", "noise": "bad"},
-        current_label_state=LabelState(),
+        current_label_state=LabelState(
+            b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+        ),
     )
     assert result is not None
-    assert result.lower_axis_b_level == "trusted"
+    assert result.lower_axis_b_level == "principal-direct"
 
 
 def test_projector_skips_when_no_keys_match() -> None:
@@ -172,7 +181,9 @@ def test_chain_redactor_then_projector() -> None:
             (proj, redactor),
         ),
         value=input_value,
-        current_label_state=LabelState(),
+        current_label_state=LabelState(
+            b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+        ),
     )
     # Projector ran, projected the dict; redactor sees dict input
     # and skips (not a string).
@@ -223,9 +234,55 @@ def test_chain_sequential_application() -> None:
     final, applied = apply_declassifier_chain(
         cast(tuple[DeclassifyingTransformer, ...], (r1, r2)),
         value=text,
-        current_label_state=LabelState(),
+        current_label_state=LabelState(
+            a=frozenset({CategoryTag("pii", Tier.RESTRICTED)}),
+        ),
     )
     assert isinstance(final, str)
     assert "123-45-6789" not in final
     assert "contact@example.com" not in final
     assert len(applied) == 2
+
+
+class _BadProofDeclassifier:
+    name = "bad"
+
+    def declassify(self, **_kwargs):
+        return DeclassifyResult(
+            transformed_value="x",
+            lower_axis_a_categories=({"category": "pii", "to_tier": "none"},),
+        )
+
+
+def test_chain_rejects_declassifier_without_structural_proof() -> None:
+    with pytest.raises(DeclassifierValidationError, match="structural_proof_kind"):
+        apply_declassifier_chain(
+            cast(tuple[DeclassifyingTransformer, ...], (_BadProofDeclassifier(),)),
+            value="x",
+            current_label_state=LabelState(
+                a=frozenset({CategoryTag("pii", Tier.RESTRICTED)}),
+            ),
+        )
+
+
+class _AbsentCategoryLowerer:
+    name = "bad"
+
+    def declassify(self, **_kwargs):
+        return DeclassifyResult(
+            transformed_value="x",
+            lower_axis_a_categories=({"category": "health", "to_tier": "none"},),
+            audit_diff="bad lower",
+            structural_proof_kind="bad-proof",
+        )
+
+
+def test_chain_rejects_lowering_absent_category() -> None:
+    with pytest.raises(DeclassifierValidationError, match="absent category"):
+        apply_declassifier_chain(
+            cast(tuple[DeclassifyingTransformer, ...], (_AbsentCategoryLowerer(),)),
+            value="x",
+            current_label_state=LabelState(
+                a=frozenset({CategoryTag("pii", Tier.RESTRICTED)}),
+            ),
+        )

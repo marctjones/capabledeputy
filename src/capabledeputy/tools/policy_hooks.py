@@ -11,7 +11,12 @@ from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.engine import PolicyDecision
-from capabledeputy.policy.labels import LabelState, ProvenanceLevel, inherit
+from capabledeputy.policy.labels import (
+    LabelState,
+    ProvenanceLevel,
+    inherit,
+    most_restrictive_inherit,
+)
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import EnforcementMode
@@ -105,6 +110,7 @@ class ToolPolicyHooks:
                 if isawaitable(outcome):
                     outcome = await outcome
             except Exception as exc:
+                name = getattr(inspector, "name", "<unknown>")
                 await self._audit.write(
                     Event(
                         event_type=EventType.POLICY_DECIDED,
@@ -112,10 +118,25 @@ class ToolPolicyHooks:
                         payload={
                             "tool": tool_name,
                             "decision_inspector_error": str(exc),
-                            "inspector": getattr(inspector, "name", "<unknown>"),
+                            "inspector": name,
                         },
                     ),
                 )
+                failure_mode = getattr(inspector, "failure_mode", "abstain")
+                if failure_mode == "deny":
+                    return dc_replace(
+                        proposed,
+                        decision=Decision.DENY,
+                        rule=f"{name}:inspector-error",
+                        reason=f"decision inspector {name} failed closed: {exc}",
+                    )
+                if failure_mode == "require_approval" and proposed.decision == Decision.ALLOW:
+                    return dc_replace(
+                        proposed,
+                        decision=Decision.REQUIRE_APPROVAL,
+                        rule=f"{name}:inspector-error",
+                        reason=f"decision inspector {name} failed closed: {exc}",
+                    )
                 continue
             if outcome is not None:
                 outcomes.append((getattr(inspector, "name", "<unknown>"), outcome))
@@ -181,11 +202,16 @@ class ToolPolicyHooks:
         if self._policy_context is None or not self._policy_context.declassifiers:
             return value, LabelState()
 
+        effective_labels = most_restrictive_inherit(
+            session.label_state,
+            inherent_tags,
+            additional_tags,
+        )
         try:
             final_value, applied = apply_declassifier_chain(
                 tuple(self._policy_context.declassifiers),
                 value=value,
-                current_label_state=session.label_state,
+                current_label_state=effective_labels,
                 context={"tool": tool_name},
             )
         except Exception as exc:

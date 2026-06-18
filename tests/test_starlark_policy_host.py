@@ -12,6 +12,8 @@ Skipped when the optional `capabledeputy[starlark]` extra isn't installed.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 pytest.importorskip("starlark", reason="requires the capabledeputy[starlark] extra")
@@ -118,6 +120,19 @@ async def test_unknown_kind_is_error() -> None:
     out = await host.evaluate(script, action={}, session={}, proposed_outcome={})
     assert out.kind == "error"
     assert "unknown kind" in out.error
+
+
+async def test_evaluation_timeout_kills_child_process() -> None:
+    host = StarlarkScriptHost()
+    script = host.compile(
+        "slow",
+        "def inspect(action, session, proposed_outcome):\n"
+        '    return relax(to="allow", rule="slow", rationale="too slow")\n',
+    )
+    script = replace(script, timeout_seconds=0.001)
+    out = await host.evaluate(script, action={}, session={}, proposed_outcome={})
+    assert out.kind == "error"
+    assert "exceeded timeout" in out.error
 
 
 def test_factory_selects_host_and_fails_closed_on_unknown() -> None:

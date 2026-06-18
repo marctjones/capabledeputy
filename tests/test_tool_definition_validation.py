@@ -114,3 +114,8 @@ def test_operation_required_floor_is_carried() -> None:
     tool = _tool(operations=(op,), surfaces_destination_id=True)
     validate_tool_definition(tool)
     assert tool.operations[0].required_floor is ProvenanceLevel.SYSTEM_INTERNAL
+
+
+def test_restricted_source_floor_requires_source_lookup() -> None:
+    with pytest.raises(ToolValidationError, match="source_label_lookup"):
+        validate_tool_definition(_tool(forbid_restricted_source=True))

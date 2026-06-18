@@ -6,6 +6,7 @@ import pytest
 from capabledeputy.audit.events import EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import (
     CategoryTag,
@@ -209,6 +210,44 @@ async def test_inherent_labels_propagate_to_session(writer: AuditWriter) -> None
     assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {t.level for t in outcome.tags_added.b}
     after = graph.get(s.id)
     assert ProvenanceLevel.EXTERNAL_UNTRUSTED in {t.level for t in after.label_state.b}
+
+
+async def test_operation_required_floor_participates_in_decision(writer: AuditWriter) -> None:
+    registry = ToolRegistry()
+    graph = SessionGraph(audit=writer)
+    client = LabeledToolClient(
+        registry,
+        graph,
+        writer,
+        policy_context=PolicyContext(),
+    )
+    registry.register(
+        ToolDefinition(
+            name="trusted.summarize",
+            description="t",
+            capability_kind=CapabilityKind.READ_FS,
+            handler=_ok_handler,
+            operations=(
+                Operation(
+                    EffectClass.FETCH,
+                    required_floor=ProvenanceLevel.PRINCIPAL_DIRECT,
+                ),
+            ),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
+            target_arg="path",
+        ),
+    )
+    s = await graph.new()
+    await graph.grant_capability(s.id, Capability(kind=CapabilityKind.READ_FS, pattern="*"))
+    await graph.add_tags(
+        s.id,
+        LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})),
+    )
+
+    outcome = await client.call_tool(s.id, "trusted.summarize", {"path": "/tmp/x"})
+
+    assert outcome.decision == Decision.DENY
+    assert outcome.rule == "integrity-floor-refused"
 
 
 async def test_handler_additional_labels_propagate(writer: AuditWriter) -> None:

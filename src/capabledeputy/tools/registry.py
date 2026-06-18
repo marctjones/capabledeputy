@@ -214,7 +214,15 @@ def validate_tool_definition(
         if unknown:
             raise ToolValidationError(f"{tool.name}: cites unknown risk_ids {sorted(unknown)}")
 
-    # Rule 6 (wrapper union) needs sub-tool composition info not present on a
+    # Rule 6 — restricted-source floors are meaningful only when the
+    # tool exposes the source labels before dispatch. A Pattern 2
+    # declassifier without source labels is a fail-open registration.
+    if tool.forbid_restricted_source and tool.source_label_lookup is None:
+        raise ToolValidationError(
+            f"{tool.name}: forbid_restricted_source=True requires source_label_lookup",
+        )
+
+    # Rule 7 (wrapper union) needs sub-tool composition info not present on a
     # bare ToolDefinition; enforced at the wrapper construction site (R3b).
 
 

@@ -72,9 +72,12 @@ class RegexRedactor:
             return None
         diff_parts = [f"{n} {label}" for label, n in counts.items()]
         diff = " + ".join(diff_parts) + " redacted"
+        lower_axis_a: tuple[dict[str, str], ...] = ()
+        if any(tag.category == "pii" for tag in getattr(current_label_state, "a", ())):
+            lower_axis_a = ({"category": "pii", "to_tier": self.lower_to_tier},)
         return DeclassifyResult(
             transformed_value=text,
-            lower_axis_a_categories=({"category": "pii", "to_tier": self.lower_to_tier},),
+            lower_axis_a_categories=lower_axis_a,
             audit_diff=diff,
             structural_proof_kind="regex-redacted",
         )
@@ -121,11 +124,14 @@ class SchemaProjector:
             # Schema didn't match any field — pass through unchanged
             # rather than emit an empty dict
             return None
+        lower_axis_b_level: str | None = None
+        if any(tag.level.value != self.lower_axis_b_level for tag in current_label_state.b):
+            lower_axis_b_level = self.lower_axis_b_level
         n_kept = len(projected)
         n_dropped = len(value) - n_kept
         return DeclassifyResult(
             transformed_value=projected,
-            lower_axis_b_level=self.lower_axis_b_level,
+            lower_axis_b_level=lower_axis_b_level,
             audit_diff=(f"projected to schema ({n_kept} kept, {n_dropped} dropped)"),
             structural_proof_kind="schema-projected",
         )
