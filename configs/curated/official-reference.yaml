@@ -39,7 +39,7 @@ upstream_servers:
       create_directory: { capability_kind: CREATE_FS }
       delete_file:      { capability_kind: DELETE_FS }
     isolation:
-      image: docker.io/library/python:3.12-slim
+      image: docker.io/library/python:3.14-slim
       network: none
       volumes:
         - host: /home/me/Documents
@@ -58,7 +58,7 @@ upstream_servers:
     tool_overrides:
       fetch: { capability_kind: WEB_FETCH }
     isolation:
-      image: docker.io/library/python:3.12-slim
+      image: docker.io/library/python:3.14-slim
       network: bridge
       allowed_hosts:
         - "REPLACE.with.api.host:127.0.0.1"
@@ -79,7 +79,7 @@ upstream_servers:
       git_checkout: { capability_kind: MODIFY_FS }
       git_create_branch: { capability_kind: CREATE_FS }
     isolation:
-      image: docker.io/library/python:3.12-slim
+      image: docker.io/library/python:3.14-slim
       network: none
       volumes:
         - host: /home/me/projects/scratch
@@ -92,7 +92,7 @@ upstream_servers:
     command: ["uvx", "mcp-server-time"]
     strict: true
     isolation:
-      image: docker.io/library/python:3.12-slim
+      image: docker.io/library/python:3.14-slim
       network: none
       memory: "64m"
 
@@ -109,6 +109,6 @@ upstream_servers:
       delete_observations: { capability_kind: DELETE_FS }
       open_nodes:          { capability_kind: READ_FS }
     isolation:
-      image: docker.io/library/python:3.12-slim
+      image: docker.io/library/python:3.14-slim
       network: none
       memory: "128m"

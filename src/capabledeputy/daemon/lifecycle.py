@@ -28,7 +28,7 @@ from capabledeputy.daemon.session_handlers import make_session_handlers
 from capabledeputy.daemon.tool_handlers import make_tool_handlers
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
-from capabledeputy.llm.litellm_client import LiteLLMClient
+from capabledeputy.llm.factory import default_llm_model_spec, make_llm_client
 from capabledeputy.policy.capabilities import DEFAULT_MAX_DELEGATION_DEPTH
 from capabledeputy.policy.overrides import OverridePolicies
 from capabledeputy.secrets import load_anthropic_api_key
@@ -253,7 +253,7 @@ def build_policy_context_from_configs(
     from capabledeputy.policy.purposes import load as load_purposes
     from capabledeputy.policy.relationships import load as load_relationship_groups
     from capabledeputy.policy.resolution import load_profiles
-    from capabledeputy.tools.client import PolicyContext
+    from capabledeputy.policy.context import PolicyContext
 
     base = _resolve_v09_configs_dir(configs_dir)
 
@@ -425,28 +425,6 @@ async def run_daemon(
                 file=_sys_di.stderr,
             )
 
-    # Populate ANTHROPIC_API_KEY from CLAUDEAPI.KEY in the cwd if it isn't
-    # already set, so users don't need to re-export the env var each shell.
-    import sys as _sys_for_key
-
-    pre_existing = bool(os.environ.get("ANTHROPIC_API_KEY"))
-    loaded = load_anthropic_api_key()
-    if pre_existing:
-        print("[llm] ANTHROPIC_API_KEY found in environment", file=_sys_for_key.stderr)
-    elif loaded:
-        print(
-            "[llm] ANTHROPIC_API_KEY loaded from ./CLAUDEAPI.KEY",
-            file=_sys_for_key.stderr,
-        )
-    else:
-        print(
-            "[llm] WARNING: no ANTHROPIC_API_KEY in env and no CLAUDEAPI.KEY "
-            "file in cwd — LLM calls will fail until you set one. "
-            "Either `export ANTHROPIC_API_KEY=...` or drop the key in "
-            "./CLAUDEAPI.KEY (will be auto-loaded next start).",
-            file=_sys_for_key.stderr,
-        )
-
     # Precedence: explicit arg (CLI flag) > CAPDEP_POLICY_PREVIEW env >
     # default on. The env var is off only for explicit falsey values.
     if policy_preview is None:
@@ -457,11 +435,41 @@ async def run_daemon(
     else:
         enable_policy_preview = policy_preview
 
-    chosen_model = model or os.environ.get("CAPDEP_LLM_MODEL", "claude-haiku-4-5")
+    chosen_model = model or os.environ.get("CAPDEP_LLM_MODEL")
+    warning_model = chosen_model or default_llm_model_spec()
+    backend = os.environ.get("CAPDEP_LLM_BACKEND", "").strip().lower()
     quarantined_model = os.environ.get("CAPDEP_QUARANTINED_LLM_MODEL")
+    # Populate ANTHROPIC_API_KEY from CLAUDEAPI.KEY in the cwd if an
+    # Anthropic-backed model is selected. MLX defaults on macOS should
+    # not emit an irrelevant missing-key warning.
+    if (
+        backend in {"litellm", "api", "anthropic"}
+        or (not backend and "claude" in warning_model)
+        or (quarantined_model and "claude" in quarantined_model)
+    ):
+        import sys as _sys_for_key
+
+        pre_existing = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        loaded = load_anthropic_api_key()
+        if pre_existing:
+            print("[llm] ANTHROPIC_API_KEY found in environment", file=_sys_for_key.stderr)
+        elif loaded:
+            print(
+                "[llm] ANTHROPIC_API_KEY loaded from ./CLAUDEAPI.KEY",
+                file=_sys_for_key.stderr,
+            )
+        else:
+            print(
+                "[llm] WARNING: no ANTHROPIC_API_KEY in env and no CLAUDEAPI.KEY "
+                "file in cwd — Anthropic-backed LLM calls will fail until you set one. "
+                "Either `export ANTHROPIC_API_KEY=...` or drop the key in "
+                "./CLAUDEAPI.KEY (will be auto-loaded next start).",
+                file=_sys_for_key.stderr,
+            )
+
     quarantined_client = None
     if quarantined_model:
-        quarantined_client = LiteLLMClient(model=quarantined_model)
+        quarantined_client = make_llm_client(quarantined_model)
 
     skills_env = os.environ.get("CAPDEP_SKILLS_DIR")
     skills_dir = Path(skills_env) if skills_env else None

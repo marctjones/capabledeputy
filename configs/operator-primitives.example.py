@@ -32,7 +32,7 @@ from capabledeputy.substrate.sampling_mediators_builtin import (
     LiteLLMSamplingMediator,
     RefuseAllSamplingMediator,
 )
-from capabledeputy.tools.client import PolicyContext
+from capabledeputy.policy.context import PolicyContext
 
 
 def build_policy_context(

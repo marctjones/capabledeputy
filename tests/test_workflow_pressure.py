@@ -284,7 +284,7 @@ async def test_sanctioned_declassification_lowers_taint_enabling_egress(tmp_path
     CERTIFIED declassifier (schema projection) lowers the taint, so egress is
     no longer untrusted-blocked. This is the only sanctioned path out."""
     from capabledeputy.substrate.declassifiers_builtin import SchemaProjector
-    from capabledeputy.tools.client import PolicyContext
+    from capabledeputy.policy.context import PolicyContext
 
     async def _read_then_email(declassifiers):
         app = App(

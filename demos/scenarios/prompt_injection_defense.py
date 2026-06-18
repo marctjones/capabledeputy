@@ -31,7 +31,7 @@ from capabledeputy.substrate.inspector_port import (
     InspectorRaiseResult,
     RaiseOnlyInspector,
 )
-from capabledeputy.tools.client import PolicyContext
+from capabledeputy.policy.context import PolicyContext
 from demos.scenarios._helpers import (
     ai,
     demo_header,

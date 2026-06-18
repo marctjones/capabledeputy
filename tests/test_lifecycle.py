@@ -7,6 +7,7 @@ from capabledeputy.daemon.lifecycle import (
     run_daemon,
     stop_daemon,
 )
+from tests._socket_helpers import short_socket_path
 
 
 async def _wait_for_socket(path: Path, timeout: float = 15.0) -> None:
@@ -24,7 +25,7 @@ async def _wait_for_socket(path: Path, timeout: float = 15.0) -> None:
 
 
 async def test_status_reports_not_running_when_no_daemon(tmp_path: Path) -> None:
-    socket_path = tmp_path / "no-daemon.sock"
+    socket_path = short_socket_path("no-daemon.sock")
     status = await daemon_status(socket_path)
     # Issue #1 broadened daemon_status to also report the pid from
     # the pidfile (None when no daemon is running). Don't pin the
@@ -33,12 +34,12 @@ async def test_status_reports_not_running_when_no_daemon(tmp_path: Path) -> None
 
 
 async def test_stop_returns_false_when_no_daemon(tmp_path: Path) -> None:
-    socket_path = tmp_path / "no-daemon.sock"
+    socket_path = short_socket_path("no-daemon.sock")
     assert await stop_daemon(socket_path) is False
 
 
 async def test_run_status_stop_lifecycle(tmp_path: Path) -> None:
-    socket_path = tmp_path / "lifecycle.sock"
+    socket_path = short_socket_path("lifecycle.sock")
 
     async with anyio.create_task_group() as tg:
         # Pin the state DB + audit log to tmp_path: the default paths are

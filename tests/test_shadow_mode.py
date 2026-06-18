@@ -23,6 +23,7 @@ import pytest
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import EnforcementMode, Session
+from capabledeputy.tools.policy_hooks import ToolPolicyHooks
 
 # --- Model -----------------------------------------------------------------
 
@@ -111,7 +112,6 @@ async def test_shadow_rewrite_turns_deny_into_allow(tmp_path: Path) -> None:
     from dataclasses import dataclass
 
     from capabledeputy.policy.rules import Decision
-    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
 
     @dataclass
     class _FakeDecision:
@@ -130,19 +130,14 @@ async def test_shadow_rewrite_turns_deny_into_allow(tmp_path: Path) -> None:
 
     audit_path = tmp_path / "audit.jsonl"
     writer = AuditWriter(audit_path)
-    client = LabeledToolClient(
-        registry=None,  # type: ignore[arg-type]
-        graph=None,  # type: ignore[arg-type]
-        audit=writer,
-        policy_context=PolicyContext(),
-    )
+    hooks = ToolPolicyHooks(policy_context=None, audit=writer, graph=SessionGraph(audit=writer))
     proposed = _FakeDecision(
         decision=Decision.DENY,
         rule="untrusted-meets-egress",
         reason="untrusted.* + egress.* denied",
     )
     session = _FakeSession(enforcement_mode=EnforcementMode.SHADOW)
-    result = await client._maybe_shadow_rewrite(
+    result = await hooks.maybe_shadow_rewrite(
         uuid4(),
         session,
         "fake_tool",
@@ -169,7 +164,6 @@ async def test_shadow_does_not_rewrite_allow(tmp_path: Path) -> None:
     from dataclasses import dataclass
 
     from capabledeputy.policy.rules import Decision
-    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
 
     @dataclass
     class _FakeDecision:
@@ -188,18 +182,13 @@ async def test_shadow_does_not_rewrite_allow(tmp_path: Path) -> None:
 
     audit_path = tmp_path / "audit.jsonl"
     writer = AuditWriter(audit_path)
-    client = LabeledToolClient(
-        registry=None,  # type: ignore[arg-type]
-        graph=None,  # type: ignore[arg-type]
-        audit=writer,
-        policy_context=PolicyContext(),
-    )
+    hooks = ToolPolicyHooks(policy_context=None, audit=writer, graph=SessionGraph(audit=writer))
     proposed = _FakeDecision(
         decision=Decision.ALLOW,
         rule="some-allow-rule",
     )
     session = _FakeSession(enforcement_mode=EnforcementMode.SHADOW)
-    result = await client._maybe_shadow_rewrite(
+    result = await hooks.maybe_shadow_rewrite(
         uuid4(),
         session,
         "fake_tool",
@@ -225,7 +214,6 @@ async def test_shadow_does_not_bypass_capability_structural_deny(
     from dataclasses import dataclass
 
     from capabledeputy.policy.rules import Decision
-    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
 
     @dataclass
     class _FakeDecision:
@@ -243,19 +231,14 @@ async def test_shadow_does_not_bypass_capability_structural_deny(
         enforcement_mode: EnforcementMode
 
     writer = AuditWriter(tmp_path / "audit.jsonl")
-    client = LabeledToolClient(
-        registry=None,  # type: ignore[arg-type]
-        graph=None,  # type: ignore[arg-type]
-        audit=writer,
-        policy_context=PolicyContext(),
-    )
+    hooks = ToolPolicyHooks(policy_context=None, audit=writer, graph=SessionGraph(audit=writer))
     proposed = _FakeDecision(
         decision=Decision.DENY,
         rule=None,
         reason="no matching capability for SEND_EMAIL(x@example.com)",
     )
     session = _FakeSession(enforcement_mode=EnforcementMode.SHADOW)
-    result = await client._maybe_shadow_rewrite(
+    result = await hooks.maybe_shadow_rewrite(
         uuid4(),
         session,
         "fake_tool",
@@ -273,7 +256,6 @@ async def test_strict_mode_does_not_rewrite(tmp_path: Path) -> None:
     from dataclasses import dataclass
 
     from capabledeputy.policy.rules import Decision
-    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
 
     @dataclass
     class _FakeDecision:
@@ -291,19 +273,14 @@ async def test_strict_mode_does_not_rewrite(tmp_path: Path) -> None:
         enforcement_mode: EnforcementMode
 
     writer = AuditWriter(tmp_path / "audit.jsonl")
-    client = LabeledToolClient(
-        registry=None,  # type: ignore[arg-type]
-        graph=None,  # type: ignore[arg-type]
-        audit=writer,
-        policy_context=PolicyContext(),
-    )
+    hooks = ToolPolicyHooks(policy_context=None, audit=writer, graph=SessionGraph(audit=writer))
     proposed = _FakeDecision(
         decision=Decision.DENY,
         rule="some-rule",
         reason="rule-driven deny",
     )
     session = _FakeSession(enforcement_mode=EnforcementMode.STRICT)
-    result = await client._maybe_shadow_rewrite(
+    result = await hooks.maybe_shadow_rewrite(
         uuid4(),
         session,
         "fake_tool",

@@ -198,5 +198,8 @@ def visible_tools(
          the tool's capability_kind.
     """
     mode_filtered = filter_tools_for_mode(registry.list(), mode)
-    held_kinds = {cap.kind for cap in session.capability_set}
-    return [t for t in mode_filtered if t.capability_kind in held_kinds]
+    return [
+        t
+        for t in mode_filtered
+        if any(cap.covers_kind(t.capability_kind) for cap in session.capability_set)
+    ]

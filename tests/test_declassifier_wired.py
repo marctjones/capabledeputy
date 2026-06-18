@@ -15,6 +15,7 @@ import pytest
 from capabledeputy.audit.events import EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.policy.rules import Decision
@@ -23,7 +24,7 @@ from capabledeputy.substrate.declassifiers_builtin import (
     RegexRedactor,
     SchemaProjector,
 )
-from capabledeputy.tools.client import LabeledToolClient, PolicyContext
+from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.registry import (
     ToolContext,
     ToolDefinition,

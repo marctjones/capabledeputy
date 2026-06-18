@@ -1,60 +1,73 @@
-# LLM backends
+# LLM Backends
 
-capdep's planning LLM is pluggable behind the `LLMClient` protocol. Select the
-backend with `CAPDEP_LLM_BACKEND`.
+CapDep's planning LLM is pluggable behind the `LLMClient` protocol. Select a
+backend with `CAPDEP_LLM_BACKEND`, or leave it unset for the platform default.
 
 | Backend | `CAPDEP_LLM_BACKEND` | Auth / billing | Use for |
 |---|---|---|---|
-| **LiteLLM** (default) | unset / `litellm` | `ANTHROPIC_API_KEY`, per-token | hosted / multi-user / production — the sanctioned path |
-| **Claude CLI** | `claude-cli` | your logged-in Claude **subscription** (`claude -p` agent-pool credits) | the subscriber's **own local use** (no API key needed) |
+| MLX | unset on Apple Silicon macOS, or `mlx` | local runtime | Apple Silicon default |
+| LiteLLM | `litellm` | `ANTHROPIC_API_KEY`, per-token | hosted / multi-user / production |
+| Claude CLI | `claude-cli` | logged-in Claude CLI subscription | subscriber's own local use |
 
-## Default — LiteLLM → the Anthropic API
+## MLX Local Default
+
+On Apple Silicon macOS, CapDep defaults to:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-…
-export CAPDEP_LLM_MODEL=claude-haiku-4-5     # optional; this is the default
+export CAPDEP_LLM_MODEL=mlx/Qwen/Qwen3-4B-MLX-4bit
+```
+
+You can choose another MLX model with either form:
+
+```bash
+export CAPDEP_LLM_MODEL=mlx/Qwen/Qwen3-4B-MLX-4bit
+export CAPDEP_LLM_BACKEND=mlx
+export CAPDEP_LLM_MODEL=Qwen/Qwen3-4B-MLX-4bit
+```
+
+Thinking output is stripped before parsing/rendering. Model-native thinking is
+off by default for stricter JSON/tool-call envelopes; enable it explicitly:
+
+```bash
+export CAPDEP_MLX_ENABLE_THINKING=1
+```
+
+## LiteLLM API Backend
+
+```bash
+export CAPDEP_LLM_BACKEND=litellm
+export ANTHROPIC_API_KEY=sk-ant-...
+export CAPDEP_LLM_MODEL=claude-haiku-4-5
 ```
 
 Calls `litellm.acompletion(...)`; billed per token. This is the right backend
-for anything serving more than just you.
+for hosted, shared, or production deployments.
 
-## Claude CLI → your subscription (local use)
+## Claude CLI Backend
 
 ```bash
 export CAPDEP_LLM_BACKEND=claude-cli
-export CAPDEP_CLAUDE_MODEL=haiku            # optional: a `claude` alias (haiku/sonnet/opus) or full id
-# CAPDEP_CLAUDE_BIN=claude                  # optional: path to the claude binary
+export CAPDEP_CLAUDE_MODEL=haiku
+# export CAPDEP_CLAUDE_BIN=claude
 ```
 
-capdep shells out to `claude -p --output-format json` using whatever account
-you're logged into (`claude /login`). If that's a Pro/Max subscription, it draws
-on the subscription's Agent-SDK credit pool — **no API key, no per-token bill**.
+CapDep shells out to `claude -p --output-format json` using the locally
+logged-in Claude CLI account. It is intended only for the subscriber's own
+local use. Do not route other users' requests through subscription
+credentials; use the API backend for hosted or multi-user deployments.
 
-### What's allowed (and what isn't)
+The safety invariant is load-bearing: CapDep invokes the CLI with every
+built-in Claude Code tool disabled and one turn only. The planner can propose a
+tool call as JSON, but CapDep remains the only component that gates and
+executes tools. Keep `llm/claude_cli.py:DISABLED_TOOLS` current if Claude adds
+built-ins.
 
-- ✅ **You, the subscriber, using capdep locally.** As of June 2026 Anthropic
-  permits `claude -p` / the Agent SDK to use *your own* subscription credits.
-- ❌ **A hosted / multi-user backend.** Routing other users' requests through
-  subscription credentials violates Anthropic's terms — use the API (LiteLLM)
-  there. Do **not** extract or proxy subscription OAuth tokens.
+Tradeoffs:
 
-### The safety invariant (load-bearing)
-
-capdep's whole job is to mediate the agent's tool calls. So the `claude` CLI is
-invoked with **every built-in tool disabled** (`--disallowed-tools Read Write
-Edit Bash Glob Grep WebFetch WebSearch …`) and a single turn. The planner can
-only *propose* a tool call as JSON; capdep's engine then gates and executes it.
-If Claude Code's own tools were left enabled, it would read files / run bash /
-fetch the web **behind the policy gate** — which would defeat capdep. The list
-lives in `llm/claude_cli.py:DISABLED_TOOLS`; keep it current if Anthropic adds
-built-in tools.
-
-### Tradeoffs
-
-- The CLI returns a *text* completion, so capdep prompts for a structured
-  tool-call JSON and parses it — slightly less reliable than the API's native
-  tool-use, but works well in practice.
-- Each call spawns a `claude` subprocess (higher per-call latency than a direct
-  API call).
+- The CLI returns a text completion, so CapDep prompts for a structured
+  tool-call JSON and parses it. This is slightly less reliable than the API's
+  native tool-use.
+- Each call spawns a `claude` subprocess, so latency is higher than a direct
+  API call.
 - The quarantined-extractor LLM (`CAPDEP_QUARANTINED_LLM_MODEL`) still uses
-  LiteLLM; set it only if you have API access.
+  the selected CapDep LLM factory unless explicitly configured.

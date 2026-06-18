@@ -32,6 +32,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.decision_rules import (
     DecisionRule,
     DecisionRules,
@@ -50,7 +51,7 @@ from capabledeputy.policy.labels import (
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.graph import SessionGraph
-from capabledeputy.tools.client import LabeledToolClient, PolicyContext
+from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.registry import (
     ToolContext,
     ToolDefinition,

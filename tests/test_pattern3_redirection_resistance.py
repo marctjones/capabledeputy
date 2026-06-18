@@ -4,7 +4,7 @@ The data_blind_disclosure demo proves the happy path + a store-level cross-
 session refusal. This is the ADVERSARIAL half the assurance plan flagged as
 missing: an injection that fully controls the planner's tool arguments still
 cannot exfiltrate or redirect a handle-bound value. Four claims, end-to-end
-through the real dispatcher (LabeledToolClient._bind_reference_handles):
+through the real source-flow binder used by the dispatcher:
 
   A. Data-blind — the planner only ever holds an opaque UUID, never the value.
   B. Forged handle — a guessed/fabricated id binds nothing; only the opaque
@@ -39,10 +39,11 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
-from capabledeputy.tools.client import LabeledToolClient, PolicyContext
+from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.registry import (
     ToolContext,
     ToolDefinition,

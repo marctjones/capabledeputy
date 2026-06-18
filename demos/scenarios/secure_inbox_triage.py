@@ -52,7 +52,7 @@ from capabledeputy.substrate.inspector_port import (
     InspectorRaiseResult,
     RaiseOnlyInspector,
 )
-from capabledeputy.tools.client import PolicyContext
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.tools.native.inbox import InboundMessage
 from capabledeputy.tools.registry import (
     ToolContext,

@@ -620,7 +620,7 @@ def parse_sandbox_config(raw: dict) -> tuple[PodmanRegionSpec, ...]:
           provider: podman           # (currently only "podman" or "in_process")
           regions:
             - id: scratch-python
-              image: docker.io/library/python:3.12-slim
+              image: docker.io/library/python:3.14-slim
               network: none
               memory_mb: 512
               cpus: 1.0

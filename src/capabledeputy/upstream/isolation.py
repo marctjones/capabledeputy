@@ -8,7 +8,7 @@ isolation profile is declared in the YAML config:
       - name: filesystem
         command: ["uvx", "mcp-server-filesystem", "/data"]
         isolation:
-          image: docker.io/library/python:3.12-slim
+          image: docker.io/library/python:3.14-slim
           network: none           # or 'bridge' + allowed_hosts list
           volumes:
             - host: /home/marc/Documents

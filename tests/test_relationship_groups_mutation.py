@@ -202,7 +202,8 @@ def test_resolver_threads_into_axis_d_via_tool_client(tmp_path: Path) -> None:
     from dataclasses import dataclass
 
     from capabledeputy.policy.axis_d import DecisionContext
-    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
+    from capabledeputy.policy.context import PolicyContext
+    from capabledeputy.tools.client import LabeledToolClient
 
     rg = RelationshipGroups(
         groups={
@@ -240,7 +241,8 @@ def test_resolver_noop_when_no_registry_wired() -> None:
     from dataclasses import dataclass
 
     from capabledeputy.policy.axis_d import DecisionContext
-    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
+    from capabledeputy.policy.context import PolicyContext
+    from capabledeputy.tools.client import LabeledToolClient
 
     pc = PolicyContext()  # no relationship_groups
     client = LabeledToolClient(
@@ -270,7 +272,8 @@ def test_resolver_preserves_existing_session_memberships() -> None:
     from dataclasses import dataclass
 
     from capabledeputy.policy.axis_d import DecisionContext
-    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
+    from capabledeputy.policy.context import PolicyContext
+    from capabledeputy.tools.client import LabeledToolClient
 
     rg = RelationshipGroups(
         groups={
@@ -320,7 +323,7 @@ async def test_add_member_rpc_persists_to_yaml(tmp_path: Path) -> None:
     from capabledeputy.daemon.relationship_handlers import (
         make_relationship_handlers,
     )
-    from capabledeputy.tools.client import PolicyContext
+    from capabledeputy.policy.context import PolicyContext
 
     path = tmp_path / "relationship_groups.yaml"
     path.write_text("# header\ngroups: []\n", encoding="utf-8")
@@ -355,7 +358,7 @@ async def test_add_member_rpc_idempotent_when_already_member(
     from capabledeputy.daemon.relationship_handlers import (
         make_relationship_handlers,
     )
-    from capabledeputy.tools.client import PolicyContext
+    from capabledeputy.policy.context import PolicyContext
 
     path = tmp_path / "relationship_groups.yaml"
     path.write_text("# header\ngroups: []\n", encoding="utf-8")
@@ -390,7 +393,7 @@ async def test_list_rpc_returns_sorted_view(tmp_path: Path) -> None:
     from capabledeputy.daemon.relationship_handlers import (
         make_relationship_handlers,
     )
-    from capabledeputy.tools.client import PolicyContext
+    from capabledeputy.policy.context import PolicyContext
 
     rg = RelationshipGroups(
         groups={
@@ -427,7 +430,7 @@ def test_make_relationship_handlers_empty_when_unwired() -> None:
     from capabledeputy.daemon.relationship_handlers import (
         make_relationship_handlers,
     )
-    from capabledeputy.tools.client import PolicyContext
+    from capabledeputy.policy.context import PolicyContext
 
     class _App:
         policy_context = PolicyContext()  # no registry

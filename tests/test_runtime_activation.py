@@ -26,8 +26,8 @@ import pytest
 
 from capabledeputy.app import App
 from capabledeputy.daemon.lifecycle import build_policy_context_from_configs
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.envelope import RiskPreference
-from capabledeputy.tools.client import PolicyContext
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _CONFIGS_DIR = _REPO_ROOT / "configs"

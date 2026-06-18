@@ -91,7 +91,7 @@ def test_effective_command_wraps_existing_invocation() -> None:
 
 def test_quadlet_generator_emits_strict_directives(tmp_path: Path) -> None:
     iso = ContainerIsolation(
-        image="docker.io/library/python:3.12-slim",
+        image="docker.io/library/python:3.14-slim",
         network="none",
         volumes=(VolumeMount(host="/h", container="/c", ro=True),),
         memory="256m",
@@ -100,7 +100,7 @@ def test_quadlet_generator_emits_strict_directives(tmp_path: Path) -> None:
     out = quadlet_for("fs", iso, ("uvx", "mcp-server-filesystem", "/c"))
     for fragment in (
         "Description=CapableDeputy upstream MCP server: fs",
-        "Image=docker.io/library/python:3.12-slim",
+        "Image=docker.io/library/python:3.14-slim",
         "Network=none",
         "ReadOnly=yes",
         "DropCapability=ALL",
@@ -123,7 +123,7 @@ def test_yaml_round_trip_with_isolation(tmp_path: Path) -> None:
                 command: ["uvx", "mcp-server-filesystem", "/data"]
                 inherent_labels: ["confidential.personal"]
                 isolation:
-                  image: docker.io/library/python:3.12-slim
+                  image: docker.io/library/python:3.14-slim
                   network: none
                   volumes:
                     - host: /home/me/notes

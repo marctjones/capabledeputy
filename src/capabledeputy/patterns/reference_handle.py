@@ -27,8 +27,11 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
+
+if TYPE_CHECKING:
+    from capabledeputy.policy.labels import CategoryTag, LabelState
 
 
 class ReferenceHandleError(RuntimeError):
@@ -74,6 +77,7 @@ class ReferenceHandleStore:
 
     def __init__(self) -> None:
         self._values: dict[UUID, Any] = {}
+        self._handles: dict[UUID, ReferenceHandle] = {}
         # session_id → set of handle ids issued for that session.
         # Used by destroy_session_handles to scope cleanup.
         self._by_session: dict[UUID, set[UUID]] = {}
@@ -95,6 +99,7 @@ class ReferenceHandleStore:
             labels=labels,
             issued_at=datetime.now(UTC),
         )
+        self._handles[handle.id] = handle
         self._values[handle.id] = value
         self._by_session.setdefault(session_id, set()).add(handle.id)
         return handle
@@ -149,6 +154,7 @@ class ReferenceHandleStore:
         ids = self._by_session.pop(session_id, set())
         for hid in ids:
             self._values.pop(hid, None)
+            self._handles.pop(hid, None)
 
     def bind_trail(self, handle_id: UUID) -> list[HandleBindEvent]:
         """Return all bind events for a handle (FR-047)."""
@@ -156,6 +162,63 @@ class ReferenceHandleStore:
 
     def has_handle(self, handle_id: UUID) -> bool:
         return handle_id in self._values
+
+    def labels_for(self, session_id: UUID, handle_id: UUID) -> ResolvedLabels:
+        """Return a handle's labels without revealing its value.
+
+        This is the pre-dispatch counterpart to bind(): the reference
+        monitor can make a decision over handle labels before substituting
+        the raw value into handler args.
+        """
+        if handle_id not in self._values:
+            raise ReferenceHandleError(
+                f"unknown handle id {handle_id} (forged or cross-session)",
+            )
+        if handle_id not in self._by_session.get(session_id, set()):
+            raise ReferenceHandleError(
+                f"handle {handle_id} was not issued for session {session_id}",
+            )
+        return self._handles[handle_id].labels
+
+    def label_state_for(self, session_id: UUID, handle_id: UUID) -> LabelState:
+        """Return a four-axis LabelState projection for a handle."""
+        return resolved_labels_to_label_state(self.labels_for(session_id, handle_id))
+
+
+def _category_tag_from_wire(value: str) -> CategoryTag:
+    """Parse a handle wire label into CategoryTag.
+
+    Existing handles use bare category strings. Newer callers may encode a
+    tier with `category:tier`; bare categories default to `sensitive`.
+    """
+    from capabledeputy.policy.labels import CategoryTag
+    from capabledeputy.policy.tiers import Tier
+
+    category = value
+    tier = Tier.SENSITIVE
+    if ":" in value:
+        maybe_category, maybe_tier = value.rsplit(":", 1)
+        try:
+            tier = Tier(maybe_tier)
+            category = maybe_category
+        except ValueError:
+            category = value
+            tier = Tier.SENSITIVE
+    return CategoryTag(category, tier, assignment_provenance="source-declared")
+
+
+def resolved_labels_to_label_state(labels: ResolvedLabels) -> LabelState:
+    """Project handle-wire labels into the runtime LabelState type."""
+    from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
+
+    categories = frozenset(_category_tag_from_wire(c) for c in labels.axis_a)
+    provenance = []
+    for level in labels.axis_b:
+        try:
+            provenance.append(ProvenanceTag(ProvenanceLevel(level)))
+        except ValueError:
+            continue
+    return LabelState(a=categories, b=frozenset(provenance))
 
 
 async def wrap_output_with_handles(

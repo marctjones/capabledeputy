@@ -83,7 +83,7 @@ The provenance system makes one class special:
 — a label from this source **can only ADD taint, never CLEAR it**. The
 label-inheritance math treats a raise-only-inspector label as a
 most-restrictive floor that downstream composition can raise but never
-lower. The hook runs in `tools/client.py::_apply_inspectors` on **every**
+lower. The hook runs in `tools/policy_hooks.py:ToolPolicyHooks.apply_inspectors` on **every**
 tool return, emitting `inspector.applied` audit events.
 
 **This is the safe home for an LLM-based labeler.** Register an LLM that
@@ -137,5 +137,5 @@ declassifier (`llm-flow-patterns.md` ②/③).
 - `src/capabledeputy/policy/bindings.py` — `SourceLocationLabelBinding`,
   `BindingSet.resolve`.
 - `src/capabledeputy/policy/labels.py` — `AssignmentProvenance`
-  (incl. `RAISE_ONLY_INSPECTOR`); `tools/client.py::_apply_inspectors`.
+  (incl. `RAISE_ONLY_INSPECTOR`); `tools/policy_hooks.py:ToolPolicyHooks.apply_inspectors`.
 - `configs/source_bindings.yaml` — the operator's datasource dictionary.

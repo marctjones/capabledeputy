@@ -68,6 +68,8 @@ def make_extract_tools(
             capability_kind=CapabilityKind.READ_FS,
             handler=quarantined_extract,
             target_arg="key",
+            source_label_lookup=lambda args: memory.label_state_of(str(args.get("key", ""))),
+            forbid_restricted_source=True,
             parameters_schema={
                 "type": "object",
                 "properties": {

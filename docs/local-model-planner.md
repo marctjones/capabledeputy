@@ -1,9 +1,48 @@
 # Local-model planner
 
-The CapableDeputy daemon picks its LLM through LiteLLM, which already
-supports Anthropic, OpenAI, Gemini, **Ollama**, **llama.cpp**, vLLM, and
-several other local providers. Switching to a local model is a config
-change, not a code change.
+The CapableDeputy daemon picks its LLM through a backend factory. Hosted
+and API-backed providers still go through LiteLLM; Apple Silicon local
+inference goes through MLX; Ollama, llama.cpp, vLLM, and other local
+providers remain available through explicit model/backend configuration.
+
+On Apple Silicon macOS, CapableDeputy defaults to Apple's MLX runtime
+when the operator does not explicitly set `CAPDEP_LLM_MODEL`. The
+built-in default model is `Qwen/Qwen3-4B-MLX-4bit`, selected through the
+model spec `mlx/Qwen/Qwen3-4B-MLX-4bit`.
+
+## macOS default (MLX)
+
+On Apple Silicon Macs, the daemon prefers MLX unless you explicitly
+choose another backend:
+
+```bash
+capdep daemon start
+```
+
+Equivalent explicit form:
+
+```bash
+export CAPDEP_LLM_MODEL="mlx/Qwen/Qwen3-4B-MLX-4bit"
+capdep daemon start
+```
+
+To opt out, set `CAPDEP_LLM_MODEL` to something else such as
+`claude-haiku-4-5` or `ollama/phi4:latest`.
+
+### Optional: enable model thinking mode
+
+By default the MLX adapter disables model-native thinking mode because
+CapableDeputy frequently needs strict tool-call JSON or strict
+schema-extraction JSON. To enable thinking mode for MLX-backed runs:
+
+```bash
+export CAPDEP_MLX_ENABLE_THINKING=1
+capdep daemon start
+```
+
+When enabled, the adapter strips `<think>...</think>` and
+`<thinking>...</thinking>` blocks before CapableDeputy parses tool-call
+or extractor output, so structured paths continue to work.
 
 ## Why run the planner locally
 

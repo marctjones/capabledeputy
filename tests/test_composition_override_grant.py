@@ -32,6 +32,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.engine import decide
 from capabledeputy.policy.overrides import (
@@ -45,7 +46,7 @@ from capabledeputy.policy.overrides import (
 )
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
-from capabledeputy.tools.client import LabeledToolClient, PolicyContext
+from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.registry import (
     ToolContext,
     ToolDefinition,

@@ -1,14 +1,13 @@
 """Tool definitions and registry.
 
 A ToolDefinition pairs a tool name with the metadata the policy engine
-needs (capability kind, inherent labels, how to extract target/amount
+needs (capability kind, inherent tags, how to extract target/amount
 from call args) plus an async handler that does the actual work. The
 registry holds these so the dispatcher can look them up by name.
 
 Handlers receive a ToolContext with the calling session's id and label
-set, and return a ToolResult whose `additional_labels` are unioned into
-the session's label set after the call (in addition to the tool's
-declared `inherent_labels`).
+set, and return a ToolResult whose `additional_tags` are unioned into
+the session's label set after the call.
 """
 
 from __future__ import annotations
@@ -50,7 +49,6 @@ class ToolDefinition:
     handler: ToolHandler
     target_arg: str = "target"
     amount_arg: str | None = None
-    inherent_labels: frozenset = field(default_factory=frozenset)  # Legacy field, do not use
     parameters_schema: dict[str, Any] = field(
         default_factory=lambda: {"type": "object", "properties": {}, "required": []},
     )
@@ -61,12 +59,11 @@ class ToolDefinition:
     # 003 US5 T012-partial — Pattern (3) Reference Handle opt-in.
     # When True, the dispatcher may substitute ReferenceHandle ids
     # into the named args. The handle store binds the real value
-    # post-decide() (FR-047). Defaults False to keep behavior
-    # back-compat for existing tools.
+    # post-decide() (FR-047). Defaults False so tools opt into handle
+    # substitution explicitly.
     accepts_handles: bool = False
     handle_arg_names: tuple[str, ...] = field(default_factory=tuple)
-    # 003 T012-full — v2 four-axis decision fields. All default-tolerant
-    # so existing ToolDefinition() callers keep working unchanged.
+    # 003 T012-full — v2 four-axis decision fields.
     # When set, the v2 leg of engine.decide() consumes them.
     effect_class: str | None = None  # axis C; e.g., "data.read_file"
     default_reversibility: dict[str, str] | None = None  # {"degree": ..., "agent": ...}
@@ -75,14 +72,10 @@ class ToolDefinition:
     tool_provenance: str = "operator-curated"  # e.g., "operator-curated" | "mcp"
     surfaces_destination_id: bool = False  # FR-048 — port-backed canonical id
     risk_ids: tuple[str, ...] = field(default_factory=tuple)
-    # 003 redesign (R3) — the structured replacements for the flat
-    # `inherent_labels` + string `effect_class`. `operations` is the set
-    # of Operations this tool performs (Axis C, canonical EffectClass enum
+    # `operations` is the set of Operations this tool performs (Axis C,
+    # canonical EffectClass enum
     # + optional subtype + required_floor); `inherent_tags` are the Axis A
-    # / Axis B labels its output inherently carries. Default-empty so
-    # existing constructions keep working until R3b migrates them; once
-    # migrated, `register()` enforces `validate_tool_definition` and these
-    # supersede `inherent_labels` / `effect_class` (deleted in R7).
+    # / Axis B labels its output inherently carries.
     operations: tuple[Operation, ...] = field(default_factory=tuple)
     inherent_tags: LabelState = field(default_factory=LabelState)
     # R7 — per-arg payload tags. Maps an arg name to a LabelState that
@@ -94,8 +87,15 @@ class ToolDefinition:
     # tool-level inherent_tags. Lets a tool declare "the body field
     # carries personal data" without painting EVERY call with that tag.
     arg_inherent_tags: dict[str, LabelState] = field(default_factory=dict)
-    # Legacy field for backward compat, do not use
-    arg_inherent_labels: dict[str, frozenset] = field(default_factory=dict)
+    # Pre-dispatch source labels. Tools that fetch a labeled object
+    # indirectly (for example by memory key) can expose that object's
+    # labels before the handler runs, so decide() sees the real source
+    # label state instead of only the caller session's current taint.
+    source_label_lookup: Callable[[dict[str, Any]], LabelState] | None = None
+    # Pattern ② declassifiers are not valid for restricted/prohibited
+    # source data. When true, the chokepoint refuses those sources before
+    # calling the handler; callers must use Pattern ③/⑤ instead.
+    forbid_restricted_source: bool = False
 
     def extract_target(self, args: dict[str, Any]) -> str:
         return str(args.get(self.target_arg, ""))
@@ -135,12 +135,11 @@ class ToolDefinition:
             tags_to_compose.append(tags)
         return most_restrictive_inherit(*tags_to_compose) if tags_to_compose else LabelState()
 
-    def extract_arg_inherent_labels(
-        self,
-        args: dict[str, Any],
-    ) -> frozenset:
-        """LEGACY — do not use. Kept for backward compat during migration."""
-        return frozenset()
+    def extract_source_tags(self, args: dict[str, Any]) -> LabelState:
+        """Return source labels known before the handler runs."""
+        if self.source_label_lookup is None:
+            return LabelState()
+        return self.source_label_lookup(args)
 
 
 class ToolValidationError(ValueError):

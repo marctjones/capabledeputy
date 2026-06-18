@@ -14,36 +14,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
-from capabledeputy.patterns.reference_handle import (
-    ReferenceHandleError,
-    ReferenceHandleStore,
-    is_planner_safe_token,
-)
 from capabledeputy.policy.actions import Action
 from capabledeputy.policy.assurance import (
-    ResidualRiskThresholds,
     should_emit_residual_risk,
 )
-from capabledeputy.policy.bindings import BindingSet
-from capabledeputy.policy.decision_rules import DecisionRules
 from capabledeputy.policy.engine import PolicyDecision, decide
-from capabledeputy.policy.envelope import EnvelopeSet, RiskPreference
 from capabledeputy.policy.labels import LabelState
 from capabledeputy.policy.overrides import (
-    OverrideGrantStore,
-    OverridePolicies,
     TrustProfile,
 )
 from capabledeputy.policy.reversibility import ReversibilityLabel
 from capabledeputy.policy.rules import Decision
-from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.graph import SessionGraph
+from capabledeputy.tools.policy_hooks import ToolPolicyHooks
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry
+from capabledeputy.tools.source_flow import ToolSourceFlow
+
+if TYPE_CHECKING:
+    from capabledeputy.policy.context import PolicyContext
 
 
 def _replace_tool_result(
@@ -68,109 +61,6 @@ def _replace_tool_result(
     return _dc_replace(original, **kwargs)
 
 
-@dataclass(frozen=True)
-class PolicyContext:
-    """Operator-curated context the dispatcher needs to invoke the v2
-    decision pipeline. Each field is independently optional —
-    LabeledToolClient back-compat lives by passing `None`. Production
-    code constructs this once at daemon start and injects it into the
-    LabeledToolClient.
-    """
-
-    rules_v2: DecisionRules | None = None
-    bindings: BindingSet | None = None
-    override_policies: OverridePolicies | None = None
-    override_grants: OverrideGrantStore | None = None
-    handle_store: ReferenceHandleStore | None = None
-    envelope_set: EnvelopeSet | None = None
-    risk_preference: RiskPreference | None = None
-    clearance_max_tier: Tier | None = None
-    integrity_floor_level: str | None = None
-    residual_risk_thresholds: ResidualRiskThresholds | None = None
-    risk_register: Any = None
-    # SandboxActuator (substrate port): None when no provider is
-    # configured. The legacy `sandbox_actuator_wired` bool is now a
-    # derived property below — kept for callers that only need the
-    # presence check (e.g. the policy engine's fail-closed gate).
-    sandbox_actuator: Any = None  # SandboxActuator | None — Any to avoid import cycle
-    # PodmanDevbox manager — None when no provider is configured.
-    # Long-lived counterpart to sandbox_actuator: same PodmanRegionSpec
-    # set, separate registry of live per-session containers. The
-    # devbox.* tools read this field; absence collapses the tool list
-    # cleanly so installs without Podman don't surface dead tools.
-    devbox_manager: Any = None  # PodmanDevbox | None — Any to avoid import cycle
-    # FR-025 raise-only inspectors. Run on every tool return so any
-    # taint the inspector identifies is added to the session's axes.
-    # Composition is monotone (most_restrictive_inherit); inspectors
-    # cannot CLEAR taint, only RAISE it.
-    inspectors: tuple[Any, ...] = ()
-    # DecisionInspectors run AFTER the standard policy decision and
-    # may relax (loosen) or tighten (strengthen) the outcome. Composes
-    # monotonically: tighten beats relax (most-restrictive wins).
-    # Foundation for operator-authored decision refinement (Starlark
-    # primitives, OPA consultation, etc.).
-    decision_inspectors: tuple[Any, ...] = ()
-    # FR-019 (amended) egress escalation. Irreversible COMMUNICATION egress
-    # routes to human APPROVAL by default; data whose category/tier is in
-    # these sets escalates to OVERRIDE_REQUIRED (operator opts in
-    # super-sensitive). Empty ⇒ approval for all communication egress.
-    egress_override_categories: frozenset[str] = field(default_factory=frozenset)
-    egress_override_tiers: frozenset[str] = field(default_factory=frozenset)
-    # DeclassifyingTransformers run on tool output AFTER inspectors,
-    # BEFORE label propagation. Each transforms the value and emits a
-    # structural-proof. The session sees the transformed value with
-    # fewer labels attached (declassifier reduces per-result label
-    # propagation; session label_set still grows monotonically).
-    # Operator-declared order; sequential composition (each sees the
-    # previous one's output).
-    declassifiers: tuple[Any, ...] = ()
-    # 003 runtime activation — Profiles registry keyed by profile_id.
-    # When a session has clearance_profile_id set, the dispatcher
-    # derives per-session clearance_max_tier (FR-008 BLP) +
-    # integrity_floor_level (FR-004 Biba) from the matching profile.
-    # Without this, BLP/Biba are library-only and never fire.
-    profiles: dict[str, Any] = field(default_factory=dict)
-    # Purposes registry — when a session has purpose_handle set and
-    # the resolved Purpose has per-purpose bindings, the dispatcher
-    # composes them with the global BindingSet for that one decide()
-    # call. Most-specific-wins resolution means a purpose's narrow
-    # paths override broad global rules without explicit precedence.
-    # None ⇒ no per-purpose binding composition; global bindings
-    # only.
-    purposes: Any = None
-
-    @property
-    def sandbox_actuator_wired(self) -> bool:
-        """Back-compat shim: True iff a SandboxActuator provider is
-        plugged in. The policy engine's fail-closed gate on
-        EXECUTE.sandbox uses just this bool; callers that need the
-        actuator itself read `sandbox_actuator`."""
-        return self.sandbox_actuator is not None
-
-    @property
-    def devbox_manager_wired(self) -> bool:
-        """Parallel to sandbox_actuator_wired. Engine's fail-closed
-        gate on EXECUTE.devbox keys on this. Belt-and-suspenders with
-        the tool-registration check that already collapses the
-        devbox.* tool list when no manager is wired."""
-        return self.devbox_manager is not None
-
-    # Cookbook P2.3 — RelationshipGroups registry. When wired, the
-    # tool client resolves the action's target (counterparty) into
-    # the set of group_ids it belongs to BEFORE calling decide().
-    # That set composes into axis_d.relationship_group_ids so the
-    # family-personal-email-suggest rule (and any other
-    # relationship-keyed rule) actually fires for known
-    # counterparties. Without this wiring the rules are dormant.
-    # Mutated by the relationship_group.add_member RPC handler
-    # (operator-authorized auto-narrowing).
-    relationship_groups: Any = None  # RelationshipGroups | None — Any to avoid import cycle
-    # Path the registry was loaded from. add_member RPC persists
-    # back to this file. None when the registry was constructed
-    # in-memory (e.g. tests).
-    relationship_groups_path: Any = None  # Path | None
-
-
 def build_policy_decided_payload(
     tool_name: str,
     args: dict[str, Any],
@@ -178,7 +68,7 @@ def build_policy_decided_payload(
 ) -> dict[str, Any]:
     """Construct the JSON payload for a `policy.decided` audit event.
 
-    The base payload mirrors the v0.7 surface for back-compat.
+    The base payload is the stable audit surface consumed by existing readers.
     When the decision was reached with the v2 (003 US2) axis-based
     evaluator in play, two additional fields land in the payload:
     `v2_outcome` (the RuleOutcome the evaluator produced — AUTO/
@@ -187,8 +77,8 @@ def build_policy_decided_payload(
     give T041 audit-reconstruction enough to replay the v2 leg of
     the composition (FR-021).
 
-    Omitted entirely when no v2 evaluation ran (back-compat reads of
-    a pre-Phase-4 trace must not see new keys).
+    Omitted entirely when no v2 evaluation ran so non-axis decisions keep the
+    compact base payload.
     """
     payload: dict[str, Any] = {
         "tool": tool_name,
@@ -287,10 +177,15 @@ class LabeledToolClient:
         # registered in the queue here, at the policy chokepoint —
         # not by whichever client happens to be driving the session.
         self._approval_queue = approval_queue
-        # 003 composition sub-phase A — when provided, the v2 four-axis
-        # decision pipeline activates. When None, the client behaves
-        # exactly as v0.7 (back-compat).
+        # When provided, the four-axis decision pipeline activates. When
+        # absent, dispatch uses the base capability decision path.
         self._policy_context = policy_context
+        self._source_flow = ToolSourceFlow(policy_context=policy_context, audit=audit)
+        self._policy_hooks = ToolPolicyHooks(
+            policy_context=policy_context,
+            audit=audit,
+            graph=graph,
+        )
 
     @property
     def policy_context(self) -> PolicyContext | None:
@@ -312,6 +207,13 @@ class LabeledToolClient:
             target=tool.extract_target(args),
             amount=tool.extract_amount(args),
         )
+        from capabledeputy.policy.labels import most_restrictive_inherit
+
+        source_tags = self._source_flow.extract_source_tags(
+            session_id=session_id,
+            tool=tool,
+            args=args,
+        )
         # One authoritative decision clock per dispatch — resolved here
         # at the chokepoint, threaded into decide() AND reused as the
         # recorded use timestamp so the rate-limit window is consistent.
@@ -325,6 +227,9 @@ class LabeledToolClient:
         # v2_kwargs includes labels, use that (from _build_v2_decide_kwargs);
         # otherwise pass the session's label_state.
         decide_labels = v2_kwargs.get("labels", session.label_state)
+        if source_tags != LabelState():
+            decide_labels = most_restrictive_inherit(decide_labels, source_tags)
+            v2_kwargs["labels"] = decide_labels
         policy_decision = decide(
             session.capability_set,
             action,
@@ -360,7 +265,7 @@ class LabeledToolClient:
         # standard decision and may relax (loosen) or tighten
         # (strengthen) the outcome. Tighten beats Relax; non-monotone
         # moves are rejected at composition time.
-        policy_decision = await self._apply_decision_inspectors(
+        policy_decision = await self._policy_hooks.apply_decision_inspectors(
             session_id,
             session,
             action,
@@ -377,13 +282,24 @@ class LabeledToolClient:
         # authority, not contested rule outcomes. The check is the
         # rule field: any policy_decision with a real rule attached
         # but a non-ALLOW outcome is shadow-eligible.
-        policy_decision = await self._maybe_shadow_rewrite(
+        policy_decision = await self._policy_hooks.maybe_shadow_rewrite(
             session_id,
             session,
             tool_name,
             action,
             policy_decision,
         )
+
+        if policy_decision.decision == Decision.ALLOW:
+            source_floor = self._source_flow.restricted_source_floor_decision(
+                tool=tool,
+                source_tags=source_tags,
+                base_decision=policy_decision,
+                labels_snapshot=decide_labels,
+                axis_d_snapshot=v2_kwargs.get("axis_d"),
+            )
+            if source_floor is not None:
+                policy_decision = source_floor
 
         await self._emit_policy_decision(session_id, tool_name, args, policy_decision, tool)
         await self._emit_capability_checked(session_id, action, policy_decision)
@@ -499,7 +415,7 @@ class LabeledToolClient:
         # value. Emits pattern3.handle_bind with the canonical
         # destination id (FR-047). Skipped when policy_context.handle_store
         # is None or the tool doesn't accept handles.
-        bound_args = await self._bind_reference_handles(
+        bound_args, bound_source_tags = await self._source_flow.bind_reference_handles(
             session_id=session_id,
             tool=tool,
             tool_name=tool_name,
@@ -531,8 +447,7 @@ class LabeledToolClient:
         # taint, never clear it. The runtime contract is structural:
         # even a buggy/malicious inspector that returns a
         # lower-restriction LabelState cannot lower the session's taint.
-        if self._policy_context is not None and self._policy_context.inspectors:
-            await self._apply_inspectors(session, result.output)
+        await self._policy_hooks.apply_inspectors(session, result.output)
 
         # Spec 004 P0 — DeclassifyingTransformer chain hook. Runs
         # AFTER inspectors so the declassifier sees any value the
@@ -542,31 +457,28 @@ class LabeledToolClient:
         # session, not the session's existing label_state (session
         # label growth stays monotonic — declassifier just adds
         # FEWER tags for this particular result).
-        if self._policy_context is not None and self._policy_context.declassifiers:
-            new_output, tags_to_remove = await self._apply_declassifiers(
-                session_id,
-                session,
-                tool_name,
-                result.output,
-                tool.inherent_tags,
-                result.additional_tags,
-            )
-            # Replace output with transformed value; subtract any tags the
-            # declassifier "lowered away" from the set that propagates this
-            # turn — from BOTH the tool's inherent_tags AND the result's
-            # additional_tags (F9 fix). Most real taint (fs reads, the fs/
-            # email labelers) arrives via additional_tags; removing only
-            # from inherent left it undeclassifiable.
-            from capabledeputy.policy.labels import _remove
+        new_output, tags_to_remove = await self._policy_hooks.apply_declassifiers(
+            session_id,
+            session,
+            tool_name,
+            result.output,
+            tool.inherent_tags,
+            result.additional_tags,
+        )
+        # Replace output with transformed value; subtract any tags the
+        # declassifier "lowered away" from the set that propagates this
+        # turn — from BOTH the tool's inherent_tags AND the result's
+        # additional_tags (F9 fix). Most real taint (fs reads, the fs/
+        # email labelers) arrives via additional_tags; removing only
+        # from inherent left it undeclassifiable.
+        from capabledeputy.policy.labels import _remove
 
-            result = _replace_tool_result(
-                result,
-                output=new_output,
-                additional_tags=_remove(result.additional_tags, tags_to_remove),
-            )
-            tool_inherent_for_propagation = _remove(tool.inherent_tags, tags_to_remove)
-        else:
-            tool_inherent_for_propagation = tool.inherent_tags
+        result = _replace_tool_result(
+            result,
+            output=new_output,
+            additional_tags=_remove(result.additional_tags, tags_to_remove),
+        )
+        tool_inherent_for_propagation = _remove(tool.inherent_tags, tags_to_remove)
 
         # Spec 004 P0 FR-027/039 — per-arg payload tags. The tool
         # declares which arg values carry which tags; we add them
@@ -594,6 +506,7 @@ class LabeledToolClient:
             result.additional_tags,
             per_arg_tags,
             custom_kind_tags,
+            bound_source_tags,
         )
         tags_added: LabelState = LabelState()
         if tags_to_add != LabelState():
@@ -626,371 +539,6 @@ class LabeledToolClient:
             rule=policy_decision.rule,
             reason=policy_decision.reason,
         )
-
-    async def _maybe_shadow_rewrite(
-        self,
-        session_id: Any,
-        session: Any,
-        tool_name: str,
-        action: Any,
-        proposed: Any,
-    ) -> Any:
-        """Pattern ⑥ shadow-mode rewrite. When the session is in
-        SHADOW enforcement and the proposed decision is non-ALLOW,
-        rewrite to ALLOW + emit POLICY_SHADOWED audit carrying the
-        original decision.
-
-        Capability-structural denies (no matching capability,
-        cascade-revoked) are NOT rewritten. Shadow mode is for
-        rule-outcome validation, not for granting unmitigated
-        access. The discriminator is `policy_decision.rule`: rule-
-        driven outcomes have a rule attached; the "no matching
-        capability" path returns rule=None and is left alone.
-        """
-        from capabledeputy.audit.events import Event, EventType
-        from capabledeputy.policy.rules import Decision
-        from capabledeputy.session.model import EnforcementMode
-
-        mode = getattr(session, "enforcement_mode", EnforcementMode.STRICT)
-        if mode != EnforcementMode.SHADOW:
-            return proposed
-        if proposed.decision == Decision.ALLOW:
-            return proposed
-        # Don't shadow structural capability denies — those are
-        # missing-authority cases, not contestable rule outcomes.
-        if not proposed.rule or "no matching capability" in (proposed.reason or "").lower():
-            return proposed
-        if self._audit is not None:
-            await self._audit.write(
-                Event(
-                    event_type=EventType.POLICY_SHADOWED,
-                    session_id=session_id,
-                    payload={
-                        "tool": tool_name,
-                        "would_be_decision": proposed.decision.value,
-                        "rule": proposed.rule,
-                        "reason": proposed.reason,
-                        "target": getattr(action, "target", None),
-                    },
-                ),
-            )
-        # Replace the decision with ALLOW; preserve everything else
-        # so downstream emission still records the rule/reason. The
-        # `decision` field is what gates dispatch; the surrounding
-        # detail is informational for the audit replay.
-        from dataclasses import replace as _dc_replace
-
-        return _dc_replace(
-            proposed,
-            decision=Decision.ALLOW,
-            reason=(
-                f"shadowed: would have been {proposed.decision.value} "
-                f"under STRICT (rule={proposed.rule})"
-            ),
-        )
-
-    async def _apply_decision_inspectors(
-        self,
-        session_id: Any,
-        session: Any,
-        action: Any,
-        tool_name: str,
-        proposed: Any,
-    ) -> Any:
-        """Run any registered DecisionInspectors on the proposed
-        policy decision. Returns the (possibly adjusted) decision.
-
-        Composes monotonically — TIGHTEN beats RELAX. Each inspector
-        firing is audited so the trail captures the override origin.
-        """
-        if self._policy_context is None or not self._policy_context.decision_inspectors:
-            return proposed
-
-        from inspect import isawaitable
-        from types import SimpleNamespace
-
-        from capabledeputy.substrate.decision_inspector_port import (
-            compose_inspector_outcomes,
-        )
-
-        # #47 — resolve the action target's relationship-group membership
-        # (Cookbook P2.3) so inspectors can express relationship-aware
-        # decisions ("relax email to family"). Resolved here because the
-        # chokepoint holds the RelationshipGroups registry; surfaced to
-        # scripts as action["relationship_groups"]. Non-recipient targets
-        # (paths/urls) resolve to no groups.
-        groups: tuple[str, ...] = ()
-        rg = getattr(self._policy_context, "relationship_groups", None)
-        target = getattr(action, "target", None)
-        if rg is not None and target:
-            try:
-                groups = tuple(sorted(rg.resolve(str(target))))
-            except Exception:
-                groups = ()
-        inspect_action = SimpleNamespace(
-            kind=action.kind,
-            target=getattr(action, "target", ""),
-            amount=getattr(action, "amount", None),
-            relationship_group_ids=groups,
-        )
-
-        outcomes: list[tuple[str, Any]] = []
-        for inspector in self._policy_context.decision_inspectors:
-            try:
-                oc = inspector.inspect(
-                    action=inspect_action,
-                    session=session,
-                    proposed_outcome=proposed,
-                )
-                # Script-backed inspectors (#46) are async — they await the
-                # script host's off-event-loop evaluate(). Builtin
-                # inspectors are sync. Support both transparently.
-                if isawaitable(oc):
-                    oc = await oc
-            except Exception as e:
-                # A buggy inspector must not crash the chokepoint —
-                # treat as abstain + audit the failure for the operator.
-                await self._audit.write(
-                    Event(
-                        event_type=EventType.POLICY_DECIDED,
-                        session_id=session_id,
-                        payload={
-                            "tool": tool_name,
-                            "decision_inspector_error": str(e),
-                            "inspector": getattr(inspector, "name", "<unknown>"),
-                        },
-                    ),
-                )
-                continue
-            if oc is not None:
-                outcomes.append((getattr(inspector, "name", "<unknown>"), oc))
-
-        composed = compose_inspector_outcomes(proposed.decision, outcomes)
-        if composed is None:
-            return proposed
-
-        new_decision, rule_with_origin, rationale = composed
-
-        # Guardrail (#41/#46, FR-026 bounded-relax): a DecisionInspector
-        # RELAX may only soften a REQUIRE_APPROVAL to ALLOW. It must NEVER
-        # cross a structural floor — DENY and OVERRIDE_REQUIRED come from
-        # the capability / BLP / Biba / conflict-invariant gates and are
-        # NOT operator-relaxable (otherwise an operator-authored script
-        # could neutralize a structural security guarantee). Tightens are
-        # always honored. Without this clamp the composition would happily
-        # relax DENY → ALLOW.
-        from capabledeputy.substrate.decision_inspector_port import (
-            is_strictly_less_restrictive,
-        )
-
-        if (
-            is_strictly_less_restrictive(new_decision, proposed.decision)
-            and proposed.decision != Decision.REQUIRE_APPROVAL
-        ):
-            await self._audit.write(
-                Event(
-                    event_type=EventType.RELAXATION_REFUSED,
-                    session_id=session_id,
-                    payload={
-                        "tool": tool_name,
-                        "refused_rule": rule_with_origin,
-                        "base_decision": proposed.decision.value,
-                        "attempted_decision": new_decision.value,
-                        "reason": (
-                            "inspector relax may not cross a structural floor "
-                            "(only REQUIRE_APPROVAL is relaxable)"
-                        ),
-                    },
-                ),
-            )
-            return proposed
-
-        from dataclasses import replace as _dc_replace
-
-        adjusted = _dc_replace(
-            proposed,
-            decision=new_decision,
-            rule=rule_with_origin,
-            reason=rationale or proposed.reason,
-        )
-        # Dedicated DECISION_INSPECTOR_APPLIED event so auditors can
-        # filter primitive applications separately from raw policy
-        # decisions. Original POLICY_DECIDED event still fires at the
-        # ordinary dispatch site reflecting the adjusted outcome.
-        await self._audit.write(
-            Event(
-                event_type=EventType.DECISION_INSPECTOR_APPLIED,
-                session_id=session_id,
-                payload={
-                    "tool": tool_name,
-                    "applied_rule": rule_with_origin,
-                    "original_decision": proposed.decision.value,
-                    "adjusted_decision": new_decision.value,
-                    "rationale": rationale,
-                },
-            ),
-        )
-        return adjusted
-
-    async def _apply_declassifiers(
-        self,
-        session_id: Any,
-        session: Any,
-        tool_name: str,
-        value: Any,
-        inherent_tags: LabelState,
-        additional_tags: LabelState,
-    ) -> tuple[Any, LabelState]:
-        """Run the declassifier chain on tool output. Returns
-        (transformed_value, tags_to_remove_from_propagation).
-
-        Each declassifier that fires:
-          - Transforms the value (output becomes the chain's tail value)
-          - Identifies tags to subtract from per-result propagation
-            based on its `lower_axis_*` fields
-          - Emits a DECLASSIFIER_APPLIED audit event with the diff +
-            structural_proof_kind
-
-        The session's label_state is NOT lowered — declassifier only
-        reduces the tags propagated by THIS particular result. The
-        chokepoint composition stays monotone.
-        """
-        if self._policy_context is None or not self._policy_context.declassifiers:
-            return value, LabelState()
-
-        from capabledeputy.substrate.declassifier_port import (
-            apply_declassifier_chain,
-        )
-
-        try:
-            final_value, applied = apply_declassifier_chain(
-                tuple(self._policy_context.declassifiers),
-                value=value,
-                current_label_state=session.label_state,
-                context={"tool": tool_name},
-            )
-        except Exception as e:
-            # A buggy declassifier must not crash the chokepoint —
-            # treat as no-op and surface the failure for the operator.
-            await self._audit.write(
-                Event(
-                    event_type=EventType.DECLASSIFIER_APPLIED,
-                    session_id=session_id,
-                    payload={
-                        "tool": tool_name,
-                        "error": str(e),
-                    },
-                ),
-            )
-            return value, LabelState()
-
-        # Emit one DECLASSIFIER_APPLIED per declassifier that fired.
-        # Auditor sees the structural proof for each step.
-
-        from capabledeputy.policy.labels import ProvenanceLevel
-
-        removed_categories: set[str] = set()
-        removed_levels: set[ProvenanceLevel] = set()
-        for result in applied:
-            await self._audit.write(
-                Event(
-                    event_type=EventType.DECLASSIFIER_APPLIED,
-                    session_id=session_id,
-                    payload={
-                        "tool": tool_name,
-                        "structural_proof_kind": result.structural_proof_kind,
-                        "audit_diff": result.audit_diff,
-                        "lower_axis_a_categories": list(result.lower_axis_a_categories),
-                        "lower_axis_b_level": result.lower_axis_b_level,
-                    },
-                ),
-            )
-            # Track categories/levels to remove by matching the
-            # declassifier's lowering signals against the candidate tags.
-            for entry in result.lower_axis_a_categories:
-                cat = entry.get("category", "")
-                to_tier = entry.get("to_tier", "").lower()
-                if to_tier == "none" and cat:
-                    removed_categories.add(cat)
-            # If a declassifier lowered axis_b to a particular level,
-            # remove all MORE-RESTRICTED (higher-risk) levels.
-            # E.g. if lowered to PRINCIPAL_DIRECT, remove EXTERNAL_UNTRUSTED
-            # and SYSTEM_INTERNAL since they're more restrictive.
-            if result.lower_axis_b_level:
-                from capabledeputy.policy.labels import _PROVENANCE_RANK
-
-                try:
-                    target_level = ProvenanceLevel(result.lower_axis_b_level)
-                    target_rank = _PROVENANCE_RANK[target_level]
-                    # Remove all levels that are MORE RESTRICTIVE (higher rank)
-                    for level in ProvenanceLevel:
-                        if _PROVENANCE_RANK[level] > target_rank:
-                            removed_levels.add(level)
-                except (ValueError, KeyError):
-                    pass
-
-        # Build the LabelState of tags marked for removal: categories and levels
-        # that were lowered away by the declassifiers.
-        tags_to_remove = LabelState(
-            a=frozenset(
-                t for t in (inherent_tags.a | additional_tags.a) if t.category in removed_categories
-            ),
-            b=frozenset(
-                t for t in (inherent_tags.b | additional_tags.b) if t.level in removed_levels
-            ),
-        )
-        return final_value, tags_to_remove
-
-    async def _apply_inspectors(
-        self,
-        session: Any,
-        value: object,
-    ) -> None:
-        """FR-025 — run every registered raise-only inspector against
-        the just-returned value + current session label_state; compose any
-        returned taint into the session via most_restrictive_inherit.
-        Refused to lower — the composition is monotone by construction."""
-        from dataclasses import replace as dc_replace
-
-        from capabledeputy.policy.labels import inherit
-
-        if self._policy_context is None:
-            return
-        new_label_state = session.label_state
-        for inspector in self._policy_context.inspectors:
-            delta = inspector.inspect(
-                value=value,
-                current_label_state=new_label_state,
-            )
-            pre_state = new_label_state
-            # R4b.4 — route inspector taint-raise through the directional
-            # LabelState.inherit (session-authoritative; raise-only-inspector
-            # exception). The delta returns a raise_state which is composed
-            # monotonically into the session's label_state.
-            raised = inherit(
-                new_label_state,
-                delta.raise_state,
-            )
-            new_label_state = raised
-            # Audit each inspector that actually raised something. A
-            # no-op inspector (delta with empty state) doesn't fire an
-            # event — keeps the audit stream signal-rich.
-            if new_label_state != pre_state:
-                await self._audit.write(
-                    Event(
-                        event_type=EventType.INSPECTOR_APPLIED,
-                        session_id=session.id,
-                        payload={
-                            "inspector": getattr(inspector, "__class__", type(inspector)).__name__,
-                            "raised_axis_a": len(new_label_state.a) > len(pre_state.a),
-                            "raised_axis_b": len(new_label_state.b) > len(pre_state.b),
-                        },
-                    ),
-                )
-        if new_label_state != session.label_state:
-            updated = dc_replace(session, label_state=new_label_state)
-            await self._graph._save(updated)
-            self._graph._sessions[session.id] = updated
 
     def _resolve_action_axis_d(self, session_axis_d: Any, *, action: Any) -> Any:
         """Compose the action-time axis_d by resolving the action's
@@ -1027,8 +575,8 @@ class LabeledToolClient:
     ) -> dict[str, Any]:
         """Build the kw-only v2 args for engine.decide() from the
         session axes + tool definition + policy context. When the
-        policy context is absent, returns an empty dict (the v2 leg
-        stays dormant; legacy behavior preserved). When override_grants
+        policy context is absent, returns an empty dict and the axis-aware
+        decision leg stays dormant. When override_grants
         is present, threads it + session_id so an active grant
         short-circuits to ALLOW (Demo #2 / T079)."""
         if self._policy_context is None:
@@ -1122,77 +670,6 @@ class LabeledToolClient:
         if op is not None:
             kwargs["trust_profile_is_personal"] = op.trust_profile is TrustProfile.PERSONAL
         return kwargs
-
-    async def _bind_reference_handles(
-        self,
-        *,
-        session_id: UUID,
-        tool: ToolDefinition,
-        tool_name: str,
-        args: dict[str, Any],
-    ) -> dict[str, Any]:
-        """T104 — substitute Pattern (3) handle ids with real values
-        from the store; emit pattern3.handle_bind per substitution.
-        Returns the substituted args dict. If no policy_context or no
-        handle_store wired, returns `args` unchanged. The bind() call
-        itself enforces unforgeable / per-session / non-empty-
-        destination invariants (FR-047)."""
-        if (
-            self._policy_context is None
-            or self._policy_context.handle_store is None
-            or not tool.accepts_handles
-            or not tool.handle_arg_names
-        ):
-            return args
-        store = self._policy_context.handle_store
-        substituted: dict[str, Any] = dict(args)
-        for arg_name in tool.handle_arg_names:
-            raw = substituted.get(arg_name)
-            if not isinstance(raw, str) or not is_planner_safe_token(raw):
-                continue
-            try:
-                handle_id = UUID(raw)
-            except ValueError:
-                continue
-            # Best-effort destination canonical id: the tool's
-            # target_arg if surfaces_destination_id is declared; else
-            # tool name. The full T012 path is to consult a port — that
-            # lands when source_port has providers (spec 004).
-            dest = (
-                str(substituted.get(tool.target_arg, ""))
-                if tool.surfaces_destination_id
-                else f"tool:{tool_name}"
-            )
-            audit_id = uuid4()
-            try:
-                value = store.bind(
-                    session_id=session_id,
-                    handle_id=handle_id,
-                    destination_canonical_id=dest or f"tool:{tool_name}",
-                    tool=tool_name,
-                    audit_id=audit_id,
-                )
-            except ReferenceHandleError:
-                # Forged / cross-session / empty-destination: refuse
-                # the substitution; the handler sees the raw token, the
-                # underlying call typically fails — fail-loud not
-                # fail-silent.
-                continue
-            substituted[arg_name] = value
-            await self._audit.write(
-                Event(
-                    audit_id=audit_id,
-                    event_type=EventType.PATTERN3_HANDLE_BIND,
-                    session_id=session_id,
-                    payload={
-                        "handle_id": str(handle_id),
-                        "tool": tool_name,
-                        "arg_name": arg_name,
-                        "destination_canonical_id": dest or f"tool:{tool_name}",
-                    },
-                ),
-            )
-        return substituted
 
     async def _register_approval(
         self,

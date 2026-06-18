@@ -33,7 +33,7 @@ from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.resolution import ContextProfile
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
-from capabledeputy.tools.client import PolicyContext
+from capabledeputy.policy.context import PolicyContext
 from demos.scenarios._helpers import (
     ai,
     audit,

@@ -25,7 +25,7 @@ enforcement of the same structure.**
 | CORE / PRO (Process Mechanics) | CapableDeputy |
 |---|---|
 | **Components** — typed nodes (LLM, DB, API, guardrail, human review), each defined by the operations it performs + resources it accesses | the actors: planner LLM (untrusted, outside TCB), quarantined LLM, **tools**, the deterministic chokepoint (= guardrail), the human approver (= HITL). A **tool is a Component, characterized by its declared `effect_class` + resources.** |
-| **Operations** — actions on data; each **adds/removes tags** | `effect_class` (the action category) + label add/remove (`inherent_labels`/`arg_inherent_labels` add tags; certified declassifiers remove them) |
+| **Operations** — actions on data; each **adds/removes tags** | `effect_class` (the action category) + label add/remove (`inherent_tags`/`arg_inherent_tags` add tags; certified declassifiers remove them) |
 | **Resources** — external assets, with access pattern (read/write/delete) | Axis-A data-category + source/location **bindings** (canonical destination ids, FR-043/048); access pattern ≈ effect direction + `surfaces_destination_id` |
 | **Execution** — data-flow edges; tags propagate | the session flow + **Denning dynamic taint propagation**; routing = flow patterns ①–⑤ + the mode selector |
 | **PRO · Policies** — data-flow constraints run against the graph | `rules.yaml` `DecisionRule`s — predicates over axes A–D + effect class |

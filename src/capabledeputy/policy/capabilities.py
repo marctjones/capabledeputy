@@ -358,21 +358,28 @@ class Capability:
         target: str,
         amount: int | None = None,
     ) -> bool:
-        if self.kind != kind:
-            # Backward-compat: WRITE_FS / CALENDAR_WRITE capabilities
-            # match the granular create/modify/delete variants. Custom
-            # kinds (str, not in enum) participate via string equality
-            # only — they never trigger the union match.
-            covered: frozenset[CapabilityKind] = frozenset()
-            if isinstance(self.kind, CapabilityKind):
-                covered = _WRITE_UNION_MATCHES.get(self.kind, frozenset())
-            if not isinstance(kind, CapabilityKind) or kind not in covered:
-                return False
+        if not self.covers_kind(kind):
+            return False
         if not self._pattern_matches(target):
             return False
         if self.max_amount is None:
             return True
         return amount is not None and amount <= self.max_amount
+
+    def covers_kind(self, kind: CapabilityKind | str) -> bool:
+        """Kind-only counterpart to matches().
+
+        Used by tool-surface filtering where final target args are not known
+        yet. Dispatch still calls matches() with the concrete target.
+        """
+        if self.kind == kind:
+            return True
+        # Backward-compat: WRITE_FS / CALENDAR_WRITE / READ_FS capabilities
+        # match granular variants. Custom kinds participate via string
+        # equality only — they never trigger the union match.
+        if not isinstance(self.kind, CapabilityKind) or not isinstance(kind, CapabilityKind):
+            return False
+        return kind in _WRITE_UNION_MATCHES.get(self.kind, frozenset())
 
     def _pattern_matches(self, target: str) -> bool:
         """Glob match with one usability fix: a pattern ending in

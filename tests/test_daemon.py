@@ -5,11 +5,12 @@ import pytest
 
 from capabledeputy.daemon.server import Daemon
 from capabledeputy.ipc.client import DaemonClient, DaemonError, DaemonNotRunningError
+from tests._socket_helpers import short_socket_path
 
 
 @pytest.fixture
 def socket_path(tmp_path: Path) -> Path:
-    return tmp_path / "test.sock"
+    return short_socket_path()
 
 
 async def _wait_for_socket(path: Path, timeout: float = 2.0) -> None:
@@ -97,7 +98,7 @@ async def test_socket_is_removed_after_shutdown(socket_path: Path) -> None:
 
 
 async def test_client_raises_when_daemon_not_running(tmp_path: Path) -> None:
-    socket_path = tmp_path / "missing.sock"
+    socket_path = short_socket_path("missing.sock")
     client = DaemonClient(socket_path)
     with pytest.raises(DaemonNotRunningError):
         await client.call("ping")

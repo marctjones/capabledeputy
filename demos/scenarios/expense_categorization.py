@@ -46,7 +46,7 @@ from capabledeputy.policy.overrides import (
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.substrate.inspector_port import InspectorRaiseResult, RaiseOnlyInspector
-from capabledeputy.tools.client import PolicyContext
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 from demos.scenarios._helpers import (
     ai,

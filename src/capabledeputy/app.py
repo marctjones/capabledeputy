@@ -10,11 +10,12 @@ from capabledeputy.approval.queue import ApprovalQueue
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.client import LLMClient
 from capabledeputy.paths import default_audit_log_path, default_state_db_path
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.purposes import Purposes
 from capabledeputy.resources.static import StaticResourcePublisher
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.store import SessionStore
-from capabledeputy.tools.client import LabeledToolClient, PolicyContext
+from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.native.calendar import CalendarStore, make_calendar_tools
 from capabledeputy.tools.native.email import DraftBox, EmailOutbox, make_email_tools
 from capabledeputy.tools.native.extract import make_extract_tools

@@ -23,7 +23,7 @@ import pytest
 
 from capabledeputy.app import App
 from capabledeputy.llm.fake import FakeLLMClient
-from capabledeputy.tools.client import PolicyContext
+from capabledeputy.policy.context import PolicyContext
 
 
 @pytest.fixture

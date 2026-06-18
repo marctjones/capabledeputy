@@ -39,7 +39,7 @@ from capabledeputy.programmatic import (
     dry_run_for_bundle,
     execute_with_approved_bundle,
 )
-from capabledeputy.tools.client import PolicyContext
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.tools.native.calendar import CalendarEvent
 from capabledeputy.tools.native.inbox import InboundMessage
 from demos.scenarios._helpers import (

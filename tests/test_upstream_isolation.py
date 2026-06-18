@@ -17,7 +17,7 @@ from capabledeputy.upstream.isolation import (
 
 
 def test_argv_prefix_strict_defaults() -> None:
-    iso = ContainerIsolation(image="docker.io/library/python:3.12-slim")
+    iso = ContainerIsolation(image="docker.io/library/python:3.14-slim")
     argv = iso.to_argv_prefix()
     assert argv[0] == "podman"
     assert argv[1] == "run"
@@ -27,7 +27,7 @@ def test_argv_prefix_strict_defaults() -> None:
     assert "--security-opt=no-new-privileges" in argv
     assert "--network=none" in argv
     assert "--user=1500:1500" in argv
-    assert argv[-1] == "docker.io/library/python:3.12-slim"
+    assert argv[-1] == "docker.io/library/python:3.14-slim"
 
 
 def test_argv_prefix_with_volumes_and_limits() -> None:
@@ -95,7 +95,7 @@ def test_parse_config_with_isolation() -> None:
                     "b": [],
                 },
                 "isolation": {
-                    "image": "docker.io/library/python:3.12-slim",
+                    "image": "docker.io/library/python:3.14-slim",
                     "network": "none",
                     "volumes": [
                         {"host": "/h/notes", "container": "/data", "ro": True},
@@ -107,7 +107,7 @@ def test_parse_config_with_isolation() -> None:
     }
     [cfg] = parse_config(raw)
     assert cfg.isolation is not None
-    assert cfg.isolation.image == "docker.io/library/python:3.12-slim"
+    assert cfg.isolation.image == "docker.io/library/python:3.14-slim"
     assert cfg.isolation.network == "none"
     assert cfg.isolation.memory == "256m"
     assert cfg.isolation.volumes[0].host == "/h/notes"
@@ -138,7 +138,7 @@ def test_parse_config_without_isolation_leaves_field_none() -> None:
 
 def test_quadlet_renders_directives() -> None:
     iso = ContainerIsolation(
-        image="docker.io/library/python:3.12-slim",
+        image="docker.io/library/python:3.14-slim",
         network="none",
         volumes=(VolumeMount(host="/h", container="/c", ro=True),),
         memory="256m",
@@ -151,7 +151,7 @@ def test_quadlet_renders_directives() -> None:
     )
     expected_fragments = [
         "Description=CapableDeputy upstream MCP server: fs",
-        "Image=docker.io/library/python:3.12-slim",
+        "Image=docker.io/library/python:3.14-slim",
         "Network=none",
         "ReadOnly=yes",
         "DropCapability=ALL",
@@ -201,7 +201,7 @@ def test_yaml_round_trip_with_isolation(tmp_path) -> None:
                       assignment_provenance: system-default
                   b: []
                 isolation:
-                  image: docker.io/library/python:3.12-slim
+                  image: docker.io/library/python:3.14-slim
                   network: none
                   volumes:
                     - host: /home/me/notes
@@ -216,6 +216,6 @@ def test_yaml_round_trip_with_isolation(tmp_path) -> None:
     [cfg] = load_config_file(path)
     iso = cfg.isolation
     assert iso is not None
-    assert iso.image.endswith("python:3.12-slim")
+    assert iso.image.endswith("python:3.14-slim")
     assert iso.network == "none"
     assert iso.volumes[0].ro is True

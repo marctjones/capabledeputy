@@ -232,6 +232,8 @@ def make_sandbox_tools(policy_context, audit=None) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.EXECUTE_SANDBOX,
             handler=run_sandbox,
             target_arg="spec_id",
+            accepts_handles=True,
+            handle_arg_names=("inputs", "stdin"),
             parameters_schema={
                 "type": "object",
                 "properties": {

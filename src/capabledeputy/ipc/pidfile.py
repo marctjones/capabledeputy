@@ -93,6 +93,27 @@ def is_process_alive(pid: int) -> bool:
         except (FileNotFoundError, PermissionError, OSError):
             pass  # fall through to POSIX check
 
+    # macOS / BSD fallback: there is no /proc, and os.kill(pid, 0)
+    # reports zombies as present until the parent reaps them. `ps`
+    # exposes the process state portably enough for daemon-stop
+    # escalation tests and operator diagnostics.
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(pid)],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=0.5,
+        )
+        if result.returncode == 0:
+            state = result.stdout.strip()
+            if state.startswith("Z"):
+                return False
+    except (OSError, subprocess.SubprocessError):
+        pass
+
     # POSIX fallback.
     try:
         os.kill(pid, 0)

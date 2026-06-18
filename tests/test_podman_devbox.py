@@ -146,7 +146,7 @@ def devbox(tmp_path: Path, fake_podman: None) -> PodmanDevbox:
         (
             PodmanRegionSpec(
                 spec_id="dev",
-                image="docker.io/library/python:3.12-slim",
+                image="docker.io/library/python:3.14-slim",
                 network="bridge",  # devbox often wants network for pip/npm
                 memory_mb=512,
                 cpus=1.0,
@@ -225,7 +225,7 @@ def test_start_dispatches_podman_run_detached(devbox: PodmanDevbox) -> None:
     # Keep-alive process tail
     assert cmd[-2:] == ["sleep", "infinity"]
     # Image (penultimate after stripping `sleep infinity`) is the spec image
-    assert cmd[-3] == "docker.io/library/python:3.12-slim"
+    assert cmd[-3] == "docker.io/library/python:3.14-slim"
     # Workspace mount points at /work with `:U` so the unprivileged
     # in-container uid owns it.
     v_flag_idxs = [i for i, t in enumerate(cmd) if t == "-v"]

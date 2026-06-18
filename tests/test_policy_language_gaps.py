@@ -31,6 +31,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.decision_rules import (
     DecisionRule,
     DecisionRules,
@@ -70,7 +71,7 @@ from capabledeputy.substrate.inspector_port import (
     InspectorRaiseResult,
     RaiseOnlyInspector,
 )
-from capabledeputy.tools.client import LabeledToolClient, PolicyContext
+from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.registry import (
     ToolContext,
     ToolDefinition,

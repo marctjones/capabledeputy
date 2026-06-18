@@ -77,13 +77,13 @@ async def extract(
         parsed = json.loads(text)
     except json.JSONDecodeError as e:
         raise ExtractionError(
-            f"quarantined LLM output not JSON: {text[:200]}",
+            "quarantined LLM output not JSON",
         ) from e
 
     try:
         validated = schema_cls.model_validate(parsed)
     except ValidationError as e:
-        raise ExtractionError(f"output failed schema validation: {e}") from e
+        raise ExtractionError("output failed schema validation") from e
 
     # Cookbook P1.7 — defense-in-depth constraint pass. After Pydantic
     # accepts the structural shape (types + length caps + ranges), we

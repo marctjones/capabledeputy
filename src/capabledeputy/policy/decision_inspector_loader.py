@@ -2,7 +2,7 @@
 inspectors (Issue #46).
 
 This is the wire that turns the *dormant* decision-refinement layer ON.
-The `DecisionInspector` chokepoint (`tools/client.py:_apply_decision_inspectors`)
+The `DecisionInspector` chokepoint (`tools/policy_hooks.py`)
 and the sandboxed Starlark `PolicyScriptHost` were built and tested, but
 nothing populated `PolicyContext.decision_inspectors`. This module reads
 an operator-authored `decision_inspectors:` list from the daemon config

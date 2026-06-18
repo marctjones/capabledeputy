@@ -33,7 +33,7 @@ from capabledeputy.policy.overrides import (
 )
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
-from capabledeputy.tools.client import PolicyContext
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.tools.native.inbox import InboundMessage
 from demos.scenarios._helpers import (
     ai,

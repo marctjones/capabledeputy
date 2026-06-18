@@ -14,12 +14,13 @@ from capabledeputy.daemon.handlers import default_handlers
 from capabledeputy.daemon.server import Daemon
 from capabledeputy.daemon.session_handlers import make_session_handlers
 from capabledeputy.ipc.client import DaemonClient
+from tests._socket_helpers import short_socket_path
 
 
 @pytest.fixture
 def paths(tmp_path: Path) -> dict[str, Path]:
     return {
-        "socket": tmp_path / "test.sock",
+        "socket": short_socket_path(),
         "state_db": tmp_path / "state.db",
         "audit_log": tmp_path / "audit.jsonl",
     }

@@ -5,13 +5,14 @@ from typer.testing import CliRunner
 
 from capabledeputy.cli.main import app
 from capabledeputy.version import __version__
+from tests._socket_helpers import short_socket_path
 
 runner = CliRunner()
 
 
 @pytest.fixture(autouse=True)
 def isolate_socket_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(short_socket_path().parent))
 
 
 def test_version_command_when_daemon_not_running() -> None:

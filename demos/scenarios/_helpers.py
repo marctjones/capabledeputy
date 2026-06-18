@@ -29,7 +29,7 @@ from capabledeputy.policy.labels import (
 )
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.model import Session
-from capabledeputy.tools.client import PolicyContext
+from capabledeputy.policy.context import PolicyContext
 
 # Frozen clock used across all demos. Determinism is part of the
 # security promise (SC-002); demos hardcode the same `now` so the

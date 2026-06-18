@@ -12,6 +12,7 @@ import pytest
 
 from capabledeputy.policy.actions import Action
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.decision_inspector_loader import (
     DecisionInspectorConfigError,
     ScriptDecisionInspector,
@@ -26,7 +27,7 @@ from capabledeputy.substrate.decision_inspectors_builtin import (
     AfterHoursPurchaseTightener,
     SelfEgressRelaxer,
 )
-from capabledeputy.tools.registry import ToolRegistry
+from capabledeputy.tools.policy_hooks import ToolPolicyHooks
 
 
 def test_empty_config_yields_no_inspectors() -> None:
@@ -234,8 +235,6 @@ async def test_relationship_groups_resolved_into_inspector(tmp_path) -> None:
     from capabledeputy.policy.engine import PolicyDecision
     from capabledeputy.policy.relationships import RelationshipGroup, RelationshipGroups
     from capabledeputy.session.graph import SessionGraph
-    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
-
     audit = AuditWriter(tmp_path / "audit.jsonl")
     graph = SessionGraph(audit=audit)
     (insp,) = load_decision_inspectors(
@@ -249,16 +248,15 @@ async def test_relationship_groups_resolved_into_inspector(tmp_path) -> None:
             ),
         },
     )
-    client = LabeledToolClient(
-        ToolRegistry(),
-        graph,
-        audit,
+    hooks = ToolPolicyHooks(
         policy_context=PolicyContext(decision_inspectors=(insp,), relationship_groups=rg),
+        audit=audit,
+        graph=graph,
     )
     proposed = PolicyDecision(decision=Decision.REQUIRE_APPROVAL, rule="approval")
 
     # Recipient in the family group ⇒ relax to ALLOW.
-    out = await client._apply_decision_inspectors(
+    out = await hooks.apply_decision_inspectors(
         None,
         object(),
         Action(kind=CapabilityKind.SEND_EMAIL, target="spouse@home.example"),
@@ -268,7 +266,7 @@ async def test_relationship_groups_resolved_into_inspector(tmp_path) -> None:
     assert out.decision == Decision.ALLOW
 
     # A stranger ⇒ no relax, stays REQUIRE_APPROVAL.
-    out2 = await client._apply_decision_inspectors(
+    out2 = await hooks.apply_decision_inspectors(
         None,
         object(),
         Action(kind=CapabilityKind.SEND_EMAIL, target="stranger@elsewhere.example"),
@@ -303,21 +301,18 @@ async def test_chokepoint_awaits_async_script_inspector(tmp_path) -> None:
     from capabledeputy.audit.writer import AuditWriter
     from capabledeputy.policy.engine import PolicyDecision
     from capabledeputy.session.graph import SessionGraph
-    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
-
     audit = AuditWriter(tmp_path / "audit.jsonl")
     graph = SessionGraph(audit=audit)
     (insp,) = load_decision_inspectors(
         {"decision_inspectors": [{"source": _RELAX_SCRIPT, "runtime": "python-reference"}]},
     )
-    client = LabeledToolClient(
-        ToolRegistry(),
-        graph,
-        audit,
+    hooks = ToolPolicyHooks(
         policy_context=PolicyContext(decision_inspectors=(insp,)),
+        audit=audit,
+        graph=graph,
     )
     proposed = PolicyDecision(decision=Decision.REQUIRE_APPROVAL, rule="base", reason="r")
-    adjusted = await client._apply_decision_inspectors(
+    adjusted = await hooks.apply_decision_inspectors(
         None,
         object(),
         Action(kind=CapabilityKind.SEND_EMAIL, target="x@y.com"),
@@ -334,8 +329,6 @@ async def test_chokepoint_refuses_relax_of_structural_floor(tmp_path) -> None:
     from capabledeputy.audit.writer import AuditWriter
     from capabledeputy.policy.engine import PolicyDecision
     from capabledeputy.session.graph import SessionGraph
-    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
-
     # A greedy script that always tries to relax to ALLOW.
     greedy = (
         "def inspect(action, session, proposed_outcome):\n"
@@ -346,16 +339,15 @@ async def test_chokepoint_refuses_relax_of_structural_floor(tmp_path) -> None:
     (insp,) = load_decision_inspectors(
         {"decision_inspectors": [{"source": greedy, "runtime": "python-reference"}]},
     )
-    client = LabeledToolClient(
-        ToolRegistry(),
-        graph,
-        audit,
+    hooks = ToolPolicyHooks(
         policy_context=PolicyContext(decision_inspectors=(insp,)),
+        audit=audit,
+        graph=graph,
     )
     action = Action(kind=CapabilityKind.SEND_EMAIL, target="x@y.com")
 
     # DENY base ⇒ relax refused, stays DENY.
-    denied = await client._apply_decision_inspectors(
+    denied = await hooks.apply_decision_inspectors(
         None,
         object(),
         action,
@@ -365,7 +357,7 @@ async def test_chokepoint_refuses_relax_of_structural_floor(tmp_path) -> None:
     assert denied.decision == Decision.DENY
 
     # OVERRIDE_REQUIRED base ⇒ also refused.
-    over = await client._apply_decision_inspectors(
+    over = await hooks.apply_decision_inspectors(
         None,
         object(),
         action,
@@ -375,7 +367,7 @@ async def test_chokepoint_refuses_relax_of_structural_floor(tmp_path) -> None:
     assert over.decision == Decision.OVERRIDE_REQUIRED
 
     # REQUIRE_APPROVAL base ⇒ the legitimate relax goes through.
-    relaxed = await client._apply_decision_inspectors(
+    relaxed = await hooks.apply_decision_inspectors(
         None,
         object(),
         action,
@@ -391,8 +383,6 @@ async def test_chokepoint_survives_buggy_script(tmp_path) -> None:
     from capabledeputy.audit.writer import AuditWriter
     from capabledeputy.policy.engine import PolicyDecision
     from capabledeputy.session.graph import SessionGraph
-    from capabledeputy.tools.client import LabeledToolClient, PolicyContext
-
     # `inspect` raises (references an undefined name) at evaluation.
     boom = "def inspect(action, session, proposed_outcome):\n    return undefined_name\n"
     audit = AuditWriter(tmp_path / "audit.jsonl")
@@ -400,14 +390,13 @@ async def test_chokepoint_survives_buggy_script(tmp_path) -> None:
     (insp,) = load_decision_inspectors(
         {"decision_inspectors": [{"source": boom, "runtime": "python-reference"}]},
     )
-    client = LabeledToolClient(
-        ToolRegistry(),
-        graph,
-        audit,
+    hooks = ToolPolicyHooks(
         policy_context=PolicyContext(decision_inspectors=(insp,)),
+        audit=audit,
+        graph=graph,
     )
     proposed = PolicyDecision(decision=Decision.REQUIRE_APPROVAL, rule="base")
-    adjusted = await client._apply_decision_inspectors(
+    adjusted = await hooks.apply_decision_inspectors(
         None,
         object(),
         Action(kind=CapabilityKind.SEND_EMAIL, target="x@y.com"),

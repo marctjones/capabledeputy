@@ -25,6 +25,7 @@ from capabledeputy.mcp_server.server import discover_tools, dispatch_tool
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.tiers import Tier
+from tests._socket_helpers import short_socket_path
 
 
 def _text(result: object) -> str:
@@ -39,7 +40,7 @@ def _text(result: object) -> str:
 @pytest.fixture
 def paths(tmp_path: Path) -> dict[str, Path]:
     return {
-        "socket": tmp_path / "test.sock",
+        "socket": short_socket_path(),
         "state_db": tmp_path / "state.db",
         "audit_log": tmp_path / "audit.jsonl",
     }
