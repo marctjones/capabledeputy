@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.substrate.decision_inspectors_builtin import (
     AfterHoursPurchaseTightener,
     SelfEgressRelaxer,
@@ -32,7 +33,6 @@ from capabledeputy.substrate.sampling_mediators_builtin import (
     LiteLLMSamplingMediator,
     RefuseAllSamplingMediator,
 )
-from capabledeputy.policy.context import PolicyContext
 
 
 def build_policy_context(

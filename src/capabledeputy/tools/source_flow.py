@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -17,7 +18,6 @@ from capabledeputy.policy.labels import LabelState, most_restrictive_inherit
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.registry import ToolDefinition
-
 
 RESTRICTED_SOURCE_FLOW_RULE = "restricted-source-requires-reference-or-sealed"
 
@@ -157,9 +157,7 @@ class ToolSourceFlow:
             if arg_name in substituted:
                 substituted[arg_name] = await _bind_value(substituted[arg_name], arg_name)
 
-        return substituted, (
-            most_restrictive_inherit(*bound_tags) if bound_tags else LabelState()
-        )
+        return substituted, (most_restrictive_inherit(*bound_tags) if bound_tags else LabelState())
 
     def _destination_for_handle_bind(
         self,
@@ -177,10 +175,8 @@ class ToolSourceFlow:
     def _handle_tokens_in_value(self, value: Any, path: str) -> list[tuple[str, UUID]]:
         tokens: list[tuple[str, UUID]] = []
         if isinstance(value, str) and is_planner_safe_token(value):
-            try:
+            with contextlib.suppress(ValueError):
                 tokens.append((path, UUID(value)))
-            except ValueError:
-                pass
             return tokens
         if isinstance(value, dict):
             for key, child in value.items():

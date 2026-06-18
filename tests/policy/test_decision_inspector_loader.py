@@ -235,6 +235,7 @@ async def test_relationship_groups_resolved_into_inspector(tmp_path) -> None:
     from capabledeputy.policy.engine import PolicyDecision
     from capabledeputy.policy.relationships import RelationshipGroup, RelationshipGroups
     from capabledeputy.session.graph import SessionGraph
+
     audit = AuditWriter(tmp_path / "audit.jsonl")
     graph = SessionGraph(audit=audit)
     (insp,) = load_decision_inspectors(
@@ -301,6 +302,7 @@ async def test_chokepoint_awaits_async_script_inspector(tmp_path) -> None:
     from capabledeputy.audit.writer import AuditWriter
     from capabledeputy.policy.engine import PolicyDecision
     from capabledeputy.session.graph import SessionGraph
+
     audit = AuditWriter(tmp_path / "audit.jsonl")
     graph = SessionGraph(audit=audit)
     (insp,) = load_decision_inspectors(
@@ -329,6 +331,7 @@ async def test_chokepoint_refuses_relax_of_structural_floor(tmp_path) -> None:
     from capabledeputy.audit.writer import AuditWriter
     from capabledeputy.policy.engine import PolicyDecision
     from capabledeputy.session.graph import SessionGraph
+
     # A greedy script that always tries to relax to ALLOW.
     greedy = (
         "def inspect(action, session, proposed_outcome):\n"
@@ -383,6 +386,7 @@ async def test_chokepoint_survives_buggy_script(tmp_path) -> None:
     from capabledeputy.audit.writer import AuditWriter
     from capabledeputy.policy.engine import PolicyDecision
     from capabledeputy.session.graph import SessionGraph
+
     # `inspect` raises (references an undefined name) at evaluation.
     boom = "def inspect(action, session, proposed_outcome):\n    return undefined_name\n"
     audit = AuditWriter(tmp_path / "audit.jsonl")

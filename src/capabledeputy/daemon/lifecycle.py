@@ -239,6 +239,7 @@ def build_policy_context_from_configs(
     """
 
     from capabledeputy.policy.bindings import load as load_bindings
+    from capabledeputy.policy.context import PolicyContext
     from capabledeputy.policy.decision_rules import load as load_rules
     from capabledeputy.policy.envelope import (
         load_envelopes,
@@ -253,7 +254,6 @@ def build_policy_context_from_configs(
     from capabledeputy.policy.purposes import load as load_purposes
     from capabledeputy.policy.relationships import load as load_relationship_groups
     from capabledeputy.policy.resolution import load_profiles
-    from capabledeputy.policy.context import PolicyContext
 
     base = _resolve_v09_configs_dir(configs_dir)
 
@@ -480,8 +480,6 @@ async def run_daemon(
     from capabledeputy.policy.fs_labeling import load_fs_label_rules
 
     fs_labeler = load_fs_label_rules(_resolve_v09_configs_dir() / "fs_label_rules.yaml")
-
-    from capabledeputy.llm.factory import make_llm_client
 
     app = App(
         state_db_path=state_db_path,

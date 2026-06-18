@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import subprocess
 import time
 from pathlib import Path
 
@@ -98,8 +99,6 @@ def is_process_alive(pid: int) -> bool:
     # exposes the process state portably enough for daemon-stop
     # escalation tests and operator diagnostics.
     try:
-        import subprocess
-
         result = subprocess.run(
             ["ps", "-o", "stat=", "-p", str(pid)],
             capture_output=True,

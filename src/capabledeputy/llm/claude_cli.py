@@ -110,8 +110,7 @@ def _build_prompt(messages: list[Message], tools: list[ToolDescription]) -> str:
 
     tool_lines = (
         "\n".join(
-            f"- {tool.name}: {tool.description}  "
-            f"params={json.dumps(tool.parameters_schema)}"
+            f"- {tool.name}: {tool.description}  params={json.dumps(tool.parameters_schema)}"
             for tool in tools
         )
         or "(no tools available)"
@@ -124,9 +123,7 @@ def _build_prompt(messages: list[Message], tools: list[ToolDescription]) -> str:
         '  to call a tool:    {"tool_call": {"name": "<tool>", "args": { ... }}}\n'
         '  to reply to user:  {"content": "<text>"}\n\n'
         f"Available tools:\n{tool_lines}\n\n"
-        "Conversation:\n"
-        + "\n".join(convo)
-        + "\n\nRespond now with the single JSON object."
+        "Conversation:\n" + "\n".join(convo) + "\n\nRespond now with the single JSON object."
     )
 
 

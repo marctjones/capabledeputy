@@ -21,6 +21,8 @@ from uuid import uuid4
 import pytest
 
 from capabledeputy.audit.writer import AuditWriter
+from capabledeputy.policy.engine import PolicyDecision
+from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import EnforcementMode, Session
 from capabledeputy.tools.policy_hooks import ToolPolicyHooks
@@ -111,15 +113,6 @@ async def test_shadow_rewrite_turns_deny_into_allow(tmp_path: Path) -> None:
     delivered and POLICY_SHADOWED in the audit log."""
     from dataclasses import dataclass
 
-    from capabledeputy.policy.rules import Decision
-
-    @dataclass
-    class _FakeDecision:
-        decision: Decision
-        rule: str | None
-        reason: str | None = None
-        effective_labels: frozenset = frozenset()  # type: ignore[type-arg]
-
     @dataclass
     class _FakeAction:
         target: str = "x@example.com"
@@ -131,7 +124,7 @@ async def test_shadow_rewrite_turns_deny_into_allow(tmp_path: Path) -> None:
     audit_path = tmp_path / "audit.jsonl"
     writer = AuditWriter(audit_path)
     hooks = ToolPolicyHooks(policy_context=None, audit=writer, graph=SessionGraph(audit=writer))
-    proposed = _FakeDecision(
+    proposed = PolicyDecision(
         decision=Decision.DENY,
         rule="untrusted-meets-egress",
         reason="untrusted.* + egress.* denied",
@@ -163,15 +156,6 @@ async def test_shadow_does_not_rewrite_allow(tmp_path: Path) -> None:
     POLICY_SHADOWED noise for normal operations."""
     from dataclasses import dataclass
 
-    from capabledeputy.policy.rules import Decision
-
-    @dataclass
-    class _FakeDecision:
-        decision: Decision
-        rule: str | None
-        reason: str | None = None
-        effective_labels: frozenset = frozenset()  # type: ignore[type-arg]
-
     @dataclass
     class _FakeAction:
         target: str = "x@example.com"
@@ -183,7 +167,7 @@ async def test_shadow_does_not_rewrite_allow(tmp_path: Path) -> None:
     audit_path = tmp_path / "audit.jsonl"
     writer = AuditWriter(audit_path)
     hooks = ToolPolicyHooks(policy_context=None, audit=writer, graph=SessionGraph(audit=writer))
-    proposed = _FakeDecision(
+    proposed = PolicyDecision(
         decision=Decision.ALLOW,
         rule="some-allow-rule",
     )
@@ -213,15 +197,6 @@ async def test_shadow_does_not_bypass_capability_structural_deny(
     authority."""
     from dataclasses import dataclass
 
-    from capabledeputy.policy.rules import Decision
-
-    @dataclass
-    class _FakeDecision:
-        decision: Decision
-        rule: str | None
-        reason: str | None = None
-        effective_labels: frozenset = frozenset()  # type: ignore[type-arg]
-
     @dataclass
     class _FakeAction:
         target: str = "x@example.com"
@@ -232,7 +207,7 @@ async def test_shadow_does_not_bypass_capability_structural_deny(
 
     writer = AuditWriter(tmp_path / "audit.jsonl")
     hooks = ToolPolicyHooks(policy_context=None, audit=writer, graph=SessionGraph(audit=writer))
-    proposed = _FakeDecision(
+    proposed = PolicyDecision(
         decision=Decision.DENY,
         rule=None,
         reason="no matching capability for SEND_EMAIL(x@example.com)",
@@ -255,15 +230,6 @@ async def test_strict_mode_does_not_rewrite(tmp_path: Path) -> None:
     must NOT be rewritten."""
     from dataclasses import dataclass
 
-    from capabledeputy.policy.rules import Decision
-
-    @dataclass
-    class _FakeDecision:
-        decision: Decision
-        rule: str | None
-        reason: str | None = None
-        effective_labels: frozenset = frozenset()  # type: ignore[type-arg]
-
     @dataclass
     class _FakeAction:
         target: str = "x@example.com"
@@ -274,7 +240,7 @@ async def test_strict_mode_does_not_rewrite(tmp_path: Path) -> None:
 
     writer = AuditWriter(tmp_path / "audit.jsonl")
     hooks = ToolPolicyHooks(policy_context=None, audit=writer, graph=SessionGraph(audit=writer))
-    proposed = _FakeDecision(
+    proposed = PolicyDecision(
         decision=Decision.DENY,
         rule="some-rule",
         reason="rule-driven deny",

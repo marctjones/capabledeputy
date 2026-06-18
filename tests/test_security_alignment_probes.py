@@ -28,7 +28,6 @@ from capabledeputy.policy.tiers import Tier
 from capabledeputy.substrate.sandbox_actuator import SandboxResult
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry, ToolResult
 
-
 _HEALTH_LABELS = LabelState(
     a=frozenset(
         {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")},
@@ -60,8 +59,10 @@ async def test_turn_level_memory_read_taints_session_and_blocks_egress(tmp_path:
     await _grant(app, session.id, CapabilityKind.READ_FS, CapabilityKind.SEND_EMAIL)
 
     read = await app.tool_client.call_tool(session.id, "memory.read", {"key": "rx"})
+    stored_rx = app.memory.read("rx")
+    assert stored_rx is not None
     assert read.decision == Decision.ALLOW
-    assert read.output == {"found": True, "value": app.memory.read("rx").value}
+    assert read.output == {"found": True, "value": stored_rx.value}
 
     after_read = app.graph.get(session.id)
     assert any(tag.category == "health" for tag in after_read.label_state.a)

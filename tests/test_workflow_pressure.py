@@ -283,8 +283,8 @@ async def test_sanctioned_declassification_lowers_taint_enabling_egress(tmp_path
     session EXTERNAL_UNTRUSTED → egress denied. Routing the read through a
     CERTIFIED declassifier (schema projection) lowers the taint, so egress is
     no longer untrusted-blocked. This is the only sanctioned path out."""
-    from capabledeputy.substrate.declassifiers_builtin import SchemaProjector
     from capabledeputy.policy.context import PolicyContext
+    from capabledeputy.substrate.declassifiers_builtin import SchemaProjector
 
     async def _read_then_email(declassifiers):
         app = App(

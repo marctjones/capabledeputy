@@ -25,9 +25,9 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
-from capabledeputy.policy.context import PolicyContext
 from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.registry import (
     ToolContext,

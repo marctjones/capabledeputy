@@ -22,6 +22,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.decision_rules import RuleOutcome
 from capabledeputy.policy.envelope import (
     CellKey,
@@ -45,7 +46,6 @@ from capabledeputy.policy.overrides import (
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.substrate.inspector_port import InspectorRaiseResult, RaiseOnlyInspector
-from capabledeputy.policy.context import PolicyContext
 from demos.scenarios._helpers import (
     ai,
     demo_header,

@@ -39,6 +39,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import (
     CategoryTag,
@@ -52,7 +53,6 @@ from capabledeputy.substrate.inspector_port import (
     InspectorRaiseResult,
     RaiseOnlyInspector,
 )
-from capabledeputy.policy.context import PolicyContext
 from capabledeputy.tools.native.inbox import InboundMessage
 from capabledeputy.tools.registry import (
     ToolContext,

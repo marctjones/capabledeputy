@@ -17,10 +17,10 @@ from __future__ import annotations
 import json
 import re
 import threading
-from typing import Any
+from typing import Any, ClassVar
 from uuid import uuid4
 
-import anyio
+from anyio.to_thread import run_sync
 
 from capabledeputy.llm.types import (
     FinishReason,
@@ -271,8 +271,8 @@ def parse_mlx_response(text: str, *, model: str) -> LLMResponse:
 
 
 class MLXLLMClient:
-    _cache_lock = threading.Lock()
-    _loaded_models: dict[str, tuple[Any, Any]] = {}
+    _cache_lock: ClassVar[threading.Lock] = threading.Lock()
+    _loaded_models: ClassVar[dict[str, tuple[Any, Any]]] = {}
 
     def __init__(
         self,
@@ -292,9 +292,9 @@ class MLXLLMClient:
         messages: list[Message],
         tools: list[ToolDescription],
     ) -> LLMResponse:
-        model, tokenizer = await anyio.to_thread.run_sync(self._load_model_sync)
+        model, tokenizer = await run_sync(self._load_model_sync)
         prompt = self._render_prompt(tokenizer, messages, tools)
-        text = await anyio.to_thread.run_sync(self._generate_sync, model, tokenizer, prompt)
+        text = await run_sync(self._generate_sync, model, tokenizer, prompt)
         if tools:
             return parse_mlx_response(text, model=self._model)
         return LLMResponse(
@@ -366,5 +366,6 @@ class MLXLLMClient:
                 self._model,
                 tokenizer_config={"trust_remote_code": self._trust_remote_code},
             )
-            self._loaded_models[self._model] = loaded
-            return loaded
+            pair = (loaded[0], loaded[1])
+            self._loaded_models[self._model] = pair
+            return pair

@@ -19,8 +19,8 @@ from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import EnforcementMode, Session
-from capabledeputy.substrate.declassifier_port import DeclassifyResult
 from capabledeputy.substrate.decision_inspector_port import DecisionRelax
+from capabledeputy.substrate.declassifier_port import DeclassifyResult
 from capabledeputy.substrate.inspector_port import InspectorRaiseResult
 from capabledeputy.tools.policy_hooks import ToolPolicyHooks
 

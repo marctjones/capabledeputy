@@ -15,11 +15,11 @@ from capabledeputy.policy.labels import LabelState, ProvenanceLevel, inherit
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import EnforcementMode
-from capabledeputy.substrate.declassifier_port import apply_declassifier_chain
 from capabledeputy.substrate.decision_inspector_port import (
     compose_inspector_outcomes,
     is_strictly_less_restrictive,
 )
+from capabledeputy.substrate.declassifier_port import apply_declassifier_chain
 
 
 class ToolPolicyHooks:
@@ -228,9 +228,7 @@ class ToolPolicyHooks:
                 if tag.category in removed_categories
             ),
             b=frozenset(
-                tag
-                for tag in (inherent_tags.b | additional_tags.b)
-                if tag.level in removed_levels
+                tag for tag in (inherent_tags.b | additional_tags.b) if tag.level in removed_levels
             ),
         )
         return final_value, tags_to_remove

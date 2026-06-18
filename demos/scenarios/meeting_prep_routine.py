@@ -28,6 +28,7 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.labels import (
     CategoryTag,
     LabelState,
@@ -39,7 +40,6 @@ from capabledeputy.programmatic import (
     dry_run_for_bundle,
     execute_with_approved_bundle,
 )
-from capabledeputy.policy.context import PolicyContext
 from capabledeputy.tools.native.calendar import CalendarEvent
 from capabledeputy.tools.native.inbox import InboundMessage
 from demos.scenarios._helpers import (

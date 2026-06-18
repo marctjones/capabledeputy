@@ -47,7 +47,7 @@ def test_try_parse_returns_none_for_non_json() -> None:
 def test_strip_reasoning_blocks_removes_think_variants() -> None:
     assert _strip_reasoning_blocks("<think>secret</think>\nfinal") == "final"
     assert _strip_reasoning_blocks("<thinking>secret</thinking>\nfinal") == "final"
-    assert _strip_reasoning_blocks("<think>secret\n{\"ok\": true}") == '{"ok": true}'
+    assert _strip_reasoning_blocks('<think>secret\n{"ok": true}') == '{"ok": true}'
     assert _strip_reasoning_blocks("<thinking>secret only") == ""
 
 
@@ -253,7 +253,7 @@ async def test_client_respond_without_tools_strips_reasoning_blocks() -> None:
         return object(), _FakeTokenizer()
 
     def fake_generate(model, tokenizer, prompt: str) -> str:
-        return "<think>hidden</think>{\"ok\":true}"
+        return '<think>hidden</think>{"ok":true}'
 
     client._load_model_sync = fake_load  # type: ignore[method-assign]
     client._generate_sync = fake_generate  # type: ignore[method-assign]

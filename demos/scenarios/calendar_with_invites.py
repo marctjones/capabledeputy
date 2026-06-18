@@ -24,9 +24,9 @@ from capabledeputy.policy.capabilities import (
     CapabilityKind,
     CapabilityOrigin,
 )
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
-from capabledeputy.policy.context import PolicyContext
 from capabledeputy.tools.native.inbox import InboundMessage
 from demos.scenarios._helpers import (
     ai,

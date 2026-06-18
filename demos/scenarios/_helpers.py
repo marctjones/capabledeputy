@@ -20,6 +20,7 @@ from typing import Any
 
 from capabledeputy.app import App
 from capabledeputy.audit.events import EventType
+from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.labels import (
     AxisD,
     CategoryTag,
@@ -29,7 +30,6 @@ from capabledeputy.policy.labels import (
 )
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.model import Session
-from capabledeputy.policy.context import PolicyContext
 
 # Frozen clock used across all demos. Determinism is part of the
 # security promise (SC-002); demos hardcode the same `now` so the
