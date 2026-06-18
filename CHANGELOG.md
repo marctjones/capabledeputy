@@ -4,6 +4,51 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [0.20.0] - 2026-06-18
+
+Local-first model defaults, source-flow hardening, and platform cleanup.
+
+### Local LLM backends
+
+- **MLX is now the default planning backend on Apple Silicon macOS.** With no
+  explicit backend/model override, CapDep selects
+  `mlx/Qwen/Qwen3-4B-MLX-4bit`, validated through CapDep's structured
+  tool-call and quarantined-extraction contract.
+- **MLX chat-template adapter.** The local adapter renders model-native chat
+  templates, accepts fenced/prefaced JSON, strips `<think>` / `<thinking>`
+  blocks before parsing or display, and keeps model-native thinking off by
+  default unless `CAPDEP_MLX_ENABLE_THINKING=1` is set.
+- **Explicit backend factory.** Operators can choose `CAPDEP_LLM_BACKEND=mlx`,
+  `litellm`, or `claude-cli`; hosted/shared deployments should continue to use
+  the LiteLLM/API path.
+- **Claude CLI backend integrated.** The optional Claude CLI path shells out to
+  a locally logged-in `claude -p` session for the subscriber's own local use,
+  with Claude Code built-in tools disabled so CapDep remains the policy gate.
+
+### Security and flow architecture
+
+- **Canonical policy context.** Tool execution now uses
+  `capabledeputy.policy.context.PolicyContext`; legacy compatibility re-exports
+  and private hook/source-flow wrappers were removed.
+- **Policy hooks and source-flow split.** Tool policy lifecycle handling moved
+  into `ToolPolicyHooks`, while source-label/reference-handle enforcement moved
+  into `ToolSourceFlow`, simplifying the tool client and making extension
+  points explicit.
+- **Reference-handle enforcement hardened.** Pattern 2 declassification now
+  denies restricted/prohibited source data unless the flow uses an authorized
+  reference handle or sealed pattern, including nested argument binding.
+- **Quarantined extraction safer by default.** Extractor errors no longer echo
+  raw model output/schema details back through exception messages.
+
+### Platform and maintenance
+
+- **Python baseline raised to 3.14.** Project metadata, lockfile, and container
+  examples now target Python 3.14.
+- **macOS daemon reliability.** Socket-path tests use shorter temporary paths,
+  and pidfile liveness handles BSD/macOS zombie process state.
+- **Legacy cleanup.** Demo scenarios, docs, tests, and examples now use the
+  canonical policy imports and the simplified policy/source-flow architecture.
+
 ## [0.19.0] — 2026-06-08
 
 A greenfield **inline console** (TUI redesign) — and a security model for the
@@ -542,6 +587,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.20.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.20.0
 [0.19.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.19.0
 [0.18.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.18.0
 [0.17.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.17.0
