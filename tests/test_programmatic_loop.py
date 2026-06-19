@@ -126,6 +126,42 @@ async def test_programmatic_loop_no_code_block_falls_through(tmp_path: Path) -> 
     assert "cannot help" in result.content
 
 
+async def test_programmatic_prompt_lists_only_visible_tools(tmp_path: Path) -> None:
+    llm = FakeLLMClient(
+        [
+            LLMResponse(
+                content="I will not run a program.",
+                finish_reason=FinishReason.STOP,
+            ),
+        ],
+    )
+    app = App(
+        state_db_path=tmp_path / "state.db",
+        audit_log_path=tmp_path / "audit.jsonl",
+        llm_client=llm,
+    )
+    await app.startup()
+    s = await app.graph.new()
+    read_cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    app.graph._sessions[s.id] = replace(s, capability_set=frozenset({read_cap}))
+
+    await run_programmatic_turn(
+        session_id=s.id,
+        user_message="what tools are available?",
+        llm=llm,
+        tool_client=app.tool_client,
+        registry=app.registry,
+        graph=app.graph,
+        audit=app.audit,
+    )
+
+    [(messages, _tools)] = llm.calls
+    system_prompt = messages[0].content
+    assert "memory.read" in system_prompt
+    assert "purchase.queue" not in system_prompt
+    assert "email.send" not in system_prompt
+
+
 async def test_programmatic_loop_rejects_forbidden_program(tmp_path: Path) -> None:
     """Program with `import` is rejected at parse time without running."""
     app = App(

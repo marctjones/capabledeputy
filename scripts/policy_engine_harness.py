@@ -26,7 +26,8 @@ from _policy_harness import (
 )
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import tags_for_labels_strings
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 
 TITLE = "smoke"
 
@@ -69,7 +70,7 @@ SCENARIOS: list[Scenario] = [
         pre=lambda app: app.memory.write(
             "rx",
             "lisinopril 10mg",
-            tags_for_labels_strings(frozenset({"confidential.health"})),
+            LabelState(a=frozenset({CategoryTag("health", Tier.REGULATED)})),
         ),
         responses=[
             tool_turn("read rx", tc("h1", "memory.read", key="rx")),

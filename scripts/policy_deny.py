@@ -31,7 +31,8 @@ from _policy_harness import (
 )
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.policy.labels import tags_for_labels_strings
+from capabledeputy.policy.labels import CategoryTag, LabelState
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.native.inbox import InboundMessage
 
 TITLE = "DENY paths (all denying rules)"
@@ -55,7 +56,7 @@ def _seed_health(app: object) -> None:
     app.memory.write(  # type: ignore[attr-defined]
         "rx",
         "lisinopril 10mg daily",
-        tags_for_labels_strings(frozenset({"confidential.health"})),
+        LabelState(a=frozenset({CategoryTag("health", Tier.REGULATED)})),
     )
 
 

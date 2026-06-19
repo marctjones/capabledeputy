@@ -125,3 +125,28 @@ def test_select_mode_refuses_restricted_when_no_protective_mode() -> None:
 
     with pytest.raises(ModeSelectionError):
         select_mode(_restricted_state(), _registry_with(handles=False))
+
+
+def test_restricted_floor_beats_prefer_programmatic() -> None:
+    """Pattern ④ cannot downgrade restricted data out of Pattern ③/⑤."""
+    from capabledeputy.mode.dispatcher import select_mode
+
+    mode, reason = select_mode(
+        _restricted_state(),
+        _registry_with(handles=True),
+        prefer_programmatic=True,
+    )
+
+    assert mode == ExecutionMode.REFERENCE
+    assert "Pattern (3)" in reason
+
+
+def test_restricted_floor_refuses_unsafe_forced_mode() -> None:
+    from capabledeputy.mode.dispatcher import select_mode
+
+    with pytest.raises(ModeSelectionError, match="cannot run forced mode"):
+        select_mode(
+            _restricted_state(),
+            _registry_with(handles=True),
+            force_mode=ExecutionMode.TURN_LEVEL,
+        )

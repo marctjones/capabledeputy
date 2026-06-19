@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from capabledeputy.approval.route import ApprovalRoute
@@ -22,11 +22,15 @@ from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import LabelState
 
+if TYPE_CHECKING:
+    from capabledeputy.patterns.reference_handle import ReferenceHandleStore
+
 
 @dataclass(frozen=True)
 class ToolContext:
     session_id: UUID
     label_state: LabelState
+    handle_store: ReferenceHandleStore | None = None
 
 
 @dataclass(frozen=True)

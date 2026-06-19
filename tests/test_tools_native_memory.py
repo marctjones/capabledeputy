@@ -1,5 +1,6 @@
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+from capabledeputy.patterns.reference_handle import ReferenceHandleStore
 from capabledeputy.policy.labels import CategoryTag, LabelState, Tier
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
 from capabledeputy.tools.registry import ToolContext
@@ -7,6 +8,17 @@ from capabledeputy.tools.registry import ToolContext
 
 def _ctx(label_state: LabelState | None = None) -> ToolContext:
     return ToolContext(session_id=uuid4(), label_state=label_state or LabelState())
+
+
+def _ctx_with_handles(
+    label_state: LabelState | None = None,
+    handle_store: ReferenceHandleStore | None = None,
+) -> ToolContext:
+    return ToolContext(
+        session_id=uuid4(),
+        label_state=label_state or LabelState(),
+        handle_store=handle_store,
+    )
 
 
 async def test_write_then_read_round_trips_value() -> None:
@@ -105,6 +117,40 @@ def test_tool_metadata() -> None:
     tools = make_memory_tools(LabeledMemoryStore())
     by_name = {t.name: t for t in tools}
     assert "memory.read" in by_name
+    assert "memory.handle" in by_name
     assert "memory.write" in by_name
     assert by_name["memory.read"].target_arg == "key"
+    assert by_name["memory.read"].source_label_lookup is not None
+    assert by_name["memory.read"].forbid_restricted_source is True
+    assert by_name["memory.handle"].target_arg == "key"
+    assert by_name["memory.handle"].source_label_lookup is not None
+    assert by_name["memory.handle"].forbid_restricted_source is False
     assert by_name["memory.write"].target_arg == "key"
+
+
+async def test_memory_handle_returns_reference_without_raw_value() -> None:
+    store = LabeledMemoryStore()
+    handle_store = ReferenceHandleStore()
+    tools = {t.name: t for t in make_memory_tools(store)}
+    label_state = LabelState(
+        a=frozenset(
+            {CategoryTag("health", Tier.RESTRICTED, assignment_provenance="source-declared")}
+        )
+    )
+    ctx = _ctx_with_handles(label_state, handle_store)
+
+    await tools["memory.write"].handler({"key": "secret", "value": "BP=120/80"}, ctx)
+    result = await tools["memory.handle"].handler({"key": "secret"}, ctx)
+
+    assert result.output["found"] is True
+    assert result.output["key"] == "secret"
+    assert result.output["handle"] != "BP=120/80"
+    assert "value" not in result.output
+    bound = handle_store.bind(
+        session_id=ctx.session_id,
+        handle_id=UUID(result.output["handle"]),
+        destination_canonical_id="tool:test",
+        tool="test.consumer",
+        audit_id=uuid4(),
+    )
+    assert bound == "BP=120/80"

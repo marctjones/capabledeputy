@@ -117,7 +117,7 @@ async def test_oracle_memory_read_propagates_stored_label(tmp_path) -> None:
     app.memory.write(
         "labs",
         "WBC 7.2",
-        LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)})),
+        LabelState(a=frozenset({CategoryTag("health", Tier.REGULATED)})),
     )
     s = await _session(app)
     assert "health" not in _cats(app, s.id)
@@ -139,7 +139,7 @@ async def test_taint_read_health_then_external_email_denied(tmp_path) -> None:
     app.memory.write(
         "labs",
         "results",
-        LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)})),
+        LabelState(a=frozenset({CategoryTag("health", Tier.REGULATED)})),
     )
     s = await _session(app)
     await _call(app, s.id, "memory.read", {"key": "labs"})  # produces the taint
@@ -171,8 +171,12 @@ async def test_taint_accumulates_across_steps(tmp_path) -> None:
     """Taint is monotone across a multi-step workflow: reading health then
     financial leaves BOTH on the session (sticky labels, FR-024)."""
     app = await _app(tmp_path)
-    app.memory.write("h", "x", LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)})))
-    app.memory.write("f", "y", LabelState(a=frozenset({CategoryTag("financial", Tier.RESTRICTED)})))
+    app.memory.write("h", "x", LabelState(a=frozenset({CategoryTag("health", Tier.REGULATED)})))
+    app.memory.write(
+        "f",
+        "y",
+        LabelState(a=frozenset({CategoryTag("financial", Tier.REGULATED)})),
+    )
     s = await _session(app)
     await _call(app, s.id, "memory.read", {"key": "h"})
     await _call(app, s.id, "memory.read", {"key": "f"})
@@ -256,7 +260,7 @@ async def test_model_confidential_read_blocks_external_egress(tmp_path) -> None:
             app.memory.write(
                 "d",
                 "v",
-                LabelState(a=frozenset({CategoryTag(cat, Tier.RESTRICTED)})),
+                LabelState(a=frozenset({CategoryTag(cat, Tier.REGULATED)})),
             )
             s = await _session(app)
             await _call(app, s.id, reader, {"key": "d"})

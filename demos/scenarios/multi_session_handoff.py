@@ -64,12 +64,12 @@ async def test_multi_session_handoff_demo(tmp_path: Any) -> None:
     app = make_app(tmp_path, policy_context=PolicyContext())
     await app.startup()
 
-    # Pre-seed the memory store with a PHI record so memory.read
+    # Pre-seed the memory store with a clinical record so memory.read
     # propagates a real CONFIDENTIAL_HEALTH label onto the parent.
     app.memory.write(
         "patient-12",
         "BP 130/80, glucose normal.",
-        LabelState(a=frozenset({CategoryTag("health", Tier.RESTRICTED)})),
+        LabelState(a=frozenset({CategoryTag("health", Tier.REGULATED)})),
     )
 
     parent = await make_session(

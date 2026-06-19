@@ -4,6 +4,42 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [0.21.0] - 2026-06-19
+
+Flow-pattern alignment and restricted-source hardening.
+
+### Security and flow architecture
+
+- **Restricted raw memory reads now fail closed.** `memory.read` declares
+  source labels before dispatch and refuses restricted/prohibited source data
+  before the handler can return raw values to the planner.
+- **Pattern ③ memory handles.** New `memory.handle` issues planner-safe
+  reference handles for labeled memory values, keeping raw data in the
+  runtime-private handle store while preserving source labels for downstream
+  handle-aware tools.
+- **Sensitive modes hide raw readers.** `DUAL_LLM`, `REFERENCE`, and `SEALED`
+  modes remove raw labeled-data readers from the visible tool surface.
+- **Visible tools are enforced, not just prompted.** The agent loop now denies
+  fabricated calls to tools hidden by the current mode/capability surface before
+  dispatch.
+- **Mode/tool surface refreshes after taint changes.** When a tool call changes
+  session labels mid-turn, CapDep reselects execution mode, rebuilds the visible
+  tool list, refreshes the system context, and audits the refresh before the
+  next LLM call.
+- **Restricted floor beats unsafe mode overrides.** Restricted-tier sessions can
+  no longer downgrade to programmatic/turn-level modes through
+  `prefer_programmatic` or unsafe forced modes.
+- **Programmatic prompts are capability-filtered.** Programmatic mode now lists
+  only tools visible to the current session instead of leaking the full registry.
+
+### Tests and demos
+
+- Added regression coverage for raw restricted memory denial, handle-producing
+  memory reads, sensitive-mode raw-reader filtering, programmatic prompt
+  filtering, and mid-turn mode/tool refresh.
+- Updated policy scripts and narrated demos so raw taint-flow examples use
+  regulated labels, while restricted data exercises the new handle/denial paths.
+
 ## [0.20.0] - 2026-06-18
 
 Local-first model defaults, source-flow hardening, and platform cleanup.
@@ -587,6 +623,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.21.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.21.0
 [0.20.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.20.0
 [0.19.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.19.0
 [0.18.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.18.0

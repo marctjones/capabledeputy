@@ -1,5 +1,6 @@
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -13,6 +14,7 @@ from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
@@ -20,7 +22,7 @@ from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
 from capabledeputy.tools.native.purchase import PurchaseQueue, make_purchase_tools
-from capabledeputy.tools.registry import ToolRegistry
+from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry, ToolResult
 
 
 @pytest.fixture
@@ -237,6 +239,75 @@ async def test_label_accumulation_blocks_subsequent_egress(writer: AuditWriter) 
         None,
     )
     assert health_in_session is not None, "health category should be in session after read"
+
+
+async def test_label_change_refreshes_visible_tools_and_denies_hidden_call(
+    writer: AuditWriter,
+) -> None:
+    graph, registry, client, memory, _ = await _setup(writer)
+
+    async def quarantined_noop(args: dict[str, Any], context: ToolContext) -> ToolResult:
+        return ToolResult(output={"ok": True, "args": args})
+
+    registry.register(
+        ToolDefinition(
+            name="quarantined.extract",
+            description="extract without raw planner exposure",
+            capability_kind=CapabilityKind.READ_FS,
+            handler=quarantined_noop,
+            target_arg="key",
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
+            source_label_lookup=lambda args: memory.label_state_of(str(args.get("key", ""))),
+            forbid_restricted_source=True,
+        ),
+    )
+    s = await graph.new()
+    read_cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    graph._sessions[s.id] = replace(s, capability_set=frozenset({read_cap}))
+    memory.write(
+        "labs",
+        "BP=120/80",
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
+    )
+
+    llm = FakeLLMClient(
+        [
+            LLMResponse(
+                content="",
+                tool_calls=(ToolCall(id="c1", name="memory.read", args={"key": "labs"}),),
+                finish_reason=FinishReason.TOOL_CALLS,
+            ),
+            LLMResponse(
+                content="",
+                tool_calls=(ToolCall(id="c2", name="memory.read", args={"key": "labs"}),),
+                finish_reason=FinishReason.TOOL_CALLS,
+            ),
+            LLMResponse(content="I should use extraction now.", finish_reason=FinishReason.STOP),
+        ],
+    )
+
+    result = await run_turn(
+        session_id=s.id,
+        user_message="read labs twice",
+        llm=llm,
+        tool_client=client,
+        registry=registry,
+        graph=graph,
+        audit=writer,
+    )
+
+    assert [o.decision for o in result.tool_outcomes] == [Decision.ALLOW, Decision.DENY]
+    assert result.tool_outcomes[1].rule == "tool-not-visible-in-current-mode"
+    first_call_tools = {tool.name for tool in llm.calls[0][1]}
+    second_call_tools = {tool.name for tool in llm.calls[1][1]}
+    assert "memory.read" in first_call_tools
+    assert "memory.read" not in second_call_tools
+    assert "quarantined.extract" in second_call_tools
 
 
 async def test_tool_not_found_handled_gracefully(writer: AuditWriter) -> None:

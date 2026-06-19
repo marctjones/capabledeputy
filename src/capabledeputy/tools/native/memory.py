@@ -13,6 +13,7 @@ from typing import Any
 
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
+from capabledeputy.patterns.reference_handle import ResolvedLabels
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import LabelState
@@ -53,6 +54,16 @@ class LabeledMemoryStore:
         return self.label_state_of(key)
 
 
+def _resolved_labels_from_state(label_state: LabelState) -> ResolvedLabels:
+    """Encode a LabelState snapshot in the reference-handle wire format."""
+    axis_a = tuple(
+        f"{tag.category}:{tag.tier.value}"
+        for tag in sorted(label_state.a, key=lambda t: (t.category, t.tier.value))
+    )
+    axis_b = tuple(tag.level.value for tag in sorted(label_state.b, key=lambda t: t.level.value))
+    return ResolvedLabels(axis_a=axis_a, axis_b=axis_b)
+
+
 def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
     async def memory_write(args: dict[str, Any], context: ToolContext) -> ToolResult:
         key = str(args["key"])
@@ -68,6 +79,32 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
         return ToolResult(
             output={"found": True, "value": entry.value},
             additional_tags=entry.label_state,
+        )
+
+    async def memory_handle(args: dict[str, Any], context: ToolContext) -> ToolResult:
+        """Return a Pattern (3) handle for a stored value without exposing it."""
+        key = str(args["key"])
+        entry = store.read(key)
+        if entry is None:
+            return ToolResult(output={"found": False})
+        if context.handle_store is None:
+            return ToolResult(
+                output={
+                    "found": True,
+                    "error": "reference handle store is not wired",
+                },
+            )
+        handle = context.handle_store.issue(
+            context.session_id,
+            entry.value,
+            _resolved_labels_from_state(entry.label_state),
+        )
+        return ToolResult(
+            output={
+                "found": True,
+                "key": key,
+                "handle": str(handle.id),
+            },
         )
 
     async def memory_create(args: dict[str, Any], context: ToolContext) -> ToolResult:
@@ -143,7 +180,10 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             description=(
                 "Read the value at a key in the memory store. Returns "
                 "{found, value} and propagates the value's labels into "
-                "the calling session. Required args: key (string)."
+                "the calling session. Raw reads are refused for restricted "
+                "or prohibited source labels; use memory.handle plus a "
+                "handle-aware tool or sealed isolation for those values. "
+                "Required args: key (string)."
             ),
             capability_kind=CapabilityKind.READ_FS,
             handler=memory_read,
@@ -151,10 +191,39 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             effect_class="data.read_local",
             default_reversibility={"degree": "reversible", "agent": "system"},
             tool_provenance="operator-curated",
+            source_label_lookup=lambda args: store.label_state_of(str(args.get("key", ""))),
+            forbid_restricted_source=True,
             parameters_schema={
                 "type": "object",
                 "properties": {
                     "key": {"type": "string", "description": "Memory key to read."},
+                },
+                "required": ["key"],
+            },
+        ),
+        ToolDefinition(
+            name="memory.handle",
+            operations=(Operation(EffectClass.FETCH, subtype="memory.handle"),),
+            risk_ids=("RISK-PII-DISCLOSURE",),
+            description=(
+                "Issue a planner-safe reference handle for the value at a "
+                "memory key. The raw value stays in the runtime-private "
+                "handle store; the planner receives only {found, key, "
+                "handle}. Use this for restricted/prohibited memory values "
+                "that must flow into handle-aware tools. Required args: "
+                "key (string)."
+            ),
+            capability_kind=CapabilityKind.READ_FS,
+            handler=memory_handle,
+            target_arg="key",
+            effect_class="data.read_local",
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
+            source_label_lookup=lambda args: store.label_state_of(str(args.get("key", ""))),
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Memory key to wrap."},
                 },
                 "required": ["key"],
             },

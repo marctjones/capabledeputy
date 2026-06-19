@@ -62,7 +62,7 @@ async def test_task_compartments_demo(tmp_path: Any) -> None:
     # Pre-load a personal finance summary in the memory store with the
     # appropriate label, so memory.read propagates CONFIDENTIAL_FINANCIAL
     # onto the session.
-    financial_tag = CategoryTag("financial", Tier.RESTRICTED)
+    financial_tag = CategoryTag("financial", Tier.REGULATED)
     app.memory.write(
         "checking-balance",
         "$3,420.16 as of 2026-05-20",

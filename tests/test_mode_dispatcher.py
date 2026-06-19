@@ -93,6 +93,25 @@ def test_filter_hides_raw_readers_in_dual_llm() -> None:
     assert "email.send" in names
 
 
+def test_filter_hides_raw_readers_in_reference_and_sealed() -> None:
+    registry = _make_registry(
+        "memory.read",
+        "fs.read",
+        "web.fetch",
+        "memory.handle",
+        "sandbox.run",
+    )
+
+    for mode in (ExecutionMode.REFERENCE, ExecutionMode.SEALED):
+        filtered = filter_tools_for_mode(registry.list(), mode)
+        names = {t.name for t in filtered}
+        assert "memory.read" not in names
+        assert "fs.read" not in names
+        assert "web.fetch" not in names
+        assert "memory.handle" in names
+        assert "sandbox.run" in names
+
+
 def test_each_confidential_label_triggers_dual_llm() -> None:
     registry = _make_registry("quarantined.extract")
     for category in ("health", "financial", "personal"):

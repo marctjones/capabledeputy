@@ -420,7 +420,12 @@ class LabeledToolClient:
                     )
                 parent_id = parent.parent_audit_id
 
-        context = ToolContext(session_id=session_id, label_state=session.label_state)
+        handle_store = self._policy_context.handle_store if self._policy_context else None
+        context = ToolContext(
+            session_id=session_id,
+            label_state=session.label_state,
+            handle_store=handle_store,
+        )
         # T104 — Pattern (3) ReferenceHandle bind step. AFTER decide()
         # approved, BEFORE the handler runs: substitute any handle-shaped
         # values in declared handle_arg_names with the store-bound real

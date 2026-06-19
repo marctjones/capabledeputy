@@ -27,6 +27,7 @@ from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.client import LLMClient
 from capabledeputy.llm.types import FinishReason, Message, Role
+from capabledeputy.mode.dispatcher import ExecutionMode, visible_tools
 from capabledeputy.policy.labels import LabelState
 from capabledeputy.policy.rules import Decision
 from capabledeputy.programmatic import (
@@ -35,7 +36,7 @@ from capabledeputy.programmatic import (
 )
 from capabledeputy.programmatic.evaluator import ToolCallRecord
 from capabledeputy.session.graph import SessionGraph, SessionStateError
-from capabledeputy.session.model import Turn
+from capabledeputy.session.model import Session, Turn
 from capabledeputy.tools.client import LabeledToolClient, ToolCallOutcome
 from capabledeputy.tools.registry import ToolRegistry
 
@@ -84,9 +85,13 @@ def extract_code_block(text: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _format_tool_descriptions_for_prompt(registry: ToolRegistry) -> str:
+def _format_tool_descriptions_for_prompt(
+    registry: ToolRegistry,
+    session: Session,
+    mode: ExecutionMode = ExecutionMode.PROGRAMMATIC,
+) -> str:
     lines = ["Available tools (call via `call('tool_name', kwarg=value)`):"]
-    for tool in registry.list():
+    for tool in visible_tools(registry, session, mode):
         lines.append(f"  - {tool.name} — {tool.description}")
     return "\n".join(lines)
 
@@ -138,7 +143,11 @@ async def run_programmatic_turn(
     )
     session = await graph.add_turn(session_id, user_turn)
 
-    tool_block = _format_tool_descriptions_for_prompt(registry)
+    tool_block = _format_tool_descriptions_for_prompt(
+        registry,
+        session,
+        ExecutionMode.PROGRAMMATIC,
+    )
     full_prompt = f"{system_prompt}\n\n{tool_block}"
 
     messages: list[Message] = [Message(role=Role.SYSTEM, content=full_prompt)]

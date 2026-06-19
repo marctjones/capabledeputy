@@ -72,26 +72,54 @@ def select_mode(
 
     Layers of override, in order of decreasing strength:
 
-      1. `force_mode` — caller (CLI `--mode`) explicitly demands a mode
-         for this turn only.
-      2. `prefer_programmatic` — session-level flag set at session.new
-         time; takes precedence over the auto-escalation heuristic so
-         users can opt into programmatic for a whole session.
-      3. Restricted-tier floor (FR-047, Issue #52) — if ANY Axis-A tag is
+      1. Restricted-tier floor (FR-047, Issue #52) — if ANY Axis-A tag is
          at `restricted` tier, the turn MUST run under Pattern ③
          (REFERENCE, when a handle-aware tool is present) or Pattern ⑤
          (SEALED, when a SandboxActuator is wired), never ①/② which would
          land raw restricted data in the planner. Neither available ⇒
-         `ModeSelectionError` (fail-closed). This mirrors the spawn-time
-         gate but now also *drives the per-turn mode*, which it did not
-         before (#52): previously a restricted session silently ran under
-         Pattern ②/①.
+         `ModeSelectionError` (fail-closed). Unsafe forced modes and
+         prefer_programmatic cannot downgrade this floor.
+      2. `force_mode` — caller (CLI `--mode`) explicitly demands a mode
+         for this turn only, when it does not violate the restricted floor.
+      3. `prefer_programmatic` — session-level flag set at session.new
+         time; takes precedence over the auto-escalation heuristic so
+         users can opt into programmatic for a whole session.
       4. Auto-heuristic — confidential categories present + a quarantined
          extractor registered → DUAL_LLM. Otherwise TURN_LEVEL.
 
     Returns (mode, reason) so the audit record explains the choice.
     Raises ModeSelectionError only for the restricted-tier fail-closed.
     """
+    # Restricted-tier floor (FR-047 / #52) — evaluated before the
+    # forced/preferred mode and confidential-category heuristic so a
+    # restricted tag can never de-escalate to planner-exposing modes.
+    if any(tag.tier == Tier.RESTRICTED for tag in label_state.a):
+        handles_available = tool_surface_offers_handles(registry.list())
+        if force_mode is not None:
+            if force_mode == ExecutionMode.REFERENCE:
+                if not handles_available:
+                    raise ModeSelectionError(
+                        "restricted-tier session cannot force reference mode: "
+                        "no accepts_handles tool is available",
+                    )
+                return force_mode, f"forced by caller: {force_mode.value}"
+            if force_mode == ExecutionMode.SEALED:
+                if not has_sandbox_actuator:
+                    raise ModeSelectionError(
+                        "restricted-tier session cannot force sealed mode: "
+                        "no SandboxActuator is wired",
+                    )
+                return force_mode, f"forced by caller: {force_mode.value}"
+            raise ModeSelectionError(
+                "restricted-tier session cannot run forced mode "
+                f"{force_mode.value}; requires Pattern (3) reference handles "
+                "or Pattern (5) sealed isolation",
+            )
+        return select_mode_for_restricted(
+            has_accepts_handles_tool=handles_available,
+            has_sandbox_actuator=has_sandbox_actuator,
+        )
+
     if force_mode is not None:
         return force_mode, f"forced by caller: {force_mode.value}"
 
@@ -99,15 +127,6 @@ def select_mode(
         return (
             ExecutionMode.PROGRAMMATIC,
             "session prefers programmatic mode; planner will emit a program",
-        )
-
-    # Restricted-tier floor (FR-047 / #52) — evaluated before the
-    # confidential-category heuristic so a restricted tag can never
-    # de-escalate to DUAL_LLM/TURN_LEVEL.
-    if any(tag.tier == Tier.RESTRICTED for tag in label_state.a):
-        return select_mode_for_restricted(
-            has_accepts_handles_tool=tool_surface_offers_handles(registry.list()),
-            has_sandbox_actuator=has_sandbox_actuator,
         )
 
     # Check if any category in label_state.a matches confidential categories
@@ -134,8 +153,12 @@ def filter_tools_for_mode(
     tools: list[ToolDefinition],
     mode: ExecutionMode,
 ) -> list[ToolDefinition]:
-    """Hide raw labeled-data readers when running dual-LLM mode."""
-    if mode != ExecutionMode.DUAL_LLM:
+    """Hide raw labeled-data readers in planner-exposure-limited modes."""
+    if mode not in {
+        ExecutionMode.DUAL_LLM,
+        ExecutionMode.REFERENCE,
+        ExecutionMode.SEALED,
+    }:
         return tools
     return [t for t in tools if t.name not in _RAW_LABELED_DATA_TOOLS]
 

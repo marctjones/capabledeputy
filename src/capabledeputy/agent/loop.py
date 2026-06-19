@@ -333,6 +333,22 @@ def _format_outcome(outcome: ToolCallOutcome) -> str:
     return str(output)
 
 
+def _no_tools_notice_message() -> Message:
+    return Message(
+        role=Role.SYSTEM,
+        content=(
+            "NOTICE: this session has no tool capabilities. "
+            "Your tool list is empty for this turn. You CANNOT "
+            "call any tools. Do not write tool-call code blocks "
+            "as text — that does nothing. Respond to the user "
+            "by telling them: 'I have no tools available in this "
+            "session. Run `/grant <KIND> <pattern>` to grant me "
+            "one (e.g. `/grant SEND_EMAIL recipient@example.com "
+            "--one-shot`).' Then stop."
+        ),
+    )
+
+
 async def run_turn(
     *,
     session_id: UUID,
@@ -623,21 +639,8 @@ async def run_turn_streaming(
     # bypasses the runtime entirely. Tell the LLM, in plain language,
     # that the list is empty and what the user has to do to fix it.
     if not tool_descriptions:
-        messages.append(
-            Message(
-                role=Role.SYSTEM,
-                content=(
-                    "NOTICE: this session has no tool capabilities. "
-                    "Your tool list is empty for this turn. You CANNOT "
-                    "call any tools. Do not write tool-call code blocks "
-                    "as text — that does nothing. Respond to the user "
-                    "by telling them: 'I have no tools available in this "
-                    "session. Run `/grant <KIND> <pattern>` to grant me "
-                    "one (e.g. `/grant SEND_EMAIL recipient@example.com "
-                    "--one-shot`).' Then stop."
-                ),
-            ),
-        )
+        messages.append(_no_tools_notice_message())
+    visible_tool_names = {t.name for t in visible_tools(registry, session, mode)}
     reverse_map: dict[str, str] = {}
     if session.tool_aliasing:
         visible = visible_tools(registry, session, mode)
@@ -941,11 +944,7 @@ async def run_turn_streaming(
                 tool_args=tool_call.args,
             )
             try:
-                outcome = await tool_client.call_tool(
-                    session_id,
-                    real_name,
-                    tool_call.args,
-                )
+                registry.get(real_name)
             except ToolNotFoundError:
                 outcome = ToolCallOutcome(
                     decision=Decision.DENY,
@@ -953,6 +952,24 @@ async def run_turn_streaming(
                     tool_name=tool_call.name,
                     tool_args=tool_call.args,
                 )
+            else:
+                if real_name not in visible_tool_names:
+                    outcome = ToolCallOutcome(
+                        decision=Decision.DENY,
+                        rule="tool-not-visible-in-current-mode",
+                        reason=(
+                            f"tool {real_name!r} is not visible in "
+                            f"{mode.value} mode for this session"
+                        ),
+                        tool_name=real_name,
+                        tool_args=tool_call.args,
+                    )
+                else:
+                    outcome = await tool_client.call_tool(
+                        session_id,
+                        real_name,
+                        tool_call.args,
+                    )
 
             tool_outcomes.append(outcome)
             yield ToolReturned(iteration=iteration, outcome=outcome)
@@ -964,6 +981,96 @@ async def run_turn_streaming(
                     name=tool_call.name,
                 ),
             )
+
+            updated_session = graph.get(session_id)
+            if updated_session.label_state != session.label_state:
+                session = updated_session
+                try:
+                    mode, mode_reason = select_mode(
+                        session.label_state,
+                        registry,
+                        prefer_programmatic=session.prefer_programmatic,
+                        force_mode=force_mode,
+                        has_sandbox_actuator=has_sandbox_actuator,
+                    )
+                except ModeSelectionError as e:
+                    await audit.write(
+                        Event(
+                            event_type=EventType.MODE_SELECTED,
+                            session_id=session_id,
+                            turn_id=len(session.history),
+                            step_id=iteration,
+                            payload={
+                                "refused": True,
+                                "tier": "restricted",
+                                "reason": str(e),
+                            },
+                        ),
+                    )
+                    yield TurnInterrupted(
+                        iteration=iteration,
+                        reason="mode_refused_restricted",
+                        partial_content=(last_response.content if last_response else ""),
+                        partial_outcomes=tuple(tool_outcomes),
+                    )
+                    return
+
+                await audit.write(
+                    Event(
+                        event_type=EventType.MODE_SELECTED,
+                        session_id=session_id,
+                        turn_id=len(session.history),
+                        step_id=iteration,
+                        payload={"mode": mode.value, "reason": mode_reason},
+                    ),
+                )
+
+                tool_descriptions = build_tool_descriptions(registry, mode, session)
+                visible = visible_tools(registry, session, mode)
+                visible_tool_names = {t.name for t in visible}
+                reverse_map = (
+                    build_reverse_map(session.id, [t.name for t in visible])
+                    if session.tool_aliasing
+                    else {}
+                )
+                recent_events = await audit.tail(limit=40)
+                llm_context = build_llm_context(
+                    session,
+                    tool_descriptions,
+                    tool_registry_dict,
+                    recent_events,
+                    max_recent_decisions=10,
+                    sandbox_summary=sandbox_summary,
+                )
+                messages[0] = Message(role=Role.SYSTEM, content=llm_context.system_prompt)
+                await audit.write(
+                    Event(
+                        event_type=EventType.LLM_CONTEXT_ASSEMBLED,
+                        session_id=session_id,
+                        turn_id=len(session.history),
+                        step_id=iteration,
+                        payload={
+                            "context_hash": llm_context.context_hash,
+                            "n_tools": llm_context.n_tools,
+                            "n_recent_decisions": llm_context.n_recent_decisions,
+                            "refreshed_after_tool": real_name,
+                        },
+                    ),
+                )
+                messages.append(
+                    Message(
+                        role=Role.SYSTEM,
+                        content=(
+                            "NOTICE: session labels changed after tool "
+                            f"{real_name!r}. Execution mode is now "
+                            f"{mode.value!r}; the tool list for subsequent "
+                            "calls has been refreshed. Do not call tools "
+                            "that are no longer listed."
+                        ),
+                    ),
+                )
+                if not tool_descriptions:
+                    messages.append(_no_tools_notice_message())
 
     # Loop exceeded max_iterations. Issue #2 — audit the cap-fire with
     # the last-N tool calls so the pathological turn is inspectable /

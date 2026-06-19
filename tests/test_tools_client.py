@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from capabledeputy.policy.labels import (
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient
+from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
 from capabledeputy.tools.registry import (
     ToolContext,
     ToolDefinition,
@@ -286,6 +288,37 @@ async def test_handler_additional_labels_propagate(writer: AuditWriter) -> None:
         CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")
         in outcome.tags_added.a
     )
+
+
+async def test_raw_restricted_memory_read_denied_before_dispatch(writer: AuditWriter) -> None:
+    registry, graph, client = await _make_setup(writer)
+    memory = LabeledMemoryStore()
+    for tool in make_memory_tools(memory):
+        if tool.name == "memory.read":
+            registry.register(tool)
+
+    s = await graph.new()
+    graph._sessions[s.id] = replace(
+        s,
+        capability_set=frozenset({Capability(kind=CapabilityKind.READ_FS, pattern="*")}),
+    )
+    memory.write(
+        "secret",
+        "raw restricted value",
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.RESTRICTED, assignment_provenance="source-declared")}
+            ),
+        ),
+    )
+
+    outcome = await client.call_tool(s.id, "memory.read", {"key": "secret"})
+
+    assert outcome.decision == Decision.DENY
+    assert outcome.output is None
+    assert outcome.rule == "restricted-source-requires-reference-or-sealed"
+    events = await writer.read_all()
+    assert not [e for e in events if e.event_type == EventType.TOOL_RETURNED]
 
 
 async def test_handler_exception_returns_error(writer: AuditWriter) -> None:
