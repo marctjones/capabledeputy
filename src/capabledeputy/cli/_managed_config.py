@@ -426,9 +426,9 @@ DEFAULT_ASSISTANT_BUNDLED_BLOCKS: tuple[tuple[str, str], ...] = (
 # ---- Google Workspace via official remote MCP servers ----
 #
 # Google's official Workspace MCP servers are remote HTTP endpoints,
-# one per product. CapDep authenticates them with Google Application
-# Default Credentials (ADC) and then applies its own policy gates around
-# every discovered MCP tool.
+# one per product. CapDep authenticates them with its native OAuth2
+# browser/PKCE flow and then applies its own policy gates around every
+# discovered MCP tool.
 
 GWORKSPACE_BLOCK_ID = "gworkspace"
 GWORKSPACE_DEFAULT_OFFICIAL_SERVICES = "gmail,drive,calendar,chat,people"
@@ -439,15 +439,22 @@ _GWORKSPACE_OFFICIAL_BLOCKS: dict[str, str] = {
     transport: streamable_http
     url: "https://gmailmcp.googleapis.com/mcp/v1"
     auth:
-      type: google_adc
+      type: oauth2
+      client_id_env: GOOGLE_MCP_CLIENT_ID
+      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
+      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
       scopes:
         - "https://www.googleapis.com/auth/gmail.readonly"
         - "https://www.googleapis.com/auth/gmail.compose"
+      extra_authorize_params:
+        access_type: offline
+        prompt: consent
     inherent_labels: ["confidential.personal", "untrusted.user_input"]
     disabled_kinds: ["SEND_EMAIL"]
     tool_overrides:
       create_draft:
-        capability_kind: CREATE_FS
+        capability_kind: GMAIL_DRAFT
         additional_labels: ["confidential.personal"]
       create_label:
         capability_kind: MODIFY_FS
@@ -483,10 +490,17 @@ _GWORKSPACE_OFFICIAL_BLOCKS: dict[str, str] = {
     transport: streamable_http
     url: "https://drivemcp.googleapis.com/mcp/v1"
     auth:
-      type: google_adc
+      type: oauth2
+      client_id_env: GOOGLE_MCP_CLIENT_ID
+      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
+      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
       scopes:
         - "https://www.googleapis.com/auth/drive.readonly"
         - "https://www.googleapis.com/auth/drive.file"
+      extra_authorize_params:
+        access_type: offline
+        prompt: consent
     inherent_labels: ["confidential.personal", "untrusted.user_input"]
     tool_overrides:
       copy_file:
@@ -520,11 +534,18 @@ _GWORKSPACE_OFFICIAL_BLOCKS: dict[str, str] = {
     transport: streamable_http
     url: "https://calendarmcp.googleapis.com/mcp/v1"
     auth:
-      type: google_adc
+      type: oauth2
+      client_id_env: GOOGLE_MCP_CLIENT_ID
+      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
+      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
       scopes:
         - "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
         - "https://www.googleapis.com/auth/calendar.events.freebusy"
         - "https://www.googleapis.com/auth/calendar.events.readonly"
+      extra_authorize_params:
+        access_type: offline
+        prompt: consent
     inherent_labels: ["confidential.personal", "untrusted.user_input"]
     tool_overrides:
       create_event:
@@ -558,13 +579,20 @@ _GWORKSPACE_OFFICIAL_BLOCKS: dict[str, str] = {
     transport: streamable_http
     url: "https://chatmcp.googleapis.com/mcp/v1"
     auth:
-      type: google_adc
+      type: oauth2
+      client_id_env: GOOGLE_MCP_CLIENT_ID
+      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
+      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
       scopes:
         - "https://www.googleapis.com/auth/chat.spaces.readonly"
         - "https://www.googleapis.com/auth/chat.memberships.readonly"
         - "https://www.googleapis.com/auth/chat.messages.readonly"
         - "https://www.googleapis.com/auth/chat.messages.create"
         - "https://www.googleapis.com/auth/chat.users.readstate.readonly"
+      extra_authorize_params:
+        access_type: offline
+        prompt: consent
     inherent_labels: ["confidential.personal", "untrusted.user_input"]
     tool_overrides:
       list_messages:
@@ -586,11 +614,18 @@ _GWORKSPACE_OFFICIAL_BLOCKS: dict[str, str] = {
     transport: streamable_http
     url: "https://people.googleapis.com/mcp/v1"
     auth:
-      type: google_adc
+      type: oauth2
+      client_id_env: GOOGLE_MCP_CLIENT_ID
+      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
+      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
       scopes:
         - "https://www.googleapis.com/auth/directory.readonly"
         - "https://www.googleapis.com/auth/userinfo.profile"
         - "https://www.googleapis.com/auth/contacts.readonly"
+      extra_authorize_params:
+        access_type: offline
+        prompt: consent
     inherent_labels: ["confidential.personal"]
     tool_overrides:
       get_user_profile:

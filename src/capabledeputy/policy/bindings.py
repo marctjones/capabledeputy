@@ -53,7 +53,26 @@ class WriteDiscipline(StrEnum):
 # --- canonicalization ------------------------------------------------
 
 
-_SUPPORTED_SCHEMES = frozenset({"file", "unc", "http", "https", "mcp"})
+_SUPPORTED_SCHEMES = frozenset(
+    {
+        "file",
+        "unc",
+        "http",
+        "https",
+        "mcp",
+        "gmail",
+        "gdoc",
+        "gdrive",
+        "gcal",
+        "gchat",
+        "people",
+        "applemail",
+        "pages",
+        "numbers",
+        "keynote",
+        "imap",
+    },
+)
 
 
 def canonicalize(uri: str) -> str:
@@ -109,14 +128,29 @@ class SourceLocationLabelBinding:
         return fnmatch.fnmatchcase(canonical_uri, self.scope_pattern_canonical)
 
     def specificity(self) -> int:
-        """Higher = more specific. Specificity is measured by the
-        length of the longest literal prefix (the non-glob part).
-        Used to tie-break overlapping matches; most-specific wins
-        for category/tier per FR-043."""
-        for i, ch in enumerate(self.scope_pattern_canonical):
-            if ch in "*?[":
-                return i
-        return len(self.scope_pattern_canonical)
+        """Higher = more specific.
+
+        Specificity is measured by literal characters across the glob,
+        not just the prefix before the first wildcard. That matters for
+        operator-friendly home-directory patterns like
+        ``file:///Users/*/Documents/GitHub/**``: the user segment is a
+        wildcard, but the later ``Documents/GitHub`` literal should still
+        beat a broader ``file:///Users/*/Documents/**`` binding.
+        """
+        score = 0
+        in_char_class = False
+        for ch in self.scope_pattern_canonical:
+            if in_char_class:
+                if ch == "]":
+                    in_char_class = False
+                continue
+            if ch == "[":
+                in_char_class = True
+                continue
+            if ch in "*?":
+                continue
+            score += 1
+        return score
 
 
 @dataclass(frozen=True)

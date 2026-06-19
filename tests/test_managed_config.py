@@ -318,7 +318,10 @@ def test_gworkspace_block_writes_managed_section(xdg_tmp: Path) -> None:
     gmail_entry = next(s for s in parsed["upstream_servers"] if s["name"] == "google-gmail")
     assert gmail_entry["transport"] == "streamable_http"
     assert gmail_entry["url"] == "https://gmailmcp.googleapis.com/mcp/v1"
-    assert gmail_entry["auth"]["type"] == "google_adc"
+    assert gmail_entry["auth"]["type"] == "oauth2"
+    assert gmail_entry["auth"]["client_id_env"] == "GOOGLE_MCP_CLIENT_ID"
+    assert gmail_entry["auth"]["extra_authorize_params"]["access_type"] == "offline"
+    assert gmail_entry["tool_overrides"]["create_draft"]["capability_kind"] == "GMAIL_DRAFT"
     assert gmail_entry["tool_overrides"]["search_threads"]["capability_kind"] == "GMAIL_READ"
     chat_entry = next(s for s in parsed["upstream_servers"] if s["name"] == "google-chat")
     assert chat_entry["tool_overrides"]["send_message"]["capability_kind"] == "SEND_MESSAGE"

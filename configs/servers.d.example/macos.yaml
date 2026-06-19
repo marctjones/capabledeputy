@@ -14,9 +14,9 @@ inherent_labels:
 strict: true
 
 tool_mappings:
-  macos.frontmost_application: MACOS_AUTOMATION
-  macos.list_running_applications: MACOS_AUTOMATION
-  macos.open_application: MACOS_AUTOMATION
-  macos.get_clipboard_text: MACOS_AUTOMATION
-  macos.set_clipboard_text: MACOS_AUTOMATION
-  macos.show_notification: MACOS_AUTOMATION
+  macos.frontmost_application: MACOS_APP_CONTROL
+  macos.list_running_applications: MACOS_APP_CONTROL
+  macos.open_application: MACOS_APP_CONTROL
+  macos.get_clipboard_text: MACOS_CLIPBOARD_READ
+  macos.set_clipboard_text: MACOS_CLIPBOARD_WRITE
+  macos.show_notification: MACOS_NOTIFICATION

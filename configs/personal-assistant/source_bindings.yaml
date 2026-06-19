@@ -7,67 +7,73 @@ bindings:
   # ---------------- local filesystem ----------------
 
   - name: documents-personal
-    scope_pattern_canonical: "file:///home/*/Documents/personal/**"
+    scope_pattern_canonical: "file:///Users/*/Documents/personal/**"
     category: personal
     default_tier: sensitive
     assignment_provenance: operator-declared
 
   - name: documents-work
-    scope_pattern_canonical: "file:///home/*/Documents/work/**"
+    scope_pattern_canonical: "file:///Users/*/Documents/work/**"
     category: work
     default_tier: sensitive
     assignment_provenance: operator-declared
 
   - name: documents-finance
-    scope_pattern_canonical: "file:///home/*/Documents/finance/**"
+    scope_pattern_canonical: "file:///Users/*/Documents/finance/**"
     category: finance
     default_tier: restricted
     assignment_provenance: operator-declared
 
   - name: documents-drafts
-    scope_pattern_canonical: "file:///home/*/Documents/drafts/**"
+    scope_pattern_canonical: "file:///Users/*/Documents/drafts/**"
     category: scratch
     default_tier: none
     assignment_provenance: operator-declared
 
   - name: documents-other
-    scope_pattern_canonical: "file:///home/*/Documents/**"
+    scope_pattern_canonical: "file:///Users/*/Documents/**"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: desktop
+    scope_pattern_canonical: "file:///Users/*/Desktop/**"
     category: personal
     default_tier: sensitive
     assignment_provenance: operator-declared
 
   - name: notes-scratch
-    scope_pattern_canonical: "file:///home/*/notes/scratch/**"
+    scope_pattern_canonical: "file:///Users/*/notes/scratch/**"
     category: scratch
     default_tier: none
     assignment_provenance: operator-declared
 
   - name: notes-inbox-summaries
-    scope_pattern_canonical: "file:///home/*/notes/inbox-summaries/**"
+    scope_pattern_canonical: "file:///Users/*/notes/inbox-summaries/**"
     category: email
     default_tier: sensitive
     assignment_provenance: operator-declared
 
   - name: notes-research
-    scope_pattern_canonical: "file:///home/*/notes/research/**"
+    scope_pattern_canonical: "file:///Users/*/notes/research/**"
     category: public
     default_tier: none
     assignment_provenance: operator-declared
 
   - name: notes-default
-    scope_pattern_canonical: "file:///home/*/notes/**"
+    scope_pattern_canonical: "file:///Users/*/notes/**"
     category: personal
     default_tier: sensitive
     assignment_provenance: operator-declared
 
   - name: code-personal
-    scope_pattern_canonical: "file:///home/*/code/**"
+    scope_pattern_canonical: "file:///Users/*/Documents/GitHub/**"
     category: code
     default_tier: sensitive
     assignment_provenance: operator-declared
 
   - name: downloads
-    scope_pattern_canonical: "file:///home/*/Downloads/**"
+    scope_pattern_canonical: "file:///Users/*/Downloads/**"
     # Downloads is by definition externally-sourced; treat as untrusted.
     category: public
     default_tier: none
@@ -96,6 +102,44 @@ bindings:
   - name: gcal-content
     scope_pattern_canonical: "gcal://**"
     category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: gchat-content
+    scope_pattern_canonical: "gchat://**"
+    category: work
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: people-content
+    scope_pattern_canonical: "people://**"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  # ---------------- local Apple apps ----------------
+
+  - name: apple-mail-content
+    scope_pattern_canonical: "applemail://**"
+    category: email
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: pages-content
+    scope_pattern_canonical: "pages://**"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: numbers-content
+    scope_pattern_canonical: "numbers://**"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: keynote-content
+    scope_pattern_canonical: "keynote://**"
+    category: work
     default_tier: sensitive
     assignment_provenance: operator-declared
 

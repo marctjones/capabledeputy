@@ -495,34 +495,47 @@ not exist and will be refused. When telling the user to /grant
 something, use one of these exact strings:
 
   Filesystem:  READ_FS, WRITE_FS, CREATE_FS, MODIFY_FS, DELETE_FS
-  Email:       GMAIL_READ, IMAP_READ, SEND_EMAIL
+  Email:       GMAIL_READ, GMAIL_DRAFT, IMAP_READ, SEND_EMAIL
   Drive:       DRIVE_READ
   Chat:        CHAT_READ, SEND_MESSAGE
   People:      PEOPLE_READ
   Calendar:    CALENDAR_READ, CALENDAR_WRITE, CREATE_CAL, MODIFY_CAL, DELETE_CAL
   Web:         WEB_FETCH
-  Browser:     BROWSER_AUTOMATION
-  macOS:       MACOS_AUTOMATION
+  Browser:     BROWSER_READ, BROWSER_NAVIGATE, BROWSER_INTERACT, BROWSER_SCRIPT, BROWSER_FILE
+  macOS:       MACOS_APP_CONTROL, MACOS_CLIPBOARD_READ, MACOS_CLIPBOARD_WRITE, MACOS_NOTIFICATION
+  Apple Apps:  APPLE_MAIL_READ, APPLE_MAIL_DRAFT, KEYNOTE_READ, KEYNOTE_PRESENT
+  iWork:       PAGES_READ, PAGES_EDIT, PAGES_EXPORT, NUMBERS_READ, NUMBERS_EDIT, NUMBERS_EXPORT
   Purchase:    QUEUE_PURCHASE
   Sandbox:     EXECUTE_SANDBOX
+  Legacy umbrellas: BROWSER_AUTOMATION, MACOS_AUTOMATION
 {custom_kinds_section}
 
 Examples:
 - Read Gmail messages: `/grant GMAIL_READ *` (or `/grant GMAIL_READ from:boss@*`)
+- Create a Gmail draft: `/grant GMAIL_DRAFT recipient@example.com --one-shot`
 - Read Google Drive: `/grant DRIVE_READ *`
 - Read Google Chat: `/grant CHAT_READ *`
 - Read People/Contacts: `/grant PEOPLE_READ *`
 - Read IMAP inbox: `/grant IMAP_READ *`
 - Send email: `/grant SEND_EMAIL recipient@example.com --one-shot`
 - Send chat message: `/grant SEND_MESSAGE spaces/* --one-shot`
-- Use browser automation: `/grant BROWSER_AUTOMATION * --one-shot`
-- Use macOS automation: `/grant MACOS_AUTOMATION * --one-shot`
+- Navigate the browser: `/grant BROWSER_NAVIGATE https://example.com/* --one-shot`
+- Click/type in the browser: `/grant BROWSER_INTERACT https://example.com/* --one-shot`
+- Read Apple Mail: `/grant APPLE_MAIL_READ *`
+- Create a visible Apple Mail draft: `/grant APPLE_MAIL_DRAFT recipient@example.com --one-shot`
+- Read a Keynote deck: `/grant KEYNOTE_READ *`
+- Present a Keynote deck: `/grant KEYNOTE_PRESENT * --one-shot`
+- Edit a Pages document: `/grant PAGES_EDIT * --one-shot`
+- Edit a Numbers spreadsheet: `/grant NUMBERS_EDIT * --one-shot`
 
 Note: a legacy `/grant READ_FS *` capability ALSO satisfies
-GMAIL_READ / IMAP_READ / DRIVE_READ / CHAT_READ / PEOPLE_READ
-(backward-compat union) — but
-new sessions should use the granular kinds so the operator can
-distinguish "read email" from "read local filesystem."
+GMAIL_READ / IMAP_READ / DRIVE_READ / CHAT_READ / PEOPLE_READ /
+APPLE_MAIL_READ / KEYNOTE_READ / PAGES_READ / NUMBERS_READ /
+BROWSER_READ / MACOS_CLIPBOARD_READ. Legacy `/grant BROWSER_AUTOMATION *`
+and `/grant MACOS_AUTOMATION *` also satisfy their narrow sub-kinds.
+New sessions should use the granular kinds so the operator can distinguish
+"read a document" from "edit a document" and "browser snapshot" from
+"browser click/type/script."
 """
 
     # Compute deterministic hash

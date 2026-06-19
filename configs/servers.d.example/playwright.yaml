@@ -13,25 +13,25 @@ inherent_labels:
 strict: true
 
 tool_mappings:
-  browser_console_messages: WEB_FETCH
-  browser_network_request: WEB_FETCH
-  browser_network_requests: WEB_FETCH
-  browser_snapshot: WEB_FETCH
-  browser_take_screenshot: WEB_FETCH
-  browser_click: BROWSER_AUTOMATION
-  browser_close: BROWSER_AUTOMATION
-  browser_drag: BROWSER_AUTOMATION
-  browser_drop: BROWSER_AUTOMATION
-  browser_evaluate: BROWSER_AUTOMATION
-  browser_file_upload: BROWSER_AUTOMATION
-  browser_fill_form: BROWSER_AUTOMATION
-  browser_handle_dialog: BROWSER_AUTOMATION
-  browser_hover: BROWSER_AUTOMATION
-  browser_navigate: BROWSER_AUTOMATION
-  browser_navigate_back: BROWSER_AUTOMATION
-  browser_press_key: BROWSER_AUTOMATION
-  browser_resize: BROWSER_AUTOMATION
-  browser_select_option: BROWSER_AUTOMATION
-  browser_tabs: BROWSER_AUTOMATION
-  browser_type: BROWSER_AUTOMATION
-  browser_wait_for: BROWSER_AUTOMATION
+  browser_console_messages: BROWSER_READ
+  browser_network_request: BROWSER_READ
+  browser_network_requests: BROWSER_READ
+  browser_snapshot: BROWSER_READ
+  browser_take_screenshot: BROWSER_READ
+  browser_click: BROWSER_INTERACT
+  browser_close: BROWSER_NAVIGATE
+  browser_drag: BROWSER_INTERACT
+  browser_drop: BROWSER_FILE
+  browser_evaluate: BROWSER_SCRIPT
+  browser_file_upload: BROWSER_FILE
+  browser_fill_form: BROWSER_INTERACT
+  browser_handle_dialog: BROWSER_INTERACT
+  browser_hover: BROWSER_INTERACT
+  browser_navigate: BROWSER_NAVIGATE
+  browser_navigate_back: BROWSER_NAVIGATE
+  browser_press_key: BROWSER_INTERACT
+  browser_resize: BROWSER_NAVIGATE
+  browser_select_option: BROWSER_INTERACT
+  browser_tabs: BROWSER_NAVIGATE
+  browser_type: BROWSER_INTERACT
+  browser_wait_for: BROWSER_NAVIGATE

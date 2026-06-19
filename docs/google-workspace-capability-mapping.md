@@ -8,6 +8,10 @@ same shape into the user-local daemon config.
 The mapping is fail-closed: each official server uses `strict: true`, so an
 unmapped upstream tool is refused at registration time.
 
+Official remote servers use CapDep's native OAuth2 browser/PKCE flow by
+default. Run `capdep oauth login --server <google-service>` after
+`capdep gworkspace-setup` to populate the per-server token cache.
+
 ## Effect Tiers
 
 | Effect | Capability kind |
@@ -17,7 +21,7 @@ unmapped upstream tool is refused at registration time.
 | Calendar read/free-busy | `CALENDAR_READ` |
 | Chat read/search | `CHAT_READ` |
 | People/profile/contact read | `PEOPLE_READ` |
-| Draft/create local-ish state | `CREATE_FS`, `CREATE_CAL` |
+| Draft/create local-ish state | `GMAIL_DRAFT`, `CREATE_FS`, `CREATE_CAL` |
 | Modify existing state | `MODIFY_FS`, `MODIFY_CAL` |
 | Delete state | `DELETE_FS`, `DELETE_CAL` |
 | Send a chat/message | `SEND_MESSAGE` |
@@ -31,7 +35,7 @@ from "read Gmail/Drive/Chat/People".
 
 | Server | Endpoint | Tools |
 |---|---|---|
-| `google-gmail` | `https://gmailmcp.googleapis.com/mcp/v1` | `search_threads`, `get_thread`, `list_drafts`, `list_labels` -> `GMAIL_READ`; `create_draft` -> `CREATE_FS`; label tools -> `MODIFY_FS` |
+| `google-gmail` | `https://gmailmcp.googleapis.com/mcp/v1` | `search_threads`, `get_thread`, `list_drafts`, `list_labels` -> `GMAIL_READ`; `create_draft` -> `GMAIL_DRAFT`; label tools -> `MODIFY_FS` |
 | `google-drive` | `https://drivemcp.googleapis.com/mcp/v1` | search/read/download/metadata/permissions -> `DRIVE_READ`; create/copy -> `CREATE_FS` |
 | `google-calendar` | `https://calendarmcp.googleapis.com/mcp/v1` | list/get/suggest -> `CALENDAR_READ`; create/update/respond/delete -> `CREATE_CAL`/`MODIFY_CAL`/`DELETE_CAL` |
 | `google-chat` | `https://chatmcp.googleapis.com/mcp/v1` | list/search -> `CHAT_READ`; `send_message` -> `SEND_MESSAGE` |
@@ -42,7 +46,7 @@ from "read Gmail/Drive/Chat/People".
 - Chat sends are social egress. `SEND_MESSAGE` participates in the same
   egress conflict checks as email: untrusted or health data cannot be sent,
   and financial data is blocked by the financial egress floor.
-- Gmail drafts are not egress by themselves, so they map to `CREATE_FS`.
+- Gmail drafts are not egress by themselves, so they map to `GMAIL_DRAFT`.
   Sending email remains `SEND_EMAIL`.
 - Drive permission writes are not exposed in the current official mapping. If
   a future tool grants external access to a Drive file, it must be treated as

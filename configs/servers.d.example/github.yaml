@@ -1,15 +1,31 @@
 # GitHub official remote MCP server config (servers.d layout).
 #
-# Copy to ~/.config/capabledeputy/servers.d/github.yaml and export:
-#   export GITHUB_MCP_TOKEN=github_pat_...
+# Copy to ~/.config/capabledeputy/servers.d/github.yaml, export:
+#   export GITHUB_MCP_CLIENT_ID=...
+#   export GITHUB_MCP_CLIENT_SECRET=...
+# Then run:
+#   capdep oauth login --server github
+#
+# If OAuth is unavailable in your org, replace the auth block with:
+#   auth:
+#     type: bearer
+#     token_env: GITHUB_MCP_TOKEN
 
 schema_version: 1
 name: github
 transport: streamable_http
 url: https://api.githubcopilot.com/mcp/
 auth:
-  type: bearer
-  token_env: GITHUB_MCP_TOKEN
+  type: oauth2
+  client_id_env: GITHUB_MCP_CLIENT_ID
+  client_secret_env: GITHUB_MCP_CLIENT_SECRET
+  protected_resource_metadata_url: https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp
+  scopes:
+    - repo
+    - read:org
+    - read:user
+    - user:email
+    - workflow
 
 inherent_labels:
   - untrusted.external

@@ -144,9 +144,68 @@ def _infer_capability_kind(
     # Service classification — first match wins. Each branch then
     # picks the right read/write kind based on tokens + hints.
 
+    # Browser automation. Read-only observation is not egress; navigation,
+    # interaction, script execution, and file transfer are separate grants.
+    if lowered.startswith("browser") or "browser_" in lowered or "browser." in lowered:
+        if any(t in lowered for t in ("snapshot", "screenshot", "console", "network")):
+            return CapabilityKind.BROWSER_READ
+        if any(t in lowered for t in ("evaluate", "script", "javascript")):
+            return CapabilityKind.BROWSER_SCRIPT
+        if any(t in lowered for t in ("file", "upload", "download", "drop")):
+            return CapabilityKind.BROWSER_FILE
+        if any(t in lowered for t in ("navigate", "tab", "close", "resize", "wait")):
+            return CapabilityKind.BROWSER_NAVIGATE
+        if any(
+            t in lowered
+            for t in (
+                "click",
+                "type",
+                "fill",
+                "select",
+                "press",
+                "hover",
+                "drag",
+                "dialog",
+            )
+        ):
+            return CapabilityKind.BROWSER_INTERACT
+        return CapabilityKind.BROWSER_READ if read_only else None
+
+    # AppleScript-backed local app servers.
+    if "apple_mail" in lowered:
+        if "draft" in lowered:
+            return CapabilityKind.APPLE_MAIL_DRAFT
+        return CapabilityKind.APPLE_MAIL_READ
+    if "keynote" in lowered:
+        if any(t in lowered for t in ("start", "stop", "play", "present", "slideshow")):
+            return CapabilityKind.KEYNOTE_PRESENT
+        return CapabilityKind.KEYNOTE_READ
+    if "pages" in lowered:
+        if "export" in lowered:
+            return CapabilityKind.PAGES_EXPORT
+        if any(t in lowered for t in ("append", "edit", "write", "set", "insert")):
+            return CapabilityKind.PAGES_EDIT
+        return CapabilityKind.PAGES_READ
+    if "numbers" in lowered:
+        if "export" in lowered:
+            return CapabilityKind.NUMBERS_EXPORT
+        if any(t in lowered for t in ("set", "write", "update", "edit")):
+            return CapabilityKind.NUMBERS_EDIT
+        return CapabilityKind.NUMBERS_READ
+    if lowered.startswith("macos") or "macos." in lowered or "macos_" in lowered:
+        if "clipboard" in lowered:
+            if any(t in lowered for t in ("set", "write", "replace")):
+                return CapabilityKind.MACOS_CLIPBOARD_WRITE
+            return CapabilityKind.MACOS_CLIPBOARD_READ
+        if "notification" in lowered or "notify" in lowered:
+            return CapabilityKind.MACOS_NOTIFICATION
+        return CapabilityKind.MACOS_APP_CONTROL
+
     # Gmail (matches "gmail.*" but NOT just "mail" — otherwise
     # "voicemail" / "mailbox" / etc. would be misclassified).
     if "gmail" in lowered:
+        if "draft" in lowered:
+            return CapabilityKind.GMAIL_DRAFT
         if "send" in lowered:
             return CapabilityKind.SEND_EMAIL
         if any(t in lowered for t in _DELETE_TOKENS):

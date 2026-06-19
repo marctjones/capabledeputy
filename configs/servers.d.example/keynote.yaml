@@ -14,8 +14,8 @@ inherent_labels:
 strict: true
 
 tool_mappings:
-  keynote.frontmost_document: READ_FS
-  keynote.list_slides: READ_FS
-  keynote.slide_text: READ_FS
-  keynote.start_slideshow: MACOS_AUTOMATION
-  keynote.stop_slideshow: MACOS_AUTOMATION
+  keynote.frontmost_document: KEYNOTE_READ
+  keynote.list_slides: KEYNOTE_READ
+  keynote.slide_text: KEYNOTE_READ
+  keynote.start_slideshow: KEYNOTE_PRESENT
+  keynote.stop_slideshow: KEYNOTE_PRESENT

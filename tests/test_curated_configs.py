@@ -55,6 +55,14 @@ def test_google_workspace_pins_every_declared_tool(filename: str) -> None:
             )
 
 
+def test_official_google_workspace_uses_gmail_draft_capability() -> None:
+    configs = load_config_file(_CURATED / "google-workspace.yaml")
+    gmail = next(config for config in configs if config.name == "google-gmail")
+
+    assert gmail.tool_overrides["create_draft"].capability_kind is not None
+    assert gmail.tool_overrides["create_draft"].capability_kind.value == "GMAIL_DRAFT"
+
+
 def test_legacy_news_server_removed() -> None:
     assert not (
         Path(__file__).parent.parent / "src" / "capabledeputy" / "mcp_servers" / "news.py"
@@ -68,8 +76,12 @@ def test_legacy_github_config_replaced_by_official_remote() -> None:
     assert config.transport == "streamable_http"
     assert config.url == "https://api.githubcopilot.com/mcp/"
     assert config.auth is not None
-    assert config.auth.type == "bearer"
-    assert config.auth.token_env == "GITHUB_MCP_TOKEN"
+    assert config.auth.type == "oauth2"
+    assert config.auth.client_id_env == "GITHUB_MCP_CLIENT_ID"
+    assert (
+        config.auth.protected_resource_metadata_url
+        == "https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp"
+    )
     assert config.tool_overrides["merge_pull_request"].capability_kind is not None
 
 
@@ -79,7 +91,12 @@ def test_slack_uses_official_remote_mcp() -> None:
     assert config.transport == "streamable_http"
     assert config.url == "https://mcp.slack.com/mcp"
     assert config.auth is not None
-    assert config.auth.type == "bearer"
+    assert config.auth.type == "oauth2"
+    assert config.auth.client_id_env == "SLACK_MCP_CLIENT_ID"
+    assert (
+        config.auth.authorization_metadata_url
+        == "https://mcp.slack.com/.well-known/oauth-authorization-server"
+    )
     assert config.tool_overrides["send_message"].capability_kind is not None
 
 
@@ -99,11 +116,11 @@ def test_playwright_active_tools_are_browser_automation_not_sandbox() -> None:
     [config] = load_config_file(_CURATED / "playwright.yaml")
 
     assert config.command == ("npx", "-y", "@playwright/mcp@latest")
-    assert (
-        config.tool_overrides["browser_navigate"].capability_kind.value
-        == "BROWSER_AUTOMATION"
-    )
-    assert config.tool_overrides["browser_snapshot"].capability_kind.value == "WEB_FETCH"
+    assert config.tool_overrides["browser_navigate"].capability_kind.value == "BROWSER_NAVIGATE"
+    assert config.tool_overrides["browser_click"].capability_kind.value == "BROWSER_INTERACT"
+    assert config.tool_overrides["browser_evaluate"].capability_kind.value == "BROWSER_SCRIPT"
+    assert config.tool_overrides["browser_file_upload"].capability_kind.value == "BROWSER_FILE"
+    assert config.tool_overrides["browser_snapshot"].capability_kind.value == "BROWSER_READ"
 
 
 def test_bundled_python_config_includes_specialized_macos_servers() -> None:
@@ -114,5 +131,7 @@ def test_bundled_python_config_includes_specialized_macos_servers() -> None:
         "bundled-applescript",
         "bundled-apple-mail",
         "bundled-keynote",
+        "bundled-pages",
+        "bundled-numbers",
         "bundled-macos",
     } <= names

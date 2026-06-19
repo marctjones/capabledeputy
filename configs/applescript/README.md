@@ -20,6 +20,9 @@ CAPDEP_APPLESCRIPT_CATALOGS="configs/applescript/apple-mail-readonly.yaml:config
 ```
 
 Use this substrate for app-specific servers by shipping small catalogs for
-Mail, Keynote, Microsoft Office, or other scriptable macOS apps. Keep write or
-active automation in separate catalogs and map them to `MACOS_AUTOMATION` or
-another appropriate built-in capability kind in `servers.d`.
+Mail, Keynote, Pages, Numbers, Microsoft Office, or other scriptable macOS
+apps. Keep write or active automation in separate catalogs and map them to
+app-specific built-in capability kinds such as `APPLE_MAIL_DRAFT`,
+`KEYNOTE_PRESENT`, `PAGES_EDIT`, `NUMBERS_EDIT`, or `MACOS_CLIPBOARD_WRITE`
+in `servers.d`. `MACOS_AUTOMATION` remains a compatibility umbrella, not the
+preferred mapping for new tools.

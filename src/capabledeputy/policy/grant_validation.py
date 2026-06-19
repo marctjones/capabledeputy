@@ -208,6 +208,17 @@ def _check_macos_automation(pattern: str) -> list[str]:
     return []
 
 
+def _check_local_app(pattern: str) -> list[str]:
+    """Bounded local-app grants match app/document targets, not web URLs."""
+    if "://" in pattern:
+        return [
+            f"pattern {pattern!r} looks like a URL — local app automation "
+            "grants match local app/document targets such as '*', a bundle id, "
+            "or an app-specific document name.",
+        ]
+    return []
+
+
 _CHECK_FOR_KIND: dict[CapabilityKind, callable] = {  # type: ignore[type-arg]
     CapabilityKind.SEND_EMAIL: _check_send_email,
     CapabilityKind.SEND_MESSAGE: _check_send_message,
@@ -219,7 +230,26 @@ _CHECK_FOR_KIND: dict[CapabilityKind, callable] = {  # type: ignore[type-arg]
     CapabilityKind.DELETE_FS: _check_fs_path,
     CapabilityKind.WEB_FETCH: _check_web_fetch,
     CapabilityKind.BROWSER_AUTOMATION: _check_browser_automation,
+    CapabilityKind.BROWSER_READ: _check_web_fetch,
+    CapabilityKind.BROWSER_NAVIGATE: _check_web_fetch,
+    CapabilityKind.BROWSER_INTERACT: _check_browser_automation,
+    CapabilityKind.BROWSER_SCRIPT: _check_browser_automation,
+    CapabilityKind.BROWSER_FILE: _check_browser_automation,
     CapabilityKind.MACOS_AUTOMATION: _check_macos_automation,
+    CapabilityKind.MACOS_APP_CONTROL: _check_macos_automation,
+    CapabilityKind.MACOS_CLIPBOARD_READ: _check_macos_automation,
+    CapabilityKind.MACOS_CLIPBOARD_WRITE: _check_macos_automation,
+    CapabilityKind.MACOS_NOTIFICATION: _check_macos_automation,
+    CapabilityKind.APPLE_MAIL_READ: _check_external_read,
+    CapabilityKind.APPLE_MAIL_DRAFT: _check_send_email,
+    CapabilityKind.KEYNOTE_READ: _check_local_app,
+    CapabilityKind.KEYNOTE_PRESENT: _check_local_app,
+    CapabilityKind.PAGES_READ: _check_local_app,
+    CapabilityKind.PAGES_EDIT: _check_local_app,
+    CapabilityKind.PAGES_EXPORT: _check_local_app,
+    CapabilityKind.NUMBERS_READ: _check_local_app,
+    CapabilityKind.NUMBERS_EDIT: _check_local_app,
+    CapabilityKind.NUMBERS_EXPORT: _check_local_app,
     CapabilityKind.CALENDAR_READ: _check_calendar,
     CapabilityKind.CALENDAR_WRITE: _check_calendar,
     CapabilityKind.CREATE_CAL: _check_calendar,
@@ -228,6 +258,7 @@ _CHECK_FOR_KIND: dict[CapabilityKind, callable] = {  # type: ignore[type-arg]
     CapabilityKind.EXECUTE_SANDBOX: _check_execute,
     CapabilityKind.EXECUTE_DEVBOX: _check_execute,
     CapabilityKind.GMAIL_READ: _check_external_read,
+    CapabilityKind.GMAIL_DRAFT: _check_send_email,
     CapabilityKind.IMAP_READ: _check_external_read,
     CapabilityKind.DRIVE_READ: _check_external_read,
     CapabilityKind.CHAT_READ: _check_external_read,

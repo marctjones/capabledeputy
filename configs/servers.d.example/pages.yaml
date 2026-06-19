@@ -1,0 +1,20 @@
+# Pages bundled MCP server config (servers.d layout).
+#
+# Copy to ~/.config/capabledeputy/servers.d/pages.yaml.
+# macOS will still enforce Automation/TCC prompts for the terminal process.
+
+schema_version: 1
+name: pages
+transport: stdio
+command: ["capdep", "mcp-server-pages"]
+
+inherent_labels:
+  - confidential.personal
+
+strict: true
+
+tool_mappings:
+  pages.frontmost_document: PAGES_READ
+  pages.document_text: PAGES_READ
+  pages.append_text: PAGES_EDIT
+  pages.export_pdf: PAGES_EXPORT

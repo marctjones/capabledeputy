@@ -1,0 +1,22 @@
+# Numbers bundled MCP server config (servers.d layout).
+#
+# Copy to ~/.config/capabledeputy/servers.d/numbers.yaml.
+# macOS will still enforce Automation/TCC prompts for the terminal process.
+
+schema_version: 1
+name: numbers
+transport: stdio
+command: ["capdep", "mcp-server-numbers"]
+
+inherent_labels:
+  - confidential.personal
+
+strict: true
+
+tool_mappings:
+  numbers.frontmost_document: NUMBERS_READ
+  numbers.list_sheets: NUMBERS_READ
+  numbers.table_summary: NUMBERS_READ
+  numbers.get_cell_value: NUMBERS_READ
+  numbers.set_cell_value: NUMBERS_EDIT
+  numbers.export_pdf: NUMBERS_EXPORT

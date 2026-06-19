@@ -16,19 +16,39 @@ purposes:
       - email
     default_capabilities:
       - kind: READ_FS
-        pattern: "/home/*/Documents/**"
+        pattern: "/Users/*/Documents/**"
       - kind: READ_FS
-        pattern: "/home/*/notes/**"
+        pattern: "/Users/*/notes/**"
       - kind: READ_FS
-        pattern: "/home/*/code/**"
+        pattern: "/Users/*/Documents/GitHub/**"
+      - kind: READ_FS
+        pattern: "/Users/*/Desktop/**"
       - kind: CREATE_FS
-        pattern: "/home/*/notes/scratch/**"
+        pattern: "/Users/*/notes/scratch/**"
       - kind: WEB_FETCH
         pattern: "https://*"
+      - kind: GMAIL_READ
+        pattern: "*"
+      - kind: DRIVE_READ
+        pattern: "*"
       - kind: CALENDAR_READ
         pattern: "*"
+      - kind: PEOPLE_READ
+        pattern: "*"
+      - kind: APPLE_MAIL_READ
+        pattern: "*"
+      - kind: KEYNOTE_READ
+        pattern: "*"
+      - kind: PAGES_READ
+        pattern: "*"
+      - kind: NUMBERS_READ
+        pattern: "*"
+      - kind: MACOS_CLIPBOARD_READ
+        pattern: "*"
+      - kind: MACOS_NOTIFICATION
+        pattern: "*"
     bindings:
-      - scope_pattern_canonical: "file:///home/*/notes/scratch/**"
+      - scope_pattern_canonical: "file:///Users/*/notes/scratch/**"
         category: scratch
         default_tier: none
 
@@ -40,14 +60,22 @@ purposes:
       # `READ_FS *` that conflated filesystem reads with email reads.
       - kind: GMAIL_READ
         pattern: "*"
+      - kind: GMAIL_DRAFT
+        pattern: "*"
       - kind: IMAP_READ
+        pattern: "*"
+      - kind: APPLE_MAIL_READ
+        pattern: "*"
+      - kind: APPLE_MAIL_DRAFT
         pattern: "*"
       - kind: DRIVE_READ
         pattern: "*"
       - kind: CALENDAR_READ
         pattern: "*"
+      - kind: PEOPLE_READ
+        pattern: "*"
       - kind: CREATE_FS
-        pattern: "/home/*/notes/inbox-summaries/**"
+        pattern: "/Users/*/notes/inbox-summaries/**"
     bindings:
       - scope_pattern_canonical: "gmail://**"
         category: email
@@ -61,23 +89,39 @@ purposes:
         pattern: "*"
       - kind: CREATE_CAL
         pattern: "*"
+      - kind: MODIFY_CAL
+        pattern: "*"
+      - kind: PEOPLE_READ
+        pattern: "*"
       - kind: READ_FS
-        pattern: "/home/*/notes/**"
+        pattern: "/Users/*/notes/**"
 
   - purpose_id: writing
     label: "Document drafting and editing"
     admissible_categories: [personal, work, public, scratch]
     default_capabilities:
       - kind: READ_FS
-        pattern: "/home/*/Documents/**"
+        pattern: "/Users/*/Documents/**"
       - kind: READ_FS
-        pattern: "/home/*/notes/**"
+        pattern: "/Users/*/notes/**"
       - kind: CREATE_FS
-        pattern: "/home/*/Documents/drafts/**"
+        pattern: "/Users/*/Documents/drafts/**"
       - kind: CREATE_FS
-        pattern: "/home/*/notes/**"
+        pattern: "/Users/*/notes/**"
       - kind: MODIFY_FS
-        pattern: "/home/*/Documents/drafts/**"
+        pattern: "/Users/*/Documents/drafts/**"
+      - kind: DRIVE_READ
+        pattern: "*"
+      - kind: PAGES_READ
+        pattern: "*"
+      - kind: PAGES_EDIT
+        pattern: "*"
+      - kind: PAGES_EXPORT
+        pattern: "*"
+      - kind: NUMBERS_READ
+        pattern: "*"
+      - kind: KEYNOTE_READ
+        pattern: "*"
       - kind: WEB_FETCH
         pattern: "https://*"
 
@@ -88,8 +132,14 @@ purposes:
       - kind: WEB_FETCH
         pattern: "https://*"
       - kind: READ_FS
-        pattern: "/home/*/notes/**"
+        pattern: "/Users/*/notes/**"
       - kind: CREATE_FS
-        pattern: "/home/*/notes/research/**"
+        pattern: "/Users/*/notes/research/**"
       - kind: READ_FS
-        pattern: "/home/*/Documents/**"
+        pattern: "/Users/*/Documents/**"
+      - kind: DRIVE_READ
+        pattern: "*"
+      - kind: PAGES_READ
+        pattern: "*"
+      - kind: NUMBERS_READ
+        pattern: "*"

@@ -67,6 +67,8 @@ class UpstreamAuthConfig:
       - none: no auth
       - bearer: static bearer token, preferably loaded from token_env
       - google_adc: Google Application Default Credentials bearer auth
+      - oauth2: local browser authorization-code + PKCE flow with
+        cached/refreshable bearer tokens
     """
 
     type: str = "none"
@@ -74,6 +76,22 @@ class UpstreamAuthConfig:
     token_env: str = ""
     scopes: tuple[str, ...] = ()
     quota_project_id: str = ""
+    client_id: str = ""
+    client_id_env: str = ""
+    client_secret: str = ""
+    client_secret_env: str = ""
+    authorization_url: str = ""
+    token_url: str = ""
+    authorization_metadata_url: str = ""
+    protected_resource_metadata_url: str = ""
+    redirect_uri: str = ""
+    redirect_host: str = "127.0.0.1"
+    redirect_port: int = 0
+    token_cache: str = ""
+    resource: str = ""
+    audience: str = ""
+    extra_authorize_params: dict[str, str] = field(default_factory=dict)
+    extra_token_params: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -152,7 +170,9 @@ def _parse_auth(raw: Any) -> UpstreamAuthConfig | None:
     auth_type = str(raw.get("type") or raw.get("kind") or "none").lower()
     if auth_type in {"", "none", "noauth"}:
         return None
-    if auth_type not in {"bearer", "google_adc"}:
+    if auth_type == "oauth":
+        auth_type = "oauth2"
+    if auth_type not in {"bearer", "google_adc", "oauth2"}:
         raise ValueError(f"unsupported upstream auth.type: {auth_type}")
     return UpstreamAuthConfig(
         type=auth_type,
@@ -160,6 +180,35 @@ def _parse_auth(raw: Any) -> UpstreamAuthConfig | None:
         token_env=str(raw.get("token_env") or ""),
         scopes=tuple(str(s) for s in (raw.get("scopes") or ())),
         quota_project_id=str(raw.get("quota_project_id") or ""),
+        client_id=expand_env_value(str(raw.get("client_id") or "")),
+        client_id_env=str(raw.get("client_id_env") or ""),
+        client_secret=expand_env_value(str(raw.get("client_secret") or "")),
+        client_secret_env=str(raw.get("client_secret_env") or ""),
+        authorization_url=str(raw.get("authorization_url") or ""),
+        token_url=str(raw.get("token_url") or ""),
+        authorization_metadata_url=str(
+            raw.get("authorization_metadata_url")
+            or raw.get("metadata_url")
+            or raw.get("oauth_metadata_url")
+            or "",
+        ),
+        protected_resource_metadata_url=str(
+            raw.get("protected_resource_metadata_url") or raw.get("resource_metadata_url") or "",
+        ),
+        redirect_uri=str(raw.get("redirect_uri") or ""),
+        redirect_host=str(raw.get("redirect_host") or "127.0.0.1"),
+        redirect_port=int(raw.get("redirect_port") or 0),
+        token_cache=expand_env_value(str(raw.get("token_cache") or "")),
+        resource=str(raw.get("resource") or ""),
+        audience=str(raw.get("audience") or ""),
+        extra_authorize_params={
+            str(k): expand_env_value(str(v))
+            for k, v in (raw.get("extra_authorize_params") or {}).items()
+        },
+        extra_token_params={
+            str(k): expand_env_value(str(v))
+            for k, v in (raw.get("extra_token_params") or {}).items()
+        },
     )
 
 

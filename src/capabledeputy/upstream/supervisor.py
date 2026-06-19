@@ -165,7 +165,10 @@ class LiveSession:
                     streamablehttp_client(
                         self._config.url,
                         headers=self._config.headers or None,
-                        auth=httpx_auth_from_config(self._config.auth),
+                        auth=httpx_auth_from_config(
+                            self._config.auth,
+                            server_name=self._config.name,
+                        ),
                     ),
                 )
             else:  # pragma: no cover - config parser rejects this.

@@ -43,7 +43,14 @@ _CAPS: frozenset[Capability] = frozenset(
 def _action(kind: CapabilityKind) -> Action:
     if kind == CapabilityKind.QUEUE_PURCHASE:
         return Action(kind=kind, target="amazon", amount=50)
-    if kind == CapabilityKind.BROWSER_AUTOMATION:
+    if kind in {
+        CapabilityKind.BROWSER_AUTOMATION,
+        CapabilityKind.BROWSER_READ,
+        CapabilityKind.BROWSER_NAVIGATE,
+        CapabilityKind.BROWSER_INTERACT,
+        CapabilityKind.BROWSER_SCRIPT,
+        CapabilityKind.BROWSER_FILE,
+    }:
         return Action(kind=kind, target="https://example.com")
     return Action(kind=kind, target="alice@example.com")
 
@@ -77,6 +84,18 @@ _SCENARIOS = [
         "untrusted-meets-egress",
     ),
     (
+        _untrusted(),
+        CapabilityKind.BROWSER_INTERACT,
+        Decision.DENY,
+        "untrusted-meets-egress",
+    ),
+    (
+        _untrusted(),
+        CapabilityKind.BROWSER_SCRIPT,
+        Decision.DENY,
+        "untrusted-meets-egress",
+    ),
+    (
         _category("health"),
         CapabilityKind.SEND_EMAIL,
         Decision.DENY,
@@ -103,6 +122,12 @@ _SCENARIOS = [
     (
         _category("financial"),
         CapabilityKind.BROWSER_AUTOMATION,
+        Decision.DENY,
+        "financial-meets-email",
+    ),
+    (
+        _category("financial"),
+        CapabilityKind.BROWSER_NAVIGATE,
         Decision.DENY,
         "financial-meets-email",
     ),
@@ -181,6 +206,15 @@ def test_non_egress_action_is_unaffected() -> None:
     result = decide(
         frozenset({Capability(kind=CapabilityKind.READ_FS, pattern="*")}),
         Action(kind=CapabilityKind.READ_FS, target="/x"),
+        labels=_untrusted(),
+    )
+    assert result.decision == Decision.ALLOW
+
+
+def test_browser_read_action_is_not_egress() -> None:
+    result = decide(
+        _CAPS,
+        _action(CapabilityKind.BROWSER_READ),
         labels=_untrusted(),
     )
     assert result.decision == Decision.ALLOW

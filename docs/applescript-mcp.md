@@ -3,10 +3,12 @@
 `capdep mcp-server-applescript` is a reusable substrate for local macOS app
 automation. It is intended for operator-defined catalogs and for building
 specialized MCP servers. CapDep also ships first-class bounded servers for
-Apple Mail, Keynote, and general macOS automation:
+Apple Mail, Keynote, Pages, Numbers, and general macOS automation:
 
 - `capdep mcp-server-apple-mail`
 - `capdep mcp-server-keynote`
+- `capdep mcp-server-pages`
+- `capdep mcp-server-numbers`
 - `capdep mcp-server-macos`
 
 The security boundary is the catalog:
@@ -52,18 +54,22 @@ cp configs/servers.d.example/applescript.yaml \
 Then point `CAPDEP_APPLESCRIPT_CATALOGS` at catalogs you trust and restart the
 daemon. The example maps read-only catalog tools to built-in capability kinds:
 
-- Apple Mail reads -> `IMAP_READ`
-- Keynote document reads -> `READ_FS`
+- Apple Mail reads -> `APPLE_MAIL_READ`
+- Keynote document reads -> `KEYNOTE_READ`
 
 Write or active automation should be placed in separate catalogs and mapped to
-`MACOS_AUTOMATION` or another appropriate built-in kind so the normal explicit
-grant and first-use gates apply.
+an app-specific built-in kind (`APPLE_MAIL_DRAFT`, `KEYNOTE_PRESENT`,
+`PAGES_EDIT`, `NUMBERS_EDIT`, `MACOS_CLIPBOARD_WRITE`, etc.) so the normal
+explicit grant and first-use gates apply. `MACOS_AUTOMATION` remains a legacy
+umbrella grant for compatibility, not the preferred mapping for new tools.
 
 For the packaged servers, copy the matching per-server config:
 
 ```bash
 cp configs/servers.d.example/apple-mail.yaml ~/.config/capabledeputy/servers.d/
 cp configs/servers.d.example/keynote.yaml ~/.config/capabledeputy/servers.d/
+cp configs/servers.d.example/pages.yaml ~/.config/capabledeputy/servers.d/
+cp configs/servers.d.example/numbers.yaml ~/.config/capabledeputy/servers.d/
 cp configs/servers.d.example/macos.yaml ~/.config/capabledeputy/servers.d/
 ```
 

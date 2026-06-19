@@ -36,8 +36,13 @@ scope decision, not a gap.
 3. **Destructive and active tools pinned to granular kinds.** Every write /
    edit / delete / commit / send / automation action is overridden to
    `MODIFY_*`, `DELETE_*`, `CREATE_*`, `SEND_EMAIL`, `SEND_MESSAGE`,
-   `BROWSER_AUTOMATION`, or `MACOS_AUTOMATION` so the right policy gates
-   fire. Nothing destructive rides on inference.
+   or the narrow browser/macOS/iWork kinds (`BROWSER_NAVIGATE`,
+   `BROWSER_INTERACT`, `BROWSER_SCRIPT`, `BROWSER_FILE`,
+   `MACOS_APP_CONTROL`, `APPLE_MAIL_DRAFT`, `KEYNOTE_PRESENT`,
+   `PAGES_EDIT`, `NUMBERS_EDIT`, etc.) so the right policy gates fire.
+   The legacy `BROWSER_AUTOMATION` and `MACOS_AUTOMATION` kinds remain
+   compatibility umbrellas, not the preferred mapping for new tools.
+   Nothing destructive rides on inference.
 4. **Least-privilege isolation.** Each server runs containerized: no
    network unless the tool inherently needs it, and where it does, an
    explicit host allowlist (placeholder `REPLACE...`/host entries — set
@@ -67,3 +72,6 @@ scope decision, not a gap.
   what makes that safe: anything unlisted is refused, not guessed.
 - These configs are inert until an operator explicitly loads one; none
   is wired into the default app.
+- Official remote configs that use OAuth expect operator-created client
+  credentials in environment variables and a one-time
+  `capdep oauth login --config ... --server ...` token bootstrap.

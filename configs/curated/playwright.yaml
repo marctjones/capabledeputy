@@ -3,9 +3,9 @@
 # Producer: Microsoft Playwright.
 # Transport: stdio via npx @playwright/mcp@latest.
 #
-# Browser observation is WEB_FETCH. Browser interaction tools are mapped to
-# BROWSER_AUTOMATION so active browser control is not treated like passive
-# web fetch.
+# Browser observation is BROWSER_READ. Active tools are split into
+# navigation, interaction, script execution, and file capabilities so
+# operators can grant only the browser surface they need.
 
 upstream_servers:
   - name: playwright
@@ -14,29 +14,29 @@ upstream_servers:
     inherent_labels:
       - untrusted.external
     tool_overrides:
-      browser_console_messages:   { capability_kind: WEB_FETCH }
-      browser_network_request:    { capability_kind: WEB_FETCH }
-      browser_network_requests:   { capability_kind: WEB_FETCH }
-      browser_snapshot:           { capability_kind: WEB_FETCH }
-      browser_take_screenshot:    { capability_kind: WEB_FETCH }
+      browser_console_messages:   { capability_kind: BROWSER_READ }
+      browser_network_request:    { capability_kind: BROWSER_READ }
+      browser_network_requests:   { capability_kind: BROWSER_READ }
+      browser_snapshot:           { capability_kind: BROWSER_READ }
+      browser_take_screenshot:    { capability_kind: BROWSER_READ }
 
-      browser_click:              { capability_kind: BROWSER_AUTOMATION }
-      browser_close:              { capability_kind: BROWSER_AUTOMATION }
-      browser_drag:               { capability_kind: BROWSER_AUTOMATION }
-      browser_drop:               { capability_kind: BROWSER_AUTOMATION }
-      browser_evaluate:           { capability_kind: BROWSER_AUTOMATION }
-      browser_file_upload:        { capability_kind: BROWSER_AUTOMATION }
-      browser_fill_form:          { capability_kind: BROWSER_AUTOMATION }
-      browser_handle_dialog:      { capability_kind: BROWSER_AUTOMATION }
-      browser_hover:              { capability_kind: BROWSER_AUTOMATION }
-      browser_navigate:           { capability_kind: BROWSER_AUTOMATION }
-      browser_navigate_back:      { capability_kind: BROWSER_AUTOMATION }
-      browser_press_key:          { capability_kind: BROWSER_AUTOMATION }
-      browser_resize:             { capability_kind: BROWSER_AUTOMATION }
-      browser_select_option:      { capability_kind: BROWSER_AUTOMATION }
-      browser_tabs:               { capability_kind: BROWSER_AUTOMATION }
-      browser_type:               { capability_kind: BROWSER_AUTOMATION }
-      browser_wait_for:           { capability_kind: BROWSER_AUTOMATION }
+      browser_click:              { capability_kind: BROWSER_INTERACT }
+      browser_close:              { capability_kind: BROWSER_NAVIGATE }
+      browser_drag:               { capability_kind: BROWSER_INTERACT }
+      browser_drop:               { capability_kind: BROWSER_FILE }
+      browser_evaluate:           { capability_kind: BROWSER_SCRIPT }
+      browser_file_upload:        { capability_kind: BROWSER_FILE }
+      browser_fill_form:          { capability_kind: BROWSER_INTERACT }
+      browser_handle_dialog:      { capability_kind: BROWSER_INTERACT }
+      browser_hover:              { capability_kind: BROWSER_INTERACT }
+      browser_navigate:           { capability_kind: BROWSER_NAVIGATE }
+      browser_navigate_back:      { capability_kind: BROWSER_NAVIGATE }
+      browser_press_key:          { capability_kind: BROWSER_INTERACT }
+      browser_resize:             { capability_kind: BROWSER_NAVIGATE }
+      browser_select_option:      { capability_kind: BROWSER_INTERACT }
+      browser_tabs:               { capability_kind: BROWSER_NAVIGATE }
+      browser_type:               { capability_kind: BROWSER_INTERACT }
+      browser_wait_for:           { capability_kind: BROWSER_NAVIGATE }
     isolation:
       image: docker.io/library/node:22-slim
       network: bridge

@@ -1,9 +1,10 @@
 # Curated upstream config — Slack official remote MCP server.
 #
 # Producer: Slack (official remote server).
-# Transport: streamable HTTP. Authentication is OAuth in MCP hosts that
-# support it; CapDep can pass an operator-provided bearer token via
-# SLACK_MCP_TOKEN.
+# Transport: streamable HTTP. Authentication uses Slack's MCP OAuth
+# metadata and user-token flow. Create an internal or Marketplace Slack
+# app, export SLACK_MCP_CLIENT_ID / SLACK_MCP_CLIENT_SECRET, then run:
+#   capdep oauth login --config configs/curated/slack.yaml --server slack
 #
 # Label rationale:
 #   - Messages authored by OTHER people are untrusted.external (the
@@ -20,8 +21,37 @@ upstream_servers:
     transport: streamable_http
     url: "https://mcp.slack.com/mcp"
     auth:
-      type: bearer
-      token_env: SLACK_MCP_TOKEN
+      type: oauth2
+      client_id_env: SLACK_MCP_CLIENT_ID
+      client_secret_env: SLACK_MCP_CLIENT_SECRET
+      protected_resource_metadata_url: "https://mcp.slack.com/.well-known/oauth-protected-resource"
+      authorization_metadata_url: "https://mcp.slack.com/.well-known/oauth-authorization-server"
+      scopes:
+        - search:read.public
+        - search:read.private
+        - search:read.mpim
+        - search:read.im
+        - search:read.files
+        - search:read.users
+        - files:read
+        - emoji:read
+        - chat:write
+        - channels:history
+        - groups:history
+        - mpim:history
+        - im:history
+        - channels:write
+        - groups:write
+        - im:write
+        - mpim:write
+        - reactions:write
+        - canvases:read
+        - canvases:write
+        - users:read
+        - users:read.email
+        - channels:read
+        - groups:read
+        - mpim:read
     strict: true
     inherent_labels:
       - untrusted.external

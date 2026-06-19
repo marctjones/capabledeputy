@@ -30,9 +30,10 @@ _GLOB_CAPABILITIES: frozenset[Capability] = frozenset(
         # gate. Tests of the gate itself live in test_destructive_ops.py.
         Capability(kind=CapabilityKind.WRITE_FS, pattern="*", allows_destructive=True),
         Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*"),
+        Capability(kind=CapabilityKind.GMAIL_DRAFT, pattern="*"),
         Capability(kind=CapabilityKind.SEND_MESSAGE, pattern="*"),
         Capability(kind=CapabilityKind.BROWSER_AUTOMATION, pattern="*"),
-        Capability(kind=CapabilityKind.MACOS_AUTOMATION, pattern="*"),
+        Capability(kind=CapabilityKind.MACOS_AUTOMATION, pattern="*", allows_destructive=True),
         Capability(kind=CapabilityKind.WEB_FETCH, pattern="*"),
         Capability(kind=CapabilityKind.CALENDAR_READ, pattern="*"),
         Capability(
@@ -56,14 +57,41 @@ def _action(kind: CapabilityKind) -> Action:
         return Action(kind=kind, target="amazon", amount=50)
     if kind == CapabilityKind.SEND_EMAIL:
         return Action(kind=kind, target="alice@example.com")
+    if kind == CapabilityKind.GMAIL_DRAFT:
+        return Action(kind=kind, target="alice@example.com")
     if kind == CapabilityKind.SEND_MESSAGE:
         return Action(kind=kind, target="spaces/AAA")
     if kind == CapabilityKind.WEB_FETCH:
         return Action(kind=kind, target="https://example.com")
-    if kind == CapabilityKind.BROWSER_AUTOMATION:
+    if kind in {
+        CapabilityKind.BROWSER_AUTOMATION,
+        CapabilityKind.BROWSER_READ,
+        CapabilityKind.BROWSER_NAVIGATE,
+        CapabilityKind.BROWSER_INTERACT,
+        CapabilityKind.BROWSER_SCRIPT,
+        CapabilityKind.BROWSER_FILE,
+    }:
         return Action(kind=kind, target="https://example.com")
-    if kind == CapabilityKind.MACOS_AUTOMATION:
+    if kind in {
+        CapabilityKind.MACOS_AUTOMATION,
+        CapabilityKind.MACOS_APP_CONTROL,
+        CapabilityKind.MACOS_CLIPBOARD_READ,
+        CapabilityKind.MACOS_CLIPBOARD_WRITE,
+        CapabilityKind.MACOS_NOTIFICATION,
+        CapabilityKind.KEYNOTE_READ,
+        CapabilityKind.KEYNOTE_PRESENT,
+        CapabilityKind.PAGES_READ,
+        CapabilityKind.PAGES_EDIT,
+        CapabilityKind.PAGES_EXPORT,
+        CapabilityKind.NUMBERS_READ,
+        CapabilityKind.NUMBERS_EDIT,
+        CapabilityKind.NUMBERS_EXPORT,
+    }:
         return Action(kind=kind, target="com.apple.mail")
+    if kind == CapabilityKind.APPLE_MAIL_DRAFT:
+        return Action(kind=kind, target="alice@example.com")
+    if kind == CapabilityKind.APPLE_MAIL_READ:
+        return Action(kind=kind, target="inbox")
     return Action(kind=kind, target="/some/target")
 
 
@@ -141,6 +169,18 @@ def test_capability_present_with_no_labels_allows() -> None:
             Decision.DENY,
             "untrusted-meets-egress",
         ),
+        (
+            {"untrusted": True},
+            CapabilityKind.BROWSER_NAVIGATE,
+            Decision.DENY,
+            "untrusted-meets-egress",
+        ),
+        (
+            {"untrusted": True},
+            CapabilityKind.BROWSER_SCRIPT,
+            Decision.DENY,
+            "untrusted-meets-egress",
+        ),
         # Rule 2: confidential.health + egress.* -> DENY
         (
             {"health": True},
@@ -170,6 +210,12 @@ def test_capability_present_with_no_labels_allows() -> None:
         (
             {"financial": True},
             CapabilityKind.BROWSER_AUTOMATION,
+            Decision.DENY,
+            "financial-meets-email",
+        ),
+        (
+            {"financial": True},
+            CapabilityKind.BROWSER_INTERACT,
             Decision.DENY,
             "financial-meets-email",
         ),
@@ -204,6 +250,7 @@ def test_rule_firings(
         ({"health": True}, CapabilityKind.WRITE_FS),
         ({"health": True}, CapabilityKind.WEB_FETCH),
         ({"health": True}, CapabilityKind.MACOS_AUTOMATION),
+        ({"health": True}, CapabilityKind.BROWSER_READ),
         ({"health": True}, CapabilityKind.CALENDAR_READ),
         ({"personal": True}, CapabilityKind.SEND_EMAIL),
         ({"personal": True}, CapabilityKind.QUEUE_PURCHASE),

@@ -43,10 +43,71 @@ app.add_typer(demo_app, name="demo")
 app.add_typer(maintenance_app, name="maintenance")
 config_app = typer.Typer(help="Manage CapableDeputy config files.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
+oauth_app = typer.Typer(
+    help="Manage native OAuth tokens for remote MCP servers.",
+    no_args_is_help=True,
+)
+app.add_typer(oauth_app, name="oauth")
 app.command("chat")(chat_command)
 app.command("init")(init_command)
 app.command("watch")(watch_command)
 audit_app.command("storage-shape")(storage_shape_command)
+
+
+@oauth_app.command("login")
+def oauth_login_command(
+    server: Annotated[
+        str,
+        typer.Option("--server", "-s", help="Upstream server name in the config."),
+    ],
+    config: Annotated[
+        str | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Daemon/curated config to read (default: user daemon config).",
+        ),
+    ] = None,
+    no_browser: Annotated[
+        bool,
+        typer.Option("--no-browser", help="Print the authorization URL without opening it."),
+    ] = False,
+    timeout: Annotated[
+        int,
+        typer.Option("--timeout", help="Seconds to wait for the local OAuth callback."),
+    ] = 180,
+) -> None:
+    """Run a native OAuth2 browser login for a remote MCP upstream."""
+    from pathlib import Path
+
+    from capabledeputy.cli._managed_config import user_default_daemon_config_path
+    from capabledeputy.upstream.config import load_config_file
+    from capabledeputy.upstream.http_auth import perform_oauth2_login
+
+    config_path = Path(config).expanduser() if config else user_default_daemon_config_path()
+    if not config_path.is_file():
+        err_console.print(f"[red]config not found:[/red] {config_path}")
+        raise typer.Exit(code=2)
+    servers = load_config_file(config_path)
+    match = next((candidate for candidate in servers if candidate.name == server), None)
+    if match is None:
+        known = ", ".join(sorted(candidate.name for candidate in servers))
+        err_console.print(f"[red]server not found:[/red] {server}. Known servers: {known}")
+        raise typer.Exit(code=2)
+    if match.auth is None or match.auth.type != "oauth2":
+        err_console.print(
+            f"[red]{server} is not configured with auth.type oauth2[/red]",
+        )
+        raise typer.Exit(code=2)
+
+    token_path = perform_oauth2_login(
+        match.auth,
+        server_name=match.name,
+        open_browser=not no_browser,
+        timeout_seconds=timeout,
+        emit=console.print,
+    )
+    console.print(f"[green]stored OAuth token:[/green] {token_path}")
 
 
 @config_app.command("doctor")
@@ -65,7 +126,7 @@ def config_doctor_command(
 
     Checks:
     - daemon.yaml or servers.d/*.yaml present and parseable
-    - Gmail tools use GMAIL_READ (not legacy READ_FS)
+    - Gmail read/draft tools use GMAIL_READ / GMAIL_DRAFT (not legacy READ_FS)
     - IMAP tools use IMAP_READ
     - Drive tools use DRIVE_READ where appropriate
     - servers.d/ files validate (namespace, no collisions)
@@ -103,7 +164,7 @@ def config_doctor_command(
         raise typer.Exit(code=1) from None
     ok.append("daemon.yaml parses cleanly")
 
-    # 2. Check upstream_servers' Gmail tools use GMAIL_READ
+    # 2. Check upstream_servers' Gmail tools use granular Gmail kinds
     servers = raw.get("upstream_servers") or []
     for server in servers:
         name = server.get("name", "?")
@@ -112,7 +173,8 @@ def config_doctor_command(
             kind = ov.get("capability_kind") if isinstance(ov, dict) else None
             if not kind:
                 continue
-            # Gmail tools should be GMAIL_READ or SEND_EMAIL (or write kinds)
+            # Gmail tools should be GMAIL_READ, GMAIL_DRAFT, SEND_EMAIL,
+            # or explicit mutation kinds.
             tl = tool_name.lower()
             if "gmail" in tl and kind == "READ_FS":
                 issues.append(
@@ -164,6 +226,7 @@ def config_doctor_command(
     test_cases = [
         ("gmail.users.messages.list", CapabilityKind.GMAIL_READ),
         ("gmail_messages_get", CapabilityKind.GMAIL_READ),
+        ("gmail.users.drafts.create", CapabilityKind.GMAIL_DRAFT),
         ("imap.fetch", CapabilityKind.IMAP_READ),
         ("drive.files.list", CapabilityKind.DRIVE_READ),
         ("gmail.users.messages.send", CapabilityKind.SEND_EMAIL),
@@ -1039,6 +1102,8 @@ app.command("mcp-server-imap")(_make_bundled_mcp_command("imap"))
 app.command("mcp-server-applescript")(_make_bundled_mcp_command("applescript"))
 app.command("mcp-server-apple-mail")(_make_bundled_mcp_command("apple_mail"))
 app.command("mcp-server-keynote")(_make_bundled_mcp_command("keynote"))
+app.command("mcp-server-pages")(_make_bundled_mcp_command("pages"))
+app.command("mcp-server-numbers")(_make_bundled_mcp_command("numbers"))
 app.command("mcp-server-macos")(_make_bundled_mcp_command("macos"))
 
 
@@ -1251,8 +1316,7 @@ def gworkspace_setup(
         typer.Option(
             "--mode",
             help=(
-                "Integration mode: official remote Google MCP servers, "
-                "or community gws-mcp-server."
+                "Integration mode: official remote Google MCP servers, or community gws-mcp-server."
             ),
         ),
     ] = "official",
@@ -1263,7 +1327,7 @@ def gworkspace_setup(
             help=(
                 "Skip the install/auth checklist; only add/refresh the "
                 "Google Workspace block in the user-local daemon config. "
-                "Use after Google Cloud APIs and ADC/OAuth are already configured."
+                "Use after Google Cloud APIs and OAuth tokens are already configured."
             ),
         ),
     ] = False,
@@ -1283,7 +1347,7 @@ def gworkspace_setup(
     """Wire Google Workspace tools into CapDep.
 
     Default mode registers Google's official remote MCP servers over
-    streamable HTTP using Google Application Default Credentials.
+    streamable HTTP using CapDep's native OAuth2 browser flow.
     Use `--mode community` only for the legacy local `gws-mcp-server`
     wrapper around the `gws` CLI.
     """
@@ -1330,12 +1394,14 @@ def gworkspace_setup(
             else:
                 console.print(
                     "  [yellow]·[/yellow] `gcloud` not found. Install Google Cloud CLI, "
-                    "enable the Workspace APIs/MCP services, then run ADC login.",
+                    "then enable the Workspace APIs/MCP services.",
                 )
             console.print(
-                "  [dim]required auth:[/dim] "
-                "[bold]gcloud auth application-default login[/bold] "
-                "(with Workspace scopes for the services you enabled)",
+                "  [dim]required auth:[/dim] export "
+                "[bold]GOOGLE_MCP_CLIENT_ID[/bold] and "
+                "[bold]GOOGLE_MCP_CLIENT_SECRET[/bold], then run "
+                "[bold]capdep oauth login --server google-gmail[/bold] "
+                "(repeat for each enabled Workspace server).",
             )
         else:
             have_gws = gws_cli_available()

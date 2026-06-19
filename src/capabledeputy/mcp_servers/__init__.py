@@ -18,6 +18,8 @@ Available servers:
   - apple_mail
              Bounded Apple Mail automation (read/search/create draft)
   - keynote  Bounded Keynote automation (inspect/present open decks)
+  - pages    Bounded Pages automation (read/append/export documents)
+  - numbers  Bounded Numbers automation (read/set/export spreadsheets)
   - macos    Bounded macOS desktop primitives (apps/clipboard/notify)
 
 Design notes:

@@ -1,19 +1,47 @@
 # Slack official remote MCP server config (servers.d layout).
 #
-# Copy to ~/.config/capabledeputy/servers.d/slack.yaml and export an
-# operator-managed OAuth bearer token:
-#   export SLACK_MCP_TOKEN=xoxp-...
-#
-# MCP hosts with native OAuth should use Slack's OAuth flow. CapDep can
-# connect with bearer auth once the operator supplies a token.
+# Copy to ~/.config/capabledeputy/servers.d/slack.yaml, export:
+#   export SLACK_MCP_CLIENT_ID=...
+#   export SLACK_MCP_CLIENT_SECRET=...
+# Then run:
+#   capdep oauth login --server slack
 
 schema_version: 1
 name: slack
 transport: streamable_http
 url: https://mcp.slack.com/mcp
 auth:
-  type: bearer
-  token_env: SLACK_MCP_TOKEN
+  type: oauth2
+  client_id_env: SLACK_MCP_CLIENT_ID
+  client_secret_env: SLACK_MCP_CLIENT_SECRET
+  protected_resource_metadata_url: https://mcp.slack.com/.well-known/oauth-protected-resource
+  authorization_metadata_url: https://mcp.slack.com/.well-known/oauth-authorization-server
+  scopes:
+    - search:read.public
+    - search:read.private
+    - search:read.mpim
+    - search:read.im
+    - search:read.files
+    - search:read.users
+    - files:read
+    - emoji:read
+    - chat:write
+    - channels:history
+    - groups:history
+    - mpim:history
+    - im:history
+    - channels:write
+    - groups:write
+    - im:write
+    - mpim:write
+    - reactions:write
+    - canvases:read
+    - canvases:write
+    - users:read
+    - users:read.email
+    - channels:read
+    - groups:read
+    - mpim:read
 
 inherent_labels:
   - untrusted.external

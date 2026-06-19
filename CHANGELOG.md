@@ -4,6 +4,41 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [0.22.0] - 2026-06-19
+
+macOS and Google Workspace personal-assistant release.
+
+### Personal assistant and MCP integrations
+
+- **Official Google Workspace remote MCP support.** Gmail, Drive, Calendar,
+  Chat, and People can now use CapDep's native OAuth2 browser/PKCE login flow
+  with refreshable per-server token caches.
+- **First-class local Apple app automation.** Added bounded MCP servers and
+  curated config coverage for Apple Mail, Keynote, Pages, Numbers, and general
+  macOS automation without exposing arbitrary AppleScript execution.
+- **Mac-first personal-assistant preset.** The bundled preset now uses macOS
+  `/Users/*` paths, official Google Workspace remote MCP servers, local Apple
+  app servers, and practical read/draft/edit/export defaults.
+
+### Security and capability model
+
+- **Granular automation capability kinds.** Browser and macOS automation are
+  split into narrower read, navigation, interaction, script, file, clipboard,
+  notification, draft, present, edit, and export grants so operators no longer
+  need coarse app-wide authority.
+- **Gmail drafts are first-class.** `GMAIL_DRAFT` separates creating a draft
+  from broad filesystem creation and from direct `SEND_EMAIL`; Gmail send
+  remains disabled by default in the official Workspace config.
+- **Service URI source bindings.** Source binding canonicalization now covers
+  Google and Apple app URI schemes used by the personal-assistant policy so
+  these sources participate in deterministic label resolution.
+
+### Tests and validation
+
+- Added regression coverage for the personal-assistant preset, OAuth config
+  generation, Pages/Numbers bounded AppleScript tools, granular capability
+  inference, and Gmail draft policy behavior.
+
 ## [0.21.0] - 2026-06-19
 
 Flow-pattern alignment and restricted-source hardening.
@@ -623,6 +658,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.22.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.22.0
 [0.21.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.21.0
 [0.20.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.20.0
 [0.19.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.19.0

@@ -221,6 +221,15 @@ def test_browser_automation_path_warns() -> None:
     assert "BROWSER_AUTOMATION" in warnings[0]
 
 
+def test_granular_browser_navigate_requires_url_shape() -> None:
+    warnings = validate_grant_pattern(
+        CapabilityKind.BROWSER_NAVIGATE,
+        "example.com",
+    )
+    assert len(warnings) == 1
+    assert "no http(s):// scheme" in warnings[0]
+
+
 def test_macos_automation_url_warns() -> None:
     warnings = validate_grant_pattern(
         CapabilityKind.MACOS_AUTOMATION,
@@ -235,6 +244,29 @@ def test_macos_automation_url_warns() -> None:
         )
         == []
     )
+
+
+def test_pages_edit_rejects_url_shape() -> None:
+    warnings = validate_grant_pattern(
+        CapabilityKind.PAGES_EDIT,
+        "https://example.com/doc",
+    )
+    assert len(warnings) == 1
+    assert "local app automation" in warnings[0]
+
+
+def test_apple_mail_draft_uses_recipient_shape() -> None:
+    warnings = validate_grant_pattern(CapabilityKind.APPLE_MAIL_DRAFT, "spouse")
+    assert len(warnings) == 1
+    assert "has no '@'" in warnings[0]
+    assert validate_grant_pattern(CapabilityKind.APPLE_MAIL_DRAFT, "spouse@example.com") == []
+
+
+def test_gmail_draft_uses_recipient_shape() -> None:
+    warnings = validate_grant_pattern(CapabilityKind.GMAIL_DRAFT, "/Users/marc/drafts")
+    assert len(warnings) == 1
+    assert "has no '@'" in warnings[0]
+    assert validate_grant_pattern(CapabilityKind.GMAIL_DRAFT, "spouse@example.com") == []
 
 
 # --- External read kinds ------------------------------------------------

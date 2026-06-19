@@ -22,6 +22,8 @@ Prerequisites:
 - A Google Cloud project with the Workspace APIs enabled.
 - OAuth consent configured with the scopes for the Workspace MCP servers you
   want to use.
+- A Google OAuth client ID and secret exported as `GOOGLE_MCP_CLIENT_ID` and
+  `GOOGLE_MCP_CLIENT_SECRET`.
 
 Enable the Workspace APIs and MCP services:
 
@@ -41,31 +43,22 @@ gcloud services enable gmailmcp.googleapis.com \
   --project=PROJECT_ID
 ```
 
-Authenticate with Application Default Credentials using the scopes you enabled:
-
-```bash
-gcloud auth application-default login --scopes=\
-https://www.googleapis.com/auth/gmail.readonly,\
-https://www.googleapis.com/auth/gmail.compose,\
-https://www.googleapis.com/auth/drive.readonly,\
-https://www.googleapis.com/auth/drive.file,\
-https://www.googleapis.com/auth/calendar.calendarlist.readonly,\
-https://www.googleapis.com/auth/calendar.events.freebusy,\
-https://www.googleapis.com/auth/calendar.events.readonly,\
-https://www.googleapis.com/auth/chat.spaces.readonly,\
-https://www.googleapis.com/auth/chat.memberships.readonly,\
-https://www.googleapis.com/auth/chat.messages.readonly,\
-https://www.googleapis.com/auth/chat.messages.create,\
-https://www.googleapis.com/auth/chat.users.readstate.readonly,\
-https://www.googleapis.com/auth/directory.readonly,\
-https://www.googleapis.com/auth/userinfo.profile,\
-https://www.googleapis.com/auth/contacts.readonly
-```
-
-Then register the CapDep managed block:
+Register the CapDep managed block:
 
 ```bash
 capdep gworkspace-setup
+```
+
+Run one OAuth login per enabled official server. Each server gets the scopes
+declared in the config and stores a refreshable token under
+`~/.config/capabledeputy/oauth/`:
+
+```bash
+capdep oauth login --server google-gmail
+capdep oauth login --server google-drive
+capdep oauth login --server google-calendar
+capdep oauth login --server google-chat
+capdep oauth login --server google-people
 ```
 
 This writes five strict upstream entries to
@@ -126,7 +119,7 @@ so unknown upstream tools are refused until reviewed.
 | Surface | CapDep kinds |
 |---|---|
 | Gmail reads | `GMAIL_READ` |
-| Gmail draft/label mutation | `CREATE_FS`, `MODIFY_FS` |
+| Gmail draft/label mutation | `GMAIL_DRAFT`, `MODIFY_FS` |
 | Drive reads | `DRIVE_READ` |
 | Drive create/copy | `CREATE_FS` |
 | Calendar reads | `CALENDAR_READ` |
@@ -142,12 +135,11 @@ approved override path.
 
 ## Revoke
 
-For official mode, revoke or refresh the Google OAuth credentials used by
-Application Default Credentials:
+For official mode, remove CapDep's cached OAuth tokens or revoke the OAuth app
+grant from your Google account:
 
 ```bash
-gcloud auth application-default revoke
-gcloud auth application-default login
+rm ~/.config/capabledeputy/oauth/google-*.json
 ```
 
 For community mode:

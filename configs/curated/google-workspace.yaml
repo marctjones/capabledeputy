@@ -1,13 +1,19 @@
 # Official Google Workspace remote MCP servers.
 #
 # Producer: Google Workspace remote MCP servers.
-# Transport: streamable HTTP with OAuth bearer tokens from Google
-# Application Default Credentials.
+# Transport: streamable HTTP with OAuth bearer tokens from CapDep's native
+# browser PKCE flow.
 #
 # Prerequisites:
 #   gcloud services enable gmailmcp.googleapis.com drivemcp.googleapis.com \
 #     calendarmcp.googleapis.com chatmcp.googleapis.com people.googleapis.com
-#   gcloud auth application-default login --scopes <Workspace scopes>
+#   export GOOGLE_MCP_CLIENT_ID=...
+#   export GOOGLE_MCP_CLIENT_SECRET=...
+#   capdep oauth login --config configs/curated/google-workspace.yaml --server google-gmail
+#   capdep oauth login --config configs/curated/google-workspace.yaml --server google-drive
+#   capdep oauth login --config configs/curated/google-workspace.yaml --server google-calendar
+#   capdep oauth login --config configs/curated/google-workspace.yaml --server google-chat
+#   capdep oauth login --config configs/curated/google-workspace.yaml --server google-people
 #
 # Or run:
 #   capdep gworkspace-setup
@@ -20,14 +26,21 @@ upstream_servers:
     transport: streamable_http
     url: "https://gmailmcp.googleapis.com/mcp/v1"
     auth:
-      type: google_adc
+      type: oauth2
+      client_id_env: GOOGLE_MCP_CLIENT_ID
+      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
+      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
       scopes:
         - "https://www.googleapis.com/auth/gmail.readonly"
         - "https://www.googleapis.com/auth/gmail.compose"
+      extra_authorize_params:
+        access_type: offline
+        prompt: consent
     inherent_labels: ["confidential.personal", "untrusted.user_input"]
     disabled_kinds: ["SEND_EMAIL"]
     tool_overrides:
-      create_draft: {capability_kind: CREATE_FS, additional_labels: ["confidential.personal"]}
+      create_draft: {capability_kind: GMAIL_DRAFT, additional_labels: ["confidential.personal"]}
       create_label: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"]}
       get_thread: {capability_kind: GMAIL_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
       label_message: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"]}
@@ -43,10 +56,17 @@ upstream_servers:
     transport: streamable_http
     url: "https://drivemcp.googleapis.com/mcp/v1"
     auth:
-      type: google_adc
+      type: oauth2
+      client_id_env: GOOGLE_MCP_CLIENT_ID
+      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
+      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
       scopes:
         - "https://www.googleapis.com/auth/drive.readonly"
         - "https://www.googleapis.com/auth/drive.file"
+      extra_authorize_params:
+        access_type: offline
+        prompt: consent
     inherent_labels: ["confidential.personal", "untrusted.user_input"]
     tool_overrides:
       copy_file: {capability_kind: CREATE_FS, additional_labels: ["confidential.personal"]}
@@ -63,11 +83,18 @@ upstream_servers:
     transport: streamable_http
     url: "https://calendarmcp.googleapis.com/mcp/v1"
     auth:
-      type: google_adc
+      type: oauth2
+      client_id_env: GOOGLE_MCP_CLIENT_ID
+      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
+      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
       scopes:
         - "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
         - "https://www.googleapis.com/auth/calendar.events.freebusy"
         - "https://www.googleapis.com/auth/calendar.events.readonly"
+      extra_authorize_params:
+        access_type: offline
+        prompt: consent
     inherent_labels: ["confidential.personal", "untrusted.user_input"]
     tool_overrides:
       create_event: {capability_kind: CREATE_CAL, additional_labels: ["confidential.personal"]}
@@ -84,13 +111,20 @@ upstream_servers:
     transport: streamable_http
     url: "https://chatmcp.googleapis.com/mcp/v1"
     auth:
-      type: google_adc
+      type: oauth2
+      client_id_env: GOOGLE_MCP_CLIENT_ID
+      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
+      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
       scopes:
         - "https://www.googleapis.com/auth/chat.spaces.readonly"
         - "https://www.googleapis.com/auth/chat.memberships.readonly"
         - "https://www.googleapis.com/auth/chat.messages.readonly"
         - "https://www.googleapis.com/auth/chat.messages.create"
         - "https://www.googleapis.com/auth/chat.users.readstate.readonly"
+      extra_authorize_params:
+        access_type: offline
+        prompt: consent
     inherent_labels: ["confidential.personal", "untrusted.user_input"]
     tool_overrides:
       list_messages: {capability_kind: CHAT_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
@@ -103,11 +137,18 @@ upstream_servers:
     transport: streamable_http
     url: "https://people.googleapis.com/mcp/v1"
     auth:
-      type: google_adc
+      type: oauth2
+      client_id_env: GOOGLE_MCP_CLIENT_ID
+      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
+      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
       scopes:
         - "https://www.googleapis.com/auth/directory.readonly"
         - "https://www.googleapis.com/auth/userinfo.profile"
         - "https://www.googleapis.com/auth/contacts.readonly"
+      extra_authorize_params:
+        access_type: offline
+        prompt: consent
     inherent_labels: ["confidential.personal"]
     tool_overrides:
       get_user_profile: {capability_kind: PEOPLE_READ, additional_labels: ["confidential.personal"]}

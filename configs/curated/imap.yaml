@@ -18,18 +18,18 @@ upstream_servers:
     disabled_kinds: ["SEND_EMAIL"]
     tool_overrides:
       "imap.list_threads":
-        capability_kind: READ_FS
+        capability_kind: IMAP_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
       "imap.read_message":
-        capability_kind: READ_FS
+        capability_kind: IMAP_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
       "imap.search":
-        capability_kind: READ_FS
+        capability_kind: IMAP_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
       "imap.send":
         capability_kind: SEND_EMAIL
       "imap.list_folders":
-        capability_kind: READ_FS
+        capability_kind: IMAP_READ
       "imap.mark_read":
         capability_kind: MODIFY_FS
       "imap.archive":

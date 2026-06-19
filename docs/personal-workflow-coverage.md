@@ -57,7 +57,7 @@ Three columns flag the workflow profile:
 | # | Workflow | Pattern | Model | Caps | Trust |
 |---|---|---|---|---|---|
 | 1 | Inbox triage | ② | Denning | `GMAIL_READ` | read |
-| 2 | Draft replies in my voice | ② + ③ | Clark-Wilson | `GMAIL_READ` `CREATE_FS` | local-write |
+| 2 | Draft replies in my voice | ② + ③ | Clark-Wilson | `GMAIL_READ` `GMAIL_DRAFT` | local-write |
 | 3 | Schedule extraction → calendar | ② → ① | Biba + Denning | `GMAIL_READ` `CREATE_CAL` | local-write |
 | 4 | Thread summarization | ② | Denning | `GMAIL_READ` | read |
 | 5 | Follow-up tracker | ④ | Denning | `GMAIL_READ` | read |

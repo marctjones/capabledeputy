@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from capabledeputy.mcp_servers import apple_mail, applescript, keynote, macos
+from capabledeputy.mcp_servers import apple_mail, applescript, keynote, macos, numbers, pages
 
 
 class FakeRunner:
@@ -20,7 +21,7 @@ class FakeRunner:
     async def __call__(
         self,
         script: str,
-        argv: list[str],
+        argv: Sequence[str],
         timeout_seconds: float,
     ) -> applescript.AppleScriptResult:
         self.calls.append((script, list(argv), timeout_seconds))
@@ -105,6 +106,7 @@ tools:
     malicious_query = 'hello"; do shell script "touch /tmp/bad'
     result = await tool.handler({"query": malicious_query})
 
+    assert isinstance(result, dict)
     assert result["result"] == {"matches": []}
     assert len(runner.calls) == 1
     script, argv, timeout = runner.calls[0]
@@ -176,6 +178,7 @@ tools:
 
     result = await tool.handler({})
 
+    assert isinstance(result, dict)
     assert result["result"] == {"open": True, "slide_count": 3}
     assert result["stderr"] == "diagnostic"
 
@@ -259,6 +262,66 @@ def test_specialized_keynote_server_exposes_bounded_tools() -> None:
     assert "applescript.run" not in names
 
 
+def test_specialized_pages_server_exposes_bounded_tools() -> None:
+    names = _tool_names(pages.tools(runner=FakeRunner()))
+
+    assert names == {
+        "pages.frontmost_document",
+        "pages.document_text",
+        "pages.append_text",
+        "pages.export_pdf",
+    }
+    assert "applescript.run" not in names
+
+
+def test_specialized_numbers_server_exposes_bounded_tools() -> None:
+    names = _tool_names(numbers.tools(runner=FakeRunner()))
+
+    assert names == {
+        "numbers.frontmost_document",
+        "numbers.list_sheets",
+        "numbers.table_summary",
+        "numbers.get_cell_value",
+        "numbers.set_cell_value",
+        "numbers.export_pdf",
+    }
+    assert "applescript.run" not in names
+
+
+@pytest.mark.asyncio
+async def test_pages_append_text_uses_argv_not_script_text() -> None:
+    runner = FakeRunner(
+        applescript.AppleScriptResult(stdout='{"appended":true}', stderr="", returncode=0),
+    )
+    tool = _tool_by_name(pages.tools(runner=runner), "pages.append_text")
+    malicious = 'hello"; do shell script "touch /tmp/bad'
+
+    result = await tool.handler({"text": malicious})
+
+    assert isinstance(result, dict)
+    assert result["result"] == {"appended": True}
+    script, argv, _timeout = runner.calls[0]
+    assert malicious not in script
+    assert argv == [malicious]
+
+
+@pytest.mark.asyncio
+async def test_numbers_set_cell_value_uses_argv_not_script_text() -> None:
+    runner = FakeRunner(
+        applescript.AppleScriptResult(stdout='{"updated":true}', stderr="", returncode=0),
+    )
+    tool = _tool_by_name(numbers.tools(runner=runner), "numbers.set_cell_value")
+    malicious = '123"; do shell script "touch /tmp/bad'
+
+    result = await tool.handler({"cell": "B2", "value": malicious})
+
+    assert isinstance(result, dict)
+    assert result["result"] == {"updated": True}
+    script, argv, _timeout = runner.calls[0]
+    assert malicious not in script
+    assert argv == ["", "", "B2", malicious]
+
+
 def test_specialized_macos_server_exposes_bounded_tools() -> None:
     names = _tool_names(macos.tools(runner=FakeRunner()))
 
@@ -293,6 +356,7 @@ async def test_specialized_apple_mail_create_draft_uses_argv_not_script_text() -
         },
     )
 
+    assert isinstance(result, dict)
     assert result["result"] == {"created": True, "visible": True, "sent": False}
     assert len(runner.calls) == 1
     script, argv, _timeout = runner.calls[0]

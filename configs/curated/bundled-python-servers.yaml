@@ -111,55 +111,85 @@ upstream_servers:
     inherent_labels: ["confidential.personal"]
     tool_overrides:
       "mail.list_accounts":
-        capability_kind: IMAP_READ
+        capability_kind: APPLE_MAIL_READ
       "mail.count_unread_inbox":
-        capability_kind: IMAP_READ
+        capability_kind: APPLE_MAIL_READ
       "keynote.frontmost_document":
-        capability_kind: READ_FS
+        capability_kind: KEYNOTE_READ
 
   - name: bundled-apple-mail
     command: ["capdep", "mcp-server-apple-mail"]
     inherent_labels: ["confidential.personal", "untrusted.user_input"]
     tool_overrides:
       "apple_mail.list_accounts":
-        capability_kind: IMAP_READ
+        capability_kind: APPLE_MAIL_READ
       "apple_mail.list_mailboxes":
-        capability_kind: IMAP_READ
+        capability_kind: APPLE_MAIL_READ
       "apple_mail.search_messages":
-        capability_kind: IMAP_READ
+        capability_kind: APPLE_MAIL_READ
       "apple_mail.get_message":
-        capability_kind: IMAP_READ
+        capability_kind: APPLE_MAIL_READ
       "apple_mail.create_draft":
-        capability_kind: MACOS_AUTOMATION
+        capability_kind: APPLE_MAIL_DRAFT
 
   - name: bundled-keynote
     command: ["capdep", "mcp-server-keynote"]
     inherent_labels: ["confidential.personal"]
     tool_overrides:
       "keynote.frontmost_document":
-        capability_kind: READ_FS
+        capability_kind: KEYNOTE_READ
       "keynote.list_slides":
-        capability_kind: READ_FS
+        capability_kind: KEYNOTE_READ
       "keynote.slide_text":
-        capability_kind: READ_FS
+        capability_kind: KEYNOTE_READ
       "keynote.start_slideshow":
-        capability_kind: MACOS_AUTOMATION
+        capability_kind: KEYNOTE_PRESENT
       "keynote.stop_slideshow":
-        capability_kind: MACOS_AUTOMATION
+        capability_kind: KEYNOTE_PRESENT
+
+  - name: bundled-pages
+    command: ["capdep", "mcp-server-pages"]
+    inherent_labels: ["confidential.personal"]
+    tool_overrides:
+      "pages.frontmost_document":
+        capability_kind: PAGES_READ
+      "pages.document_text":
+        capability_kind: PAGES_READ
+      "pages.append_text":
+        capability_kind: PAGES_EDIT
+      "pages.export_pdf":
+        capability_kind: PAGES_EXPORT
+
+  - name: bundled-numbers
+    command: ["capdep", "mcp-server-numbers"]
+    inherent_labels: ["confidential.personal"]
+    tool_overrides:
+      "numbers.frontmost_document":
+        capability_kind: NUMBERS_READ
+      "numbers.list_sheets":
+        capability_kind: NUMBERS_READ
+      "numbers.table_summary":
+        capability_kind: NUMBERS_READ
+      "numbers.get_cell_value":
+        capability_kind: NUMBERS_READ
+      "numbers.set_cell_value":
+        capability_kind: NUMBERS_EDIT
+      "numbers.export_pdf":
+        capability_kind: NUMBERS_EXPORT
 
   - name: bundled-macos
     command: ["capdep", "mcp-server-macos"]
     inherent_labels: ["confidential.personal"]
     tool_overrides:
       "macos.frontmost_application":
-        capability_kind: MACOS_AUTOMATION
+        capability_kind: MACOS_APP_CONTROL
       "macos.list_running_applications":
-        capability_kind: MACOS_AUTOMATION
+        capability_kind: MACOS_APP_CONTROL
       "macos.open_application":
-        capability_kind: MACOS_AUTOMATION
+        capability_kind: MACOS_APP_CONTROL
       "macos.get_clipboard_text":
-        capability_kind: MACOS_AUTOMATION
+        capability_kind: MACOS_CLIPBOARD_READ
       "macos.set_clipboard_text":
-        capability_kind: MACOS_AUTOMATION
+        capability_kind: MACOS_CLIPBOARD_WRITE
       "macos.show_notification":
-        capability_kind: MACOS_AUTOMATION
+        capability_kind: MACOS_NOTIFICATION

@@ -1,7 +1,7 @@
 """Tests for granular email / drive CapabilityKinds (Issue #33 partial).
 
 Verifies:
-1. New kinds GMAIL_READ, IMAP_READ, DRIVE_READ exist
+1. New kinds GMAIL_READ, GMAIL_DRAFT, IMAP_READ, DRIVE_READ exist
 2. Capability.matches() backward-compat union: a legacy READ_FS cap
    still satisfies actions whose kind is the granular variant
 3. Upstream MCP adapter's _infer_capability_kind correctly classifies
@@ -39,8 +39,10 @@ def _cap(kind: CapabilityKind, pattern: str = "*") -> Capability:
 def test_new_kinds_exist() -> None:
     """The granular email/drive kinds must be present."""
     assert CapabilityKind.GMAIL_READ.value == "GMAIL_READ"
+    assert CapabilityKind.GMAIL_DRAFT.value == "GMAIL_DRAFT"
     assert CapabilityKind.IMAP_READ.value == "IMAP_READ"
     assert CapabilityKind.DRIVE_READ.value == "DRIVE_READ"
+    assert CapabilityKind.APPLE_MAIL_READ.value == "APPLE_MAIL_READ"
 
 
 def test_gmail_read_cap_matches_gmail_read_action() -> None:
@@ -56,6 +58,7 @@ def test_legacy_read_fs_still_matches_gmail_action() -> None:
     assert cap.matches(CapabilityKind.GMAIL_READ, "any-target")
     assert cap.matches(CapabilityKind.IMAP_READ, "any-target")
     assert cap.matches(CapabilityKind.DRIVE_READ, "any-target")
+    assert cap.matches(CapabilityKind.APPLE_MAIL_READ, "any-target")
 
 
 def test_gmail_read_cap_does_not_match_filesystem_action() -> None:
@@ -80,6 +83,12 @@ def test_infer_gmail_send_distinguished_from_read() -> None:
     assert _infer_capability_kind(None, "gmail.users.messages.send") == CapabilityKind.SEND_EMAIL
 
 
+def test_infer_gmail_draft_distinguished_from_filesystem_create() -> None:
+    """Gmail draft creation is not a filesystem create capability."""
+    assert _infer_capability_kind(None, "gmail.create_draft") == CapabilityKind.GMAIL_DRAFT
+    assert _infer_capability_kind(None, "gmail.users.drafts.create") == CapabilityKind.GMAIL_DRAFT
+
+
 def test_infer_drive_read_from_name() -> None:
     """Drive tool names like 'drive.files.list' classify as DRIVE_READ."""
     assert _infer_capability_kind(None, "drive.files.list") == CapabilityKind.DRIVE_READ
@@ -95,6 +104,21 @@ def test_infer_imap_read_from_name() -> None:
     """IMAP tool names like 'imap.fetch' / 'imap.search' classify as IMAP_READ."""
     assert _infer_capability_kind(None, "imap.fetch") == CapabilityKind.IMAP_READ
     assert _infer_capability_kind(None, "imap.search") == CapabilityKind.IMAP_READ
+
+
+def test_infer_browser_and_iwork_kinds_from_name() -> None:
+    assert _infer_capability_kind(None, "browser_snapshot") == CapabilityKind.BROWSER_READ
+    assert _infer_capability_kind(None, "browser_navigate") == CapabilityKind.BROWSER_NAVIGATE
+    assert _infer_capability_kind(None, "browser_click") == CapabilityKind.BROWSER_INTERACT
+    assert _infer_capability_kind(None, "browser_evaluate") == CapabilityKind.BROWSER_SCRIPT
+    assert _infer_capability_kind(None, "browser_file_upload") == CapabilityKind.BROWSER_FILE
+    assert (
+        _infer_capability_kind(None, "apple_mail.create_draft") == CapabilityKind.APPLE_MAIL_DRAFT
+    )
+    assert _infer_capability_kind(None, "keynote.slide_text") == CapabilityKind.KEYNOTE_READ
+    assert _infer_capability_kind(None, "keynote.start_slideshow") == CapabilityKind.KEYNOTE_PRESENT
+    assert _infer_capability_kind(None, "pages.append_text") == CapabilityKind.PAGES_EDIT
+    assert _infer_capability_kind(None, "numbers.set_cell_value") == CapabilityKind.NUMBERS_EDIT
 
 
 def test_voicemail_not_mistaken_for_gmail() -> None:

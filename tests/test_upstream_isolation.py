@@ -171,6 +171,38 @@ def test_parse_config_streamable_http_with_google_adc_auth() -> None:
     assert cfg.tool_overrides["search_threads"].capability_kind.value == "GMAIL_READ"
 
 
+def test_parse_config_streamable_http_with_oauth2_auth() -> None:
+    raw = {
+        "upstream_servers": [
+            {
+                "name": "slack",
+                "transport": "streamable_http",
+                "url": "https://mcp.slack.com/mcp",
+                "auth": {
+                    "type": "oauth2",
+                    "client_id_env": "SLACK_MCP_CLIENT_ID",
+                    "client_secret_env": "SLACK_MCP_CLIENT_SECRET",
+                    "authorization_metadata_url": (
+                        "https://mcp.slack.com/.well-known/oauth-authorization-server"
+                    ),
+                    "scopes": ["chat:write"],
+                    "extra_authorize_params": {"prompt": "consent"},
+                },
+                "tool_overrides": {
+                    "send_message": {"capability_kind": "SEND_MESSAGE"},
+                },
+            },
+        ],
+    }
+    [cfg] = parse_config(raw)
+    assert cfg.auth is not None
+    assert cfg.auth.type == "oauth2"
+    assert cfg.auth.client_id_env == "SLACK_MCP_CLIENT_ID"
+    assert cfg.auth.client_secret_env == "SLACK_MCP_CLIENT_SECRET"
+    assert cfg.auth.scopes == ("chat:write",)
+    assert cfg.auth.extra_authorize_params == {"prompt": "consent"}
+
+
 def test_parse_config_streamable_http_requires_url() -> None:
     import pytest as _p
 

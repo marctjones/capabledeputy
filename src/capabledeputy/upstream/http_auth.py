@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 import os
+import re
+import secrets
 import threading
-from typing import TYPE_CHECKING
+import time
+import webbrowser
+from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 
@@ -77,7 +88,64 @@ class GoogleAdcAuth(httpx.Auth):
         return credentials
 
 
-def httpx_auth_from_config(config: UpstreamAuthConfig | None) -> httpx.Auth | None:
+@dataclass(frozen=True)
+class OAuth2Endpoints:
+    authorization_url: str
+    token_url: str
+
+
+class OAuth2TokenAuth(httpx.Auth):
+    """OAuth2 bearer auth backed by CapDep's local token cache."""
+
+    def __init__(self, config: UpstreamAuthConfig, *, server_name: str = "default") -> None:
+        if config.type != "oauth2":
+            raise ValueError("OAuth2TokenAuth requires auth.type oauth2")
+        self._config = config
+        self._server_name = server_name
+        self._token_cache = oauth_token_cache_path(config, server_name)
+        self._lock = threading.Lock()
+
+    @property
+    def token_cache(self) -> Path:
+        return self._token_cache
+
+    def sync_auth_flow(self, request: httpx.Request):
+        token = self._valid_access_token()
+        request.headers["Authorization"] = f"Bearer {token}"
+        yield request
+
+    def _valid_access_token(self) -> str:
+        with self._lock:
+            token_data = _read_token_cache(self._token_cache)
+            if token_data and _token_is_valid(token_data):
+                return str(token_data["access_token"])
+            if token_data and token_data.get("refresh_token"):
+                token_data = refresh_oauth2_token(
+                    self._config,
+                    token_data,
+                    server_name=self._server_name,
+                )
+                return str(token_data["access_token"])
+        raise RuntimeError(
+            "oauth2 token is missing or expired; run "
+            f"`capdep oauth login --server {self._server_name}`",
+        )
+
+
+def oauth_token_cache_path(config: UpstreamAuthConfig, server_name: str) -> Path:
+    """Resolve the on-disk token cache for an OAuth-configured server."""
+    if config.token_cache:
+        return Path(config.token_cache).expanduser()
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", server_name).strip("._") or "default"
+    base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    return base / "capabledeputy" / "oauth" / f"{safe_name}.json"
+
+
+def httpx_auth_from_config(
+    config: UpstreamAuthConfig | None,
+    *,
+    server_name: str = "default",
+) -> httpx.Auth | None:
     """Build an httpx auth object from an upstream auth config."""
     if config is None or config.type == "none":
         return None
@@ -88,4 +156,349 @@ def httpx_auth_from_config(config: UpstreamAuthConfig | None) -> httpx.Auth | No
         return BearerTokenAuth(token)
     if config.type == "google_adc":
         return GoogleAdcAuth(scopes=config.scopes, quota_project_id=config.quota_project_id)
+    if config.type == "oauth2":
+        return OAuth2TokenAuth(config, server_name=server_name)
     raise ValueError(f"unsupported auth.type: {config.type}")
+
+
+def oauth2_authorization_url(
+    config: UpstreamAuthConfig,
+    *,
+    redirect_uri: str,
+    state: str,
+    code_challenge: str,
+) -> str:
+    """Build the provider authorization URL for the OAuth2 login flow."""
+    endpoints = discover_oauth2_endpoints(config)
+    client_id = _required_config_secret(config.client_id, config.client_id_env, "client_id")
+    params: dict[str, str] = {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+    }
+    if config.scopes:
+        params["scope"] = " ".join(config.scopes)
+    if config.resource:
+        params["resource"] = config.resource
+    if config.audience:
+        params["audience"] = config.audience
+    params.update(config.extra_authorize_params)
+    separator = "&" if "?" in endpoints.authorization_url else "?"
+    return endpoints.authorization_url + separator + urlencode(params)
+
+
+def perform_oauth2_login(
+    config: UpstreamAuthConfig,
+    *,
+    server_name: str,
+    open_browser: bool = True,
+    timeout_seconds: int = 180,
+    emit: Any = print,
+) -> Path:
+    """Run a local browser OAuth2 Authorization Code + PKCE login.
+
+    The resulting token response is cached with 0600 file permissions and
+    used by OAuth2TokenAuth for remote MCP HTTP connections.
+    """
+    if config.type != "oauth2":
+        raise ValueError("oauth login requires auth.type oauth2")
+
+    verifier = _new_pkce_verifier()
+    challenge = _pkce_challenge(verifier)
+    state = secrets.token_urlsafe(24)
+
+    callback = _prepare_callback(config)
+    server = HTTPServer((callback.host, callback.port), _callback_handler(callback.path, state))
+    server.timeout = timeout_seconds
+    actual_redirect_uri = callback.redirect_uri_for(server.server_port)
+    auth_url = oauth2_authorization_url(
+        config,
+        redirect_uri=actual_redirect_uri,
+        state=state,
+        code_challenge=challenge,
+    )
+
+    emit(f"Open this URL to authorize {server_name}:\n{auth_url}")
+    if open_browser:
+        webbrowser.open(auth_url)
+
+    result: dict[str, str] = {}
+    # The handler class writes onto the HTTPServer instance for this one request.
+    server.capdep_oauth_result = result  # type: ignore[attr-defined]
+    server.handle_request()
+    server.server_close()
+
+    if not result:
+        raise TimeoutError(f"oauth login timed out after {timeout_seconds}s")
+    if result.get("error"):
+        raise RuntimeError(f"oauth login failed: {result['error']}")
+    code = result.get("code")
+    if not code:
+        raise RuntimeError("oauth login did not receive an authorization code")
+
+    token_data = exchange_oauth2_code(
+        config,
+        code=code,
+        redirect_uri=actual_redirect_uri,
+        code_verifier=verifier,
+    )
+    path = oauth_token_cache_path(config, server_name)
+    _write_token_cache(path, token_data)
+    return path
+
+
+def exchange_oauth2_code(
+    config: UpstreamAuthConfig,
+    *,
+    code: str,
+    redirect_uri: str,
+    code_verifier: str,
+) -> dict[str, Any]:
+    """Exchange an authorization code for token data."""
+    endpoints = discover_oauth2_endpoints(config)
+    client_id = _required_config_secret(config.client_id, config.client_id_env, "client_id")
+    client_secret = _optional_config_secret(config.client_secret, config.client_secret_env)
+    data: dict[str, str] = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "client_id": client_id,
+        "code_verifier": code_verifier,
+    }
+    if client_secret:
+        data["client_secret"] = client_secret
+    if config.resource:
+        data["resource"] = config.resource
+    data.update(config.extra_token_params)
+    response = httpx.post(
+        endpoints.token_url,
+        data=data,
+        headers={"Accept": "application/json"},
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    return _normalize_token_response(response.json())
+
+
+def refresh_oauth2_token(
+    config: UpstreamAuthConfig,
+    token_data: dict[str, Any],
+    *,
+    server_name: str,
+) -> dict[str, Any]:
+    """Refresh a cached OAuth2 token and persist the updated cache."""
+    endpoints = discover_oauth2_endpoints(config)
+    refresh_token = str(token_data.get("refresh_token") or "")
+    if not refresh_token:
+        raise RuntimeError("oauth2 token cache has no refresh_token")
+    client_id = _required_config_secret(config.client_id, config.client_id_env, "client_id")
+    client_secret = _optional_config_secret(config.client_secret, config.client_secret_env)
+    data: dict[str, str] = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": client_id,
+    }
+    if client_secret:
+        data["client_secret"] = client_secret
+    if config.scopes:
+        data["scope"] = " ".join(config.scopes)
+    if config.resource:
+        data["resource"] = config.resource
+    data.update(config.extra_token_params)
+
+    response = httpx.post(
+        endpoints.token_url,
+        data=data,
+        headers={"Accept": "application/json"},
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    refreshed = _normalize_token_response(response.json())
+    refreshed.setdefault("refresh_token", refresh_token)
+    _write_token_cache(oauth_token_cache_path(config, server_name), refreshed)
+    return refreshed
+
+
+def discover_oauth2_endpoints(config: UpstreamAuthConfig) -> OAuth2Endpoints:
+    """Resolve authorization/token endpoints from config or metadata."""
+    if config.authorization_url and config.token_url:
+        return OAuth2Endpoints(config.authorization_url, config.token_url)
+
+    metadata_url = config.authorization_metadata_url
+    if not metadata_url and config.protected_resource_metadata_url:
+        metadata_url = _authorization_metadata_from_protected_resource(
+            config.protected_resource_metadata_url,
+        )
+    if metadata_url:
+        response = httpx.get(metadata_url, headers={"Accept": "application/json"}, timeout=30.0)
+        response.raise_for_status()
+        metadata = response.json()
+        authorization_url = str(metadata.get("authorization_endpoint") or "")
+        token_url = str(metadata.get("token_endpoint") or "")
+        if authorization_url and token_url:
+            return OAuth2Endpoints(authorization_url, token_url)
+
+    raise ValueError(
+        "oauth2 auth requires authorization_url/token_url or OAuth authorization metadata",
+    )
+
+
+def _authorization_metadata_from_protected_resource(resource_metadata_url: str) -> str:
+    response = httpx.get(
+        resource_metadata_url,
+        headers={"Accept": "application/json"},
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    metadata = response.json()
+    servers = metadata.get("authorization_servers") or []
+    if not servers:
+        raise ValueError("protected resource metadata has no authorization_servers")
+    issuer = str(servers[0]).rstrip("/")
+    parsed = urlparse(issuer)
+    host = f"{parsed.scheme}://{parsed.netloc}"
+    path = parsed.path.strip("/")
+    candidates = []
+    if path:
+        candidates.append(f"{host}/.well-known/oauth-authorization-server/{path}")
+    candidates.append(f"{issuer}/.well-known/oauth-authorization-server")
+    if not path:
+        candidates.append(f"{host}/.well-known/oauth-authorization-server")
+
+    for candidate in candidates:
+        try:
+            probe = httpx.get(candidate, headers={"Accept": "application/json"}, timeout=30.0)
+            if probe.status_code < 400:
+                return candidate
+        except httpx.HTTPError:
+            continue
+    # Return the standards-preferred first candidate so callers surface the
+    # provider response rather than a synthetic "not found" if it changes.
+    return candidates[0]
+
+
+@dataclass(frozen=True)
+class _CallbackConfig:
+    host: str
+    port: int
+    path: str
+    fixed_redirect_uri: str = ""
+
+    def redirect_uri_for(self, actual_port: int) -> str:
+        if self.fixed_redirect_uri:
+            return self.fixed_redirect_uri
+        return f"http://{self.host}:{actual_port}{self.path}"
+
+
+def _prepare_callback(config: UpstreamAuthConfig) -> _CallbackConfig:
+    if config.redirect_uri:
+        parsed = urlparse(config.redirect_uri)
+        host = parsed.hostname or config.redirect_host or "127.0.0.1"
+        port = parsed.port or config.redirect_port or 0
+        path = parsed.path or "/oauth/callback"
+        return _CallbackConfig(
+            host=host,
+            port=port,
+            path=path,
+            fixed_redirect_uri=config.redirect_uri,
+        )
+    return _CallbackConfig(
+        host=config.redirect_host or "127.0.0.1",
+        port=config.redirect_port,
+        path="/oauth/callback",
+    )
+
+
+def _callback_handler(callback_path: str, expected_state: str):
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            parsed = urlparse(self.path)
+            result: dict[str, str] = self.server.capdep_oauth_result  # type: ignore[attr-defined]
+            if parsed.path != callback_path:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b"Not found")
+                return
+            params = parse_qs(parsed.query)
+            state = (params.get("state") or [""])[0]
+            if state != expected_state:
+                result["error"] = "state mismatch"
+            elif "error" in params:
+                result["error"] = (params.get("error") or ["oauth error"])[0]
+            else:
+                result["code"] = (params.get("code") or [""])[0]
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(
+                b"<html><body><h1>CapDep OAuth complete</h1>"
+                b"<p>You can close this browser tab.</p></body></html>",
+            )
+
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+            return
+
+    return Handler
+
+
+def _new_pkce_verifier() -> str:
+    return secrets.token_urlsafe(64)
+
+
+def _pkce_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def _required_config_secret(value: str, env_name: str, label: str) -> str:
+    resolved = _optional_config_secret(value, env_name)
+    if not resolved:
+        raise ValueError(f"oauth2 auth requires {label} or {label}_env")
+    return resolved
+
+
+def _optional_config_secret(value: str, env_name: str) -> str:
+    if value:
+        return value
+    if env_name:
+        return os.environ.get(env_name, "")
+    return ""
+
+
+def _normalize_token_response(raw: dict[str, Any]) -> dict[str, Any]:
+    token = dict(raw)
+    if not token.get("access_token"):
+        raise RuntimeError("OAuth token response did not include access_token")
+    expires_in = token.get("expires_in")
+    if expires_in is not None:
+        token["expires_at"] = time.time() + int(expires_in)
+    return token
+
+
+def _token_is_valid(token_data: dict[str, Any]) -> bool:
+    if not token_data.get("access_token"):
+        return False
+    expires_at = token_data.get("expires_at")
+    if expires_at is None:
+        return True
+    return float(expires_at) > time.time() + 60
+
+
+def _read_token_cache(path: Path) -> dict[str, Any] | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"invalid oauth2 token cache: {path}") from e
+
+
+def _write_token_cache(path: Path, token_data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(token_data, f, indent=2, sort_keys=True)
+        f.write("\n")

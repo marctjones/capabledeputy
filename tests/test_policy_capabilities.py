@@ -63,6 +63,37 @@ def test_no_max_amount_does_not_constrain() -> None:
     assert cap.matches(CapabilityKind.READ_FS, "/home/marc/notes.md")
 
 
+def test_legacy_browser_automation_matches_granular_browser_kinds() -> None:
+    cap = Capability(kind=CapabilityKind.BROWSER_AUTOMATION, pattern="https://example.com/*")
+    assert cap.matches(CapabilityKind.BROWSER_READ, "https://example.com/page")
+    assert cap.matches(CapabilityKind.BROWSER_NAVIGATE, "https://example.com/page")
+    assert cap.matches(CapabilityKind.BROWSER_INTERACT, "https://example.com/page")
+    assert cap.matches(CapabilityKind.BROWSER_SCRIPT, "https://example.com/page")
+    assert cap.matches(CapabilityKind.BROWSER_FILE, "https://example.com/page")
+
+
+def test_granular_browser_kind_does_not_match_umbrella_action() -> None:
+    cap = Capability(kind=CapabilityKind.BROWSER_READ, pattern="*")
+    assert not cap.matches(CapabilityKind.BROWSER_AUTOMATION, "https://example.com")
+
+
+def test_legacy_macos_automation_matches_granular_app_kinds() -> None:
+    cap = Capability(kind=CapabilityKind.MACOS_AUTOMATION, pattern="*")
+    assert cap.matches(CapabilityKind.APPLE_MAIL_READ, "inbox")
+    assert cap.matches(CapabilityKind.APPLE_MAIL_DRAFT, "alice@example.com")
+    assert cap.matches(CapabilityKind.KEYNOTE_PRESENT, "deck")
+    assert cap.matches(CapabilityKind.PAGES_EDIT, "doc")
+    assert cap.matches(CapabilityKind.NUMBERS_EXPORT, "sheet")
+
+
+def test_read_fs_legacy_matches_read_only_app_kinds_only() -> None:
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    assert cap.matches(CapabilityKind.PAGES_READ, "doc")
+    assert cap.matches(CapabilityKind.NUMBERS_READ, "sheet")
+    assert cap.matches(CapabilityKind.BROWSER_READ, "https://example.com")
+    assert not cap.matches(CapabilityKind.PAGES_EDIT, "doc")
+
+
 def test_round_trip_minimal() -> None:
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="/home/marc/*")
     decoded = Capability.from_dict(cap.to_dict())

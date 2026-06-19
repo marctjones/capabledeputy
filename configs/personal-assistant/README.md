@@ -15,10 +15,10 @@ approval).
 
 | File | Purpose |
 |---|---|
-| `daemon.yaml` | Master config — wires up the 5 bundled MCP servers + Google Workspace + the policy files |
+| `daemon.yaml` | Master config — wires up bundled local tools, Apple app automation, official Google Workspace MCP, and the policy files |
 | `profiles.yaml` | One operator profile (`personal`) with max-tier ceiling |
 | `purposes.yaml` | Five working purposes (general, inbox, calendar, writing, research) |
-| `source_bindings.yaml` | Common local paths + Google service URIs → label tier mappings |
+| `source_bindings.yaml` | Common macOS paths, Apple app URIs, and Google service URIs → label tier mappings |
 | `envelopes.yaml` | Per-category risk-preference dial bounds |
 | `override_policy.yaml` | Single-authorized operator can override hard floors; no dual-control required (single-user mode) |
 | `approval-patterns.yaml` | Auto-approve common safe outbound patterns (self-email, calendar events for self) |
@@ -32,8 +32,9 @@ mkdir -p ~/.config/capabledeputy
 cp configs/personal-assistant/*.yaml ~/.config/capabledeputy/
 ```
 
-Edit paths in `source_bindings.yaml` to match your filesystem
-layout (the defaults use `~/Documents`, `~/notes`, etc.).
+Edit paths in `source_bindings.yaml` to match your filesystem layout. The
+defaults are macOS-first: `/Users/*/Documents`, `/Users/*/Desktop`,
+`/Users/*/Documents/GitHub`, and `/Users/*/notes`.
 
 ### Option B — point the daemon at this directory
 
@@ -45,11 +46,14 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
 
 ## What it gives the agent
 
-- **Read** your local files under `~/Documents`, `~/notes`, `~/code`
+- **Read** your local files under `~/Documents`, `~/Desktop`, `~/Documents/GitHub`, `~/notes`
 - **Write** to `~/notes/scratch/**` without approval
 - **Search the web** and read fetched content (labeled untrusted, naturally chokes egress)
-- **Read Gmail / Drive / Calendar / Chat / People** (after you run `capdep gworkspace-setup`)
-- **Send email** with approval gate (chokepoint requires the operator to confirm every send)
+- **Read Gmail / Drive / Calendar / Chat / People** after native `capdep oauth login` for the Workspace servers you enable
+- **Read and draft in Apple Mail / Gmail**; direct send is disabled by default
+- **Read/edit/export Pages and Numbers documents** with app-specific capability gates
+- **Read/present Keynote decks** with app-specific capability gates
+- **Use bounded macOS automation** for app listing/opening, clipboard read/write, and notifications
 - **Create calendar events** with approval gate (one-prompt-per-event)
 - **Persist memory** across sessions (via the bundled `mcp-server-memory`)
 - **Browse local git repos** read-only
@@ -59,6 +63,7 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
 - **Egress** (web fetch, email send) of `confidential.personal` data to non-trusted destinations
 - **Reading** anything tagged `confidential.financial` while the session is also doing egress (Brewer-Nash)
 - **Irreversible file ops** (delete, modify-in-place on protected paths) without approval
+- **Direct email send** unless you deliberately enable a `SEND_EMAIL` server/config
 - **Anything `prohibited` tier** without an explicit override (the override flow is single-authorized — that's you)
 
 ## Customizing
@@ -72,8 +77,16 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
 
 1. `capdep init` — onboarding (creates `~/.config/capabledeputy/`)
 2. `export ANTHROPIC_API_KEY=sk-...` (or whichever LLM provider you chose)
-3. (Optional) `capdep gworkspace-setup` — official Workspace remote MCP
-4. (Optional) `export BRAVE_SEARCH_API_KEY=...` — better web search than DDG
+3. (Optional) export `GOOGLE_MCP_CLIENT_ID` and `GOOGLE_MCP_CLIENT_SECRET`, then run:
+
+   ```bash
+   capdep oauth login --config configs/personal-assistant/daemon.yaml --server google-gmail
+   capdep oauth login --config configs/personal-assistant/daemon.yaml --server google-drive
+   capdep oauth login --config configs/personal-assistant/daemon.yaml --server google-calendar
+   ```
+
+4. (Optional) grant macOS Automation permissions when the OS prompts for Mail, Keynote, Pages, Numbers, or System Events.
+5. (Optional) `export BRAVE_SEARCH_API_KEY=...` — better web search than DDG
 
 Then:
 

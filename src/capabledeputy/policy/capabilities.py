@@ -29,6 +29,25 @@ class CapabilityKind(StrEnum):
     SEND_MESSAGE = "SEND_MESSAGE"
     BROWSER_AUTOMATION = "BROWSER_AUTOMATION"
     MACOS_AUTOMATION = "MACOS_AUTOMATION"
+    BROWSER_READ = "BROWSER_READ"
+    BROWSER_NAVIGATE = "BROWSER_NAVIGATE"
+    BROWSER_INTERACT = "BROWSER_INTERACT"
+    BROWSER_SCRIPT = "BROWSER_SCRIPT"
+    BROWSER_FILE = "BROWSER_FILE"
+    MACOS_APP_CONTROL = "MACOS_APP_CONTROL"
+    MACOS_CLIPBOARD_READ = "MACOS_CLIPBOARD_READ"
+    MACOS_CLIPBOARD_WRITE = "MACOS_CLIPBOARD_WRITE"
+    MACOS_NOTIFICATION = "MACOS_NOTIFICATION"
+    APPLE_MAIL_READ = "APPLE_MAIL_READ"
+    APPLE_MAIL_DRAFT = "APPLE_MAIL_DRAFT"
+    KEYNOTE_READ = "KEYNOTE_READ"
+    KEYNOTE_PRESENT = "KEYNOTE_PRESENT"
+    PAGES_READ = "PAGES_READ"
+    PAGES_EDIT = "PAGES_EDIT"
+    PAGES_EXPORT = "PAGES_EXPORT"
+    NUMBERS_READ = "NUMBERS_READ"
+    NUMBERS_EDIT = "NUMBERS_EDIT"
+    NUMBERS_EXPORT = "NUMBERS_EXPORT"
 
     # Granular destructive-op kinds (DESIGN.md §7.5 — Clark-Wilson + CRUD
     # decomposition). New tools that distinguish create / modify / delete
@@ -71,6 +90,7 @@ class CapabilityKind(StrEnum):
     # Existing /grant READ_FS * grants for legacy reasons keep working;
     # new sessions get granular caps by default.
     GMAIL_READ = "GMAIL_READ"
+    GMAIL_DRAFT = "GMAIL_DRAFT"
     IMAP_READ = "IMAP_READ"
     DRIVE_READ = "DRIVE_READ"
     CHAT_READ = "CHAT_READ"
@@ -88,6 +108,9 @@ DESTRUCTIVE_KINDS: frozenset[CapabilityKind] = frozenset(
         CapabilityKind.DELETE_FS,
         CapabilityKind.MODIFY_CAL,
         CapabilityKind.DELETE_CAL,
+        CapabilityKind.MACOS_CLIPBOARD_WRITE,
+        CapabilityKind.PAGES_EDIT,
+        CapabilityKind.NUMBERS_EDIT,
     },
 )
 
@@ -113,6 +136,39 @@ _WRITE_UNION_MATCHES: dict[CapabilityKind, frozenset[CapabilityKind]] = {
             CapabilityKind.DRIVE_READ,
             CapabilityKind.CHAT_READ,
             CapabilityKind.PEOPLE_READ,
+            CapabilityKind.APPLE_MAIL_READ,
+            CapabilityKind.KEYNOTE_READ,
+            CapabilityKind.PAGES_READ,
+            CapabilityKind.NUMBERS_READ,
+            CapabilityKind.BROWSER_READ,
+            CapabilityKind.MACOS_CLIPBOARD_READ,
+        },
+    ),
+    CapabilityKind.BROWSER_AUTOMATION: frozenset(
+        {
+            CapabilityKind.BROWSER_READ,
+            CapabilityKind.BROWSER_NAVIGATE,
+            CapabilityKind.BROWSER_INTERACT,
+            CapabilityKind.BROWSER_SCRIPT,
+            CapabilityKind.BROWSER_FILE,
+        },
+    ),
+    CapabilityKind.MACOS_AUTOMATION: frozenset(
+        {
+            CapabilityKind.MACOS_APP_CONTROL,
+            CapabilityKind.MACOS_CLIPBOARD_READ,
+            CapabilityKind.MACOS_CLIPBOARD_WRITE,
+            CapabilityKind.MACOS_NOTIFICATION,
+            CapabilityKind.APPLE_MAIL_READ,
+            CapabilityKind.APPLE_MAIL_DRAFT,
+            CapabilityKind.KEYNOTE_READ,
+            CapabilityKind.KEYNOTE_PRESENT,
+            CapabilityKind.PAGES_READ,
+            CapabilityKind.PAGES_EDIT,
+            CapabilityKind.PAGES_EXPORT,
+            CapabilityKind.NUMBERS_READ,
+            CapabilityKind.NUMBERS_EDIT,
+            CapabilityKind.NUMBERS_EXPORT,
         },
     ),
 }

@@ -97,6 +97,8 @@ def test_read_kind_never_prompts() -> None:
     fatigue from every new mailbox label / file path."""
     assert CapabilityKind.READ_FS not in _PROMPTABLE_FIRST_USE_KINDS
     assert CapabilityKind.GMAIL_READ not in _PROMPTABLE_FIRST_USE_KINDS
+    assert CapabilityKind.BROWSER_READ not in _PROMPTABLE_FIRST_USE_KINDS
+    assert CapabilityKind.PAGES_READ not in _PROMPTABLE_FIRST_USE_KINDS
     result = decide(
         frozenset({_wide_cap(CapabilityKind.READ_FS)}),
         Action(kind=CapabilityKind.READ_FS, target="/home/x"),
@@ -145,7 +147,20 @@ def test_promptable_set_covers_destructive_and_egress() -> None:
         CapabilityKind.MODIFY_FS,
         CapabilityKind.DELETE_CAL,
         CapabilityKind.BROWSER_AUTOMATION,
+        CapabilityKind.BROWSER_NAVIGATE,
+        CapabilityKind.BROWSER_INTERACT,
+        CapabilityKind.BROWSER_SCRIPT,
+        CapabilityKind.BROWSER_FILE,
         CapabilityKind.MACOS_AUTOMATION,
+        CapabilityKind.MACOS_APP_CONTROL,
+        CapabilityKind.MACOS_CLIPBOARD_WRITE,
+        CapabilityKind.APPLE_MAIL_DRAFT,
+        CapabilityKind.GMAIL_DRAFT,
+        CapabilityKind.KEYNOTE_PRESENT,
+        CapabilityKind.PAGES_EDIT,
+        CapabilityKind.PAGES_EXPORT,
+        CapabilityKind.NUMBERS_EDIT,
+        CapabilityKind.NUMBERS_EXPORT,
         CapabilityKind.EXECUTE_DEVBOX,
     ):
         assert k in _PROMPTABLE_FIRST_USE_KINDS

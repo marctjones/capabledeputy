@@ -9,9 +9,9 @@ the v0.5 — UX EPIC features landed in the May 2026 sprint.
 
 ```bash
 # One-time setup
-gcloud auth application-default login
 uv run capdep imap-setup            # Gmail via App Password (no OAuth)
 uv run capdep gworkspace-setup      # Official Workspace remote MCP servers
+uv run capdep oauth login --server google-gmail
 
 # Daily use
 uv run capdep chat

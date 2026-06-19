@@ -96,7 +96,21 @@ _PROMPTABLE_FIRST_USE_KINDS: frozenset[CapabilityKind] = frozenset(
         CapabilityKind.SEND_MESSAGE,
         CapabilityKind.QUEUE_PURCHASE,
         CapabilityKind.BROWSER_AUTOMATION,
+        CapabilityKind.BROWSER_NAVIGATE,
+        CapabilityKind.BROWSER_INTERACT,
+        CapabilityKind.BROWSER_SCRIPT,
+        CapabilityKind.BROWSER_FILE,
         CapabilityKind.MACOS_AUTOMATION,
+        CapabilityKind.MACOS_APP_CONTROL,
+        CapabilityKind.MACOS_CLIPBOARD_WRITE,
+        CapabilityKind.MACOS_NOTIFICATION,
+        CapabilityKind.APPLE_MAIL_DRAFT,
+        CapabilityKind.GMAIL_DRAFT,
+        CapabilityKind.KEYNOTE_PRESENT,
+        CapabilityKind.PAGES_EDIT,
+        CapabilityKind.PAGES_EXPORT,
+        CapabilityKind.NUMBERS_EDIT,
+        CapabilityKind.NUMBERS_EXPORT,
         CapabilityKind.WRITE_FS,
         CapabilityKind.CREATE_FS,
         CapabilityKind.MODIFY_FS,
@@ -255,14 +269,21 @@ def _conflict_invariant_outcome(
          (2-4: confidentiality confinement).
 
     Egress is the action kind: SEND_EMAIL / SEND_MESSAGE / QUEUE_PURCHASE,
-    plus BROWSER_AUTOMATION because browser actions can submit data to
-    arbitrary remote sites. Rules are evaluated in precedence order; the
-    first firing wins. Returns (decision, rule_id, reason) or None.
+    plus active browser-control kinds because they can submit data to
+    arbitrary remote sites. Browser read-only observation is deliberately
+    excluded. Rules are evaluated in precedence order; the first firing
+    wins. Returns (decision, rule_id, reason) or None.
     """
     is_email = action.kind == CapabilityKind.SEND_EMAIL
     is_message = action.kind == CapabilityKind.SEND_MESSAGE
     is_purchase = action.kind == CapabilityKind.QUEUE_PURCHASE
-    is_browser = action.kind == CapabilityKind.BROWSER_AUTOMATION
+    is_browser = action.kind in {
+        CapabilityKind.BROWSER_AUTOMATION,
+        CapabilityKind.BROWSER_NAVIGATE,
+        CapabilityKind.BROWSER_INTERACT,
+        CapabilityKind.BROWSER_SCRIPT,
+        CapabilityKind.BROWSER_FILE,
+    }
     if not (is_email or is_message or is_purchase or is_browser):
         return None
     if is_email:
