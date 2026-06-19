@@ -1,0 +1,21 @@
+# Keynote bundled MCP server config (servers.d layout).
+#
+# Copy to ~/.config/capabledeputy/servers.d/keynote.yaml.
+# macOS will still enforce Automation/TCC prompts for the terminal process.
+
+schema_version: 1
+name: keynote
+transport: stdio
+command: ["capdep", "mcp-server-keynote"]
+
+inherent_labels:
+  - confidential.personal
+
+strict: true
+
+tool_mappings:
+  keynote.frontmost_document: READ_FS
+  keynote.list_slides: READ_FS
+  keynote.slide_text: READ_FS
+  keynote.start_slideshow: MACOS_AUTOMATION
+  keynote.stop_slideshow: MACOS_AUTOMATION

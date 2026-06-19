@@ -74,9 +74,10 @@ upstream_servers:
         capability_kind: READ_FS
 
   # ---------------- Google Workspace ----------------
-  # Wired to `gws-mcp-server` (community wrapper around the `gws`
-  # Workspace CLI). Reuses OAuth tokens from `gws auth login` (cached
-  # in the OS keyring); no separate auth flow.
+  # Legacy compatibility path wired to `gws-mcp-server` (community
+  # wrapper around the `gws` Workspace CLI). Prefer
+  # `capdep gworkspace-setup` for Google's official remote Workspace MCP
+  # servers unless you need the old Docs/Sheets wrapper.
   #
   # Operator setup (once):
   #   npm install -g @googleworkspace/cli        # installs `gws`

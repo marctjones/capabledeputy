@@ -93,7 +93,10 @@ FINANCIAL_PURCHASE_RULE = "financial-meets-purchase"
 _PROMPTABLE_FIRST_USE_KINDS: frozenset[CapabilityKind] = frozenset(
     {
         CapabilityKind.SEND_EMAIL,
+        CapabilityKind.SEND_MESSAGE,
         CapabilityKind.QUEUE_PURCHASE,
+        CapabilityKind.BROWSER_AUTOMATION,
+        CapabilityKind.MACOS_AUTOMATION,
         CapabilityKind.WRITE_FS,
         CapabilityKind.CREATE_FS,
         CapabilityKind.MODIFY_FS,
@@ -244,24 +247,32 @@ def _conflict_invariant_outcome(
     Computes the four always-on information-flow conflict outcomes from
     the propagating axes instead of the flat `Label` set:
 
-      1. Axis-B `external-untrusted` provenance + egress  ⇒ DENY
+      1. Axis-B `external-untrusted` provenance + egress   ⇒ DENY
          (integrity / confused-deputy: tainted data cannot leave).
-      2. Axis-A `health` category + egress                ⇒ DENY
-      3. Axis-A `financial` category + email egress       ⇒ DENY
-      4. Axis-A `financial` category + purchase egress     ⇒ REQUIRE_APPROVAL
+      2. Axis-A `health` category + egress                 ⇒ DENY
+      3. Axis-A `financial` category + communication/browser egress ⇒ DENY
+      4. Axis-A `financial` category + purchase egress      ⇒ REQUIRE_APPROVAL
          (2-4: confidentiality confinement).
 
-    Egress is the action kind (SEND_EMAIL / QUEUE_PURCHASE) — exactly
-    the signal the flat `egress_label_for(action.kind)` used, so this
-    gate and the legacy CONFLICT_RULES agree by construction. Rules are
-    evaluated in the same precedence order as the flat tuple; the first
-    firing wins. Returns (decision, rule_id, reason) or None.
+    Egress is the action kind: SEND_EMAIL / SEND_MESSAGE / QUEUE_PURCHASE,
+    plus BROWSER_AUTOMATION because browser actions can submit data to
+    arbitrary remote sites. Rules are evaluated in precedence order; the
+    first firing wins. Returns (decision, rule_id, reason) or None.
     """
     is_email = action.kind == CapabilityKind.SEND_EMAIL
+    is_message = action.kind == CapabilityKind.SEND_MESSAGE
     is_purchase = action.kind == CapabilityKind.QUEUE_PURCHASE
-    if not (is_email or is_purchase):
+    is_browser = action.kind == CapabilityKind.BROWSER_AUTOMATION
+    if not (is_email or is_message or is_purchase or is_browser):
         return None
-    egress = "email" if is_email else "purchase"
+    if is_email:
+        egress = "email"
+    elif is_message:
+        egress = "message"
+    elif is_browser:
+        egress = "browser automation"
+    else:
+        egress = "purchase"
     provenance = {e.level for e in labels.b}
     categories = {c.category for c in labels.a}
     if ProvenanceLevel.EXTERNAL_UNTRUSTED in provenance:
@@ -278,11 +289,11 @@ def _conflict_invariant_outcome(
             f"{HEALTH_EGRESS_RULE}: health-category data cannot egress via {egress}",
         )
     if "financial" in categories:
-        if is_email:
+        if is_email or is_message or is_browser:
             return (
                 Decision.DENY,
                 FINANCIAL_EMAIL_RULE,
-                f"{FINANCIAL_EMAIL_RULE}: financial-category data cannot egress via email",
+                f"{FINANCIAL_EMAIL_RULE}: financial-category data cannot egress via {egress}",
             )
         return (
             Decision.REQUIRE_APPROVAL,

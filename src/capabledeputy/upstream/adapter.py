@@ -186,7 +186,19 @@ def _infer_capability_kind(
 
     # "send" alone (no Gmail) is generic SEND_EMAIL.
     if "send" in lowered:
+        if "message" in lowered or "chat" in lowered:
+            return CapabilityKind.SEND_MESSAGE
         return CapabilityKind.SEND_EMAIL
+
+    if "chat" in lowered or "conversation" in lowered or "message" in lowered:
+        if read_only or has_read_token:
+            return CapabilityKind.CHAT_READ
+        return None
+
+    if any(t in lowered for t in ("people", "contact", "profile", "directory")):
+        if read_only or has_read_token:
+            return CapabilityKind.PEOPLE_READ
+        return CapabilityKind.PEOPLE_READ
 
     if any(t in lowered for t in ("fetch", "web", "http", "url", "browse")):
         return CapabilityKind.WEB_FETCH

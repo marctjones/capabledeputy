@@ -9,7 +9,7 @@ stdlib `imaplib` + `smtplib` — no extra dependencies.
 | | IMAP (this doc) | OAuth (gworkspace) |
 |---|---|---|
 | **Gmail / email** | yes | yes |
-| **Google Docs** | no | yes |
+| **Google Docs / Sheets** | no | community mode only |
 | **Google Drive** | no | yes |
 | **Google Calendar** | no | yes |
 | **Setup time** | ~3 min | ~15 min |
@@ -17,8 +17,10 @@ stdlib `imaplib` + `smtplib` — no extra dependencies.
 | **App Password / 2FA required** | yes (Gmail) | no |
 | **Works with non-Google IMAP** | yes | no |
 
-Use IMAP if you only need email and want minimal setup. Use OAuth
-if you also need Docs/Drive/Calendar.
+Use IMAP if you only need email and want minimal setup. Use official
+Workspace MCP if you need Drive/Calendar/Chat/People. Use
+`capdep gworkspace-setup --mode community` only if you need the legacy
+Docs/Sheets wrapper.
 
 ## Step 1: Enable 2FA on your Gmail account (one-time)
 

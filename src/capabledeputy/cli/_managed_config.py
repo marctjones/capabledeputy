@@ -423,90 +423,258 @@ DEFAULT_ASSISTANT_BUNDLED_BLOCKS: tuple[tuple[str, str], ...] = (
 )
 
 
-# ---- Google Workspace via `gws-mcp-server` (community wrapper) ----
+# ---- Google Workspace via official remote MCP servers ----
 #
-# `gws-mcp-server` is a community-maintained MCP server that shells
-# out to the `gws` Workspace CLI (which holds OAuth tokens in the
-# OS keyring after `gws auth login`). It exposes 24 curated tools
-# across Drive / Sheets / Calendar / Docs / Gmail and reuses the
-# existing keyring credentials — no second auth setup needed.
-#
-# Install (one-time): npm install -g gws-mcp-server
-# Auth (already done): gws auth setup + gws auth login -s ...
-#
-# Tool naming uses snake_case (`drive_list_files`, `gmail_list_messages`,
-# `calendar_list_events`, etc.). Exact names are visible via `/tools gws`
-# in chat. `strict: false` lets the adapter's name-based inference
-# handle most tools; we pin the clearly-destructive ones explicitly.
-# Gmail in this server is READ-ONLY by design (no send tool) — list/get
-# messages + threads only. That matches the user's read-only intent.
+# Google's official Workspace MCP servers are remote HTTP endpoints,
+# one per product. CapDep authenticates them with Google Application
+# Default Credentials (ADC) and then applies its own policy gates around
+# every discovered MCP tool.
 
 GWORKSPACE_BLOCK_ID = "gworkspace"
-GWORKSPACE_BLOCK_BODY = """\
+GWORKSPACE_DEFAULT_OFFICIAL_SERVICES = "gmail,drive,calendar,chat,people"
+
+_GWORKSPACE_OFFICIAL_BLOCKS: dict[str, str] = {
+    "gmail": """\
+  - name: google-gmail
+    transport: streamable_http
+    url: "https://gmailmcp.googleapis.com/mcp/v1"
+    auth:
+      type: google_adc
+      scopes:
+        - "https://www.googleapis.com/auth/gmail.readonly"
+        - "https://www.googleapis.com/auth/gmail.compose"
+    inherent_labels: ["confidential.personal", "untrusted.user_input"]
+    disabled_kinds: ["SEND_EMAIL"]
+    tool_overrides:
+      create_draft:
+        capability_kind: CREATE_FS
+        additional_labels: ["confidential.personal"]
+      create_label:
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      get_thread:
+        capability_kind: GMAIL_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      label_message:
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      label_thread:
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      list_drafts:
+        capability_kind: GMAIL_READ
+        additional_labels: ["confidential.personal"]
+      list_labels:
+        capability_kind: GMAIL_READ
+        additional_labels: ["confidential.personal"]
+      search_threads:
+        capability_kind: GMAIL_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      unlabel_message:
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+      unlabel_thread:
+        capability_kind: MODIFY_FS
+        additional_labels: ["confidential.personal"]
+    strict: true
+""",
+    "drive": """\
+  - name: google-drive
+    transport: streamable_http
+    url: "https://drivemcp.googleapis.com/mcp/v1"
+    auth:
+      type: google_adc
+      scopes:
+        - "https://www.googleapis.com/auth/drive.readonly"
+        - "https://www.googleapis.com/auth/drive.file"
+    inherent_labels: ["confidential.personal", "untrusted.user_input"]
+    tool_overrides:
+      copy_file:
+        capability_kind: CREATE_FS
+        additional_labels: ["confidential.personal"]
+      create_file:
+        capability_kind: CREATE_FS
+        additional_labels: ["confidential.personal"]
+      download_file_content:
+        capability_kind: DRIVE_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      get_file_metadata:
+        capability_kind: DRIVE_READ
+        additional_labels: ["confidential.personal"]
+      get_file_permissions:
+        capability_kind: DRIVE_READ
+        additional_labels: ["confidential.personal"]
+      list_recent_files:
+        capability_kind: DRIVE_READ
+        additional_labels: ["confidential.personal"]
+      read_file_content:
+        capability_kind: DRIVE_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      search_files:
+        capability_kind: DRIVE_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+    strict: true
+""",
+    "calendar": """\
+  - name: google-calendar
+    transport: streamable_http
+    url: "https://calendarmcp.googleapis.com/mcp/v1"
+    auth:
+      type: google_adc
+      scopes:
+        - "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
+        - "https://www.googleapis.com/auth/calendar.events.freebusy"
+        - "https://www.googleapis.com/auth/calendar.events.readonly"
+    inherent_labels: ["confidential.personal", "untrusted.user_input"]
+    tool_overrides:
+      create_event:
+        capability_kind: CREATE_CAL
+        additional_labels: ["confidential.personal"]
+      delete_event:
+        capability_kind: DELETE_CAL
+        additional_labels: ["confidential.personal"]
+      get_event:
+        capability_kind: CALENDAR_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      list_calendars:
+        capability_kind: CALENDAR_READ
+        additional_labels: ["confidential.personal"]
+      list_events:
+        capability_kind: CALENDAR_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      respond_to_event:
+        capability_kind: MODIFY_CAL
+        additional_labels: ["confidential.personal"]
+      suggest_time:
+        capability_kind: CALENDAR_READ
+        additional_labels: ["confidential.personal"]
+      update_event:
+        capability_kind: MODIFY_CAL
+        additional_labels: ["confidential.personal"]
+    strict: true
+""",
+    "chat": """\
+  - name: google-chat
+    transport: streamable_http
+    url: "https://chatmcp.googleapis.com/mcp/v1"
+    auth:
+      type: google_adc
+      scopes:
+        - "https://www.googleapis.com/auth/chat.spaces.readonly"
+        - "https://www.googleapis.com/auth/chat.memberships.readonly"
+        - "https://www.googleapis.com/auth/chat.messages.readonly"
+        - "https://www.googleapis.com/auth/chat.messages.create"
+        - "https://www.googleapis.com/auth/chat.users.readstate.readonly"
+    inherent_labels: ["confidential.personal", "untrusted.user_input"]
+    tool_overrides:
+      list_messages:
+        capability_kind: CHAT_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      search_conversations:
+        capability_kind: CHAT_READ
+        additional_labels: ["confidential.personal"]
+      search_messages:
+        capability_kind: CHAT_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      send_message:
+        capability_kind: SEND_MESSAGE
+        additional_labels: ["confidential.personal"]
+    strict: true
+""",
+    "people": """\
+  - name: google-people
+    transport: streamable_http
+    url: "https://people.googleapis.com/mcp/v1"
+    auth:
+      type: google_adc
+      scopes:
+        - "https://www.googleapis.com/auth/directory.readonly"
+        - "https://www.googleapis.com/auth/userinfo.profile"
+        - "https://www.googleapis.com/auth/contacts.readonly"
+    inherent_labels: ["confidential.personal"]
+    tool_overrides:
+      get_user_profile:
+        capability_kind: PEOPLE_READ
+        additional_labels: ["confidential.personal"]
+      search_contacts:
+        capability_kind: PEOPLE_READ
+        additional_labels: ["confidential.personal"]
+      search_directory_people:
+        capability_kind: PEOPLE_READ
+        additional_labels: ["confidential.personal"]
+    strict: true
+""",
+}
+
+
+def google_workspace_official_block_body(
+    services: str = GWORKSPACE_DEFAULT_OFFICIAL_SERVICES,
+) -> str:
+    """Build the official Google Workspace managed block for selected services."""
+    requested = [s.strip().lower() for s in services.split(",") if s.strip()]
+    unknown = [s for s in requested if s not in _GWORKSPACE_OFFICIAL_BLOCKS]
+    if unknown:
+        raise ValueError(
+            "unknown official Google Workspace MCP service(s): "
+            + ", ".join(unknown)
+            + ". Expected any of: "
+            + ", ".join(_GWORKSPACE_OFFICIAL_BLOCKS),
+        )
+    return "\n".join(_GWORKSPACE_OFFICIAL_BLOCKS[s].rstrip("\n") for s in requested) + "\n"
+
+
+GWORKSPACE_BLOCK_BODY = google_workspace_official_block_body()
+
+
+# ---- Legacy Google Workspace via `gws-mcp-server` community wrapper ----
+#
+# Kept for operators who already authenticated through `gws auth login` or
+# need Docs/Sheets tools that are not in the official remote MCP preview.
+
+GWORKSPACE_COMMUNITY_BLOCK_BODY = """\
   - name: gws
     command: ["npx", "gws-mcp-server", "--services", "drive,sheets,calendar,docs,gmail"]
     inherent_labels: ["confidential.personal"]
-    # OUTBOUND MAIL DISABLED (operator policy): refuse any tool that
-    # classifies as SEND_EMAIL, regardless of name — so even if the
-    # gws-mcp-server exposes a Gmail send tool, it is never registered and
-    # the agent cannot send mail. Gmail stays read-only. Remove this to
-    # allow sending.
     disabled_kinds: ["SEND_EMAIL"]
     tool_overrides:
-      # Drive — granular kinds (Issue #33).
-      # Read tools auto-classify as DRIVE_READ via the upstream adapter;
-      # destructive ops pinned explicitly here.
-      "drive_delete_file":
+      drive_delete_file:
         capability_kind: DELETE_FS
         additional_labels: ["confidential.personal"]
-      "drive_update_file":
+      drive_update_file:
         capability_kind: MODIFY_FS
         additional_labels: ["confidential.personal"]
-      "drive_create_file":
-        capability_kind: CREATE_FS
-      "drive_copy_file":
-        capability_kind: CREATE_FS
-      "drive_share_file":
+      drive_create_file: {capability_kind: CREATE_FS}
+      drive_copy_file: {capability_kind: CREATE_FS}
+      drive_share_file:
         capability_kind: MODIFY_FS
         additional_labels: ["confidential.personal"]
-      # Calendar — events mutating ops are destructive.
-      "calendar_delete_event":
+      calendar_delete_event:
         capability_kind: DELETE_CAL
         additional_labels: ["confidential.personal"]
-      "calendar_update_event":
+      calendar_update_event:
         capability_kind: MODIFY_CAL
         additional_labels: ["confidential.personal"]
-      "calendar_insert_event":
-        capability_kind: CREATE_CAL
-      # Sheets / Docs writes route through the MODIFY_FS gate so a
-      # read-only session can still read; only writes deny.
-      "sheets_write_values":
+      calendar_insert_event: {capability_kind: CREATE_CAL}
+      sheets_write_values:
         capability_kind: MODIFY_FS
         additional_labels: ["confidential.personal"]
-      "sheets_append_values":
+      sheets_append_values:
         capability_kind: MODIFY_FS
         additional_labels: ["confidential.personal"]
-      "docs_batch_update":
+      docs_batch_update:
         capability_kind: MODIFY_FS
         additional_labels: ["confidential.personal"]
-      "docs_create_document":
-        capability_kind: CREATE_FS
-      # Gmail read tools — pinned to GMAIL_READ (Issue #33). The
-      # upstream adapter's classifier now distinguishes gmail.list/get
-      # (→ GMAIL_READ) from gmail.send (→ SEND_EMAIL), but we still
-      # pin to avoid relying on inference for sensitive surface.
-      # Default sessions auto-grant GMAIL_READ * so read-only Gmail
-      # workflows work out of the box.
-      "gmail_messages_list":
+      docs_create_document: {capability_kind: CREATE_FS}
+      gmail_messages_list:
         capability_kind: GMAIL_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
-      "gmail_messages_get":
+      gmail_messages_get:
         capability_kind: GMAIL_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
-      "gmail_threads_list":
+      gmail_threads_list:
         capability_kind: GMAIL_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
-      "gmail_threads_get":
+      gmail_threads_get:
         capability_kind: GMAIL_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
     strict: false

@@ -1,0 +1,23 @@
+# AppleScript MCP server config (Issue #35 layout).
+#
+# To use: copy this file to `~/.config/capabledeputy/servers.d/applescript.yaml`,
+# adjust CAPDEP_APPLESCRIPT_CATALOGS to point at your trusted local catalogs,
+# and restart the daemon.
+#
+# The catalog files are trusted operator code. This server does not expose a
+# generic AppleScript execution tool.
+
+schema_version: 1
+name: applescript
+
+transport: stdio
+command: ["capdep", "mcp-server-applescript"]
+env:
+  CAPDEP_APPLESCRIPT_CATALOGS: "${CAPDEP_APPLESCRIPT_CATALOGS:-configs/applescript/apple-mail-readonly.yaml:configs/applescript/keynote-readonly.yaml}"
+
+strict: true
+
+tool_mappings:
+  mail.list_accounts: IMAP_READ
+  mail.count_unread_inbox: IMAP_READ
+  keynote.frontmost_document: READ_FS

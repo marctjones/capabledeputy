@@ -1,6 +1,9 @@
-# Curated upstream config — Slack official MCP server.
+# Curated upstream config — Slack official remote MCP server.
 #
-# Producer: Slack (official server, launched Feb 2026). Well regarded.
+# Producer: Slack (official remote server).
+# Transport: streamable HTTP. Authentication is OAuth in MCP hosts that
+# support it; CapDep can pass an operator-provided bearer token via
+# SLACK_MCP_TOKEN.
 #
 # Label rationale:
 #   - Messages authored by OTHER people are untrusted.external (the
@@ -12,30 +15,33 @@
 #     There is no Slack-specific capability kind by design — egress is
 #     egress; the channel is irrelevant to the policy.
 #
-# Verify `command:` against Slack's current docs before use.
-
 upstream_servers:
   - name: slack
-    command: ["npx", "-y", "@slack/mcp-server"]
+    transport: streamable_http
+    url: "https://mcp.slack.com/mcp"
+    auth:
+      type: bearer
+      token_env: SLACK_MCP_TOKEN
     strict: true
     inherent_labels:
       - untrusted.external
     tool_overrides:
-      # Reads: classify as READ_FS; inherent untrusted.external above
-      # already taints the session with relayed third-party content.
-      list_channels:        { capability_kind: READ_FS }
-      get_channel_history:  { capability_kind: READ_FS }
-      get_thread_replies:   { capability_kind: READ_FS }
-      get_users:            { capability_kind: READ_FS }
-      search_messages:      { capability_kind: READ_FS }
+      # Reads: classify as CHAT_READ; inherent untrusted.external above
+      # taints the session with relayed third-party content.
+      search_messages:      { capability_kind: CHAT_READ }
+      read_file:            { capability_kind: CHAT_READ }
+      search_emoji:         { capability_kind: CHAT_READ }
+      search_users:         { capability_kind: CHAT_READ }
+      search_channels:      { capability_kind: CHAT_READ }
+      read_channel:         { capability_kind: CHAT_READ }
+      read_thread:          { capability_kind: CHAT_READ }
+      read_canvas:          { capability_kind: CHAT_READ }
+      read_user_profile:    { capability_kind: CHAT_READ }
+      list_channel_members: { capability_kind: CHAT_READ }
       # Egress: posting a message leaves the trust boundary.
-      post_message:         { capability_kind: SEND_EMAIL }
-      reply_to_thread:      { capability_kind: SEND_EMAIL }
-      add_reaction:         { capability_kind: SEND_EMAIL }
-    isolation:
-      image: docker.io/library/node:22-slim
-      network: bridge
-      allowed_hosts:
-        - "slack.com:127.0.0.1"
-        - "www.slack.com:127.0.0.1"
-      memory: "256m"
+      send_message:         { capability_kind: SEND_MESSAGE }
+      draft_message:        { capability_kind: CREATE_FS }
+      create_conversation:  { capability_kind: SEND_MESSAGE }
+      add_reaction:         { capability_kind: SEND_MESSAGE }
+      create_canvas:        { capability_kind: SEND_MESSAGE }
+      update_canvas:        { capability_kind: SEND_MESSAGE }

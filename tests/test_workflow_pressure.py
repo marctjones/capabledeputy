@@ -24,8 +24,19 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from capabledeputy.app import App
-from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.capabilities import (
+    Capability,
+    CapabilityKind,
+    DelegationRefusal,
+    DelegationRefusalReason,
+    DelegationRequest,
+    RateLimit,
+)
+from capabledeputy.policy.context import PolicyContext
+from capabledeputy.policy.decision_inspector_loader import load_decision_inspectors
 from capabledeputy.policy.fs_labeling import parse_fs_label_rules
 from capabledeputy.policy.labels import (
     CategoryTag,
@@ -33,7 +44,9 @@ from capabledeputy.policy.labels import (
     ProvenanceLevel,
     ProvenanceTag,
 )
+from capabledeputy.policy.purposes import Purpose, Purposes
 from capabledeputy.policy.tiers import Tier
+from capabledeputy.session.graph import PurposeAdmissibilityError
 
 K = CapabilityKind
 _FULL = frozenset(
@@ -274,6 +287,162 @@ async def test_model_confidential_read_blocks_external_egress(tmp_path) -> None:
                 f"MODEL VIOLATION: {cat} read then {sink} was {out.decision.value}, "
                 f"must be deny (rule={out.rule})"
             )
+
+
+async def test_purpose_limited_workflow_blocks_inadmissible_contamination(tmp_path) -> None:
+    """Model (purpose limitation / Contextual Integrity): a purpose-scoped
+    session can do relevant work, but unrelated sensitive categories cannot
+    be introduced later by grant or delegation.
+
+    This covers CapDep's enforceable boundary for "purpose contamination":
+    read-admissibility. It does not claim to solve the separate non-goal
+    where already-admissible data inappropriately influences model reasoning.
+    """
+    purposes = Purposes(
+        purposes={
+            "employee-evaluation": Purpose(
+                purpose_id="employee-evaluation",
+                admissible_categories=frozenset({"work_performance"}),
+                inadmissible_categories=frozenset({"health", "personal"}),
+            ),
+            "hr-admin": Purpose(
+                purpose_id="hr-admin",
+                admissible_categories=frozenset({"work_performance", "health"}),
+            ),
+        },
+    )
+    app = App(
+        state_db_path=tmp_path / "purpose.db",
+        audit_log_path=tmp_path / "purpose.jsonl",
+        purposes=purposes,
+    )
+    await app.startup()
+
+    parent = await app.graph.new(purpose_handle="hr-admin")
+    child = await app.graph.new(parent=parent.id, purpose_handle="employee-evaluation")
+
+    # Useful path: the evaluation purpose may receive work-performance access.
+    cap = Capability(kind=K.READ_FS, pattern="/people/alice/performance/*")
+    await app.graph.grant_capability(
+        child.id,
+        cap,
+        categories=frozenset({"work_performance"}),
+    )
+    assert any(c.kind == K.READ_FS for c in app.graph.get(child.id).capability_set)
+
+    # Violation path #1: a direct grant of unrelated health access is refused.
+    with pytest.raises(PurposeAdmissibilityError) as exc:
+        await app.graph.grant_capability(
+            child.id,
+            Capability(kind=K.READ_FS, pattern="/people/alice/medical/*"),
+            categories=frozenset({"health"}),
+        )
+    assert exc.value.inadmissible_categories == frozenset({"health"})
+
+    # Violation path #2: delegation cannot smuggle the same inadmissible category.
+    await app.graph.grant_capability(
+        parent.id,
+        Capability(kind=K.READ_FS, pattern="/people/alice/*"),
+        categories=frozenset({"work_performance", "health"}),
+    )
+    delegated = await app.graph.delegate(
+        parent.id,
+        child.id,
+        DelegationRequest(kind=K.READ_FS, pattern="/people/alice/medical/*"),
+        depth_limit=3,
+        categories=frozenset({"health"}),
+    )
+    assert isinstance(delegated, DelegationRefusal)
+    assert delegated.reason == DelegationRefusalReason.INADMISSIBLE_CATEGORY
+
+
+async def test_frequency_aggregation_tightens_real_chokepoint_after_n_sends(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Operator policy DSL + history summary: a real tool-dispatch workflow
+    can express cumulative frequency friction without giving the script write
+    access to session state.
+    """
+    monkeypatch.setenv("CAPDEP_ALLOW_UNSANDBOXED_POLICY_SCRIPTS", "1")
+    script = """
+def inspect(action, session, proposed_outcome):
+    if proposed_outcome["decision"] != "allow":
+        return abstain()
+    counts = session["history"]["counts_by_kind"]
+    if action["kind"] == "SEND_EMAIL" and counts.get("SEND_EMAIL", 0) >= 3:
+        return tighten(to="require_approval", rule="freq-cap", rationale="too many sends")
+    return abstain()
+"""
+    (inspector,) = load_decision_inspectors(
+        {
+            "decision_inspectors": [
+                {
+                    "name": "session-frequency",
+                    "source": script,
+                    "runtime": "python-reference",
+                },
+            ],
+        },
+    )
+    app = App(
+        state_db_path=tmp_path / "freq.db",
+        audit_log_path=tmp_path / "freq.jsonl",
+        policy_context=PolicyContext(decision_inspectors=(inspector,)),
+    )
+    await app.startup()
+    from capabledeputy.policy.effect_class import EffectClass, Operation
+    from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
+
+    delivered: list[dict] = []
+
+    async def _notify(args: dict, _ctx: ToolContext) -> ToolResult:
+        delivered.append(dict(args))
+        return ToolResult(output={"sent": True})
+
+    app.registry.register(
+        ToolDefinition(
+            name="notify.send",
+            description="test-only send-like tool without v2 egress defaults",
+            capability_kind=K.SEND_EMAIL,
+            handler=_notify,
+            target_arg="to",
+            operations=(Operation(EffectClass.COMMUNICATE, subtype="notify.send"),),
+            risk_ids=("RISK-DATA-EXFIL-AGENT-TOOLS",),
+            surfaces_destination_id=True,
+            parameters_schema={
+                "type": "object",
+                "properties": {"to": {"type": "string"}, "body": {"type": "string"}},
+                "required": ["to", "body"],
+            },
+        ),
+    )
+    cap = Capability(
+        kind=K.SEND_EMAIL,
+        pattern="*",
+        rate_limit=RateLimit(max_uses=10, window_seconds=3600),
+    )
+    s = await app.graph.new()
+    app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
+
+    for index in range(3):
+        allowed = await _call(
+            app,
+            s.id,
+            "notify.send",
+            {"to": f"person{index}@example.com", "body": "hello"},
+        )
+        assert allowed.decision.value == "allow"
+
+    gated = await _call(
+        app,
+        s.id,
+        "notify.send",
+        {"to": "person3@example.com", "body": "hello"},
+    )
+    assert gated.decision.value == "require_approval"
+    assert gated.rule == "session-frequency:freq-cap"
+    assert len(delivered) == 3
 
 
 # ============================================================ #

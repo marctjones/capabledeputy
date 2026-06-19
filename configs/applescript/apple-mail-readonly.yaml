@@ -1,0 +1,64 @@
+schema_version: 1
+
+tools:
+  - name: mail.list_accounts
+    app: Mail
+    bundle_id: com.apple.mail
+    description: List Apple Mail account names visible to the current macOS user.
+    read_only: true
+    destructive: false
+    output_format: json
+    timeout_seconds: 10
+    input_schema:
+      type: object
+      properties: {}
+      additionalProperties: false
+    script: |
+      on run argv
+        set output to "["
+        tell application "Mail"
+          set accountNames to name of every account
+        end tell
+        repeat with i from 1 to count of accountNames
+          if i > 1 then set output to output & ","
+          set output to output & "{\"name\":" & my json_string(item i of accountNames) & "}"
+        end repeat
+        set output to output & "]"
+        return output
+      end run
+
+      on json_string(valueText)
+        set escaped to valueText
+        set escaped to my replace_text(escaped, "\\", "\\\\")
+        set escaped to my replace_text(escaped, "\"", "\\\"")
+        return "\"" & escaped & "\""
+      end json_string
+
+      on replace_text(valueText, searchText, replacementText)
+        set AppleScript's text item delimiters to searchText
+        set parts to text items of valueText
+        set AppleScript's text item delimiters to replacementText
+        set newText to parts as text
+        set AppleScript's text item delimiters to ""
+        return newText
+      end replace_text
+
+  - name: mail.count_unread_inbox
+    app: Mail
+    bundle_id: com.apple.mail
+    description: Count unread messages in the Apple Mail inbox.
+    read_only: true
+    destructive: false
+    output_format: json
+    timeout_seconds: 10
+    input_schema:
+      type: object
+      properties: {}
+      additionalProperties: false
+    script: |
+      on run argv
+        tell application "Mail"
+          set unreadCount to unread count of inbox
+        end tell
+        return "{\"unread_count\":" & unreadCount & "}"
+      end run

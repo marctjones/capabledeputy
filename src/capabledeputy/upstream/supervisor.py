@@ -143,18 +143,33 @@ class LiveSession:
     async def _spawn(self) -> None:
         import os
 
-        cmd = self._config.effective_command()
-        merged_env: dict[str, str] = dict(os.environ)
-        merged_env.update(self._config.env)
-        params = StdioServerParameters(
-            command=cmd[0],
-            args=list(cmd[1:]),
-            env=merged_env if self._config.env else None,
-        )
         stack = AsyncExitStack()
         try:
             await stack.__aenter__()
-            read, write = await stack.enter_async_context(stdio_client(params))
+            if self._config.transport == "stdio":
+                cmd = self._config.effective_command()
+                merged_env: dict[str, str] = dict(os.environ)
+                merged_env.update(self._config.env)
+                params = StdioServerParameters(
+                    command=cmd[0],
+                    args=list(cmd[1:]),
+                    env=merged_env if self._config.env else None,
+                )
+                read, write = await stack.enter_async_context(stdio_client(params))
+            elif self._config.transport == "streamable_http":
+                from mcp.client.streamable_http import streamablehttp_client
+
+                from capabledeputy.upstream.http_auth import httpx_auth_from_config
+
+                read, write, _get_session_id = await stack.enter_async_context(
+                    streamablehttp_client(
+                        self._config.url,
+                        headers=self._config.headers or None,
+                        auth=httpx_auth_from_config(self._config.auth),
+                    ),
+                )
+            else:  # pragma: no cover - config parser rejects this.
+                raise ValueError(f"unsupported transport: {self._config.transport}")
             session = await stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
         except Exception:

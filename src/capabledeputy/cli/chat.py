@@ -2287,10 +2287,14 @@ def _handle_server_info() -> None:
         for srv in upstream_servers:
             name = srv.get("name", "?")
             state = srv.get("state", "?")
+            transport = srv.get("transport", "stdio")
             n_tools = srv.get("registered_tool_count", 0)
             n_rej = srv.get("rejected_tool_count", 0)
             if state == "registered":
-                line = f"            [green]✓[/green] [bold]{name}[/bold]  {n_tools} tool(s)"
+                line = (
+                    f"            [green]✓[/green] [bold]{name}[/bold]  "
+                    f"{n_tools} tool(s)  [dim]{transport}[/dim]"
+                )
                 if n_rej:
                     line += f"  [yellow]({n_rej} rejected)[/yellow]"
                 console.print(line)
@@ -2317,6 +2321,9 @@ def _handle_server_info() -> None:
                     console.print(
                         f"              [dim]command:[/dim] {' '.join(cmd[:3])}{'...' if len(cmd) > 3 else ''}"  # noqa: E501
                     )
+                url = srv.get("url", "")
+                if url:
+                    console.print(f"              [dim]url:[/dim] {url}")
 
     # Tools
     tool_count = info.get("tool_count", 0)
@@ -3981,6 +3988,8 @@ def _grant_default_read_caps(session_id: str) -> None:
         ("GMAIL_READ", "*"),
         ("IMAP_READ", "*"),
         ("DRIVE_READ", "*"),
+        ("CHAT_READ", "*"),
+        ("PEOPLE_READ", "*"),
         ("CALENDAR_READ", "*"),
         ("WEB_FETCH", "*"),
         # Sandbox + scratch workspace creation

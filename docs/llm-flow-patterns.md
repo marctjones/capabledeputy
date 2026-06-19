@@ -236,6 +236,6 @@ model's self-narrated reasoning is not part of this artifact.
 Each pattern realizes a row in `docs/security-models.md` (patterns 2–4
 are noninterference *declassification* variants; pattern 1 is the
 Denning lattice mechanism). New flow patterns MUST be added here and
-cross-linked to their model row there; pattern 3's gap is tracked as
-planned work until it is a documented first-class mechanism. The six
+cross-linked to their model row there. Pattern ③ reference handles and
+Pattern ⑤ sealed containment are first-class mechanisms, and the seven
 composition invariants above are enforced as cross-step review checks.

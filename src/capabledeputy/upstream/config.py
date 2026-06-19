@@ -2,7 +2,9 @@
 
 Each upstream server gets:
   - name: short identifier (used as a prefix on registered tool names)
-  - command: argv list to launch the subprocess
+  - transport: stdio (local subprocess) or streamable_http/http (remote MCP)
+  - command: argv list to launch the subprocess for stdio transports
+  - url: remote MCP endpoint for HTTP transports
   - env: optional per-server environment variables. Values can
     reference operator-shell env vars via ``${VAR}`` (or
     ``${VAR:-default}``) — expanded at config-load time. Enables the
@@ -25,7 +27,10 @@ from pathlib import Path
 from typing import Any
 
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.labels import LabelState
+from capabledeputy.policy.labels import (
+    LabelState,
+    tags_for_labels_strings,
+)
 from capabledeputy.upstream.isolation import ContainerIsolation, VolumeMount
 
 _ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
@@ -55,9 +60,30 @@ class UpstreamToolOverride:
 
 
 @dataclass(frozen=True)
+class UpstreamAuthConfig:
+    """Authentication settings for remote MCP transports.
+
+    Supported types:
+      - none: no auth
+      - bearer: static bearer token, preferably loaded from token_env
+      - google_adc: Google Application Default Credentials bearer auth
+    """
+
+    type: str = "none"
+    token: str = ""
+    token_env: str = ""
+    scopes: tuple[str, ...] = ()
+    quota_project_id: str = ""
+
+
+@dataclass(frozen=True)
 class UpstreamServerConfig:
     name: str
-    command: tuple[str, ...]
+    command: tuple[str, ...] = ()
+    transport: str = "stdio"
+    url: str = ""
+    headers: dict[str, str] = field(default_factory=dict)
+    auth: UpstreamAuthConfig | None = None
     inherent_tags: LabelState = field(default_factory=LabelState)
     tool_overrides: dict[str, UpstreamToolOverride] = field(default_factory=dict)
     isolation: ContainerIsolation | None = None
@@ -89,9 +115,52 @@ class UpstreamServerConfig:
         """If isolation is configured, prepend the container runtime's
         `run` argv so the upstream server actually launches inside the
         container. Otherwise the bare command runs directly."""
+        if self.transport != "stdio":
+            return ()
         if self.isolation is None:
             return self.command
         return self.isolation.to_argv_prefix() + self.command
+
+    @property
+    def endpoint(self) -> str:
+        """Human-readable connection target for status/errors."""
+        if self.transport == "stdio":
+            return " ".join(self.command)
+        return self.url
+
+
+def _parse_label_state(raw: Any) -> LabelState:
+    """Accept both the current LabelState dict shape and legacy flat
+    label-string lists used by older curated configs."""
+    if raw is None:
+        return LabelState()
+    if isinstance(raw, dict):
+        return LabelState.from_dict(raw)
+    if isinstance(raw, list | tuple | set | frozenset):
+        return tags_for_labels_strings(frozenset(str(x) for x in raw))
+    return LabelState()
+
+
+def _parse_auth(raw: Any) -> UpstreamAuthConfig | None:
+    if not raw:
+        return None
+    if isinstance(raw, str):
+        auth_type = raw
+        raw = {"type": auth_type}
+    if not isinstance(raw, dict):
+        raise ValueError("auth must be a mapping, string, or omitted")
+    auth_type = str(raw.get("type") or raw.get("kind") or "none").lower()
+    if auth_type in {"", "none", "noauth"}:
+        return None
+    if auth_type not in {"bearer", "google_adc"}:
+        raise ValueError(f"unsupported upstream auth.type: {auth_type}")
+    return UpstreamAuthConfig(
+        type=auth_type,
+        token=expand_env_value(str(raw.get("token") or "")),
+        token_env=str(raw.get("token_env") or ""),
+        scopes=tuple(str(s) for s in (raw.get("scopes") or ())),
+        quota_project_id=str(raw.get("quota_project_id") or ""),
+    )
 
 
 def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
@@ -99,14 +168,28 @@ def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
     out: list[UpstreamServerConfig] = []
     for entry in servers_raw:
         name = str(entry["name"])
-        command = tuple(str(a) for a in entry["command"])
-        inherent_tags = LabelState.from_dict(entry.get("inherent_tags", {}))
+        transport = str(entry.get("transport") or "stdio").lower().replace("-", "_")
+        if transport == "http":
+            transport = "streamable_http"
+        if transport not in {"stdio", "streamable_http"}:
+            raise ValueError(f"{name}: unsupported transport {transport!r}")
+
+        command = tuple(str(a) for a in (entry.get("command") or ()))
+        url = str(entry.get("url") or entry.get("server_url") or entry.get("http_url") or "")
+        if transport == "stdio" and not command:
+            raise ValueError(f"{name}: stdio upstream requires command")
+        if transport == "streamable_http" and not url:
+            raise ValueError(f"{name}: HTTP upstream requires url/server_url/http_url")
+
+        inherent_tags = _parse_label_state(
+            entry.get("inherent_tags", entry.get("inherent_labels", {}))
+        )
         overrides_raw = entry.get("tool_overrides", {}) or {}
         overrides: dict[str, UpstreamToolOverride] = {}
         for tool_name, ov in overrides_raw.items():
             kind_str = ov.get("capability_kind")
             kind = CapabilityKind(kind_str) if kind_str else None
-            extra = LabelState.from_dict(ov.get("additional_tags", {}))
+            extra = _parse_label_state(ov.get("additional_tags", ov.get("additional_labels", {})))
             overrides[tool_name] = UpstreamToolOverride(
                 capability_kind=kind,
                 additional_tags=extra,
@@ -120,6 +203,13 @@ def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
             UpstreamServerConfig(
                 name=name,
                 command=command,
+                transport=transport,
+                url=url,
+                headers={
+                    str(k): expand_env_value(str(v))
+                    for k, v in (entry.get("headers") or {}).items()
+                },
+                auth=_parse_auth(entry.get("auth")),
                 inherent_tags=inherent_tags,
                 tool_overrides=overrides,
                 isolation=isolation,

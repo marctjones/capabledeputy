@@ -109,13 +109,14 @@ capped by:
 2. **Substrate trust.** Host/daemon/store compromise voids the
    intersection defense. Securing the TCB is outside CapableDeputy's
    own scope.
-3. **The inappropriate-influence case is unbuilt.** The intersection
-   incident where *no data leaves and the effect is permitted* but a
-   contaminated/biased automated decision is made about a person
-   (purpose-contamination) is **v0.9 unspecced design**
-   (`trust-model.md` §6; `design-v0.9-labeling.md`); pattern ①
-   provably cannot stop it. CapableDeputy covers the
-   *exfiltration/over-agency* archetype well, this one not yet.
+3. **The model-reasoning contamination case is out of scope.** The
+   practical purpose-limitation boundary is implemented: an inadmissible
+   category cannot be added to a purpose-scoped session by spawn, grant, or
+   delegation. The remaining intersection incident is narrower: *no data
+   leaves, the data was admissible to read, and the effect is permitted*, but
+   the model used that admissible data for an inappropriate reason. Proving
+   that would require model-internal interpretability, which is a deliberate
+   non-goal (`trust-model.md` §6; `design-v0.9-labeling.md`).
 
 ## 7. Alignment with the original vision
 

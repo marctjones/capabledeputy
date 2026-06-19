@@ -48,7 +48,7 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
 - **Read** your local files under `~/Documents`, `~/notes`, `~/code`
 - **Write** to `~/notes/scratch/**` without approval
 - **Search the web** and read fetched content (labeled untrusted, naturally chokes egress)
-- **Read Gmail / Docs / Drive / Calendar** (after you run `capdep gworkspace-setup`)
+- **Read Gmail / Drive / Calendar / Chat / People** (after you run `capdep gworkspace-setup`)
 - **Send email** with approval gate (chokepoint requires the operator to confirm every send)
 - **Create calendar events** with approval gate (one-prompt-per-event)
 - **Persist memory** across sessions (via the bundled `mcp-server-memory`)
@@ -72,7 +72,7 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
 
 1. `capdep init` — onboarding (creates `~/.config/capabledeputy/`)
 2. `export ANTHROPIC_API_KEY=sk-...` (or whichever LLM provider you chose)
-3. (Optional) `capdep gworkspace-setup` — OAuth for Gmail/Docs/Drive/Calendar
+3. (Optional) `capdep gworkspace-setup` — official Workspace remote MCP
 4. (Optional) `export BRAVE_SEARCH_API_KEY=...` — better web search than DDG
 
 Then:

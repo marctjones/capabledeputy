@@ -1,0 +1,42 @@
+# Legacy Google Workspace via `gws-mcp-server` community wrapper.
+#
+# Prefer configs/curated/google-workspace.yaml for Google's official
+# remote Workspace MCP servers. This file is retained for existing
+# operators who already use `gws auth login` or need Docs/Sheets tools
+# that are not yet part of Google's official remote MCP preview.
+
+upstream_servers:
+  - name: gws
+    command: ["npx", "gws-mcp-server", "--services", "drive,sheets,calendar,docs,gmail"]
+    inherent_labels: ["confidential.personal"]
+    disabled_kinds: ["SEND_EMAIL"]
+    tool_overrides:
+      drive_list_files: {capability_kind: DRIVE_READ, additional_labels: ["confidential.personal"]}
+      drive_get_file: {capability_kind: DRIVE_READ, additional_labels: ["confidential.personal"]}
+      drive_delete_file: {capability_kind: DELETE_FS, additional_labels: ["confidential.personal"]}
+      drive_update_file: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"]}
+      drive_create_file: {capability_kind: CREATE_FS}
+      drive_copy_file: {capability_kind: CREATE_FS}
+      drive_export_file: {capability_kind: DRIVE_READ, additional_labels: ["confidential.personal"]}
+      drive_share_file: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"]}
+      sheets_get_metadata: {capability_kind: DRIVE_READ, additional_labels: ["confidential.personal"]}
+      sheets_read_values: {capability_kind: DRIVE_READ, additional_labels: ["confidential.personal"]}
+      calendar_delete_event: {capability_kind: DELETE_CAL, additional_labels: ["confidential.personal"]}
+      calendar_update_event: {capability_kind: MODIFY_CAL, additional_labels: ["confidential.personal"]}
+      calendar_insert_event: {capability_kind: CREATE_CAL}
+      calendar_list_events: {capability_kind: CALENDAR_READ, additional_labels: ["confidential.personal"]}
+      calendar_get_event: {capability_kind: CALENDAR_READ, additional_labels: ["confidential.personal"]}
+      sheets_write_values: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"]}
+      sheets_append_values: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"]}
+      docs_get_document: {capability_kind: DRIVE_READ, additional_labels: ["confidential.personal"]}
+      docs_batch_update: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"]}
+      docs_create_document: {capability_kind: CREATE_FS}
+      gmail_list_messages: {capability_kind: GMAIL_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      gmail_get_message: {capability_kind: GMAIL_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      gmail_list_threads: {capability_kind: GMAIL_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      gmail_get_thread: {capability_kind: GMAIL_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      gmail_messages_list: {capability_kind: GMAIL_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      gmail_messages_get: {capability_kind: GMAIL_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      gmail_threads_list: {capability_kind: GMAIL_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      gmail_threads_get: {capability_kind: GMAIL_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+    strict: true

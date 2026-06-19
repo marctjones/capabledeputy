@@ -144,6 +144,8 @@ def test_promptable_set_covers_destructive_and_egress() -> None:
         CapabilityKind.DELETE_FS,
         CapabilityKind.MODIFY_FS,
         CapabilityKind.DELETE_CAL,
+        CapabilityKind.BROWSER_AUTOMATION,
+        CapabilityKind.MACOS_AUTOMATION,
         CapabilityKind.EXECUTE_DEVBOX,
     ):
         assert k in _PROMPTABLE_FIRST_USE_KINDS

@@ -1,4 +1,7 @@
-# Google Workspace MCP server config (Issue #35 layout).
+# Legacy Google Workspace community wrapper config (Issue #35 layout).
+#
+# Prefer `capdep gworkspace-setup` or google-gmail.yaml for Google's
+# official remote MCP servers. This file is for `gws-mcp-server`.
 #
 # To use: copy this file to `~/.config/capabledeputy/servers.d/gws.yaml`
 # and restart the daemon. The daemon discovers it automatically.

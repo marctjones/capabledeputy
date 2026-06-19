@@ -9,10 +9,9 @@ the v0.5 — UX EPIC features landed in the May 2026 sprint.
 
 ```bash
 # One-time setup
-npm install -g @googleworkspace/cli && gws auth setup && gws auth login -s drive,gmail,calendar,docs,sheets
-npm install -g gws-mcp-server
+gcloud auth application-default login
 uv run capdep imap-setup            # Gmail via App Password (no OAuth)
-uv run capdep gworkspace-setup      # Workspace via the official CLI
+uv run capdep gworkspace-setup      # Official Workspace remote MCP servers
 
 # Daily use
 uv run capdep chat

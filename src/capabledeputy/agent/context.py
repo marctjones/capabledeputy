@@ -497,8 +497,12 @@ something, use one of these exact strings:
   Filesystem:  READ_FS, WRITE_FS, CREATE_FS, MODIFY_FS, DELETE_FS
   Email:       GMAIL_READ, IMAP_READ, SEND_EMAIL
   Drive:       DRIVE_READ
+  Chat:        CHAT_READ, SEND_MESSAGE
+  People:      PEOPLE_READ
   Calendar:    CALENDAR_READ, CALENDAR_WRITE, CREATE_CAL, MODIFY_CAL, DELETE_CAL
   Web:         WEB_FETCH
+  Browser:     BROWSER_AUTOMATION
+  macOS:       MACOS_AUTOMATION
   Purchase:    QUEUE_PURCHASE
   Sandbox:     EXECUTE_SANDBOX
 {custom_kinds_section}
@@ -506,11 +510,17 @@ something, use one of these exact strings:
 Examples:
 - Read Gmail messages: `/grant GMAIL_READ *` (or `/grant GMAIL_READ from:boss@*`)
 - Read Google Drive: `/grant DRIVE_READ *`
+- Read Google Chat: `/grant CHAT_READ *`
+- Read People/Contacts: `/grant PEOPLE_READ *`
 - Read IMAP inbox: `/grant IMAP_READ *`
 - Send email: `/grant SEND_EMAIL recipient@example.com --one-shot`
+- Send chat message: `/grant SEND_MESSAGE spaces/* --one-shot`
+- Use browser automation: `/grant BROWSER_AUTOMATION * --one-shot`
+- Use macOS automation: `/grant MACOS_AUTOMATION * --one-shot`
 
 Note: a legacy `/grant READ_FS *` capability ALSO satisfies
-GMAIL_READ / IMAP_READ / DRIVE_READ (backward-compat union) — but
+GMAIL_READ / IMAP_READ / DRIVE_READ / CHAT_READ / PEOPLE_READ
+(backward-compat union) — but
 new sessions should use the granular kinds so the operator can
 distinguish "read email" from "read local filesystem."
 """

@@ -170,11 +170,11 @@ The runtime can context-switch between ready sessions; approval-blocked sessions
 ### 7.2 Conflict Rules (Brewer-Nash, ~5)
 1. `untrusted.*` ⊕ `egress.*` → **deny without declassifier**
 2. `confidential.health` ⊕ `egress.*` → **deny without declassifier**
-3. `confidential.financial` ⊕ `egress.email` → **deny without declassifier**
+3. `confidential.financial` ⊕ communication/browser egress → **deny without declassifier**
 4. `confidential.financial` ⊕ `egress.purchase` → **require approval (Clark-Wilson gate)**
 5. `untrusted.external` content used as tool argument → **wrap argument in declassifier check**
 
-### 7.3 Capabilities (6 types)
+### 7.3 Capabilities
 Each capability holds: target pattern, expiry (one-shot / session / persistent), origin (system-default / user-approved / pattern-rule), audit_id.
 
 - `READ_FS(path_pattern)`
@@ -182,6 +182,9 @@ Each capability holds: target pattern, expiry (one-shot / session / persistent),
 - `SEND_EMAIL(recipient_pattern)`
 - `WEB_FETCH(url_pattern)`
 - `CALENDAR(read | write)`
+- `SEND_MESSAGE(conversation_pattern)`
+- `BROWSER_AUTOMATION(target_pattern)`
+- `MACOS_AUTOMATION(target_pattern)`
 - `QUEUE_PURCHASE(vendor_pattern, max_amount)`
 
 ### 7.5 Destructive-Operation Gate (Clark-Wilson + CRUD)
@@ -641,21 +644,20 @@ them):**
   (governance-scope contingency #1). Broadening label coverage (more
   `SourcePort` bindings, catalog-aware tiers, a raise-only LLM labeler) does
   more for real-world safety than any additional model.
-- **The decision-refinement layer is dormant.** The `DecisionInspector`
-  chokepoint and the sandboxed Starlark `PolicyScriptHost` are built and
-  tested, but `decision_inspectors` is never populated in the daemon and no
-  loader compiles operator scripts. Until a config-driven loader wires it in,
-  operators have only the conjunctive `RulePredicate` (no negation,
-  arithmetic, frequency, or cross-field logic). This is the single
-  highest-leverage fix and the direct lever on decision fatigue.
-- **Purpose-contamination is only partially delivered.** Preventing sensitive
-  data from influencing a decision it has no bearing on (the Purpose Handle,
-  spec 003) is designed and partly shipped; until complete, purpose-scoping is
-  a contingency, not a guarantee.
-- **Frequency / aggregation policy needs threaded history.** Hermetic Starlark
-  inspectors see only `action / session / proposed_outcome`; rate-limit and
-  aggregation defenses require first threading a read-only history summary into
-  the `session` dict.
+- **The decision-refinement layer is live but default-inert.** The
+  `DecisionInspector` chokepoint, sandboxed Starlark `PolicyScriptHost`, and
+  config-driven loader are built and tested, including bounded relax/tighten
+  guards. The remaining product question is which conservative starter
+  inspectors should ship enabled by default, not whether the layer works.
+- **Purpose-contamination is bounded at read admission.** Purpose-scoped
+  spawn/grant/delegation refuse inadmissible categories before they enter the
+  workflow. The remaining case — admissible data that inappropriately
+  influences model cognition — is deliberately out of scope because it would
+  require model-internal interpretability.
+- **Frequency / aggregation policy has bounded history.** Inspectors receive a
+  read-only session-history summary (recent effect kinds, counts, recipients),
+  and a real-chokepoint workflow proves a fourth send-like dispatch can be
+  tightened after the first three.
 
 ### Shipped in v0.2 (DONE)
 

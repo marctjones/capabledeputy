@@ -224,6 +224,36 @@ tool_overrides:
     assert ov.capability_kind.value == "GMAIL_READ"
 
 
+def test_servers_d_accepts_remote_google_workspace_server(tmp_path: Path) -> None:
+    d = tmp_path / "servers.d"
+    d.mkdir()
+    _write_yaml(
+        d,
+        "google-gmail.yaml",
+        """
+schema_version: 1
+name: google-gmail
+transport: streamable_http
+url: https://gmailmcp.googleapis.com/mcp/v1
+auth:
+  type: google_adc
+  scopes:
+    - https://www.googleapis.com/auth/gmail.readonly
+inherent_labels: [confidential.personal, untrusted.user_input]
+tool_mappings:
+  search_threads: GMAIL_READ
+""",
+    )
+    configs, _, _ = load_servers_d(d)
+    cfg = configs[0].server_config
+    assert cfg.transport == "streamable_http"
+    assert cfg.url == "https://gmailmcp.googleapis.com/mcp/v1"
+    assert cfg.auth is not None
+    assert cfg.auth.type == "google_adc"
+    assert cfg.command == ()
+    assert any(tag.category == "personal" for tag in cfg.inherent_tags.a)
+
+
 def test_unsupported_schema_version_refused(tmp_path: Path) -> None:
     """Old/future schema versions raise — operator gets a clear error."""
     d = tmp_path / "servers.d"

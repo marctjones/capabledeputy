@@ -1,76 +1,54 @@
-# Design: Google Workspace operations → CapabilityKind mapping (#33)
+# Google Workspace Capability Mapping
 
-How each Google Workspace MCP operation maps to a CapableDeputy
-`CapabilityKind`, so the policy engine gates Workspace actions with the
-same four-axis machinery as native tools. Gmail is shipped in
-`configs/google-workspace-local.yaml`; this doc records the design,
-generalizes it to Drive + Calendar, and lists the gaps.
+CapDep maps Google Workspace MCP operations to capability kinds by **effect**,
+not by product. The official remote Workspace config is
+`configs/curated/google-workspace.yaml`; `capdep gworkspace-setup` writes the
+same shape into the user-local daemon config.
 
-## Principle
+The mapping is fail-closed: each official server uses `strict: true`, so an
+unmapped upstream tool is refused at registration time.
 
-The MCP server is intentionally wide-open; **the capability mapping is
-where each operation acquires its policy meaning.** Strict mode
-(`strict: true`) refuses any unmapped tool, so the mapping is the
-*entire* enabled surface — there is no silent passthrough.
+## Effect Tiers
 
-Operations sort into five effect tiers:
+| Effect | Capability kind |
+|---|---|
+| Gmail read/search | `GMAIL_READ` |
+| Drive read/search/download | `DRIVE_READ` |
+| Calendar read/free-busy | `CALENDAR_READ` |
+| Chat read/search | `CHAT_READ` |
+| People/profile/contact read | `PEOPLE_READ` |
+| Draft/create local-ish state | `CREATE_FS`, `CREATE_CAL` |
+| Modify existing state | `MODIFY_FS`, `MODIFY_CAL` |
+| Delete state | `DELETE_FS`, `DELETE_CAL` |
+| Send a chat/message | `SEND_MESSAGE` |
+| Send email | `SEND_EMAIL` |
 
-| Tier | CapabilityKind | Gate character |
+`READ_FS *` remains a backward-compatible union for the external read kinds,
+but new grants should use the granular kinds so "read local files" is distinct
+from "read Gmail/Drive/Chat/People".
+
+## Official Server Mapping
+
+| Server | Endpoint | Tools |
 |---|---|---|
-| Read | `*_READ` (e.g. `GMAIL_READ`) | auto-grantable; taints the session with the source's labels |
-| Local draft / create | `CREATE_FS` | no egress, no social commitment — lightweight |
-| In-place modify / organize | `MODIFY_FS` | gated behind explicit grant; not an egress |
-| Destructive (trash/delete) | `DELETE_FS` | destructive-op gate (needs `allows_destructive`) |
-| Egress / send | `SEND_EMAIL` (+ purchase-like for paid) | ApprovalRoute: full preview, irreversible, social-commitment |
+| `google-gmail` | `https://gmailmcp.googleapis.com/mcp/v1` | `search_threads`, `get_thread`, `list_drafts`, `list_labels` -> `GMAIL_READ`; `create_draft` -> `CREATE_FS`; label tools -> `MODIFY_FS` |
+| `google-drive` | `https://drivemcp.googleapis.com/mcp/v1` | search/read/download/metadata/permissions -> `DRIVE_READ`; create/copy -> `CREATE_FS` |
+| `google-calendar` | `https://calendarmcp.googleapis.com/mcp/v1` | list/get/suggest -> `CALENDAR_READ`; create/update/respond/delete -> `CREATE_CAL`/`MODIFY_CAL`/`DELETE_CAL` |
+| `google-chat` | `https://chatmcp.googleapis.com/mcp/v1` | list/search -> `CHAT_READ`; `send_message` -> `SEND_MESSAGE` |
+| `google-people` | `https://people.googleapis.com/mcp/v1` | profile/contact/directory search -> `PEOPLE_READ` |
 
-The discriminator is **effect**, not product: "create a Drive file" and
-"create a Gmail draft" are both `CREATE_FS`; "share a Drive file
-externally" and "send a Gmail" are both egress.
+## Safety Notes
 
-## Gmail (shipped)
-
-See `configs/google-workspace-local.yaml`. Summary: read surface →
-`GMAIL_READ`; drafts → `CREATE_FS`/`MODIFY_FS`/`DELETE_FS`; sends
-(`send_gmail_message`, `send_gmail_draft`) → `SEND_EMAIL`; label/move ops
-→ `MODIFY_FS`; trash → `DELETE_FS`. Inbound mail carries
-`untrusted.external` + `confidential.personal` server-wide (refined
-per-message in [[email-labeling-design]] / #34).
-
-## Drive (proposed)
-
-| Operation | CapabilityKind | Notes |
-|---|---|---|
-| `search_files`, `get_file_metadata`, `read_file_content`, `download_file_content`, `list_recent_files` | `DRIVE_READ` (or `READ_FS` union) | taints with the file's labels — pairs with a Drive labeler (analogue of fs labeling, #5) |
-| `create_file`, `copy_file` | `CREATE_FS` | non-destructive create |
-| update/rename/move | `MODIFY_FS` | in-place; a versioned backend earns reversible/system (VersionedWritePort, #56) |
-| delete/trash | `DELETE_FS` | destructive-op gate |
-| **change sharing / permissions** | `SHARE_EXTERNAL` (egress) | **the Drive egress gate** — granting external read is exfiltration; must route through an ApprovalRoute, NOT `MODIFY_FS` |
-
-The one subtlety Drive adds over Gmail: **permission changes are egress.**
-Mapping `get_file_permissions` is read; *setting* a permission that adds
-an external principal is the moment data leaves the boundary and must be
-treated like a send.
-
-## Calendar (proposed)
-
-| Operation | CapabilityKind | Notes |
-|---|---|---|
-| `list_calendars`, `list_events`, `get_event`, `suggest_time` | `CALENDAR_READ` | event bodies can be `confidential.personal` |
-| `create_event`, `update_event` | `CREATE_FS` / `MODIFY_FS` | reversible (event has history) |
-| `delete_event` | `DELETE_FS` | destructive-op gate |
-| **`create_event` / `update_event` with external attendees** | egress (`SEND_EMAIL`-class) | inviting an external attendee mails them the event details — egress |
-| `respond_to_event` | `MODIFY_FS` | RSVP; low-stakes |
-
-Same pattern: the action is read/create/modify *until it adds an external
-recipient*, at which point it is egress.
-
-## Gaps / follow-ups
-
-- **External-recipient detection** for Drive shares and Calendar invites
-  needs the RelationshipGroups registry (canonical recipient identity) to
-  decide "external" vs "family/work" — ties to #51 (SourcePort canonical
-  ids) and the cookbook P2.3 relationship rules.
-- **Per-operation labels** are coarse today (blanket `confidential.personal`
-  on the whole Gmail surface). Content-aware labeling is #34.
-- **Drive/Calendar mappings are proposed, not shipped** — they land with
-  the respective MCP server wiring; this doc is the spec they implement.
+- Chat sends are social egress. `SEND_MESSAGE` participates in the same
+  egress conflict checks as email: untrusted or health data cannot be sent,
+  and financial data is blocked by the financial egress floor.
+- Gmail drafts are not egress by themselves, so they map to `CREATE_FS`.
+  Sending email remains `SEND_EMAIL`.
+- Drive permission writes are not exposed in the current official mapping. If
+  a future tool grants external access to a Drive file, it must be treated as
+  egress rather than ordinary `MODIFY_FS`.
+- Calendar event writes are local state changes until they invite or notify an
+  external party. A future attendee-aware mapper should route external invites
+  through an egress/approval path.
+- Workspace data is labeled `confidential.personal`; user-authored or
+  third-party content is also treated as untrusted input where appropriate.

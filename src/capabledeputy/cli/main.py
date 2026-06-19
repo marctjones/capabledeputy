@@ -167,6 +167,9 @@ def config_doctor_command(
         ("imap.fetch", CapabilityKind.IMAP_READ),
         ("drive.files.list", CapabilityKind.DRIVE_READ),
         ("gmail.users.messages.send", CapabilityKind.SEND_EMAIL),
+        ("chat.search_messages", CapabilityKind.CHAT_READ),
+        ("chat.send_message", CapabilityKind.SEND_MESSAGE),
+        ("people.search_contacts", CapabilityKind.PEOPLE_READ),
     ]
     classifier_issues = []
     for tool_name, expected in test_cases:
@@ -275,10 +278,22 @@ def config_split_command(
             out_doc["command"] = list(entry["command"])
         if entry.get("transport"):
             out_doc["transport"] = entry["transport"]
+        if entry.get("url"):
+            out_doc["url"] = entry["url"]
+        if entry.get("server_url"):
+            out_doc["server_url"] = entry["server_url"]
+        if entry.get("http_url"):
+            out_doc["http_url"] = entry["http_url"]
+        if entry.get("headers"):
+            out_doc["headers"] = entry["headers"]
+        if entry.get("auth"):
+            out_doc["auth"] = entry["auth"]
         if entry.get("env"):
             out_doc["env"] = entry["env"]
         if entry.get("inherent_labels"):
             out_doc["inherent_labels"] = entry["inherent_labels"]
+        if entry.get("inherent_tags"):
+            out_doc["inherent_tags"] = entry["inherent_tags"]
         if entry.get("strict") is not None:
             out_doc["strict"] = bool(entry["strict"])
         if entry.get("isolation"):
@@ -988,8 +1003,8 @@ def daemon_start(
 
 def _make_bundled_mcp_command(module_name: str):
     """Factory: returns a CLI handler that runs the named bundled
-    MCP server. Used for the five `capdep mcp-server-<name>` commands
-    that expose CapableDeputy's own Python MCP servers via stdio.
+    MCP server. Used by `capdep mcp-server-<name>` commands that expose
+    CapableDeputy's own Python MCP servers via stdio.
 
     These are STANDALONE servers — no CapableDeputy daemon required.
     Within CapableDeputy: include them in an upstream_servers config
@@ -1021,6 +1036,10 @@ app.command("mcp-server-search")(_make_bundled_mcp_command("search"))
 app.command("mcp-server-memory")(_make_bundled_mcp_command("memory"))
 app.command("mcp-server-git")(_make_bundled_mcp_command("git"))
 app.command("mcp-server-imap")(_make_bundled_mcp_command("imap"))
+app.command("mcp-server-applescript")(_make_bundled_mcp_command("applescript"))
+app.command("mcp-server-apple-mail")(_make_bundled_mcp_command("apple_mail"))
+app.command("mcp-server-keynote")(_make_bundled_mcp_command("keynote"))
+app.command("mcp-server-macos")(_make_bundled_mcp_command("macos"))
 
 
 @app.command("setup")
@@ -1227,6 +1246,16 @@ smtp:
 
 @app.command("gworkspace-setup")
 def gworkspace_setup(
+    mode: Annotated[
+        str,
+        typer.Option(
+            "--mode",
+            help=(
+                "Integration mode: official remote Google MCP servers, "
+                "or community gws-mcp-server."
+            ),
+        ),
+    ] = "official",
     register_only: Annotated[
         bool,
         typer.Option(
@@ -1234,8 +1263,7 @@ def gworkspace_setup(
             help=(
                 "Skip the install/auth checklist; only add/refresh the "
                 "Google Workspace block in the user-local daemon config. "
-                "Use when `gws` is already installed and `gws auth login` "
-                "has succeeded."
+                "Use after Google Cloud APIs and ADC/OAuth are already configured."
             ),
         ),
     ] = False,
@@ -1245,78 +1273,89 @@ def gworkspace_setup(
             "--services",
             "-s",
             help=(
-                "Comma-separated services to expose via gws-mcp-server. "
-                "Default: drive,sheets,calendar,docs,gmail."
+                "Comma-separated services. Official mode supports "
+                "gmail,drive,calendar,chat,people. Community mode supports "
+                "drive,sheets,calendar,docs,gmail."
             ),
         ),
-    ] = "drive,sheets,calendar,docs,gmail",
+    ] = "",
 ) -> None:
-    """Wire up `gws-mcp-server` — the community MCP wrapper around the
-    `gws` Workspace CLI.
+    """Wire Google Workspace tools into CapDep.
 
-    `gws-mcp-server` reuses the OAuth tokens you already cached in the
-    OS keyring via `gws auth login`. No second consent flow, no
-    separate credentials file. 24 tools across Drive / Sheets /
-    Calendar / Docs / Gmail. Gmail is read-only by design (list / get
-    messages + threads only — no send).
-
-    One-time install:
-
-      npm install -g gws-mcp-server
-
-    Prerequisites (already done if you ran `gws auth login`):
-
-      npm install -g @googleworkspace/cli   # installs `gws`
-      gws auth setup                        # one-time gcloud + OAuth client
-      gws auth login -s drive,gmail,calendar  # browser consent
-
-    Then run this command (or `--register-only`) to write a managed
-    block into `~/.config/capabledeputy/daemon.yaml`. After that,
-    `capdep chat` automatically loads Workspace tools.
-
-    Tool naming uses snake_case (`drive_list_files`, `gmail_list_messages`,
-    `calendar_list_events`, etc.). Audit via [bold]/tools gws[/bold]
-    in chat. Edits OUTSIDE the managed markers survive re-registration.
+    Default mode registers Google's official remote MCP servers over
+    streamable HTTP using Google Application Default Credentials.
+    Use `--mode community` only for the legacy local `gws-mcp-server`
+    wrapper around the `gws` CLI.
     """
+    import shutil
+
     from capabledeputy.cli._managed_config import (
-        GWORKSPACE_BLOCK_BODY,
         GWORKSPACE_BLOCK_ID,
+        GWORKSPACE_COMMUNITY_BLOCK_BODY,
+        GWORKSPACE_DEFAULT_OFFICIAL_SERVICES,
+        google_workspace_official_block_body,
         gws_cli_available,
         gws_mcp_server_available,
         user_default_daemon_config_path,
         write_managed_block,
     )
 
-    have_gws = gws_cli_available()
-    have_mcp_server = gws_mcp_server_available()
+    mode = mode.strip().lower()
+    if mode not in {"official", "community"}:
+        err_console.print("[red]--mode must be 'official' or 'community'[/red]")
+        raise typer.Exit(code=2)
 
-    # Build the block body with the user's chosen services if non-default.
-    block_body = GWORKSPACE_BLOCK_BODY
-    default_services = "drive,sheets,calendar,docs,gmail"
-    if services != default_services:
-        block_body = block_body.replace(
-            f'"--services", "{default_services}"',
-            f'"--services", "{services}"',
-        )
+    if mode == "official":
+        services = services or GWORKSPACE_DEFAULT_OFFICIAL_SERVICES
+        try:
+            block_body = google_workspace_official_block_body(services)
+        except ValueError as e:
+            err_console.print(f"[red]{e}[/red]")
+            raise typer.Exit(code=2) from None
+    else:
+        default_services = "drive,sheets,calendar,docs,gmail"
+        services = services or default_services
+        block_body = GWORKSPACE_COMMUNITY_BLOCK_BODY
+        if services != default_services:
+            block_body = block_body.replace(
+                f'"--services", "{default_services}"',
+                f'"--services", "{services}"',
+            )
 
     if not register_only:
-        console.print("[bold]Google Workspace setup[/bold]\n")
-        if have_gws:
-            console.print("  [green]✓[/green] `gws` binary on PATH (auth tokens in keyring)")
-        else:
+        console.print(f"[bold]Google Workspace setup ({mode})[/bold]\n")
+        if mode == "official":
+            if shutil.which("gcloud"):
+                console.print("  [green]✓[/green] `gcloud` binary on PATH")
+            else:
+                console.print(
+                    "  [yellow]·[/yellow] `gcloud` not found. Install Google Cloud CLI, "
+                    "enable the Workspace APIs/MCP services, then run ADC login.",
+                )
             console.print(
-                "  [yellow]·[/yellow] `gws` not found. Install + auth:\n"
-                "      [bold]npm install -g @googleworkspace/cli[/bold]\n"
-                "      [bold]gws auth setup[/bold]\n"
-                "      [bold]gws auth login -s drive,gmail,calendar,docs,sheets[/bold]",
+                "  [dim]required auth:[/dim] "
+                "[bold]gcloud auth application-default login[/bold] "
+                "(with Workspace scopes for the services you enabled)",
             )
-        if have_mcp_server:
-            console.print("  [green]✓[/green] `gws-mcp-server` installed")
         else:
-            console.print(
-                "  [yellow]·[/yellow] `gws-mcp-server` not found. Install with:\n"
-                "      [bold]npm install -g gws-mcp-server[/bold]",
-            )
+            have_gws = gws_cli_available()
+            have_mcp_server = gws_mcp_server_available()
+            if have_gws:
+                console.print("  [green]✓[/green] `gws` binary on PATH")
+            else:
+                console.print(
+                    "  [yellow]·[/yellow] `gws` not found. Install + auth:\n"
+                    "      [bold]npm install -g @googleworkspace/cli[/bold]\n"
+                    "      [bold]gws auth setup[/bold]\n"
+                    "      [bold]gws auth login -s drive,gmail,calendar,docs,sheets[/bold]",
+                )
+            if have_mcp_server:
+                console.print("  [green]✓[/green] `gws-mcp-server` installed")
+            else:
+                console.print(
+                    "  [yellow]·[/yellow] `gws-mcp-server` not found. Install with:\n"
+                    "      [bold]npm install -g gws-mcp-server[/bold]",
+                )
         console.print()
 
     daemon_yaml = user_default_daemon_config_path()
@@ -1328,16 +1367,17 @@ def gworkspace_setup(
     else:
         console.print(f"[dim]gworkspace block in {daemon_yaml} already up to date[/dim]")
 
-    if have_gws and have_mcp_server:
+    if mode == "official":
         console.print(
             "\n[bold]next:[/bold] [bold]capdep daemon stop && capdep chat[/bold] — "
-            f"Workspace tools ({services}) will register automatically. "
-            "Run [bold]/tools gws[/bold] in the REPL to see what loaded.",
+            f"official Workspace tools ({services}) will register automatically. "
+            "Run [bold]/server[/bold] and [bold]/tools google-[/bold] in the REPL.",
         )
     else:
         console.print(
-            "\n[bold]next:[/bold] finish the install steps above, then "
-            "[bold]capdep daemon stop && capdep chat[/bold].",
+            "\n[bold]next:[/bold] finish any missing install steps above, then "
+            "[bold]capdep daemon stop && capdep chat[/bold]. Run "
+            "[bold]/tools gws[/bold] to see loaded community-wrapper tools.",
         )
 
 

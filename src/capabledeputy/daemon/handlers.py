@@ -217,6 +217,8 @@ def make_info_handler(app: Any) -> Handler:
                         "rejected_tool_names": list(status.rejected_tool_names),
                         "error": status.error,
                         "command": list(status.command),
+                        "transport": status.transport,
+                        "url": status.url,
                     }
                 )
 

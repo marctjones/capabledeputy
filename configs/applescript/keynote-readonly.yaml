@@ -1,0 +1,42 @@
+schema_version: 1
+
+tools:
+  - name: keynote.frontmost_document
+    app: Keynote
+    bundle_id: com.apple.iWork.Keynote
+    description: Return metadata about the frontmost open Keynote document.
+    read_only: true
+    destructive: false
+    output_format: json
+    timeout_seconds: 10
+    input_schema:
+      type: object
+      properties: {}
+      additionalProperties: false
+    script: |
+      on run argv
+        tell application "Keynote"
+          if not (exists front document) then
+            return "{\"open\":false}"
+          end if
+          set docName to name of front document
+          set slideCount to count of slides of front document
+        end tell
+        return "{\"open\":true,\"name\":" & my json_string(docName) & ",\"slide_count\":" & slideCount & "}"
+      end run
+
+      on json_string(valueText)
+        set escaped to valueText
+        set escaped to my replace_text(escaped, "\\", "\\\\")
+        set escaped to my replace_text(escaped, "\"", "\\\"")
+        return "\"" & escaped & "\""
+      end json_string
+
+      on replace_text(valueText, searchText, replacementText)
+        set AppleScript's text item delimiters to searchText
+        set parts to text items of valueText
+        set AppleScript's text item delimiters to replacementText
+        set newText to parts as text
+        set AppleScript's text item delimiters to ""
+        return newText
+      end replace_text

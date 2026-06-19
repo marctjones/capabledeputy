@@ -35,8 +35,9 @@ The three highest-leverage cuts. Do these first; the rest compound on them.
   property), raise-only never under-classifies.
   `tests/test_default_label_rules.py`.
 - **Machinery:** `policy/fs_labeling.py` + `policy/email_labeling.py` loaders
-  exist and are wired in `daemon/lifecycle.py`; today they load `.example`
-  rules that aren't active. **config** for U1a, **feature** for U1b.
+  exist and are wired in `daemon/lifecycle.py`; `configs/fs_label_rules.yaml`
+  and `configs/email_label_rules.yaml` ship active high-precision rules.
+  **config** for U1a, **feature** for U1b.
 - **U1a (config):** curate a *high-precision* default ruleset (e.g. `~/.ssh/*`,
   `*/Financial/*`, `*/Medical/*`, sender-domain/subject patterns) and ship it
   active. Keep it precision-over-recall to avoid over-labeling.

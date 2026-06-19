@@ -8,12 +8,11 @@ through every action an agent takes, escalates to programmatic
 execution when stakes warrant, and forces every cross-compartment
 data flow through deterministic, human-auditable approval gates.
 
-It answers the question — *ten months after CaMeL, where are the
-production-grade prompt-injection-resistant agents?* — by building
-one: multi-provider, proprietary, terminal-operated, designed for
-individuals who want capable AI assistance without surrendering
-health records, financial data, or third-party communications to the
-LLM's word-completion machinery.
+It answers the question — *where are the practical prompt-injection-
+resistant agents?* — by building one: multi-provider, proprietary,
+terminal-operated, and designed for individuals who want capable AI
+assistance without surrendering health records, financial data, or
+third-party communications to the LLM's word-completion machinery.
 
 ## What it gives you
 
@@ -31,22 +30,22 @@ the LLM — controls capability dispatch.
 - **[Governance scope](governance-scope.md)** — what CapableDeputy is
   expected to do and not: the intersection-control thesis, AI-gov
   coverage, deliberate non-goals, and the three bounding contingencies.
-- **[Design](design.md)** — threat model, theoretical foundations,
+- **[Design](../DESIGN.md)** — threat model, theoretical foundations,
   the three execution modes, the session graph, labels and
   capabilities, and component specs.
-- **[Roadmap](roadmap.md)** — what's shipped (v0.1 → v0.4) and
-  what's next.
-- **[Demos](demos/README.md)** — three end-to-end scenarios:
-  prescription-to-wife declassification, the real-Claude
-  blocked-then-approved flow, and Claude Code as an adversarial host.
+- **[Roadmap](../ROADMAP.md)** — release-era implementation history and
+  longer-term plan.
+- **[Workflow index](workflow-index.md)** — categorized map of the
+  executable workflow demos, scenario catalogue, and enforcement suites.
+- **[Demos](demos/README.md)** — 21 walkthrough demos; the executable
+  narrated demo suite lives in `demos/scenarios/`.
 - **[Container deployment](deployment/container.md)** — Containerfile,
   Podman quadlet, and the rootless deployment story.
-- **[Local-model planner](local-model-planner.md)** — keep PHI on the
-  box: Ollama for the planner, Ollama or frontier for the quarantined
-  extractor.
-- **[TLA+ spec](spec.md)** — formal model of the session graph
-  operations and policy decision function, with the safety properties
-  TLC checks.
+- **[Local-model planner](local-model-planner.md)** — local-first model
+  planning; Apple Silicon uses the MLX backend by default.
+- **[TLA+ spec](../spec/CapableDeputy.tla)** — formal model of the session
+  graph operations and policy decision function, with safety properties
+  checked by TLC.
 
 ## Quick start
 
@@ -65,5 +64,5 @@ capdep session new --intent "test session"
 capdep send <session-id> "What's in my labs memory?"
 ```
 
-See the [README](https://github.com/example/capabledeputy/blob/main/README.md)
+See the [README](../README.md)
 for the full quick start.

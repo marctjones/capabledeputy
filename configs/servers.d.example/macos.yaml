@@ -1,0 +1,22 @@
+# General macOS bundled MCP server config (servers.d layout).
+#
+# Copy to ~/.config/capabledeputy/servers.d/macos.yaml.
+# macOS will still enforce Automation/TCC prompts for the terminal process.
+
+schema_version: 1
+name: macos
+transport: stdio
+command: ["capdep", "mcp-server-macos"]
+
+inherent_labels:
+  - confidential.personal
+
+strict: true
+
+tool_mappings:
+  macos.frontmost_application: MACOS_AUTOMATION
+  macos.list_running_applications: MACOS_AUTOMATION
+  macos.open_application: MACOS_AUTOMATION
+  macos.get_clipboard_text: MACOS_AUTOMATION
+  macos.set_clipboard_text: MACOS_AUTOMATION
+  macos.show_notification: MACOS_AUTOMATION

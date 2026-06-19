@@ -26,6 +26,9 @@ class CapabilityKind(StrEnum):
     CALENDAR_READ = "CALENDAR_READ"
     CALENDAR_WRITE = "CALENDAR_WRITE"
     QUEUE_PURCHASE = "QUEUE_PURCHASE"
+    SEND_MESSAGE = "SEND_MESSAGE"
+    BROWSER_AUTOMATION = "BROWSER_AUTOMATION"
+    MACOS_AUTOMATION = "MACOS_AUTOMATION"
 
     # Granular destructive-op kinds (DESIGN.md §7.5 — Clark-Wilson + CRUD
     # decomposition). New tools that distinguish create / modify / delete
@@ -70,6 +73,8 @@ class CapabilityKind(StrEnum):
     GMAIL_READ = "GMAIL_READ"
     IMAP_READ = "IMAP_READ"
     DRIVE_READ = "DRIVE_READ"
+    CHAT_READ = "CHAT_READ"
+    PEOPLE_READ = "PEOPLE_READ"
 
 
 # Action kinds the policy engine treats as "destructive" — modifying or
@@ -102,7 +107,13 @@ _WRITE_UNION_MATCHES: dict[CapabilityKind, frozenset[CapabilityKind]] = {
     # `/grant READ_FS *` grants (or the prior default `READ_FS *`)
     # keep working. New default grants use the granular kinds.
     CapabilityKind.READ_FS: frozenset(
-        {CapabilityKind.GMAIL_READ, CapabilityKind.IMAP_READ, CapabilityKind.DRIVE_READ},
+        {
+            CapabilityKind.GMAIL_READ,
+            CapabilityKind.IMAP_READ,
+            CapabilityKind.DRIVE_READ,
+            CapabilityKind.CHAT_READ,
+            CapabilityKind.PEOPLE_READ,
+        },
     ),
 }
 

@@ -12,6 +12,13 @@ Available servers:
   - search   Web search via Brave Search API (DDG fallback option)
   - memory   Persistent key-value store backed by SQLite
   - git      Read-only git operations (status/log/diff/show/branch_list)
+  - imap     IMAP mail read/send/organize operations
+  - applescript
+             Catalog-driven macOS app automation via AppleScript
+  - apple_mail
+             Bounded Apple Mail automation (read/search/create draft)
+  - keynote  Bounded Keynote automation (inspect/present open decks)
+  - macos    Bounded macOS desktop primitives (apps/clipboard/notify)
 
 Design notes:
   - Each server is pure-function tool handlers + a small `serve()`

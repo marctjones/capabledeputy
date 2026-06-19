@@ -1,4 +1,4 @@
-# CapableDeputy daemon config: load the five bundled Python MCP servers.
+# CapableDeputy daemon config: load the bundled Python MCP servers.
 #
 # These are minimal-install — pure Python, no Node.js / npm required.
 # Each is launched as a stdio MCP subprocess; the daemon wires their
@@ -80,3 +80,86 @@ upstream_servers:
         capability_kind: READ_FS
       "git.branch_list":
         capability_kind: READ_FS
+
+  - name: bundled-imap
+    command: ["capdep", "mcp-server-imap"]
+    inherent_labels: []
+    disabled_kinds: ["SEND_EMAIL"]
+    tool_overrides:
+      "imap.list_threads":
+        capability_kind: IMAP_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "imap.read_message":
+        capability_kind: IMAP_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "imap.search":
+        capability_kind: IMAP_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
+      "imap.list_folders":
+        capability_kind: IMAP_READ
+      "imap.send":
+        capability_kind: SEND_EMAIL
+      "imap.mark_read":
+        capability_kind: MODIFY_FS
+      "imap.archive":
+        capability_kind: MODIFY_FS
+
+  - name: bundled-applescript
+    command: ["capdep", "mcp-server-applescript"]
+    env:
+      CAPDEP_APPLESCRIPT_CATALOGS: "${CAPDEP_APPLESCRIPT_CATALOGS:-configs/applescript/apple-mail-readonly.yaml:configs/applescript/keynote-readonly.yaml}"
+    inherent_labels: ["confidential.personal"]
+    tool_overrides:
+      "mail.list_accounts":
+        capability_kind: IMAP_READ
+      "mail.count_unread_inbox":
+        capability_kind: IMAP_READ
+      "keynote.frontmost_document":
+        capability_kind: READ_FS
+
+  - name: bundled-apple-mail
+    command: ["capdep", "mcp-server-apple-mail"]
+    inherent_labels: ["confidential.personal", "untrusted.user_input"]
+    tool_overrides:
+      "apple_mail.list_accounts":
+        capability_kind: IMAP_READ
+      "apple_mail.list_mailboxes":
+        capability_kind: IMAP_READ
+      "apple_mail.search_messages":
+        capability_kind: IMAP_READ
+      "apple_mail.get_message":
+        capability_kind: IMAP_READ
+      "apple_mail.create_draft":
+        capability_kind: MACOS_AUTOMATION
+
+  - name: bundled-keynote
+    command: ["capdep", "mcp-server-keynote"]
+    inherent_labels: ["confidential.personal"]
+    tool_overrides:
+      "keynote.frontmost_document":
+        capability_kind: READ_FS
+      "keynote.list_slides":
+        capability_kind: READ_FS
+      "keynote.slide_text":
+        capability_kind: READ_FS
+      "keynote.start_slideshow":
+        capability_kind: MACOS_AUTOMATION
+      "keynote.stop_slideshow":
+        capability_kind: MACOS_AUTOMATION
+
+  - name: bundled-macos
+    command: ["capdep", "mcp-server-macos"]
+    inherent_labels: ["confidential.personal"]
+    tool_overrides:
+      "macos.frontmost_application":
+        capability_kind: MACOS_AUTOMATION
+      "macos.list_running_applications":
+        capability_kind: MACOS_AUTOMATION
+      "macos.open_application":
+        capability_kind: MACOS_AUTOMATION
+      "macos.get_clipboard_text":
+        capability_kind: MACOS_AUTOMATION
+      "macos.set_clipboard_text":
+        capability_kind: MACOS_AUTOMATION
+      "macos.show_notification":
+        capability_kind: MACOS_AUTOMATION

@@ -1,9 +1,12 @@
 # Trust Model — When an Action Proceeds, Who Authorizes, What the AI May Not Decide
 
-**Status: design capture, not implemented.** This consolidates a trust
-model specified across design discussion; it is **v0.9
-`/speckit-specify` scope**, not built. It is the decision-layer
-companion to the other three docs:
+**Status: design record + implementation map.** This consolidates the
+trust model specified across design discussion and tracks which parts are
+implemented. Purpose-admissibility, profiles, envelopes/dial, rules,
+override/ratification policy, and deterministic mode selection are now in
+tree; initiator/relationship identity and broader reversibility catalog work
+remain the main residuals. It is the decision-layer companion to the other
+three docs:
 
 - `.specify/memory/constitution.md` — governance (Principles I–VIII).
 - `docs/security-models.md` — formal-model lineage & deviations.
@@ -116,22 +119,27 @@ violated**, yet real harm.
   purpose regardless of sensitivity* ("health ⊄ inputs(employee-
   evaluation)"). This extends the v0.9 purpose axis.
 
-## 7. Tracked gaps (all v0.9-spec scope; capture-only)
+## 7. Tracked gaps and current implementation status
 
 1. **Initiator/trigger provenance + authentication** as a first-class
-   policy input (distinct from data provenance). Headline gap.
-2. **Recipient/relationship trust** as a first-class scope.
-3. **Multi-axis human-authored rule** expressiveness (the §2 cross-
-   product), generalizing pattern-approval rules.
-4. **Reversibility-weighted gating** (replace the binary destructive-op
-   gate; FAIR loss-weighting; human-declared recoverability).
-5. **Social-commitment effect class** (third-party commitment is
-   irreversible reputationally even when "just an email").
-6. **Purpose-scoped sessions with category-admissibility** (the §6
-   inappropriate-context-use defense).
-7. Carried from `security-models.md`: context-profile clearance;
-   first-class pattern ③ / sealed-effect; integrity floor + no-read-
-   down (Biba); formal lattice dominance.
+   policy input (distinct from data provenance) remains the headline gap.
+2. **Recipient/relationship trust** exists as config shape and policy
+   vocabulary, but needs canonical SourcePort identities (#51) before it can
+   be a strong default.
+3. **Multi-axis human-authored rules** exist through `rules.yaml`,
+   envelopes/dial, and DecisionInspectors. Remaining work is richer starter
+   policy and relationship-aware defaults.
+4. **Reversibility-weighted gating** exists for core effect classes and
+   egress escalation; remaining work is a broader recoverability catalog and
+   more `VersionedWritePort` backends.
+5. **Social-commitment effect class** remains a gap: third-party commitments
+   can be irreversible reputationally even when they are "just an email."
+6. **Purpose-scoped sessions with category-admissibility** are implemented and
+   pressure-tested at spawn/grant/delegation. Model-reasoning contamination
+   after admissible reads remains out of scope.
+7. Carried from `security-models.md`: context-profile clearance, Pattern ③,
+   Pattern ⑤, and scoped integrity floors are delivered; formal lattice
+   dominance/join remains pending.
 
 ## 8. Canonical scenarios (Principle III/VIII fixtures)
 
@@ -147,12 +155,13 @@ violated**, yet real harm.
 - **Inappropriate context:** health data MUST NOT enter an employee-
   evaluation session (purpose-scoped exclusion, not model restraint).
 
-These are the definitive secure-but-practical tests; each becomes a
-deterministic fixture when v0.9 is specced/implemented.
+These are the definitive secure-but-practical tests. Purpose-scoped exclusion,
+reversibility gating, and grouped approval have deterministic fixtures today;
+initiator/relationship trust still needs stronger identity bindings.
 
 ## 9. External-framework anchor: adaptive governance & Contextual Integrity
 
-**Status: external-framework anchor (design capture), not implemented.**
+**Status: external-framework anchor + implementation map.**
 This explains *why* §2 and §6 are the architecture rather than an
 add-on, by tracing them to a recognized privacy-theory lineage. It is,
 for the decision layer, the analogue of what `docs/security-models.md`

@@ -1,4 +1,4 @@
-"""Smoke tests for the five bundled Python MCP servers.
+"""Smoke tests for bundled Python MCP servers.
 
 These tests call the tool handlers directly (bypassing the MCP stdio
 protocol). The serve()/main() entry points only wire up the protocol;

@@ -41,7 +41,9 @@ from capabledeputy.policy.labels import LabelState, most_restrictive_inherit
 from capabledeputy.upstream.config import (
     UpstreamServerConfig,
     UpstreamToolOverride,
+    _parse_auth,
     _parse_isolation,
+    _parse_label_state,
     expand_env_value,
 )
 
@@ -89,9 +91,9 @@ class CustomKindDecl:
                 "'<namespace>:<path>' (lowercase, e.g. 'slack:dm.send'). "
                 "Built-in flat kinds like READ_FS are reserved for capdep core.",
             )
-        tags_raw = raw.get("add_tags") or {}
+        tags_raw = raw.get("add_tags", raw.get("add_labels", {}))
         try:
-            tags = LabelState.from_dict(tags_raw)
+            tags = _parse_label_state(tags_raw)
         except (ValueError, KeyError) as e:
             raise ServerYamlError(
                 f"{filename}: kind {name!r} declares invalid tags: {e}",
@@ -130,11 +132,27 @@ class ServerYamlConfig:
             raise ServerYamlError(f"{filename}: missing required `name`")
 
         # Connection bits + isolation — reuse the existing config parsing.
+        transport = str(raw.get("transport") or "stdio").lower().replace("-", "_")
+        if transport == "http":
+            transport = "streamable_http"
+        if transport not in {"stdio", "streamable_http"}:
+            raise ServerYamlError(f"{filename}: unsupported transport {transport!r}")
         command = tuple(str(a) for a in (raw.get("command") or []))
-        inherent_tags = LabelState.from_dict(raw.get("inherent_tags", {}))
+        url = str(raw.get("url") or raw.get("server_url") or raw.get("http_url") or "")
+        if transport == "stdio" and not command:
+            raise ServerYamlError(f"{filename}: stdio server requires `command`")
+        if transport == "streamable_http" and not url:
+            raise ServerYamlError(f"{filename}: HTTP server requires `url`")
+        inherent_tags = _parse_label_state(
+            raw.get("inherent_tags", raw.get("inherent_labels", {}))
+        )
         env_raw = raw.get("env") or {}
         env = {str(k): expand_env_value(str(v)) for k, v in env_raw.items()}
         isolation = _parse_isolation(raw.get("isolation"))
+        headers = {
+            str(k): expand_env_value(str(v)) for k, v in (raw.get("headers") or {}).items()
+        }
+        auth = _parse_auth(raw.get("auth"))
 
         # Tool mappings — accept both the new short form (tool_mappings:
         # {tool_name: kind_string}) AND the legacy form (tool_overrides:
@@ -165,7 +183,7 @@ class ServerYamlConfig:
         for tool_name, ov in overrides_raw.items():
             kind_str = ov.get("capability_kind")
             kind = CapabilityKind(kind_str) if kind_str else None
-            extra = LabelState.from_dict(ov.get("additional_tags", {}))
+            extra = _parse_label_state(ov.get("additional_tags", ov.get("additional_labels", {})))
             tool_overrides[str(tool_name)] = UpstreamToolOverride(
                 capability_kind=kind,
                 additional_tags=extra,
@@ -178,6 +196,10 @@ class ServerYamlConfig:
         server_config = UpstreamServerConfig(
             name=name,
             command=command,
+            transport=transport,
+            url=url,
+            headers=headers,
+            auth=auth,
             inherent_tags=inherent_tags,
             tool_overrides=tool_overrides,
             isolation=isolation,
@@ -252,7 +274,7 @@ class OverrideFile:
         kinds_raw = raw.get("kinds") or []
         kinds = tuple(CustomKindDecl.from_dict(k, filename=filename) for k in kinds_raw)
         mappings = {str(k): str(v) for k, v in (raw.get("tool_mappings") or {}).items()}
-        tags = LabelState.from_dict(raw.get("inherent_tags", {}))
+        tags = _parse_label_state(raw.get("inherent_tags", raw.get("inherent_labels", {})))
         return cls(
             overrides_server=target,
             kinds=kinds,

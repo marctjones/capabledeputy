@@ -1,0 +1,33 @@
+# Official Gmail remote MCP server config (servers.d layout).
+#
+# Copy to ~/.config/capabledeputy/servers.d/google-gmail.yaml if you
+# prefer per-server config files over `capdep gworkspace-setup`.
+
+schema_version: 1
+name: google-gmail
+transport: streamable_http
+url: https://gmailmcp.googleapis.com/mcp/v1
+auth:
+  type: google_adc
+  scopes:
+    - https://www.googleapis.com/auth/gmail.readonly
+    - https://www.googleapis.com/auth/gmail.compose
+
+inherent_labels:
+  - confidential.personal
+  - untrusted.user_input
+
+disabled_kinds:
+  - SEND_EMAIL
+
+tool_mappings:
+  get_thread: GMAIL_READ
+  list_drafts: GMAIL_READ
+  list_labels: GMAIL_READ
+  search_threads: GMAIL_READ
+  create_draft: CREATE_FS
+  create_label: MODIFY_FS
+  label_message: MODIFY_FS
+  label_thread: MODIFY_FS
+  unlabel_message: MODIFY_FS
+  unlabel_thread: MODIFY_FS

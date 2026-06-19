@@ -1,0 +1,45 @@
+# GitHub official remote MCP server config (servers.d layout).
+#
+# Copy to ~/.config/capabledeputy/servers.d/github.yaml and export:
+#   export GITHUB_MCP_TOKEN=github_pat_...
+
+schema_version: 1
+name: github
+transport: streamable_http
+url: https://api.githubcopilot.com/mcp/
+auth:
+  type: bearer
+  token_env: GITHUB_MCP_TOKEN
+
+inherent_labels:
+  - untrusted.external
+
+strict: true
+
+tool_mappings:
+  get_file_contents: READ_FS
+  get_issue: READ_FS
+  get_pull_request: READ_FS
+  get_pull_request_comments: READ_FS
+  get_pull_request_files: READ_FS
+  get_pull_request_reviews: READ_FS
+  get_pull_request_status: READ_FS
+  list_commits: READ_FS
+  list_issues: READ_FS
+  list_pull_requests: READ_FS
+  search_code: READ_FS
+  search_issues: READ_FS
+  search_repositories: READ_FS
+  search_users: READ_FS
+  create_branch: CREATE_FS
+  create_or_update_file: MODIFY_FS
+  create_repository: CREATE_FS
+  fork_repository: CREATE_FS
+  push_files: MODIFY_FS
+  add_issue_comment: SEND_MESSAGE
+  create_issue: CREATE_FS
+  update_issue: MODIFY_FS
+  create_pull_request: CREATE_FS
+  create_pull_request_review: SEND_MESSAGE
+  merge_pull_request: MODIFY_FS
+  update_pull_request_branch: MODIFY_FS

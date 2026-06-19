@@ -46,7 +46,7 @@ remain the detail.
 | Dual-LLM quarantined extraction | **Noninterference declassification** | I, II | Schema validation *is* the declassifier — a structural, certified downgrade rather than an operator decision. |
 | Per-tenant label spaces | **Lattice compartments** | II | Additive scoping of the same conflict engine; no cross-tenant lattice join. |
 | Container isolation / federation signing / append-only audit | Defense-in-depth & **Reference-Monitor assurance** | Sec. Constraints | Supporting assurance, not a confidentiality/integrity model; audit gives the "verifiable" leg of the reference monitor. |
-| Disposable, egress-free isolation as the *preferred execution posture* (contained ⇒ reversible-by-construction) | **Reference-Monitor assurance** + reversibility/optimistic-execution decision layer | VI, VII | Elevates container isolation from mere defense-in-depth to the default compute substrate: a fully-contained, egress-free region makes a large class of work reversible (rollback = discard the region), maximizing safe autonomous action. **Deliberate caveat (Principle VIII):** containment is *not* a Noninterference declassifier — a contained step's output retains its source sensitivity labels; only the certified declassifiers (dual-LLM schema, human one-shot) downgrade. Reading "sandboxed ⇒ declassified / safe to send" is a reviewable defect. Rule in `specs/003` (FR-040/041/042); `SandboxActuator`/`EXECUTE.sandbox` impl deferred to spec 004. |
+| Disposable, egress-free isolation as the *preferred execution posture* (contained ⇒ reversible-by-construction) | **Reference-Monitor assurance** + reversibility/optimistic-execution decision layer | VI, VII | Elevates container isolation from mere defense-in-depth to the default compute substrate: a fully-contained, egress-free region makes a large class of work reversible (rollback = discard the region), maximizing safe autonomous action. **Deliberate caveat (Principle VIII):** containment is *not* a Noninterference declassifier — a contained step's output retains its source sensitivity labels; only the certified declassifiers (dual-LLM schema, human one-shot) downgrade. Reading "sandboxed ⇒ declassified / safe to send" is a reviewable defect. Rule in `specs/003` (FR-040/041/042); `SandboxActuator`, the Linux Podman provider, the in-process test provider, and `sandbox.run` are in tree. |
 | Append-only audit + `policy_trace` as a replayable decision record; explicit `provenance.node` / `provenance.edge` events for materialized values and authority transitions | **Replayable AAA Audit**; **Materialized Provenance DAG** | Sec. Constraints, VIII | Explanation is **complete for the control-plane decision/flow, deliberately silent on model cognition** (interpretability is out of scope by design — trusting the model is what the architecture refuses). The DAG is bounded to CapDep materialization boundaries, not every token or hidden model influence. |
 | Fail-closed admission & undecidable-subset refusal | (cross-cutting) | VI | Where a model's check is undecidable (glob⊆glob) or unmapped, we take the **most-restrictive** action — a conservative *approximation* of the model, never a permissive one. |
 
@@ -114,13 +114,14 @@ we design to, not a shortfall to keep closing.
 - **Bell-LaPadula → dynamic BLP.** Goal: tiers = levels, context
   profile = clearance, tier→required-flow-pattern = no-write-down. We
   do **not** pursue static certified clearances / formal *-property
-  (that is Not-Pursued). Missing to reach the goal: an explicit
-  max-tier clearance on the context profile + read-up refusal.
+  (that is Not-Pursued). Max-tier profile clearance and read-up refusal
+  are implemented; the remaining boundary is the deliberate absence of
+  static MLS tranquility / write-down proofs.
 - **Noninterference → intransitive (+ per-tier true NI).** Goal:
   controlled-declassification NI globally, and *true* NI for
-  `restricted`/`prohibited` via patterns ③/④. Whole-system transitive
-  NI is Not-Pursued. Missing: first-class pattern ③ / sealed-effect
-  (else `restricted` falls back to ②, which is intransitive).
+  `restricted`/`prohibited` via patterns ③/⑤. Whole-system transitive
+  NI is Not-Pursued. Pattern ③ reference handles and Pattern ⑤ sealed
+  containment are implemented; neither is a declassifier.
 - **Biba → one-direction integrity only (scoped).** Goal: the
   "no write-up" direction via the provenance axis
   (`untrusted-meets-egress`). We explicitly do **not** pursue full
@@ -236,7 +237,8 @@ above) — no multistep trick changes this.
   sessions exclude inadmissible categories — the inappropriate-context
   defense ① cannot give); **Clark-Wilson** → reversibility-weighted
   gating (replace the binary destructive-op gate; human-declared
-  recoverability). Both are v0.9-spec scope, capture-only.
+  recoverability). These are implemented as policy/context mechanisms and
+  pressure-tested in the workflow suite.
   `trust-model.md` §9 is the **external-framework anchor** (Contextual
   Integrity / adaptive privacy ⇄ InfoSec ⇄ AI governance): the
   decision-layer analogue of this map, tracing §2/§6 to recognized

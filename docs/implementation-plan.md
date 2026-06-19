@@ -2,8 +2,8 @@
 
 Living plan that organizes the open GitHub issues into sequenced
 milestones with dependencies. Authoritative status is GitHub; this doc is
-the *sequencing rationale*. Last refreshed 2026-06 (dev cycle after
-v0.15.x).
+the *sequencing rationale*. Last refreshed 2026-06-19 against current
+`main` after v0.21.0.
 
 Milestones (GitHub): **v0.16** Policy expressiveness & labeling · **v0.17**
 Gap hardening & explainability · **v0.5** UX EPIC (in flight) · **Backlog**
@@ -47,14 +47,13 @@ make labels real.
 
 ### EPIC #41 — Activate the decision-refinement layer
 - ✅ **#46** wire the loader (done — layer is live)
-- ◐ **#47** starter library — *blocked on #48 + richer session fields* for
-  relationship-aware / frequency / reversible-write scripts. Shipped:
-  sensitive-egress-confirm, purpose-scoped-relax, + the two builtins.
-- ▶ **#48** thread a read-only session-history summary into inspector
-  inputs (recent effect kinds, counts, recipients). **Next in this epic** —
-  unblocks frequency caps + the rest of #47. Small, contained.
-- → **#49** `capdep why <decision>` (tracked under v0.17 #43; pairs well
-  here since the inspector layer adds new decision origins to explain).
+- ✅ **#48** read-only session-history summary is threaded into inspector
+  inputs and covered by a real-chokepoint frequency/aggregation workflow.
+- ✅ **#47** starter library core shipped: sensitive-egress confirm,
+  purpose-scoped relax, bounded-relax floor guard, frequency policy, and
+  builtins. Relationship/identity-aware relaxes still depend on #51.
+- ✅ **#49** `capdep why <decision>` is shipped; keep extending it when new
+  decision origins are added.
 
 ### EPIC #42 — Strengthen the labeling oracle
 - ✅ **#50** catalog-aware tiers · ✅ **#5** fs labeling
@@ -77,11 +76,12 @@ Close/guard the documented gaps; improve operator trust.
 
 ### EPIC #43 — Harden documented model/principle gaps
 - ✅ **#52** restricted floor · ✅ **#53** loud Biba
-- ▶ **#49** `capdep why <decision>` (P3 but high trust-value; the audit
-  already has the data — surface the rule/floor/inspector that fired).
-- ▶ **#54** purpose-contamination visible audit residual (P2) — flag
-  decisions where inadmissible-category data is in-context; pairs with the
-  P4 purpose-limitation story.
+- ✅ **#49** `capdep why <decision>` surfaces the rule/floor/inspector that
+  fired.
+- ✅ **#54** purpose-limitation boundary reframed and pressure-tested:
+  purpose-scoped spawn/grant/delegation refuse inadmissible categories.
+  The remaining model-reasoning contamination case is an explicit non-goal,
+  not a hidden implementation gap.
 - ▶ **#55** cross-host RemoteApprovalEnvelope four-axis wire format (P2) —
   signed-protocol versioning for federation.
 
@@ -93,7 +93,8 @@ Close/guard the documented gaps; improve operator trust.
   WebPagePublicFacts; complements the email labeler.
 
 **Sequencing:** #13 (independent, high value) ‖ #51 (serves both
-milestones) → #49/#54 (explainability) → #55 (federation).
+milestones) → #55 (federation) plus the labeling-oracle / real-substrate
+assurance work tracked in `workflow-plan.md`.
 
 ---
 
@@ -127,7 +128,6 @@ Deferred provider backends + formal work. Pull forward on demand.
 ## Dependency graph (the load-bearing edges)
 
 ```
-#48 (history) ──▶ #47 (frequency/relationship scripts)
 #5 (fs labeler shape) ──▶ email labeler (#34 impl)
 #51 (canonical ids) ──▶ external-recipient gates (#33), message-id bind (#34)
 #13 (credential vault) ── independent, high value
@@ -139,8 +139,9 @@ agent-loop cancel (#23/#31/#32) ── coordinate with #2's loop changes
 1. **#51** SourcePort canonical ids (Gmail/Drive/Calendar) — unblocks the
    identity-dependent layers of #33/#34 (external-recipient gates,
    Message-ID binding, sender-provenance) and hardens confused-deputy.
-2. **#54** purpose-contamination visible audit residual (P2) — closes the
-   most-cited honest gap (P4) with a visible signal, even pre-enforcement.
+2. **Labeling-oracle completeness** — content-scan / raise-only labeling
+   paths beyond filename/source bindings, with tests that keep the honest
+   unlabeled-data gap visible.
 3. **#11** quarantined-extract schema library (P2) — EmailForwardable /
    WebPagePublicFacts; complements the email labeler + dual-LLM path.
 

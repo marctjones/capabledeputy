@@ -1,14 +1,15 @@
-# TUI redesign — greenfield (proposal)
+# TUI redesign — inline console design record
 
 A greenfield visual + UX redesign of the operator interface, on the **same
-stack** (Textual / Rich / prompt_toolkit). Not a refactor of the current
-`tui/app.py` (panes dashboard) or `cli/chat.py` (Rich REPL) — a fresh design
-built alongside them until parity. **Proposal only; no code until approved.**
-Drafted 2026-06-08.
+stack** (Textual / Rich / prompt_toolkit). This began as a proposal on
+2026-06-08 and shipped as the inline console in v0.19.0 (`capdep ui`). Keep
+this document as the design record and safety checklist for future console
+work; implementation status belongs in `CHANGELOG.md` and
+`docs/usability-hardening-plan.md`.
 
 The anchor: the operator likes how **Claude Code** works — a conversational,
 inline streaming REPL in normal scrollback that *pauses for permission*, not a
-full-screen instrument panel. For memsafe this is doubly apt, because **the
+full-screen instrument panel. For CapableDeputy this is doubly apt, because **the
 permission prompt is the central interaction** — every gated action is one. So
 the design goal is: build the best-in-class version of Claude Code's permission
 prompt, security-aware and fatigue-resistant.
@@ -23,7 +24,7 @@ opposite, and it's why they feel good: a conversation that **flows in
 scrollback**, with tool calls and decisions **live-rendering inline as they
 happen**, and the terminal pausing only when the human is needed.
 
-Greenfield, memsafe adopts that model: a streaming conversational REPL where
+Greenfield, CapableDeputy adopts that model: a streaming conversational REPL where
 each tool call and policy decision renders inline, approvals appear as inline
 permission cards, and heavy views (lineage, audit, session overview) are
 one-keystroke full-screen *screens*, not always-on panes.
@@ -32,7 +33,7 @@ one-keystroke full-screen *screens*, not always-on panes.
 
 ## 2. References (what we borrow, and from where)
 
-| Source | Pattern | Mapping to memsafe |
+| Source | Pattern | Mapping to CapableDeputy |
 |---|---|---|
 | **Claude Code** | inline streaming; pause-for-permission; `/` palette (filter; unavailable hidden); a quiet status line; `/fewer-permission-prompts` (scan history → *propose an allowlist*) | approval = inline permission card; status line shows *trust state*; allowlist-proposal becomes "**turn this into a rule?**" wired to `rules.yaml`/inspectors |
 | **Crush / Charm `tui-design`** | "every character is a design decision"; consistent **glyph vocabulary** (● ○ ◉ ✓ ✗); **grid discipline** "invisible but felt"; **borders sparingly** (one outer container; dividers via spacing/color) | the visual language (§5) |
@@ -119,7 +120,7 @@ Reached via the command palette / slash; not on-screen until asked for:
 - **Themes as Textual CSS:** polished dark default + light + high-contrast/
   accessible; a focus mode that hides all but the conversation and active card.
 - **A distinct identity:** a recognizable status line + decision-glyph set so
-  memsafe *looks like* a calm, trustworthy security console.
+  CapableDeputy *looks like* a calm, trustworthy security console.
 
 ---
 
@@ -128,7 +129,7 @@ Reached via the command palette / slash; not on-screen until asked for:
 - **Approve in one keystroke; grouped approvals approve as a set** — make the
   FR-035 grouping visible.
 - **Learn from approvals** (the Claude Code `/fewer-permission-prompts` idea):
-  after you approve similar sends a few times, memsafe offers "**make this a
+  after you approve similar sends a few times, CapableDeputy offers "**make this a
   rule?**" → drafts a `rules.yaml`/inspector entry you **ratify deliberately**
   (never one-click-silent). Pairs with U2 (inspectors) + the ratification flow.
 - **The WARN lane** (usability U3) gets a dedicated, non-blocking visual

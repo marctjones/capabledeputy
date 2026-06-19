@@ -210,6 +210,24 @@ def test_execute_spec_id_accepted() -> None:
         )
         == []
     )
+
+
+def test_browser_automation_path_warns() -> None:
+    warnings = validate_grant_pattern(
+        CapabilityKind.BROWSER_AUTOMATION,
+        "/tmp/browser",
+    )
+    assert len(warnings) == 1
+    assert "BROWSER_AUTOMATION" in warnings[0]
+
+
+def test_macos_automation_url_warns() -> None:
+    warnings = validate_grant_pattern(
+        CapabilityKind.MACOS_AUTOMATION,
+        "https://example.com",
+    )
+    assert len(warnings) == 1
+    assert "MACOS_AUTOMATION" in warnings[0]
     assert (
         validate_grant_pattern(
             CapabilityKind.EXECUTE_DEVBOX,

@@ -97,7 +97,7 @@ Add this to your Claude Code config (`~/.claude.json` or via
     "capdep": {
       "command": "uv",
       "args": [
-        "--project", "/path/to/memsafe",
+        "--project", "/path/to/capabledeputy",
         "run", "capdep", "mcp-server",
         "--session-id", "PASTE_SID_HERE"
       ]

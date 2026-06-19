@@ -10,8 +10,12 @@ locked-down" path for demonstrating actual workflows.
 | Config | Servers | Priority workflow it serves |
 |---|---|---|
 | `official-reference.yaml` | filesystem, fetch, git, time, memory | doc drafting, web research, dev/work, reminders |
-| `slack.yaml` | slack (official) | team communication |
-| `google-workspace.yaml` | gmail, gcal, gtasks (community/preview) | email triage & briefing, calendar, tasks |
+| `google-workspace.yaml` | official Gmail, Drive, Calendar, Chat, People MCP | email triage, Drive research, calendar, chat, contacts |
+| `github.yaml` | GitHub official remote MCP | repository, issue, PR, and code review workflows |
+| `slack.yaml` | Slack official remote MCP | team communication |
+| `kagi.yaml` | Kagi official MCP | web/news/search and page extraction |
+| `playwright.yaml` | Playwright official MCP | browser automation and web workflow validation |
+| `google-workspace-community.yaml` | legacy `gws-mcp-server` wrapper | compatibility path for Docs/Sheets or existing `gws` users |
 
 Light purchasing has **no reputable MCP server** and intentionally
 stays a native stub (human-approved, demo-only) — that is a deliberate
@@ -29,10 +33,11 @@ scope decision, not a gap.
    for each tool you actually intend to allow (with the correct granular
    capability kind). Anything you don't map stays unavailable. This is
    the admission-control workflow — by hand, deterministic, auditable.
-3. **Destructive tools pinned to granular kinds.** Every write / edit /
-   delete / commit / send is overridden to `MODIFY_*` / `DELETE_*` /
-   `CREATE_*` / `SEND_EMAIL` so the policy engine's destructive-op and
-   egress conflict rules fire. Nothing destructive rides on inference.
+3. **Destructive and active tools pinned to granular kinds.** Every write /
+   edit / delete / commit / send / automation action is overridden to
+   `MODIFY_*`, `DELETE_*`, `CREATE_*`, `SEND_EMAIL`, `SEND_MESSAGE`,
+   `BROWSER_AUTOMATION`, or `MACOS_AUTOMATION` so the right policy gates
+   fire. Nothing destructive rides on inference.
 4. **Least-privilege isolation.** Each server runs containerized: no
    network unless the tool inherently needs it, and where it does, an
    explicit host allowlist (placeholder `REPLACE...`/host entries — set
@@ -45,14 +50,11 @@ scope decision, not a gap.
 ## Producer trust tiers
 
 - **Official / low risk:** the `modelcontextprotocol` reference servers
-  (`official-reference.yaml`) and Slack's official server.
-- **Community / preview — accepted with mitigations:**
-  `google-workspace.yaml` uses the community Google Workspace MCP
-  (official is Developer Preview). It is the **most locked-down** config
-  precisely because of the supply-chain risk: strict + every tool
-  explicitly overridden + network allowlisted + OAuth-scoped. Treat any
-  upgrade of that package as an admission event (re-review
-  `rejected_tools` and the override map).
+  (`official-reference.yaml`), Google Workspace remote MCP, GitHub remote
+  MCP, Slack remote MCP, Kagi MCP, and Playwright MCP.
+- **Community / compatibility:** `google-workspace-community.yaml` uses
+  `gws-mcp-server`. Treat package upgrades as an admission event: re-review
+  `rejected_tools` and the override map.
 
 ## Caveats (honest)
 

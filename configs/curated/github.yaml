@@ -1,0 +1,53 @@
+# Curated upstream config -- GitHub official remote MCP server.
+#
+# Producer: GitHub (official remote MCP server).
+# Transport: streamable HTTP.
+#
+# Export a token with the narrowest scopes that cover the tools you want:
+#   export GITHUB_MCP_TOKEN=github_pat_...
+#
+# CapDep pins each known tool to an explicit capability kind and runs strict
+# admission. New upstream tools are refused until reviewed and mapped here.
+
+upstream_servers:
+  - name: github
+    transport: streamable_http
+    url: "https://api.githubcopilot.com/mcp/"
+    auth:
+      type: bearer
+      token_env: GITHUB_MCP_TOKEN
+    strict: true
+    inherent_labels:
+      - untrusted.external
+    tool_overrides:
+      # Repository/code/issue/PR reads.
+      get_file_contents:            { capability_kind: READ_FS }
+      get_issue:                    { capability_kind: READ_FS }
+      get_pull_request:             { capability_kind: READ_FS }
+      get_pull_request_comments:    { capability_kind: READ_FS }
+      get_pull_request_files:       { capability_kind: READ_FS }
+      get_pull_request_reviews:     { capability_kind: READ_FS }
+      get_pull_request_status:      { capability_kind: READ_FS }
+      list_commits:                 { capability_kind: READ_FS }
+      list_issues:                  { capability_kind: READ_FS }
+      list_pull_requests:           { capability_kind: READ_FS }
+      search_code:                  { capability_kind: READ_FS }
+      search_issues:                { capability_kind: READ_FS }
+      search_repositories:          { capability_kind: READ_FS }
+      search_users:                 { capability_kind: READ_FS }
+
+      # Repository state changes.
+      create_branch:                { capability_kind: CREATE_FS }
+      create_or_update_file:        { capability_kind: MODIFY_FS }
+      create_repository:            { capability_kind: CREATE_FS }
+      fork_repository:              { capability_kind: CREATE_FS }
+      push_files:                   { capability_kind: MODIFY_FS }
+
+      # Social/project state changes.
+      add_issue_comment:            { capability_kind: SEND_MESSAGE }
+      create_issue:                 { capability_kind: CREATE_FS }
+      update_issue:                 { capability_kind: MODIFY_FS }
+      create_pull_request:          { capability_kind: CREATE_FS }
+      create_pull_request_review:   { capability_kind: SEND_MESSAGE }
+      merge_pull_request:           { capability_kind: MODIFY_FS }
+      update_pull_request_branch:   { capability_kind: MODIFY_FS }

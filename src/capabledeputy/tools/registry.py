@@ -239,6 +239,8 @@ _KIND_TO_EFFECT: dict[str, EffectClass] = {
     "GMAIL_READ": EffectClass.FETCH,
     "IMAP_READ": EffectClass.FETCH,
     "DRIVE_READ": EffectClass.FETCH,
+    "CHAT_READ": EffectClass.FETCH,
+    "PEOPLE_READ": EffectClass.FETCH,
     "CALENDAR_READ": EffectClass.FETCH,
     "WEB_FETCH": EffectClass.FETCH,
     "WRITE_FS": EffectClass.MUTATE_LOCAL,
@@ -250,7 +252,10 @@ _KIND_TO_EFFECT: dict[str, EffectClass] = {
     "DELETE_FS": EffectClass.DESTROY,
     "DELETE_CAL": EffectClass.DESTROY,
     "SEND_EMAIL": EffectClass.COMMUNICATE,
+    "SEND_MESSAGE": EffectClass.COMMUNICATE,
     "QUEUE_PURCHASE": EffectClass.TRANSACT,
+    "BROWSER_AUTOMATION": EffectClass.EXECUTE_REMOTE,
+    "MACOS_AUTOMATION": EffectClass.EXECUTE_HOST,
     "EXECUTE_SANDBOX": EffectClass.EXECUTE_SANDBOX,
     "EXECUTE_DEVBOX": EffectClass.EXECUTE_SANDBOX,
 }
@@ -262,6 +267,11 @@ _EFFECT_DEFAULT_RISK: dict[EffectClass, tuple[str, ...]] = {
     EffectClass.COMMUNICATE: ("RISK-DATA-EXFIL-AGENT-TOOLS",),
     EffectClass.TRANSACT: ("RISK-IRREVERSIBLE-SEND",),
     EffectClass.EXECUTE_SANDBOX: ("RISK-UNSAFE-CODE-EXEC",),
+    EffectClass.EXECUTE_HOST: ("RISK-UNSAFE-CODE-EXEC",),
+    EffectClass.EXECUTE_REMOTE: ("RISK-DATA-EXFIL-AGENT-TOOLS",),
+    EffectClass.EXECUTE_DEPLOY: ("RISK-DESTRUCTIVE-WRITE",),
+    EffectClass.ADMINISTER: ("RISK-EXCESSIVE-AGENCY",),
+    EffectClass.ACTUATE_PHYSICAL: ("RISK-EXCESSIVE-AGENCY",),
 }
 
 

@@ -30,6 +30,9 @@ _GLOB_CAPABILITIES: frozenset[Capability] = frozenset(
         # gate. Tests of the gate itself live in test_destructive_ops.py.
         Capability(kind=CapabilityKind.WRITE_FS, pattern="*", allows_destructive=True),
         Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*"),
+        Capability(kind=CapabilityKind.SEND_MESSAGE, pattern="*"),
+        Capability(kind=CapabilityKind.BROWSER_AUTOMATION, pattern="*"),
+        Capability(kind=CapabilityKind.MACOS_AUTOMATION, pattern="*"),
         Capability(kind=CapabilityKind.WEB_FETCH, pattern="*"),
         Capability(kind=CapabilityKind.CALENDAR_READ, pattern="*"),
         Capability(
@@ -53,8 +56,14 @@ def _action(kind: CapabilityKind) -> Action:
         return Action(kind=kind, target="amazon", amount=50)
     if kind == CapabilityKind.SEND_EMAIL:
         return Action(kind=kind, target="alice@example.com")
+    if kind == CapabilityKind.SEND_MESSAGE:
+        return Action(kind=kind, target="spaces/AAA")
     if kind == CapabilityKind.WEB_FETCH:
         return Action(kind=kind, target="https://example.com")
+    if kind == CapabilityKind.BROWSER_AUTOMATION:
+        return Action(kind=kind, target="https://example.com")
+    if kind == CapabilityKind.MACOS_AUTOMATION:
+        return Action(kind=kind, target="com.apple.mail")
     return Action(kind=kind, target="/some/target")
 
 
@@ -126,6 +135,12 @@ def test_capability_present_with_no_labels_allows() -> None:
             Decision.DENY,
             "untrusted-meets-egress",
         ),
+        (
+            {"untrusted": True},
+            CapabilityKind.BROWSER_AUTOMATION,
+            Decision.DENY,
+            "untrusted-meets-egress",
+        ),
         # Rule 2: confidential.health + egress.* -> DENY
         (
             {"health": True},
@@ -139,10 +154,22 @@ def test_capability_present_with_no_labels_allows() -> None:
             Decision.DENY,
             "health-meets-egress",
         ),
+        (
+            {"health": True},
+            CapabilityKind.BROWSER_AUTOMATION,
+            Decision.DENY,
+            "health-meets-egress",
+        ),
         # Rule 3: confidential.financial + egress.email -> DENY
         (
             {"financial": True},
             CapabilityKind.SEND_EMAIL,
+            Decision.DENY,
+            "financial-meets-email",
+        ),
+        (
+            {"financial": True},
+            CapabilityKind.BROWSER_AUTOMATION,
             Decision.DENY,
             "financial-meets-email",
         ),
@@ -176,15 +203,21 @@ def test_rule_firings(
         ({"health": True}, CapabilityKind.READ_FS),
         ({"health": True}, CapabilityKind.WRITE_FS),
         ({"health": True}, CapabilityKind.WEB_FETCH),
+        ({"health": True}, CapabilityKind.MACOS_AUTOMATION),
         ({"health": True}, CapabilityKind.CALENDAR_READ),
         ({"personal": True}, CapabilityKind.SEND_EMAIL),
         ({"personal": True}, CapabilityKind.QUEUE_PURCHASE),
+        ({"personal": True}, CapabilityKind.BROWSER_AUTOMATION),
+        ({"personal": True}, CapabilityKind.MACOS_AUTOMATION),
         ({"trusted": True}, CapabilityKind.SEND_EMAIL),
         ({"trusted": True}, CapabilityKind.QUEUE_PURCHASE),
+        ({"trusted": True}, CapabilityKind.BROWSER_AUTOMATION),
         ({"untrusted": True}, CapabilityKind.READ_FS),
         ({"untrusted": True}, CapabilityKind.WEB_FETCH),
+        ({"untrusted": True}, CapabilityKind.MACOS_AUTOMATION),
         ({"financial": True}, CapabilityKind.READ_FS),
         ({"financial": True}, CapabilityKind.CALENDAR_READ),
+        ({"financial": True}, CapabilityKind.MACOS_AUTOMATION),
     ],
 )
 def test_non_conflicting_combinations_allow(

@@ -50,6 +50,8 @@ class UpstreamServerStatus:
     rejected_tool_names: tuple[str, ...] = field(default_factory=tuple)
     error: str = ""
     command: tuple[str, ...] = field(default_factory=tuple)
+    transport: str = "stdio"
+    url: str = ""
 
 
 class UpstreamManager:
@@ -89,6 +91,8 @@ class UpstreamManager:
                     rejected_tool_count=len(adapter.rejected_tools),
                     rejected_tool_names=tuple(adapter.rejected_tools),
                     command=tuple(config.command),
+                    transport=config.transport,
+                    url=config.url,
                 )
             except Exception as e:
                 # One bad upstream must not nuke the daemon. Log loudly
@@ -108,6 +112,8 @@ class UpstreamManager:
                     registered_at_epoch=int(time.time()),
                     error=str(e)[:500],
                     command=tuple(config.command),
+                    transport=config.transport,
+                    url=config.url,
                 )
         return self
 

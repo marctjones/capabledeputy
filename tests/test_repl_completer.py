@@ -139,7 +139,7 @@ def test_grant_lists_capability_kinds() -> None:
 
 def test_grant_filters_kinds_case_insensitively() -> None:
     out = _completions("/grant se", {})
-    assert out == ["SEND_EMAIL"]
+    assert out == ["SEND_EMAIL", "SEND_MESSAGE"]
 
 
 def test_grant_flag_completion() -> None:

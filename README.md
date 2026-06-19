@@ -6,7 +6,7 @@ A structurally secure runtime for personal AI agents.
 
 CapableDeputy is an AI agent runtime built as a faithful implementation of recognized security models — a reference monitor, an information-flow lattice, and the object-capability model — with the LLM treated as an untrusted component *outside* the trusted computing base. Every action the agent takes flows through one deterministic capability and information-flow chokepoint, escalates to programmatic execution when stakes warrant, and surfaces every cross-compartment data flow through human-auditable approval gates.
 
-**Status:** Alpha — **v0.21.0 released**. v0.21.0 aligns CapDep's flow-pattern enforcement with its security model: raw restricted/prohibited memory reads are refused before dispatch, `memory.handle` provides a Pattern ③ reference-handle path, sensitive modes hide raw readers, programmatic mode only advertises visible tools, and the agent loop refreshes mode/tool visibility after label changes. v0.20.0 made local Apple Silicon inference a first-class default with MLX and `Qwen/Qwen3-4B-MLX-4bit`. See [CHANGELOG.md](CHANGELOG.md) for what shipped and [ROADMAP.md](ROADMAP.md) for the plan.
+**Status:** Alpha — **v0.21.0 released**. v0.21.0 aligns CapDep's flow-pattern enforcement with its security model: raw restricted/prohibited memory reads are refused before dispatch, `memory.handle` provides a Pattern ③ reference-handle path, sensitive modes hide raw readers, programmatic mode only advertises visible tools, and the agent loop refreshes mode/tool visibility after label changes. Current `main` additionally hardens the assurance story with materialized provenance-DAG checks, purpose-limited workflow pressure tests, and frequency/aggregation policy tests. v0.20.0 made local Apple Silicon inference a first-class default with MLX and `Qwen/Qwen3-4B-MLX-4bit`. See [CHANGELOG.md](CHANGELOG.md) for released changes and [ROADMAP.md](ROADMAP.md) for longer-term planning.
 
 ## Why
 
@@ -20,7 +20,7 @@ Because the guarantees come from the models rather than from per-attack rules, a
 - **Unauthorized irreversible or committing actions** — human-in-the-loop approval (Clark-Wilson separation of duty).
 - **Conflict-of-interest data mixing** — cross-compartment access rules (Brewer-Nash).
 - **Unaccountable automated decisions** — deterministic decisions over an append-only provenance record.
-- **Purpose-contamination** — sensitive data influencing a decision it has no bearing on (*designed; partially delivered in v0.13.0 via the labeling framework / Purpose Handle, spec 003 — completion in progress*).
+- **Purpose limitation / purpose-contamination boundary** — inadmissible data categories are refused before entering a purpose-scoped workflow; the narrower question of whether admissible data inappropriately influenced model cognition is explicitly out of scope.
 - **Prompt-injection-driven misuse** — mitigated as one special case of the above: the model is treated as untrusted regardless of how it was subverted.
 
 This is an illustrative consequence of the enforced models, not a feature checklist or a completeness claim.
@@ -29,7 +29,7 @@ The design draws on classical information security models — Bell-LaPadula, Bib
 
 ## Scope: a control at the intersection, not a governance program
 
-CapableDeputy is deliberately narrow. It is a **runtime control at the intersection of InfoSec, Data & Privacy, and AI governance** — it defends the conjunction those three programs structurally cannot — sensitive data, untrusted input, and capable action converging in one agent (the "lethal trifecta," in governance terms) — and intentionally does *not* attempt their breadth. Within AI governance it is deep and faithful on agentic-effect containment, human oversight, and decision accountability, and silent by design on model accuracy, bias/fairness, eval, and content safety. Every in-scope guarantee is bounded by three contingencies: correct labeling, a trustworthy substrate, and purpose-scoping (the labeling framework / spec 003, partially delivered in v0.13.0 and still being completed). See **[docs/governance-scope.md](docs/governance-scope.md)** for the precise in/out-of-scope statement and its alignment with this vision.
+CapableDeputy is deliberately narrow. It is a **runtime control at the intersection of InfoSec, Data & Privacy, and AI governance** — it defends the conjunction those three programs structurally cannot — sensitive data, untrusted input, and capable action converging in one agent (the "lethal trifecta," in governance terms) — and intentionally does *not* attempt their breadth. Within AI governance it is deep and faithful on agentic-effect containment, human oversight, and decision accountability, and silent by design on model accuracy, bias/fairness, eval, and content safety. Every in-scope guarantee is bounded by three contingencies: correct labeling, a trustworthy substrate, and the fact that purpose-scoping is enforced as observable read-admissibility rather than model-interpretability. See **[docs/governance-scope.md](docs/governance-scope.md)** for the precise in/out-of-scope statement and its alignment with this vision.
 
 Why all three at once: a running agent collapses what were three mostly *design-time* governance disciplines into a single *runtime* problem — the right decision depends on the live context (purpose, recipient, sensitivity, reversibility) of each action. CapableDeputy resolves that context per action at one deterministic, LLM-isolated chokepoint: the *protection strength* adapts to context, the *mechanism deciding it* does not. The decision-layer rationale and its grounding in adaptive-governance / Contextual Integrity theory is in **[docs/trust-model.md](docs/trust-model.md)** (§9).
 
@@ -79,8 +79,10 @@ ideally makes them better):
   and sandboxed Starlark policy host are wired through daemon config, but no
   inspectors are enabled by default. Shipping conservative starter inspectors
   is now higher leverage than adding more approval prompts.
-- **Purpose-contamination** — keeping sensitive data from influencing
-  decisions it has no bearing on is designed but only partially delivered.
+- **Model-reasoning purpose contamination** — CapDep now blocks
+  inadmissible categories from entering purpose-scoped workflows, but it
+  deliberately does not claim to prove how admissible data influenced the
+  model's private reasoning.
 
 The full, grounded model-by-model / pattern-by-pattern / principle-by-principle
 read — strengths, weaknesses, and prioritized fixes — is in
@@ -100,8 +102,8 @@ read — strengths, weaknesses, and prioritized fixes — is in
 - [ROADMAP.md](ROADMAP.md) — phased implementation plan
 - [docs/workflow-index.md](docs/workflow-index.md) — **categorized index of every workflow** — 26 narrated demos, the 1126-scenario allow/deny catalogue, and the enforcement suites, grouped by use case + security mechanism
 - [docs/workflow-plan.md](docs/workflow-plan.md) — the **executable assurance plan**: a coverage matrix (mechanisms × pressured?), a per-workflow scorecard, and two gates — the spec we execute against
-- [docs/workflow-registry.md](docs/workflow-registry.md) — the same workflows with **status + results** (implemented? tested? regression-guard vs. finding), plus the identified-but-unbuilt gaps and a findings log
-- [docs/demos/README.md](docs/demos/README.md) — 21 end-to-end demos
+- [docs/workflow-registry.md](docs/workflow-registry.md) — the same workflows with **status + results** (implemented? tested? regression-guard vs. finding), prior gap closure, standing boundaries, and a findings log
+- [docs/demos/README.md](docs/demos/README.md) — 21 historical walkthrough demos
 - [demos/scenarios/README.md](demos/scenarios/README.md) — **26 narrated executable demos** (runnable via pytest)
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and contribution guide
 
@@ -117,7 +119,7 @@ uv run pytest
 The fastest way to understand what the policy engine actually does:
 
 ```bash
-# Run all 9 narrated demos in order, with operator-facing prose:
+# Run all 26 narrated executable demos in order, with operator-facing prose:
 uv run pytest demos/scenarios/run_all.py --no-cov -s
 
 # Or a single demo (the marquee one):

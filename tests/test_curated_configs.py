@@ -7,7 +7,7 @@ invariants this test pins:
   - every config parses (no CapabilityKind / Label typo silently
     dropping a tool override),
   - every server is strict (fail-closed admission), and
-  - the community/preview Google Workspace config has an explicit
+  - the Google Workspace configs have explicit
     override for every tool it declares (nothing destructive there may
     ride on inference).
 """
@@ -34,15 +34,85 @@ def test_curated_config_parses_and_is_strict(path: Path) -> None:
     assert configs, f"{path.name} parsed to zero servers"
     for c in configs:
         assert c.strict is True, f"{path.name}:{c.name} is not strict (fail-open)"
-        assert c.command, f"{path.name}:{c.name} has empty command"
+        if c.transport == "stdio":
+            assert c.command, f"{path.name}:{c.name} has empty command"
+        else:
+            assert c.url, f"{path.name}:{c.name} has empty remote url"
 
 
-def test_google_workspace_pins_every_declared_tool() -> None:
-    """Community/preview producer -> nothing may rely on inference."""
-    configs = load_config_file(_CURATED / "google-workspace.yaml")
+@pytest.mark.parametrize(
+    "filename",
+    ["google-workspace.yaml", "google-workspace-community.yaml"],
+)
+def test_google_workspace_pins_every_declared_tool(filename: str) -> None:
+    """Workspace producers can evolve; nothing may rely on inference."""
+    configs = load_config_file(_CURATED / filename)
     for c in configs:
         assert c.tool_overrides, f"{c.name} declares no explicit tool overrides"
         for name, ov in c.tool_overrides.items():
             assert ov.capability_kind is not None, (
                 f"{c.name}.{name} override has no capability_kind"
             )
+
+
+def test_legacy_news_server_removed() -> None:
+    assert not (
+        Path(__file__).parent.parent / "src" / "capabledeputy" / "mcp_servers" / "news.py"
+    ).exists()
+
+
+def test_legacy_github_config_replaced_by_official_remote() -> None:
+    assert not (_CURATED / "multi-credential-github.yaml").exists()
+
+    [config] = load_config_file(_CURATED / "github.yaml")
+    assert config.transport == "streamable_http"
+    assert config.url == "https://api.githubcopilot.com/mcp/"
+    assert config.auth is not None
+    assert config.auth.type == "bearer"
+    assert config.auth.token_env == "GITHUB_MCP_TOKEN"
+    assert config.tool_overrides["merge_pull_request"].capability_kind is not None
+
+
+def test_slack_uses_official_remote_mcp() -> None:
+    [config] = load_config_file(_CURATED / "slack.yaml")
+
+    assert config.transport == "streamable_http"
+    assert config.url == "https://mcp.slack.com/mcp"
+    assert config.auth is not None
+    assert config.auth.type == "bearer"
+    assert config.tool_overrides["send_message"].capability_kind is not None
+
+
+def test_kagi_uses_official_package_and_only_web_fetch_tools() -> None:
+    [config] = load_config_file(_CURATED / "kagi.yaml")
+
+    assert config.command == ("uvx", "kagimcp")
+    assert sorted(config.tool_overrides) == ["kagi_extract", "kagi_search_fetch"]
+    assert {
+        override.capability_kind.value
+        for override in config.tool_overrides.values()
+        if override.capability_kind is not None
+    } == {"WEB_FETCH"}
+
+
+def test_playwright_active_tools_are_browser_automation_not_sandbox() -> None:
+    [config] = load_config_file(_CURATED / "playwright.yaml")
+
+    assert config.command == ("npx", "-y", "@playwright/mcp@latest")
+    assert (
+        config.tool_overrides["browser_navigate"].capability_kind.value
+        == "BROWSER_AUTOMATION"
+    )
+    assert config.tool_overrides["browser_snapshot"].capability_kind.value == "WEB_FETCH"
+
+
+def test_bundled_python_config_includes_specialized_macos_servers() -> None:
+    configs = load_config_file(_CURATED / "bundled-python-servers.yaml")
+    names = {config.name for config in configs}
+
+    assert {
+        "bundled-applescript",
+        "bundled-apple-mail",
+        "bundled-keynote",
+        "bundled-macos",
+    } <= names

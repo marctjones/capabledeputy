@@ -306,21 +306,33 @@ def test_gworkspace_block_writes_managed_section(xdg_tmp: Path) -> None:
     assert "# BEGIN capdep-managed: gworkspace" in text
     assert "# END capdep-managed: gworkspace" in text
     parsed = yaml.safe_load(text)
-    # The gws server is registered as a single upstream
+    # Official Google Workspace is registered as separate remote MCP servers.
     names = [s["name"] for s in parsed["upstream_servers"]]
-    assert "gws" in names
-    # Verify the command invokes the community wrapper (`gws-mcp-server`)
-    gws_entry = next(s for s in parsed["upstream_servers"] if s["name"] == "gws")
-    assert gws_entry["command"][0] == "npx"
-    assert gws_entry["command"][1] == "gws-mcp-server"
-    assert "--services" in gws_entry["command"]
-    # Destructive-op pinning is in the overrides — snake_case tool names
-    overrides = gws_entry["tool_overrides"]
-    assert overrides["drive_delete_file"]["capability_kind"] == "DELETE_FS"
-    assert overrides["calendar_delete_event"]["capability_kind"] == "DELETE_CAL"
-    assert overrides["calendar_update_event"]["capability_kind"] == "MODIFY_CAL"
-    assert overrides["drive_update_file"]["capability_kind"] == "MODIFY_FS"
-    assert overrides["drive_create_file"]["capability_kind"] == "CREATE_FS"
+    assert {
+        "google-gmail",
+        "google-drive",
+        "google-calendar",
+        "google-chat",
+        "google-people",
+    }.issubset(names)
+    gmail_entry = next(s for s in parsed["upstream_servers"] if s["name"] == "google-gmail")
+    assert gmail_entry["transport"] == "streamable_http"
+    assert gmail_entry["url"] == "https://gmailmcp.googleapis.com/mcp/v1"
+    assert gmail_entry["auth"]["type"] == "google_adc"
+    assert gmail_entry["tool_overrides"]["search_threads"]["capability_kind"] == "GMAIL_READ"
+    chat_entry = next(s for s in parsed["upstream_servers"] if s["name"] == "google-chat")
+    assert chat_entry["tool_overrides"]["send_message"]["capability_kind"] == "SEND_MESSAGE"
+
+
+def test_gworkspace_community_block_still_available() -> None:
+    from capabledeputy.cli._managed_config import GWORKSPACE_COMMUNITY_BLOCK_BODY
+
+    parsed = yaml.safe_load("upstream_servers:\n" + GWORKSPACE_COMMUNITY_BLOCK_BODY)
+    [entry] = parsed["upstream_servers"]
+    assert entry["name"] == "gws"
+    assert entry["command"][0] == "npx"
+    assert entry["command"][1] == "gws-mcp-server"
+    assert entry["tool_overrides"]["drive_delete_file"]["capability_kind"] == "DELETE_FS"
 
 
 def test_gworkspace_block_coexists_with_imap_and_bundled(xdg_tmp: Path) -> None:
@@ -339,7 +351,7 @@ def test_gworkspace_block_coexists_with_imap_and_bundled(xdg_tmp: Path) -> None:
 
     parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
     names = {s["name"] for s in parsed["upstream_servers"]}
-    # Bundled five + imap (named `mail`) + gworkspace (named `gws`)
+    # Bundled five + imap (named `mail`) + official Google Workspace servers.
     assert {
         "mail",
         "bundled-fs",
@@ -347,7 +359,11 @@ def test_gworkspace_block_coexists_with_imap_and_bundled(xdg_tmp: Path) -> None:
         "bundled-git",
         "bundled-fetch",
         "bundled-search",
-        "gws",
+        "google-gmail",
+        "google-drive",
+        "google-calendar",
+        "google-chat",
+        "google-people",
     }.issubset(names)
 
 

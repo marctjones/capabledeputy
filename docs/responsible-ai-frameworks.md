@@ -103,11 +103,12 @@ be read; data is admitted for a purpose, not in general.
 - **Default template:** `purposes.yaml` admissibility matrix.
 - **Canonicalizes:** GDPR purpose-limitation + data-minimisation,
   FIPPs use-limitation, Contextual Integrity's transmission principle.
-- **Honest scope:** expresses purpose as *read-admissibility*. The
-  *purpose-contamination* case — admissible data, no egress, but it
-  inappropriately influences a permitted decision — is **not
-  expressible** (it requires inspecting the model's reasoning; it is
-  R5). This is the project's known floor (`governance-scope §6.3`).
+- **Honest scope:** expresses purpose as *read-admissibility* and tests
+  spawn/grant/delegation refusal for inadmissible categories. The narrower
+  *model-reasoning contamination* case — admissible data, no egress, but it
+  inappropriately influences a permitted decision — is **not expressible**
+  (it requires inspecting the model's reasoning; it is R5). This is the
+  project's known floor (`governance-scope §6.3`).
 
 ### 5. Human oversight of consequential effects — guards R4
 Irreversible, committing, or cross-compartment effects require a human;

@@ -1,6 +1,6 @@
 # CapableDeputy Demos
 
-Sixteen end-to-end walkthroughs across four buckets: **security
+Twenty-one end-to-end walkthroughs across four buckets: **security
 demonstrations**, **user workflow demos**, **adversarial demos**, and
 **feature spotlights**.
 
@@ -40,6 +40,10 @@ demonstrations**, **user workflow demos**, **adversarial demos**, and
   shows a real workflow whose security is the entire point of doing
   it through CapableDeputy at all (web research that can't exfiltrate;
   financial summaries that can't leak exact numbers).
+- **Feature spotlights (10-21)** cover bundled approvals, destructive-op
+  gates, programmatic mode, tool-token aliasing, multi-tenant labels,
+  federation, per-tool isolation, REPL/console operation, recoverable
+  blocks, time/rate-limited capabilities, and the unified console.
 
 ## What's verified by each
 

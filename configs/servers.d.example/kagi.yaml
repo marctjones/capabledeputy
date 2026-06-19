@@ -1,0 +1,20 @@
+# Kagi official MCP server config (servers.d layout).
+#
+# Copy to ~/.config/capabledeputy/servers.d/kagi.yaml and export:
+#   export KAGI_API_KEY=...
+
+schema_version: 1
+name: kagi
+transport: stdio
+command: ["uvx", "kagimcp"]
+env:
+  KAGI_API_KEY: "${KAGI_API_KEY}"
+
+inherent_labels:
+  - untrusted.external
+
+strict: true
+
+tool_mappings:
+  kagi_search_fetch: WEB_FETCH
+  kagi_extract: WEB_FETCH

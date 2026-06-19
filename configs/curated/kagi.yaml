@@ -1,0 +1,30 @@
+# Curated upstream config -- Kagi official MCP server.
+#
+# Producer: Kagi Search (official kagisearch/kagimcp package).
+# Transport: stdio via uvx.
+#
+# Export:
+#   export KAGI_API_KEY=...
+#
+# This replaces any custom/news-specific MCP server. Kagi's single search
+# tool can search web, news, videos, podcasts, and images; results remain
+# untrusted external content and route through WEB_FETCH.
+
+upstream_servers:
+  - name: kagi
+    command: ["uvx", "kagimcp"]
+    env:
+      KAGI_API_KEY: "${KAGI_API_KEY}"
+    strict: true
+    inherent_labels:
+      - untrusted.external
+    tool_overrides:
+      kagi_search_fetch: { capability_kind: WEB_FETCH }
+      kagi_extract:      { capability_kind: WEB_FETCH }
+    isolation:
+      image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+      network: bridge
+      allowed_hosts:
+        - "kagi.com:127.0.0.1"
+        - "api.kagi.com:127.0.0.1"
+      memory: "256m"

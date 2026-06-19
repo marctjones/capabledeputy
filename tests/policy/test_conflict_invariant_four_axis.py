@@ -34,6 +34,7 @@ from capabledeputy.policy.tiers import Tier
 _CAPS: frozenset[Capability] = frozenset(
     {
         Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*"),
+        Capability(kind=CapabilityKind.BROWSER_AUTOMATION, pattern="*"),
         Capability(kind=CapabilityKind.QUEUE_PURCHASE, pattern="*", max_amount=10_000),
     },
 )
@@ -42,6 +43,8 @@ _CAPS: frozenset[Capability] = frozenset(
 def _action(kind: CapabilityKind) -> Action:
     if kind == CapabilityKind.QUEUE_PURCHASE:
         return Action(kind=kind, target="amazon", amount=50)
+    if kind == CapabilityKind.BROWSER_AUTOMATION:
+        return Action(kind=kind, target="https://example.com")
     return Action(kind=kind, target="alice@example.com")
 
 
@@ -68,6 +71,12 @@ _SCENARIOS = [
         "untrusted-meets-egress",
     ),
     (
+        _untrusted(),
+        CapabilityKind.BROWSER_AUTOMATION,
+        Decision.DENY,
+        "untrusted-meets-egress",
+    ),
+    (
         _category("health"),
         CapabilityKind.SEND_EMAIL,
         Decision.DENY,
@@ -80,8 +89,20 @@ _SCENARIOS = [
         "health-meets-egress",
     ),
     (
+        _category("health"),
+        CapabilityKind.BROWSER_AUTOMATION,
+        Decision.DENY,
+        "health-meets-egress",
+    ),
+    (
         _category("financial"),
         CapabilityKind.SEND_EMAIL,
+        Decision.DENY,
+        "financial-meets-email",
+    ),
+    (
+        _category("financial"),
+        CapabilityKind.BROWSER_AUTOMATION,
         Decision.DENY,
         "financial-meets-email",
     ),
@@ -155,8 +176,8 @@ def test_invariant_is_always_on_without_v2_wiring() -> None:
 
 
 def test_non_egress_action_is_unaffected() -> None:
-    """The invariants gate only egress kinds (SEND_EMAIL /
-    QUEUE_PURCHASE); a read with the same taint is not denied here."""
+    """The invariants gate only egress kinds; a read with the same taint
+    is not denied here."""
     result = decide(
         frozenset({Capability(kind=CapabilityKind.READ_FS, pattern="*")}),
         Action(kind=CapabilityKind.READ_FS, target="/x"),

@@ -1,0 +1,22 @@
+# Apple Mail bundled MCP server config (servers.d layout).
+#
+# Copy to ~/.config/capabledeputy/servers.d/apple-mail.yaml.
+# macOS will still enforce Automation/TCC prompts for the terminal process.
+
+schema_version: 1
+name: apple-mail
+transport: stdio
+command: ["capdep", "mcp-server-apple-mail"]
+
+inherent_labels:
+  - confidential.personal
+  - untrusted.user_input
+
+strict: true
+
+tool_mappings:
+  apple_mail.list_accounts: IMAP_READ
+  apple_mail.list_mailboxes: IMAP_READ
+  apple_mail.search_messages: IMAP_READ
+  apple_mail.get_message: IMAP_READ
+  apple_mail.create_draft: MACOS_AUTOMATION

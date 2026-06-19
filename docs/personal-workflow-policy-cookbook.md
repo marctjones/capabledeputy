@@ -199,7 +199,7 @@ Approval is the gate.
 - Send to an unrecognized counterparty. Always prompts.
 - Purchase above `max_amount`. Hard deny — not even approval; the
   cap must be widened first.
-- Send carrying a label the rule denies (e.g., `confidential.work`
+- Send carrying a label the rule denies (e.g., `confidential.financial`
   to a family-group recipient).
 
 ### Profile D — Sandboxed work (6 workflows)

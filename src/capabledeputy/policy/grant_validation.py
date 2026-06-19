@@ -83,6 +83,17 @@ def _check_send_email(pattern: str) -> list[str]:
     return []
 
 
+def _check_send_message(pattern: str) -> list[str]:
+    """SEND_MESSAGE targets conversation ids, user ids, or wildcards."""
+    if pattern.startswith("/") or "://" in pattern:
+        return [
+            f"pattern {pattern!r} looks like a path or URL — SEND_MESSAGE "
+            "grants match chat/message destinations such as 'spaces/*', "
+            "a user/conversation id, or '*'.",
+        ]
+    return []
+
+
 def _check_queue_purchase(pattern: str) -> list[str]:
     """QUEUE_PURCHASE matches against vendor identifiers. Email-
     shape patterns are almost certainly a copy-paste mistake."""
@@ -161,22 +172,45 @@ def _check_execute(pattern: str) -> list[str]:
 
 
 def _check_external_read(pattern: str) -> list[str]:
-    """GMAIL_READ / IMAP_READ / DRIVE_READ accept either a wildcard
+    """External read kinds accept either a wildcard
     or a tool-specific filter expression. We can't fully validate
     the filter (it varies by tool), but we can flag obvious
     mismatches like absolute paths (which would match nothing)."""
     if pattern.startswith("/"):
         return [
             f"pattern {pattern!r} is a filesystem path — external-read "
-            "grants (GMAIL_READ / IMAP_READ / DRIVE_READ) match "
+            "grants match "
             "against the tool's query expression, not a local path. "
             "Use '*' or a query like 'from:boss@example.com'.",
         ]
     return []
 
 
+def _check_browser_automation(pattern: str) -> list[str]:
+    """Browser automation grants should normally be wildcard or URL-shaped."""
+    if pattern.startswith("/"):
+        return [
+            f"pattern {pattern!r} looks like a filesystem path — "
+            "BROWSER_AUTOMATION grants match browser targets, usually '*' "
+            "or an http(s) URL pattern.",
+        ]
+    return []
+
+
+def _check_macos_automation(pattern: str) -> list[str]:
+    """macOS automation grants should normally be wildcard or bundle-id shaped."""
+    if pattern.startswith("/") or "://" in pattern:
+        return [
+            f"pattern {pattern!r} looks like a path or URL — "
+            "MACOS_AUTOMATION grants match local app/tool targets, usually '*' "
+            "or a bundle id like 'com.apple.mail'.",
+        ]
+    return []
+
+
 _CHECK_FOR_KIND: dict[CapabilityKind, callable] = {  # type: ignore[type-arg]
     CapabilityKind.SEND_EMAIL: _check_send_email,
+    CapabilityKind.SEND_MESSAGE: _check_send_message,
     CapabilityKind.QUEUE_PURCHASE: _check_queue_purchase,
     CapabilityKind.READ_FS: _check_fs_path,
     CapabilityKind.WRITE_FS: _check_fs_path,
@@ -184,6 +218,8 @@ _CHECK_FOR_KIND: dict[CapabilityKind, callable] = {  # type: ignore[type-arg]
     CapabilityKind.MODIFY_FS: _check_fs_path,
     CapabilityKind.DELETE_FS: _check_fs_path,
     CapabilityKind.WEB_FETCH: _check_web_fetch,
+    CapabilityKind.BROWSER_AUTOMATION: _check_browser_automation,
+    CapabilityKind.MACOS_AUTOMATION: _check_macos_automation,
     CapabilityKind.CALENDAR_READ: _check_calendar,
     CapabilityKind.CALENDAR_WRITE: _check_calendar,
     CapabilityKind.CREATE_CAL: _check_calendar,
@@ -194,4 +230,6 @@ _CHECK_FOR_KIND: dict[CapabilityKind, callable] = {  # type: ignore[type-arg]
     CapabilityKind.GMAIL_READ: _check_external_read,
     CapabilityKind.IMAP_READ: _check_external_read,
     CapabilityKind.DRIVE_READ: _check_external_read,
+    CapabilityKind.CHAT_READ: _check_external_read,
+    CapabilityKind.PEOPLE_READ: _check_external_read,
 }

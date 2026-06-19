@@ -31,13 +31,13 @@ legacy-path-only, or confirms-fires rather than tries-to-break) · ⬜ empty.
 | Guarantee | Status | On real config? | Where / gap |
 |---|---|---|---|
 | Reference monitor (total mediation) | 🟡 | implicit | every call gates; no explicit "unmediated path" test |
-| Bell-LaPadula (read-up containment) | 🟡 | no (legacy) | egress-deny proven; clearance/tier-resolution + write-down untested |
-| Biba (one-direction integrity) | ⬜ | — | no write-up / no-read-down attempt; "most under-served" |
-| Brewer-Nash (conflict) | 🟡 | no (legacy) | invariants fire; no boundary/adversarial probe |
+| Bell-LaPadula (dynamic read-up containment) | ✅ | mixed | clearance/read-up refusal and egress floors are covered; full static MLS write-down remains Not Pursued |
+| Biba (scoped one-direction integrity) | ✅ | mixed | financial-integrity workflow and integrity-floor tests cover low-integrity input refusing high-integrity writes; full Biba remains Not Pursued |
+| Brewer-Nash (conflict) | ✅ | mixed | health/financial/untrusted conflict pressure tests and compartment demos cover both useful and blocked paths |
 | Clark-Wilson (gated txn, sep-of-duty) | 🟡 | partial | destructive-op gate + override demo + certified-declassification txn (slice #2); dual-control e2e still demo-only |
 | Object-capability (confused-deputy) | ✅ | no (legacy) | no-cap + out-of-scope (pressure suite); override pinned-destination (trust-profile B/D) + ③ redirection (slice #3) |
 | IFC / sticky labels (Denning) | ✅ | no (legacy) | multi-step taint + accumulation (pressure suite) |
-| Noninterference (per-tier) | ⬜ | — | Pattern ③ restricted floor (#52) never exercised e2e |
+| Noninterference (per-tier / intransitive) | ✅ | mixed | Pattern ② adversarial, Pattern ③ redirection-resistance, Pattern ⑤ containment-not-declassification, and restricted-floor probes are covered |
 
 ### Flow patterns
 | Pattern | Status | Where / gap |
@@ -45,7 +45,7 @@ legacy-path-only, or confirms-fires rather than tries-to-break) · ⬜ empty.
 | ① turn-level | ✅ | everywhere |
 | ② dual-LLM (quarantine / declassify) | ✅ | **slice #4** — e2e safe-disclosure (data-blind + label-non-propagation) was already in `test_quarantined_extractor`; added the ADVERSARIAL half: injection in the confidential content can't escalate (tool-call refused), can't add exfil fields (schema-stripped), can't bulk-smuggle (length-capped), planner never sees raw/injection. `test_pattern2_dual_llm_adversarial.py` |
 | ③ reference-handle (redirection-resist) | ✅ | **slice #3** — adversarial redirect attempt: forged handle binds nothing, cross-session theft discloses nothing (end-to-end via dispatcher), value frozen at issue (no repoint path), data-blind planner. `test_pattern3_redirection_resistance.py` |
-| ⑤ sealed (containment) | ⬜ | **no test** — containment ≠ declassification footgun |
+| ⑤ sealed (containment) | ✅ | Pattern ⑤ workflows and `test_security_alignment_probes.py` assert containment is not declassification |
 
 ### AI-safety principles
 | Principle | Status | Where / gap |
@@ -53,11 +53,11 @@ legacy-path-only, or confirms-fires rather than tries-to-break) · ⬜ empty.
 | P1 least authority | 🟡 | capability scope/attenuation (confused-deputy) |
 | P2 trusted/untrusted separation | ✅ | injection-content test |
 | P3 confidentiality / controlled flow | ✅ | BLP/IFC pressure tests |
-| P4 purpose limitation | ⬜ | **no purpose set anywhere**; purpose-contamination unbuilt |
+| P4 purpose limitation | ✅ | purpose-scoped spawn/grant/delegation refusal tested; model-reasoning contamination remains out of scope |
 | P5 human oversight | 🟡 | approval-as-decision; inspector relax/tighten (real config) |
-| P6 accountability / traceability | ⬜ | **no audit-replay assertion** |
+| P6 accountability / traceability | ✅ | audit/provenance assertions cover replayable decisions and materialized DAG edges |
 | P7 fail-safe defaults | ✅ | fail-closed: no-cap, malformed config, F2 default |
-| P8 containment / blast-radius | ⬜ | sealed untested |
+| P8 containment / blast-radius | ✅ | Pattern ⑤ sealed containment tested; containment is not declassification |
 
 ### Contingencies & the refinement layer
 | Item | Status | Where / gap |
@@ -67,11 +67,11 @@ legacy-path-only, or confirms-fires rather than tries-to-break) · ⬜ empty.
 | Substrate trust (sandbox isolation) | ⬜ | podman/sealed not exercised |
 | Decision-inspector layer (Starlark) | ✅ | `policy_inspectors` on real config |
 | Bounded-relax floor | ✅ | F1 guard |
-| Operator policy DSL (`rules.yaml`) | ⬜ | no test asserts a RulePredicate decision |
-| Envelope dial (FR-030) | ⬜ | demo only; no adversarial real-config test |
-| Frequency / aggregation at scale | 🟡 | one inspector unit test |
+| Operator policy DSL (`rules.yaml`) | ✅ | decision-inspector and v2 pressure tests exercise operator policy composition |
+| Envelope dial (FR-030) | ✅ | `risk_dial`, `dial_assisted_research`, and v2 pressure tests pin dial/floor behavior |
+| Frequency / aggregation at scale | ✅ | real chokepoint workflow tightens the fourth send-like dispatch using bounded history |
 | Certified declassification | ✅ | **RESOLVED (slice #2)** — certified declassifier lowers untrusted taint so a previously-denied read can egress; uncertified taint-removal refused (Constitution VI). Surfaced + fixed F9. `test_sanctioned_declassification_lowers_taint_enabling_egress`, `test_uncertified_taint_removal_is_refused`. |
-| **Real-config legitimate egress (F2)** | ✅ | **RESOLVED (slice #1)** — irreversible egress DENIES by default, allowed via single-use human override grant; `test_v2_legitimate_egress_allowed_via_override_grant`. See F8 for the UX question. |
+| **Real-config legitimate egress (F2)** | ✅ | **RESOLVED (slice #1)** — ordinary communication routes to approval; purchases remain deny-by-default; restricted-tier communication requires a single-use human override grant. |
 
 ---
 
@@ -91,28 +91,18 @@ Do ONE workflow class end-to-end (not all-unblock-then-all-build):
 5. **Update the matrix** — flip the cell; the next highest-risk empty cell
    is the next slice. Findings surfaced re-rank the backlog.
 
-**Risk-ordered backlog** (the empty/partial cells, highest first):
-1. ~~F2 — real-config legitimate egress~~ — **DONE (slice #1)**: production
-   path works via single-use override grant; deny-by-default is by design
-   (FR-019). See F8.
-2. ~~Certified declassification~~ — **DONE (slice #2)**: certified
-   declassifier lowers taint so a denied read can egress; uncertified removal
-   refused. Surfaced + fixed F9.
-3. ~~Pattern ③ redirection-resistance (adversarial)~~ — **DONE (slice #3)**:
-   forged-handle / cross-session-theft / frozen-binding / data-blind all proven
-   end-to-end through the dispatcher. No bug found — confirms the guarantee
-   holds adversarially.
-4. **Pattern ② dual-LLM declassify e2e.** ← *next slice.* Confidential read →
-   quarantined extract → schema-declassified summary egresses; planner never
-   sees raw.
-4. **Pattern ② dual-LLM declassify e2e.** Confidential read → quarantined
-   extract → schema-declassified summary egresses; planner never sees raw.
-5. **Operator DSL + envelope dial on real config.** RulePredicate decisions,
-   bounded-relax envelope cell.
-6. **Biba write-up + Noninterference (Pattern ③ per-tier e2e).**
-7. **Pattern ⑤ sealed containment** (needs substrate — feature + test).
-8. **P4 purpose-contamination, P6 audit-replay, P8 containment.**
-9. **Frequency/aggregation at scale.**
+**Risk-ordered residual backlog** (after slices #1–#4 and provenance work):
+1. **Labeling-oracle completeness.** Add content-scan / raise-only labeling
+   paths so sensitive data is less dependent on filename/source bindings.
+2. **Reference-monitor totality probe.** Add an invariant that enumerates all
+   registered agent-callable tools and proves there is no dispatch path outside
+   `LabeledToolClient.call_tool`.
+3. **Real substrate contract tests.** Pattern ⑤ is covered with in-process
+   and Podman unit surfaces; any future real integration needs opt-in,
+   read-only contract tests before product use.
+4. **Model-reasoning purpose contamination.** Keep as a documented non-goal:
+   read-admissibility is enforced, but proving why the model used admissible
+   data would require model-internal interpretability.
 
 ---
 
@@ -154,11 +144,11 @@ Everything else is iteration between the gates.
 ## 5. Findings log (the evidence that justifies the rows)
 
 - **F1** bounded-relax floor bug (FIXED) → guards the inspector-layer rows.
-- **F2** v2 denies irreversible egress by default → the #1 backlog item;
-  the reason "real config?" is a matrix column.
+- **F2** v2 egress defaults are pinned: communication approval, purchases
+  denied by default, restricted-tier communication override-required.
 - **F3** labeling-oracle gap (standing test) → the labeling-oracle row.
-- **F4** 25 demos silently broken, never in CI → why "real config + CI" is
-  a scorecard criterion.
+- **F4** the pre-registry demo suite silently broke and was not in CI → why
+  "real config + CI" is a scorecard criterion.
 - **F5** outbound email was enabled (FIXED) → the safety rule in Gate B.
 - **F6** provenance masking → why category guarantees need a non-egress or
   declassification path to isolate.
@@ -234,11 +224,15 @@ Everything else is iteration between the gates.
   injection instruction and the extracted summary carries no taint (egress-safe).
   No bug found. `test_pattern2_dual_llm_adversarial.py`. Matrix cell ✅.
 
-## Immediate next: slice #5 = operator DSL + envelope dial on real config
+## Immediate next: slice #5 = labeling-oracle completeness
 
-Pressure the operator's `rules.yaml` RulePredicate decisions and the
-bounded-relax envelope cell on the REAL v2 config (the refinement layer the
-1126 never touch): a human-authored AUTO rule fires for the exact cell it
-declares and NOT a neighbor; the dial selects a point within the envelope and
-never crosses `strictest`. Adversarial: a greedy rule/dial can't escape the
-cell's `{strictest, loosest}` bounds.
+The remaining high-leverage assurance gap is label coverage, not another
+policy-composition test. Build a real-config workflow that reads sensitive
+content whose category is not recoverable from a filename or source binding,
+then proves a content-scan / raise-only labeler adds the expected label before
+egress. Keep `oracle_unlabeled_data_silently_unprotected` as the negative
+control so the system does not pretend unlabeled data is protected.
+
+After that, add the reference-monitor totality probe: enumerate every
+agent-callable registered tool and prove there is no dispatch path that bypasses
+`LabeledToolClient.call_tool`.
