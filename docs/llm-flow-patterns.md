@@ -4,14 +4,14 @@
 session relates to labeled data*. This is the companion to
 `docs/security-models.md`: that file is the formal-model yardstick
 (model → mechanism → deviation); this file is the applied taxonomy of
-the four ways the runtime lets (or forbids) the model to touch
+the five ways the runtime lets (or forbids) the model to touch
 sensitive information. Each pattern maps onto a model row there — it
 does not introduce a new model.
 
 The anti-prompt-injection strength rises down the list: the less the
 planner can *see*, the less an injected instruction can *exfiltrate*.
 
-## The four patterns
+## The five patterns
 
 ### 1. Tainted-context flow tracking — ✅ implemented (core, v0.1+)
 
@@ -72,15 +72,18 @@ value at any point.
 
 ### 4. Code-mediated processing (programmatic mode / LLM-as-compiler) — ✅ implemented (v0.3)
 
-The LLM emits a program (Python-AST subset), statically dry-run against
-the policy *before* execution; the labeled data flows only through the
-deterministic interpreter, never the model's context.
+The LLM emits a program (Python-AST subset). The runtime performs a
+source-label-aware dry-run before execution, then executes through the
+same deterministic tool chokepoint used by ordinary turns. Labeled data
+flows through the interpreter, not the model's context; if a program
+returns a labeled value, planner/RPC surfaces receive only a label
+summary and a redaction marker, never the raw value.
 
 - **Planner sees:** never the data — only the task and the program it
   authors.
 - **Guarantee:** processing is performed by audited deterministic code;
-  the policy is checked statically pre-execution; the model is a
-  compiler, not a data handler.
+  the policy is previewed before execution and enforced again at the
+  real chokepoint; the model is a compiler, not a data handler.
 - **Model lineage:** language-based information flow; the interpreter
   half of CaMeL (`security-models.md`).
 - **Use when:** the work is mechanical transformation/processing of
@@ -122,26 +125,37 @@ gate; the gate is placed only where an output crosses the boundary.
 
 ## Meta-control: mode auto-escalation — ✅ implemented (v0.7)
 
-Not a pattern but the **selector**. `select_mode(label_set, registry,
-*, prefer_programmatic, force_mode)` (`src/capabledeputy/mode/
+Not a pattern but the **selector**. `select_mode(label_state, registry,
+*, prefer_programmatic, force_mode, has_sandbox_actuator, session)` (`src/capabledeputy/mode/
 dispatcher.py`) is a **pure deterministic function** — it never calls
 or consults the LLM (Principle I: the choice of protection mode is
 itself outside the model). Precedence, strongest first:
 
-1. **`force_mode`** — CLI `--mode` for that turn only.
-2. **`prefer_programmatic`** — a session-level flag set at
+1. **Restricted-tier floor** — any `restricted` Axis-A tag forces
+   pattern ③ REFERENCE if a handle-consuming tool is visible to the
+   current session; otherwise pattern ⑤ SEALED if a sandbox actuator
+   and visible sandbox tool exist. If neither is usable, selection
+   fails closed before the planner can see raw restricted data.
+2. **`force_mode`** — CLI `--mode` for that turn only, unless it would
+   violate the restricted-tier floor.
+3. **`prefer_programmatic`** — a session-level flag set at
    `session.new`; opts the whole session into pattern ④.
-3. **Auto-heuristic** — if the session carries a `confidential.*`
+4. **Auto-heuristic** — if the session carries a `confidential.*`
    label **and** a `quarantined.*` extractor is registered → pattern ②
    (DUAL_LLM). Otherwise → pattern ① (TURN_LEVEL).
 
 Precise mapping & honest caveats:
-- The selector covers **① TURN_LEVEL / ② DUAL_LLM / ④ PROGRAMMATIC**
-  only. Pattern ③ is **not** a selectable mode (still partial); ⑤ does
-  not exist.
+- The selector covers **① TURN_LEVEL / ② DUAL_LLM / ③ REFERENCE / ④
+  PROGRAMMATIC / ⑤ SEALED**. For restricted-tier sessions, ③/⑤
+  selection is based on the tools currently visible to that session,
+  not merely on tools registered elsewhere in the process.
 - Sensitivity auto-escalates to **② only — never to ④**. Pattern ④ is
   reached *exclusively* via `force_mode` or `prefer_programmatic`
   (opt-in), never chosen automatically from labels.
+- Restricted labels never fall back to ①/②/④. If a caller forces an
+  unsafe mode, or if no usable handle/sandbox path is visible, the
+  selector raises `ModeSelectionError` instead of exposing raw
+  restricted data to the planner.
 - Confidential labels **with no quarantined extractor registered** →
   the session **stays ① (TURN_LEVEL)**: the planner still sees the raw
   data. This is *not* a fail-open on enforcement — `decide()` still
@@ -197,7 +211,8 @@ reviewable defect (Principle VIII), not a tuning choice.
 
 Per-datum vs. across-data: patterns ① and ③ are mutually exclusive for
 the *same* value in concurrent passes (expose vs. hide), but
-complementary across *different* data in one flow. Reference Monitor
+complementary across *different* data in one flow. Policy Chokepoint /
+Reference Monitor
 holds under concurrency **iff** every parallel pass still funnels
 through the single `decide()` chokepoint.
 
@@ -209,7 +224,8 @@ Best-flow-per-model and complementary pairs are tabulated in
 Each pattern's audit events — data read + labels acquired,
 `mode.selected` + reason, `decide()` outcomes, declassification points,
 approvals — *are* the decision/flow explanation for that pass: the
-applied face of the **Gold Standard (Audit)** + **Provenance-security**
+applied face of the **Replayable AAA Audit** + **Materialized
+Provenance DAG**
 rows in `docs/security-models.md`. It explains *what the planner was
 allowed to touch and what gated each effect*, never *why the model
 chose its output* (interpretability is out of scope by design); a

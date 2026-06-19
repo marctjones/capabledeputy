@@ -28,7 +28,7 @@ def test_demo_module_imports(mod: str) -> None:
 
 
 async def test_all_narrated_demos_run(tmp_path) -> None:
-    """Run the whole narrated suite (25 demos) so behavior stays green."""
+    """Run the whole narrated suite (26 demos) so behavior stays green."""
     from demos.scenarios.run_all import test_run_all_demos
 
     await test_run_all_demos(tmp_path)

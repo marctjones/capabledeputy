@@ -509,6 +509,7 @@ async def run_turn_streaming(
             prefer_programmatic=session.prefer_programmatic,
             force_mode=force_mode,
             has_sandbox_actuator=has_sandbox_actuator,
+            session=session,
         )
     except ModeSelectionError as e:
         # FR-047 fail-closed (#52): the session reached restricted tier
@@ -992,6 +993,7 @@ async def run_turn_streaming(
                         prefer_programmatic=session.prefer_programmatic,
                         force_mode=force_mode,
                         has_sandbox_actuator=has_sandbox_actuator,
+                        session=session,
                     )
                 except ModeSelectionError as e:
                     await audit.write(

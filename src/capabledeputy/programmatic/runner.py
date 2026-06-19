@@ -25,6 +25,7 @@ from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.engine import _conflict_invariant_outcome
 from capabledeputy.policy.labels import LabelState, most_restrictive_inherit
 from capabledeputy.policy.rules import Decision
+from capabledeputy.policy.tiers import Tier
 from capabledeputy.programmatic.errors import ProgramSyntaxError
 from capabledeputy.programmatic.evaluator import (
     ExecutionResult,
@@ -37,6 +38,7 @@ from capabledeputy.programmatic.value import LabeledValue
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.registry import ToolNotFoundError, ToolRegistry
+from capabledeputy.tools.source_flow import RESTRICTED_SOURCE_FLOW_RULE
 
 
 @dataclass
@@ -101,13 +103,42 @@ def _make_dry_run_caller(
                 tags_added=LabelState(),
                 output=None,
             )
-        # Compose four-axis tags: accumulated + args + tool inherent + per-arg inherent
+        try:
+            source_tags = tool.extract_source_tags(args)
+        except Exception as e:
+            return ToolDispatchResult(
+                decision=Decision.DENY,
+                rule="source-label-lookup-failed",
+                reason=f"{tool_name}: source label lookup failed: {e}",
+                tags_added=LabelState(),
+            )
+
         per_arg_tags = tool.extract_arg_inherent_tags(args)
+        tags_added = most_restrictive_inherit(
+            source_tags,
+            tool.inherent_tags,
+            per_arg_tags,
+        )
+
+        if tool.forbid_restricted_source and any(
+            tag.tier in {Tier.RESTRICTED, Tier.PROHIBITED} for tag in source_tags.a
+        ):
+            return ToolDispatchResult(
+                decision=Decision.DENY,
+                rule=RESTRICTED_SOURCE_FLOW_RULE,
+                reason=(
+                    "restricted/prohibited source data requires Pattern (3) "
+                    "reference handles or Pattern (5) sealed isolation; "
+                    f"{tool.name} cannot declassify it through Pattern (2)"
+                ),
+                tags_added=LabelState(),
+            )
+
+        # Compose four-axis tags: accumulated + args + source + tool + per-arg.
         effective = most_restrictive_inherit(
             accumulated_state["value"],
             arg_label_state,
-            tool.inherent_tags,
-            per_arg_tags,
+            tags_added,
         )
 
         # Check four-axis information-flow conflict invariants (the same gates
@@ -131,7 +162,7 @@ def _make_dry_run_caller(
         return ToolDispatchResult(
             decision=Decision.ALLOW,
             output={"_dry_run": True, "tool": tool_name},
-            tags_added=LabelState(),
+            tags_added=tags_added,
         )
 
     return caller
@@ -198,7 +229,7 @@ def _make_real_caller(
         return ToolDispatchResult(
             decision=outcome.decision,
             output=outcome.output,
-            tags_added=LabelState(),
+            tags_added=outcome.tags_added,
             rule=outcome.rule,
             reason=outcome.reason,
         )
@@ -250,8 +281,48 @@ async def run_program_against_session(
     return await run_program(module, caller, initial_scope=initial_scope)
 
 
+def label_state_summary(label_state: LabelState) -> dict[str, list[str]]:
+    """Compact, stable label summary for user-visible programmatic returns."""
+    return {
+        "axis_a": sorted(f"{tag.category}:{tag.tier.value}" for tag in label_state.a),
+        "axis_b": sorted(tag.level.value for tag in label_state.b),
+    }
+
+
+def return_value_payload(value: LabeledValue) -> dict[str, Any]:
+    """Serialize a program return without exposing labeled raw values."""
+    labeled = bool(value.label_state.a or value.label_state.b)
+    payload: dict[str, Any] = {
+        "label_state": value.label_state.to_dict(),
+        "labels": label_state_summary(value.label_state),
+        "redacted": labeled,
+    }
+    if labeled:
+        payload["raw"] = None
+        payload["summary"] = "program returned a labeled value; raw value withheld"
+    else:
+        payload["raw"] = value.raw
+    return payload
+
+
+def format_return_value_for_planner(value: LabeledValue) -> str:
+    """Agent-loop rendering for a program return value."""
+    payload = return_value_payload(value)
+    if not payload["redacted"]:
+        return f"[program returned: {payload['raw']!r}]"
+    labels = payload["labels"]
+    axis_a = ",".join(labels["axis_a"]) or "-"
+    axis_b = ",".join(labels["axis_b"]) or "-"
+    return (
+        f"[program returned a labeled value: raw value withheld (axis_a={axis_a}; axis_b={axis_b})]"
+    )
+
+
 __all__ = [
     "DryRunReport",
     "dry_run_program",
+    "format_return_value_for_planner",
+    "label_state_summary",
+    "return_value_payload",
     "run_program_against_session",
 ]

@@ -17,6 +17,7 @@ from capabledeputy.daemon.handlers import Handler
 from capabledeputy.programmatic import (
     ProgramSyntaxError,
     dry_run_program,
+    return_value_payload,
     run_program_against_session,
 )
 from capabledeputy.programmatic.evaluator import ToolCallRecord
@@ -73,12 +74,7 @@ def make_programmatic_handlers(app: App) -> dict[str, Handler]:
             "tool_calls": [_record_to_dict(c) for c in result.tool_calls],
             "error": result.error,
             "return_value": (
-                None
-                if result.return_value is None
-                else {
-                    "raw": result.return_value.raw,
-                    "label_state": result.return_value.label_state.to_dict(),
-                }
+                None if result.return_value is None else return_value_payload(result.return_value)
             ),
         }
 

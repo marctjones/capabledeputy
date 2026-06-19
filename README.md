@@ -75,10 +75,10 @@ ideally makes them better):
   being labeled correctly; mislabeled data means the defense is *silently
   absent*. Broadening label coverage matters more for real safety than any
   new model.
-- **A dormant refinement layer** — the `DecisionInspector` chokepoint and the
-  sandboxed Starlark policy host are built and tested but **not yet wired into
-  the daemon**, so today operators express policy only through the coarser
-  declarative rules. Wiring this is the single highest-leverage next step.
+- **A default-inert refinement layer** — the `DecisionInspector` chokepoint
+  and sandboxed Starlark policy host are wired through daemon config, but no
+  inspectors are enabled by default. Shipping conservative starter inspectors
+  is now higher leverage than adding more approval prompts.
 - **Purpose-contamination** — keeping sensitive data from influencing
   decisions it has no bearing on is designed but only partially delivered.
 
@@ -98,11 +98,11 @@ read — strengths, weaknesses, and prioritized fixes — is in
 - [docs/SURFACES.md](docs/SURFACES.md) — **which command do I use?** (chat vs console vs tui vs demo vs …) — start here
 - [DESIGN.md](DESIGN.md) — full design specification
 - [ROADMAP.md](ROADMAP.md) — phased implementation plan
-- [docs/workflow-index.md](docs/workflow-index.md) — **categorized index of every workflow** — 25 narrated demos, the 1126-scenario allow/deny catalogue, and the enforcement suites, grouped by use case + security mechanism
+- [docs/workflow-index.md](docs/workflow-index.md) — **categorized index of every workflow** — 26 narrated demos, the 1126-scenario allow/deny catalogue, and the enforcement suites, grouped by use case + security mechanism
 - [docs/workflow-plan.md](docs/workflow-plan.md) — the **executable assurance plan**: a coverage matrix (mechanisms × pressured?), a per-workflow scorecard, and two gates — the spec we execute against
 - [docs/workflow-registry.md](docs/workflow-registry.md) — the same workflows with **status + results** (implemented? tested? regression-guard vs. finding), plus the identified-but-unbuilt gaps and a findings log
 - [docs/demos/README.md](docs/demos/README.md) — 21 end-to-end demos
-- [demos/scenarios/README.md](demos/scenarios/README.md) — **25 narrated executable demos** (runnable via pytest)
+- [demos/scenarios/README.md](demos/scenarios/README.md) — **26 narrated executable demos** (runnable via pytest)
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and contribution guide
 
 ## Development

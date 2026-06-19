@@ -179,9 +179,9 @@ mechanisms, with deliberate deviations named.
 |---|---|---|
 | attribute / data type | information-flow labels (data-category × tier) | Denning lattice |
 | sender / recipient | initiator-authentication + recipient-trust axes (§2) | (v0.9 gaps §7.1–.2) |
-| transmission principle | the human-authored multi-axis rule (§2); conflict rules | Brewer-Nash; Access-matrix/HRU |
+| transmission principle | the human-authored multi-axis rule (§2); conflict rules | Brewer-Nash; Access-Matrix-Style Decision Function |
 | context-relative norm ("health ⊄ inputs(employee-eval)") | purpose-as-category-admissibility (§6) | Brewer-Nash (extended) |
-| norms resolved per situation, at runtime | per-action `decide()` chokepoint + context profile | Reference Monitor |
+| norms resolved per situation, at runtime | per-action `decide()` chokepoint + context profile | Policy Chokepoint / Reference Monitor |
 | norms updated | the §4 suggest → human-ratify → deterministic-apply loop | Clark-Wilson (sep. of duty) |
 
 CapableDeputy is, in effect, **Contextual Integrity enforced
@@ -242,7 +242,7 @@ Mapped onto the project's own models and patterns:
 |---|---|---|
 | InfoSec confidentiality / no silent egress | Denning lattice; Noninterference (controlled declass.) | ① taint-tracking; ②/④ declassification |
 | Privacy purpose-limitation / context norm | Brewer-Nash → purpose-as-category-admissibility (§6) | ③ reference-substitution; ④ code-mediated (purpose-scoped session never holds the inadmissible category) |
-| AI excessive-agency / accountability / decision explainability | Object-capability (no ambient authority); Reference Monitor (LLM-isolation); Clark-Wilson (human sep. of duty); **Gold Standard (Audit) + Provenance security** | selector deterministic & LLM-isolated; ④ as certified transaction; append-only audit + pure-function `decide()` make every control-plane decision replayable & answerable |
+| AI excessive-agency / accountability / decision explainability | Object-capability (no ambient authority); Policy Chokepoint / Reference Monitor (LLM-isolation); Clark-Wilson (human sep. of duty); **Replayable AAA Audit + Materialized Provenance DAG** | selector deterministic & LLM-isolated; ④ as certified transaction; append-only audit + pure-function `decide()` make every control-plane decision replayable & answerable |
 | Adaptivity itself (the dial) | — | flow-pattern *strength* IS the privacy-adaptivity dial: stronger context norm ⇒ deterministically selected stronger pattern (①→②→③/④), never model-chosen |
 
 The last row is the key alignment: "resolve the privacy norm by
@@ -253,8 +253,8 @@ non-adaptive (LLM-isolated) mechanism.
 Decision/flow explainability is therefore a **strength, not a gap**:
 because the decision layer is a deterministic pure function of logged
 inputs, every allow/deny/escalate — and the flow that produced it — is
-reconstructible without interpreting the model (Gold Standard Audit +
-Provenance security; `security-models.md`). The deliberate boundary:
+reconstructible without interpreting the model (Replayable AAA Audit +
+Materialized Provenance DAG; `security-models.md`). The deliberate boundary:
 this explains the *decision and the flow*, never *model cognition*
 (interpretability is out of scope by design — trusting the model is
 exactly what the architecture refuses), and a model's self-narrated
@@ -277,7 +277,7 @@ exactly what the architecture refuses), and a model's self-narrated
   close them.
 - **Explainability is decision/flow-scoped, and that is the limit by
   design.** The decision layer is fully explainable and replayable
-  (Gold Standard Audit + Provenance security); **model-internal
+  (Replayable AAA Audit + Materialized Provenance DAG); **model-internal
   interpretability is a deliberate non-goal** — opening that box means
   trusting the model. Logged model self-narration is not explanation
   and must not be presented as such. (An earlier framing that called

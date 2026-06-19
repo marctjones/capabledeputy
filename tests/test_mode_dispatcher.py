@@ -5,10 +5,11 @@ from capabledeputy.mode.dispatcher import (
     filter_tools_for_mode,
     select_mode,
 )
-from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.tiers import Tier
+from capabledeputy.session.model import Session
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry, ToolResult
 
 
@@ -30,6 +31,53 @@ def _make_registry(*tool_names: str) -> ToolRegistry:
             ),
         )
     return registry
+
+
+def _restricted_state() -> LabelState:
+    return LabelState(
+        a=frozenset(
+            {CategoryTag("health", Tier.RESTRICTED, assignment_provenance="source-declared")}
+        ),
+    )
+
+
+def _handle_aware_tool(name: str, kind: CapabilityKind) -> ToolDefinition:
+    return ToolDefinition(
+        name=name,
+        description="handle consumer",
+        capability_kind=kind,
+        handler=_noop,
+        target_arg="target",
+        operations=(Operation(EffectClass.FETCH),),
+        risk_ids=("RISK-INDIRECT-INJECTION",),
+        accepts_handles=True,
+        handle_arg_names=("payload",),
+        parameters_schema={
+            "type": "object",
+            "properties": {
+                "target": {"type": "string"},
+                "payload": {"type": "string"},
+            },
+        },
+    )
+
+
+def _sandbox_tool() -> ToolDefinition:
+    return ToolDefinition(
+        name="sandbox.run",
+        description="sandbox",
+        capability_kind=CapabilityKind.EXECUTE_SANDBOX,
+        handler=_noop,
+        target_arg="spec_id",
+        effect_class="EXECUTE.sandbox",
+        operations=(Operation(EffectClass.EXECUTE_SANDBOX),),
+        risk_ids=("RISK-UNSAFE-CODE-EXEC",),
+        surfaces_destination_id=True,
+        parameters_schema={
+            "type": "object",
+            "properties": {"spec_id": {"type": "string"}},
+        },
+    )
 
 
 def test_no_confidential_labels_picks_turn_level() -> None:
@@ -154,3 +202,40 @@ def test_force_mode_overrides_prefer_and_heuristic() -> None:
     )
     assert mode == ExecutionMode.TURN_LEVEL
     assert "forced" in reason
+
+
+def test_restricted_reference_selection_requires_visible_handle_consumer() -> None:
+    registry = ToolRegistry()
+    registry.register(_handle_aware_tool("email.send", CapabilityKind.SEND_EMAIL))
+    registry.register(_sandbox_tool())
+    session = Session.new(
+        capability_set=frozenset({Capability(kind=CapabilityKind.EXECUTE_SANDBOX, pattern="*")}),
+    )
+
+    mode, reason = select_mode(
+        _restricted_state(),
+        registry,
+        has_sandbox_actuator=True,
+        session=session,
+    )
+
+    assert mode == ExecutionMode.SEALED
+    assert "Pattern (5)" in reason
+
+
+def test_restricted_reference_selected_when_handle_consumer_visible() -> None:
+    registry = ToolRegistry()
+    registry.register(_handle_aware_tool("sandbox.run", CapabilityKind.EXECUTE_SANDBOX))
+    session = Session.new(
+        capability_set=frozenset({Capability(kind=CapabilityKind.EXECUTE_SANDBOX, pattern="*")}),
+    )
+
+    mode, reason = select_mode(
+        _restricted_state(),
+        registry,
+        has_sandbox_actuator=True,
+        session=session,
+    )
+
+    assert mode == ExecutionMode.REFERENCE
+    assert "Pattern (3)" in reason

@@ -19,6 +19,12 @@ from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.policy.capabilities import Capability
 from capabledeputy.policy.labels import LabelState
+from capabledeputy.provenance import (
+    ProvenanceRecorder,
+    approval_decision_node_id,
+    approval_request_node_id,
+    capability_node_id,
+)
 
 # Cookbook P2.1 — window during which two requests with the same
 # (session, action, target) are considered siblings. 5 seconds is
@@ -60,6 +66,7 @@ class ApprovalQueue:
         self._next_id = 1
         self._requests: dict[int, ApprovalRequest] = {}
         self._audit = audit
+        self._provenance = ProvenanceRecorder(audit)
         self._graph = graph
         self.patterns = pattern_registry or ApprovalPatternRegistry()
         # Cookbook P2.7 — default TTL applied to new submissions when
@@ -296,19 +303,40 @@ class ApprovalQueue:
         self._next_id += 1
         self._requests[request.id] = request
         if self._audit:
-            await self._audit.write(
-                Event(
-                    event_type=EventType.APPROVAL_REQUESTED,
-                    session_id=from_session,
-                    payload={
-                        "approval_id": request.id,
-                        "action": action.value,
-                        "target": target,
-                        "labels_in": labels_in.to_dict(),
-                        "justification": justification,
-                    },
-                ),
+            event = Event(
+                event_type=EventType.APPROVAL_REQUESTED,
+                session_id=from_session,
+                payload={
+                    "approval_id": request.id,
+                    "action": action.value,
+                    "target": target,
+                    "labels_in": labels_in.to_dict(),
+                    "justification": justification,
+                },
             )
+            await self._audit.write(event)
+            request_node_id = approval_request_node_id(request.id)
+            await self._provenance.node(
+                session_id=from_session,
+                node_id=request_node_id,
+                kind="approval_request",
+                materialized_id=f"approval:{request.id}",
+                label_state=labels_in,
+                event_audit_id=event.audit_id,
+                metadata={
+                    "action": action.value,
+                    "target": target,
+                    "rule": rule,
+                },
+            )
+            if capability_requested is not None:
+                await self._provenance.edge(
+                    session_id=from_session,
+                    from_node_id=capability_node_id(capability_requested.audit_id),
+                    to_node_id=request_node_id,
+                    kind="approval_authority",
+                    event_audit_id=event.audit_id,
+                )
         matched = self.patterns.find_match(request)
         if matched is not None:
             self.patterns.increment_use(matched.id)
@@ -457,16 +485,35 @@ class ApprovalQueue:
         )
         self._requests[request_id] = updated
         if self._audit:
-            await self._audit.write(
-                Event(
-                    event_type=EventType.APPROVAL_APPROVED,
-                    session_id=request.from_session,
-                    payload={
-                        "approval_id": request_id,
-                        "decided_by": decided_by,
-                        "decision_scope": scope,
-                    },
-                ),
+            event = Event(
+                event_type=EventType.APPROVAL_APPROVED,
+                session_id=request.from_session,
+                payload={
+                    "approval_id": request_id,
+                    "decided_by": decided_by,
+                    "decision_scope": scope,
+                },
+            )
+            await self._audit.write(event)
+            decision_node_id = approval_decision_node_id(event.audit_id)
+            await self._provenance.node(
+                session_id=request.from_session,
+                node_id=decision_node_id,
+                kind="approval_decision",
+                materialized_id=f"approval:{request_id}:approved",
+                event_audit_id=event.audit_id,
+                metadata={
+                    "approval_id": request_id,
+                    "status": "approved",
+                    "decided_by": decided_by,
+                },
+            )
+            await self._provenance.edge(
+                session_id=request.from_session,
+                from_node_id=approval_request_node_id(request_id),
+                to_node_id=decision_node_id,
+                kind="decided",
+                event_audit_id=event.audit_id,
             )
         return updated
 
@@ -491,16 +538,36 @@ class ApprovalQueue:
         )
         self._requests[request_id] = updated
         if self._audit:
-            await self._audit.write(
-                Event(
-                    event_type=EventType.APPROVAL_DENIED,
-                    session_id=request.from_session,
-                    payload={
-                        "approval_id": request_id,
-                        "decided_by": decided_by,
-                        "reason": reason,
-                    },
-                ),
+            event = Event(
+                event_type=EventType.APPROVAL_DENIED,
+                session_id=request.from_session,
+                payload={
+                    "approval_id": request_id,
+                    "decided_by": decided_by,
+                    "reason": reason,
+                },
+            )
+            await self._audit.write(event)
+            decision_node_id = approval_decision_node_id(event.audit_id)
+            await self._provenance.node(
+                session_id=request.from_session,
+                node_id=decision_node_id,
+                kind="approval_decision",
+                materialized_id=f"approval:{request_id}:denied",
+                event_audit_id=event.audit_id,
+                metadata={
+                    "approval_id": request_id,
+                    "status": "denied",
+                    "decided_by": decided_by,
+                    "reason": reason,
+                },
+            )
+            await self._provenance.edge(
+                session_id=request.from_session,
+                from_node_id=approval_request_node_id(request_id),
+                to_node_id=decision_node_id,
+                kind="decided",
+                event_audit_id=event.audit_id,
             )
         return updated
 

@@ -33,6 +33,7 @@ from capabledeputy.policy.labels import LabelState
 from capabledeputy.programmatic import (
     dry_run_for_bundle,
     execute_with_approved_bundle,
+    return_value_payload,
 )
 
 
@@ -133,12 +134,7 @@ def make_bundle_handlers(app: App) -> dict[str, Handler]:
             "error": result.error,
             "n_steps": len(result.tool_calls),
             "return_value": (
-                None
-                if result.return_value is None
-                else {
-                    "raw": result.return_value.raw,
-                    "labels": sorted(label.value for label in result.return_value.labels),
-                }
+                None if result.return_value is None else return_value_payload(result.return_value)
             ),
         }
 

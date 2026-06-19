@@ -1,6 +1,6 @@
 # CapableDeputy Demo Scenarios
 
-Twenty-five narrated, executable demos. Each is a pytest-asyncio test
+Twenty-six narrated, executable demos. Each is a pytest-asyncio test
 that exercises one or more security properties of the policy engine.
 For a categorized map of these demos + the 1126-scenario allow/deny
 catalogue + the enforcement suites, see
@@ -30,8 +30,9 @@ about to be demonstrated before reading the steps.
 | 2 | `override_workflow` | FR-036 single-use, distinct-attester grants — full FSM |
 | 3 | `risk_dial` | FR-030 / SC-010 envelope dial + hard-floor invariant |
 | 7 | `optimistic_burn` | FR-034 carve-out boundary (reversible/system + non-egressing) |
-| 23 | `bulk_approval_grouped` | Approval bundle — program-hash-pinned re-execution |
-| 24 | `data_blind_disclosure` | Pattern ③ ReferenceHandle structural invariants |
+| 24 | `bulk_approval_grouped` | Approval bundle — program-hash-pinned re-execution |
+| 25 | `data_blind_disclosure` | Pattern ③ ReferenceHandle structural invariants |
+| 26 | `flow_pattern_workflows` | 25 practical workflows: five for each LLM flow pattern |
 
 ### Clearance / profile / Brewer-Nash
 
@@ -70,7 +71,8 @@ about to be demonstrated before reading the steps.
 | 19 | `journal_daily` | fs + tasks + memory.delete override |
 | 20 | `email_drafting_workflow` | Drafts (non-egressing) → send refused → override → sent |
 | 21 | `expense_categorization` | Receipts → Pattern ② inspect → Pattern ③ handle → financial override |
-| 22 | `travel_booking` | Trip = 4 purchases. One-at-a-time vs. bundle |
+| 22 | `financial_integrity_biba` | Trusted bank sync updates ledger; emailed statement refused; ratified update allowed |
+| 23 | `travel_booking` | Trip = 4 purchases. One-at-a-time vs. bundle |
 
 ### Reading the output
 

@@ -96,6 +96,53 @@ return note
     assert "program returned" in result.content
 
 
+async def test_programmatic_loop_redacts_labeled_return_value(tmp_path: Path) -> None:
+    app = App(
+        state_db_path=tmp_path / "state.db",
+        audit_log_path=tmp_path / "audit.jsonl",
+        llm_client=FakeLLMClient([]),
+    )
+    await app.startup()
+    s = await app.graph.new(intent="programmatic labeled return test")
+    cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
+    app.memory.write(
+        "labs",
+        "BP=120/80",
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            ),
+        ),
+    )
+
+    program = """\
+```python
+note = call("memory.read", key="labs")
+return note
+```
+"""
+    app.llm_client = FakeLLMClient(
+        [LLMResponse(content=program, finish_reason=FinishReason.STOP)],
+    )
+
+    result = await run_programmatic_turn(
+        session_id=s.id,
+        user_message="read labs",
+        llm=app.llm_client,
+        tool_client=app.tool_client,
+        registry=app.registry,
+        graph=app.graph,
+        audit=app.audit,
+    )
+
+    assert len(result.tool_outcomes) == 1
+    assert result.tool_outcomes[0].decision.value == "allow"
+    assert "BP=120/80" not in result.content
+    assert "raw value withheld" in result.content
+    assert "health:regulated" in result.content
+
+
 async def test_programmatic_loop_no_code_block_falls_through(tmp_path: Path) -> None:
     """A response with no code block is treated as a final answer."""
     app = App(

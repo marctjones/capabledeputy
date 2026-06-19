@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
@@ -30,6 +30,12 @@ from capabledeputy.policy.overrides import (
 )
 from capabledeputy.policy.reversibility import ReversibilityLabel
 from capabledeputy.policy.rules import Decision
+from capabledeputy.provenance import (
+    ProvenanceRecorder,
+    capability_node_id,
+    stable_digest,
+    tool_result_node_id,
+)
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.policy_hooks import ToolPolicyHooks
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolRegistry
@@ -116,6 +122,33 @@ def build_policy_decided_payload(
         payload["axis_d"] = decision.axis_d_snapshot.to_dict()
     if decision.effect_class is not None:
         payload["effect_class"] = decision.effect_class
+    payload["policy_trace"] = {
+        "tool": tool_name,
+        "args": args,
+        "decision": decision.decision.value,
+        "rule": decision.rule,
+        "matched_capability_audit_id": (
+            str(decision.matched_capability.audit_id)
+            if decision.matched_capability is not None
+            else None
+        ),
+        "matched_capability_kind": (
+            str(decision.matched_capability.kind.value)
+            if decision.matched_capability is not None
+            and hasattr(decision.matched_capability.kind, "value")
+            else (
+                str(decision.matched_capability.kind)
+                if decision.matched_capability is not None
+                else None
+            )
+        ),
+        "matched_capability_pattern": (
+            decision.matched_capability.pattern if decision.matched_capability is not None else None
+        ),
+        "effect_class": decision.effect_class,
+        "v2_outcome": decision.v2_outcome.value if decision.v2_outcome else None,
+        "v2_matched_rule_ids": list(decision.v2_matched_rule_ids),
+    }
     return payload
 
 
@@ -193,6 +226,7 @@ class LabeledToolClient:
         # absent, dispatch uses the base capability decision path.
         self._policy_context = policy_context
         self._source_flow = ToolSourceFlow(policy_context=policy_context, audit=audit)
+        self._provenance = ProvenanceRecorder(audit)
         self._policy_hooks = ToolPolicyHooks(
             policy_context=policy_context,
             audit=audit,
@@ -432,7 +466,11 @@ class LabeledToolClient:
         # value. Emits pattern3.handle_bind with the canonical
         # destination id (FR-047). Skipped when policy_context.handle_store
         # is None or the tool doesn't accept handles.
-        bound_args, bound_source_tags = await self._source_flow.bind_reference_handles(
+        (
+            bound_args,
+            bound_source_tags,
+            reference_parent_nodes,
+        ) = await self._source_flow.bind_reference_handles(
             session_id=session_id,
             tool=tool,
             tool_name=tool_name,
@@ -449,13 +487,13 @@ class LabeledToolClient:
                 tool_args=args,
             )
 
-        await self._audit.write(
-            Event(
-                event_type=EventType.TOOL_RETURNED,
-                session_id=session_id,
-                payload={"tool": tool_name, "output": result.output},
-            ),
+        tool_returned_event = Event(
+            audit_id=uuid4(),
+            event_type=EventType.TOOL_RETURNED,
+            session_id=session_id,
+            payload={"tool": tool_name, "output": result.output},
         )
+        await self._audit.write(tool_returned_event)
 
         # FR-025 raise-only inspector hook. Inspectors examine the
         # returned value + current label_state and may return a delta.
@@ -546,6 +584,57 @@ class LabeledToolClient:
                         },
                     ),
                 )
+
+        tool_node_id = tool_result_node_id(tool_returned_event.audit_id)
+        await self._provenance.node(
+            session_id=session_id,
+            node_id=tool_node_id,
+            kind="tool_result",
+            materialized_id=f"tool:{tool_name}:{tool_returned_event.audit_id}",
+            label_state=tags_to_add,
+            event_audit_id=tool_returned_event.audit_id,
+            metadata={
+                "tool": tool_name,
+                "target": str(action.target),
+                "output_digest": stable_digest(result.output),
+            },
+        )
+        if matched is not None:
+            cap_node_id = capability_node_id(matched.audit_id)
+            await self._provenance.node(
+                session_id=session_id,
+                node_id=cap_node_id,
+                kind="capability",
+                materialized_id=f"capability:{matched.audit_id}",
+                metadata={
+                    "kind": (
+                        matched.kind.value if hasattr(matched.kind, "value") else str(matched.kind)
+                    ),
+                    "pattern": matched.pattern,
+                    "origin": matched.origin.value,
+                },
+            )
+            await self._provenance.edge(
+                session_id=session_id,
+                from_node_id=cap_node_id,
+                to_node_id=tool_node_id,
+                kind="authorized",
+                event_audit_id=tool_returned_event.audit_id,
+            )
+        for parent_node_id in reference_parent_nodes:
+            await self._provenance.node(
+                session_id=session_id,
+                node_id=parent_node_id,
+                kind="reference_handle",
+                materialized_id=parent_node_id,
+            )
+            await self._provenance.edge(
+                session_id=session_id,
+                from_node_id=parent_node_id,
+                to_node_id=tool_node_id,
+                kind="input",
+                event_audit_id=tool_returned_event.audit_id,
+            )
 
         return ToolCallOutcome(
             decision=Decision.ALLOW,

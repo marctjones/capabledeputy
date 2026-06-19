@@ -16,9 +16,8 @@ from capabledeputy.tools.client import build_policy_decided_payload
 
 
 def test_payload_omits_v2_fields_when_v2_did_not_run() -> None:
-    """Back-compat: a legacy-only decision must not introduce new
-    keys in the audit event payload. Pre-Phase-4 traces stay
-    bit-identical so log consumers don't see surprise fields."""
+    """A legacy-only decision omits v2 fields but still carries the
+    replayable policy_trace envelope."""
     decision = PolicyDecision(
         decision=Decision.ALLOW,
         rule=None,
@@ -28,6 +27,8 @@ def test_payload_omits_v2_fields_when_v2_did_not_run() -> None:
     assert "v2_outcome" not in payload
     assert "v2_matched_rule_ids" not in payload
     assert payload["decision"] == "allow"
+    assert payload["policy_trace"]["tool"] == "fs.read"
+    assert payload["policy_trace"]["decision"] == "allow"
 
 
 def test_payload_includes_v2_fields_when_v2_ran() -> None:
@@ -46,6 +47,7 @@ def test_payload_includes_v2_fields_when_v2_ran() -> None:
     assert payload["v2_matched_rule_ids"] == []
     assert payload["decision"] == "require_approval"
     assert payload["rule"] == "v2:default"
+    assert payload["policy_trace"]["v2_outcome"] == "suggest"
 
 
 def test_payload_includes_matched_rule_ids() -> None:

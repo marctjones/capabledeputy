@@ -8,7 +8,7 @@ A categorized map of every workflow CapableDeputy demonstrates and tests —
 the things people actually use a personal AI assistant for, and how the
 policy engine responds (allow / require-approval / deny). Three surfaces:
 
-- **Narrated demos** (`demos/scenarios/`, 25) — operator-facing
+- **Narrated demos** (`demos/scenarios/`, 26) — operator-facing
   USER/AI/TOOL/POLICY transcripts. Run:
   `uv run pytest demos/scenarios/run_all.py --no-cov -s`
 - **Scenario catalogue** (`scripts/policy_assistant.py`, 1126) — the broad
@@ -23,7 +23,8 @@ email, purchase, or calendar side effects.**
 **Legend** — outcome: ✓ allow · ? require-approval · ✗ deny.
 Mechanisms: BLP (Bell-LaPadula) · Biba · BN (Brewer-Nash) · CW
 (Clark-Wilson) · OCap (object-capability) · IFC (Denning information flow).
-Flow patterns: ① turn-level · ② dual-LLM · ③ reference-handle · ⑤ sealed.
+Flow patterns: ① turn-level · ② dual-LLM · ③ reference-handle ·
+④ programmatic · ⑤ sealed.
 
 ---
 
@@ -48,6 +49,7 @@ Flow patterns: ① turn-level · ② dual-LLM · ③ reference-handle · ⑤ sea
 | Demo | What it shows | Mechanisms |
 |---|---|---|
 | `expense_categorization` | receipts → report → submit (financial taint) | raise-only inspector + BN |
+| `financial_integrity_biba` | trusted bank sync updates ledger; emailed statement denied; ratified update allowed | Biba + CW |
 | `travel_booking` | one-at-a-time vs. bundled approvals | ① CW (approval bundles) |
 | `bulk_approval_grouped` | one prompt, many gates | CW separation-of-duty |
 
@@ -81,6 +83,7 @@ Flow patterns: ① turn-level · ② dual-LLM · ③ reference-handle · ⑤ sea
 | `optimistic_burn` | reversible/system + non-egressing → AUTO-allow | reversibility (FR-044) |
 | `override_workflow` | dual-control + single-use override | CW dual-control (FR-036) |
 | `multi_session_handoff` | taint travels along a session fork | IFC (sticky labels) |
+| `flow_pattern_workflows` | five practical workflows for each of the five LLM flow patterns | ①②③④⑤ |
 
 ---
 
@@ -131,17 +134,21 @@ Run in the default test suite via `tests/test_policy_scripts.py`.
 - **Bell-LaPadula (confidentiality):** clinical_records_research,
   hr_data_handling, compliance_review_workflow, local_doc_drafting,
   morning_assistant + every health/financial scenario.
+- **Biba (integrity):** financial_integrity_biba, flow_pattern_workflows,
+  and the integrity-floor rule cases.
 - **Brewer-Nash (conflict):** task_compartments, clinical_records_research,
   expense_categorization + the financial/health-meets-egress scenarios.
 - **Clark-Wilson (gated transactions / approval):** override_workflow,
-  bulk_approval_grouped, travel_booking, task_lifecycle, journal_daily.
+  bulk_approval_grouped, travel_booking, financial_integrity_biba,
+  task_lifecycle, journal_daily.
 - **Object-capability (confused-deputy):** the no-capability /
   out-of-scope negatives, morning_assistant.
 - **IFC / sticky labels:** prompt_injection_defense, secure_inbox_triage,
   multi_session_handoff, calendar_with_invites, local_doc_qa.
-- **Flow patterns:** ② daily_briefing / prompt_injection_defense /
-  secure_inbox_triage / news_briefing; ③ data_blind_disclosure /
-  secure_inbox_triage; envelope dial risk_dial / dial_assisted_research /
-  news_briefing.
+- **Flow patterns:** ① flow_pattern_workflows / local_doc_qa /
+  calendar_with_invites; ② flow_pattern_workflows / daily_briefing /
+  prompt_injection_defense / secure_inbox_triage / news_briefing; ③
+  flow_pattern_workflows / data_blind_disclosure / secure_inbox_triage; ④
+  flow_pattern_workflows / bulk_approval_grouped; ⑤ flow_pattern_workflows.
 - **Decision-inspector layer (Starlark):** policy_inspectors (relax /
   tighten / bounded-floor / relationship-aware).

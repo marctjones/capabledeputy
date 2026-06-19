@@ -6,7 +6,7 @@ Run with:
 The -s is what makes the narration visible. The driver invokes each
 demo with a 'DEMO i / N' banner so a long run is easy to scan.
 
-The 24 demos are organized by what they emphasize:
+The 26 demos are organized by what they emphasize:
 
   Single-mechanism demos
     Exercise one security model or flow pattern cleanly so the
@@ -37,6 +37,8 @@ from demos.scenarios.data_blind_disclosure import test_data_blind_disclosure_dem
 from demos.scenarios.dial_assisted_research import test_dial_assisted_research_demo
 from demos.scenarios.email_drafting_workflow import test_email_drafting_workflow_demo
 from demos.scenarios.expense_categorization import test_expense_categorization_demo
+from demos.scenarios.financial_integrity_biba import test_financial_integrity_biba_demo
+from demos.scenarios.flow_pattern_workflows import test_flow_pattern_workflows_demo
 from demos.scenarios.hr_data_handling import test_hr_data_handling_demo
 from demos.scenarios.journal_daily import test_journal_daily_demo
 from demos.scenarios.local_doc_drafting import test_local_doc_drafting_demo
@@ -80,10 +82,12 @@ _RUN_ORDER: tuple[tuple[str, Any], ...] = (
     ("Journal Daily", test_journal_daily_demo),
     ("Email Drafting Workflow", test_email_drafting_workflow_demo),
     ("Expense Categorization", test_expense_categorization_demo),
+    ("Financial Integrity Biba", test_financial_integrity_biba_demo),
     ("Travel Booking", test_travel_booking_demo),
     ("Bulk Approval Grouped", test_bulk_approval_demo),
     # Structural-invariant demo
     ("Data-Blind Disclosure", test_data_blind_disclosure_demo),
+    ("Flow Pattern Workflows", test_flow_pattern_workflows_demo),
 )
 
 

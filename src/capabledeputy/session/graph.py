@@ -31,6 +31,7 @@ from capabledeputy.policy.purposes import (
     Purposes,
     categories_of_capability,
 )
+from capabledeputy.provenance import ProvenanceRecorder, capability_node_id
 from capabledeputy.session.model import Session, SessionStatus, Turn
 from capabledeputy.session.store import SessionStore
 
@@ -94,6 +95,7 @@ class SessionGraph:
     ) -> None:
         self._sessions: dict[UUID, Session] = {}
         self._audit = audit
+        self._provenance = ProvenanceRecorder(audit)
         self._store = store
         self._purposes = purposes
         # True when App.quarantined_llm is wired. Used by .new() to
@@ -556,6 +558,29 @@ class SessionGraph:
                     },
                 ),
             )
+        else:
+            _kind_str = (
+                _kind_name_of(capability.kind)
+                if hasattr(capability.kind, "value")
+                else str(capability.kind)
+            )
+        await self._provenance.node(
+            session_id=session_id,
+            node_id=capability_node_id(capability.audit_id),
+            kind="capability",
+            materialized_id=f"capability:{capability.audit_id}",
+            metadata={
+                "kind": _kind_str,
+                "pattern": capability.pattern,
+                "expiry": capability.expiry.value,
+                "origin": capability.origin.value,
+                "parent_audit_id": (
+                    str(capability.parent_audit_id)
+                    if capability.parent_audit_id is not None
+                    else None
+                ),
+            },
+        )
         return updated
 
     async def revoke_capability(
@@ -703,6 +728,17 @@ class SessionGraph:
             child_audit_id=str(result.audit_id),
             kind=_kind_name_of(result.kind),
             depth=result.depth,
+        )
+        await self._provenance.edge(
+            session_id=child_session_id,
+            from_node_id=capability_node_id(live[0].audit_id),
+            to_node_id=capability_node_id(result.audit_id),
+            kind="delegated",
+            metadata={
+                "parent_session": str(parent_session_id),
+                "child_session": str(child_session_id),
+                "depth": result.depth,
+            },
         )
         return result
 

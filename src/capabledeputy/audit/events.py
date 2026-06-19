@@ -83,6 +83,8 @@ class EventType(StrEnum):
     LABEL_PROPAGATED = "label.propagated"
     CAPABILITY_CHECKED = "capability.checked"
     CAPABILITY_GRANTED = "capability.granted"
+    PROVENANCE_NODE = "provenance.node"
+    PROVENANCE_EDGE = "provenance.edge"
 
     # 002 capability delegation chains.
     DELEGATION_GRANTED = "delegation.granted"

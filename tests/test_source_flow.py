@@ -105,7 +105,7 @@ async def test_bind_reference_handles_recurses_and_audits_nested_paths(tmp_path)
         audit=writer,
     )
 
-    bound_args, bound_tags = await flow.bind_reference_handles(
+    bound_args, bound_tags, bound_nodes = await flow.bind_reference_handles(
         session_id=session_id,
         tool=_tool(
             accepts_handles=True,
@@ -119,6 +119,7 @@ async def test_bind_reference_handles_recurses_and_audits_nested_paths(tmp_path)
     assert CategoryTag("health", Tier.RESTRICTED, assignment_provenance="source-declared") in (
         bound_tags.a
     )
+    assert bound_nodes == (f"reference_handle:{handle.id}",)
     events = await writer.read_all()
     bind = next(event for event in events if event.event_type == EventType.PATTERN3_HANDLE_BIND)
     assert bind.payload["arg_name"] == "inputs.stdin[0]"

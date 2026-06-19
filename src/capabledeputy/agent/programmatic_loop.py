@@ -32,6 +32,7 @@ from capabledeputy.policy.labels import LabelState
 from capabledeputy.policy.rules import Decision
 from capabledeputy.programmatic import (
     ProgramSyntaxError,
+    format_return_value_for_planner,
     run_program_against_session,
 )
 from capabledeputy.programmatic.evaluator import ToolCallRecord
@@ -238,7 +239,9 @@ async def run_programmatic_turn(
     if result.error is not None:
         final_content = f"{response.content}\n\n[execution halted: {result.error}]"
     elif result.return_value is not None:
-        final_content = f"{response.content}\n\n[program returned: {result.return_value.raw!r}]"
+        final_content = (
+            f"{response.content}\n\n{format_return_value_for_planner(result.return_value)}"
+        )
 
     return AgentTurnResult(
         content=final_content,

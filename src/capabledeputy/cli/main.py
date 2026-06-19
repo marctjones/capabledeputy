@@ -803,8 +803,19 @@ def run_command(
 
     if result.get("return_value"):
         rv = result["return_value"]
-        labels = ",".join(rv["labels"]) or "-"
-        console.print(f"[bold]return:[/bold] {rv['raw']!r} [dim](labels={labels})[/dim]")
+        label_payload = rv.get("labels") or {}
+        axis_a = ",".join(label_payload.get("axis_a", [])) or "-"
+        axis_b = ",".join(label_payload.get("axis_b", [])) or "-"
+        if rv.get("redacted"):
+            console.print(
+                "[bold]return:[/bold] <redacted labeled value> "
+                f"[dim](axis_a={axis_a}; axis_b={axis_b})[/dim]",
+            )
+        else:
+            console.print(
+                f"[bold]return:[/bold] {rv.get('raw')!r} "
+                f"[dim](axis_a={axis_a}; axis_b={axis_b})[/dim]",
+            )
     console.print(f"[green]ok[/green] — {len(result['tool_calls'])} call(s) executed")
 
 

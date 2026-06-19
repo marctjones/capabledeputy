@@ -39,6 +39,7 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         "policy",
         "label",
         "capability",
+        "provenance",
         "tool",
         "approval",
         "delegation",  # 002 capability delegation chains
@@ -93,6 +94,8 @@ def test_event_type_taxonomy_matches_design() -> None:
         "label.propagated",
         "capability.checked",
         "capability.granted",
+        "provenance.node",
+        "provenance.edge",
         "tool.dispatched",
         "tool.returned",
         "approval.requested",

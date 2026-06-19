@@ -16,7 +16,7 @@ remain the detail.
 
 | Model | Property class | One line |
 |---|---|---|
-| **Reference Monitor** (Anderson 1972) | Assurance | A mediation point that is always-invoked, tamperproof, and small enough to verify. |
+| **Policy Chokepoint / Reference Monitor** (Anderson 1972) | Assurance | A mediation point that is always-invoked, tamperproof, and small enough to verify. |
 | **Lattice information flow** (Denning 1976) | Flow | Data carries labels in a partial order; information may only flow "upward." |
 | **Bell-LaPadula** | Confidentiality | No read-up / no write-down — secrets cannot flow down. |
 | **Biba** | Integrity | Dual of BLP — low-integrity data cannot corrupt high. |
@@ -24,20 +24,20 @@ remain the detail.
 | **Brewer-Nash / Chinese Wall** | Conflict of interest | Access to one dataset forbids access to a conflicting one. |
 | **Clark-Wilson** | Integrity / transactions | State changes only via certified well-formed transactions with separation of duty. |
 | **Object-capability** (Dennis–Van Horn; Miller) | Authority | Authority is an unforgeable, scoped, attenuable reference; no ambient authority. |
-| **Access-matrix / HRU** (Lampson; Harrison-Ruzzo-Ullman) | Authority | Rights are a subject×object×right relation; the decision is a function of it. |
-| **Gold Standard** (Lampson) | Accountability | Authenticate, Authorize, **Audit** — audit is a co-equal security property: every decision is answerable and reconstructible. |
-| **Provenance security** (Cheney et al.; secure-provenance) | Lineage | The where/why/how of every value and authority is recorded, immutable, non-repudiable — flow is explainable by its dependency graph. |
+| **Access-Matrix-Style Decision Function** (Lampson lineage; not general HRU safety) | Authority | Rights are evaluated as a subject×object×right relation plus CapDep labels, capabilities, clock, and prior-use constraints. |
+| **Replayable AAA Audit** (Lampson) | Accountability | Authenticate, Authorize, **Audit** — audit is a co-equal security property: every decision is answerable and reconstructible. |
+| **Materialized Provenance DAG** (Cheney et al.; secure-provenance lineage) | Lineage | Materialized values and authorities record where they came from and which audited transition produced them. |
 
 ## Mechanism → model → implementation → deliberate deviation
 
 | Our mechanism | Model(s) | Constitution | Deliberate deviation |
 |---|---|---|---|
-| Deterministic `decide()` chokepoint | **Reference Monitor** | I | Always-invoked + small + verifiable are met; "tamperproof" extends to *LLM-isolation* (the model is an untrusted subject outside the TCB) — a stronger axiom than the classical model. |
+| Deterministic `decide()` chokepoint | **Policy Chokepoint / Reference Monitor** | I | Always-invoked + small + verifiable are met; "tamperproof" extends to *LLM-isolation* (the model is an untrusted subject outside the TCB) — a stronger axiom than the classical model. |
 | Information-flow labels | **Denning lattice**; BLP/Biba in spirit | II | Labels are an **open set with conflict rules**, not a fixed total-order lattice; flow is enforced as **dynamic session taint propagation**, not static subject clearances / object levels. |
 | Brewer-Nash conflict rules | **Brewer-Nash** | II | Conflicts are declarative trigger×conflict label pairs evaluated per-session; not per-user dataset history. |
 | "No silent egress of tainted data" | **Noninterference** | I, II | Achieved by construction at the chokepoint **plus declassification escape hatches** → this is *intransitive* noninterference (controlled declassification), not pure NI. Encoded in `spec/CapableDeputy.tla`. |
 | Capabilities (kind+pattern+amount, unforgeable, per-session) | **Object-capability** | IV | Control-plane (grant/approve/revoke) is deliberately **user-driven, model-unreachable** — stricter than classical ocap, where any holder may delegate. |
-| Decision = f(labels, capabilities, action, clock, prior-use) | **Access-matrix / HRU** | I | Not identity/role ACL (RBAC/ABAC); the "matrix" is capability + information-flow state, evaluated as a pure function. |
+| Decision = f(labels, capabilities, action, clock, prior-use) | **Access-Matrix-Style Decision Function** | I | Not identity/role ACL (RBAC/ABAC), and not a claim to solve general HRU safety. The decision row is capability + information-flow state, evaluated as a pure function. |
 | Destructive-op gate + approvals | **Clark-Wilson** | V | Gated dispatch = the well-formed transaction; human verbatim approval = separation of duty / IVP. We do **not** formalize full CW UDI/CDI/TP/IVP triples. |
 | Human-in-the-loop approval state machine | **Clark-Wilson** (sep. of duty) | V | The authorizer is a human; the model (LLM) is structurally excluded — an added constraint beyond CW. |
 | Ratification Authorization state machine (003 Q3, FR-014/036) | **Clark-Wilson** (sep. of duty) | V | Per-severity `{single-authorized \| dual-control}` for label/profile/rule changes via the suggest→ratify→apply path. Reuses the Override Policy FSM shape but is distinct: ratifications are persistent (no expires_at), overrides are time-boxed. AI principals are structurally refused at request time (case-insensitive `ai-` prefix). |
@@ -47,7 +47,7 @@ remain the detail.
 | Per-tenant label spaces | **Lattice compartments** | II | Additive scoping of the same conflict engine; no cross-tenant lattice join. |
 | Container isolation / federation signing / append-only audit | Defense-in-depth & **Reference-Monitor assurance** | Sec. Constraints | Supporting assurance, not a confidentiality/integrity model; audit gives the "verifiable" leg of the reference monitor. |
 | Disposable, egress-free isolation as the *preferred execution posture* (contained ⇒ reversible-by-construction) | **Reference-Monitor assurance** + reversibility/optimistic-execution decision layer | VI, VII | Elevates container isolation from mere defense-in-depth to the default compute substrate: a fully-contained, egress-free region makes a large class of work reversible (rollback = discard the region), maximizing safe autonomous action. **Deliberate caveat (Principle VIII):** containment is *not* a Noninterference declassifier — a contained step's output retains its source sensitivity labels; only the certified declassifiers (dual-LLM schema, human one-shot) downgrade. Reading "sandboxed ⇒ declassified / safe to send" is a reviewable defect. Rule in `specs/003` (FR-040/041/042); `SandboxActuator`/`EXECUTE.sandbox` impl deferred to spec 004. |
-| Append-only audit + `decide()` as a pure function of fully-logged inputs (replayable decision record); taint + single-parent delegation tree as a provenance graph | **Gold Standard (Audit)**; **Provenance security** | Sec. Constraints, VIII | Explanation is **complete for the control-plane decision/flow, deliberately silent on model cognition** (interpretability is out of scope by design — trusting the model is what the architecture refuses); single-parent **tree, not full DAG**; model self-narrated "reasoning" is NOT logged as explanation (confabulation risk). |
+| Append-only audit + `policy_trace` as a replayable decision record; explicit `provenance.node` / `provenance.edge` events for materialized values and authority transitions | **Replayable AAA Audit**; **Materialized Provenance DAG** | Sec. Constraints, VIII | Explanation is **complete for the control-plane decision/flow, deliberately silent on model cognition** (interpretability is out of scope by design — trusting the model is what the architecture refuses). The DAG is bounded to CapDep materialization boundaries, not every token or hidden model influence. |
 | Fail-closed admission & undecidable-subset refusal | (cross-cutting) | VI | Where a model's check is undecidable (glob⊆glob) or unmapped, we take the **most-restrictive** action — a conservative *approximation* of the model, never a permissive one. |
 
 ## Global deliberate deviations (the framing, stated once)
@@ -62,7 +62,8 @@ remain the detail.
    NI, explicitly bounded.
 3. **LLM-isolation as an added axiom.** No classical model anticipates
    an untrusted optimizer inside the workflow; we treat the model as a
-   subject permanently outside the TCB (strengthens Reference Monitor).
+   subject permanently outside the TCB (strengthens the Policy Chokepoint /
+   Reference Monitor).
 4. **Fail-closed approximation.** When a model's relation is
    undecidable or unknown, we under-approximate authority (refuse), per
    Constitution VI — never over-approximate.
@@ -82,7 +83,7 @@ effort on a Not-Pursued model.**
 These are faithful *and* the most practical in real use; they MUST NOT
 be weakened to advance a lesser model.
 
-- **Reference Monitor** — the deterministic chokepoint is a faithful
+- **Policy Chokepoint / Reference Monitor** — the deterministic chokepoint is a faithful
   reference monitor (always-invoked, tamperproof via LLM-isolation,
   small/verifiable). Non-negotiable backbone.
 - **Object-capability** — unforgeable, scoped, attenuable authority; no
@@ -97,11 +98,11 @@ be weakened to advance a lesser model.
   path (the full formalism is Not-Pursued, below — these are distinct).
 - **Brewer-Nash** — conflict-rule engine; faithful and practical for
   multi-tenant / conflict-of-interest.
-- **Accountability (Lampson Gold Standard — Audit)** — append-only
-  audit + `decide()` as a pure function of fully-logged inputs makes
-  every control-plane decision *replayable and answerable*. Faithful,
-  and the basis of decision/flow explainability. Boundary: it explains
-  the *decision and the flow*, never model cognition (the latter is a
+- **Replayable AAA Audit** — append-only audit + `policy_trace` +
+  `decide()` as a pure function of fully-logged inputs makes every
+  control-plane decision *replayable and answerable*. Faithful, and the
+  basis of decision/flow explainability. Boundary: it explains the
+  *decision and the flow*, never model cognition (the latter is a
   deliberate non-goal, below).
 
 ### Approximate — the approximation *is* the goal
@@ -126,12 +127,13 @@ we design to, not a shortfall to keep closing.
   Biba (integrity clearances + "no read-down"); the confidentiality
   tiers do not address integrity — this is the most under-served model
   and the easiest to wrongly assume covered.
-- **Provenance security → single-parent provenance.** Goal: an
-  immutable, complete lineage for every value/authority (taint +
-  delegation graph). We target a **single-parent tree, not a full
-  DAG** (auditability over generality — the v0.8 delegation deviation);
-  lineage *completeness* is contingent on Reference-Monitor totality.
-  Full multi-parent provenance DAG is Not-Pursued.
+- **Materialized Provenance DAG → bounded DAG.** Goal: immutable,
+  complete lineage for materialized CapDep values/authority: tool
+  results, reference-handle binds, declassifier outputs, approvals,
+  capability grants, and delegation edges. This is a DAG at security
+  boundaries, not a graph of every prompt token or model-internal
+  influence; lineage completeness is contingent on Policy Chokepoint /
+  Reference Monitor totality.
 
 ### Not Pursued — explicit non-goals (do not attempt)
 
@@ -157,6 +159,9 @@ their absence as a defect:
   Decision/flow explainability (Priority, above) is the substitute; a
   model's self-narrated "reasoning" MUST NOT be logged as if it were
   that explanation (confabulation risk).
+- **Token-level or cognition-level provenance DAG** — materialized
+  provenance is in scope; reconstructing every hidden model influence is
+  not objectively observable and would create false assurance.
 
 ### Salvageable as isolated modes (candidate, scoped — not global)
 
@@ -192,12 +197,12 @@ above) — no multistep trick changes this.
    the dispatcher derives `clearance_max_tier` from the session's profile
    (`tools/client.py`); tested (`tests/policy/test_max_tier_clearance.py`).
    *Dynamic BLP* is enforced when a profile declares `max_tier`.
-2. **First-class flow-pattern ③ / sealed-effect** — partial. ③
+2. **First-class flow-pattern ③ / sealed-effect** — ✅ **delivered.** ③
    `ReferenceHandle` shipped (`patterns/reference_handle.py`) and ⑤ sealed
-   isolation shipped (`substrate/sandbox_actuator.py`); the *dispatcher
-   wiring* of ③ + the `select_mode` REFERENCE/SEALED floor for `restricted`
-   remain (003 tasks T104/T105). Until wired, `restricted` true-NI is not
-   auto-selected.
+   isolation shipped (`substrate/sandbox_actuator.py`). The dispatcher now
+   floors `restricted` sessions to REFERENCE when a handle-consuming tool is
+   visible to the current session, otherwise SEALED when a sandbox actuator
+   and visible sandbox tool are present; neither path available fails closed.
 3. **Integrity floor + "no read-down"** — ✅ **delivered.** Biba-direction
    refusal (FR-004): `policy/engine.py` + `policy/resolution.py`
    (`IntegrityFloorError`); tested (`tests/policy/test_integrity_floor.py`).
@@ -219,11 +224,12 @@ above) — no multistep trick changes this.
   InfoSec/Privacy/AI-governance concern each in-scope mechanism serves
   and what is deliberately cut. It depends on this map and must never
   substitute for the Priority/Approximate/Not-Pursued classification.
-- Applied companion: `docs/llm-flow-patterns.md` — the four
+- Applied companion: `docs/llm-flow-patterns.md` — the five
   operational patterns for how a planner LLM relates to labeled data
   (taint-tracking = the Denning row above; quarantine / reference-
-  substitution / code-mediated = the noninterference *declassification*
-  rows). New flow patterns are tracked there and cross-link here.
+  substitution / code-mediated / sealed isolation = the noninterference
+  *declassification* and containment rows). New flow patterns are tracked
+  there and cross-link here.
 - Decision-layer companion: `docs/trust-model.md` — when/whether an
   action proceeds and who authorizes it. It extends two rows here:
   **Brewer-Nash** → purpose-as-category-admissibility (purpose-scoped

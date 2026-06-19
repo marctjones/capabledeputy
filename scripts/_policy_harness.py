@@ -23,8 +23,9 @@ from capabledeputy.app import App
 from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
-from capabledeputy.policy.capabilities import Capability
+from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import tags_for_labels_strings
+from capabledeputy.policy.tiers import Tier
 
 
 def tc(call_id: str, name: str, **args: object) -> ToolCall:
@@ -157,27 +158,33 @@ async def run_scenario(sc: Scenario) -> list[str]:
         # Pattern ③/⑤ mode or the per-turn select_mode fails closed
         # (FR-047). A real restricted session only exists because it
         # passed the spawn-time gate with such a mode available; this
-        # harness seeds label_state out-of-band, bypassing that gate, so
-        # we register an inert handle-aware tool here to stand in for it.
-        # REFERENCE mode runs the normal turn loop (no reversibility
-        # lift), so the engine decisions under test are unchanged.
+        # harness seeds label_state out-of-band, bypassing that gate.
+        # Register an inert handle-aware tool and, only for restricted
+        # harness sessions, grant the otherwise-unused matching cap so
+        # the session-visible mode floor is satisfied. REFERENCE mode
+        # runs the normal turn loop, so engine decisions under test are
+        # unchanged.
         from capabledeputy.policy.effect_class import EffectClass, Operation
-        from capabledeputy.tools.registry import ToolDefinition
+        from capabledeputy.tools.registry import ToolDefinition, ToolResult
 
-        async def _handle_noop(_args: dict) -> dict:
-            return {}
+        async def _handle_noop(_args: dict[str, Any], _context: Any) -> ToolResult:
+            return ToolResult(output={})
 
         app.registry._tools.setdefault(
             "ref.noop",
             ToolDefinition(
                 name="ref.noop",
                 description="inert handle-aware tool (harness FR-047 mode floor)",
-                capability_kind="EXECUTE",
+                capability_kind=CapabilityKind.EXECUTE_SANDBOX,
                 handler=_handle_noop,
                 operations=(Operation(EffectClass.FETCH, subtype="ref.noop"),),
                 risk_ids=("RISK-HEALTH-LEAK",),
                 accepts_handles=True,
                 handle_arg_names=("ref",),
+                parameters_schema={
+                    "type": "object",
+                    "properties": {"ref": {"type": "string"}},
+                },
             ),
         )
 
@@ -186,9 +193,14 @@ async def run_scenario(sc: Scenario) -> list[str]:
 
         s = await app.graph.new(intent=f"harness:{sc.name}")
         seed = tags_for_labels_strings(sc.session_labels)
+        mode_floor_caps = frozenset()
+        if any(tag.tier in {Tier.RESTRICTED, Tier.PROHIBITED} for tag in seed.a):
+            mode_floor_caps = frozenset(
+                {Capability(kind=CapabilityKind.EXECUTE_SANDBOX, pattern="*")},
+            )
         app.graph._sessions[s.id] = replace(
             s,
-            capability_set=sc.caps,
+            capability_set=sc.caps | mode_floor_caps,
             label_state=seed,
         )
 

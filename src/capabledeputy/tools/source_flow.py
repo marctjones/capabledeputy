@@ -17,6 +17,11 @@ from capabledeputy.policy.engine import PolicyDecision
 from capabledeputy.policy.labels import LabelState, most_restrictive_inherit
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
+from capabledeputy.provenance import (
+    ProvenanceRecorder,
+    reference_bind_node_id,
+    reference_handle_node_id,
+)
 from capabledeputy.tools.registry import ToolDefinition
 
 RESTRICTED_SOURCE_FLOW_RULE = "restricted-source-requires-reference-or-sealed"
@@ -39,6 +44,7 @@ class ToolSourceFlow:
     ) -> None:
         self._policy_context = policy_context
         self._audit = audit
+        self._provenance = ProvenanceRecorder(audit)
 
     def extract_source_tags(
         self,
@@ -92,7 +98,7 @@ class ToolSourceFlow:
         tool: ToolDefinition,
         tool_name: str,
         args: dict[str, Any],
-    ) -> tuple[dict[str, Any], LabelState]:
+    ) -> tuple[dict[str, Any], LabelState, tuple[str, ...]]:
         """Substitute Pattern (3) handle ids with real values post-decision."""
         if (
             self._policy_context is None
@@ -100,10 +106,11 @@ class ToolSourceFlow:
             or not tool.accepts_handles
             or not tool.handle_arg_names
         ):
-            return args, LabelState()
+            return args, LabelState(), ()
         store = self._policy_context.handle_store
         substituted: dict[str, Any] = dict(args)
         bound_tags: list[LabelState] = []
+        bound_node_ids: list[str] = []
         dest = self._destination_for_handle_bind(tool=tool, tool_name=tool_name, args=substituted)
 
         async def _bind_value(value: Any, path: str) -> Any:
@@ -127,18 +134,45 @@ class ToolSourceFlow:
                     # handler receives the original token and typically fails
                     # loudly without gaining access to hidden data.
                     return value
-                await self._audit.write(
-                    Event(
-                        audit_id=audit_id,
-                        event_type=EventType.PATTERN3_HANDLE_BIND,
-                        session_id=session_id,
-                        payload={
-                            "handle_id": str(handle_id),
-                            "tool": tool_name,
-                            "arg_name": path,
-                            "destination_canonical_id": dest,
-                        },
-                    ),
+                event = Event(
+                    audit_id=audit_id,
+                    event_type=EventType.PATTERN3_HANDLE_BIND,
+                    session_id=session_id,
+                    payload={
+                        "handle_id": str(handle_id),
+                        "tool": tool_name,
+                        "arg_name": path,
+                        "destination_canonical_id": dest,
+                    },
+                )
+                await self._audit.write(event)
+                bind_node_id = reference_bind_node_id(audit_id)
+                handle_node_id = reference_handle_node_id(handle_id)
+                bound_node_ids.append(handle_node_id)
+                await self._provenance.node(
+                    session_id=session_id,
+                    node_id=handle_node_id,
+                    kind="reference_handle",
+                    materialized_id=f"reference_handle:{handle_id}",
+                )
+                await self._provenance.node(
+                    session_id=session_id,
+                    node_id=bind_node_id,
+                    kind="reference_bind",
+                    materialized_id=f"reference_bind:{audit_id}",
+                    event_audit_id=event.audit_id,
+                    metadata={
+                        "tool": tool_name,
+                        "arg_name": path,
+                        "destination_canonical_id": dest,
+                    },
+                )
+                await self._provenance.edge(
+                    session_id=session_id,
+                    from_node_id=handle_node_id,
+                    to_node_id=bind_node_id,
+                    kind="bound",
+                    event_audit_id=event.audit_id,
                 )
                 return bound
             if isinstance(value, dict):
@@ -157,7 +191,11 @@ class ToolSourceFlow:
             if arg_name in substituted:
                 substituted[arg_name] = await _bind_value(substituted[arg_name], arg_name)
 
-        return substituted, (most_restrictive_inherit(*bound_tags) if bound_tags else LabelState())
+        return (
+            substituted,
+            most_restrictive_inherit(*bound_tags) if bound_tags else LabelState(),
+            tuple(dict.fromkeys(bound_node_ids)),
+        )
 
     def _destination_for_handle_bind(
         self,

@@ -18,6 +18,11 @@ from capabledeputy.policy.labels import (
     most_restrictive_inherit,
 )
 from capabledeputy.policy.rules import Decision
+from capabledeputy.provenance import (
+    ProvenanceRecorder,
+    declassifier_output_node_id,
+    stable_digest,
+)
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import EnforcementMode
 from capabledeputy.substrate.decision_inspector_port import (
@@ -39,6 +44,7 @@ class ToolPolicyHooks:
     ) -> None:
         self._policy_context = policy_context
         self._audit = audit
+        self._provenance = ProvenanceRecorder(audit)
         self._graph = graph
 
     async def maybe_shadow_rewrite(
@@ -227,18 +233,29 @@ class ToolPolicyHooks:
         removed_categories: set[str] = set()
         removed_levels: set[ProvenanceLevel] = set()
         for result in applied:
-            await self._audit.write(
-                Event(
-                    event_type=EventType.DECLASSIFIER_APPLIED,
-                    session_id=session_id,
-                    payload={
-                        "tool": tool_name,
-                        "structural_proof_kind": result.structural_proof_kind,
-                        "audit_diff": result.audit_diff,
-                        "lower_axis_a_categories": list(result.lower_axis_a_categories),
-                        "lower_axis_b_level": result.lower_axis_b_level,
-                    },
-                ),
+            event = Event(
+                event_type=EventType.DECLASSIFIER_APPLIED,
+                session_id=session_id,
+                payload={
+                    "tool": tool_name,
+                    "structural_proof_kind": result.structural_proof_kind,
+                    "audit_diff": result.audit_diff,
+                    "lower_axis_a_categories": list(result.lower_axis_a_categories),
+                    "lower_axis_b_level": result.lower_axis_b_level,
+                },
+            )
+            await self._audit.write(event)
+            await self._provenance.node(
+                session_id=session_id,
+                node_id=declassifier_output_node_id(event.audit_id),
+                kind="declassifier_output",
+                materialized_id=f"declassifier:{tool_name}:{event.audit_id}",
+                event_audit_id=event.audit_id,
+                metadata={
+                    "tool": tool_name,
+                    "structural_proof_kind": result.structural_proof_kind,
+                    "output_digest": stable_digest(final_value),
+                },
             )
             for entry in result.lower_axis_a_categories:
                 category = entry.get("category", "")

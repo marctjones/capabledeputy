@@ -12,14 +12,14 @@ identified, not implemented. "Result" = what a run yields today.
 
 | Surface | Count | Status | Last run |
 |---|---|---|---|
-| Narrated demos (`demos/scenarios/`) | 25 | ✅ | 25 passed |
+| Narrated demos (`demos/scenarios/`) | 26 | ✅ | 26 passed |
 | Adversarial / pressure suite (`tests/test_workflow_pressure.py`) | 11 | ✅ | 11 passed |
 | Decision-inspector suite (`scripts/policy_inspectors.py`) | 4 | ✅ | passed |
 | Enforcement rule-cases (`scripts/policy_{allow,deny,…}.py`) | 36 | ✅ | 41 passed (incl. guards) |
 | Scenario catalogue (`scripts/policy_assistant.py`) | 1126 | ✅ | 1126 passed (~11s) |
 | Identified, not yet implemented (the gaps) | 7 | 🔭 | — |
 
-**~76 distinct named workflows/properties + the 1126-permutation catalogue
+**~77 distinct named workflows/properties + the 1126-permutation catalogue
 + 7 identified-unbuilt.** Almost everything green; the *value* is split
 between regression guards (most) and the findings logged at the bottom.
 
@@ -30,7 +30,7 @@ signal lives.
 
 ---
 
-## 1. Narrated demos (25) — ✅ all green
+## 1. Narrated demos (26) — ✅ all green
 
 Operator-facing transcripts; each asserts its decisions, so it doubles as a
 regression test. Run: `uv run pytest demos/scenarios/run_all.py --no-cov -s`.
@@ -48,6 +48,7 @@ CI-guarded by `tests/test_demos_smoke.py`.
 | local_doc_drafting | read → create → modify → egress refused | ✅ guard |
 | data_blind_disclosure | planner sees only a handle UUID (Pattern ③) | ✅ guard |
 | expense_categorization | receipts → report → submit (financial taint) | ✅ guard |
+| financial_integrity_biba | trusted bank sync updates ledger; emailed statement refused; ratified update allowed | ✅ guard |
 | travel_booking | one-at-a-time vs. bundled approvals | ✅ guard |
 | bulk_approval_grouped | one prompt, many gates | ✅ guard |
 | clinical_records_research | health read-up-only; egress denied (BLP+BN) | ✅ guard |

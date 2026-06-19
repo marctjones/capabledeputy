@@ -32,6 +32,9 @@ from capabledeputy.programmatic.parser import parse_program
 from capabledeputy.programmatic.runner import (
     DryRunReport,
     dry_run_program,
+    format_return_value_for_planner,
+    label_state_summary,
+    return_value_payload,
     run_program_against_session,
 )
 from capabledeputy.programmatic.value import LabeledValue, labels_of, unwrap
@@ -48,8 +51,11 @@ __all__ = [
     "dry_run_for_bundle",
     "dry_run_program",
     "execute_with_approved_bundle",
+    "format_return_value_for_planner",
+    "label_state_summary",
     "labels_of",
     "parse_program",
+    "return_value_payload",
     "run_program",
     "run_program_against_session",
     "unwrap",

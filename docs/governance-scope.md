@@ -51,7 +51,7 @@ not these prose summaries:
   (separation of duty); trust-model §2/§5.
 - **Decision / flow accountability** — every allow/deny/escalate and
   the flow that produced it is replayable and answerable without
-  interpreting the model. → Gold Standard (Audit) + Provenance
+  interpreting the model. → Replayable AAA Audit + Materialized Provenance
   security.
 - **Prompt-injection blast-radius reduction** — injection is *not
   prevented*; its consequences are neutralized at the chokepoint.

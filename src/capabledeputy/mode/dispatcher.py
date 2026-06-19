@@ -3,9 +3,10 @@
 
 Two related filtering decisions per turn:
 
-1. select_mode picks turn-level or dual-LLM based on whether the
-   session carries any confidential.* labels and whether a quarantined
-   extractor exists. Logged as mode.selected.
+1. select_mode picks the protective flow pattern: turn-level,
+   dual-LLM quarantine, programmatic, reference handles, or sealed
+   isolation. Restricted-tier data is floored to reference/sealed
+   handling and logged as mode.selected.
 
 2. visible_tools filters by the session's capability set: a tool is
    visible to the LLM only when the session holds at least one
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import LabelState
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.model import Session
@@ -67,6 +69,7 @@ def select_mode(
     prefer_programmatic: bool = False,
     force_mode: ExecutionMode | None = None,
     has_sandbox_actuator: bool = False,
+    session: Session | None = None,
 ) -> tuple[ExecutionMode, str]:
     """Pick the execution mode for an upcoming turn.
 
@@ -74,8 +77,8 @@ def select_mode(
 
       1. Restricted-tier floor (FR-047, Issue #52) — if ANY Axis-A tag is
          at `restricted` tier, the turn MUST run under Pattern ③
-         (REFERENCE, when a handle-aware tool is present) or Pattern ⑤
-         (SEALED, when a SandboxActuator is wired), never ①/② which would
+         (REFERENCE, when a handle-aware tool is usable) or Pattern ⑤
+         (SEALED, when a sandbox tool is usable), never ①/② which would
          land raw restricted data in the planner. Neither available ⇒
          `ModeSelectionError` (fail-closed). Unsafe forced modes and
          prefer_programmatic cannot downgrade this floor.
@@ -88,26 +91,36 @@ def select_mode(
          extractor registered → DUAL_LLM. Otherwise TURN_LEVEL.
 
     Returns (mode, reason) so the audit record explains the choice.
+    When `session` is provided, restricted-tier selection considers only
+    tools visible to that session's current capabilities. Without it, callers
+    get the legacy registry-wide behavior used by spawn-time checks/tests.
     Raises ModeSelectionError only for the restricted-tier fail-closed.
     """
     # Restricted-tier floor (FR-047 / #52) — evaluated before the
     # forced/preferred mode and confidential-category heuristic so a
     # restricted tag can never de-escalate to planner-exposing modes.
     if any(tag.tier == Tier.RESTRICTED for tag in label_state.a):
-        handles_available = tool_surface_offers_handles(registry.list())
+        handles_available = (
+            visible_tool_surface_offers_handles(registry, session)
+            if session is not None
+            else tool_surface_offers_handles(registry.list())
+        )
+        sealed_available = has_sandbox_actuator and (
+            visible_tool_surface_offers_sandbox(registry, session) if session is not None else True
+        )
         if force_mode is not None:
             if force_mode == ExecutionMode.REFERENCE:
                 if not handles_available:
                     raise ModeSelectionError(
                         "restricted-tier session cannot force reference mode: "
-                        "no accepts_handles tool is available",
+                        "no usable accepts_handles tool is visible",
                     )
                 return force_mode, f"forced by caller: {force_mode.value}"
             if force_mode == ExecutionMode.SEALED:
-                if not has_sandbox_actuator:
+                if not sealed_available:
                     raise ModeSelectionError(
                         "restricted-tier session cannot force sealed mode: "
-                        "no SandboxActuator is wired",
+                        "no usable SandboxActuator-backed tool is visible",
                     )
                 return force_mode, f"forced by caller: {force_mode.value}"
             raise ModeSelectionError(
@@ -117,7 +130,7 @@ def select_mode(
             )
         return select_mode_for_restricted(
             has_accepts_handles_tool=handles_available,
-            has_sandbox_actuator=has_sandbox_actuator,
+            has_sandbox_actuator=sealed_available,
         )
 
     if force_mode is not None:
@@ -206,6 +219,25 @@ def tool_surface_offers_handles(tools: list[ToolDefinition]) -> bool:
     importing ToolDefinition internals at the call site.
     """
     return any(getattr(t, "accepts_handles", False) for t in tools)
+
+
+def tool_surface_offers_sandbox(tools: list[ToolDefinition]) -> bool:
+    """True iff `tools` exposes a Pattern ⑤ sandbox execution sink."""
+    return any(
+        t.capability_kind == CapabilityKind.EXECUTE_SANDBOX
+        or str(t.effect_class or "").lower().startswith("execute.sandbox")
+        for t in tools
+    )
+
+
+def visible_tool_surface_offers_handles(registry: ToolRegistry, session: Session) -> bool:
+    """True iff this session can actually see a handle-consuming tool."""
+    return tool_surface_offers_handles(visible_tools(registry, session, ExecutionMode.REFERENCE))
+
+
+def visible_tool_surface_offers_sandbox(registry: ToolRegistry, session: Session) -> bool:
+    """True iff this session can actually see a sealed sandbox tool."""
+    return tool_surface_offers_sandbox(visible_tools(registry, session, ExecutionMode.SEALED))
 
 
 def visible_tools(

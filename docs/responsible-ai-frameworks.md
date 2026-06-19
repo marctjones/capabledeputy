@@ -131,7 +131,7 @@ answerable without interpreting the model.
 - **Default template:** audit is always-on; no template needed, but
   retention/verification defaults belong here.
 - **Canonicalizes:** GDPR/FIPPs accountability, NIST RMF *Govern*
-  (decision-record slice), Lampson Gold Standard.
+  (decision-record slice), Replayable AAA Audit.
 - **Honest scope:** explains the *decision/flow*, never model cognition
   (interpretability is a deliberate non-goal); a model's self-narrated
   "reasoning" is not logged as explanation.

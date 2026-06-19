@@ -104,6 +104,51 @@ async def test_dry_run_unknown_tool_flagged() -> None:
     assert violation.decision == Decision.DENY
 
 
+async def test_dry_run_uses_source_label_lookup_for_memory_egress() -> None:
+    app = App()
+    app.memory.write(
+        "labs",
+        "lisinopril 10mg",
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")}
+            )
+        ),
+    )
+
+    src = """
+labs = call("memory.read", key="labs")
+purchase = call("purchase.queue", vendor="pharmacy", item=labs, amount=50)
+"""
+    report = await dry_run_program(src, app.registry)
+
+    assert not report.ok
+    assert [call.tool_name for call in report.tool_calls] == ["memory.read", "purchase.queue"]
+    assert report.tool_calls[0].decision == Decision.ALLOW
+    assert report.violations[0].tool_name == "purchase.queue"
+    assert report.violations[0].rule == "health-meets-egress"
+
+
+async def test_dry_run_predicts_restricted_source_floor() -> None:
+    app = App()
+    app.memory.write(
+        "secret",
+        "restricted raw",
+        LabelState(
+            a=frozenset(
+                {CategoryTag("health", Tier.RESTRICTED, assignment_provenance="source-declared")}
+            )
+        ),
+    )
+
+    report = await dry_run_program('secret = call("memory.read", key="secret")\n', app.registry)
+
+    assert not report.ok
+    assert len(report.violations) == 1
+    assert report.violations[0].tool_name == "memory.read"
+    assert report.violations[0].rule == "restricted-source-requires-reference-or-sealed"
+
+
 async def test_run_program_against_session_executes(tmp_path: Path) -> None:
     """End-to-end: a labeled-value pipeline runs, audits, and stores."""
     app = App(

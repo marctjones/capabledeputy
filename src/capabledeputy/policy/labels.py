@@ -221,7 +221,7 @@ def inherit(parent: LabelState, child: LabelState) -> LabelState:
     derivation) — distinct from the symmetric `most_restrictive_inherit`
     (in-session accumulation). Per-category: tier = max, risk_ids = union,
     and `assignment_provenance` stays the **parent's** ("derivation cannot
-    launder provenance away" — a Provenance-security / FR-022 property),
+    launder provenance away" — a materialized provenance / FR-022 property),
     *unless* the child's is `raise-only-inspector` (which only adds taint).
     Axis B: union of levels."""
     by_cat: dict[str, CategoryTag] = {t.category: t for t in parent.a}

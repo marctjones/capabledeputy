@@ -38,6 +38,28 @@ def _render_event_row(table: Table, ev: dict[str, Any]) -> None:
     )
 
 
+def _related_provenance(
+    events: list[dict[str, Any]],
+    *,
+    audit_id: str,
+    session_id: str | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    for ev in events:
+        if session_id is not None and ev.get("session_id") not in {None, session_id}:
+            continue
+        payload = ev.get("payload") or {}
+        if ev.get("event_type") == "provenance.node":
+            if payload.get("event_audit_id") == audit_id:
+                nodes.append(payload)
+        elif (
+            ev.get("event_type") == "provenance.edge" and payload.get("event_audit_id") == audit_id
+        ):
+            edges.append(payload)
+    return nodes, edges
+
+
 @audit_app.callback()
 def audit_main(
     ctx: typer.Context,
@@ -134,6 +156,73 @@ def watch_command(
 
     with contextlib.suppress(KeyboardInterrupt):
         anyio.run(loop)
+
+
+@audit_app.command("explain")
+def explain_command(
+    audit_id: Annotated[
+        str,
+        typer.Argument(help="Audit id to explain"),
+    ],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a human summary"),
+    ] = False,
+    limit: Annotated[
+        int,
+        typer.Option(help="Maximum number of recent audit events to scan"),
+    ] = 10_000,
+) -> None:
+    """Explain one audit event from its replayable trace and provenance DAG."""
+    events = anyio.run(_client().call, "audit.list", {"limit": limit})["events"]
+    target = next((ev for ev in events if ev.get("audit_id") == audit_id), None)
+    if target is None:
+        console.print(f"[red]audit id not found:[/red] {audit_id}")
+        raise typer.Exit(code=1)
+
+    nodes, edges = _related_provenance(
+        events,
+        audit_id=audit_id,
+        session_id=target.get("session_id"),
+    )
+    payload = target.get("payload") or {}
+    explanation = {
+        "event": target,
+        "policy_trace": payload.get("policy_trace"),
+        "provenance_nodes": nodes,
+        "provenance_edges": edges,
+    }
+    if json_output:
+        console.print_json(data=explanation)
+        return
+
+    console.print(f"[bold]{target['event_type']}[/bold] audit={audit_id}")
+    console.print(f"session={target.get('session_id') or '-'}")
+    trace = payload.get("policy_trace")
+    if trace:
+        console.print("[bold]policy trace[/bold]")
+        for key in (
+            "tool",
+            "decision",
+            "rule",
+            "matched_capability_audit_id",
+            "matched_capability_kind",
+            "matched_capability_pattern",
+            "effect_class",
+        ):
+            console.print(f"  {key}: {trace.get(key)}")
+    elif payload:
+        console.print("[bold]payload[/bold]")
+        console.print_json(data=payload)
+    if nodes or edges:
+        console.print("[bold]provenance[/bold]")
+        for node in nodes:
+            console.print(f"  node {node.get('node_id')} ({node.get('kind')})")
+        for edge in edges:
+            console.print(
+                f"  edge {edge.get('from_node_id')} -> "
+                f"{edge.get('to_node_id')} ({edge.get('kind')})",
+            )
 
 
 @audit_app.command("verify")
