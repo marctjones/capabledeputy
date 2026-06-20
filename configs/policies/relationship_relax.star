@@ -14,7 +14,11 @@
 def inspect(action, session, proposed_outcome):
     if proposed_outcome["decision"] != "require_approval":
         return abstain()
-    if "restricted" in session["tiers"]:
+    if (
+        "restricted" in session["tiers"]
+        or "regulated" in session["tiers"]
+        or "prohibited" in session["tiers"]
+    ):
         return abstain()
     if "family" in action["relationship_groups"] and action["kind"] == "SEND_EMAIL":
         return relax(

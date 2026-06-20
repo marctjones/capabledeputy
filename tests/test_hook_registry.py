@@ -89,6 +89,31 @@ def test_total_primitives_across_hooks() -> None:
     assert not reg.is_empty()
 
 
+def test_entries_are_sorted_and_preserve_primitive_order() -> None:
+    reg = HookRegistry()
+    a = _Fake("a")
+    b = _Fake("b")
+    c = _Fake("c")
+    reg.register("at_session.terminate", c)
+    reg.register("at_chokepoint.decision", a)
+    reg.register("at_chokepoint.decision", b)
+    assert reg.entries() == (
+        ("at_chokepoint.decision", (a, b)),
+        ("at_session.terminate", (c,)),
+    )
+
+
+def test_extend_appends_other_registry() -> None:
+    base = HookRegistry()
+    extra = HookRegistry()
+    a = _Fake("a")
+    b = _Fake("b")
+    base.register("at_chokepoint.decision", a)
+    extra.register("at_chokepoint.decision", b)
+    base.extend(extra)
+    assert base.get("at_chokepoint.decision") == (a, b)
+
+
 def test_standard_hooks_includes_lifecycle_points() -> None:
     """Sanity-check the standard hook taxonomy covers the lifecycle."""
     assert "at_chokepoint.decision" in STANDARD_HOOKS
@@ -133,6 +158,24 @@ def test_bridge_populates_three_hooks() -> None:
     assert reg.get("at_ingest.declassifier_chain") == (declass,)
     assert reg.get("at_chokepoint.decision") == (dec,)
     assert reg.total_primitives() == 3
+
+
+def test_bridge_merges_explicit_hook_registry_after_tuple_hooks() -> None:
+    @dataclass
+    class _PC:
+        inspectors: tuple = ()
+        declassifiers: tuple = ()
+        decision_inspectors: tuple = ()
+        hook_registry: HookRegistry | None = None
+
+    tuple_hook = _Fake("tuple")
+    explicit_hook = _Fake("explicit")
+    hooks = HookRegistry()
+    hooks.register("at_chokepoint.decision", explicit_hook)
+    reg = build_registry_from_policy_context(
+        _PC(decision_inspectors=(tuple_hook,), hook_registry=hooks)
+    )
+    assert reg.get("at_chokepoint.decision") == (tuple_hook, explicit_hook)
 
 
 def test_bridge_handles_none_attributes() -> None:

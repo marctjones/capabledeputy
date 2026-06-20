@@ -73,6 +73,8 @@ def _team_sharepoint_binding() -> SourceLocationLabelBinding:
 
 def test_canonicalize_lowercases_scheme_and_host() -> None:
     assert canonicalize("FILE:///HR/x") == "file:///HR/x"
+    assert canonicalize("/HR/x") == "file:///HR/x"
+    assert canonicalize("macos://APP/com.apple.mail") == "macos://app/com.apple.mail"
     assert canonicalize("HTTPS://Teams.SharePoint.COM/site") == (
         "https://teams.sharepoint.com/site"
     )

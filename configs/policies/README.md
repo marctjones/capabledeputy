@@ -8,6 +8,8 @@ bounded by the envelope cell and can never cross a structural DENY floor.
 
 Enable them with a `decision_inspectors:` block in your daemon config — see
 [`../decision-inspectors.example.yaml`](../decision-inspectors.example.yaml).
+The `personal-assistant` preset enables the production-safe tightening scripts
+by default.
 
 ## What a script can see (hermetic — no clock, no I/O, no host objects)
 
@@ -50,11 +52,17 @@ clock-free (scripts have no clock), so time-windowed rates
 ## Shipped starters
 
 - `sensitive_egress_confirm.star` — TIGHTEN: add a confirmation prompt to
-  egress that would auto-allow while the session carries restricted/
-  regulated data.
-- `purpose_scoped_relax.star` — RELAX: grant autonomy for a benign,
-  opted-in purpose (edit the purpose name + action kinds for your setup).
-- `frequency_cap.star` — TIGHTEN: require approval once an action kind has
-  been used N times this session (uses `session["history"]`, #48).
+  egress, drafts, chat, purchases, and calendar materialization that would
+  auto-allow while the session carries restricted/regulated/prohibited data.
+- `local_app_confirm.star` — TIGHTEN: require first-use approval for local
+  AppleScript/macOS active automation, clipboard access, drafts, document
+  edits/exports, presentation control, and calendar mutation.
+- `frequency_cap.star` — TIGHTEN: require approval once a send/draft/local-app/
+  document/calendar action kind has been used enough times in the session to
+  look like a runaway loop (uses `session["history"]`, #48).
+- `purpose_scoped_relax.star` — RELAX: example only; currently limited to local
+  notifications for the `research` purpose. Do not enable broader relax rules
+  without workflow-specific tests.
 - `relationship_relax.star` — RELAX: allow email to a recipient in a vetted
-  relationship group (uses `action["relationship_groups"]`, #47).
+  relationship group (uses `action["relationship_groups"]`, #47). Keep this
+  opt-in; the personal-assistant preset does not enable relax scripts.

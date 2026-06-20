@@ -143,6 +143,30 @@ bindings:
     default_tier: sensitive
     assignment_provenance: operator-declared
 
+  - name: macos-apps
+    scope_pattern_canonical: "macos://apps"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: macos-app-control
+    scope_pattern_canonical: "macos://app/**"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: macos-clipboard
+    scope_pattern_canonical: "macos://clipboard"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: macos-notification
+    scope_pattern_canonical: "macos://notification"
+    category: scratch
+    default_tier: none
+    assignment_provenance: operator-declared
+
   # ---------------- web ----------------
 
   - name: web-https

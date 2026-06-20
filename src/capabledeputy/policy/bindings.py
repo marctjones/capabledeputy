@@ -70,6 +70,7 @@ _SUPPORTED_SCHEMES = frozenset(
         "pages",
         "numbers",
         "keynote",
+        "macos",
         "imap",
     },
 )
@@ -90,7 +91,9 @@ def canonicalize(uri: str) -> str:
     standard library's urlsplit covers file://, http(s)://, mcp:,
     and unc:// (the latter via path normalization).
     """
-    if not uri or ("://" not in uri and not uri.startswith("mcp:")):
+    if uri.startswith("/"):
+        return f"file://{uri}"
+    if not uri or ":" not in uri:
         raise BindingError(f"cannot canonicalize {uri!r}: not a URI")
     try:
         parts = urlsplit(uri)

@@ -21,7 +21,8 @@ approval).
 | `source_bindings.yaml` | Common macOS paths, Apple app URIs, and Google service URIs → label tier mappings |
 | `envelopes.yaml` | Per-category risk-preference dial bounds |
 | `override_policy.yaml` | Single-authorized operator can override hard floors; no dual-control required (single-user mode) |
-| `approval-patterns.yaml` | Auto-approve common safe outbound patterns (self-email, calendar events for self) |
+| `approval-patterns.yaml` | Auto-approve common safe draft patterns after you replace placeholder addresses |
+| `../policies/*.star` | Starlark decision inspectors enabled by `daemon.yaml` for tightening-only local automation, egress, and frequency checks |
 
 ## Use
 
@@ -54,6 +55,7 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
 - **Read/edit/export Pages and Numbers documents** with app-specific capability gates
 - **Read/present Keynote decks** with app-specific capability gates
 - **Use bounded macOS automation** for app listing/opening, clipboard read/write, and notifications
+- **Run Starlark policy inspectors** that prompt on first active local app use, high-tier draft/egress materialization, and repeated automation loops
 - **Create calendar events** with approval gate (one-prompt-per-event)
 - **Persist memory** across sessions (via the bundled `mcp-server-memory`)
 - **Browse local git repos** read-only
@@ -64,6 +66,7 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
 - **Reading** anything tagged `confidential.financial` while the session is also doing egress (Brewer-Nash)
 - **Irreversible file ops** (delete, modify-in-place on protected paths) without approval
 - **Direct email send** unless you deliberately enable a `SEND_EMAIL` server/config
+- **Silent first-use AppleScript writes/clipboard access**; the Starlark layer requires approval before the first active local automation in a session
 - **Anything `prohibited` tier** without an explicit override (the override flow is single-authorized — that's you)
 
 ## Customizing
@@ -71,13 +74,20 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
 - **Paths look wrong?** Edit `source_bindings.yaml` — operator-curated, version-controlled.
 - **Too many approvals?** Add patterns to `approval-patterns.yaml` for recurring workflows you trust (e.g., daily-briefing emails to yourself).
 - **Want stricter handling for a category?** Add an entry to `envelopes.yaml` and the risk-preference dial will respect it.
+- **Want more/less desktop friction?** Edit `../policies/local_app_confirm.star` or remove it from `daemon.yaml`. Keep relax scripts disabled unless you have workflow-specific tests.
 - **Need a new working context?** Add a purpose to `purposes.yaml` — purposes carry their own bindings + default capabilities.
 
 ## Prerequisites
 
 1. `capdep init` — onboarding (creates `~/.config/capabledeputy/`)
-2. `export ANTHROPIC_API_KEY=sk-...` (or whichever LLM provider you chose)
-3. (Optional) export `GOOGLE_MCP_CLIENT_ID` and `GOOGLE_MCP_CLIENT_SECRET`, then run:
+2. Install the Starlark policy runtime if your environment did not install dev extras:
+
+   ```bash
+   pip install 'capabledeputy[starlark]'
+   ```
+
+3. `export ANTHROPIC_API_KEY=sk-...` (or whichever LLM provider you chose)
+4. (Optional) export `GOOGLE_MCP_CLIENT_ID` and `GOOGLE_MCP_CLIENT_SECRET`, then run:
 
    ```bash
    capdep oauth login --config configs/personal-assistant/daemon.yaml --server google-gmail
@@ -85,8 +95,26 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
    capdep oauth login --config configs/personal-assistant/daemon.yaml --server google-calendar
    ```
 
-4. (Optional) grant macOS Automation permissions when the OS prompts for Mail, Keynote, Pages, Numbers, or System Events.
-5. (Optional) `export BRAVE_SEARCH_API_KEY=...` — better web search than DDG
+5. (Optional) grant macOS Automation permissions when the OS prompts for Mail, Keynote, Pages, Numbers, or System Events.
+6. (Optional) `export BRAVE_SEARCH_API_KEY=...` — better web search than DDG
+
+## Making AppleScript/macOS usable without broad ambient authority
+
+- Start with the bundled app-specific servers (`mcp-server-apple-mail`,
+  `mcp-server-keynote`, `mcp-server-pages`, `mcp-server-numbers`,
+  `mcp-server-macos`) rather than the generic AppleScript catalog server.
+- Grant macOS Automation/TCC permissions only to the terminal app running
+  `capdep`, and only for the apps you intend to automate.
+- Keep `MACOS_AUTOMATION` out of new grants. Use granular kinds such as
+  `APPLE_MAIL_DRAFT`, `PAGES_EDIT`, `NUMBERS_EDIT`, `KEYNOTE_PRESENT`, and
+  `MACOS_CLIPBOARD_READ`.
+- Prefer read-only tools for normal context gathering. The preset prompts on
+  first clipboard read, draft creation, document edit/export, app control, and
+  presentation/calendar mutation.
+- Bind app surfaces explicitly in `source_bindings.yaml` (`pages://frontmost`,
+  `numbers://frontmost`, `keynote://frontmost`, `applemail://**`,
+  `macos://clipboard`, `macos://app/**`) so policy decisions and audits name
+  the real local surface instead of an empty target.
 
 Then:
 

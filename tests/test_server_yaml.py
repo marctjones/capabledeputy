@@ -215,6 +215,7 @@ tool_overrides:
   gmail.list:
     capability_kind: GMAIL_READ
     additional_labels: [untrusted.external]
+    target_template: "gmail://thread/{thread_id}"
 """,
     )
     configs, _, _ = load_servers_d(d)
@@ -222,6 +223,7 @@ tool_overrides:
     ov = configs[0].server_config.tool_overrides["gmail.list"]
     assert ov.capability_kind is not None
     assert ov.capability_kind.value == "GMAIL_READ"
+    assert ov.target_template == "gmail://thread/{thread_id}"
 
 
 def test_servers_d_accepts_remote_google_workspace_server(tmp_path: Path) -> None:

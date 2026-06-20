@@ -8,19 +8,21 @@
 # address at that domain — only do that for domains you control.
 
 patterns:
-  # Self-correspondence — drafts you send to yourself. Replace
-  # me@example.com with YOUR actual address.
-  - name: self-correspondence
-    action: SEND_EMAIL
+  # Self-addressed drafts. Replace me@example.com with YOUR actual address.
+  # Direct SEND_EMAIL is disabled in the default Gmail server config; these
+  # patterns cover the practical draft-and-review workflow.
+  - name: self-gmail-draft
+    action: GMAIL_DRAFT
     target_pattern: "me@example.com"
     ttl_hours: 720  # 30 days
     created_by: "preset:personal-assistant"
 
-  # Self-calendar events (events with you as the only attendee). The
-  # target_pattern matches the operator's own email address; replace
-  # with yours.
-  - name: self-calendar-event
-    action: CREATE_CAL
+  - name: self-apple-mail-draft
+    action: APPLE_MAIL_DRAFT
     target_pattern: "me@example.com"
     ttl_hours: 720
     created_by: "preset:personal-assistant"
+
+  # Calendar attendee-aware auto-approval needs the upstream tool to expose a
+  # stable attendee/self target. Until that exists, calendar mutations stay
+  # approval-gated by capability kind + Starlark first-use confirmation.

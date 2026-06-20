@@ -484,6 +484,11 @@ class LabeledMcpAdapter:
                     ),
                     capability_kind=kind,
                     handler=self._make_handler(upstream_tool.name),
+                    target_arg=(
+                        override.target_arg if override and override.target_arg else "target"
+                    ),
+                    target_template=override.target_template if override else None,
+                    amount_arg=override.amount_arg if override else None,
                     inherent_tags=inherent,
                     parameters_schema=upstream_tool.inputSchema or {"type": "object"},
                     operations=(op,),

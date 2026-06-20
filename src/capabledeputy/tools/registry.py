@@ -42,6 +42,13 @@ class ToolResult:
 ToolHandler = Callable[[dict[str, Any], ToolContext], Awaitable[ToolResult]]
 
 
+class _MissingTargetArg(dict[str, Any]):
+    """Format-map helper: absent optional args become empty strings."""
+
+    def __missing__(self, key: str) -> str:
+        return ""
+
+
 @dataclass(frozen=True)
 class ToolDefinition:
     name: str
@@ -52,6 +59,9 @@ class ToolDefinition:
     capability_kind: CapabilityKind | str
     handler: ToolHandler
     target_arg: str = "target"
+    # Optional format string for tools whose policy target is a stable URI
+    # derived from one or more args, e.g. "macos://app/{bundle_id}".
+    target_template: str | None = None
     amount_arg: str | None = None
     parameters_schema: dict[str, Any] = field(
         default_factory=lambda: {"type": "object", "properties": {}, "required": []},
@@ -102,6 +112,11 @@ class ToolDefinition:
     forbid_restricted_source: bool = False
 
     def extract_target(self, args: dict[str, Any]) -> str:
+        if self.target_template is not None:
+            try:
+                return self.target_template.format_map(_MissingTargetArg(args))
+            except (KeyError, ValueError):
+                return ""
         return str(args.get(self.target_arg, ""))
 
     def extract_amount(self, args: dict[str, Any]) -> int | None:
@@ -144,6 +159,12 @@ class ToolDefinition:
         if self.source_label_lookup is None:
             return LabelState()
         return self.source_label_lookup(args)
+
+    def describe(self) -> Any:
+        """Return the split runtime/policy/flow descriptor for this tool."""
+        from capabledeputy.tools.descriptors import describe_tool
+
+        return describe_tool(self)
 
 
 class ToolValidationError(ValueError):
@@ -340,6 +361,10 @@ class ToolRegistry:
 
     def list(self) -> list[ToolDefinition]:
         return list(self._tools.values())
+
+    def descriptors(self) -> list[Any]:
+        """Return inspectable descriptors for every registered tool."""
+        return [tool.describe() for tool in self.list()]
 
     def __len__(self) -> int:
         return len(self._tools)

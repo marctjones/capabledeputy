@@ -20,6 +20,7 @@ def _tool_to_dict(tool: ToolDefinition) -> dict[str, Any]:
         "description": tool.description,
         "capability_kind": kind_name(tool.capability_kind),
         "target_arg": tool.target_arg,
+        "target_template": tool.target_template,
         "amount_arg": tool.amount_arg,
         "parameters_schema": tool.parameters_schema,
     }

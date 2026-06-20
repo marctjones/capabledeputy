@@ -12,6 +12,7 @@ from capabledeputy.policy.decision_rules import DecisionRules
 from capabledeputy.policy.envelope import EnvelopeSet, RiskPreference
 from capabledeputy.policy.overrides import OverrideGrantStore, OverridePolicies
 from capabledeputy.policy.tiers import Tier
+from capabledeputy.substrate.hook_registry import HookRegistry, build_registry_from_policy_context
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class PolicyContext:
     risk_register: Any = None
     sandbox_actuator: Any = None
     devbox_manager: Any = None
+    hook_registry: HookRegistry | None = None
     inspectors: tuple[Any, ...] = ()
     decision_inspectors: tuple[Any, ...] = ()
     egress_override_categories: frozenset[str] = field(default_factory=frozenset)
@@ -56,3 +58,12 @@ class PolicyContext:
     def devbox_manager_wired(self) -> bool:
         """True iff a long-lived devbox manager is configured."""
         return self.devbox_manager is not None
+
+    def effective_hook_registry(self) -> HookRegistry:
+        """Return named lifecycle hooks for this policy context.
+
+        Tuple fields remain accepted for compatibility, but hook consumers
+        should use this method so new extension points are configured by
+        lifecycle name rather than by adding more optional tuple fields.
+        """
+        return build_registry_from_policy_context(self)

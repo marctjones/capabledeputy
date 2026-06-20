@@ -179,6 +179,32 @@ def test_bound_target_passes_through_when_no_rule_matches() -> None:
     assert result.decision == Decision.REQUIRE_APPROVAL
 
 
+def test_raw_principal_target_does_not_enter_location_bindings() -> None:
+    """Email recipients are principal ids, not source-location URIs. Binding
+    canonicalization still guards URI/path destinations, but raw recipients
+    remain available to capability, relationship, and approval policies."""
+    bindings = BindingSet(bindings=(_team_sharepoint_binding(),))
+    labels, axis_d = _principal_axes()
+    result = decide(
+        frozenset(
+            {
+                Capability(
+                    kind=CapabilityKind.SEND_EMAIL,
+                    pattern="alice@example.com",
+                    origin=CapabilityOrigin.USER_APPROVED,
+                ),
+            }
+        ),
+        Action(kind=CapabilityKind.SEND_EMAIL, target="alice@example.com"),
+        labels=labels,
+        axis_d=axis_d,
+        effect_class="social.send_email",
+        rules_v2=DecisionRules(rules=()),
+        bindings=bindings,
+    )
+    assert result.rule != BINDING_UNBOUND_RULE
+
+
 def test_no_bindings_set_falls_back_to_raw_target() -> None:
     """Back-compat: if PolicyContext doesn't provide bindings, the
     raw target is passed through to rule predicates unchanged."""

@@ -123,14 +123,19 @@ upstream_servers:
     tool_overrides:
       "apple_mail.list_accounts":
         capability_kind: APPLE_MAIL_READ
+        target_template: "applemail://accounts"
       "apple_mail.list_mailboxes":
         capability_kind: APPLE_MAIL_READ
+        target_template: "applemail://mailboxes"
       "apple_mail.search_messages":
         capability_kind: APPLE_MAIL_READ
+        target_template: "applemail://mailbox/{mailbox_name}"
       "apple_mail.get_message":
         capability_kind: APPLE_MAIL_READ
+        target_template: "applemail://mailbox/{mailbox_name}/message/{message_id}"
       "apple_mail.create_draft":
         capability_kind: APPLE_MAIL_DRAFT
+        target_arg: to
 
   - name: bundled-keynote
     command: ["capdep", "mcp-server-keynote"]
@@ -138,14 +143,19 @@ upstream_servers:
     tool_overrides:
       "keynote.frontmost_document":
         capability_kind: KEYNOTE_READ
+        target_template: "keynote://frontmost"
       "keynote.list_slides":
         capability_kind: KEYNOTE_READ
+        target_template: "keynote://frontmost"
       "keynote.slide_text":
         capability_kind: KEYNOTE_READ
+        target_template: "keynote://frontmost"
       "keynote.start_slideshow":
         capability_kind: KEYNOTE_PRESENT
+        target_template: "keynote://frontmost"
       "keynote.stop_slideshow":
         capability_kind: KEYNOTE_PRESENT
+        target_template: "keynote://frontmost"
 
   - name: bundled-pages
     command: ["capdep", "mcp-server-pages"]
@@ -153,12 +163,16 @@ upstream_servers:
     tool_overrides:
       "pages.frontmost_document":
         capability_kind: PAGES_READ
+        target_template: "pages://frontmost"
       "pages.document_text":
         capability_kind: PAGES_READ
+        target_template: "pages://frontmost"
       "pages.append_text":
         capability_kind: PAGES_EDIT
+        target_template: "pages://frontmost"
       "pages.export_pdf":
         capability_kind: PAGES_EXPORT
+        target_arg: path
 
   - name: bundled-numbers
     command: ["capdep", "mcp-server-numbers"]
@@ -166,16 +180,22 @@ upstream_servers:
     tool_overrides:
       "numbers.frontmost_document":
         capability_kind: NUMBERS_READ
+        target_template: "numbers://frontmost"
       "numbers.list_sheets":
         capability_kind: NUMBERS_READ
+        target_template: "numbers://frontmost"
       "numbers.table_summary":
         capability_kind: NUMBERS_READ
+        target_template: "numbers://frontmost"
       "numbers.get_cell_value":
         capability_kind: NUMBERS_READ
+        target_template: "numbers://frontmost"
       "numbers.set_cell_value":
         capability_kind: NUMBERS_EDIT
+        target_template: "numbers://frontmost"
       "numbers.export_pdf":
         capability_kind: NUMBERS_EXPORT
+        target_arg: path
 
   - name: bundled-macos
     command: ["capdep", "mcp-server-macos"]
@@ -183,13 +203,19 @@ upstream_servers:
     tool_overrides:
       "macos.frontmost_application":
         capability_kind: MACOS_APP_CONTROL
+        target_template: "macos://apps"
       "macos.list_running_applications":
         capability_kind: MACOS_APP_CONTROL
+        target_template: "macos://apps"
       "macos.open_application":
         capability_kind: MACOS_APP_CONTROL
+        target_template: "macos://app/{bundle_id}"
       "macos.get_clipboard_text":
         capability_kind: MACOS_CLIPBOARD_READ
+        target_template: "macos://clipboard"
       "macos.set_clipboard_text":
         capability_kind: MACOS_CLIPBOARD_WRITE
+        target_template: "macos://clipboard"
       "macos.show_notification":
         capability_kind: MACOS_NOTIFICATION
+        target_template: "macos://notification"

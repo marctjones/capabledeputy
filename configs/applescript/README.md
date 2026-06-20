@@ -26,3 +26,12 @@ app-specific built-in capability kinds such as `APPLE_MAIL_DRAFT`,
 `KEYNOTE_PRESENT`, `PAGES_EDIT`, `NUMBERS_EDIT`, or `MACOS_CLIPBOARD_WRITE`
 in `servers.d`. `MACOS_AUTOMATION` remains a compatibility umbrella, not the
 preferred mapping for new tools.
+
+For production personal-assistant use, prefer the bundled specialized servers
+over a broad generic catalog. Pair every write/active tool with a concrete
+`target_arg` or `target_template` in the upstream config so approvals and audit
+records name the destination (`to`, `path`, `pages://frontmost`,
+`macos://clipboard`, etc.). Keep the Starlark `local_app_confirm.star`
+inspector enabled so first use of clipboard access, app control, drafts,
+document edits/exports, and presentation control requires human confirmation
+before the session proceeds.

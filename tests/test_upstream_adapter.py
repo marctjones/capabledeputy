@@ -158,6 +158,38 @@ async def test_disabled_kinds_refuses_by_capability_kind() -> None:
     assert "fakefs.read_file" in names  # other tools unaffected
 
 
+async def test_upstream_override_controls_policy_target_extraction() -> None:
+    """MCP tools often use service-specific arg names, not `target`.
+    Overrides must carry the policy target extraction metadata so approval
+    patterns, relationship groups, and audit records see the real destination."""
+    server = _build_fake_server()
+    registry = ToolRegistry()
+    config = UpstreamServerConfig(
+        name="fakefs",
+        command=("noop",),
+        tool_overrides={
+            "write_file": UpstreamToolOverride(
+                capability_kind=CapabilityKind.MODIFY_FS,
+                target_arg="path",
+            ),
+            "fetch": UpstreamToolOverride(
+                capability_kind=CapabilityKind.WEB_FETCH,
+                target_template="https://search.example/{query}",
+            ),
+        },
+    )
+
+    async with create_connected_server_and_client_session(server) as session:
+        adapter = LabeledMcpAdapter(config=config, session=session)
+        await adapter.register_tools(registry)
+
+    assert registry.get("fakefs.write_file").extract_target({"path": "/tmp/x"}) == "/tmp/x"
+    assert (
+        registry.get("fakefs.fetch").extract_target({"query": "capdep"})
+        == "https://search.example/capdep"
+    )
+
+
 async def test_gws_config_disables_outbound_send() -> None:
     """End-to-end config check: the shipped Google Workspace config
     declares the Gmail send tools as disabled, so they can never register."""

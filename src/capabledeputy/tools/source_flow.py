@@ -205,7 +205,7 @@ class ToolSourceFlow:
         args: dict[str, Any],
     ) -> str:
         return (
-            str(args.get(tool.target_arg, ""))
+            tool.extract_target(args)
             if tool.surfaces_destination_id
             else f"tool:{tool_name}"
         ) or f"tool:{tool_name}"

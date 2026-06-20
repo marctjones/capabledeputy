@@ -143,6 +143,12 @@ def _effect_class_is_egressing(effect_class: str | None) -> bool:
     return any(marker in lo for marker in _EGRESS_EFFECT_MARKERS)
 
 
+def _target_uses_binding_namespace(target: str) -> bool:
+    """True when a target is a canonical location, not a principal id."""
+
+    return target.startswith("/") or "://" in target or target.startswith("mcp:")
+
+
 @dataclass(frozen=True)
 class RecoveryStep:
     """A literal slash command an operator can paste to make progress
@@ -894,7 +900,7 @@ def _decide_impl(
     # rule predicate so model-controlled case-varying inputs cannot
     # bypass rules authored against the canonical form.
     canonical_target: str | None = None
-    if bindings is not None and action.target:
+    if bindings is not None and action.target and _target_uses_binding_namespace(action.target):
         try:
             resolution = bindings.resolve(action.target)
             canonical_target = resolution.canonical_destination_id

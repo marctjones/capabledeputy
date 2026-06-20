@@ -23,10 +23,15 @@ from capabledeputy.policy.actions import Action
 from capabledeputy.policy.assurance import (
     should_emit_residual_risk,
 )
-from capabledeputy.policy.engine import PolicyDecision, decide
+from capabledeputy.policy.engine import PolicyDecision
 from capabledeputy.policy.labels import LabelState, ProvenanceLevel
 from capabledeputy.policy.overrides import (
     TrustProfile,
+)
+from capabledeputy.policy.pipeline import (
+    DecisionRequest,
+    DefaultPolicyPipeline,
+    PolicyPipeline,
 )
 from capabledeputy.policy.reversibility import ReversibilityLabel
 from capabledeputy.policy.rules import Decision
@@ -213,6 +218,7 @@ class LabeledToolClient:
         audit: AuditWriter,
         approval_queue: Any = None,
         policy_context: PolicyContext | None = None,
+        policy_pipeline: PolicyPipeline | None = None,
     ) -> None:
         self._registry = registry
         self._graph = graph
@@ -225,6 +231,7 @@ class LabeledToolClient:
         # When provided, the four-axis decision pipeline activates. When
         # absent, dispatch uses the base capability decision path.
         self._policy_context = policy_context
+        self._policy_pipeline = policy_pipeline or DefaultPolicyPipeline()
         self._source_flow = ToolSourceFlow(policy_context=policy_context, audit=audit)
         self._provenance = ProvenanceRecorder(audit)
         self._policy_hooks = ToolPolicyHooks(
@@ -276,9 +283,9 @@ class LabeledToolClient:
         if source_tags != LabelState():
             decide_labels = most_restrictive_inherit(decide_labels, source_tags)
             v2_kwargs["labels"] = decide_labels
-        policy_decision = decide(
-            session.capability_set,
-            action,
+        decision_request = DecisionRequest(
+            capabilities=session.capability_set,
+            action=action,
             used_kinds=session.used_kinds,
             now=dispatch_now,
             cap_uses=session.cap_uses,
@@ -306,6 +313,7 @@ class LabeledToolClient:
             != "cautious",
             **{k: v for k, v in v2_kwargs.items() if k != "labels"},
         )
+        policy_decision = self._policy_pipeline.decide(decision_request).decision
 
         # DecisionInspector hook: registered inspectors run AFTER the
         # standard decision and may relax (loosen) or tighten

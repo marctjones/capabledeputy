@@ -7,21 +7,27 @@
 # DENY floor (enforced downstream by bounded-relax + monotone composition),
 # and this script only fires when the base decision was REQUIRE_APPROVAL.
 #
-# Edit the purpose name + action kinds to match your own purposes.yaml.
+# This starter is deliberately narrow: by default it only relaxes local
+# notifications for the `research` purpose. Do not relax email, chat, purchase,
+# document edit, clipboard, or calendar mutation without a specific operator
+# decision and tests for the workflow.
 # See the header of sensitive_egress_confirm.star for the input shapes.
 
 def inspect(action, session, proposed_outcome):
     if proposed_outcome["decision"] != "require_approval":
         return abstain()
-    # Only relax for an opted-in low-stakes purpose, and only when the
-    # session carries no restricted data (defense in depth — don't grant
-    # autonomy over the most sensitive tier).
-    if "restricted" in session["tiers"]:
+    # Only relax for an opted-in low-stakes purpose, and only when the session
+    # carries no high-tier data.
+    if (
+        "restricted" in session["tiers"]
+        or "regulated" in session["tiers"]
+        or "prohibited" in session["tiers"]
+    ):
         return abstain()
-    if session["purpose"] == "daily_briefing" and action["kind"] in ["SEND_EMAIL"]:
+    if session["purpose"] == "research" and action["kind"] in ["MACOS_NOTIFICATION"]:
         return relax(
             to="allow",
-            rule="daily-briefing-autonomy",
-            rationale="opted-in low-stakes purpose with no restricted data in session",
+            rule="research-notification-autonomy",
+            rationale="low-stakes research purpose may show local completion notifications",
         )
     return abstain()

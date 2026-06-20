@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+import yaml
+
 from capabledeputy.policy.bindings import load as load_bindings
 from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.decision_inspector_loader import load_decision_inspectors
 from capabledeputy.policy.purposes import load as load_purposes
 from capabledeputy.upstream.config import load_config_file
 
@@ -45,14 +49,54 @@ def test_personal_assistant_daemon_uses_official_google_and_macos_servers() -> N
     assert gmail.auth.client_id_env == "GOOGLE_MCP_CLIENT_ID"
     assert "SEND_EMAIL" in gmail.disabled_kinds
     assert gmail.tool_overrides["create_draft"].capability_kind == CapabilityKind.GMAIL_DRAFT
+    assert gmail.tool_overrides["create_draft"].target_arg == "to"
 
+    apple_mail = next(config for config in configs if config.name == "bundled-apple-mail")
+    assert apple_mail.tool_overrides["apple_mail.create_draft"].target_arg == "to"
+    assert (
+        apple_mail.tool_overrides["apple_mail.get_message"].target_template
+        == "applemail://mailbox/{mailbox_name}/message/{message_id}"
+    )
     pages = next(config for config in configs if config.name == "bundled-pages")
     assert pages.tool_overrides["pages.append_text"].capability_kind == CapabilityKind.PAGES_EDIT
+    assert pages.tool_overrides["pages.append_text"].target_template == "pages://frontmost"
+    assert pages.tool_overrides["pages.export_pdf"].target_arg == "path"
     numbers = next(config for config in configs if config.name == "bundled-numbers")
     assert (
         numbers.tool_overrides["numbers.set_cell_value"].capability_kind
         == CapabilityKind.NUMBERS_EDIT
     )
+    assert numbers.tool_overrides["numbers.export_pdf"].target_arg == "path"
+
+    macos = next(config for config in configs if config.name == "bundled-macos")
+    assert macos.tool_overrides["macos.open_application"].target_template == (
+        "macos://app/{bundle_id}"
+    )
+    assert macos.tool_overrides["macos.get_clipboard_text"].target_template == "macos://clipboard"
+
+
+def test_personal_assistant_enables_conservative_starlark_inspectors() -> None:
+    raw = yaml.safe_load((_PRESET / "daemon.yaml").read_text(encoding="utf-8"))
+    entries = raw["decision_inspectors"]
+    scripts = [entry["script"] for entry in entries]
+
+    assert scripts == [
+        "../policies/sensitive_egress_confirm.star",
+        "../policies/local_app_confirm.star",
+        "../policies/frequency_cap.star",
+    ]
+    assert "../policies/purpose_scoped_relax.star" not in scripts
+    assert "../policies/relationship_relax.star" not in scripts
+    assert all(entry["runtime"] == "starlark" for entry in entries)
+    assert all(entry["failure_mode"] == "require_approval" for entry in entries)
+
+    pytest.importorskip("starlark", reason="requires the capabledeputy[starlark] extra")
+    inspectors = load_decision_inspectors(raw, base_dir=_PRESET)
+    assert [inspector.name for inspector in inspectors] == [
+        "sensitive_egress_confirm",
+        "local_app_confirm",
+        "frequency_cap",
+    ]
 
 
 def test_personal_assistant_purposes_are_macos_google_and_apple_ready() -> None:
@@ -101,3 +145,6 @@ def test_personal_assistant_source_bindings_cover_service_uri_schemes() -> None:
     assert bindings.resolve("pages://frontmost").category == "personal"
     assert bindings.resolve("numbers://frontmost").category == "personal"
     assert bindings.resolve("keynote://frontmost").category == "work"
+    assert bindings.resolve("macos://clipboard").category == "personal"
+    assert bindings.resolve("macos://app/com.apple.mail").category == "personal"
+    assert bindings.resolve("macos://notification").category == "scratch"

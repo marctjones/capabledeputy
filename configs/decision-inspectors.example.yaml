@@ -15,11 +15,12 @@
 decision_inspectors:
   # --- builtins (reviewed, shipped in-repo) -------------------------------
 
-  # Auto-allow self-addressed email (the approval prompt is friction when
-  # the operator is the recipient). Only relaxes REQUIRE_APPROVAL.
-  - builtin: self_egress_relaxer
-    self_addresses: ["me@example.com", "me@work.example.com"]
-    action_kinds: ["SEND_EMAIL"]
+  # Auto-allow self-addressed email is available, but not enabled in this
+  # production-oriented example. Uncomment only after replacing addresses and
+  # adding a workflow test.
+  # - builtin: self_egress_relaxer
+  #   self_addresses: ["me@example.com", "me@work.example.com"]
+  #   action_kinds: ["SEND_EMAIL"]
 
   # Require approval for late-night purchases that would otherwise
   # auto-allow (tired-operator / compromised-session insurance). Uses the
@@ -37,9 +38,22 @@ decision_inspectors:
 
   - script: policies/sensitive_egress_confirm.star
     runtime: starlark
+    failure_mode: require_approval
 
-  - script: policies/purpose_scoped_relax.star
+  - script: policies/local_app_confirm.star
     runtime: starlark
+    failure_mode: require_approval
+
+  - script: policies/frequency_cap.star
+    runtime: starlark
+    failure_mode: require_approval
+
+  # Relax scripts are intentionally opt-in. They can be useful, but should
+  # only be enabled with purpose/relationship-specific workflow tests.
+  # - script: policies/purpose_scoped_relax.star
+  #   runtime: starlark
+  # - script: policies/relationship_relax.star
+  #   runtime: starlark
 
   # Inline source is also supported (handy for one-liners / tests):
   # - source: |

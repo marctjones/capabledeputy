@@ -566,3 +566,80 @@ async def test_sensitive_egress_confirm_tightens() -> None:
     )
     assert isinstance(out, DecisionTighten)
     assert out.to == Decision.REQUIRE_APPROVAL
+
+
+@pytest.mark.skipif(not _starlark_available(), reason="starlark extra not installed")
+async def test_sensitive_egress_confirm_tightens_restricted_draft() -> None:
+    """High-tier source data should not be silently materialized into a mail
+    draft even though draft is distinct from direct send."""
+    from pathlib import Path
+
+    from capabledeputy.policy.labels import CategoryTag, LabelState
+    from capabledeputy.policy.tiers import Tier
+
+    repo = Path(__file__).resolve().parents[2]
+    (insp,) = load_decision_inspectors(
+        {"decision_inspectors": [{"script": "sensitive_egress_confirm.star"}]},
+        base_dir=repo / "configs" / "policies",
+    )
+
+    class _S:
+        label_state = LabelState(a=frozenset({CategoryTag("finance", Tier.RESTRICTED)}))
+
+    out = await insp.inspect(
+        action=Action(kind=CapabilityKind.GMAIL_DRAFT, target="x@y.com"),
+        session=_S(),
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+    assert isinstance(out, DecisionTighten)
+    assert out.to == Decision.REQUIRE_APPROVAL
+
+
+@pytest.mark.skipif(not _starlark_available(), reason="starlark extra not installed")
+async def test_local_app_confirm_tightens_first_clipboard_read() -> None:
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[2]
+    (insp,) = load_decision_inspectors(
+        {"decision_inspectors": [{"script": "local_app_confirm.star"}]},
+        base_dir=repo / "configs" / "policies",
+    )
+
+    out = await insp.inspect(
+        action=Action(kind=CapabilityKind.MACOS_CLIPBOARD_READ, target="macos://clipboard"),
+        session=object(),
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+    assert isinstance(out, DecisionTighten)
+    assert out.rule == "local-active-first-use-confirm"
+
+
+@pytest.mark.skipif(not _starlark_available(), reason="starlark extra not installed")
+async def test_frequency_cap_tightens_repeated_local_app_control() -> None:
+    from datetime import UTC, datetime
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from capabledeputy.policy.capabilities import Capability
+
+    repo = Path(__file__).resolve().parents[2]
+    (insp,) = load_decision_inspectors(
+        {"decision_inspectors": [{"script": "frequency_cap.star"}]},
+        base_dir=repo / "configs" / "policies",
+    )
+
+    cap = Capability(kind=CapabilityKind.MACOS_APP_CONTROL, pattern="*")
+    now = datetime.now(UTC)
+    session = SimpleNamespace(
+        capability_set=frozenset({cap}),
+        cap_uses={str(cap.audit_id): tuple(now for _ in range(12))},
+        used_kinds=frozenset({CapabilityKind.MACOS_APP_CONTROL}),
+    )
+
+    out = await insp.inspect(
+        action=Action(kind=CapabilityKind.MACOS_APP_CONTROL, target="macos://apps"),
+        session=session,
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+    assert isinstance(out, DecisionTighten)
+    assert out.rule == "session-frequency-cap"

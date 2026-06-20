@@ -102,6 +102,25 @@ class HookRegistry:
         """Sum of registrations across all hooks."""
         return sum(len(lst) for lst in self._hooks.values())
 
+    def entries(self) -> tuple[tuple[str, tuple[Any, ...]], ...]:
+        """Ordered primitive entries grouped by hook name.
+
+        The outer tuple is sorted by hook name for deterministic manifest and
+        test output. Primitive order within each hook preserves registration
+        order.
+        """
+        return tuple(
+            (name, tuple(self._hooks.get(name, ())))
+            for name in sorted(self._hooks)
+            if self._hooks.get(name)
+        )
+
+    def extend(self, other: HookRegistry) -> None:
+        """Append every primitive from another registry."""
+        for hook_name, primitives in other.entries():
+            for primitive in primitives:
+                self.register(hook_name, primitive)
+
 
 def build_registry_from_policy_context(
     policy_context: Any,
@@ -123,4 +142,7 @@ def build_registry_from_policy_context(
         registry.register("at_ingest.declassifier_chain", declassifier)
     for decision_inspector in getattr(policy_context, "decision_inspectors", ()) or ():
         registry.register("at_chokepoint.decision", decision_inspector)
+    explicit = getattr(policy_context, "hook_registry", None)
+    if explicit is not None:
+        registry.extend(explicit)
     return registry

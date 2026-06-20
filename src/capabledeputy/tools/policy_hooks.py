@@ -46,6 +46,9 @@ class ToolPolicyHooks:
         self._audit = audit
         self._provenance = ProvenanceRecorder(audit)
         self._graph = graph
+        self._hooks = (
+            policy_context.effective_hook_registry() if policy_context is not None else None
+        )
 
     async def maybe_shadow_rewrite(
         self,
@@ -95,7 +98,10 @@ class ToolPolicyHooks:
         proposed: PolicyDecision,
     ) -> PolicyDecision:
         """Run DecisionInspectors and compose their relax/tighten outcomes."""
-        if self._policy_context is None or not self._policy_context.decision_inspectors:
+        decision_inspectors = (
+            self._hooks.get("at_chokepoint.decision") if self._hooks is not None else ()
+        )
+        if self._policy_context is None or not decision_inspectors:
             return proposed
 
         inspect_action = SimpleNamespace(
@@ -106,7 +112,7 @@ class ToolPolicyHooks:
         )
 
         outcomes: list[tuple[str, Any]] = []
-        for inspector in self._policy_context.decision_inspectors:
+        for inspector in decision_inspectors:
             try:
                 outcome = inspector.inspect(
                     action=inspect_action,
@@ -205,7 +211,10 @@ class ToolPolicyHooks:
         additional_tags: LabelState,
     ) -> tuple[Any, LabelState]:
         """Run the declassifier chain and return tags removed this turn."""
-        if self._policy_context is None or not self._policy_context.declassifiers:
+        declassifiers = (
+            self._hooks.get("at_ingest.declassifier_chain") if self._hooks is not None else ()
+        )
+        if self._policy_context is None or not declassifiers:
             return value, LabelState()
 
         effective_labels = most_restrictive_inherit(
@@ -215,7 +224,7 @@ class ToolPolicyHooks:
         )
         try:
             final_value, applied = apply_declassifier_chain(
-                tuple(self._policy_context.declassifiers),
+                tuple(declassifiers),
                 value=value,
                 current_label_state=effective_labels,
                 context={"tool": tool_name},
@@ -284,8 +293,9 @@ class ToolPolicyHooks:
         """Run raise-only inspectors against a returned tool value."""
         if self._policy_context is None:
             return
+        inspectors = self._hooks.get("at_ingest.value_in") if self._hooks is not None else ()
         new_label_state = session.label_state
-        for inspector in self._policy_context.inspectors:
+        for inspector in inspectors:
             delta = inspector.inspect(
                 value=value,
                 current_label_state=new_label_state,

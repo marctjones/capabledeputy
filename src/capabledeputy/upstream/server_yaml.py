@@ -187,6 +187,11 @@ class ServerYamlConfig:
             tool_overrides[str(tool_name)] = UpstreamToolOverride(
                 capability_kind=kind,
                 additional_tags=extra,
+                target_arg=str(ov["target_arg"]) if ov.get("target_arg") is not None else None,
+                target_template=(
+                    str(ov["target_template"]) if ov.get("target_template") is not None else None
+                ),
+                amount_arg=str(ov["amount_arg"]) if ov.get("amount_arg") is not None else None,
             )
 
         # Custom kinds
@@ -240,6 +245,9 @@ def _override_with_raw_kind(
     return _OverrideWithCustomKind(
         capability_kind=None,
         additional_tags=override.additional_tags,
+        target_arg=override.target_arg,
+        target_template=override.target_template,
+        amount_arg=override.amount_arg,
         _custom_kind_name=raw_kind,
     )
 

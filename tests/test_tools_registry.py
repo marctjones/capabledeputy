@@ -64,6 +64,30 @@ def test_list_returns_all_registered() -> None:
     assert {t.name for t in listed} == {"a", "b"}
 
 
+def test_descriptors_return_split_tool_contract() -> None:
+    registry = ToolRegistry()
+    registry.register(
+        _make_tool(
+            "macos.open_app",
+            target_template="macos://app/{bundle_id}",
+            accepts_handles=True,
+            handle_arg_names=("bundle_id",),
+            parameters_schema={
+                "type": "object",
+                "properties": {"bundle_id": {"type": "string"}},
+                "required": ["bundle_id"],
+            },
+        ),
+    )
+    [descriptor] = registry.descriptors()
+    assert descriptor.runtime.name == "macos.open_app"
+    assert descriptor.policy.capability_kind == CapabilityKind.READ_FS.value
+    assert descriptor.policy.target_template == "macos://app/{bundle_id}"
+    assert descriptor.policy.risk_ids == ("RISK-INDIRECT-INJECTION",)
+    assert descriptor.flow.accepts_handles is True
+    assert descriptor.flow.handle_arg_names == ("bundle_id",)
+
+
 def test_contains_and_len() -> None:
     registry = ToolRegistry()
     assert len(registry) == 0
@@ -76,6 +100,19 @@ def test_contains_and_len() -> None:
 def test_extract_target_pulls_from_named_arg() -> None:
     tool = _make_tool(target_arg="path")
     assert tool.extract_target({"path": "/home/marc/notes.md"}) == "/home/marc/notes.md"
+
+
+def test_extract_target_renders_template() -> None:
+    tool = _make_tool(target_template="macos://app/{bundle_id}")
+    assert (
+        tool.extract_target({"bundle_id": "com.apple.iWork.Pages"})
+        == "macos://app/com.apple.iWork.Pages"
+    )
+
+
+def test_extract_target_template_missing_arg_uses_empty_string() -> None:
+    tool = _make_tool(target_template="gcal://calendar/{calendar_id}/events")
+    assert tool.extract_target({}) == "gcal://calendar//events"
 
 
 def test_extract_target_returns_empty_string_when_missing() -> None:

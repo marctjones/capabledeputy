@@ -15,7 +15,7 @@ Each upstream server gets:
   - inherent_tags: LabelState tags added to ANY tool result from this server
     (e.g., a fetch server gets untrusted.external provenance)
   - tool_overrides: optional per-tool config (capability_kind override,
-    additional inherent tags)
+    additional inherent tags, policy target extraction)
 """
 
 from __future__ import annotations
@@ -57,6 +57,9 @@ def expand_env_value(value: str, environ: dict[str, str] | None = None) -> str:
 class UpstreamToolOverride:
     capability_kind: CapabilityKind | None = None
     additional_tags: LabelState = field(default_factory=LabelState)
+    target_arg: str | None = None
+    target_template: str | None = None
+    amount_arg: str | None = None
 
 
 @dataclass(frozen=True)
@@ -242,6 +245,11 @@ def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
             overrides[tool_name] = UpstreamToolOverride(
                 capability_kind=kind,
                 additional_tags=extra,
+                target_arg=str(ov["target_arg"]) if ov.get("target_arg") is not None else None,
+                target_template=(
+                    str(ov["target_template"]) if ov.get("target_template") is not None else None
+                ),
+                amount_arg=str(ov["amount_arg"]) if ov.get("amount_arg") is not None else None,
             )
         isolation = _parse_isolation(entry.get("isolation"))
         env_raw = entry.get("env") or {}

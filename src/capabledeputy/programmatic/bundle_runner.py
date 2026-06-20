@@ -321,7 +321,7 @@ async def execute_with_approved_bundle(
                 tool_name=tool_name,
                 args=gate.args,
                 tool_kind=tool.capability_kind,
-                target=str(gate.args.get(tool.target_arg, "")),
+                target=tool.extract_target(gate.args),
                 origin_session=session_id,
                 bundle_id=str(impact.bundle_id),
                 step_index=step_index,

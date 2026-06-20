@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 from capabledeputy.app import App
+from capabledeputy.config.manifest import RuntimeManifest
 from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.daemon.audit_handlers import make_audit_handlers
@@ -217,6 +218,29 @@ def _report_admission(manager: UpstreamManager) -> None:
         if rejected:
             line += f"; REFUSED {len(rejected)} unclassified: {sorted(rejected)}"
         print(line, file=sys.stderr)
+
+
+def _report_runtime_manifest(manifest: RuntimeManifest) -> None:
+    """Surface a compact normalized-config summary at daemon startup."""
+    import sys
+
+    validation = manifest.validate()
+    summary = manifest.summary()
+    print(
+        "[manifest] "
+        f"tools={summary['tools']} "
+        f"upstream_servers={summary['upstream_servers']} "
+        f"hooks={summary['hooks']} "
+        f"warnings={len(validation.warnings)}",
+        file=sys.stderr,
+    )
+    if validation.errors:
+        for issue in validation.errors:
+            print(
+                f"[manifest] ERROR {issue.subject}: {issue.message}",
+                file=sys.stderr,
+            )
+        raise RuntimeError("runtime manifest validation failed")
 
 
 def build_policy_context_from_configs(
@@ -678,8 +702,22 @@ async def run_daemon(
                 # depend on the manager type — duck-typed `server_status`.
                 app.upstream_manager = manager  # type: ignore[attr-defined]
                 _report_admission(manager)
+                _report_runtime_manifest(
+                    RuntimeManifest.from_runtime(
+                        registry=app.registry,
+                        policy_context=policy_context,
+                        upstream_servers=tuple(upstream_configs),
+                    ),
+                )
                 await daemon.serve()
         else:
+            _report_runtime_manifest(
+                RuntimeManifest.from_runtime(
+                    registry=app.registry,
+                    policy_context=policy_context,
+                    upstream_servers=(),
+                ),
+            )
             await daemon.serve()
     finally:
         # Roadmap v2 #1 — drive App.shutdown so live devboxes get

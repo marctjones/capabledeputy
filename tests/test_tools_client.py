@@ -16,6 +16,7 @@ from capabledeputy.policy.labels import (
     ProvenanceTag,
     Tier,
 )
+from capabledeputy.policy.pipeline import DecisionFrame, DecisionRequest
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient
@@ -73,6 +74,21 @@ async def _make_setup(
     return registry, graph, client
 
 
+class _AllowingPipeline:
+    def __init__(self) -> None:
+        self.requests: list[DecisionRequest] = []
+
+    def decide(self, request: DecisionRequest) -> DecisionFrame:
+        from capabledeputy.policy.engine import PolicyDecision
+
+        self.requests.append(request)
+        return DecisionFrame(
+            request=request,
+            decision=PolicyDecision(decision=Decision.ALLOW, rule="test-pipeline"),
+            stages=("test",),
+        )
+
+
 async def test_allow_dispatches_and_returns_output(writer: AuditWriter) -> None:
     registry, graph, client = await _make_setup(writer)
     registry.register(
@@ -109,6 +125,32 @@ async def test_allow_dispatches_and_returns_output(writer: AuditWriter) -> None:
     outcome = await client.call_tool(s.id, "fs.read", {"path": "/home/marc/n.md"})
     assert outcome.decision == Decision.ALLOW
     assert outcome.output == {"received": {"path": "/home/marc/n.md"}}
+
+
+async def test_dispatch_uses_injected_policy_pipeline(writer: AuditWriter) -> None:
+    registry = ToolRegistry()
+    graph = SessionGraph(audit=writer)
+    pipeline = _AllowingPipeline()
+    client = LabeledToolClient(registry, graph, writer, policy_pipeline=pipeline)
+    registry.register(
+        ToolDefinition(
+            name="fs.read",
+            description="t",
+            capability_kind=CapabilityKind.READ_FS,
+            handler=_ok_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
+            target_arg="path",
+        ),
+    )
+
+    s = await graph.new()
+    outcome = await client.call_tool(s.id, "fs.read", {"path": "/ungranted"})
+    assert outcome.decision == Decision.ALLOW
+    assert outcome.rule == "test-pipeline"
+    assert outcome.output == {"received": {"path": "/ungranted"}}
+    assert len(pipeline.requests) == 1
+    assert pipeline.requests[0].action.target == "/ungranted"
 
 
 async def test_deny_when_no_matching_capability(writer: AuditWriter) -> None:

@@ -33,6 +33,8 @@ the LLM — controls capability dispatch.
 - **[Design](../DESIGN.md)** — threat model, theoretical foundations,
   the three execution modes, the session graph, labels and
   capabilities, and component specs.
+- **[Architecture](architecture.md)** — current implementation seams for
+  policy pipelines, tool descriptors, runtime manifests, and named hooks.
 - **[Roadmap](../ROADMAP.md)** — release-era implementation history and
   longer-term plan.
 - **[Workflow index](workflow-index.md)** — categorized map of the
