@@ -27,6 +27,7 @@ every client tells you to start it.
 | **Run a programmatic-mode plan** | `capdep run <session> <prog.py>` (`--bundle` for one-approval workflows) | LLM emits a Python plan; statically dry-run-able (`capdep dry-run`). |
 | **Drive from an external agent/host (MCP)** | `capdep mcp-server --session-id <id>` | Exposes session-bound daemon tools to an MCP client. |
 | **Configure local connectors from an MCP host** | `capdep mcp-admin-server` | Exposes local setup/admin tools such as Gmail OAuth configuration. |
+| **Control CapDep itself from an MCP host** | `capdep mcp-control-server` | Exposes daemon client operations for sessions, approvals, audit, setup, provenance, and policy-gated tool calls. |
 
 ## Three ways to "talk to the agent" — the real difference
 

@@ -8,6 +8,9 @@ breaking changes).
 
 ### MCP compatibility and security integration
 
+- Added `capdep mcp-control-server`, a daemon-control MCP client surface for
+  Codex/Claude-style hosts to inspect sessions, approvals, setup status,
+  audit/provenance data, and invoke policy-gated daemon tool calls.
 - Added `outputSchema` propagation for CapDep MCP tools and upstream MCP tool
   wrappers.
 - Changed session-bound MCP elicitation to approve existing daemon-queued

@@ -22,6 +22,7 @@ credentials, apps, files, email, browser, or network.
 | Sampling | Not exposed to MCP clients. | Mediator ports exist; default posture is refuse unless explicitly enabled per server/session. | Refuse by default. If enabled, expose no tools to the sampled model unless separately approved. |
 | Roots | Not exposed. | Not consumed by default. | Trusted servers only because roots can reveal local workspace structure. |
 | Resource subscriptions | Not implemented. | Not proxied by default. | Treat as advisory and never auto-fetch without an operator/session request. |
+| Daemon control client | Implemented as `capdep mcp-control-server`. | Not applicable; this is a CapDep client surface, not an upstream server loaded by CapDep. | Forwards named operations to daemon RPCs. The daemon remains responsible for policy, approval, provenance, and audit enforcement. |
 
 ## Daemon Security Contract
 
@@ -31,7 +32,8 @@ credentials, apps, files, email, browser, or network.
 4. Approval happens through daemon approval objects. MCP elicitation can accept or decline an existing queued request, but it cannot submit a new request or mutate session capabilities.
 5. Admin MCP is separate from session MCP. Admin tools are local setup authority and carry `io.capabledeputy/surface=admin`; normal session-bound MCP cannot access setup operations.
 6. OAuth tokens and client secrets remain daemon-owned. MCP tools may initiate setup flows, but secrets are stored through daemon RPCs and never exposed to the planner session as tool results.
-7. Unsupported MCP surfaces must fail closed or remain absent. Missing support should be visible in this matrix rather than implemented as permissive passthrough.
+7. Control MCP is a daemon client like the CLI, TUI, or GUI. It may expose approval and tool-call controls to a trusted MCP host, but those operations must be daemon RPCs and must not duplicate or bypass daemon safety logic.
+8. Unsupported MCP surfaces must fail closed or remain absent. Missing support should be visible in this matrix rather than implemented as permissive passthrough.
 
 ## ARD Scope
 
@@ -46,4 +48,3 @@ discovery assistant:
 
 ARD must not allow a model to discover and call arbitrary online tools at
 runtime. That would bypass CapDep's intended anti-confused-deputy design.
-
