@@ -33,6 +33,9 @@ coverage.xml
 # uv (uv.lock is committed)
 .uv-cache/
 
+# SwiftPM
+.build/
+
 # OS
 .DS_Store
 Thumbs.db

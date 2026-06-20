@@ -96,6 +96,8 @@ read — strengths, weaknesses, and prioritized fixes — is in
 - [docs/trust-model.md](docs/trust-model.md) — decision layer: who authorizes, and the adaptive-context / Contextual Integrity grounding
 - [docs/responsible-ai-frameworks.md](docs/responsible-ai-frameworks.md) — **the actionable core of responsible AI: keeping the human in control of the agent's actions, not policing model correctness** — the eight enforced principles, the human in/on/over-the-loop ladder, and what is deliberately out of scope
 - [docs/security-alignment-assessment.md](docs/security-alignment-assessment.md) — **grounded alignment scorecard** — how the code actually lines up with each security model, flow pattern, and AI-safety principle, with strengths, live gaps, and prioritized fixes
+- [docs/gui-greenfield-design.md](docs/gui-greenfield-design.md) — **greenfield GUI product design** — primary users, desktop posture, workflows, automation model, screen-space rules, and integrated menu system
+- [docs/macos-desktop-ux-strategy.md](docs/macos-desktop-ux-strategy.md) — **macOS desktop UX strategy** — native menu-bar/command-palette/approval/dashboard design guidance for CapDep's supervised desktop assistant shell
 
 - [docs/SURFACES.md](docs/SURFACES.md) — **which command do I use?** (chat vs console vs tui vs demo vs …) — start here
 - [DESIGN.md](DESIGN.md) — full design specification
