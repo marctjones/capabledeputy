@@ -1,5 +1,65 @@
 # CapableDeputy — Implementation Roadmap
 
+**Current source of truth.** This is the canonical product roadmap.
+`docs/implementation-plan.md` is the engineering sequencing companion that
+maps this roadmap onto GitHub issues and dependencies. The older
+`docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
+historical backlog snapshots, not the current roadmap.
+
+**Last refreshed:** 2026-06-20, after v0.23.0 and the local v0.24 connector
+setup work.
+
+## Current Focus — v0.24.0 Connector Setup + Daemon-Owned Settings
+
+Goal: make CapDep practical to configure as a macOS + Google Workspace personal
+assistant without hand-editing YAML or running multiple setup commands. The
+daemon remains the security and configuration owner; CapDepMac and future
+clients are thin setup/status surfaces over daemon RPCs.
+
+### Already landed locally after v0.23.0
+
+- Native CapDepMac app bundle runner and single-instance guard.
+- GUI daemon supervision, stale-daemon recovery, and local launcher hardening.
+- Default daemon idle shutdown when no clients remain connected.
+- Durable daemon memory in the SQLite state DB.
+- Daemon-backed Gmail MCP OAuth setup: OAuth client storage, generated
+  `servers.d/google-gmail.yaml`, browser OAuth login, audit events, and
+  CapDepMac Accounts UI wiring.
+
+### v0.24.0 milestone scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #72 | Daemon-backed account and OAuth setup workflows for Google and local app connectors | **Partial**: Gmail slice landed; general connector setup remains |
+| #69 | Daemon-owned settings store and settings RPCs for CapDepMac | Planned |
+| #70 | Wire CapDepMac settings controls to daemon settings instead of constants | Planned |
+| #75 | Add daemon config validation and log-location RPCs for Advanced settings | Planned |
+| #71 | Replace empty Setup/Open/Fix buttons with daemon remediation actions | Planned |
+| #76 | Fix CapDepMac task/menu actions that navigate without completing intended action | Planned |
+| #73 | Daemon-owned source bindings and labeling editor for CapDepMac | Stretch |
+| #74 | Wire automation pause, screen-control enablement, and Touch ID policy through daemon | Stretch |
+
+### v0.24.0 done-when
+
+- A user can configure Gmail from CapDepMac without editing YAML.
+- The same daemon-owned connector setup/status shape is ready for Calendar,
+  Drive, GitHub, and custom HTTP MCP servers.
+- CapDepMac settings are persisted by the daemon and reflected consistently in
+  CLI/TUI/future GUI surfaces.
+- Setup failures point at daemon-owned validation results and log locations.
+- Remaining visible buttons either perform daemon-backed work or are removed.
+
+### Recommended implementation order
+
+1. Generalize the Gmail OAuth setup module into connector setup primitives.
+2. Add connector/status/remediation RPCs for CapDepMac and future clients.
+3. Add daemon settings storage and wire existing CapDepMac settings controls.
+4. Add config validation and log-location RPCs.
+5. Replace navigation-only buttons with daemon actions.
+6. Add an admin MCP surface only after the daemon connector API is stable.
+
+---
+
 This roadmap accompanies DESIGN.md. Phases marked **DONE** are landed
 on `main` with the listed commit; **IN PROGRESS** is partial; **PLANNED**
 is upcoming. Phases assume the testing strategy described in §12 of

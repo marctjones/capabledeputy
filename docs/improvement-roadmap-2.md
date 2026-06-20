@@ -1,5 +1,9 @@
 # Improvement Roadmap v2 — Sibling Backlog
 
+> **Historical snapshot.** This sibling backlog is retained for rationale and
+> provenance. Current product sequencing lives in `../ROADMAP.md`; current
+> issue/milestone sequencing lives in `implementation-plan.md`.
+
 **Companion to**
 [`improvement-roadmap.md`](./improvement-roadmap.md) (the original
 backlog, now fully shipped) and

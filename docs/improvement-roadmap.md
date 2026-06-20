@@ -1,5 +1,11 @@
 # Improvement Roadmap — Security Hardening + Approval Reduction
 
+> **Historical snapshot.** This backlog has been superseded by the canonical
+> roadmap in `../ROADMAP.md` and the sequencing companion in
+> `implementation-plan.md`. Keep this file as rationale/history for the
+> security-hardening and approval-reduction arc; do not use it as the current
+> scheduling source of truth.
+
 **Companion to**
 [`personal-workflow-policy-cookbook.md`](./personal-workflow-policy-cookbook.md)
 (the policy authoring discipline) and

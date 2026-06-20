@@ -2,18 +2,26 @@
 
 Living plan that organizes the open GitHub issues into sequenced
 milestones with dependencies. Authoritative status is GitHub; this doc is
-the *sequencing rationale*. Last refreshed 2026-06-19 against current
-`main` after v0.21.0.
+the *sequencing rationale*. Last refreshed 2026-06-20 after v0.23.0 and
+the local v0.24 connector/setup work.
 
-Milestones (GitHub): **v0.16** Policy expressiveness & labeling · **v0.17**
-Gap hardening & explainability · **v0.5** UX EPIC (in flight) · **Backlog**
-Substrate breadth & formal models.
+Milestones (GitHub): **v0.24.0** Connector setup + daemon-owned settings ·
+**v0.16** Policy expressiveness & labeling · **v0.17** Gap hardening &
+explainability · **v0.5** UX EPIC · **Backlog** Substrate breadth & formal
+models.
 
-Two themes drive priority, both from `docs/security-alignment-assessment.md`:
-1. **Decision fatigue** — coarse policy → rubber-stamping → eroded human
+`ROADMAP.md` is the canonical product roadmap. This file explains sequencing,
+dependencies, and why the next pull should focus on one milestone over another.
+
+Three themes currently drive priority:
+1. **Practical setup** — CapDepMac must let a user configure real connectors
+   without hand-editing YAML. This is the v0.24 track.
+2. **Decision fatigue** — coarse policy → rubber-stamping → eroded human
    oversight. Fixed by the decision-refinement layer (EPIC #41).
-2. **The labeling oracle** — IFC guarantees ride on correct labels. Fixed
+3. **The labeling oracle** — IFC guarantees ride on correct labels. Fixed
    by broadening label coverage (EPIC #42).
+
+The policy themes come from `docs/security-alignment-assessment.md`:
 
 ---
 
@@ -21,6 +29,9 @@ Two themes drive priority, both from `docs/security-alignment-assessment.md`:
 
 | # | What | Milestone |
 |---|---|---|
+| #72 | Gmail MCP OAuth setup slice: daemon-owned client storage, generated server config, browser OAuth RPC, CapDepMac Accounts UI | v0.24.0 |
+| — | Native CapDepMac shell, daemon supervision, single-instance guard, local launcher hardening | v0.24.0 |
+| — | Daemon idle shutdown and durable daemon memory store | v0.24.0 |
 | #2 | Agent-loop cap-fire auditability + thrash guard | — (P0 bug) |
 | #50 | Catalog-aware tier resolution | v0.16 / #42 |
 | #52 | Restricted-tier Pattern ③/⑤ floor in per-turn select_mode | v0.17 / #43 |
@@ -37,6 +48,49 @@ Two themes drive priority, both from `docs/security-alignment-assessment.md`:
 **EPIC #41 essentially complete** (layer live, frequency policy, `capdep why`).
 **EPIC #42 core shipped** (catalog tiers, fs + email labelers); remaining
 is #51 (canonical ids) + the identity-dependent email layers.
+
+---
+
+## v0.24.0 — Connector setup + daemon-owned settings
+
+This is the current practical-product milestone. It does not replace the
+policy/labeling roadmap; it pulls forward the setup work required to make the
+macOS + Google Workspace assistant usable without CLI/YAML handholding.
+
+### Scope
+
+- **#72** daemon-backed account and OAuth setup workflows for Google and local
+  app connectors. Gmail is partially landed; remaining work is the generic
+  connector setup/status shape and Calendar/Drive/local-app flows.
+- **#69** daemon-owned settings store and settings RPCs for CapDepMac.
+- **#70** wire CapDepMac settings controls to daemon settings instead of
+  constants.
+- **#75** daemon config validation and log-location RPCs for Advanced settings.
+- **#71** replace empty Setup/Open/Fix buttons with daemon remediation actions.
+- **#76** fix task/menu actions that navigate without completing the intended
+  action.
+- **#73** source bindings and labeling editor is a stretch goal.
+- **#74** automation pause, screen-control enablement, and Touch ID policy is a
+  stretch goal.
+
+### Sequencing
+
+1. Generalize `google_gmail_setup` into reusable connector setup primitives.
+2. Add daemon RPCs for connector status, OAuth client configuration, browser
+   login, revoke/clear-auth, reload, and remediation actions.
+3. Wire CapDepMac Accounts and Advanced settings to those daemon RPCs.
+4. Add daemon-owned settings persistence and update Settings controls.
+5. Add an admin MCP surface after the daemon connector API is stable.
+
+### Done-when
+
+- A user can configure Gmail from CapDepMac without editing YAML.
+- The same daemon API can support Calendar, Drive, GitHub, Kagi/custom HTTP MCP,
+  and local app permission checks.
+- CapDepMac has no visible no-op buttons for setup/action flows.
+- Configuration failures surface daemon validation messages and log locations.
+- Tests cover missing credentials, connected status, reauth-needed status, and
+  daemon restart persistence.
 
 ---
 
@@ -136,14 +190,16 @@ agent-loop cancel (#23/#31/#32) ── coordinate with #2's loop changes
 
 ## Recommended next 3 (refreshed)
 
-1. **#51** SourcePort canonical ids (Gmail/Drive/Calendar) — unblocks the
-   identity-dependent layers of #33/#34 (external-recipient gates,
-   Message-ID binding, sender-provenance) and hardens confused-deputy.
-2. **Labeling-oracle completeness** — content-scan / raise-only labeling
-   paths beyond filename/source bindings, with tests that keep the honest
-   unlabeled-data gap visible.
-3. **#11** quarantined-extract schema library (P2) — EmailForwardable /
-   WebPagePublicFacts; complements the email labeler + dual-LLM path.
+1. **#72** finish daemon-backed connector setup beyond the Gmail slice. This is
+   the shortest path to a usable macOS/Google Workspace assistant.
+2. **#69/#70/#75** daemon-owned settings + validation/log RPCs. This keeps the
+   GUI thin and makes configuration supportable.
+3. **#71/#76** remove no-op setup/action UI and replace it with daemon-backed
+   remediation.
+
+After v0.24.0, return to **#51** SourcePort canonical ids and the
+labeling-oracle completeness work. Those remain important, but they depend on
+real connector setup being practical enough to exercise.
 
 Container-per-call isolation (#15/#16) is the prerequisite for the
 *remaining* halves of #13 (echo-resistance) — pull it forward if
