@@ -91,6 +91,7 @@ read — strengths, weaknesses, and prioritized fixes — is in
 ## Documentation
 
 - [docs/governance-scope.md](docs/governance-scope.md) — **what CapableDeputy is expected to do (and not)** — scope, AI-gov coverage, contingencies
+- [docs/architecture.md](docs/architecture.md) — **daemon-first architecture** — core/safety functionality lives in the daemon; CLI, TUI, macOS GUI, and future Windows/Linux GUIs are thin clients over the same contract
 - [docs/security-models.md](docs/security-models.md) — theoretical model lineage, faithful-vs-approximate intent, deliberate deviations (the yardstick)
 - [docs/llm-flow-patterns.md](docs/llm-flow-patterns.md) — the named planner↔labeled-data flow patterns and their selector
 - [docs/trust-model.md](docs/trust-model.md) — decision layer: who authorizes, and the adaptive-context / Contextual Integrity grounding

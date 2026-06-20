@@ -6,6 +6,13 @@ queue, and session graph remain the system of record. The GUI is a native
 supervisory shell: it renders state, gathers user intent, relays explicit
 approvals, and keeps the user in flow across desktop applications.
 
+Architectural rule: GUI work must not create a second CapDep runtime. New
+workflow primitives, safety decisions, policy explanations, setup checks,
+trust mutations, provenance materialization, and tool execution paths belong in
+the daemon RPC/event contract first. The GUI may be platform-native and rich,
+but it should stay a thin client so the CLI, TUI, macOS GUI, and future
+Windows/Linux GUIs can share feature and safety semantics.
+
 ## Design thesis
 
 CapDep should not be a full-screen chatbot. It should be a desktop control
@@ -823,6 +830,8 @@ Accessibility:
 The GUI must not:
 
 - Make policy decisions client-side.
+- Implement workflow safety semantics that do not exist in the daemon.
+- Run tools directly or write trusted daemon state directly.
 - Hide exact payloads before approval.
 - Allow notification-only approval of high-risk actions.
 - Make direct send easier than draft.
@@ -833,6 +842,7 @@ The GUI must not:
 
 The GUI should:
 
+- Ask for daemon RPC/event support before adding reusable workflow logic.
 - Prefer drafts.
 - Prefer narrow patterns.
 - Prefer relationship-group-based friction reduction.

@@ -40,3 +40,14 @@ remains the trusted policy chokepoint. Future native work should preserve this
 boundary: menu bar, command palette, notifications, Touch ID, Finder/Share
 extensions, and Shortcuts actions may relay explicit user intent, but they must
 not soften or bypass daemon policy.
+
+Keep reusable behavior daemon-first:
+
+- Add new workflow primitives as daemon RPCs/events before adding Swift-only
+  behavior.
+- Keep approval semantics, labels, provenance, trust mutations, tool dispatch,
+  and setup checks in the daemon.
+- Let the Swift app focus on rendering, platform integration, accessibility,
+  notifications, and operator input.
+- Maintain parity with CLI/TUI surfaces wherever a workflow is not inherently
+  macOS-specific.

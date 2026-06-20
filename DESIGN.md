@@ -341,6 +341,12 @@ This is why trace is specified as a first-class component, not an afterthought l
 - State persisted to **SQLite** at `$XDG_DATA_HOME/capdep/state.db`.
 - Lifecycle: foreground process started in tmux/screen for development; systemd/launchd unit for deployment. No daemonization magic.
 
+All safety-critical and reusable product functionality lives here. Client
+surfaces must not reimplement policy, label interpretation, approval
+semantics, tool execution, trust mutation, provenance, or setup validation.
+When a GUI needs a new feature, the durable implementation is a daemon
+RPC/event/state contract first and a client renderer second.
+
 ### 10.2 CLI (`capdep`)
 - **Typer** with rich subcommand tree.
 - Every command supports `--json` for scripting.

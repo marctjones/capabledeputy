@@ -6,6 +6,51 @@ actions; CapDep classifies the tool, target, labels, flow pattern, and
 capability, then decides whether to allow, deny, require approval, or require an
 override.
 
+## Client Boundary Rule
+
+All core functionality and all safety functionality belong in the daemon.
+Every UI surface is a client of the daemon, not a parallel implementation of
+CapDep.
+
+This is a release-blocking architecture rule:
+
+- **Daemon owns enforcement.** Policy decisions, capability checks,
+  information-flow labels, provenance, approval semantics, tool dispatch,
+  MCP/upstream admission, LLM mode selection, audit logging, configuration
+  validation, and recovery rules must remain daemon-side.
+- **Clients render and relay.** CLI, TUI, Swift macOS GUI, future Windows GUI,
+  future Linux GUI, browser extensions, Shortcuts actions, and MCP host shells
+  may render daemon state, collect user intent, and relay explicit operator
+  actions. They must not decide policy, reinterpret labels, run tools directly,
+  write trusted state directly, or create private safety shortcuts.
+- **Feature parity starts at RPC.** If one surface needs a capability, add or
+  improve a daemon RPC/event first, then make each client consume that shared
+  contract. Do not implement user-visible workflow logic exclusively inside one
+  GUI unless it is pure presentation.
+- **Safety parity is mandatory.** A workflow that is safe in one client must be
+  safe in every client because the daemon enforces the same allow/deny/approval
+  semantics. UI-specific confirmation prompts are allowed only as extra
+  friction, never as the sole safety mechanism.
+- **Presentation can differ.** Clients may have different layouts, shortcuts,
+  accessibility affordances, notification integrations, and platform-native
+  shell behavior. Those differences must sit above the daemon contract.
+
+Practical review checklist for any client change:
+
+1. Is any new policy, labeling, approval, tool execution, or trust mutation
+   logic implemented in the client? If yes, move it to the daemon.
+2. Is the client reading or writing daemon state by bypassing JSON-RPC? If yes,
+   add a daemon RPC or event stream.
+3. Would the same workflow be unavailable or unsafe in CLI/TUI because the
+   Swift app owns the logic? If yes, move the workflow primitive into the
+   daemon.
+4. Are exact payloads, labels, policy reasons, and provenance preserved from
+   daemon output to UI? If no, fix the RPC or renderer before shipping.
+
+The intended product shape is one daemon with many thin, parity-preserving
+clients: CLI for scripting, terminal UI for SSH and demos, native macOS for
+desktop flow, and eventually native or cross-platform Windows/Linux shells.
+
 ## Current Runtime Seams
 
 - `ToolDefinition` is the compatibility runtime object. It still carries the

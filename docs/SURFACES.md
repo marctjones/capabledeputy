@@ -51,6 +51,11 @@ commands and approvals are user-driven daemon passthroughs; the agent
 never sees them. See [DESIGN.md](../DESIGN.md) and the project
 constitution (`.specify/memory/constitution.md`, Principles I & V).
 
+Feature work follows the same rule. If a workflow or safety behavior should
+exist in the macOS GUI, it should first exist as daemon RPC/state/event
+contract so the CLI, TUI, Swift GUI, and future Windows/Linux GUIs can reach
+feature parity without reimplementing enforcement.
+
 ## Recovering from a block
 
 A `DENY` is structural, not "ask nicely." Match the recovery to the
