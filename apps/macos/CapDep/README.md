@@ -18,8 +18,12 @@ Run the app:
 
 ```bash
 cd apps/macos/CapDep
-swift run CapDepMac
+./scripts/run-local-app.sh
 ```
+
+Use the script rather than `swift run CapDepMac` for interactive desktop
+testing. SwiftPM's raw executable can run the process without giving macOS a
+normal `.app` bundle, which may leave no visible desktop window.
 
 The app tries to connect to an existing daemon first. If the socket is
 unreachable, it asks the existing CLI lifecycle path to stop any stale daemon

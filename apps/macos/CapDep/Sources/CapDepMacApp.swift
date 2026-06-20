@@ -12,6 +12,15 @@ struct CapDepMacApp: App {
     }
 
     var body: some Scene {
+        WindowGroup("CapDep", id: "main") {
+            DashboardView()
+                .environmentObject(model)
+                .frame(minWidth: 1040, minHeight: 720)
+                .task {
+                    await model.start()
+                }
+        }
+
         MenuBarExtra {
             MenuBarView()
                 .environmentObject(model)
@@ -20,15 +29,6 @@ struct CapDepMacApp: App {
                 }
         } label: {
             Label("CapDep", systemImage: model.pendingApprovals.isEmpty ? "shield" : "shield.lefthalf.filled")
-        }
-
-        WindowGroup("CapDep", id: "main") {
-            DashboardView()
-                .environmentObject(model)
-                .frame(minWidth: 1040, minHeight: 720)
-                .task {
-                    await model.start()
-                }
         }
 
         Window("Ask CapDep", id: "command-palette") {
