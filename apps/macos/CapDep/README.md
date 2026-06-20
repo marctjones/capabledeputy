@@ -82,3 +82,16 @@ Keep reusable behavior daemon-first:
   notifications, and operator input.
 - Maintain parity with CLI/TUI surfaces wherever a workflow is not inherently
   macOS-specific.
+
+## Admin MCP Setup Surface
+
+External MCP hosts can configure local connector setup through:
+
+```bash
+capdep mcp-admin-server
+```
+
+This is separate from `capdep mcp-server --session-id ...`. The session-bound
+server exposes normal policy-gated tools. The admin server exposes local setup
+operations such as Gmail OAuth status, OAuth client configuration, and browser
+authorization through daemon RPCs.

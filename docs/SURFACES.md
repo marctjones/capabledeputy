@@ -25,7 +25,8 @@ every client tells you to start it.
 | **Just approve/deny pending requests** | `capdep approval list` / `approve <id>` / `deny <id>` | Scriptable control-plane. The TUIs do this interactively with a verbatim modal. |
 | **Inspect/triage after the fact** | `capdep session list` · `capdep audit …` · `capdep trace <session>` · `capdep policy …` · `capdep tool …` | Read-only introspection. |
 | **Run a programmatic-mode plan** | `capdep run <session> <prog.py>` (`--bundle` for one-approval workflows) | LLM emits a Python plan; statically dry-run-able (`capdep dry-run`). |
-| **Drive from an external agent/host (MCP)** | `capdep mcp-server --session-id <id>` | Exposes the daemon to an MCP client. |
+| **Drive from an external agent/host (MCP)** | `capdep mcp-server --session-id <id>` | Exposes session-bound daemon tools to an MCP client. |
+| **Configure local connectors from an MCP host** | `capdep mcp-admin-server` | Exposes local setup/admin tools such as Gmail OAuth configuration. |
 
 ## Three ways to "talk to the agent" — the real difference
 

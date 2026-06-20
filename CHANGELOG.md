@@ -32,6 +32,10 @@ breaking changes).
   native clients.
 - Wired the CapDepMac Accounts settings tab to configure and authorize Gmail
   OAuth through the daemon instead of keeping OAuth setup state in Swift.
+- Added `capdep mcp-admin-server`, a separate local admin MCP surface for
+  connector setup. It exposes Gmail OAuth status, OAuth client configuration,
+  and browser authorization through daemon RPCs without expanding the normal
+  session-bound MCP tool surface.
 
 ## [0.23.0] - 2026-06-20
 

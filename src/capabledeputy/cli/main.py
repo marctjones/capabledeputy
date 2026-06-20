@@ -1602,6 +1602,28 @@ def mcp_server_command(
     anyio.run(serve, sid, sock)
 
 
+@app.command("mcp-admin-server")
+def mcp_admin_server_command(
+    socket: str | None = typer.Option(
+        None,
+        "--socket",
+        help="Override daemon socket path",
+    ),
+) -> None:
+    """Run a local admin MCP server for CapableDeputy setup.
+
+    This server is intentionally separate from the session-bound MCP server
+    because it can write connector config, store OAuth credentials through the
+    daemon, and launch browser login flows.
+    """
+    from pathlib import Path
+
+    from capabledeputy.mcp_server.admin import serve_admin
+
+    sock = Path(socket) if socket else None
+    anyio.run(serve_admin, sock)
+
+
 @daemon_app.command("stop")
 def daemon_stop() -> None:
     """Stop a running daemon by sending a shutdown RPC."""
