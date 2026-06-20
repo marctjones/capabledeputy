@@ -20,7 +20,14 @@ async def test_session_new_creates_active_session(graph: SessionGraph) -> None:
     assert result["status"] == "active"
     assert result["intent"] == "hello"
     assert result["owner"] == "marc"
+    assert result["purpose_handle"] == "unset"
     assert UUID(result["id"]) in graph
+
+
+async def test_session_new_accepts_purpose_handle(graph: SessionGraph) -> None:
+    handlers = make_session_handlers(graph)
+    result = await handlers["session.new"]({"intent": "triage", "purpose_handle": "inbox"})
+    assert result["purpose_handle"] == "inbox"
 
 
 async def test_session_list_returns_all_when_no_filter(graph: SessionGraph) -> None:

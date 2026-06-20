@@ -31,6 +31,7 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
         s = await graph.new(
             owner=params.get("owner"),
             intent=params.get("intent"),
+            purpose_handle=str(params.get("purpose_handle", "unset")),
             tool_aliasing=bool(params.get("tool_aliasing", False)),
             prefer_programmatic=bool(params.get("prefer_programmatic", False)),
             parent=parent,

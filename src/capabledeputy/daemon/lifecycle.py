@@ -18,6 +18,7 @@ from capabledeputy.daemon.bundle_handlers import make_bundle_handlers
 from capabledeputy.daemon.demo_handlers import make_demo_handlers
 from capabledeputy.daemon.devbox_handlers import make_devbox_handlers
 from capabledeputy.daemon.extract_handlers import make_extract_handlers
+from capabledeputy.daemon.gui_handlers import make_gui_handlers
 from capabledeputy.daemon.handlers import default_handlers
 from capabledeputy.daemon.memory_handlers import make_memory_handlers
 from capabledeputy.daemon.pattern_handlers import make_pattern_handlers
@@ -536,6 +537,7 @@ async def run_daemon(
     handlers.update(make_memory_handlers(app))
     handlers.update(make_programmatic_handlers(app))
     handlers.update(make_bundle_handlers(app))
+    handlers.update(make_gui_handlers(app))
     # 003 US6 — override RPC handlers bridge the CLI to the daemon's
     # OverrideGrantStore + OverridePolicies. Without these, the
     # `capdep override` CLI mutates a process-local store that the
