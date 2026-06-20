@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="$ROOT/.build/CapDepMac.app"
 EXEC="$ROOT/.build/arm64-apple-macosx/debug/CapDepMac"
 REPO_ROOT="$(cd "$ROOT/../../.." && pwd)"
+CAPDEP="$REPO_ROOT/.venv/bin/capdep"
+DAEMON_LOG="${TMPDIR:-/tmp}/capdep-gui-daemon.log"
 
 cd "$ROOT"
 swift build
@@ -44,5 +46,16 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+if [[ -x "$CAPDEP" ]] && ! (cd "$REPO_ROOT" && "$CAPDEP" daemon status >/dev/null 2>&1); then
+  (cd "$REPO_ROOT" && "$CAPDEP" daemon stop >/dev/null 2>&1) || true
+  (cd "$REPO_ROOT" && "$CAPDEP" daemon start >"$DAEMON_LOG" 2>&1) &
+  for _ in {1..150}; do
+    if (cd "$REPO_ROOT" && "$CAPDEP" daemon status >/dev/null 2>&1); then
+      break
+    fi
+    sleep 0.2
+  done
+fi
 
 open -n -W "$APP"

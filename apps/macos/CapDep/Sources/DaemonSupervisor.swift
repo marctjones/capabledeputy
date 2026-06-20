@@ -93,7 +93,7 @@ final class DaemonSupervisor {
         let args = arguments.map(shellQuote).joined(separator: " ")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.currentDirectoryURL = URL(fileURLWithPath: repoRoot)
+        process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory(repoRoot: repoRoot))
         process.arguments = [
             "-lc",
             "exec \(command) \(args)",
@@ -108,10 +108,30 @@ final class DaemonSupervisor {
             return override
         }
         let local = "\(repositoryRoot())/.venv/bin/capdep"
-        if FileManager.default.isExecutableFile(atPath: local) {
+        if canUseLocalCapDep(local) {
             return shellQuote(local)
         }
         return "capdep"
+    }
+
+    private func canUseLocalCapDep(_ path: String) -> Bool {
+        let venvConfig = URL(fileURLWithPath: path)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("pyvenv.cfg")
+            .path
+        return FileManager.default.isExecutableFile(atPath: path)
+            && FileManager.default.isReadableFile(atPath: venvConfig)
+    }
+
+    private func workingDirectory(repoRoot: String) -> String {
+        if FileManager.default.isReadableFile(atPath: "\(repoRoot)/pyproject.toml") {
+            return repoRoot
+        }
+        if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty {
+            return home
+        }
+        return NSTemporaryDirectory()
     }
 
     private func daemonLogPath() -> String {
