@@ -212,12 +212,15 @@ struct SetupCheck: Identifiable, Hashable {
     let title: String
     let status: String
     let detail: String
+    let actions: [SetupAction]
 
     init(dictionary: [String: Any]) {
         self.id = dictionary["id"] as? String ?? UUID().uuidString
         self.title = dictionary["title"] as? String ?? ""
         self.status = dictionary["status"] as? String ?? ""
         self.detail = dictionary["detail"] as? String ?? ""
+        self.actions = (dictionary["actions"] as? [[String: Any]] ?? [])
+            .map(SetupAction.init(dictionary:))
     }
 
     var systemImage: String {
@@ -240,6 +243,46 @@ struct SetupCheck: Identifiable, Hashable {
             return "checkmark.shield"
         }
     }
+}
+
+struct SetupAction: Identifiable, Hashable {
+    let id: String
+    let label: String
+    let kind: String
+    let enabled: Bool
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["id"] as? String ?? UUID().uuidString
+        self.label = dictionary["label"] as? String ?? ""
+        self.kind = dictionary["kind"] as? String ?? ""
+        self.enabled = dictionary["enabled"] as? Bool ?? true
+    }
+}
+
+struct GmailOAuthStatus: Hashable {
+    let configured: Bool
+    let clientIDConfigured: Bool
+    let clientSecretConfigured: Bool
+    let tokenConfigured: Bool
+    let serverYAML: String
+    let clientIDFile: String
+    let clientSecretFile: String
+    let tokenCache: String
+    let restartRequired: Bool
+
+    init(dictionary: [String: Any]) {
+        self.configured = dictionary["configured"] as? Bool ?? false
+        self.clientIDConfigured = dictionary["client_id_configured"] as? Bool ?? false
+        self.clientSecretConfigured = dictionary["client_secret_configured"] as? Bool ?? false
+        self.tokenConfigured = dictionary["token_configured"] as? Bool ?? false
+        self.serverYAML = dictionary["server_yaml"] as? String ?? ""
+        self.clientIDFile = dictionary["client_id_file"] as? String ?? ""
+        self.clientSecretFile = dictionary["client_secret_file"] as? String ?? ""
+        self.tokenCache = dictionary["token_cache"] as? String ?? ""
+        self.restartRequired = dictionary["restart_required"] as? Bool ?? false
+    }
+
+    static let empty = GmailOAuthStatus(dictionary: [:])
 }
 
 struct ProvenanceNode: Identifiable, Hashable {

@@ -64,6 +64,8 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         "agent",
         # Issue #13 — credential-vault injection.
         "credential",
+        # Daemon-owned setup/configuration changes.
+        "setup",
     }
     for et in EventType:
         head, sep, _ = et.value.partition(".")
@@ -135,6 +137,8 @@ def test_event_type_taxonomy_matches_design() -> None:
         "agent.loop_thrashing",
         # Issue #13 — credential-vault injection.
         "credential.injected",
+        # Daemon-owned setup/configuration changes.
+        "setup.changed",
     }
     actual = {et.value for et in EventType}
     assert actual == expected, f"missing: {expected - actual}, extra: {actual - expected}"

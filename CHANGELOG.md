@@ -24,6 +24,15 @@ breaking changes).
   daemon recovery on application launch, and skips macOS notification setup
   when run as an unbundled SwiftPM debug executable.
 
+### Gmail MCP setup
+
+- Added daemon-owned Gmail MCP OAuth setup RPCs. The daemon can now save the
+  official Google Gmail MCP server config, store OAuth client values in
+  mode-0600 files, run the browser OAuth flow, and report setup status to
+  native clients.
+- Wired the CapDepMac Accounts settings tab to configure and authorize Gmail
+  OAuth through the daemon instead of keeping OAuth setup state in Swift.
+
 ## [0.23.0] - 2026-06-20
 
 Native macOS GUI and practical personal-assistant hardening release.

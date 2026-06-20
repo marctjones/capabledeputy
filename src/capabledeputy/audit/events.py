@@ -115,6 +115,7 @@ class EventType(StrEnum):
     APPROVAL_DENIED = "approval.denied"
     APPROVAL_DEFERRED = "approval.deferred"
     APPROVAL_EXPIRED = "approval.expired"
+    SETUP_CHANGED = "setup.changed"
 
 
 def _utcnow() -> datetime:

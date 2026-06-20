@@ -81,8 +81,10 @@ class UpstreamAuthConfig:
     quota_project_id: str = ""
     client_id: str = ""
     client_id_env: str = ""
+    client_id_file: str = ""
     client_secret: str = ""
     client_secret_env: str = ""
+    client_secret_file: str = ""
     authorization_url: str = ""
     token_url: str = ""
     authorization_metadata_url: str = ""
@@ -185,8 +187,10 @@ def _parse_auth(raw: Any) -> UpstreamAuthConfig | None:
         quota_project_id=str(raw.get("quota_project_id") or ""),
         client_id=expand_env_value(str(raw.get("client_id") or "")),
         client_id_env=str(raw.get("client_id_env") or ""),
+        client_id_file=expand_env_value(str(raw.get("client_id_file") or "")),
         client_secret=expand_env_value(str(raw.get("client_secret") or "")),
         client_secret_env=str(raw.get("client_secret_env") or ""),
+        client_secret_file=expand_env_value(str(raw.get("client_secret_file") or "")),
         authorization_url=str(raw.get("authorization_url") or ""),
         token_url=str(raw.get("token_url") or ""),
         authorization_metadata_url=str(

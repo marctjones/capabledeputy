@@ -120,6 +120,27 @@ def test_oauth2_authorization_url_uses_pkce_scope_and_extra_params() -> None:
     assert qs["access_type"] == ["offline"]
 
 
+def test_oauth2_authorization_url_reads_client_id_file(tmp_path) -> None:
+    client_id_file = tmp_path / "client-id"
+    client_id_file.write_text("file-client-id\n", encoding="utf-8")
+    config = UpstreamAuthConfig(
+        type="oauth2",
+        client_id_file=str(client_id_file),
+        authorization_url="https://auth.example/authorize",
+        token_url="https://auth.example/token",
+    )
+
+    url = oauth2_authorization_url(
+        config,
+        redirect_uri="http://127.0.0.1:8765/oauth/callback",
+        state="state",
+        code_challenge="challenge",
+    )
+    qs = parse_qs(urlparse(url).query)
+
+    assert qs["client_id"] == ["file-client-id"]
+
+
 def test_oauth2_endpoint_discovery_supports_protected_resource_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

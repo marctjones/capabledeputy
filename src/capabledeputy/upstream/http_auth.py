@@ -170,7 +170,12 @@ def oauth2_authorization_url(
 ) -> str:
     """Build the provider authorization URL for the OAuth2 login flow."""
     endpoints = discover_oauth2_endpoints(config)
-    client_id = _required_config_secret(config.client_id, config.client_id_env, "client_id")
+    client_id = _required_config_secret(
+        config.client_id,
+        config.client_id_env,
+        config.client_id_file,
+        "client_id",
+    )
     params: dict[str, str] = {
         "response_type": "code",
         "client_id": client_id,
@@ -259,8 +264,17 @@ def exchange_oauth2_code(
 ) -> dict[str, Any]:
     """Exchange an authorization code for token data."""
     endpoints = discover_oauth2_endpoints(config)
-    client_id = _required_config_secret(config.client_id, config.client_id_env, "client_id")
-    client_secret = _optional_config_secret(config.client_secret, config.client_secret_env)
+    client_id = _required_config_secret(
+        config.client_id,
+        config.client_id_env,
+        config.client_id_file,
+        "client_id",
+    )
+    client_secret = _optional_config_secret(
+        config.client_secret,
+        config.client_secret_env,
+        config.client_secret_file,
+    )
     data: dict[str, str] = {
         "grant_type": "authorization_code",
         "code": code,
@@ -294,8 +308,17 @@ def refresh_oauth2_token(
     refresh_token = str(token_data.get("refresh_token") or "")
     if not refresh_token:
         raise RuntimeError("oauth2 token cache has no refresh_token")
-    client_id = _required_config_secret(config.client_id, config.client_id_env, "client_id")
-    client_secret = _optional_config_secret(config.client_secret, config.client_secret_env)
+    client_id = _required_config_secret(
+        config.client_id,
+        config.client_id_env,
+        config.client_id_file,
+        "client_id",
+    )
+    client_secret = _optional_config_secret(
+        config.client_secret,
+        config.client_secret_env,
+        config.client_secret_file,
+    )
     data: dict[str, str] = {
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
@@ -453,18 +476,23 @@ def _pkce_challenge(verifier: str) -> str:
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
-def _required_config_secret(value: str, env_name: str, label: str) -> str:
-    resolved = _optional_config_secret(value, env_name)
+def _required_config_secret(value: str, env_name: str, file_name: str, label: str) -> str:
+    resolved = _optional_config_secret(value, env_name, file_name)
     if not resolved:
-        raise ValueError(f"oauth2 auth requires {label} or {label}_env")
+        raise ValueError(f"oauth2 auth requires {label}, {label}_env, or {label}_file")
     return resolved
 
 
-def _optional_config_secret(value: str, env_name: str) -> str:
+def _optional_config_secret(value: str, env_name: str, file_name: str = "") -> str:
     if value:
         return value
     if env_name:
         return os.environ.get(env_name, "")
+    if file_name:
+        try:
+            return Path(file_name).expanduser().read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            return ""
     return ""
 
 

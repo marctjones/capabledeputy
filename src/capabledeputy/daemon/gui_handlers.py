@@ -11,7 +11,13 @@ from typing import Any
 
 from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction, ApprovalStatus
-from capabledeputy.audit.events import EventType
+from capabledeputy.audit.events import Event, EventType
+from capabledeputy.daemon.google_gmail_setup import (
+    configure_gmail_oauth_client,
+    gmail_oauth_status,
+    redacted_gmail_oauth_payload,
+    run_gmail_oauth_login,
+)
 from capabledeputy.daemon.handlers import Handler
 from capabledeputy.version import __version__
 
@@ -45,6 +51,7 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
 
     async def setup_status(params: dict[str, Any]) -> dict[str, Any]:
         upstream = _upstream_status(app)
+        gmail_status = gmail_oauth_status()
         relationship_groups = getattr(app.policy_context, "relationship_groups", None)
         relationship_group_count = len(getattr(relationship_groups, "groups", {}) or {})
         return {
@@ -68,12 +75,24 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
                 {
                     "id": "google-oauth",
                     "title": "Google OAuth / MCP",
-                    "status": "ok" if upstream else "warning",
-                    "detail": (
-                        f"{len(upstream)} upstream server(s) configured."
-                        if upstream
-                        else "No upstream Google/MCP server status is available."
-                    ),
+                    "status": _gmail_setup_check_status(gmail_status, upstream),
+                    "detail": _gmail_setup_check_detail(gmail_status, upstream),
+                    "actions": [
+                        {
+                            "id": "google_gmail.configure_oauth",
+                            "label": "Configure Gmail OAuth",
+                            "kind": "daemon_form",
+                        },
+                        {
+                            "id": "google_gmail.oauth_login",
+                            "label": "Authorize Gmail",
+                            "kind": "daemon_browser_oauth",
+                            "enabled": (
+                                gmail_status["client_id_configured"]
+                                and gmail_status["client_secret_configured"]
+                            ),
+                        },
+                    ],
                 },
                 {
                     "id": "relationship-groups",
@@ -202,9 +221,47 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
     async def macos_frontmost_context(params: dict[str, Any]) -> dict[str, Any]:
         return _frontmost_context()
 
+    async def google_gmail_oauth_status(params: dict[str, Any]) -> dict[str, Any]:
+        return gmail_oauth_status()
+
+    async def google_gmail_configure_oauth(params: dict[str, Any]) -> dict[str, Any]:
+        status = configure_gmail_oauth_client(
+            client_id=str(params.get("client_id") or ""),
+            client_secret=str(params.get("client_secret") or ""),
+        )
+        await app.audit.write(
+            Event(
+                event_type=EventType.SETUP_CHANGED,
+                payload={
+                    "action": "google_gmail.configure_oauth",
+                    "status": redacted_gmail_oauth_payload(status),
+                },
+            ),
+        )
+        return status
+
+    async def google_gmail_oauth_login(params: dict[str, Any]) -> dict[str, Any]:
+        status = await run_gmail_oauth_login(
+            open_browser=bool(params.get("open_browser", True)),
+            timeout_seconds=int(params.get("timeout_seconds") or 180),
+        )
+        await app.audit.write(
+            Event(
+                event_type=EventType.SETUP_CHANGED,
+                payload={
+                    "action": "google_gmail.oauth_login",
+                    "status": redacted_gmail_oauth_payload(status),
+                },
+            ),
+        )
+        return status
+
     return {
         "app.status": app_status,
         "setup.status": setup_status,
+        "setup.google_gmail.oauth_status": google_gmail_oauth_status,
+        "setup.google_gmail.configure_oauth": google_gmail_configure_oauth,
+        "setup.google_gmail.oauth_login": google_gmail_oauth_login,
         "policy.explain": policy_explain,
         "approval.detail": approval_detail,
         "provenance.graph": provenance_graph,
@@ -252,6 +309,35 @@ def _has_mlx() -> bool:
         return bool(mx.metal.is_available())
     except Exception:
         return False
+
+
+def _gmail_setup_check_status(
+    gmail_status: dict[str, Any],
+    upstream: list[dict[str, Any]],
+) -> str:
+    if any(server.get("name") == "google-gmail" for server in upstream) and gmail_status.get(
+        "token_configured",
+    ):
+        return "ok"
+    if gmail_status.get("client_id_configured") and gmail_status.get("client_secret_configured"):
+        return "manual"
+    return "warning"
+
+
+def _gmail_setup_check_detail(
+    gmail_status: dict[str, Any],
+    upstream: list[dict[str, Any]],
+) -> str:
+    running = any(server.get("name") == "google-gmail" for server in upstream)
+    if running and gmail_status.get("token_configured"):
+        return "Gmail MCP is configured, authorized, and loaded by the daemon."
+    if gmail_status.get("token_configured"):
+        return "Gmail OAuth token is configured. Restart the daemon to load Gmail MCP."
+    if gmail_status.get("client_id_configured") and gmail_status.get("client_secret_configured"):
+        return "Gmail OAuth client is saved. Authorize Gmail to create the token cache."
+    if gmail_status.get("configured"):
+        return "Gmail MCP server config exists, but OAuth client files are incomplete."
+    return "Gmail MCP OAuth is not configured."
 
 
 def _plain_policy_explanation(decision: str, rule: str, reason: str) -> str:

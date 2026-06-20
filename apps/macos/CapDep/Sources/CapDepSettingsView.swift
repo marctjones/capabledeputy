@@ -20,6 +20,7 @@ struct CapDepSettingsView: View {
                 }
 
             AccountsSettingsView()
+                .environmentObject(model)
                 .tabItem {
                     Label("Accounts", systemImage: "person.crop.circle")
                 }
@@ -78,14 +79,129 @@ private struct AssistantSettingsView: View {
 }
 
 private struct AccountsSettingsView: View {
+    @EnvironmentObject private var model: CapDepAppModel
+    @State private var googleClientID = ""
+    @State private var googleClientSecret = ""
+
     var body: some View {
         Form {
-            SetupProviderRow(name: "Google Gmail", status: "OAuth status from daemon pending")
+            GmailOAuthSetupView(
+                clientID: $googleClientID,
+                clientSecret: $googleClientSecret,
+            )
+            .environmentObject(model)
             SetupProviderRow(name: "Google Calendar", status: "OAuth status from daemon pending")
             SetupProviderRow(name: "Google Drive", status: "OAuth status from daemon pending")
             SetupProviderRow(name: "Apple Mail", status: "Uses macOS Automation permission")
         }
         .formStyle(.grouped)
+    }
+}
+
+private struct GmailOAuthSetupView: View {
+    @EnvironmentObject private var model: CapDepAppModel
+    @Binding var clientID: String
+    @Binding var clientSecret: String
+
+    var body: some View {
+        Section("Google Gmail MCP") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Google Gmail")
+                        Text(statusText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    statusBadge
+                }
+
+                TextField("OAuth client ID", text: $clientID)
+                    .textContentType(.username)
+                SecureField("OAuth client secret", text: $clientSecret)
+                    .textContentType(.password)
+
+                HStack {
+                    Button("Save OAuth Client") {
+                        Task {
+                            await model.configureGmailOAuth(
+                                clientID: clientID,
+                                clientSecret: clientSecret,
+                            )
+                            clientSecret = ""
+                        }
+                    }
+                    .disabled(
+                        model.isConfiguringGmailOAuth
+                            || clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || clientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                    )
+
+                    Button("Authorize Gmail") {
+                        Task {
+                            await model.authorizeGmailOAuth()
+                        }
+                    }
+                    .disabled(
+                        model.isConfiguringGmailOAuth
+                            || !model.gmailOAuthStatus.clientIDConfigured
+                            || !model.gmailOAuthStatus.clientSecretConfigured,
+                    )
+
+                    if model.isConfiguringGmailOAuth {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                if !model.gmailOAuthStatus.serverYAML.isEmpty {
+                    Text("Server config: \(model.gmailOAuthStatus.serverYAML)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                if model.gmailOAuthStatus.restartRequired
+                    && model.gmailOAuthStatus.configured
+                    && !model.appStatus.upstreamServers.contains(where: { $0.name == "google-gmail" })
+                {
+                    Text("Restart the daemon after authorization so Gmail MCP is loaded into the tool registry.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var statusText: String {
+        if model.gmailOAuthStatus.tokenConfigured {
+            return "OAuth token cache exists. Gmail MCP can load after daemon restart."
+        }
+        if model.gmailOAuthStatus.clientIDConfigured && model.gmailOAuthStatus.clientSecretConfigured {
+            return "OAuth client saved by the daemon. Authorize Gmail next."
+        }
+        return "Enter the OAuth client ID and secret from your Google Cloud OAuth client."
+    }
+
+    private var statusBadge: some View {
+        let text: String
+        let color: Color
+        if model.gmailOAuthStatus.tokenConfigured {
+            text = "Authorized"
+            color = .green
+        } else if model.gmailOAuthStatus.clientIDConfigured {
+            text = "Client Saved"
+            color = .yellow
+        } else {
+            text = "Not Configured"
+            color = .secondary
+        }
+        return Text(text)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.16), in: Capsule())
+            .foregroundStyle(color)
     }
 }
 

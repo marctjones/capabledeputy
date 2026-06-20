@@ -49,6 +49,21 @@ The daemon also shuts down automatically after it has no connected clients for
 `CAPDEP_IDLE_SHUTDOWN_SECONDS` seconds. The default is 60 seconds; set the env
 var to `0` or `off` to keep the daemon resident.
 
+## Gmail MCP OAuth Setup
+
+Open `Settings > Accounts > Google Gmail MCP` to configure the official Gmail
+remote MCP server. The Swift app sends the OAuth client ID and secret to the
+daemon over the local Unix socket; the daemon writes:
+
+- `~/.config/capabledeputy/servers.d/google-gmail.yaml`
+- `~/.config/capabledeputy/oauth/google-gmail-client-id`
+- `~/.config/capabledeputy/oauth/google-gmail-client-secret`
+- `~/.config/capabledeputy/oauth/google-gmail.json` after browser authorization
+
+The client secret and token files are mode `0600`. Restart the daemon after the
+OAuth token is created so the newly configured Gmail MCP server is loaded into
+the tool registry.
+
 ## Product Boundary
 
 The Swift app is the native shell for macOS integration. The Python daemon

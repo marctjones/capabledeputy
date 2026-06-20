@@ -18,6 +18,10 @@
 # Or run:
 #   capdep gworkspace-setup
 #
+# In CapDepMac, use Settings > Accounts > Google Gmail MCP to have the daemon
+# write the Gmail servers.d config and store the OAuth client values in
+# mode-0600 files. The GUI never persists these settings itself.
+#
 # CapDep pins every exposed tool to an explicit capability kind and runs
 # strict admission. Unknown tools are refused until this mapping is reviewed.
 

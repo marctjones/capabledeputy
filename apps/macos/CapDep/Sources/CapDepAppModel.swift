@@ -9,6 +9,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var events: [AuditEvent] = []
     @Published private(set) var appStatus = AppStatus.empty
     @Published private(set) var setupChecks: [SetupCheck] = []
+    @Published private(set) var gmailOAuthStatus = GmailOAuthStatus.empty
     @Published private(set) var provenanceNodes: [ProvenanceNode] = []
     @Published private(set) var provenanceEdges: [ProvenanceEdge] = []
     @Published private(set) var relationshipGroups: [RelationshipGroupViewData] = []
@@ -19,6 +20,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
     @Published private(set) var isRunningTurn = false
     @Published private(set) var isRecoveringDaemon = false
+    @Published private(set) var isConfiguringGmailOAuth = false
     @Published var selectedSection: DashboardSection = .today
     @Published var selectedPurpose: Purpose = .general
     @Published var commandText = ""
@@ -81,6 +83,7 @@ final class CapDepAppModel: ObservableObject {
             async let auditResult = client.call(method: "audit.tail", params: ["limit": 40])
             async let statusResult = client.call(method: "app.status")
             async let setupResult = client.call(method: "setup.status")
+            async let gmailOAuthResult = client.call(method: "setup.google_gmail.oauth_status")
             async let provenanceResult = client.call(method: "provenance.graph")
             async let relationshipResult = client.call(method: "relationship_group.list")
             async let patternsResult = client.call(method: "approval_pattern.list")
@@ -90,6 +93,7 @@ final class CapDepAppModel: ObservableObject {
             let auditObject = try await auditResult as? [String: Any]
             let statusObject = try await statusResult as? [String: Any]
             let setupObject = try await setupResult as? [String: Any]
+            let gmailOAuthObject = try await gmailOAuthResult as? [String: Any]
             let provenanceObject = try await provenanceResult as? [String: Any]
             let relationshipObject = try await relationshipResult as? [String: Any]
             let patternsObject = try await patternsResult as? [String: Any]
@@ -107,6 +111,7 @@ final class CapDepAppModel: ObservableObject {
             appStatus = AppStatus(dictionary: statusObject ?? [:])
             setupChecks = (setupObject?["checks"] as? [[String: Any]] ?? [])
                 .map(SetupCheck.init(dictionary:))
+            gmailOAuthStatus = GmailOAuthStatus(dictionary: gmailOAuthObject ?? [:])
             provenanceNodes = (provenanceObject?["nodes"] as? [[String: Any]] ?? [])
                 .map(ProvenanceNode.init(dictionary:))
             provenanceEdges = (provenanceObject?["edges"] as? [[String: Any]] ?? [])
@@ -285,6 +290,52 @@ final class CapDepAppModel: ObservableObject {
                     "ttl_hours": 720,
                 ],
             )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func configureGmailOAuth(clientID: String, clientSecret: String) async {
+        guard !isConfiguringGmailOAuth else {
+            return
+        }
+        isConfiguringGmailOAuth = true
+        defer {
+            isConfiguringGmailOAuth = false
+        }
+        do {
+            let result = try await client.call(
+                method: "setup.google_gmail.configure_oauth",
+                params: [
+                    "client_id": clientID,
+                    "client_secret": clientSecret,
+                ],
+            ) as? [String: Any]
+            gmailOAuthStatus = GmailOAuthStatus(dictionary: result ?? [:])
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func authorizeGmailOAuth() async {
+        guard !isConfiguringGmailOAuth else {
+            return
+        }
+        isConfiguringGmailOAuth = true
+        defer {
+            isConfiguringGmailOAuth = false
+        }
+        do {
+            let result = try await client.call(
+                method: "setup.google_gmail.oauth_login",
+                params: [
+                    "open_browser": true,
+                    "timeout_seconds": 180,
+                ],
+            ) as? [String: Any]
+            gmailOAuthStatus = GmailOAuthStatus(dictionary: result ?? [:])
             await refresh()
         } catch {
             lastError = error.localizedDescription
