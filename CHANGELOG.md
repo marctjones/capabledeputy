@@ -6,6 +6,10 @@ breaking changes).
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-06-20
+
+Connector setup, durable daemon memory, and local daemon lifecycle release.
+
 ### Daemon memory
 
 - Made the daemon-owned labeled memory store durable in the SQLite state DB
@@ -746,6 +750,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.24.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.24.0
 [0.23.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.23.0
 [0.22.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.22.0
 [0.21.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.21.0
