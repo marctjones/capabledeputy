@@ -14,24 +14,29 @@ newline-delimited JSON-RPC Unix socket and renders daemon state:
 
 ## Run from source
 
-Start the daemon first:
-
-```bash
-capdep daemon start --config configs/personal-assistant/daemon.yaml
-```
-
-Then run the app:
+Run the app:
 
 ```bash
 cd apps/macos/CapDep
 swift run CapDepMac
 ```
 
+The app tries to connect to an existing daemon first. If the socket is
+unreachable, it asks the existing CLI lifecycle path to stop any stale daemon
+recorded by the pidfile, then starts a fresh daemon and polls until `ping`
+succeeds. Set `CAPDEP_GUI_DAEMON_COMMAND` to a shell command prefix to override
+the lifecycle command; by default the app uses the repo-local `.venv/bin/capdep`
+when present, otherwise `capdep` from `PATH`.
+
 The socket path follows the daemon convention:
 
 1. `CAPDEP_SOCKET`
 2. `$XDG_RUNTIME_DIR/capdep.sock`
 3. `/tmp/capdep-$UID.sock`
+
+The daemon also shuts down automatically after it has no connected clients for
+`CAPDEP_IDLE_SHUTDOWN_SECONDS` seconds. The default is 60 seconds; set the env
+var to `0` or `off` to keep the daemon resident.
 
 ## Product Boundary
 

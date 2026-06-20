@@ -80,6 +80,29 @@ def agent_max_iterations() -> int:
     return v if v > 0 else DEFAULT_AGENT_MAX_ITERATIONS
 
 
+DEFAULT_IDLE_SHUTDOWN_SECONDS = 60.0
+
+
+def idle_shutdown_seconds() -> float | None:
+    """How long the daemon may sit with no connected clients before
+    shutting down. Default is 60 seconds so one-shot polling clients do
+    not thrash the daemon between refreshes. Set
+    CAPDEP_IDLE_SHUTDOWN_SECONDS=0/off/false to keep it resident."""
+    import os
+
+    raw = os.environ.get("CAPDEP_IDLE_SHUTDOWN_SECONDS")
+    if raw is None:
+        return DEFAULT_IDLE_SHUTDOWN_SECONDS
+    normalized = raw.strip().lower()
+    if normalized in {"0", "off", "false", "no", "never"}:
+        return None
+    try:
+        value = float(normalized)
+    except ValueError:
+        return DEFAULT_IDLE_SHUTDOWN_SECONDS
+    return value if value > 0 else None
+
+
 # 003 Phase 1 T005: load_v09_configs is fail-closed (refuses daemon
 # start on missing or unparseable file). Per-loader schema validation
 # (e.g., labels.yaml category shape) lands per-feature in Phases 2+;
@@ -558,6 +581,7 @@ async def run_daemon(
         socket_path or default_socket_path(),
         handlers=handlers,
         verbose=verbose,
+        idle_shutdown_seconds=idle_shutdown_seconds(),
     )
 
     async def _relay_audit(event) -> None:

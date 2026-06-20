@@ -13,6 +13,14 @@ breaking changes).
 - `memory.delete` now removes durable entries through the store abstraction
   instead of reaching into an in-memory implementation detail.
 
+### Daemon lifecycle
+
+- Added default daemon idle shutdown after 60 seconds with no connected
+  clients, configurable via `CAPDEP_IDLE_SHUTDOWN_SECONDS`.
+- Added Swift GUI daemon supervision: the app connects to a live daemon when
+  possible, otherwise uses the existing CLI stop/start lifecycle path to clear
+  stale daemon state and start a fresh daemon.
+
 ## [0.23.0] - 2026-06-20
 
 Native macOS GUI and practical personal-assistant hardening release.

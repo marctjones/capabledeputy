@@ -97,6 +97,21 @@ async def test_socket_is_removed_after_shutdown(socket_path: Path) -> None:
     assert not socket_path.exists()
 
 
+async def test_daemon_exits_after_idle_client_timeout(socket_path: Path) -> None:
+    daemon = Daemon(socket_path, idle_shutdown_seconds=0.05)
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(daemon.serve)
+        await _wait_for_socket(socket_path)
+
+        client = DaemonClient(socket_path)
+        assert await client.call("ping") == {"ok": True}
+
+        with anyio.fail_after(2):
+            while socket_path.exists():
+                await anyio.sleep(0.01)
+
+
 async def test_client_raises_when_daemon_not_running(tmp_path: Path) -> None:
     socket_path = short_socket_path("missing.sock")
     client = DaemonClient(socket_path)

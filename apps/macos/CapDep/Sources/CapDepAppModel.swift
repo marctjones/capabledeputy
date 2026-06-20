@@ -18,6 +18,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var currentAssistantOutput = ""
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
     @Published private(set) var isRunningTurn = false
+    @Published private(set) var isRecoveringDaemon = false
     @Published var selectedSection: DashboardSection = .today
     @Published var selectedPurpose: Purpose = .general
     @Published var commandText = ""
@@ -36,6 +37,7 @@ final class CapDepAppModel: ObservableObject {
     let client = DaemonClient(socketPath: DaemonClient.defaultSocketPath())
     let workflows = defaultWorkflowTemplates
     private let notifications = NotificationCenterBridge()
+    private let daemonSupervisor = DaemonSupervisor()
     private var didStart = false
     private var lastPendingApprovalCount = 0
 
@@ -45,6 +47,7 @@ final class CapDepAppModel: ObservableObject {
         }
         didStart = true
         await notifications.requestAuthorizationIfNeeded()
+        await ensureDaemonRunning()
         await refresh()
         Task {
             while !Task.isCancelled {
@@ -113,6 +116,30 @@ final class CapDepAppModel: ObservableObject {
                 await notifications.notifyPendingApprovals(count: approvals.count)
             }
             lastPendingApprovalCount = approvals.count
+        } catch {
+            connected = false
+            lastError = error.localizedDescription
+            if shouldRecoverDaemon(after: error) {
+                Task {
+                    await ensureDaemonRunning()
+                    await refresh()
+                }
+            }
+        }
+    }
+
+    func ensureDaemonRunning() async {
+        guard !isRecoveringDaemon else {
+            return
+        }
+        isRecoveringDaemon = true
+        defer {
+            isRecoveringDaemon = false
+        }
+        do {
+            try await daemonSupervisor.ensureRunning(client: client)
+            connected = true
+            lastError = nil
         } catch {
             connected = false
             lastError = error.localizedDescription
@@ -349,6 +376,21 @@ final class CapDepAppModel: ObservableObject {
             await refresh()
         } catch {
             lastError = error.localizedDescription
+        }
+    }
+
+    private func shouldRecoverDaemon(after error: Error) -> Bool {
+        if isRecoveringDaemon {
+            return false
+        }
+        guard let clientError = error as? DaemonClientError else {
+            return false
+        }
+        switch clientError {
+        case .connectFailed, .responseClosed:
+            return true
+        default:
+            return false
         }
     }
 }

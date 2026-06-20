@@ -9,7 +9,7 @@ struct CapDepMacApp: App {
             MenuBarView()
                 .environmentObject(model)
                 .task {
-                    await model.refresh()
+                    await model.start()
                 }
         } label: {
             Label("CapDep", systemImage: model.pendingApprovals.isEmpty ? "shield" : "shield.lefthalf.filled")

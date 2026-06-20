@@ -11,7 +11,7 @@ struct MenuBarView: View {
                     .foregroundStyle(model.connected ? .green : .red)
                     .font(.title3)
                 VStack(alignment: .leading) {
-                    Text(model.connected ? "CapDep protected" : "Daemon offline")
+                    Text(statusTitle)
                         .font(.headline)
                     Text("Purpose: \(model.selectedPurpose.rawValue.capitalized)")
                         .font(.caption)
@@ -99,12 +99,19 @@ struct MenuBarView: View {
             Divider()
 
             HStack {
+                if model.isRecoveringDaemon {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Recovering daemon...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
                 Button("Refresh") {
                     Task {
                         await model.refresh()
                     }
                 }
-                Spacer()
                 Button("Quit") {
                     NSApplication.shared.terminate(nil)
                 }
@@ -112,5 +119,12 @@ struct MenuBarView: View {
         }
         .padding()
         .frame(width: 360)
+    }
+
+    private var statusTitle: String {
+        if model.isRecoveringDaemon {
+            return "Starting daemon"
+        }
+        return model.connected ? "CapDep protected" : "Daemon offline"
     }
 }

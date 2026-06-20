@@ -36,6 +36,7 @@ class Daemon:
         socket_path: Path,
         handlers: dict[str, Handler] | None = None,
         verbose: bool = False,
+        idle_shutdown_seconds: float | None = None,
     ) -> None:
         self._socket_path = socket_path
         self._handlers = handlers or default_handlers()
@@ -43,6 +44,10 @@ class Daemon:
         self._subscribers: dict[str, set[SocketStream]] = {}
         self._connection_streams: dict[int, set[str]] = {}
         self._sub_lock = anyio.Lock()
+        self._connection_lock = anyio.Lock()
+        self._active_connections = 0
+        self._last_client_disconnect_at = time.monotonic()
+        self._idle_shutdown_seconds = idle_shutdown_seconds
         self._verbose = VerboseLogger() if verbose else None
 
     def register(self, method: str, handler: Handler) -> None:
@@ -108,6 +113,8 @@ class Daemon:
                     tg.cancel_scope.cancel()
 
                 tg.start_soon(_wait_shutdown)
+                if self._idle_shutdown_seconds is not None and self._idle_shutdown_seconds > 0:
+                    tg.start_soon(self._idle_shutdown_monitor)
                 with suppress(anyio.ClosedResourceError):
                     await listener.serve(self._handle_connection)
         finally:
@@ -115,7 +122,20 @@ class Daemon:
             with suppress(FileNotFoundError):
                 self._socket_path.unlink()
 
+    async def _idle_shutdown_monitor(self) -> None:
+        assert self._idle_shutdown_seconds is not None
+        while True:
+            await anyio.sleep(min(max(self._idle_shutdown_seconds / 2, 0.1), 5.0))
+            async with self._connection_lock:
+                active = self._active_connections
+                idle_for = time.monotonic() - self._last_client_disconnect_at
+            if active == 0 and idle_for >= self._idle_shutdown_seconds:
+                self.request_shutdown()
+                return
+
     async def _handle_connection(self, stream: SocketStream) -> None:
+        async with self._connection_lock:
+            self._active_connections += 1
         try:
             buf = b""
             async for chunk in stream:
@@ -132,6 +152,9 @@ class Daemon:
             pass
         finally:
             await self._unsubscribe_stream(stream)
+            async with self._connection_lock:
+                self._active_connections = max(0, self._active_connections - 1)
+                self._last_client_disconnect_at = time.monotonic()
             with suppress(anyio.BrokenResourceError, anyio.ClosedResourceError):
                 await stream.aclose()
 

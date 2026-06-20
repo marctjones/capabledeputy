@@ -4,6 +4,7 @@ import anyio
 
 from capabledeputy.daemon.lifecycle import (
     daemon_status,
+    idle_shutdown_seconds,
     run_daemon,
     stop_daemon,
 )
@@ -36,6 +37,18 @@ async def test_status_reports_not_running_when_no_daemon(tmp_path: Path) -> None
 async def test_stop_returns_false_when_no_daemon(tmp_path: Path) -> None:
     socket_path = short_socket_path("no-daemon.sock")
     assert await stop_daemon(socket_path) is False
+
+
+def test_idle_shutdown_seconds_defaults_to_one_minute(monkeypatch) -> None:
+    monkeypatch.delenv("CAPDEP_IDLE_SHUTDOWN_SECONDS", raising=False)
+
+    assert idle_shutdown_seconds() == 60.0
+
+
+def test_idle_shutdown_seconds_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("CAPDEP_IDLE_SHUTDOWN_SECONDS", "off")
+
+    assert idle_shutdown_seconds() is None
 
 
 async def test_run_status_stop_lifecycle(tmp_path: Path) -> None:
