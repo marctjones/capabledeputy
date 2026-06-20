@@ -33,6 +33,37 @@ struct TaskPanelView: View {
                 ContextChipRow(chips: model.contextChips)
             }
 
+            if !model.currentAssistantOutput.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Result")
+                        .font(.headline)
+                    Text(model.currentAssistantOutput)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .lineLimit(8)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+            }
+
+            if !model.currentToolOutcomes.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Tool Outcomes")
+                        .font(.headline)
+                    ForEach(model.currentToolOutcomes.prefix(5)) { outcome in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(outcome.toolName.isEmpty ? outcome.decision : "\(outcome.toolName): \(outcome.decision)")
+                                .font(.caption.weight(.semibold))
+                            Text(outcome.error.isEmpty ? outcome.reason : outcome.error)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+            }
+
             VStack(alignment: .leading, spacing: 10) {
                 Text("Recent Activity")
                     .font(.headline)
@@ -56,11 +87,35 @@ struct TaskPanelView: View {
 
             HStack {
                 Button(role: .destructive) {
-                    model.commandText = ""
+                    Task {
+                        await model.cancelCurrentTurn()
+                    }
                 } label: {
                     Label("Stop", systemImage: "stop.circle")
                 }
-                Button("Pause") {}
+                .disabled(!model.isRunningTurn && model.currentSessionID == nil)
+
+                Button("Pause") {
+                    Task {
+                        await model.pauseCurrentSession()
+                    }
+                }
+                .disabled(model.currentSessionID == nil)
+
+                Button("Resume") {
+                    Task {
+                        await model.resumeCurrentSession()
+                    }
+                }
+                .disabled(model.currentSessionID == nil)
+
+                Button("Abort") {
+                    Task {
+                        await model.abortCurrentSession()
+                    }
+                }
+                .disabled(model.currentSessionID == nil)
+
                 Spacer()
                 Button("Trace") {
                     model.selectedSection = .policyTrace

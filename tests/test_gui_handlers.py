@@ -63,6 +63,37 @@ async def test_policy_explain_returns_plain_english_for_recent_decision(app: App
     assert "not granted authority" in result["plain_english"]
 
 
+async def test_approval_detail_reports_daemon_action_guidance(app: App) -> None:
+    handlers = make_gui_handlers(app)
+    session = await app.graph.new(intent="approval")
+    await app.approval_queue.submit(
+        from_session=session.id,
+        action=ApprovalAction.SEND_EMAIL,
+        payload="hello",
+        target="spouse@example.com",
+        justification="trusted recurring recipient",
+        rule="untrusted-meets-egress",
+    )
+    second = await app.approval_queue.submit(
+        from_session=session.id,
+        action=ApprovalAction.SEND_EMAIL,
+        payload="second",
+        target="spouse@example.com",
+        justification="same target",
+    )
+
+    result = await handlers["approval.detail"]({"id": second.id})
+
+    assert result["approval"]["id"] == second.id
+    assert result["approval"]["action"] == "SEND_EMAIL"
+    assert "Send an email" in result["effect_text"]
+    assert result["sibling_group"]["id"] == str(second.sibling_group_id)
+    assert result["sibling_group"]["approvable"] is True
+    assert {"deny", "defer", "narrow-pattern"} <= {
+        action["id"] for action in result["suggested_actions"]
+    }
+
+
 async def test_provenance_graph_materializes_nodes_and_edges(app: App) -> None:
     handlers = make_gui_handlers(app)
     session = await app.graph.new(intent="prov")

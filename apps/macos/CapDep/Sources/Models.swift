@@ -2,25 +2,33 @@ import Foundation
 
 struct Approval: Identifiable, Hashable {
     let id: Int
+    let auditID: String
     let action: String
     let status: String
     let target: String
     let fromSession: String
+    let toSession: String
     let justification: String
     let payload: String
     let labelsIn: [String]
     let labelsOut: [String]
+    let siblingGroupID: String
+    let rule: String
 
     init(dictionary: [String: Any]) {
         self.id = dictionary["id"] as? Int ?? 0
+        self.auditID = dictionary["audit_id"] as? String ?? ""
         self.action = dictionary["action"] as? String ?? ""
         self.status = dictionary["status"] as? String ?? ""
         self.target = dictionary["target"] as? String ?? ""
         self.fromSession = dictionary["from_session"] as? String ?? ""
+        self.toSession = dictionary["to_session"] as? String ?? ""
         self.justification = dictionary["justification"] as? String ?? ""
         self.payload = dictionary["payload"] as? String ?? ""
         self.labelsIn = Self.labels(from: dictionary["labels_in"])
         self.labelsOut = Self.labels(from: dictionary["labels_out"])
+        self.siblingGroupID = dictionary["sibling_group_id"] as? String ?? ""
+        self.rule = dictionary["rule"] as? String ?? ""
     }
 
     private static func labels(from raw: Any?) -> [String] {
@@ -88,6 +96,59 @@ struct AuditEvent: Identifiable, Hashable {
         } else {
             self.payloadSummary = ""
         }
+    }
+}
+
+struct ToolOutcome: Identifiable, Hashable {
+    let id = UUID()
+    let decision: String
+    let rule: String
+    let reason: String
+    let error: String
+    let output: String
+    let toolName: String
+
+    init(dictionary: [String: Any]) {
+        self.decision = dictionary["decision"] as? String ?? ""
+        self.rule = dictionary["rule"] as? String ?? ""
+        self.reason = dictionary["reason"] as? String ?? ""
+        self.error = dictionary["error"] as? String ?? ""
+        self.output = dictionary["output"].map { "\($0)" } ?? ""
+        self.toolName = dictionary["tool_name"] as? String ?? ""
+    }
+}
+
+struct ApprovalDetail: Hashable {
+    let approval: Approval
+    let effectText: String
+    let plainPolicyReason: String
+    let siblingGroupID: String
+    let siblingPendingCount: Int
+    let siblingApprovable: Bool
+    let suggestedActions: [SuggestedApprovalAction]
+
+    init(dictionary: [String: Any]) {
+        self.approval = Approval(dictionary: dictionary["approval"] as? [String: Any] ?? [:])
+        self.effectText = dictionary["effect_text"] as? String ?? ""
+        self.plainPolicyReason = dictionary["plain_policy_reason"] as? String ?? ""
+        let sibling = dictionary["sibling_group"] as? [String: Any] ?? [:]
+        self.siblingGroupID = sibling["id"] as? String ?? ""
+        self.siblingPendingCount = sibling["pending_count"] as? Int ?? 0
+        self.siblingApprovable = sibling["approvable"] as? Bool ?? false
+        self.suggestedActions = (dictionary["suggested_actions"] as? [[String: Any]] ?? [])
+            .map(SuggestedApprovalAction.init(dictionary:))
+    }
+}
+
+struct SuggestedApprovalAction: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let detail: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["id"] as? String ?? UUID().uuidString
+        self.title = dictionary["title"] as? String ?? ""
+        self.detail = dictionary["detail"] as? String ?? ""
     }
 }
 

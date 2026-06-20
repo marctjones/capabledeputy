@@ -3,6 +3,9 @@ import SwiftUI
 struct ApprovalDetailView: View {
     @EnvironmentObject private var model: CapDepAppModel
     let approval: Approval
+    private var detail: ApprovalDetail? {
+        model.approvalDetails[approval.id]
+    }
 
     var body: some View {
         ScrollView {
@@ -19,7 +22,7 @@ struct ApprovalDetailView: View {
                     StatusPill(text: approval.status)
                 }
 
-                RiskExplanation(approval: approval)
+                RiskExplanation(approval: approval, detail: detail)
 
                 DetailSection(title: "Target") {
                     Text(approval.target.isEmpty ? "(none)" : approval.target)
@@ -36,6 +39,24 @@ struct ApprovalDetailView: View {
                     LabelList(labels: approval.labelsIn)
                 }
 
+                DetailSection(title: "Labels Out") {
+                    LabelList(labels: approval.labelsOut)
+                }
+
+                if !approval.rule.isEmpty || detail != nil {
+                    DetailSection(title: "Policy Reason") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            if !approval.rule.isEmpty {
+                                Text("Rule: \(approval.rule)")
+                                    .font(.caption.monospaced())
+                                    .textSelection(.enabled)
+                            }
+                            Text(detail?.plainPolicyReason ?? "The daemon requested explicit approval for this action.")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 DetailSection(title: "Payload") {
                     Text(approval.payload.isEmpty ? "(empty)" : approval.payload)
                         .font(.body.monospaced())
@@ -43,6 +64,22 @@ struct ApprovalDetailView: View {
                         .padding()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                }
+
+                if let detail, !detail.suggestedActions.isEmpty {
+                    DetailSection(title: "Safer Paths") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(detail.suggestedActions) { action in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(action.title)
+                                        .font(.subheadline.weight(.semibold))
+                                    Text(action.detail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
                 }
 
                 HStack {
@@ -55,7 +92,41 @@ struct ApprovalDetailView: View {
                     }
                     .keyboardShortcut(.cancelAction)
 
+                    Button("Defer") {
+                        Task {
+                            await model.deferApproval(approval)
+                        }
+                    }
+
+                    if detail?.siblingApprovable == true {
+                        Button("Approve Group (\(detail?.siblingPendingCount ?? 0))") {
+                            Task {
+                                await model.approveGroup(approval)
+                            }
+                        }
+                    }
+
                     Spacer()
+
+                    Button("Add Relationship") {
+                        Task {
+                            await model.addRelationshipMember(
+                                groupID: "trusted-recipients",
+                                principalID: approval.target,
+                            )
+                        }
+                    }
+                    .disabled(approval.target.isEmpty || approval.action != "SEND_EMAIL")
+
+                    Button("Create Narrow Pattern") {
+                        Task {
+                            await model.createApprovalPattern(
+                                action: approval.action,
+                                targetPattern: approval.target,
+                            )
+                        }
+                    }
+                    .disabled(approval.target.isEmpty)
 
                     Button {
                         Task {
@@ -70,17 +141,21 @@ struct ApprovalDetailView: View {
             }
             .padding(28)
         }
+        .task(id: approval.id) {
+            await model.refreshApprovalDetail(approval)
+        }
     }
 }
 
 private struct RiskExplanation: View {
     let approval: Approval
+    let detail: ApprovalDetail?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("What will happen")
                 .font(.headline)
-            Text(effectText)
+            Text(detail?.effectText ?? fallbackEffectText)
                 .foregroundStyle(.secondary)
             Text("This app does not soften policy. Approving relays your explicit decision to the daemon, which performs any declassification or one-shot execution path.")
                 .font(.caption)
@@ -91,13 +166,13 @@ private struct RiskExplanation: View {
         .background(.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private var effectText: String {
+    private var fallbackEffectText: String {
         switch approval.action {
-        case "send_email":
+        case "SEND_EMAIL":
             return "The daemon may execute a scoped email send in a fresh approved session."
-        case "queue_purchase":
+        case "QUEUE_PURCHASE":
             return "The daemon may queue a purchase using the approved payload and target."
-        case "execute_destructive":
+        case "EXECUTE_DESTRUCTIVE":
             return "The daemon may execute a destructive operation with a one-shot capability."
         default:
             return "The daemon will mark this approval as approved. Review the payload exactly before approving."

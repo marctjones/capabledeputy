@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from capabledeputy.app import App
+from capabledeputy.approval.model import ApprovalAction, ApprovalStatus
 from capabledeputy.audit.events import EventType
 from capabledeputy.daemon.handlers import Handler
 from capabledeputy.version import __version__
@@ -133,6 +134,41 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
             "payload": payload,
         }
 
+    async def approval_detail(params: dict[str, Any]) -> dict[str, Any]:
+        approval = app.approval_queue.get(int(params["id"]))
+        siblings = (
+            app.approval_queue.siblings(approval.sibling_group_id)
+            if approval.sibling_group_id is not None
+            else []
+        )
+        pending_siblings = [s for s in siblings if s.status == ApprovalStatus.PENDING]
+        rule = approval.rule or ""
+        reason = approval.justification
+        return {
+            "approval": approval.to_dict(),
+            "effect_text": _approval_effect_text(approval.action),
+            "plain_policy_reason": _plain_policy_explanation(
+                "require_approval",
+                rule,
+                reason,
+            ),
+            "source_summary": {
+                "labels_in": approval.labels_in.to_dict(),
+                "labels_out": approval.labels_out.to_dict(),
+                "capability_requested": (
+                    approval.capability_requested.to_dict()
+                    if approval.capability_requested is not None
+                    else None
+                ),
+            },
+            "sibling_group": {
+                "id": str(approval.sibling_group_id) if approval.sibling_group_id else "",
+                "pending_count": len(pending_siblings),
+                "approvable": len(pending_siblings) > 1,
+            },
+            "suggested_actions": _approval_suggested_actions(approval.action),
+        }
+
     async def provenance_graph(params: dict[str, Any]) -> dict[str, Any]:
         session_id = str(params.get("session_id", ""))
         events = await app.audit.read_all()
@@ -170,6 +206,7 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
         "app.status": app_status,
         "setup.status": setup_status,
         "policy.explain": policy_explain,
+        "approval.detail": approval_detail,
         "provenance.graph": provenance_graph,
         "macos.frontmost_context": macos_frontmost_context,
     }
@@ -234,6 +271,69 @@ def _plain_policy_explanation(decision: str, rule: str, reason: str) -> str:
     if decision == "allow":
         return "The daemon policy allowed this action in the current context."
     return reason or "The daemon made a policy decision for this action."
+
+
+def _approval_effect_text(action: ApprovalAction) -> str:
+    if action == ApprovalAction.SEND_EMAIL:
+        return "Send an email using the exact approved payload and destination."
+    if action == ApprovalAction.QUEUE_PURCHASE:
+        return "Queue a purchase using the exact approved item/vendor payload."
+    if action == ApprovalAction.EXECUTE_DESTRUCTIVE:
+        return "Execute a destructive operation with a one-shot approved capability."
+    if action == ApprovalAction.DECLASSIFY:
+        return "Treat the reviewed payload as explicitly approved for release."
+    if action == ApprovalAction.GRANT:
+        return "Grant scoped authority only as represented by the approval payload."
+    if action == ApprovalAction.MERGE:
+        return "Merge session state only after this explicit approval."
+    return "Apply the daemon-defined approval action after explicit operator consent."
+
+
+def _approval_suggested_actions(action: ApprovalAction) -> list[dict[str, str]]:
+    base = [
+        {
+            "id": "deny",
+            "title": "Deny",
+            "detail": "Do not allow this action.",
+        },
+        {
+            "id": "defer",
+            "title": "Defer",
+            "detail": "Leave this request pending for later review.",
+        },
+    ]
+    if action == ApprovalAction.SEND_EMAIL:
+        base.extend(
+            [
+                {
+                    "id": "draft-only",
+                    "title": "Draft Only",
+                    "detail": "Prefer a draft workflow when direct send is not necessary.",
+                },
+                {
+                    "id": "add-relationship",
+                    "title": "Add Relationship",
+                    "detail": (
+                        "Remember this recipient only if they are a trusted "
+                        "recurring counterparty."
+                    ),
+                },
+                {
+                    "id": "narrow-pattern",
+                    "title": "Create Narrow Pattern",
+                    "detail": "Allow only this action/target pattern for a short period.",
+                },
+            ],
+        )
+    else:
+        base.append(
+            {
+                "id": "narrow-pattern",
+                "title": "Create Narrow Pattern",
+                "detail": "Allow only this action/target pattern for a short period.",
+            },
+        )
+    return base
 
 
 def _frontmost_context() -> dict[str, Any]:

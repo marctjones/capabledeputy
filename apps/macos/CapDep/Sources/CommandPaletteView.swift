@@ -41,7 +41,9 @@ struct CommandPaletteView: View {
                         }
                     }
 
-                ContextChipRow(chips: model.contextChips)
+                ContextChipRow(chips: model.contextChips) { chip in
+                    model.removeContextChip(chip)
+                }
             }
 
             VStack(alignment: .leading, spacing: 10) {
@@ -92,6 +94,7 @@ struct CommandPaletteView: View {
 
 struct ContextChipRow: View {
     let chips: [ContextChip]
+    var onRemove: ((ContextChip) -> Void)? = nil
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -102,6 +105,14 @@ struct ContextChipRow: View {
                         Text(chip.title)
                         Text(chip.detail)
                             .foregroundStyle(.secondary)
+                        if let onRemove {
+                            Button {
+                                onRemove(chip)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .font(.caption)
                     .padding(.horizontal, 10)

@@ -13,6 +13,11 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var provenanceEdges: [ProvenanceEdge] = []
     @Published private(set) var relationshipGroups: [RelationshipGroupViewData] = []
     @Published private(set) var approvalPatterns: [ApprovalPatternViewData] = []
+    @Published private(set) var approvalDetails: [Int: ApprovalDetail] = [:]
+    @Published private(set) var currentSessionID: String?
+    @Published private(set) var currentAssistantOutput = ""
+    @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
+    @Published private(set) var isRunningTurn = false
     @Published var selectedSection: DashboardSection = .today
     @Published var selectedPurpose: Purpose = .general
     @Published var commandText = ""
@@ -122,36 +127,68 @@ final class CapDepAppModel: ObservableObject {
         await decide(approval, approved: false)
     }
 
-    func createSession(intent: String, purpose: Purpose? = nil) async {
+    @discardableResult
+    func createSession(intent: String, purpose: Purpose? = nil) async -> CapDepSession? {
         let chosenPurpose = purpose ?? selectedPurpose
         do {
-            _ = try await client.call(
+            let result = try await client.call(
                 method: "session.new",
                 params: [
                     "intent": intent,
                     "owner": "CapDepMac",
                     "purpose_handle": chosenPurpose.rawValue,
                 ],
-            )
+            ) as? [String: Any]
+            let session = CapDepSession(dictionary: result ?? [:])
+            currentSessionID = session.id
             selectedSection = .sessions
             await refresh()
+            return session
         } catch {
             lastError = error.localizedDescription
+            return nil
         }
     }
 
     func launchWorkflow(_ workflow: WorkflowTemplate) async {
         selectedPurpose = workflow.purpose
         commandText = workflow.prompt
-        await createSession(intent: workflow.prompt, purpose: workflow.purpose)
+        await submitCommand(purpose: workflow.purpose)
     }
 
-    func submitCommand() async {
+    func submitCommand(purpose: Purpose? = nil) async {
         let trimmed = commandText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return
         }
-        await createSession(intent: trimmed, purpose: selectedPurpose)
+        guard let session = await createSession(intent: trimmed, purpose: purpose ?? selectedPurpose) else {
+            return
+        }
+        await send(message: trimmed, sessionID: session.id)
+    }
+
+    func send(message: String, sessionID: String) async {
+        isRunningTurn = true
+        currentAssistantOutput = ""
+        currentToolOutcomes = []
+        defer {
+            isRunningTurn = false
+        }
+        do {
+            let result = try await client.call(
+                method: "session.send",
+                params: [
+                    "session_id": sessionID,
+                    "message": message,
+                ],
+            ) as? [String: Any]
+            currentAssistantOutput = result?["content"] as? String ?? ""
+            currentToolOutcomes = (result?["tool_outcomes"] as? [[String: Any]] ?? [])
+                .map(ToolOutcome.init(dictionary:))
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
     }
 
     func refreshFrontmostContext() async {
@@ -176,6 +213,10 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
+    func removeContextChip(_ chip: ContextChip) {
+        contextChips.removeAll { $0.id == chip.id }
+    }
+
     func addRelationshipMember(groupID: String, principalID: String) async {
         do {
             _ = try await client.call(
@@ -183,6 +224,18 @@ final class CapDepAppModel: ObservableObject {
                 params: ["group_id": groupID, "principal_id": principalID],
             )
             await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func refreshApprovalDetail(_ approval: Approval) async {
+        do {
+            let result = try await client.call(
+                method: "approval.detail",
+                params: ["id": approval.id],
+            ) as? [String: Any]
+            approvalDetails[approval.id] = ApprovalDetail(dictionary: result ?? [:])
         } catch {
             lastError = error.localizedDescription
         }
@@ -205,6 +258,68 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
+    func deferApproval(_ approval: Approval) async {
+        do {
+            _ = try await client.call(method: "approval.defer", params: ["id": approval.id])
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func approveGroup(_ approval: Approval) async {
+        guard !approval.siblingGroupID.isEmpty else {
+            return
+        }
+        do {
+            _ = try await client.call(
+                method: "approval.approve_group",
+                params: [
+                    "group_id": approval.siblingGroupID,
+                    "decided_by": "CapDepMac",
+                ],
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func cancelCurrentTurn() async {
+        guard let currentSessionID else {
+            return
+        }
+        do {
+            _ = try await client.call(
+                method: "session.cancel",
+                params: ["session_id": currentSessionID],
+            )
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func pauseCurrentSession() async {
+        guard let currentSessionID else {
+            return
+        }
+        await updateCurrentSession(method: "session.pause", sessionID: currentSessionID)
+    }
+
+    func resumeCurrentSession() async {
+        guard let currentSessionID else {
+            return
+        }
+        await updateCurrentSession(method: "session.resume", sessionID: currentSessionID)
+    }
+
+    func abortCurrentSession() async {
+        guard let currentSessionID else {
+            return
+        }
+        await updateCurrentSession(method: "session.abort", sessionID: currentSessionID)
+    }
+
     private func decide(_ approval: Approval, approved: Bool) async {
         do {
             if approved {
@@ -222,6 +337,15 @@ final class CapDepAppModel: ObservableObject {
                     ],
                 )
             }
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func updateCurrentSession(method: String, sessionID: String) async {
+        do {
+            _ = try await client.call(method: method, params: ["session_id": sessionID])
             await refresh()
         } catch {
             lastError = error.localizedDescription
