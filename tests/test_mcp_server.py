@@ -87,9 +87,13 @@ async def test_discover_tools_finds_native_tools(paths: dict[str, Path]) -> None
         assert "memory.read" in names
         assert "memory.write" in names
         assert "purchase.queue" in names
+        assert "gmail_configure_oauth_client" not in names
+        assert "gmail_oauth_login" not in names
 
         memory_read = next(t for t in tools if t.name == "memory.read")
         assert memory_read.inputSchema.get("properties", {}).get("key") is not None
+        assert memory_read.outputSchema is not None
+        assert memory_read.outputSchema.get("type") == "object"
         assert memory_read.annotations is not None
         assert memory_read.annotations.readOnlyHint is True
         assert memory_read.meta is not None
@@ -150,6 +154,7 @@ async def test_dispatch_tool_deny_returns_policy_message(paths: dict[str, Path])
         assert "decision=deny" in text.lower()
         assert result.meta is not None
         assert result.meta.get("io.capabledeputy/decision") == "deny"
+        assert "io.capabledeputy/approval_id" in result.meta
 
         await client.call("shutdown")
 
@@ -265,7 +270,6 @@ async def test_build_server_constructs_a_server(paths: dict[str, Path]) -> None:
 # old kwarg makes elicit() raise → the helper returns None → this fails.
 
 from types import SimpleNamespace  # noqa: E402
-from uuid import uuid4 as _uuid4  # noqa: E402
 
 from capabledeputy.mcp_server.server import (  # noqa: E402
     _try_elicit_and_approve,
@@ -296,7 +300,6 @@ async def test_elicit_call_uses_requested_schema_dict(fake_daemon) -> None:
     )
     client = fake_daemon(
         {
-            "approval.submit": {"id": 1},
             "approval.approve": {
                 "approval": {"id": 1},
                 "executed_in_session": "ffff0000-0000-0000-0000-000000000000",
@@ -307,10 +310,9 @@ async def test_elicit_call_uses_requested_schema_dict(fake_daemon) -> None:
     result = await _try_elicit_and_approve(
         client,  # type: ignore[arg-type]
         server,  # type: ignore[arg-type]
-        _uuid4(),
         "email.send",
         {"to": "a@b.com", "subject": "s", "body": "hi"},
-        {"rule": "financial-meets-email", "effective_labels": []},
+        {"rule": "financial-meets-email", "effective_labels": [], "approval_id": 1},
     )
     # The strict-signature fake would have raised on the old kwarg →
     # helper returns None. Reaching a CallToolResult proves the

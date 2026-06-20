@@ -6,6 +6,20 @@ breaking changes).
 
 ## [Unreleased]
 
+### MCP compatibility and security integration
+
+- Added `outputSchema` propagation for CapDep MCP tools and upstream MCP tool
+  wrappers.
+- Changed session-bound MCP elicitation to approve existing daemon-queued
+  approval objects instead of submitting MCP-specific approval requests.
+- Marked admin MCP tools with local setup authority metadata and output
+  schemas so hosts can distinguish them from normal session-bound tools.
+- Strengthened upstream MCP resource reads to preserve content-level CapDep
+  labels in addition to server-level inherent labels.
+- Added a current MCP compatibility/security review documenting protocol
+  coverage, default security posture for each MCP surface, and ARD as
+  operator-curated discovery only.
+
 ## [0.24.0] - 2026-06-20
 
 Connector setup, durable daemon memory, and local daemon lifecycle release.

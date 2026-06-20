@@ -21,6 +21,14 @@ from capabledeputy.ipc.socket_path import default_socket_path
 
 SERVER_NAME = "capdep-admin"
 
+_ADMIN_META: dict[str, Any] = {
+    "io.capabledeputy/surface": "admin",
+    "io.capabledeputy/authority": "local_setup",
+    "io.capabledeputy/session_bound": False,
+}
+
+_GENERIC_OBJECT_OUTPUT: dict[str, Any] = {"type": "object", "additionalProperties": True}
+
 
 _ADMIN_TOOLS: tuple[mcp_types.Tool, ...] = (
     mcp_types.Tool(
@@ -28,24 +36,28 @@ _ADMIN_TOOLS: tuple[mcp_types.Tool, ...] = (
         title="Setup status",
         description="Return daemon-owned setup checks and remediation actions.",
         inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
+        outputSchema=_GENERIC_OBJECT_OUTPUT,
         annotations=mcp_types.ToolAnnotations(
             title="Setup status",
             readOnlyHint=True,
             idempotentHint=True,
             openWorldHint=False,
         ),
+        **{"_meta": _ADMIN_META},  # pyright: ignore[reportArgumentType]
     ),
     mcp_types.Tool(
         name="gmail_oauth_status",
         title="Gmail OAuth status",
         description="Return daemon-owned Google Gmail MCP OAuth configuration status.",
         inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
+        outputSchema=_GENERIC_OBJECT_OUTPUT,
         annotations=mcp_types.ToolAnnotations(
             title="Gmail OAuth status",
             readOnlyHint=True,
             idempotentHint=True,
             openWorldHint=False,
         ),
+        **{"_meta": _ADMIN_META},  # pyright: ignore[reportArgumentType]
     ),
     mcp_types.Tool(
         name="gmail_configure_oauth_client",
@@ -69,6 +81,7 @@ _ADMIN_TOOLS: tuple[mcp_types.Tool, ...] = (
             "required": ["client_id", "client_secret"],
             "additionalProperties": False,
         },
+        outputSchema=_GENERIC_OBJECT_OUTPUT,
         annotations=mcp_types.ToolAnnotations(
             title="Configure Gmail OAuth client",
             readOnlyHint=False,
@@ -76,6 +89,7 @@ _ADMIN_TOOLS: tuple[mcp_types.Tool, ...] = (
             idempotentHint=True,
             openWorldHint=False,
         ),
+        **{"_meta": _ADMIN_META},  # pyright: ignore[reportArgumentType]
     ),
     mcp_types.Tool(
         name="gmail_oauth_login",
@@ -101,6 +115,7 @@ _ADMIN_TOOLS: tuple[mcp_types.Tool, ...] = (
             },
             "additionalProperties": False,
         },
+        outputSchema=_GENERIC_OBJECT_OUTPUT,
         annotations=mcp_types.ToolAnnotations(
             title="Authorize Gmail OAuth",
             readOnlyHint=False,
@@ -108,6 +123,7 @@ _ADMIN_TOOLS: tuple[mcp_types.Tool, ...] = (
             idempotentHint=False,
             openWorldHint=True,
         ),
+        **{"_meta": _ADMIN_META},  # pyright: ignore[reportArgumentType]
     ),
 )
 
@@ -158,6 +174,7 @@ def _ok_result(result: Any) -> mcp_types.CallToolResult:
         content=[mcp_types.TextContent(type="text", text=text)],
         structuredContent=structured,
         isError=False,
+        **{"_meta": _ADMIN_META},
     )
 
 

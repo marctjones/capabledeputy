@@ -6,17 +6,17 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-06-20, after v0.23.0 and the local v0.24 connector
-setup work.
+**Last refreshed:** 2026-06-20, after v0.24.0 and the local v0.25 MCP
+compatibility/security milestone work.
 
-## Current Focus — v0.24.0 Connector Setup + Daemon-Owned Settings
+## Current Focus — v0.25.0 MCP Compatibility + Security Integration
 
-Goal: make CapDep practical to configure as a macOS + Google Workspace personal
-assistant without hand-editing YAML or running multiple setup commands. The
-daemon remains the security and configuration owner; CapDepMac and future
-clients are thin setup/status surfaces over daemon RPCs.
+Goal: make MCP a well-specified integration substrate for CapDep without
+letting MCP become a second authority path. The daemon remains the security
+owner; session-bound MCP, admin MCP, and upstream MCP servers all route through
+explicit daemon contracts.
 
-### Already landed locally after v0.23.0
+### Landed in v0.24.0
 
 - Native CapDepMac app bundle runner and single-instance guard.
 - GUI daemon supervision, stale-daemon recovery, and local launcher hardening.
@@ -26,37 +26,35 @@ clients are thin setup/status surfaces over daemon RPCs.
   `servers.d/google-gmail.yaml`, browser OAuth login, audit events, and
   CapDepMac Accounts UI wiring.
 
-### v0.24.0 milestone scope
+### v0.25.0 MCP milestone scope
 
 | Issue | Work | Status |
 |---|---|---|
-| #72 | Daemon-backed account and OAuth setup workflows for Google and local app connectors | **Partial**: Gmail slice landed; general connector setup remains |
-| #69 | Daemon-owned settings store and settings RPCs for CapDepMac | Planned |
-| #70 | Wire CapDepMac settings controls to daemon settings instead of constants | Planned |
-| #75 | Add daemon config validation and log-location RPCs for Advanced settings | Planned |
-| #71 | Replace empty Setup/Open/Fix buttons with daemon remediation actions | Planned |
-| #76 | Fix CapDepMac task/menu actions that navigate without completing intended action | Planned |
-| #73 | Daemon-owned source bindings and labeling editor for CapDepMac | Stretch |
-| #74 | Wire automation pause, screen-control enablement, and Touch ID policy through daemon | Stretch |
+| #77 | MCP compatibility matrix and protocol tests | Implemented locally |
+| #78 | Add `outputSchema` to CapDep MCP tools | Implemented locally |
+| #79 | Unify MCP elicitation with daemon approval objects | Implemented locally |
+| #80 | Make upstream MCP resources first-class labeled inputs | Implemented locally |
+| #81 | Define explicit policy posture for every MCP surface | Implemented locally |
+| #82 | Strengthen admin MCP server separation and audit | Implemented locally |
+| #83 | Refresh MCP and ARD documentation against implementation | Implemented locally |
 
-### v0.24.0 done-when
+### v0.25.0 done-when
 
-- A user can configure Gmail from CapDepMac without editing YAML.
-- The same daemon-owned connector setup/status shape is ready for Calendar,
-  Drive, GitHub, and custom HTTP MCP servers.
-- CapDepMac settings are persisted by the daemon and reflected consistently in
-  CLI/TUI/future GUI surfaces.
-- Setup failures point at daemon-owned validation results and log locations.
-- Remaining visible buttons either perform daemon-backed work or are removed.
+- Session-bound MCP exposes schemas, metadata, approval behavior, and resource
+  behavior that match the daemon contract.
+- Upstream MCP tools/resources preserve capability, label, and provenance
+  posture instead of bypassing the policy engine.
+- Admin MCP remains separate from normal session MCP and is marked as local
+  setup authority.
+- ARD is documented as operator-curated discovery only, not runtime execution.
 
 ### Recommended implementation order
 
-1. Generalize the Gmail OAuth setup module into connector setup primitives.
-2. Add connector/status/remediation RPCs for CapDepMac and future clients.
-3. Add daemon settings storage and wire existing CapDepMac settings controls.
-4. Add config validation and log-location RPCs.
-5. Replace navigation-only buttons with daemon actions.
-6. Add an admin MCP surface only after the daemon connector API is stable.
+1. Keep the daemon as the only authority for MCP action execution.
+2. Add schema metadata and protocol compatibility tests.
+3. Unify MCP elicitation with daemon approval objects.
+4. Treat upstream MCP resources as labeled inputs.
+5. Document explicit posture for every MCP surface and ARD.
 
 ---
 

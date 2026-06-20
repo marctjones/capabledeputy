@@ -378,12 +378,18 @@ class LabeledMcpAdapter:
             return {"found": False, "uri": uri, "error": str(e)}
         contents = getattr(result, "contents", [])
         # MCP returns a list of content blocks; collect text where
-        # available.
+        # available, and merge any content-level CapDep labels.
         texts: list[str] = []
+        content_tags = LabelState()
         for c in contents:
             t = getattr(c, "text", None)
             if t is not None:
                 texts.append(str(t))
+            content_tags = most_restrictive_inherit(
+                content_tags,
+                _extract_tags(getattr(c, "meta", None)),
+            )
+        all_tags = most_restrictive_inherit(self._config.inherent_tags, content_tags)
         return {
             "found": True,
             "uri": uri,
@@ -392,7 +398,7 @@ class LabeledMcpAdapter:
                 getattr(contents[0], "mimeType", "text/plain") if contents else "text/plain"
             ),
             "labels": sorted(
-                _tag_to_str(t) for t in self._config.inherent_tags.a | self._config.inherent_tags.b
+                _tag_to_str(t) for t in all_tags.a | all_tags.b
             ),
             "server": self._config.name,
         }
@@ -491,6 +497,10 @@ class LabeledMcpAdapter:
                     amount_arg=override.amount_arg if override else None,
                     inherent_tags=inherent,
                     parameters_schema=upstream_tool.inputSchema or {"type": "object"},
+                    output_schema=(
+                        getattr(upstream_tool, "outputSchema", None)
+                        or {"type": "object", "additionalProperties": True}
+                    ),
                     operations=(op,),
                     risk_ids=op_risks,
                     surfaces_destination_id=op_surfaces,

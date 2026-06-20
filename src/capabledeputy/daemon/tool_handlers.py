@@ -23,6 +23,7 @@ def _tool_to_dict(tool: ToolDefinition) -> dict[str, Any]:
         "target_template": tool.target_template,
         "amount_arg": tool.amount_arg,
         "parameters_schema": tool.parameters_schema,
+        "output_schema": tool.output_schema,
     }
 
 
@@ -95,6 +96,8 @@ def make_tool_handlers(
                 "reason": outcome.reason,
                 "error": outcome.error,
                 "labels_added": legacy_labels_present(outcome.tags_added),
+                "approval_submission": outcome.approval_submission,
+                "approval_id": outcome.approval_id,
             }
 
         handlers["tool.call"] = tool_call

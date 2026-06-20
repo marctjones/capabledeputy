@@ -25,24 +25,18 @@ Spec leverage (per modelcontextprotocol.io/specification/2025-11-25):
     capability-aware hosts can do further filtering.
   - Resources for memory entries with labels in _meta.
   - Prompts for canonical workflows.
-  - Elicitation for in-flow approvals when policy denies a
-    declassifiable action — the host's user confirms inline rather
-    than running a separate `capdep approval approve` command.
+  - Elicitation for in-flow approvals when the daemon chokepoint has
+    already queued an approval object for a declassifiable action —
+    the host's user confirms inline rather than running a separate
+    `capdep approval approve` command.
   - Log notifications mirror policy decisions so host UIs surface
     them in real time.
 
-Known boundary (v0.7 audit, documented not silently drifting):
-  - In-flow *elicitation* (offer-to-approve without leaving the tool
-    call) is intentionally scoped to `email.send` / SEND_EMAIL via a
-    manual `approval.submit`. It predates server-side chokepoint
-    approval registration (the daemon now auto-registers approvals and
-    the outcome carries `approval_id`). It does NOT yet offer in-flow
-    approval for the other now-approvable actions (purchase,
-    destructive ops). Generalising it to consume `approval_id`
-    uniformly is a scoped follow-up — deferred because the MCP stdio
-    surface has no integration tests (same posture as the Textual
-    apps); rushing an under-tested change to an external approval path
-    is the larger risk.
+Known boundary:
+  - In-flow *elicitation* only appears when the daemon already returned
+    an `approval_id` from the policy chokepoint. MCP never constructs
+    a new approval request or grants capability to the originating
+    session.
   - All denials (including the v0.7 rules capability-expired /
     rate-limit-exceeded / capability-revoked-by-prior-use) DO surface
     to the host as an isError tool result carrying rule + reason +
@@ -81,14 +75,6 @@ _ANNOTATIONS_BY_KIND: dict[str, dict[str, bool]] = {
 }
 
 
-# Rules that we know how to declassify via the approval workflow
-# (currently SEND_EMAIL is the only action with a built-in
-# purpose-limited execution path).
-_ELICITABLE_RULES: frozenset[str] = frozenset(
-    {"health-meets-egress", "financial-meets-email", "untrusted-meets-egress"},
-)
-
-
 def _annotations_for(tool: dict[str, Any]) -> mcp_types.ToolAnnotations | None:
     hints = _ANNOTATIONS_BY_KIND.get(tool["capability_kind"])
     if not hints:
@@ -117,6 +103,8 @@ async def discover_tools(client: DaemonClient) -> list[mcp_types.Tool]:
                 title=tool["name"],
                 description=tool["description"],
                 inputSchema=schema,
+                outputSchema=tool.get("output_schema")
+                or {"type": "object", "additionalProperties": True},
                 annotations=annotations,
                 # mcp `_meta` alias; SDK accepts at runtime, pyright's
                 # generated model doesn't expose it. Boundary ignore.
@@ -126,34 +114,37 @@ async def discover_tools(client: DaemonClient) -> list[mcp_types.Tool]:
     return tools
 
 
-def _is_elicitable_email_denial(tool_name: str, result: dict[str, Any]) -> bool:
-    """Whether we should offer in-flow approval via elicitation."""
-    if tool_name != "email.send":
+def _is_elicitable_denial(result: dict[str, Any]) -> bool:
+    """Whether the daemon has already queued an approval to elicit."""
+    if result.get("decision") != "require_approval":
         return False
-    if result.get("decision") != "deny":
-        return False
-    rule = result.get("rule")
-    return bool(rule) and rule in _ELICITABLE_RULES
+    return result.get("approval_id") is not None
 
 
-def _build_elicit_schema(tool_name: str, args: dict[str, Any], rule: str) -> dict[str, Any]:
+def _build_elicit_schema(
+    tool_name: str,
+    args: dict[str, Any],
+    rule: str,
+    approval_id: int,
+) -> dict[str, Any]:
+    summary = ", ".join(f"{k}={v!r}" for k, v in sorted(args.items())[:4])
     return {
         "type": "object",
-        "title": f"Approval needed for {tool_name}",
+        "title": f"Approval #{approval_id} needed for {tool_name}",
         "description": (
             f"This action was blocked by the policy rule '{rule}'. "
-            "If you confirm, capdep will spawn a one-shot purpose-limited "
-            "session to execute it; the originating session will not gain "
-            "egress capability."
+            "If you confirm, capdep will approve the daemon-queued request "
+            "and execute it through the existing purpose-limited approval "
+            "path; the originating session will not gain the denied capability."
         ),
         "properties": {
             "approve": {
                 "type": "boolean",
-                "title": "Approve a one-shot send?",
+                "title": f"Approve queued request #{approval_id}?",
                 "description": (
-                    f"To: {args.get('to', '?')}. "
-                    f"Subject: {args.get('subject', '(none)')}. "
-                    f"Body length: {len(str(args.get('body', '')))} chars."
+                    f"Tool: {tool_name}. "
+                    f"Arguments: {summary or '(none)'}. "
+                    "Approve only if this matches the user's intent."
                 ),
             },
         },
@@ -164,16 +155,21 @@ def _build_elicit_schema(tool_name: str, args: dict[str, Any], rule: str) -> dic
 async def _try_elicit_and_approve(
     client: DaemonClient,
     server: Server,
-    session_id: UUID,
     tool_name: str,
     args: dict[str, Any],
     deny_result: dict[str, Any],
 ) -> mcp_types.CallToolResult | None:
     rule = deny_result.get("rule") or ""
-    schema = _build_elicit_schema(tool_name, args, rule)
+    approval_id = deny_result.get("approval_id")
+    if approval_id is None:
+        return None
+    schema = _build_elicit_schema(tool_name, args, rule, int(approval_id))
     try:
         elicit_result = await server.request_context.session.elicit(
-            message=(f"Approve this {tool_name} despite policy rule '{rule}'? to={args.get('to')}"),
+            message=(
+                f"Approve queued capdep request #{approval_id} for {tool_name} "
+                f"despite policy rule '{rule}'?"
+            ),
             # mcp's elicit() takes requestedSchema as a plain dict
             # (camelCase). The prior code passed `requested_schema=`
             # with an ElicitRequestedSchema object — wrong kwarg AND
@@ -214,19 +210,9 @@ async def _try_elicit_and_approve(
             isError=True,
         )
 
-    submitted = await client.call(
-        "approval.submit",
-        {
-            "from_session": str(session_id),
-            "action": "SEND_EMAIL",
-            "payload": str(args.get("body", "")),
-            "target": str(args.get("to", "")),
-            "justification": "user-approved via MCP elicitation",
-        },
-    )
     approved = await client.call(
         "approval.approve",
-        {"id": submitted["id"], "decided_by": "mcp-elicitation"},
+        {"id": int(approval_id), "decided_by": "mcp-elicitation"},
     )
     dispatch = approved.get("dispatch") or {}
     if dispatch.get("decision") == "allow":
@@ -235,7 +221,7 @@ async def _try_elicit_and_approve(
                 mcp_types.TextContent(
                     type="text",
                     text=(
-                        "Approved via elicitation; executed in purpose-limited "
+                        "Approved queued request via elicitation; executed in purpose-limited "
                         f"session {approved.get('executed_in_session')}.\n\n"
                         f"{json.dumps(dispatch.get('output') or {}, indent=2)}"
                     ),
@@ -290,16 +276,17 @@ async def dispatch_tool(
         )
 
     if result["decision"] != "allow":
-        if server is not None and _is_elicitable_email_denial(name, result):
+        if server is not None and _is_elicitable_denial(result):
             await _send_log(
                 server,
                 "warning",
-                f"policy denied {name} (rule={result.get('rule')}); offering elicitation",
+                "policy requires approval for "
+                f"{name} (approval_id={result.get('approval_id')}, rule={result.get('rule')}); "
+                "offering elicitation",
             )
             elicit_result = await _try_elicit_and_approve(
                 client,
                 server,
-                session_id,
                 name,
                 arguments,
                 result,
@@ -322,6 +309,7 @@ async def dispatch_tool(
             "io.capabledeputy/decision": result["decision"],
             "io.capabledeputy/rule": rule,
             "io.capabledeputy/effective_labels": result.get("effective_labels", []),
+            "io.capabledeputy/approval_id": result.get("approval_id"),
         }
         if server is not None:
             await _send_log(

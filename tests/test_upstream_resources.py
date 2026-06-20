@@ -30,9 +30,10 @@ class _FakeListResourcesResult:
 
 
 class _FakeContent:
-    def __init__(self, text, mime="text/plain"):
+    def __init__(self, text, mime="text/plain", meta=None):
         self.text = text
         self.mimeType = mime
+        self.meta = meta or {}
 
 
 class _FakeReadResourceResult:
@@ -162,6 +163,34 @@ async def test_read_upstream_resource_propagates_inherent_labels() -> None:
     )
     result = await adapter.read_upstream_resource("upstream://x.md")
     assert "external-untrusted" in result["labels"]
+
+
+@pytest.mark.asyncio
+async def test_read_upstream_resource_propagates_content_meta_labels() -> None:
+    session = _FakeSession(
+        content_for={
+            "upstream://x.md": [
+                _FakeContent(
+                    "content",
+                    meta={
+                        "io.capabledeputy/inherent_tags": {
+                            "a": [
+                                {
+                                    "kind": "category",
+                                    "category": "financial",
+                                    "tier": "restricted",
+                                    "assignment_provenance": "source-declared",
+                                },
+                            ],
+                        },
+                    },
+                ),
+            ],
+        },
+    )
+    adapter = _make_adapter(session)
+    result = await adapter.read_upstream_resource("upstream://x.md")
+    assert "financial" in result["labels"]
 
 
 @pytest.mark.asyncio

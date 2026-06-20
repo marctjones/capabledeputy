@@ -1,5 +1,8 @@
 # MCP Spec Coverage Review
 
+Current source of truth: [MCP Compatibility and Security Review](mcp-compatibility-and-security-review.md).
+This older review is retained for historical detail.
+
 Review of CapableDeputy's MCP server (`src/capabledeputy/mcp_server/server.py`)
 against the MCP specification at
 [modelcontextprotocol.io/specification/2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25).

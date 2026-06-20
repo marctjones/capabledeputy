@@ -66,6 +66,9 @@ class ToolDefinition:
     parameters_schema: dict[str, Any] = field(
         default_factory=lambda: {"type": "object", "properties": {}, "required": []},
     )
+    output_schema: dict[str, Any] = field(
+        default_factory=lambda: {"type": "object", "additionalProperties": True},
+    )
     # How to authorize a REQUIRE_APPROVAL of this tool. None means the
     # tool is never expected to gate (or has no auto-submit path; the
     # user falls back to /submit).

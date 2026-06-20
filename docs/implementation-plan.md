@@ -2,10 +2,11 @@
 
 Living plan that organizes the open GitHub issues into sequenced
 milestones with dependencies. Authoritative status is GitHub; this doc is
-the *sequencing rationale*. Last refreshed 2026-06-20 after v0.23.0 and
-the local v0.24 connector/setup work.
+the *sequencing rationale*. Last refreshed 2026-06-20 after v0.24.0 and
+the local v0.25 MCP compatibility/security work.
 
-Milestones (GitHub): **v0.24.0** Connector setup + daemon-owned settings ·
+Milestones (GitHub): **v0.25.0** MCP compatibility and security integration ·
+**v0.24.0** Connector setup + daemon-owned settings ·
 **v0.16** Policy expressiveness & labeling · **v0.17** Gap hardening &
 explainability · **v0.5** UX EPIC · **Backlog** Substrate breadth & formal
 models.
@@ -14,11 +15,13 @@ models.
 dependencies, and why the next pull should focus on one milestone over another.
 
 Three themes currently drive priority:
-1. **Practical setup** — CapDepMac must let a user configure real connectors
-   without hand-editing YAML. This is the v0.24 track.
-2. **Decision fatigue** — coarse policy → rubber-stamping → eroded human
+1. **MCP security integration** — MCP must remain an integration substrate, not
+   a second authority path. This is the v0.25 track.
+2. **Practical setup** — CapDepMac must let a user configure real connectors
+   without hand-editing YAML. This remains the v0.24/v0.26 product track.
+3. **Decision fatigue** — coarse policy → rubber-stamping → eroded human
    oversight. Fixed by the decision-refinement layer (EPIC #41).
-3. **The labeling oracle** — IFC guarantees ride on correct labels. Fixed
+4. **The labeling oracle** — IFC guarantees ride on correct labels. Fixed
    by broadening label coverage (EPIC #42).
 
 The policy themes come from `docs/security-alignment-assessment.md`:
@@ -29,6 +32,7 @@ The policy themes come from `docs/security-alignment-assessment.md`:
 
 | # | What | Milestone |
 |---|---|---|
+| #77-#83 | MCP compatibility/security milestone: output schemas, daemon approval elicitation, upstream resource label propagation, admin separation, and ARD scope docs | v0.25.0 |
 | #72 | Gmail MCP OAuth setup slice: daemon-owned client storage, generated server config, browser OAuth RPC, CapDepMac Accounts UI | v0.24.0 |
 | — | Native CapDepMac shell, daemon supervision, single-instance guard, local launcher hardening | v0.24.0 |
 | — | Daemon idle shutdown and durable daemon memory store | v0.24.0 |
@@ -51,9 +55,35 @@ is #51 (canonical ids) + the identity-dependent email layers.
 
 ---
 
+## v0.25.0 — MCP compatibility + security integration
+
+MCP is now treated as a daemon-mediated integration substrate. The milestone
+locks down the session-bound MCP surface, upstream MCP adapter, admin MCP
+surface, and ARD scope.
+
+### Scope
+
+- **#77** compatibility matrix and protocol tests.
+- **#78** `outputSchema` propagation.
+- **#79** elicitation through existing daemon approval objects.
+- **#80** upstream resource label propagation.
+- **#81** explicit posture for tools, resources, prompts, elicitation,
+  sampling, roots, and notifications.
+- **#82** admin MCP separation metadata and tests.
+- **#83** refreshed MCP/ARD docs.
+
+### Done-when
+
+- MCP action execution cannot bypass daemon policy.
+- Admin setup authority is not exposed through session-bound MCP.
+- ARD remains discovery/configuration input only.
+- Focused MCP and approval tests pass.
+
+---
+
 ## v0.24.0 — Connector setup + daemon-owned settings
 
-This is the current practical-product milestone. It does not replace the
+This practical-product milestone shipped in v0.24.0. It does not replace the
 policy/labeling roadmap; it pulls forward the setup work required to make the
 macOS + Google Workspace assistant usable without CLI/YAML handholding.
 

@@ -23,6 +23,11 @@ def test_admin_tools_include_gmail_oauth_setup() -> None:
     assert configure.annotations is not None
     assert configure.annotations.readOnlyHint is False
     assert configure.inputSchema["required"] == ["client_id", "client_secret"]
+    for tool in tools:
+        assert tool.outputSchema is not None
+        assert tool.meta is not None
+        assert tool.meta["io.capabledeputy/surface"] == "admin"
+        assert tool.meta["io.capabledeputy/session_bound"] is False
 
 
 async def test_admin_gmail_status_dispatches_to_daemon(fake_daemon) -> None:
@@ -40,6 +45,8 @@ async def test_admin_gmail_status_dispatches_to_daemon(fake_daemon) -> None:
     assert result.isError is False
     assert result.structuredContent is not None
     assert result.structuredContent["server"] == "google-gmail"
+    assert result.meta is not None
+    assert result.meta["io.capabledeputy/surface"] == "admin"
     assert client.calls == [("setup.google_gmail.oauth_status", None)]
 
 
