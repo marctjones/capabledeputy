@@ -41,6 +41,12 @@ final class CapDepAppModel: ObservableObject {
     private var didStart = false
     private var lastPendingApprovalCount = 0
 
+    init() {
+        Task {
+            await start()
+        }
+    }
+
     func start() async {
         guard !didStart else {
             return

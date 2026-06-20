@@ -2,7 +2,14 @@ import SwiftUI
 
 @main
 struct CapDepMacApp: App {
+    private static let singleInstanceGuard = SingleInstanceGuard(name: "capdepmac")
     @StateObject private var model = CapDepAppModel()
+
+    init() {
+        if !Self.singleInstanceGuard.didAcquire {
+            Foundation.exit(0)
+        }
+    }
 
     var body: some Scene {
         MenuBarExtra {

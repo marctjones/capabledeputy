@@ -28,6 +28,13 @@ succeeds. Set `CAPDEP_GUI_DAEMON_COMMAND` to a shell command prefix to override
 the lifecycle command; by default the app uses the repo-local `.venv/bin/capdep`
 when present, otherwise `capdep` from `PATH`.
 
+Only one `CapDepMac` instance may run at a time. A second launch exits before
+opening another menu bar item or touching daemon lifecycle state.
+
+When launched with `swift run`, the executable is not inside a `.app` bundle, so
+macOS notification permission setup is skipped. Packaged app builds still use
+UserNotifications for pending approval alerts.
+
 The socket path follows the daemon convention:
 
 1. `CAPDEP_SOCKET`

@@ -6,6 +6,9 @@ final class NotificationCenterBridge {
     private var permissionRequested = false
 
     func requestAuthorizationIfNeeded() async {
+        guard canUseUserNotifications else {
+            return
+        }
         guard !permissionRequested else {
             return
         }
@@ -20,6 +23,9 @@ final class NotificationCenterBridge {
     }
 
     func notifyPendingApprovals(count: Int) async {
+        guard canUseUserNotifications else {
+            return
+        }
         guard count > 0 else {
             return
         }
@@ -33,5 +39,9 @@ final class NotificationCenterBridge {
             trigger: nil,
         )
         try? await UNUserNotificationCenter.current().add(request)
+    }
+
+    private var canUseUserNotifications: Bool {
+        Bundle.main.bundleURL.pathExtension == "app"
     }
 }

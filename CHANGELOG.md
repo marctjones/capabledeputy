@@ -20,6 +20,9 @@ breaking changes).
 - Added Swift GUI daemon supervision: the app connects to a live daemon when
   possible, otherwise uses the existing CLI stop/start lifecycle path to clear
   stale daemon state and start a fresh daemon.
+- The Swift GUI now enforces a single running `CapDepMac` instance, starts
+  daemon recovery on application launch, and skips macOS notification setup
+  when run as an unbundled SwiftPM debug executable.
 
 ## [0.23.0] - 2026-06-20
 
