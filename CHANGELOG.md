@@ -4,6 +4,61 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [0.23.0] - 2026-06-20
+
+Native macOS GUI and practical personal-assistant hardening release.
+
+### macOS desktop app
+
+- **Native SwiftUI desktop shell.** Added `apps/macos/CapDep`, a SwiftPM
+  macOS app with a menu-bar popover, dashboard window, command palette, task
+  panel, settings window, approval detail UI, and integrated macOS command
+  menus.
+- **Live daemon-backed dashboard.** The app now renders pending approvals,
+  sessions, audit events, daemon status, model status, setup checks,
+  provenance nodes/edges, relationship groups, and approval patterns from
+  daemon RPCs rather than static placeholders.
+- **Practical approval surface.** Approval cards expose action, target,
+  justification, payload, and input/output labels, and can approve or deny
+  through the daemon.
+- **Conservative desktop integration.** The app requests notification
+  permission, notifies only when pending approvals increase, and captures
+  frontmost-app context through a read-only best-effort macOS endpoint that
+  fails soft when Automation/TCC permission is absent.
+
+### GUI daemon APIs
+
+- Added GUI-focused RPC handlers: `app.status`, `setup.status`,
+  `policy.explain`, `provenance.graph`, and `macos.frontmost_context`.
+- Wired GUI handlers into the daemon lifecycle so native clients do not need to
+  scrape CLI-oriented endpoints.
+- `session.new` now accepts a `purpose_handle`, allowing GUI-created sessions
+  to preserve the user's selected purpose.
+
+### Personal-assistant policy usability
+
+- Tightened personal-assistant defaults for Google Workspace and local app
+  automation while reducing avoidable approval fatigue.
+- Improved relationship-group handling and policy-script coverage for practical
+  recurring personal workflows.
+- Updated personal-assistant config docs and regression coverage for curated
+  defaults, relationship groups, first-use prompts, policy hooks, and tool
+  client behavior.
+
+### Documentation
+
+- Added the greenfield GUI product design document covering primary users,
+  desktop posture, workflow surfaces, automation model, screen-space rules, and
+  integrated menu structure.
+- Added the macOS desktop UX strategy document summarizing the design guidance
+  behind the native menu-bar, command-palette, approval, dashboard, and setup
+  experience.
+- Linked the new GUI/UX docs from the README.
+
+### Dependencies
+
+- Bumped `pypdf` from `>=6.11.0` to `>=6.12.0` and refreshed `uv.lock`.
+
 ## [0.22.0] - 2026-06-19
 
 macOS and Google Workspace personal-assistant release.
@@ -658,6 +713,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.23.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.23.0
 [0.22.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.22.0
 [0.21.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.21.0
 [0.20.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.20.0
