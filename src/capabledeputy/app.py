@@ -48,8 +48,9 @@ class App:
         # from configs/fs_label_rules.yaml), fs reads attach Axis-A
         # category labels so local-file data participates in IFC.
         self._fs_labeler = fs_labeler
+        resolved_state_db_path = state_db_path or default_state_db_path()
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
-        self.store = SessionStore(state_db_path or default_state_db_path())
+        self.store = SessionStore(resolved_state_db_path)
         # Resolve quarantined LLM first so we can signal availability
         # to SessionGraph. Falls back to the main llm_client when no
         # separate quarantined client was provided — the same model
@@ -65,7 +66,7 @@ class App:
             purposes=purposes,
             quarantined_available=_quarantined_resolved is not None,
         )
-        self.memory = LabeledMemoryStore()
+        self.memory = LabeledMemoryStore(resolved_state_db_path)
         self.purchase_queue = PurchaseQueue()
         self.email_outbox = EmailOutbox()
         self.email_drafts = DraftBox()

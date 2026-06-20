@@ -1,4 +1,4 @@
-"""Labeled in-memory key-value store and the memory.read / memory.write tools.
+"""Labeled key-value memory store and the memory.read / memory.write tools.
 
 memory.write stores a value alongside the calling session's current label
 state. memory.read returns the value along with the stored labels as
@@ -8,7 +8,14 @@ the IFC-correct behavior: reading labeled data inherits its labels.
 
 from __future__ import annotations
 
+import json
+import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from threading import RLock
 from typing import Any
 
 from capabledeputy.approval.model import ApprovalAction
@@ -33,25 +40,115 @@ class _MemoryEntry:
 
 
 class LabeledMemoryStore:
-    def __init__(self) -> None:
+    def __init__(self, db_path: Path | None = None) -> None:
+        self._db_path = db_path
         self._data: dict[str, _MemoryEntry] = {}
+        self._lock = RLock()
+        self._initialized = False
 
-    def write(self, key: str, value: Any, label_state: LabelState) -> None:
-        self._data[key] = _MemoryEntry(value=value, label_state=label_state)
+    @property
+    def durable(self) -> bool:
+        return self._db_path is not None
+
+    def write(self, key: str, value: Any, label_state: LabelState | frozenset[Any]) -> None:
+        normalized_label_state = _normalize_label_state(label_state)
+        if self._db_path is None:
+            self._data[key] = _MemoryEntry(value=value, label_state=normalized_label_state)
+            return
+        self._ensure_initialized()
+        now = _utcnow_iso()
+        encoded_value = json.dumps(value, separators=(",", ":"))
+        encoded_labels = json.dumps(normalized_label_state.to_dict(), separators=(",", ":"))
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO memory_entries (key, value_json, label_state, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value_json = excluded.value_json,
+                    label_state = excluded.label_state,
+                    updated_at = excluded.updated_at
+                """,
+                (key, encoded_value, encoded_labels, now, now),
+            )
 
     def read(self, key: str) -> _MemoryEntry | None:
-        return self._data.get(key)
+        if self._db_path is None:
+            return self._data.get(key)
+        self._ensure_initialized()
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT value_json, label_state FROM memory_entries WHERE key = ?",
+                (key,),
+            ).fetchone()
+        if row is None:
+            return None
+        return _MemoryEntry(
+            value=json.loads(row["value_json"]),
+            label_state=LabelState.from_dict(json.loads(row["label_state"])),
+        )
 
     def keys(self) -> list[str]:
-        return sorted(self._data.keys())
+        if self._db_path is None:
+            return sorted(self._data.keys())
+        self._ensure_initialized()
+        with self._connection() as conn:
+            rows = conn.execute("SELECT key FROM memory_entries ORDER BY key").fetchall()
+        return [str(row["key"]) for row in rows]
 
     def label_state_of(self, key: str) -> LabelState:
-        entry = self._data.get(key)
+        entry = self.read(key)
         return entry.label_state if entry else LabelState()
 
     def labels_of(self, key: str) -> LabelState:
         """Alias for label_state_of (backward compat)."""
         return self.label_state_of(key)
+
+    def delete(self, key: str) -> bool:
+        if self._db_path is None:
+            return self._data.pop(key, None) is not None
+        self._ensure_initialized()
+        with self._connection() as conn:
+            cursor = conn.execute("DELETE FROM memory_entries WHERE key = ?", (key,))
+            return cursor.rowcount > 0
+
+    def _ensure_initialized(self) -> None:
+        if self._db_path is None or self._initialized:
+            return
+        with self._lock:
+            if self._initialized:
+                return
+            self._db_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._connection() as conn:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS memory_entries (
+                        key TEXT PRIMARY KEY,
+                        value_json TEXT NOT NULL,
+                        label_state TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """,
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_memory_entries_updated "
+                    "ON memory_entries(updated_at)",
+                )
+            self._initialized = True
+
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        if self._db_path is None:
+            raise RuntimeError("memory store is not configured for SQLite")
+        conn = sqlite3.connect(str(self._db_path), isolation_level=None)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        try:
+            yield conn
+        finally:
+            conn.close()
 
 
 def _resolved_labels_from_state(label_state: LabelState) -> ResolvedLabels:
@@ -141,11 +238,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             return ToolResult(
                 output={"ok": False, "error": f"key does not exist: {key}"},
             )
-        # The store doesn't currently expose a delete primitive; we
-        # emulate it by overwriting with a tombstone marker. A future
-        # store implementation should add a real delete that removes
-        # the entry. For now this surfaces the right policy semantics.
-        store._data.pop(key, None)  # type: ignore[attr-defined]
+        store.delete(key)
         return ToolResult(output={"ok": True, "key": key, "deleted": True})
 
     return [
@@ -303,3 +396,15 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
             },
         ),
     ]
+
+
+def _utcnow_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _normalize_label_state(label_state: LabelState | frozenset[Any]) -> LabelState:
+    if isinstance(label_state, LabelState):
+        return label_state
+    if isinstance(label_state, frozenset) and not label_state:
+        return LabelState()
+    raise TypeError("memory labels must be a LabelState")

@@ -4,6 +4,15 @@ All notable changes to CapableDeputy are documented here. Versions follow
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may carry
 breaking changes).
 
+## [Unreleased]
+
+### Daemon memory
+
+- Made the daemon-owned labeled memory store durable in the SQLite state DB
+  while preserving the existing policy-aware `memory.*` tool contract.
+- `memory.delete` now removes durable entries through the store abstraction
+  instead of reaching into an in-memory implementation detail.
+
 ## [0.23.0] - 2026-06-20
 
 Native macOS GUI and practical personal-assistant hardening release.

@@ -1,5 +1,7 @@
 from uuid import UUID, uuid4
 
+import pytest
+
 from capabledeputy.patterns.reference_handle import ReferenceHandleStore
 from capabledeputy.policy.labels import CategoryTag, LabelState, Tier
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
@@ -113,6 +115,44 @@ async def test_keys_lists_all_keys_sorted() -> None:
     assert store.keys() == ["a", "b", "c"]
 
 
+async def test_durable_store_round_trips_entries(tmp_path) -> None:
+    db_path = tmp_path / "state.db"
+    label_state = LabelState(
+        a=frozenset(
+            {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")}
+        )
+    )
+    first = LabeledMemoryStore(db_path)
+    first.write("profile.nickname", {"value": "Marc"}, label_state)
+
+    second = LabeledMemoryStore(db_path)
+    entry = second.read("profile.nickname")
+
+    assert entry is not None
+    assert entry.value == {"value": "Marc"}
+    assert entry.label_state == label_state
+    assert second.keys() == ["profile.nickname"]
+
+
+async def test_durable_store_accepts_empty_legacy_label_set(tmp_path) -> None:
+    store = LabeledMemoryStore(tmp_path / "state.db")
+
+    store.write("legacy.unlabeled", "value", frozenset())
+
+    entry = store.read("legacy.unlabeled")
+    assert entry is not None
+    assert entry.label_state == LabelState()
+
+
+async def test_delete_removes_entry_for_durable_store(tmp_path) -> None:
+    store = LabeledMemoryStore(tmp_path / "state.db")
+    store.write("temporary", "value", LabelState())
+
+    assert store.delete("temporary") is True
+    assert store.read("temporary") is None
+    assert store.delete("temporary") is False
+
+
 def test_tool_metadata() -> None:
     tools = make_memory_tools(LabeledMemoryStore())
     by_name = {t.name: t for t in tools}
@@ -154,3 +194,10 @@ async def test_memory_handle_returns_reference_without_raw_value() -> None:
         audit_id=uuid4(),
     )
     assert bound == "BP=120/80"
+
+
+def test_durable_store_rejects_non_json_values(tmp_path) -> None:
+    store = LabeledMemoryStore(tmp_path / "state.db")
+
+    with pytest.raises(TypeError):
+        store.write("bad", object(), LabelState())
