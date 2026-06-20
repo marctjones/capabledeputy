@@ -615,6 +615,89 @@ async def test_local_app_confirm_tightens_first_clipboard_read() -> None:
 
 
 @pytest.mark.skipif(not _starlark_available(), reason="starlark extra not installed")
+async def test_local_app_confirm_allows_trusted_inbox_draft_first_use() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from capabledeputy.policy.labels import CategoryTag, LabelState
+    from capabledeputy.policy.tiers import Tier
+
+    repo = Path(__file__).resolve().parents[2]
+    (insp,) = load_decision_inspectors(
+        {"decision_inspectors": [{"script": "local_app_confirm.star"}]},
+        base_dir=repo / "configs" / "policies",
+    )
+    session = SimpleNamespace(
+        purpose_handle="inbox",
+        label_state=LabelState(a=frozenset({CategoryTag("email", Tier.SENSITIVE)})),
+    )
+    action = SimpleNamespace(
+        kind=CapabilityKind.GMAIL_DRAFT,
+        target="me@example.com",
+        amount=None,
+        relationship_group_ids=frozenset({"self", "trusted-draft"}),
+    )
+
+    out = await insp.inspect(
+        action=action,
+        session=session,
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+    assert out is None
+
+
+@pytest.mark.skipif(not _starlark_available(), reason="starlark extra not installed")
+async def test_local_app_confirm_still_tightens_high_tier_trusted_draft() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from capabledeputy.policy.labels import CategoryTag, LabelState
+    from capabledeputy.policy.tiers import Tier
+
+    repo = Path(__file__).resolve().parents[2]
+    (insp,) = load_decision_inspectors(
+        {"decision_inspectors": [{"script": "local_app_confirm.star"}]},
+        base_dir=repo / "configs" / "policies",
+    )
+    session = SimpleNamespace(
+        purpose_handle="inbox",
+        label_state=LabelState(a=frozenset({CategoryTag("finance", Tier.RESTRICTED)})),
+    )
+    action = SimpleNamespace(
+        kind=CapabilityKind.GMAIL_DRAFT,
+        target="me@example.com",
+        amount=None,
+        relationship_group_ids=frozenset({"self", "trusted-draft"}),
+    )
+
+    out = await insp.inspect(
+        action=action,
+        session=session,
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+    assert isinstance(out, DecisionTighten)
+    assert out.rule == "local-active-first-use-confirm"
+
+
+@pytest.mark.skipif(not _starlark_available(), reason="starlark extra not installed")
+async def test_local_app_confirm_does_not_prompt_for_notification_first_use() -> None:
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[2]
+    (insp,) = load_decision_inspectors(
+        {"decision_inspectors": [{"script": "local_app_confirm.star"}]},
+        base_dir=repo / "configs" / "policies",
+    )
+
+    out = await insp.inspect(
+        action=Action(kind=CapabilityKind.MACOS_NOTIFICATION, target="macos://notification"),
+        session=object(),
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+    assert out is None
+
+
+@pytest.mark.skipif(not _starlark_available(), reason="starlark extra not installed")
 async def test_frequency_cap_tightens_repeated_local_app_control() -> None:
     from datetime import UTC, datetime
     from pathlib import Path
@@ -638,6 +721,45 @@ async def test_frequency_cap_tightens_repeated_local_app_control() -> None:
 
     out = await insp.inspect(
         action=Action(kind=CapabilityKind.MACOS_APP_CONTROL, target="macos://apps"),
+        session=session,
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+    assert isinstance(out, DecisionTighten)
+    assert out.rule == "session-frequency-cap"
+
+
+@pytest.mark.skipif(not _starlark_available(), reason="starlark extra not installed")
+async def test_frequency_cap_uses_higher_calendar_purpose_threshold() -> None:
+    from datetime import UTC, datetime
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from capabledeputy.policy.capabilities import Capability
+
+    repo = Path(__file__).resolve().parents[2]
+    (insp,) = load_decision_inspectors(
+        {"decision_inspectors": [{"script": "frequency_cap.star"}]},
+        base_dir=repo / "configs" / "policies",
+    )
+
+    cap = Capability(kind=CapabilityKind.CREATE_CAL, pattern="*")
+    now = datetime.now(UTC)
+    session = SimpleNamespace(
+        purpose_handle="calendar",
+        capability_set=frozenset({cap}),
+        cap_uses={str(cap.audit_id): tuple(now for _ in range(10))},
+        used_kinds=frozenset({CapabilityKind.CREATE_CAL}),
+    )
+    out = await insp.inspect(
+        action=Action(kind=CapabilityKind.CREATE_CAL, target="gcal://calendar/primary/events"),
+        session=session,
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+    assert out is None
+
+    session.cap_uses = {str(cap.audit_id): tuple(now for _ in range(20))}
+    out = await insp.inspect(
+        action=Action(kind=CapabilityKind.CREATE_CAL, target="gcal://calendar/primary/events"),
         session=session,
         proposed_outcome=_proposed(Decision.ALLOW),
     )

@@ -20,6 +20,7 @@ counterparties. Tier is operator-set only.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, cast
@@ -33,6 +34,7 @@ import yaml
 ReputationTier = Literal["unproven", "well-tested", "trusted"]
 TIER_ORDER: tuple[ReputationTier, ...] = ("unproven", "well-tested", "trusted")
 DEFAULT_TIER: ReputationTier = "unproven"
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 
 def _validate_tier(value: str) -> ReputationTier:
@@ -41,6 +43,15 @@ def _validate_tier(value: str) -> ReputationTier:
             f"invalid reputation tier {value!r}; must be one of {TIER_ORDER}",
         )
     return value  # type: ignore[return-value]
+
+
+def principal_ids_from_target(target: str) -> frozenset[str]:
+    """Return candidate principals represented by a tool target."""
+    if not target:
+        return frozenset()
+    principals = {target}
+    principals.update(_EMAIL_RE.findall(target))
+    return frozenset(principals)
 
 
 class RelationshipGroupError(RuntimeError):
@@ -95,6 +106,20 @@ class RelationshipGroups:
         return frozenset(
             g.group_id for g in self.groups.values() if principal_id in g.member_principal_ids
         )
+
+    def resolve_target(self, target: str) -> frozenset[str]:
+        """Resolve groups for a tool target.
+
+        Tool targets are often exact principals (``spouse@example.com``), but
+        managed MCP tools can materialize structured targets such as
+        ``gcal://calendar/primary/events/attendees/spouse@example.com``. Resolve
+        both the full target and any embedded email principals so relationship
+        policies keep working after target templates make tools more precise.
+        """
+        resolved: set[str] = set()
+        for principal_id in principal_ids_from_target(target):
+            resolved.update(self.resolve(principal_id))
+        return frozenset(resolved)
 
     def add_member(self, group_id: str, principal_id: str) -> bool:
         """Add `principal_id` to `group_id`. Creates the group if it

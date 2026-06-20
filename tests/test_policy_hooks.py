@@ -15,6 +15,7 @@ from capabledeputy.policy.labels import (
     ProvenanceLevel,
     ProvenanceTag,
 )
+from capabledeputy.policy.relationships import RelationshipGroup, RelationshipGroups
 from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.graph import SessionGraph
@@ -102,6 +103,36 @@ async def test_decision_inspector_relaxes_require_approval(tmp_path) -> None:
     assert adjusted.rule == "relaxer:operator-ok"
     events = await audit.read_all()
     assert events[0].event_type == EventType.DECISION_INSPECTOR_APPLIED
+
+
+async def test_decision_inspector_relationship_groups_resolve_embedded_target_email(
+    tmp_path,
+) -> None:
+    audit = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(audit=audit)
+    hooks = ToolPolicyHooks(
+        policy_context=PolicyContext(
+            relationship_groups=RelationshipGroups(
+                groups={
+                    "self": RelationshipGroup(
+                        group_id="self",
+                        member_principal_ids=frozenset({"me@example.com"}),
+                    ),
+                },
+            ),
+        ),
+        audit=audit,
+        graph=graph,
+    )
+
+    group_ids = hooks._relationship_groups_for_action(
+        Action(
+            kind=CapabilityKind.CREATE_CAL,
+            target="gcal://calendar/primary/events/attendees/me@example.com",
+        ),
+    )
+
+    assert group_ids == ("self",)
 
 
 async def test_declassifier_transforms_output_and_removes_provenance_tag(tmp_path) -> None:

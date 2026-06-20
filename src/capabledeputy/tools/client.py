@@ -667,7 +667,7 @@ class LabeledToolClient:
         target = getattr(action, "target", None)
         if not target:
             return session_axis_d
-        resolved = self._policy_context.relationship_groups.resolve(str(target))
+        resolved = self._policy_context.relationship_groups.resolve_target(str(target))
         if not resolved:
             return session_axis_d
         # Merge with whatever the session already carries — don't

@@ -108,6 +108,20 @@ def test_read_kind_never_prompts() -> None:
     assert result.decision == Decision.ALLOW
 
 
+def test_notification_kind_never_prompts() -> None:
+    """Notifications are reversible local UX hints, not ambient desktop
+    control. Prompting on first use creates noise without materially improving
+    the security model."""
+    assert CapabilityKind.MACOS_NOTIFICATION not in _PROMPTABLE_FIRST_USE_KINDS
+    result = decide(
+        frozenset({_wide_cap(CapabilityKind.MACOS_NOTIFICATION)}),
+        Action(kind=CapabilityKind.MACOS_NOTIFICATION, target="macos://notification"),
+        used_kinds=frozenset(),
+        first_use_prompt_enabled=True,
+    )
+    assert result.decision == Decision.ALLOW
+
+
 def test_flag_off_no_prompt() -> None:
     """Default-off path: an opt-out session ALLOWs even on first
     use. Pre-existing back-compat preserved."""

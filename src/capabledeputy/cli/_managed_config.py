@@ -456,6 +456,7 @@ _GWORKSPACE_OFFICIAL_BLOCKS: dict[str, str] = {
       create_draft:
         capability_kind: GMAIL_DRAFT
         additional_labels: ["confidential.personal"]
+        target_arg: to
       create_label:
         capability_kind: MODIFY_FS
         additional_labels: ["confidential.personal"]
@@ -551,9 +552,11 @@ _GWORKSPACE_OFFICIAL_BLOCKS: dict[str, str] = {
       create_event:
         capability_kind: CREATE_CAL
         additional_labels: ["confidential.personal"]
+        target_template: "gcal://calendar/{calendar_id}/events/attendees/{attendees}"
       delete_event:
         capability_kind: DELETE_CAL
         additional_labels: ["confidential.personal"]
+        target_template: "gcal://calendar/{calendar_id}/event/{event_id}"
       get_event:
         capability_kind: CALENDAR_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]
@@ -566,12 +569,14 @@ _GWORKSPACE_OFFICIAL_BLOCKS: dict[str, str] = {
       respond_to_event:
         capability_kind: MODIFY_CAL
         additional_labels: ["confidential.personal"]
+        target_template: "gcal://calendar/{calendar_id}/event/{event_id}"
       suggest_time:
         capability_kind: CALENDAR_READ
         additional_labels: ["confidential.personal"]
       update_event:
         capability_kind: MODIFY_CAL
         additional_labels: ["confidential.personal"]
+        target_template: "gcal://calendar/{calendar_id}/event/{event_id}/attendees/{attendees}"
     strict: true
 """,
     "chat": """\

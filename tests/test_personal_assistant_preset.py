@@ -11,6 +11,7 @@ from capabledeputy.policy.bindings import load as load_bindings
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.decision_inspector_loader import load_decision_inspectors
 from capabledeputy.policy.purposes import load as load_purposes
+from capabledeputy.policy.relationships import load as load_relationship_groups
 from capabledeputy.upstream.config import load_config_file
 
 _PRESET = Path(__file__).parent.parent / "configs" / "personal-assistant"
@@ -50,6 +51,16 @@ def test_personal_assistant_daemon_uses_official_google_and_macos_servers() -> N
     assert "SEND_EMAIL" in gmail.disabled_kinds
     assert gmail.tool_overrides["create_draft"].capability_kind == CapabilityKind.GMAIL_DRAFT
     assert gmail.tool_overrides["create_draft"].target_arg == "to"
+
+    calendar = next(config for config in configs if config.name == "google-calendar")
+    assert (
+        calendar.tool_overrides["create_event"].target_template
+        == "gcal://calendar/{calendar_id}/events/attendees/{attendees}"
+    )
+    assert (
+        calendar.tool_overrides["update_event"].target_template
+        == "gcal://calendar/{calendar_id}/event/{event_id}/attendees/{attendees}"
+    )
 
     apple_mail = next(config for config in configs if config.name == "bundled-apple-mail")
     assert apple_mail.tool_overrides["apple_mail.create_draft"].target_arg == "to"
@@ -148,3 +159,12 @@ def test_personal_assistant_source_bindings_cover_service_uri_schemes() -> None:
     assert bindings.resolve("macos://clipboard").category == "personal"
     assert bindings.resolve("macos://app/com.apple.mail").category == "personal"
     assert bindings.resolve("macos://notification").category == "scratch"
+
+
+def test_personal_assistant_relationship_groups_support_low_friction_workflows() -> None:
+    groups = load_relationship_groups(_PRESET / "relationship_groups.yaml")
+
+    assert groups.is_member("me@example.com", "self")
+    assert groups.is_member("me@example.com", "trusted-draft")
+    assert groups.is_member("spouse@example.com", "family")
+    assert groups.is_member("coworker@example.com", "work-team")

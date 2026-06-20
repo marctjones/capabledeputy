@@ -116,6 +116,11 @@ Expected official-mode servers:
 The official mode pins every known tool explicitly and uses `strict: true`,
 so unknown upstream tools are refused until reviewed.
 
+Gmail drafts use the `to` argument as the policy target. Calendar mutations
+materialize policy targets with calendar/event/attendee fields when the
+upstream tool supplies them. This makes approval patterns and audit trails more
+specific without enabling direct sends.
+
 | Surface | CapDep kinds |
 |---|---|
 | Gmail reads | `GMAIL_READ` |

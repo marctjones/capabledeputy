@@ -97,14 +97,14 @@ upstream_servers:
         prompt: consent
     inherent_labels: ["confidential.personal", "untrusted.user_input"]
     tool_overrides:
-      create_event: {capability_kind: CREATE_CAL, additional_labels: ["confidential.personal"], target_template: "gcal://events"}
-      delete_event: {capability_kind: DELETE_CAL, additional_labels: ["confidential.personal"], target_template: "gcal://events"}
+      create_event: {capability_kind: CREATE_CAL, additional_labels: ["confidential.personal"], target_template: "gcal://calendar/{calendar_id}/events/attendees/{attendees}"}
+      delete_event: {capability_kind: DELETE_CAL, additional_labels: ["confidential.personal"], target_template: "gcal://calendar/{calendar_id}/event/{event_id}"}
       get_event: {capability_kind: CALENDAR_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
       list_calendars: {capability_kind: CALENDAR_READ, additional_labels: ["confidential.personal"]}
       list_events: {capability_kind: CALENDAR_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
-      respond_to_event: {capability_kind: MODIFY_CAL, additional_labels: ["confidential.personal"], target_template: "gcal://events"}
+      respond_to_event: {capability_kind: MODIFY_CAL, additional_labels: ["confidential.personal"], target_template: "gcal://calendar/{calendar_id}/event/{event_id}"}
       suggest_time: {capability_kind: CALENDAR_READ, additional_labels: ["confidential.personal"]}
-      update_event: {capability_kind: MODIFY_CAL, additional_labels: ["confidential.personal"], target_template: "gcal://events"}
+      update_event: {capability_kind: MODIFY_CAL, additional_labels: ["confidential.personal"], target_template: "gcal://calendar/{calendar_id}/event/{event_id}/attendees/{attendees}"}
     strict: true
 
   - name: google-chat

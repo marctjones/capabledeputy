@@ -1,0 +1,28 @@
+# Personal-assistant relationship groups.
+#
+# Replace placeholder addresses before relying on the low-friction policy
+# paths. These groups are operator-authored and AI-read-only. They only reduce
+# approval friction for reversible/local workflows; they do not grant direct
+# send, override structural denies, or allow high-tier egress.
+
+groups:
+  # Your own account(s). Used for self-addressed drafts and self-only calendar
+  # mutations when the session purpose matches the workflow.
+  - group_id: self
+    member_principal_ids:
+      - me@example.com
+
+  # Counterparties trusted for draft preparation. Direct SEND_EMAIL remains
+  # disabled/gated; this group only helps GMAIL_DRAFT / APPLE_MAIL_DRAFT avoid
+  # first-use prompts when no restricted/regulated/prohibited data is present.
+  - group_id: trusted-draft
+    member_principal_ids:
+      - me@example.com
+
+  - group_id: family
+    member_principal_ids:
+      - spouse@example.com
+
+  - group_id: work-team
+    member_principal_ids:
+      - coworker@example.com

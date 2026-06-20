@@ -327,7 +327,7 @@ class ToolPolicyHooks:
         if groups is None or not target:
             return ()
         try:
-            return tuple(sorted(groups.resolve(str(target))))
+            return tuple(sorted(groups.resolve_target(str(target))))
         except Exception:
             return ()
 

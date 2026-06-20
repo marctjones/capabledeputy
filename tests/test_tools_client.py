@@ -6,6 +6,7 @@ import pytest
 
 from capabledeputy.audit.events import EventType
 from capabledeputy.audit.writer import AuditWriter
+from capabledeputy.policy.actions import Action
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.effect_class import EffectClass, Operation
@@ -17,6 +18,7 @@ from capabledeputy.policy.labels import (
     Tier,
 )
 from capabledeputy.policy.pipeline import DecisionFrame, DecisionRequest
+from capabledeputy.policy.relationships import RelationshipGroup, RelationshipGroups
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient
@@ -292,6 +294,37 @@ async def test_operation_required_floor_participates_in_decision(writer: AuditWr
 
     assert outcome.decision == Decision.DENY
     assert outcome.rule == "integrity-floor-refused"
+
+
+async def test_action_axis_d_resolves_embedded_target_email(writer: AuditWriter) -> None:
+    registry = ToolRegistry()
+    graph = SessionGraph(audit=writer)
+    client = LabeledToolClient(
+        registry,
+        graph,
+        writer,
+        policy_context=PolicyContext(
+            relationship_groups=RelationshipGroups(
+                groups={
+                    "self": RelationshipGroup(
+                        group_id="self",
+                        member_principal_ids=frozenset({"me@example.com"}),
+                    ),
+                },
+            ),
+        ),
+    )
+    session = await graph.new()
+
+    axis_d = client._resolve_action_axis_d(
+        session.axis_d,
+        action=Action(
+            kind=CapabilityKind.CREATE_CAL,
+            target="gcal://calendar/primary/events/attendees/me@example.com",
+        ),
+    )
+
+    assert axis_d.relationship_group_ids == frozenset({"self"})
 
 
 async def test_handler_additional_labels_propagate(writer: AuditWriter) -> None:

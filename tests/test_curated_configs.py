@@ -58,9 +58,14 @@ def test_google_workspace_pins_every_declared_tool(filename: str) -> None:
 def test_official_google_workspace_uses_gmail_draft_capability() -> None:
     configs = load_config_file(_CURATED / "google-workspace.yaml")
     gmail = next(config for config in configs if config.name == "google-gmail")
+    calendar = next(config for config in configs if config.name == "google-calendar")
 
     assert gmail.tool_overrides["create_draft"].capability_kind is not None
     assert gmail.tool_overrides["create_draft"].capability_kind.value == "GMAIL_DRAFT"
+    assert gmail.tool_overrides["create_draft"].target_arg == "to"
+    assert calendar.tool_overrides["create_event"].target_template == (
+        "gcal://calendar/{calendar_id}/events/attendees/{attendees}"
+    )
 
 
 def test_legacy_news_server_removed() -> None:

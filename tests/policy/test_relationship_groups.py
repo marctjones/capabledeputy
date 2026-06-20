@@ -16,6 +16,7 @@ from capabledeputy.policy.relationships import (
     RelationshipGroupError,
     RelationshipGroups,
     load,
+    principal_ids_from_target,
 )
 
 
@@ -54,6 +55,40 @@ def test_share_proprietary_work_scenario(tmp_path: Path) -> None:
     assert groups.is_member("alice", "project-P")
     assert not groups.is_member("alice", "team-A")
     assert not groups.is_member("frank", "project-P")
+
+
+def test_principal_ids_from_target_extracts_embedded_email_principals() -> None:
+    assert principal_ids_from_target(
+        "gcal://calendar/primary/events/attendees/me@example.com,spouse@example.com",
+    ) == frozenset(
+        {
+            "gcal://calendar/primary/events/attendees/me@example.com,spouse@example.com",
+            "me@example.com",
+            "spouse@example.com",
+        },
+    )
+
+
+def test_resolve_target_uses_exact_and_embedded_principals() -> None:
+    groups = RelationshipGroups(
+        groups={
+            "self": RelationshipGroup(
+                group_id="self",
+                member_principal_ids=frozenset({"me@example.com"}),
+            ),
+            "calendar-resource": RelationshipGroup(
+                group_id="calendar-resource",
+                member_principal_ids=frozenset({"gcal://calendar/primary"}),
+            ),
+        },
+    )
+
+    assert groups.resolve_target("gcal://calendar/primary") == frozenset(
+        {"calendar-resource"},
+    )
+    assert groups.resolve_target(
+        "gcal://calendar/primary/events/attendees/me@example.com",
+    ) == frozenset({"self"})
 
 
 def test_load_empty_yaml() -> None:

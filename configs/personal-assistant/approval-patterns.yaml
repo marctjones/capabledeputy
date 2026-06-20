@@ -23,6 +23,22 @@ patterns:
     ttl_hours: 720
     created_by: "preset:personal-assistant"
 
-  # Calendar attendee-aware auto-approval needs the upstream tool to expose a
-  # stable attendee/self target. Until that exists, calendar mutations stay
-  # approval-gated by capability kind + Starlark first-use confirmation.
+  # Trusted draft preparation. Replace the placeholder addresses with exact
+  # family/work recipients you already trust for draft review. These still do
+  # not enable SEND_EMAIL.
+  - name: trusted-family-gmail-draft
+    action: GMAIL_DRAFT
+    target_pattern: "spouse@example.com"
+    ttl_hours: 720
+    created_by: "preset:personal-assistant"
+
+  - name: trusted-work-gmail-draft
+    action: GMAIL_DRAFT
+    target_pattern: "coworker@example.com"
+    ttl_hours: 720
+    created_by: "preset:personal-assistant"
+
+  # Calendar attendee-aware auto-approval needs exact stable attendee/self
+  # targets from the upstream tool. Until your calendar tool arguments are
+  # verified, leave calendar mutations governed by purpose/relationship-aware
+  # Starlark first-use confirmation instead of a broad approval pattern.

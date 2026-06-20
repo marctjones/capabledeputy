@@ -19,6 +19,7 @@ approval).
 | `profiles.yaml` | One operator profile (`personal`) with max-tier ceiling |
 | `purposes.yaml` | Five working purposes (general, inbox, calendar, writing, research) |
 | `source_bindings.yaml` | Common macOS paths, Apple app URIs, and Google service URIs → label tier mappings |
+| `relationship_groups.yaml` | Self/trusted/family/work recipient groups used to reduce prompts without broadening authority |
 | `envelopes.yaml` | Per-category risk-preference dial bounds |
 | `override_policy.yaml` | Single-authorized operator can override hard floors; no dual-control required (single-user mode) |
 | `approval-patterns.yaml` | Auto-approve common safe draft patterns after you replace placeholder addresses |
@@ -33,9 +34,11 @@ mkdir -p ~/.config/capabledeputy
 cp configs/personal-assistant/*.yaml ~/.config/capabledeputy/
 ```
 
-Edit paths in `source_bindings.yaml` to match your filesystem layout. The
-defaults are macOS-first: `/Users/*/Documents`, `/Users/*/Desktop`,
-`/Users/*/Documents/GitHub`, and `/Users/*/notes`.
+Edit paths in `source_bindings.yaml` and addresses in
+`relationship_groups.yaml` / `approval-patterns.yaml` before relying on the
+low-friction draft paths. The defaults are macOS-first:
+`/Users/*/Documents`, `/Users/*/Desktop`, `/Users/*/Documents/GitHub`, and
+`/Users/*/notes`.
 
 ### Option B — point the daemon at this directory
 
@@ -51,12 +54,16 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
 - **Write** to `~/notes/scratch/**` without approval
 - **Search the web** and read fetched content (labeled untrusted, naturally chokes egress)
 - **Read Gmail / Drive / Calendar / Chat / People** after native `capdep oauth login` for the Workspace servers you enable
-- **Read and draft in Apple Mail / Gmail**; direct send is disabled by default
+- **Read and draft in Apple Mail / Gmail**; direct send is disabled by default.
+  Self/trusted-recipient drafts can stay low-friction once relationship groups
+  are customized.
 - **Read/edit/export Pages and Numbers documents** with app-specific capability gates
 - **Read/present Keynote decks** with app-specific capability gates
 - **Use bounded macOS automation** for app listing/opening, clipboard read/write, and notifications
 - **Run Starlark policy inspectors** that prompt on first active local app use, high-tier draft/egress materialization, and repeated automation loops
-- **Create calendar events** with approval gate (one-prompt-per-event)
+- **Create calendar events** with purpose/relationship-aware confirmation.
+  Self-calendar mutations in the `calendar` purpose can avoid first-use prompts
+  when no high-tier data is present; external attendee changes remain gated.
 - **Persist memory** across sessions (via the bundled `mcp-server-memory`)
 - **Browse local git repos** read-only
 
@@ -72,7 +79,10 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
 ## Customizing
 
 - **Paths look wrong?** Edit `source_bindings.yaml` — operator-curated, version-controlled.
-- **Too many approvals?** Add patterns to `approval-patterns.yaml` for recurring workflows you trust (e.g., daily-briefing emails to yourself).
+- **Too many approvals?** First replace placeholders in
+  `relationship_groups.yaml`, then add exact-address patterns to
+  `approval-patterns.yaml` for recurring draft workflows you trust. Prefer
+  drafts and self-calendar workflows; keep direct sends approval-gated.
 - **Want stricter handling for a category?** Add an entry to `envelopes.yaml` and the risk-preference dial will respect it.
 - **Want more/less desktop friction?** Edit `../policies/local_app_confirm.star` or remove it from `daemon.yaml`. Keep relax scripts disabled unless you have workflow-specific tests.
 - **Need a new working context?** Add a purpose to `purposes.yaml` — purposes carry their own bindings + default capabilities.
@@ -109,8 +119,9 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
   `APPLE_MAIL_DRAFT`, `PAGES_EDIT`, `NUMBERS_EDIT`, `KEYNOTE_PRESENT`, and
   `MACOS_CLIPBOARD_READ`.
 - Prefer read-only tools for normal context gathering. The preset prompts on
-  first clipboard read, draft creation, document edit/export, app control, and
-  presentation/calendar mutation.
+  first clipboard read/write, document edit/export, app control, and
+  presentation/external calendar mutation. Notifications and trusted/self draft
+  preparation avoid first-use prompts to reduce approval fatigue.
 - Bind app surfaces explicitly in `source_bindings.yaml` (`pages://frontmost`,
   `numbers://frontmost`, `keynote://frontmost`, `applemail://**`,
   `macos://clipboard`, `macos://app/**`) so policy decisions and audits name

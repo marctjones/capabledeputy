@@ -322,7 +322,12 @@ def test_gworkspace_block_writes_managed_section(xdg_tmp: Path) -> None:
     assert gmail_entry["auth"]["client_id_env"] == "GOOGLE_MCP_CLIENT_ID"
     assert gmail_entry["auth"]["extra_authorize_params"]["access_type"] == "offline"
     assert gmail_entry["tool_overrides"]["create_draft"]["capability_kind"] == "GMAIL_DRAFT"
+    assert gmail_entry["tool_overrides"]["create_draft"]["target_arg"] == "to"
     assert gmail_entry["tool_overrides"]["search_threads"]["capability_kind"] == "GMAIL_READ"
+    calendar_entry = next(s for s in parsed["upstream_servers"] if s["name"] == "google-calendar")
+    assert calendar_entry["tool_overrides"]["create_event"]["target_template"] == (
+        "gcal://calendar/{calendar_id}/events/attendees/{attendees}"
+    )
     chat_entry = next(s for s in parsed["upstream_servers"] if s["name"] == "google-chat")
     assert chat_entry["tool_overrides"]["send_message"]["capability_kind"] == "SEND_MESSAGE"
 
