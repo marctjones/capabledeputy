@@ -18,6 +18,7 @@ Deliberately scoped, per the agreed constraints:
 from __future__ import annotations
 
 import pytest
+from _pytest.fixtures import FixtureLookupError
 from textual.app import App, ComposeResult
 
 from capabledeputy.tui.app import ApprovalDetailScreen
@@ -46,5 +47,9 @@ class _ModalApp(App[None]):
 
 
 @pytest.mark.snapshot
-def test_approval_modal_snapshot(snap_compare) -> None:
+def test_approval_modal_snapshot(request: pytest.FixtureRequest) -> None:
+    try:
+        snap_compare = request.getfixturevalue("snap_compare")
+    except FixtureLookupError:
+        pytest.skip("install pytest-textual-snapshot to run visual snapshot tests")
     assert snap_compare(_ModalApp(), terminal_size=(100, 30))

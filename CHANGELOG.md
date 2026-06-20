@@ -6,6 +6,16 @@ breaking changes).
 
 ## [Unreleased]
 
+### Security
+
+- Updated the Python dependency lock to patched versions for Dependabot
+  alerts covering `aiohttp`, `cryptography`, `pydantic-settings`, `PyJWT`,
+  `pypdf`, `pytest`, `python-multipart`, and `starlette`.
+- Removed the abandoned default `pytest-textual-snapshot` dev dependency so
+  the dev dependency group can move to patched `pytest>=9.0.3`; the single
+  visual snapshot test now skips unless a compatible snapshot fixture is
+  installed explicitly.
+
 ### MCP compatibility and security integration
 
 - Added `capdep mcp-control-server`, a daemon-control MCP client surface for
