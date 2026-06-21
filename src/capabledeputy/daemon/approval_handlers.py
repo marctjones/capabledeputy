@@ -17,6 +17,7 @@ from uuid import UUID
 from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction, ApprovalStatus
 from capabledeputy.daemon.handlers import Handler
+from capabledeputy.daemon.settings_store import load_settings
 from capabledeputy.policy.capabilities import (
     Capability,
     CapabilityExpiry,
@@ -72,6 +73,13 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
     async def approval_approve(params: dict[str, Any]) -> dict[str, Any]:
         request = app.approval_queue.get(int(params["id"]))
         decided_by = str(params.get("decided_by", "user"))
+        settings = load_settings()
+        if (
+            settings.require_touch_id_for_high_risk
+            and _approval_requires_strong_auth(request)
+            and str(params.get("strong_auth", "")) != "touch_id"
+        ):
+            raise ValueError("approval requires strong authentication")
 
         approved = await app.approval_queue.approve(request.id, decided_by=decided_by)
 
@@ -148,6 +156,7 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         ends up with `error` set in its result dict."""
         group_id = UUID(params["group_id"])
         decided_by = str(params.get("decided_by", "user"))
+        strong_auth = str(params.get("strong_auth", ""))
         members = app.approval_queue.siblings(group_id)
         results: list[dict[str, Any]] = []
         for m in members:
@@ -169,7 +178,7 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
                 # the per-action dispatch behavior is identical (no
                 # second copy of the send/purchase/destructive logic).
                 result = await approval_approve(
-                    {"id": m.id, "decided_by": decided_by},
+                    {"id": m.id, "decided_by": decided_by, "strong_auth": strong_auth},
                 )
                 result["id"] = m.id
                 results.append(result)
@@ -198,6 +207,17 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         "approval.deny": approval_deny,
         "approval.defer": approval_defer,
     }
+
+
+def _approval_requires_strong_auth(request: Any) -> bool:
+    if request.action in {
+        ApprovalAction.QUEUE_PURCHASE,
+        ApprovalAction.EXECUTE_DESTRUCTIVE,
+    }:
+        return True
+    labels = request.labels_in.to_dict()
+    rendered = str(labels).lower()
+    return any(token in rendered for token in ("financial", "health", "restricted", "prohibited"))
 
 
 async def _execute_declassified_destructive(

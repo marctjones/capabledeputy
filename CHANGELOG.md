@@ -75,6 +75,9 @@ breaking changes).
 - Wired CapDepMac setup rows, account status rows, automation menu actions, and
   Trust source-binding editing through daemon RPCs instead of no-op buttons or
   local-only state.
+- Added daemon enforcement for high-risk approvals when the Touch ID policy is
+  enabled; CapDepMac performs local device authentication and passes a
+  daemon-recognized strong-auth marker.
 - Expanded MCP-control and the executable client parity manifest for connector,
   runtime-control, setup-action, and source-binding RPCs.
 

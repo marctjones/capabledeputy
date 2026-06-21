@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import LocalAuthentication
 
 @MainActor
 final class CapDepAppModel: ObservableObject {
@@ -631,11 +632,13 @@ final class CapDepAppModel: ObservableObject {
             return
         }
         do {
+            let strongAuth = await strongAuthMarkerIfNeeded(for: approval)
             _ = try await client.call(
                 method: "approval.approve_group",
                 params: [
                     "group_id": approval.siblingGroupID,
                     "decided_by": "CapDepMac",
+                    "strong_auth": strongAuth,
                 ],
             )
             await refresh()
@@ -717,6 +720,52 @@ final class CapDepAppModel: ObservableObject {
             await refresh()
         } catch {
             lastError = error.localizedDescription
+        }
+    }
+
+    private func decide(_ approval: Approval, approved: Bool) async {
+        do {
+            var params: [String: Any] = [
+                "id": approval.id,
+                "decided_by": "CapDepMac",
+            ]
+            if approved {
+                params["strong_auth"] = await strongAuthMarkerIfNeeded(for: approval)
+            } else {
+                params["reason"] = "denied in CapDep macOS app"
+            }
+            _ = try await client.call(
+                method: approved ? "approval.approve" : "approval.deny",
+                params: params,
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func strongAuthMarkerIfNeeded(for approval: Approval) async -> String {
+        guard daemonSettings.requireTouchIDForHighRisk else {
+            return ""
+        }
+        guard approval.requiresHighRiskAuthentication else {
+            return ""
+        }
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            lastError = error?.localizedDescription ?? "Touch ID or device authentication is unavailable."
+            return ""
+        }
+        do {
+            let ok = try await context.evaluatePolicy(
+                .deviceOwnerAuthentication,
+                localizedReason: "Approve high-risk CapDep action #\(approval.id)",
+            )
+            return ok ? "touch_id" : ""
+        } catch {
+            lastError = error.localizedDescription
+            return ""
         }
     }
 
@@ -819,29 +868,6 @@ final class CapDepAppModel: ObservableObject {
             return
         }
         await updateCurrentSession(method: "session.abort", sessionID: currentSessionID)
-    }
-
-    private func decide(_ approval: Approval, approved: Bool) async {
-        do {
-            if approved {
-                _ = try await client.call(
-                    method: "approval.approve",
-                    params: ["id": approval.id, "decided_by": "CapDepMac"],
-                )
-            } else {
-                _ = try await client.call(
-                    method: "approval.deny",
-                    params: [
-                        "id": approval.id,
-                        "decided_by": "CapDepMac",
-                        "reason": "denied in CapDep macOS app",
-                    ],
-                )
-            }
-            await refresh()
-        } catch {
-            lastError = error.localizedDescription
-        }
     }
 
     private func updateCurrentSession(method: String, sessionID: String) async {

@@ -108,6 +108,10 @@ _APPROVAL_ID_SCHEMA = _schema(
             "description": "Actor recorded as the approval decision maker.",
             "default": "mcp-control",
         },
+        "strong_auth": {
+            "type": "string",
+            "description": "Daemon-recognized strong-auth marker for high-risk approvals.",
+        },
     },
     required=["id"],
 )
@@ -749,6 +753,7 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
             {
                 "group_id": {"type": "string"},
                 "decided_by": {"type": "string", "default": "mcp-control"},
+                "strong_auth": {"type": "string"},
             },
             required=["group_id"],
         ),
@@ -1198,6 +1203,7 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
         return {
             "id": int(args.get("id") or 0),
             "decided_by": str(args.get("decided_by") or "mcp-control"),
+            "strong_auth": str(args.get("strong_auth") or ""),
         }
     if name in {"approval_deny", "approval_defer"}:
         params = {
@@ -1211,6 +1217,7 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
         return {
             "group_id": str(args.get("group_id") or ""),
             "decided_by": str(args.get("decided_by") or "mcp-control"),
+            "strong_auth": str(args.get("strong_auth") or ""),
         }
     if name.startswith("approval_pattern_"):
         return dict(args)

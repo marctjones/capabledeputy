@@ -29,7 +29,7 @@ daemon owns shared coordination state and remains the only authority path.
 | #71 | Replace empty Setup/Open/Fix buttons with daemon remediation actions | Implemented locally |
 | #72 | Daemon-backed account and OAuth setup workflows for Google and local app connectors | Partial |
 | #76 | Fix CapDepMac task/menu actions that navigate without completing the intended action | Implemented locally |
-| #74 | Wire automation pause, screen-control enablement, and Touch ID policy through daemon | Partial |
+| #74 | Wire automation pause, screen-control enablement, and Touch ID policy through daemon | Implemented locally |
 | #73 | Daemon-owned source bindings and labeling editor for CapDepMac | Implemented locally |
 | — | Adopt onguard-client architecture and define daemon coordination contracts | Done |
 
@@ -42,8 +42,8 @@ daemon owns shared coordination state and remains the only authority path.
 - Setup/Open/Fix actions either complete daemon-backed work or are removed.
 - Connector setup status covers Gmail, Google Workspace expansion, and local
   macOS app permission checks through one reusable shape.
-- First-class Calendar/Drive OAuth setup and real Touch ID challenge enforcement
-  remain follow-up work before v0.27 can be closed completely.
+- First-class Calendar/Drive OAuth setup remains follow-up work before v0.27
+  can be closed completely.
 - Onguard clients are documented as normal headless clients, and the missing
   daemon contracts for schedules, queues, client config, and events are tracked
   before implementing daily digest/news workflows.

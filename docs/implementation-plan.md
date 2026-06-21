@@ -109,17 +109,18 @@ macOS + Google Workspace assistant usable without CLI/YAML handholding.
   covers Gmail, Calendar, Drive, and local apps, but Calendar/Drive do not yet
   have first-class OAuth forms.
 - **#74** automation pause, screen-control enablement, and Touch ID policy —
-  partial: pause/resume and screen-control requests are daemon-visible and
-  audited; Touch ID policy is persisted but biometric enforcement still needs a
-  daemon-mediated approval-auth challenge contract.
+  implemented locally: pause/resume and screen-control requests are
+  daemon-visible and audited; high-risk approvals require a daemon-recognized
+  strong-auth marker when Touch ID policy is enabled, with CapDepMac performing
+  the local device authentication challenge.
 - **Onguard architecture**: adopt headless normal clients for background work,
   with daemon-owned schedule/config/queue/event contracts instead of embedding
   every workflow in daemon core.
 
 ### Sequencing
 
-1. Finish the remaining v0.27 gaps: first-class Calendar/Drive OAuth forms and
-   daemon-mediated approval-auth challenge enforcement for Touch ID policy.
+1. Finish the remaining v0.27 gap: first-class Calendar/Drive OAuth forms and
+   reauth/revoke flows.
 2. Add the shared coordination contracts required by onguard clients:
    `schedule.*`, `client.config.*`, `client.queue.*`, `client.events.*`, and
    structured origin metadata for policy/Starlark.

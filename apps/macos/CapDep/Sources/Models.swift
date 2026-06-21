@@ -40,6 +40,16 @@ struct Approval: Identifiable, Hashable {
         }
         return []
     }
+
+    var requiresHighRiskAuthentication: Bool {
+        if action == "QUEUE_PURCHASE" || action == "EXECUTE_DESTRUCTIVE" {
+            return true
+        }
+        let rendered = (labelsIn + labelsOut).joined(separator: " ").lowercased()
+        return ["financial", "health", "restricted", "prohibited"].contains { token in
+            rendered.contains(token)
+        }
+    }
 }
 
 struct CapDepSession: Identifiable, Hashable {

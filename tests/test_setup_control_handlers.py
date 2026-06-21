@@ -5,7 +5,10 @@ from pathlib import Path
 import pytest
 
 from capabledeputy.app import App
+from capabledeputy.approval.model import ApprovalAction
+from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
+from capabledeputy.daemon.settings_store import update_settings
 
 
 @pytest.fixture
@@ -109,3 +112,29 @@ async def test_source_binding_rejects_broad_or_invalid_scope(app: App, tmp_path:
 
     preview = await handlers["source_binding.preview"]({"uri": "not-a-uri"})
     assert preview["ok"] is False
+
+
+async def test_high_risk_approval_requires_strong_auth_when_touch_id_policy_enabled(
+    app: App,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-auth"))
+    update_settings({"require_touch_id_for_high_risk": True})
+    session = await app.graph.new(intent="delete")
+    approval = await app.approval_queue.submit(
+        from_session=session.id,
+        action=ApprovalAction.EXECUTE_DESTRUCTIVE,
+        payload="delete /tmp/x",
+        target="file:///tmp/x",
+        justification="test",
+    )
+    handlers = make_approval_handlers(app)
+
+    with pytest.raises(ValueError, match="strong authentication"):
+        await handlers["approval.approve"]({"id": approval.id, "decided_by": "test"})
+
+    result = await handlers["approval.approve"](
+        {"id": approval.id, "decided_by": "test", "strong_auth": "touch_id"},
+    )
+    assert result["approval"]["status"] == "approved"
