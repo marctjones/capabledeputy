@@ -249,11 +249,7 @@ def _validate_arg_type(tool_name: str, key: str, value: Any, schema_type: str) -
         return
     valid = (
         (schema_type == "string" and isinstance(value, str))
-        or (
-            schema_type == "integer"
-            and isinstance(value, int)
-            and not isinstance(value, bool)
-        )
+        or (schema_type == "integer" and isinstance(value, int) and not isinstance(value, bool))
         or (
             schema_type == "number"
             and isinstance(value, int | float)
@@ -326,10 +322,7 @@ def specs_from_dicts(
     source_file: str,
 ) -> list[AppleScriptToolSpec]:
     """Build validated AppleScript specs from trusted in-repo definitions."""
-    return [
-        AppleScriptToolSpec.from_dict(raw, source_file=source_file)
-        for raw in raw_specs
-    ]
+    return [AppleScriptToolSpec.from_dict(raw, source_file=source_file) for raw in raw_specs]
 
 
 def descriptors_from_specs(

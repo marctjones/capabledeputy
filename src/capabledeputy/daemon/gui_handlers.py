@@ -111,8 +111,7 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
                     "title": "Apple Automation / TCC",
                     "status": "manual",
                     "detail": (
-                        "macOS grants Automation permissions interactively "
-                        "in System Settings."
+                        "macOS grants Automation permissions interactively in System Settings."
                     ),
                 },
                 {
@@ -400,8 +399,7 @@ def _approval_suggested_actions(action: ApprovalAction) -> list[dict[str, str]]:
                     "id": "add-relationship",
                     "title": "Add Relationship",
                     "detail": (
-                        "Remember this recipient only if they are a trusted "
-                        "recurring counterparty."
+                        "Remember this recipient only if they are a trusted recurring counterparty."
                     ),
                 },
                 {

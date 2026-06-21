@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import anyio
 import yaml
+from anyio.to_thread import run_sync as run_sync_in_worker_thread
 
 from capabledeputy.upstream.config import UpstreamServerConfig
 from capabledeputy.upstream.http_auth import oauth_token_cache_path, perform_oauth2_login
@@ -109,7 +109,7 @@ async def run_gmail_oauth_login(
             timeout_seconds=timeout_seconds,
         )
 
-    token_path = await anyio.to_thread.run_sync(_login)
+    token_path = await run_sync_in_worker_thread(_login)
     status = gmail_oauth_status(config_home)
     return {**status, "token_cache": str(token_path)}
 
@@ -218,9 +218,7 @@ def _gmail_server_yaml(paths: GmailOAuthPaths) -> str:
 def redacted_gmail_oauth_payload(status: dict[str, Any]) -> dict[str, Any]:
     """Return an audit-safe shape for setup actions."""
     return {
-        key: value
-        for key, value in status.items()
-        if key not in {"client_id", "client_secret"}
+        key: value for key, value in status.items() if key not in {"client_id", "client_secret"}
     }
 
 

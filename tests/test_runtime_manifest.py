@@ -41,9 +41,7 @@ def test_runtime_manifest_compiles_registry_hooks_and_upstreams() -> None:
     manifest = RuntimeManifest.from_runtime(
         registry=_registry(),
         policy_context=PolicyContext(hook_registry=hooks),
-        upstream_servers=(
-            UpstreamServerConfig(name="fetch", command=("python", "-m", "fetch")),
-        ),
+        upstream_servers=(UpstreamServerConfig(name="fetch", command=("python", "-m", "fetch")),),
     )
 
     assert manifest.validate().ok
@@ -55,9 +53,7 @@ def test_runtime_manifest_compiles_registry_hooks_and_upstreams() -> None:
 def test_runtime_manifest_warns_about_non_strict_upstream() -> None:
     manifest = RuntimeManifest.from_runtime(
         registry=_registry(),
-        upstream_servers=(
-            UpstreamServerConfig(name="legacy", command=("legacy",), strict=False),
-        ),
+        upstream_servers=(UpstreamServerConfig(name="legacy", command=("legacy",), strict=False),),
     )
 
     validation = manifest.validate()
@@ -88,6 +84,5 @@ def test_runtime_manifest_errors_on_handle_tool_without_handle_args() -> None:
     validation = manifest.validate()
     assert not validation.ok
     assert any(
-        "accepts handles without handle args" in issue.message
-        for issue in validation.errors
+        "accepts handles without handle args" in issue.message for issue in validation.errors
     )

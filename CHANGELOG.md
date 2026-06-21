@@ -15,6 +15,9 @@ breaking changes).
   the dev dependency group can move to patched `pytest>=9.0.3`; the single
   visual snapshot test now skips unless a compatible snapshot fixture is
   installed explicitly.
+- Updated CI to test the project's supported Python 3.14 baseline and refreshed
+  stale workflow action majors so the dependency-security fixes can pass the
+  full lint, format, type-check, and test gate.
 
 ### MCP compatibility and security integration
 

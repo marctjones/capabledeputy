@@ -121,11 +121,21 @@ def test_playwright_active_tools_are_browser_automation_not_sandbox() -> None:
     [config] = load_config_file(_CURATED / "playwright.yaml")
 
     assert config.command == ("npx", "-y", "@playwright/mcp@latest")
-    assert config.tool_overrides["browser_navigate"].capability_kind.value == "BROWSER_NAVIGATE"
-    assert config.tool_overrides["browser_click"].capability_kind.value == "BROWSER_INTERACT"
-    assert config.tool_overrides["browser_evaluate"].capability_kind.value == "BROWSER_SCRIPT"
-    assert config.tool_overrides["browser_file_upload"].capability_kind.value == "BROWSER_FILE"
-    assert config.tool_overrides["browser_snapshot"].capability_kind.value == "BROWSER_READ"
+    navigate = config.tool_overrides["browser_navigate"].capability_kind
+    click = config.tool_overrides["browser_click"].capability_kind
+    evaluate = config.tool_overrides["browser_evaluate"].capability_kind
+    file_upload = config.tool_overrides["browser_file_upload"].capability_kind
+    snapshot = config.tool_overrides["browser_snapshot"].capability_kind
+    assert navigate is not None
+    assert click is not None
+    assert evaluate is not None
+    assert file_upload is not None
+    assert snapshot is not None
+    assert navigate.value == "BROWSER_NAVIGATE"
+    assert click.value == "BROWSER_INTERACT"
+    assert evaluate.value == "BROWSER_SCRIPT"
+    assert file_upload.value == "BROWSER_FILE"
+    assert snapshot.value == "BROWSER_READ"
 
 
 def test_bundled_python_config_includes_specialized_macos_servers() -> None:

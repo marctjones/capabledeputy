@@ -77,6 +77,7 @@ class PolicyPipeline(Protocol):
 
     def decide(self, request: DecisionRequest) -> DecisionFrame:
         """Evaluate a request and return a traced decision frame."""
+        ...
 
 
 @dataclass(frozen=True)

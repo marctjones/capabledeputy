@@ -45,7 +45,7 @@ on replace_text(valueText, searchText, replacementText)
 end replace_text
 '''
 
-_SLIDE_HELPERS = r'''
+_SLIDE_HELPERS = r"""
 on slide_title(slideObject)
   try
     return object text of default title item of slideObject as text
@@ -66,7 +66,7 @@ on slide_notes(slideObject)
   end try
   return ""
 end slide_notes
-'''
+"""
 
 _TOOL_SPECS: list[dict[str, Any]] = [
     {
@@ -83,7 +83,7 @@ _TOOL_SPECS: list[dict[str, Any]] = [
             "properties": {},
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   tell application "Keynote"
     if not (exists front document) then
@@ -97,7 +97,7 @@ on run argv
 end run
 
 {_JSON_HELPERS}
-''',
+""",
     },
     {
         "name": "keynote.list_slides",
@@ -113,7 +113,7 @@ end run
             "properties": {},
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   tell application "Keynote"
     if not (exists front document) then
@@ -135,7 +135,7 @@ end run
 
 {_SLIDE_HELPERS}
 {_JSON_HELPERS}
-''',
+""",
     },
     {
         "name": "keynote.slide_text",
@@ -155,7 +155,7 @@ end run
             "required": ["slide_number"],
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   set requestedSlide to item 1 of argv as integer
   tell application "Keynote"
@@ -178,7 +178,7 @@ end run
 
 {_SLIDE_HELPERS}
 {_JSON_HELPERS}
-''',
+""",
     },
     {
         "name": "keynote.start_slideshow",
@@ -203,7 +203,7 @@ end run
             },
             "additionalProperties": False,
         },
-        "script": '''
+        "script": """
 on run argv
   set requestedSlide to item 1 of argv as integer
   tell application "Keynote"
@@ -213,7 +213,7 @@ on run argv
   end tell
   return "{\"started\":true,\"slide_number\":" & requestedSlide & "}"
 end run
-''',
+""",
     },
     {
         "name": "keynote.stop_slideshow",
@@ -235,14 +235,14 @@ end run
             "properties": {},
             "additionalProperties": False,
         },
-        "script": '''
+        "script": """
 on run argv
   tell application "Keynote"
     stop
   end tell
   return "{\"stopped\":true}"
 end run
-''',
+""",
     },
 ]
 
