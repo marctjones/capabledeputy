@@ -323,19 +323,24 @@ async def test_setup_status_summarizes_google_workspace_loaded(
         token_cache.parent.mkdir(parents=True, exist_ok=True)
         token_cache.write_text("{}", encoding="utf-8")
         statuses.append(status)
-    app.upstream_manager = SimpleNamespace(
-        server_status={
-            service_id: SimpleNamespace(
-                name=service_id,
-                state="running",
-                registered_tool_count=1,
-                rejected_tool_count=0,
-                error="",
-                transport="streamable-http",
-                url="https://example.invalid/mcp",
-            )
-            for service_id in ("google-gmail", "google-calendar", "google-drive")
-        },
+    monkeypatch.setattr(
+        app,
+        "upstream_manager",
+        SimpleNamespace(
+            server_status={
+                service_id: SimpleNamespace(
+                    name=service_id,
+                    state="running",
+                    registered_tool_count=1,
+                    rejected_tool_count=0,
+                    error="",
+                    transport="streamable-http",
+                    url="https://example.invalid/mcp",
+                )
+                for service_id in ("google-gmail", "google-calendar", "google-drive")
+            },
+        ),
+        raising=False,
     )
 
     result = await handlers["setup.status"]({})

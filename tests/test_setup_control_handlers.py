@@ -120,6 +120,7 @@ async def test_connector_status_reports_google_and_local_apps(app: App) -> None:
 async def test_connector_status_reports_google_runtime_states(
     app: App,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     configure_google_oauth_client(
         "google-gmail",
@@ -143,10 +144,15 @@ async def test_connector_status_reports_google_runtime_states(
         token_cache = Path(status["token_cache"])
         token_cache.parent.mkdir(parents=True, exist_ok=True)
         token_cache.write_text("{}", encoding="utf-8")
-    app.upstream_manager = SimpleNamespace(
-        server_status={
-            "drive": SimpleNamespace(name="google-drive"),
-        },
+    monkeypatch.setattr(
+        app,
+        "upstream_manager",
+        SimpleNamespace(
+            server_status={
+                "drive": SimpleNamespace(name="google-drive"),
+            },
+        ),
+        raising=False,
     )
     handlers = make_setup_control_handlers(app)
 
