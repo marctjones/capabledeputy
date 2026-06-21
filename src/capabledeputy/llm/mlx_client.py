@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+from importlib import import_module
 from typing import Any, ClassVar
 from uuid import uuid4
 
@@ -305,7 +306,7 @@ class MLXLLMClient:
 
     def _generate_sync(self, model: Any, tokenizer: Any, prompt: str) -> str:
         try:
-            from mlx_lm import generate
+            generate = import_module("mlx_lm").generate
         except RuntimeError as e:
             raise RuntimeError(
                 "MLX runtime could not initialize. On macOS this usually means "
@@ -355,7 +356,7 @@ class MLXLLMClient:
             if cached is not None:
                 return cached
             try:
-                from mlx_lm import load
+                load = import_module("mlx_lm").load
             except RuntimeError as e:
                 raise RuntimeError(
                     "MLX runtime could not initialize. On macOS this usually means "
