@@ -161,6 +161,14 @@ approval, and tool dispatch.
 - **#101** daily newspaper digest onguard client and interest profile.
 - **#102** client parity for schedules, queues, config, events, and artifacts.
 - **#103** onguard security demos and violation tests.
+- **#104** inbox triage onguard client.
+- **#105** meeting prep onguard client.
+- **#106** watch-folder and downloads processor onguard client.
+- **#107** personal knowledge update onguard client.
+- **#108** task follow-up onguard client.
+- **#109** research monitor onguard client.
+- **#110** local desktop automation monitor onguard client.
+- **#111** finance document guard onguard client.
 
 ### Sequencing
 

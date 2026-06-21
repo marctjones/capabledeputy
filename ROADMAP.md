@@ -103,6 +103,14 @@ and policy enforcement.
 | #101 | Daily newspaper digest onguard client and interest profile | Planned |
 | #102 | Client parity for schedules, queues, config, events, and artifacts | Planned |
 | #103 | Onguard security demos and violation tests | Planned |
+| #104 | Inbox triage onguard client | Planned |
+| #105 | Meeting prep onguard client | Planned |
+| #106 | Watch-folder and downloads processor onguard client | Planned |
+| #107 | Personal knowledge update onguard client | Planned |
+| #108 | Task follow-up onguard client | Planned |
+| #109 | Research monitor onguard client | Planned |
+| #110 | Local desktop automation monitor onguard client | Planned |
+| #111 | Finance document guard onguard client | Planned |
 
 ## Previous Focus — v0.25.0 MCP Compatibility + Security Integration
 
