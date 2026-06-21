@@ -259,6 +259,59 @@ struct SetupAction: Identifiable, Hashable {
     }
 }
 
+struct ConnectorStatus: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let type: String
+    let status: String
+    let detail: String
+    let actions: [SetupAction]
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["id"] as? String ?? UUID().uuidString
+        self.name = dictionary["name"] as? String ?? ""
+        self.type = dictionary["type"] as? String ?? ""
+        self.status = dictionary["status"] as? String ?? ""
+        self.detail = dictionary["detail"] as? String ?? ""
+        self.actions = (dictionary["actions"] as? [[String: Any]] ?? [])
+            .map(SetupAction.init(dictionary:))
+    }
+}
+
+struct RuntimeControlState: Hashable {
+    let automationPaused: Bool
+    let screenControlRequested: Bool
+    let screenControlSessionID: String
+
+    init(dictionary: [String: Any]) {
+        self.automationPaused = dictionary["automation_paused"] as? Bool ?? false
+        self.screenControlRequested = dictionary["screen_control_requested"] as? Bool ?? false
+        self.screenControlSessionID = dictionary["screen_control_session_id"] as? String ?? ""
+    }
+
+    static let empty = RuntimeControlState(dictionary: [:])
+}
+
+struct SourceBindingViewData: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let scopePatternCanonical: String
+    let category: String
+    let defaultTier: String
+    let writeDiscipline: String
+    let riskIDs: [String]
+
+    init(dictionary: [String: Any]) {
+        self.name = dictionary["name"] as? String ?? ""
+        self.id = name
+        self.scopePatternCanonical = dictionary["scope_pattern_canonical"] as? String ?? ""
+        self.category = dictionary["category"] as? String ?? ""
+        self.defaultTier = dictionary["default_tier"] as? String ?? ""
+        self.writeDiscipline = dictionary["write_discipline"] as? String ?? ""
+        self.riskIDs = dictionary["risk_ids"] as? [String] ?? []
+    }
+}
+
 struct GmailOAuthStatus: Hashable {
     let configured: Bool
     let clientIDConfigured: Bool
@@ -287,6 +340,7 @@ struct GmailOAuthStatus: Hashable {
 
 struct DaemonSettings: Hashable {
     var defaultPurpose: String
+    var globalShortcut: String
     var launchAtLogin: Bool
     var notificationsEnabled: Bool
     var preferLocalMLX: Bool
@@ -297,6 +351,7 @@ struct DaemonSettings: Hashable {
 
     init(dictionary: [String: Any]) {
         self.defaultPurpose = dictionary["default_purpose"] as? String ?? "general"
+        self.globalShortcut = dictionary["global_shortcut"] as? String ?? "Option-Space"
         self.launchAtLogin = dictionary["launch_at_login"] as? Bool ?? false
         self.notificationsEnabled = dictionary["notifications_enabled"] as? Bool ?? true
         self.preferLocalMLX = dictionary["prefer_local_mlx"] as? Bool ?? true
@@ -309,6 +364,7 @@ struct DaemonSettings: Hashable {
     var rpcDictionary: [String: Any] {
         [
             "default_purpose": defaultPurpose,
+            "global_shortcut": globalShortcut,
             "launch_at_login": launchAtLogin,
             "notifications_enabled": notificationsEnabled,
             "prefer_local_mlx": preferLocalMLX,

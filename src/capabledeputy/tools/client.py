@@ -242,6 +242,16 @@ class LabeledToolClient:
         an LLM-context summary) don't have to reach into a private."""
         return self._policy_context
 
+    def update_policy_context(self, policy_context: PolicyContext | None) -> None:
+        """Refresh daemon-owned policy context after validated config edits."""
+        self._policy_context = policy_context
+        self._source_flow = ToolSourceFlow(policy_context=policy_context, audit=self._audit)
+        self._policy_hooks = ToolPolicyHooks(
+            policy_context=policy_context,
+            audit=self._audit,
+            graph=self._graph,
+        )
+
     async def call_tool(
         self,
         session_id: UUID,

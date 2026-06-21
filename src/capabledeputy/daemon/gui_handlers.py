@@ -81,12 +81,12 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
                     "detail": _gmail_setup_check_detail(gmail_status, upstream),
                     "actions": [
                         {
-                            "id": "google_gmail.configure_oauth",
+                            "id": "setup.google_gmail.configure_oauth",
                             "label": "Configure Gmail OAuth",
                             "kind": "daemon_form",
                         },
                         {
-                            "id": "google_gmail.oauth_login",
+                            "id": "setup.google_gmail.oauth_login",
                             "label": "Authorize Gmail",
                             "kind": "daemon_browser_oauth",
                             "enabled": (
@@ -115,6 +115,13 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
                     "detail": (
                         "macOS grants Automation permissions interactively in System Settings."
                     ),
+                    "actions": [
+                        {
+                            "id": "macos.automation_settings",
+                            "label": "Open Settings",
+                            "kind": "open_url",
+                        },
+                    ],
                 },
                 {
                     "id": "notifications",
@@ -131,6 +138,23 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
                     "title": "Daemon-owned settings",
                     "status": "ok",
                     "detail": "Client preferences are loaded from the daemon settings store.",
+                },
+                {
+                    "id": "source-bindings",
+                    "title": "Source bindings",
+                    "status": (
+                        "ok"
+                        if getattr(app.policy_context, "bindings", None) is not None
+                        else "manual"
+                    ),
+                    "detail": "Operator-curated source labels are edited through daemon RPCs.",
+                    "actions": [
+                        {
+                            "id": "source_binding.list",
+                            "label": "Open Bindings",
+                            "kind": "client_navigation",
+                        },
+                    ],
                 },
                 {
                     "id": "config-validation",

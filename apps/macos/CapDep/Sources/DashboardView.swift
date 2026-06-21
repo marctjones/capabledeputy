@@ -49,6 +49,18 @@ struct DashboardView: View {
                 .disabled(model.isRefreshing)
             }
         }
+        .onChange(of: model.focusedApprovalID) { _, id in
+            guard let id else {
+                return
+            }
+            selectedApproval = model.pendingApprovals.first { $0.id == id }
+        }
+        .onChange(of: model.focusedSessionID) { _, id in
+            guard let id else {
+                return
+            }
+            selectedSession = model.sessions.first { $0.id == id }
+        }
     }
 }
 
@@ -260,6 +272,10 @@ private struct TrustView: View {
     @State private var principalID = ""
     @State private var patternAction = "SEND_EMAIL"
     @State private var patternTarget = ""
+    @State private var bindingName = ""
+    @State private var bindingScope = "file:///Users/marc/Documents/**"
+    @State private var bindingCategory = "personal"
+    @State private var bindingTier = "sensitive"
 
     var body: some View {
         ScrollView {
@@ -332,11 +348,63 @@ private struct TrustView: View {
                     }
                 }
 
-                PlaceholderDetailView(
-                    title: "Source Bindings",
-                    systemImage: "tag",
-                    message: "Operator-curated labels for files, apps, services, and URI scopes should be editable with validation.",
-                )
+                LiveCard(title: "Source Bindings", systemImage: "tag") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Source bindings are daemon-owned and affect IFC labels, trust, and write discipline. Keep scopes narrow.")
+                            .foregroundStyle(.secondary)
+                        if model.sourceBindings.isEmpty {
+                            Text("No source bindings configured.")
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(model.sourceBindings) { binding in
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(binding.name)
+                                        .font(.headline)
+                                    Text(binding.scopePatternCanonical)
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                    Text("\(binding.category) · \(binding.defaultTier) · \(binding.writeDiscipline)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button("Delete") {
+                                    Task {
+                                        await model.deleteSourceBinding(binding)
+                                    }
+                                }
+                            }
+                        }
+                        Divider()
+                        TextField("Binding name", text: $bindingName)
+                        TextField("Canonical scope, e.g. file:///Users/me/Documents/Finance/**", text: $bindingScope)
+                        TextField("Category", text: $bindingCategory)
+                        Picker("Tier", selection: $bindingTier) {
+                            Text("none").tag("none")
+                            Text("sensitive").tag("sensitive")
+                            Text("regulated").tag("regulated")
+                            Text("restricted").tag("restricted")
+                            Text("prohibited").tag("prohibited")
+                        }
+                        Button("Save Source Binding") {
+                            Task {
+                                await model.upsertSourceBinding(
+                                    name: bindingName,
+                                    scopePattern: bindingScope,
+                                    category: bindingCategory,
+                                    tier: bindingTier,
+                                )
+                                bindingName = ""
+                            }
+                        }
+                        .disabled(
+                            bindingName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                || bindingScope.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                || bindingCategory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                        )
+                    }
+                }
             }
             .padding(24)
         }
@@ -365,7 +433,9 @@ private struct SetupAssistantView: View {
                         status: check.detail,
                         systemImage: check.systemImage,
                         ok: check.status == "ok",
+                        actions: check.actions,
                     )
+                    .environmentObject(model)
                 }
             }
             .padding(24)
@@ -426,10 +496,12 @@ private struct ProvenanceView: View {
 }
 
 private struct SetupRow: View {
+    @EnvironmentObject private var model: CapDepAppModel
     let title: String
     let status: String
     let systemImage: String
     let ok: Bool
+    var actions: [SetupAction] = []
 
     var body: some View {
         HStack(spacing: 12) {
@@ -443,7 +515,18 @@ private struct SetupRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button(ok ? "Open" : "Fix") {}
+            if let action = actions.first {
+                Button(ok ? action.label : "Fix") {
+                    Task {
+                        await model.runSetupAction(action)
+                    }
+                }
+                .disabled(!action.enabled)
+            } else {
+                Text(ok ? "Ready" : "Manual")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding()
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))

@@ -6,8 +6,8 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-06-21, after closing v0.26 client parity and starting
-the v0.27 practical setup milestone.
+**Last refreshed:** 2026-06-21, after landing the main v0.27 practical setup
+slice and opening the v0.28 onguard-client substrate.
 
 ## Current Focus — v0.27.0 Practical Setup + Daemon-Owned Settings
 
@@ -23,15 +23,15 @@ daemon owns shared coordination state and remains the only authority path.
 
 | Issue | Work | Status |
 |---|---|---|
-| #69 | Daemon-owned settings store and settings RPCs for CapDepMac | In progress |
-| #75 | Daemon config validation and log-location RPCs for Advanced settings | In progress |
-| #70 | Wire CapDepMac settings controls to daemon settings instead of constants | In progress |
-| #71 | Replace empty Setup/Open/Fix buttons with daemon remediation actions | Planned |
-| #72 | Daemon-backed account and OAuth setup workflows for Google and local app connectors | Planned |
-| #76 | Fix CapDepMac task/menu actions that navigate without completing the intended action | Planned |
-| #74 | Wire automation pause, screen-control enablement, and Touch ID policy through daemon | Planned |
-| #73 | Daemon-owned source bindings and labeling editor for CapDepMac | Planned |
-| — | Adopt onguard-client architecture and define daemon coordination contracts | In progress |
+| #69 | Daemon-owned settings store and settings RPCs for CapDepMac | Done |
+| #75 | Daemon config validation and log-location RPCs for Advanced settings | Done |
+| #70 | Wire CapDepMac settings controls to daemon settings instead of constants | Implemented locally |
+| #71 | Replace empty Setup/Open/Fix buttons with daemon remediation actions | Implemented locally |
+| #72 | Daemon-backed account and OAuth setup workflows for Google and local app connectors | Partial |
+| #76 | Fix CapDepMac task/menu actions that navigate without completing the intended action | Implemented locally |
+| #74 | Wire automation pause, screen-control enablement, and Touch ID policy through daemon | Partial |
+| #73 | Daemon-owned source bindings and labeling editor for CapDepMac | Implemented locally |
+| — | Adopt onguard-client architecture and define daemon coordination contracts | Done |
 
 ### v0.27.0 done-when
 
@@ -42,6 +42,8 @@ daemon owns shared coordination state and remains the only authority path.
 - Setup/Open/Fix actions either complete daemon-backed work or are removed.
 - Connector setup status covers Gmail, Google Workspace expansion, and local
   macOS app permission checks through one reusable shape.
+- First-class Calendar/Drive OAuth setup and real Touch ID challenge enforcement
+  remain follow-up work before v0.27 can be closed completely.
 - Onguard clients are documented as normal headless clients, and the missing
   daemon contracts for schedules, queues, client config, and events are tracked
   before implementing daily digest/news workflows.

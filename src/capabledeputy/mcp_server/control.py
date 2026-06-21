@@ -178,6 +178,97 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
         _annotations("Setup status", read_only=True, idempotent=True),
     ),
     ControlToolSpec(
+        "setup_run_action",
+        "Run setup action",
+        "Resolve a daemon-owned setup remediation action descriptor.",
+        "setup.run_action",
+        _schema({"action_id": {"type": "string"}}, required=["action_id"]),
+        _annotations("Run setup action", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "connector_status",
+        "Connector status",
+        "Return daemon-owned connector/account setup status.",
+        "connector.status",
+        _EMPTY_INPUT,
+        _annotations("Connector status", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "runtime_status",
+        "Runtime controls status",
+        "Return daemon-owned runtime control state.",
+        "runtime.status",
+        _EMPTY_INPUT,
+        _annotations("Runtime controls status", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "runtime_automation_pause",
+        "Pause or resume automation",
+        "Set daemon-owned automation pause state.",
+        "runtime.automation_pause",
+        _schema({"paused": {"type": "boolean"}}, required=["paused"]),
+        _annotations("Pause or resume automation", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "runtime_screen_control_request",
+        "Request screen control",
+        "Request generic screen-control enablement through daemon-owned state.",
+        "runtime.screen_control.request",
+        _schema(
+            {
+                **_optional_string_properties("session_id", "reason"),
+            },
+        ),
+        _annotations("Request screen control", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "source_binding_list",
+        "List source bindings",
+        "List daemon-owned source/location label bindings.",
+        "source_binding.list",
+        _EMPTY_INPUT,
+        _annotations("List source bindings", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "source_binding_preview",
+        "Preview source binding",
+        "Preview how a URI resolves through source/location bindings.",
+        "source_binding.preview",
+        _schema({"uri": {"type": "string"}}, required=["uri"]),
+        _annotations("Preview source binding", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "source_binding_upsert",
+        "Upsert source binding",
+        "Create or update a daemon-owned source/location label binding.",
+        "source_binding.upsert",
+        _schema(
+            {
+                "binding": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "properties": {
+                        "name": {"type": "string"},
+                        "scope_pattern_canonical": {"type": "string"},
+                        "category": {"type": "string"},
+                        "default_tier": {"type": "string"},
+                        "write_discipline": {"type": "string"},
+                    },
+                },
+            },
+            required=["binding"],
+        ),
+        _annotations("Upsert source binding", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "source_binding_delete",
+        "Delete source binding",
+        "Delete a daemon-owned source/location label binding.",
+        "source_binding.delete",
+        _schema({"name": {"type": "string"}}, required=["name"]),
+        _annotations("Delete source binding", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
         "settings_get",
         "Get settings",
         "Return daemon-owned client/operator settings.",
@@ -1010,6 +1101,9 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
         "daemon_info",
         "app_status",
         "setup_status",
+        "connector_status",
+        "runtime_status",
+        "source_binding_list",
         "memory_entries",
         "policy_show",
         "policy_validate",
@@ -1025,6 +1119,18 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
         return None
     if name in {"gmail_oauth_status", "macos_frontmost_context"}:
         return None
+    if name == "setup_run_action":
+        return {"action_id": str(args.get("action_id") or "")}
+    if name == "runtime_automation_pause":
+        return {"paused": bool(args.get("paused"))}
+    if name == "runtime_screen_control_request":
+        return _copy(args, "session_id", "reason")
+    if name == "source_binding_preview":
+        return {"uri": str(args.get("uri") or "")}
+    if name == "source_binding_upsert":
+        return {"binding": dict(args.get("binding") or {})}
+    if name == "source_binding_delete":
+        return {"name": str(args.get("name") or "")}
     if name in {
         "session_get",
         "session_children",

@@ -69,6 +69,14 @@ breaking changes).
 - Wired CapDepMac settings toggles and Advanced diagnostics to daemon RPCs
   instead of local constants.
 - Exposed settings and config diagnostics through CLI and MCP-control surfaces.
+- Added daemon-owned setup remediation descriptors, connector status, runtime
+  automation pause/screen-control request state, and source-binding edit/preview
+  RPCs.
+- Wired CapDepMac setup rows, account status rows, automation menu actions, and
+  Trust source-binding editing through daemon RPCs instead of no-op buttons or
+  local-only state.
+- Expanded MCP-control and the executable client parity manifest for connector,
+  runtime-control, setup-action, and source-binding RPCs.
 
 ## [0.24.0] - 2026-06-20
 

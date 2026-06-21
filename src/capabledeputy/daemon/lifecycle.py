@@ -26,6 +26,7 @@ from capabledeputy.daemon.policy_handlers import make_policy_handlers
 from capabledeputy.daemon.programmatic_handlers import make_programmatic_handlers
 from capabledeputy.daemon.relationship_handlers import make_relationship_handlers
 from capabledeputy.daemon.server import Daemon
+from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
 from capabledeputy.daemon.session_handlers import make_session_handlers
 from capabledeputy.daemon.tool_handlers import make_tool_handlers
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
@@ -561,6 +562,12 @@ async def run_daemon(
     handlers.update(make_programmatic_handlers(app))
     handlers.update(make_bundle_handlers(app))
     handlers.update(make_gui_handlers(app))
+    handlers.update(
+        make_setup_control_handlers(
+            app,
+            source_bindings_path=_resolve_v09_configs_dir() / "source_bindings.yaml",
+        ),
+    )
     from capabledeputy.daemon.settings_handlers import make_settings_handlers
 
     handlers.update(make_settings_handlers(app, config_path=resolved_pre_app))

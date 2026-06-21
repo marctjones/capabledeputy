@@ -92,34 +92,35 @@ macOS + Google Workspace assistant usable without CLI/YAML handholding.
 
 ### Scope
 
-- **#72** daemon-backed account and OAuth setup workflows for Google and local
-  app connectors. Gmail is partially landed; remaining work is the generic
-  connector setup/status shape and Calendar/Drive/local-app flows.
-- **#69** daemon-owned settings store and settings RPCs for CapDepMac
-  (started: `settings.get`, `settings.update`).
-- **#70** wire CapDepMac settings controls to daemon settings instead of
-  constants.
+- **#69** daemon-owned settings store and settings RPCs for CapDepMac — done.
 - **#75** daemon config validation and log-location RPCs for Advanced settings
-  (started: `config.validate`, `config.log_locations`).
-- **#71** replace empty Setup/Open/Fix buttons with daemon remediation actions.
+  — done.
+- **#70** wire CapDepMac settings controls to daemon settings instead of
+  constants — implemented locally.
+- **#71** replace empty Setup/Open/Fix buttons with daemon remediation actions
+  — implemented locally with `setup.run_action` and action descriptors.
+- **#73** source bindings and labeling editor — implemented locally through
+  daemon-owned `source_binding.*` RPCs and CapDepMac Trust UI.
 - **#76** fix task/menu actions that navigate without completing the intended
-  action.
-- **#73** source bindings and labeling editor is a stretch goal.
-- **#74** automation pause, screen-control enablement, and Touch ID policy is a
-  stretch goal.
+  action — implemented locally for approval focus, config validation,
+  automation pause/resume, and screen-control requests.
+- **#72** daemon-backed account and OAuth setup workflows for Google and local
+  app connectors — partial: Gmail OAuth is first-class; connector status now
+  covers Gmail, Calendar, Drive, and local apps, but Calendar/Drive do not yet
+  have first-class OAuth forms.
+- **#74** automation pause, screen-control enablement, and Touch ID policy —
+  partial: pause/resume and screen-control requests are daemon-visible and
+  audited; Touch ID policy is persisted but biometric enforcement still needs a
+  daemon-mediated approval-auth challenge contract.
 - **Onguard architecture**: adopt headless normal clients for background work,
   with daemon-owned schedule/config/queue/event contracts instead of embedding
   every workflow in daemon core.
 
 ### Sequencing
 
-1. Finish daemon-owned settings persistence and Advanced diagnostics.
-2. Generalize `google_gmail_setup` into reusable connector setup primitives.
-3. Add daemon RPCs for connector status, OAuth client configuration, browser
-   login, revoke/clear-auth, reload, and remediation actions.
-4. Wire CapDepMac Accounts and Advanced settings to those daemon RPCs.
-5. Replace no-op setup/navigation buttons with daemon remediation actions.
-6. Add the shared coordination contracts required by onguard clients:
+1. Finish the remaining v0.27 gaps: first-class Calendar/Drive OAuth forms and
+   daemon-mediated approval-auth challenge enforcement for Touch ID policy.
+2. Add the shared coordination contracts required by onguard clients:
    `schedule.*`, `client.config.*`, `client.queue.*`, `client.events.*`, and
    structured origin metadata for policy/Starlark.
 

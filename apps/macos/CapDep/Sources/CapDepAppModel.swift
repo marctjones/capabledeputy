@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @MainActor
@@ -13,6 +14,9 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var daemonSettings = DaemonSettings.empty
     @Published private(set) var configValidation = ConfigValidation.empty
     @Published private(set) var logLocations: [LogLocation] = []
+    @Published private(set) var connectorStatuses: [ConnectorStatus] = []
+    @Published private(set) var runtimeControls = RuntimeControlState.empty
+    @Published private(set) var sourceBindings: [SourceBindingViewData] = []
     @Published private(set) var provenanceNodes: [ProvenanceNode] = []
     @Published private(set) var provenanceEdges: [ProvenanceEdge] = []
     @Published private(set) var relationshipGroups: [RelationshipGroupViewData] = []
@@ -30,6 +34,8 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var isConfiguringGmailOAuth = false
     @Published var selectedSection: DashboardSection = .today
     @Published var selectedPurpose: Purpose = .general
+    @Published var focusedApprovalID: Int?
+    @Published var focusedSessionID: String?
     @Published var commandText = ""
     @Published var contextChips: [ContextChip] = [
         ContextChip(
@@ -94,6 +100,9 @@ final class CapDepAppModel: ObservableObject {
             async let settingsResult = client.call(method: "settings.get")
             async let validationResult = client.call(method: "config.validate")
             async let logLocationsResult = client.call(method: "config.log_locations")
+            async let connectorsResult = client.call(method: "connector.status")
+            async let runtimeResult = client.call(method: "runtime.status")
+            async let sourceBindingsResult = client.call(method: "source_binding.list")
             async let provenanceResult = client.call(method: "provenance.graph")
             async let relationshipResult = client.call(method: "relationship_group.list")
             async let patternsResult = client.call(method: "approval_pattern.list")
@@ -110,6 +119,9 @@ final class CapDepAppModel: ObservableObject {
             let settingsObject = try await settingsResult as? [String: Any]
             let validationObject = try await validationResult as? [String: Any]
             let logLocationsObject = try await logLocationsResult as? [String: Any]
+            let connectorsObject = try await connectorsResult as? [String: Any]
+            let runtimeObject = try await runtimeResult as? [String: Any]
+            let sourceBindingsObject = try await sourceBindingsResult as? [String: Any]
             let provenanceObject = try await provenanceResult as? [String: Any]
             let relationshipObject = try await relationshipResult as? [String: Any]
             let patternsObject = try await patternsResult as? [String: Any]
@@ -140,6 +152,13 @@ final class CapDepAppModel: ObservableObject {
                     + (logLocationsObject?["directories"] as? [[String: Any]] ?? [])
             )
             .map(LogLocation.init(dictionary:))
+            connectorStatuses = (connectorsObject?["connectors"] as? [[String: Any]] ?? [])
+                .map(ConnectorStatus.init(dictionary:))
+            runtimeControls = RuntimeControlState(
+                dictionary: runtimeObject?["runtime"] as? [String: Any] ?? [:],
+            )
+            sourceBindings = (sourceBindingsObject?["bindings"] as? [[String: Any]] ?? [])
+                .map(SourceBindingViewData.init(dictionary:))
             provenanceNodes = (provenanceObject?["nodes"] as? [[String: Any]] ?? [])
                 .map(ProvenanceNode.init(dictionary:))
             provenanceEdges = (provenanceObject?["edges"] as? [[String: Any]] ?? [])
@@ -193,6 +212,16 @@ final class CapDepAppModel: ObservableObject {
 
     func approve(_ approval: Approval) async {
         await decide(approval, approved: true)
+    }
+
+    func focusApproval(_ approval: Approval) {
+        focusedApprovalID = approval.id
+        selectedSection = .approvals
+    }
+
+    func focusSession(_ session: CapDepSession) {
+        focusedSessionID = session.id
+        selectedSection = .sessions
     }
 
     func deny(_ approval: Approval) async {
@@ -480,6 +509,108 @@ final class CapDepAppModel: ObservableObject {
                 ],
             ) as? [String: Any]
             gmailOAuthStatus = GmailOAuthStatus(dictionary: result ?? [:])
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func runSetupAction(_ action: SetupAction) async {
+        do {
+            let result = try await client.call(
+                method: "setup.run_action",
+                params: ["action_id": action.id],
+            ) as? [String: Any]
+            if let method = result?["method"] as? String {
+                if method == "config.validate" {
+                    await validateConfiguration()
+                } else if method == "config.log_locations" {
+                    await refreshLogLocations()
+                } else if method == "setup.google_gmail.oauth_login" {
+                    await authorizeGmailOAuth()
+                }
+            } else if let url = result?["url"] as? String, let target = URL(string: url) {
+                NSWorkspace.shared.open(target)
+            } else if let section = result?["section"] as? String {
+                if section == "trust" {
+                    selectedSection = .trust
+                } else if section == "setup" {
+                    selectedSection = .setup
+                }
+            }
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func setAutomationPaused(_ paused: Bool) async {
+        do {
+            let result = try await client.call(
+                method: "runtime.automation_pause",
+                params: ["paused": paused],
+            ) as? [String: Any]
+            runtimeControls = RuntimeControlState(
+                dictionary: result?["runtime"] as? [String: Any] ?? [:],
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func requestScreenControl() async {
+        do {
+            let result = try await client.call(
+                method: "runtime.screen_control.request",
+                params: [
+                    "session_id": currentSessionID ?? "",
+                    "reason": "CapDepMac user requested generic screen control",
+                ],
+            ) as? [String: Any]
+            runtimeControls = RuntimeControlState(
+                dictionary: result?["runtime"] as? [String: Any] ?? [:],
+            )
+            daemonSettings = DaemonSettings(
+                dictionary: result?["settings"] as? [String: Any] ?? daemonSettings.rpcDictionary,
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func upsertSourceBinding(
+        name: String,
+        scopePattern: String,
+        category: String,
+        tier: String,
+    ) async {
+        do {
+            _ = try await client.call(
+                method: "source_binding.upsert",
+                params: [
+                    "binding": [
+                        "name": name,
+                        "scope_pattern_canonical": scopePattern,
+                        "category": category,
+                        "default_tier": tier,
+                        "write_discipline": "version-preserving",
+                    ],
+                ],
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func deleteSourceBinding(_ binding: SourceBindingViewData) async {
+        do {
+            _ = try await client.call(
+                method: "source_binding.delete",
+                params: ["name": binding.name],
+            )
             await refresh()
         } catch {
             lastError = error.localizedDescription

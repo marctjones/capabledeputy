@@ -55,12 +55,12 @@ private struct GeneralSettingsView: View {
                 "Launch CapDep at login",
                 isOn: settingBinding(\.launchAtLogin),
             )
-            Picker("Default purpose", selection: .constant(Purpose.general)) {
+            Picker("Default purpose", selection: purposeBinding()) {
                 ForEach(Purpose.allCases) { purpose in
                     Text(purpose.rawValue.capitalized).tag(purpose)
                 }
             }
-            TextField("Global shortcut", text: .constant("Option-Space"))
+            TextField("Global shortcut", text: shortcutBinding())
             Toggle(
                 "Show notifications for pending approvals",
                 isOn: settingBinding(\.notificationsEnabled),
@@ -75,6 +75,30 @@ private struct GeneralSettingsView: View {
         } set: { value in
             var updated = model.daemonSettings
             updated[keyPath: keyPath] = value
+            Task {
+                await model.updateSettings(updated)
+            }
+        }
+    }
+
+    private func purposeBinding() -> Binding<Purpose> {
+        Binding {
+            Purpose(rawValue: model.daemonSettings.defaultPurpose) ?? .general
+        } set: { value in
+            var updated = model.daemonSettings
+            updated.defaultPurpose = value.rawValue
+            Task {
+                await model.updateSettings(updated)
+            }
+        }
+    }
+
+    private func shortcutBinding() -> Binding<String> {
+        Binding {
+            model.daemonSettings.globalShortcut
+        } set: { value in
+            var updated = model.daemonSettings
+            updated.globalShortcut = value
             Task {
                 await model.updateSettings(updated)
             }
@@ -127,9 +151,14 @@ private struct AccountsSettingsView: View {
                 clientSecret: $googleClientSecret,
             )
             .environmentObject(model)
-            SetupProviderRow(name: "Google Calendar", status: "OAuth status from daemon pending")
-            SetupProviderRow(name: "Google Drive", status: "OAuth status from daemon pending")
-            SetupProviderRow(name: "Apple Mail", status: "Uses macOS Automation permission")
+            ForEach(model.connectorStatuses.filter { $0.id != "google-gmail" }) { connector in
+                SetupProviderRow(
+                    name: connector.name,
+                    status: connector.detail,
+                    action: connector.actions.first,
+                )
+                .environmentObject(model)
+            }
         }
         .formStyle(.grouped)
     }
@@ -253,10 +282,14 @@ private struct AutomationSettingsView: View {
             )
             Text("Generic screen control is intentionally high-friction. Prefer MCP/API connectors and app-specific AppleScript tools.")
                 .foregroundStyle(.secondary)
-            SetupProviderRow(name: "Mail", status: "Ask when workflow first needs it")
-            SetupProviderRow(name: "Pages", status: "Ask when workflow first needs it")
-            SetupProviderRow(name: "Numbers", status: "Ask when workflow first needs it")
-            SetupProviderRow(name: "Keynote", status: "Ask when workflow first needs it")
+            ForEach(model.connectorStatuses.filter { $0.type == "local_app" }) { connector in
+                SetupProviderRow(
+                    name: connector.name,
+                    status: connector.detail,
+                    action: connector.actions.first,
+                )
+                .environmentObject(model)
+            }
         }
         .formStyle(.grouped)
     }
@@ -283,9 +316,24 @@ private struct TrustSettingsView: View {
                 "Require Touch ID for high-risk approvals",
                 isOn: settingBinding(\.requireTouchIDForHighRisk),
             )
-            SetupProviderRow(name: "Relationship groups", status: "Edit self/family/work/trusted recipients")
-            SetupProviderRow(name: "Approval patterns", status: "Create narrow recurring approvals from reviewed actions")
-            SetupProviderRow(name: "Source bindings", status: "Label files, apps, and service URI scopes")
+            SetupProviderRow(
+                name: "Relationship groups",
+                status: "Edit self/family/work/trusted recipients from the Trust dashboard.",
+                action: nil,
+            )
+            .environmentObject(model)
+            SetupProviderRow(
+                name: "Approval patterns",
+                status: "Create narrow recurring approvals from reviewed actions in the Trust dashboard.",
+                action: nil,
+            )
+            .environmentObject(model)
+            SetupProviderRow(
+                name: "Source bindings",
+                status: "\(model.sourceBindings.count) daemon-owned binding(s) loaded.",
+                action: nil,
+            )
+            .environmentObject(model)
         }
         .formStyle(.grouped)
     }
@@ -359,8 +407,10 @@ private struct AdvancedSettingsView: View {
 }
 
 private struct SetupProviderRow: View {
+    @EnvironmentObject private var model: CapDepAppModel
     let name: String
     let status: String
+    let action: SetupAction?
 
     var body: some View {
         HStack {
@@ -371,7 +421,18 @@ private struct SetupProviderRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Open") {}
+            if let action {
+                Button(action.label) {
+                    Task {
+                        await model.runSetupAction(action)
+                    }
+                }
+                .disabled(!action.enabled)
+            } else {
+                Text("Managed")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

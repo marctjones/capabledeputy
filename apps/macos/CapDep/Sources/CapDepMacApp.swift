@@ -134,6 +134,12 @@ struct CapDepCommands: Commands {
                 model.selectedSection = .approvals
                 openWindow(id: "main")
             }
+            ForEach(model.pendingApprovals.prefix(5)) { approval in
+                Button("Review Approval #\(approval.id)") {
+                    model.focusApproval(approval)
+                    openWindow(id: "main")
+                }
+            }
             Button("Deny Selected Approval") {
                 Task {
                     if let approval = model.pendingApprovals.first {
@@ -157,8 +163,17 @@ struct CapDepCommands: Commands {
 
         CommandMenu("Automation") {
             Button("Pause All Automation") {
-                model.taskPanelPinned = false
+                Task {
+                    await model.setAutomationPaused(true)
+                }
             }
+            .disabled(model.runtimeControls.automationPaused)
+            Button("Resume Automation") {
+                Task {
+                    await model.setAutomationPaused(false)
+                }
+            }
+            .disabled(!model.runtimeControls.automationPaused)
             Button("Show Current Task Panel") {
                 openWindow(id: "task-panel")
             }
@@ -168,8 +183,11 @@ struct CapDepCommands: Commands {
                 openWindow(id: "main")
             }
             Button("Enable Screen Control for This Session") {
-                model.selectedSection = .setup
-                openWindow(id: "main")
+                Task {
+                    await model.requestScreenControl()
+                    model.selectedSection = .setup
+                    openWindow(id: "main")
+                }
             }
         }
 
@@ -183,8 +201,11 @@ struct CapDepCommands: Commands {
                 openWindow(id: "main")
             }
             Button("Validate Configuration") {
-                model.selectedSection = .setup
-                openWindow(id: "main")
+                Task {
+                    await model.validateConfiguration()
+                    model.selectedSection = .setup
+                    openWindow(id: "main")
+                }
             }
         }
 
