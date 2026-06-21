@@ -26,6 +26,7 @@ every client tells you to start it.
 | **Inspect/triage after the fact** | `capdep session list` · `capdep audit …` · `capdep trace <session>` · `capdep policy …` · `capdep tool …` | Read-only introspection. |
 | **Inspect or change daemon-owned settings** | `capdep settings` · `capdep config validate-daemon` · CapDepMac Settings | Clients read/write the daemon settings store instead of local constants. |
 | **Run a programmatic-mode plan** | `capdep run <session> <prog.py>` (`--bundle` for one-approval workflows) | LLM emits a Python plan; statically dry-run-able (`capdep dry-run`). |
+| **Run background scheduled work** | Onguard clients | Headless normal clients for approved schedules/queues. They are not privileged; the daemon still enforces policy. |
 | **Drive from an external agent/host (MCP)** | `capdep mcp-server --session-id <id>` | Exposes session-bound daemon tools to an MCP client. |
 | **Configure local connectors from an MCP host** | `capdep mcp-admin-server` | Exposes local setup/admin tools such as Gmail OAuth configuration. |
 | **Control CapDep itself from an MCP host** | `capdep mcp-control-server` | Exposes daemon client operations for sessions, approvals, audit, setup, provenance, and policy-gated tool calls. |
@@ -91,6 +92,10 @@ Current client roles:
 - MCP-control is the automation/control surface for external hosts. It exposes
   daemon operations as MCP tools, with annotations and all dangerous work still
   routed through daemon policy/approval/provenance/audit.
+- Onguard clients are headless background workers. They process schedules,
+  queues, and approved configuration, but they remain ordinary daemon clients:
+  all reads, writes, notifications, and external effects go through daemon
+  sessions, policy, provenance, and audit.
 
 ## Recovering from a block
 

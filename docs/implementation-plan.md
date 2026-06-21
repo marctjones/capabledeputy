@@ -106,6 +106,9 @@ macOS + Google Workspace assistant usable without CLI/YAML handholding.
 - **#73** source bindings and labeling editor is a stretch goal.
 - **#74** automation pause, screen-control enablement, and Touch ID policy is a
   stretch goal.
+- **Onguard architecture**: adopt headless normal clients for background work,
+  with daemon-owned schedule/config/queue/event contracts instead of embedding
+  every workflow in daemon core.
 
 ### Sequencing
 
@@ -115,6 +118,9 @@ macOS + Google Workspace assistant usable without CLI/YAML handholding.
    login, revoke/clear-auth, reload, and remediation actions.
 4. Wire CapDepMac Accounts and Advanced settings to those daemon RPCs.
 5. Replace no-op setup/navigation buttons with daemon remediation actions.
+6. Add the shared coordination contracts required by onguard clients:
+   `schedule.*`, `client.config.*`, `client.queue.*`, `client.events.*`, and
+   structured origin metadata for policy/Starlark.
 
 ### Done-when
 
@@ -125,6 +131,9 @@ macOS + Google Workspace assistant usable without CLI/YAML handholding.
 - Configuration failures surface daemon validation messages and log locations.
 - Tests cover missing credentials, connected status, reauth-needed status, and
   daemon restart persistence.
+- Background workflows such as the daily newspaper run as ordinary onguard
+  clients and cannot bypass daemon policy, labels, approvals, provenance, or
+  audit.
 
 ---
 

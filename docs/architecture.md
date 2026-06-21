@@ -51,6 +51,29 @@ The intended product shape is one daemon with many thin, parity-preserving
 clients: CLI for scripting, terminal UI for SSH and demos, native macOS for
 desktop flow, and eventually native or cross-platform Windows/Linux shells.
 
+## Onguard Client Boundary
+
+Headless background automation should be implemented as **onguard clients**:
+normal daemon clients that run deterministic schedules, queues, or approved
+configuration without a human actively driving each step. Onguard clients are
+not privileged and must not become a second authority path.
+
+- The daemon owns policy, labels, capabilities, approvals, provenance, audit,
+  connector credentials, schedules, shared client configuration, and
+  coordination queues/events.
+- Onguard clients own orchestration: schedule wakeups, polling, retry/backoff,
+  workflow templates, digest assembly loops, and queue processing.
+- Every onguard action must open or use a daemon session and call daemon
+  RPC/tool paths so normal flow patterns and security models apply.
+- Policy and Starlark inspectors must receive structured origin metadata for
+  onguard work: client id, schedule id, queued command id, proposer, approver,
+  and whether the run is scheduled or human-triggered.
+- Durable user/domain `memory.*` is not the client message bus. Client
+  coordination needs daemon-owned `client.config`, `client.queue`,
+  `client.events`, and `schedule` contracts with labels, provenance, and audit.
+
+See [onguard-clients.md](onguard-clients.md) for the detailed architecture.
+
 ## Current Runtime Seams
 
 - `ToolDefinition` is the compatibility runtime object. It still carries the

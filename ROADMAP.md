@@ -15,6 +15,9 @@ Goal: make CapDep practical to configure from its clients without moving
 authority out of the daemon. The daemon owns settings persistence, connector
 setup state, config validation, log locations, and remediation actions; CLI,
 TUI, Swift GUI, and MCP-control only present or invoke those daemon contracts.
+This milestone also adopts the onguard-client architecture for future
+background work: headless clients may orchestrate schedules and queues, but the
+daemon owns shared coordination state and remains the only authority path.
 
 ### v0.27.0 practical setup scope
 
@@ -28,6 +31,7 @@ TUI, Swift GUI, and MCP-control only present or invoke those daemon contracts.
 | #76 | Fix CapDepMac task/menu actions that navigate without completing the intended action | Planned |
 | #74 | Wire automation pause, screen-control enablement, and Touch ID policy through daemon | Planned |
 | #73 | Daemon-owned source bindings and labeling editor for CapDepMac | Planned |
+| — | Adopt onguard-client architecture and define daemon coordination contracts | In progress |
 
 ### v0.27.0 done-when
 
@@ -38,6 +42,9 @@ TUI, Swift GUI, and MCP-control only present or invoke those daemon contracts.
 - Setup/Open/Fix actions either complete daemon-backed work or are removed.
 - Connector setup status covers Gmail, Google Workspace expansion, and local
   macOS app permission checks through one reusable shape.
+- Onguard clients are documented as normal headless clients, and the missing
+  daemon contracts for schedules, queues, client config, and events are tracked
+  before implementing daily digest/news workflows.
 
 ## Completed Focus — v0.26.0 Client Parity Over Daemon RPC
 

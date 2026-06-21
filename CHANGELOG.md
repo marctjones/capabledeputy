@@ -58,6 +58,9 @@ breaking changes).
 
 - Renamed the active connector/settings milestone to `v0.27.0 — Practical
   setup + daemon-owned settings`.
+- Adopted the onguard-client architecture: headless background workers are
+  normal daemon clients, while the daemon owns policy, shared schedule/config/
+  queue/event coordination, provenance, and audit.
 - Added daemon-owned settings persistence with `settings.get` and
   `settings.update` RPCs, including audit events for settings changes.
 - Added daemon config diagnostics with `config.validate` and
