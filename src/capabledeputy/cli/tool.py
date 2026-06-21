@@ -129,3 +129,49 @@ def tool_test(
     matched = result["matched_capability"]
     if matched:
         console.print(f"matched capability: {matched['kind']}({matched['pattern']})")
+
+
+@tool_app.command("call")
+def tool_call(
+    tool: Annotated[str, typer.Option("--tool", help="Tool name")],
+    session: Annotated[str, typer.Option("--session", help="Session id")],
+    arg: Annotated[
+        list[str] | None,
+        typer.Option("--arg", help="Tool arg KEY=VALUE (repeatable)"),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of rendered output"),
+    ] = False,
+) -> None:
+    """Call a daemon tool through the policy chokepoint.
+
+    This is intentionally not a direct tool invocation. The daemon still
+    performs policy evaluation, approval queuing, provenance, and audit.
+    """
+    args: dict[str, Any] = dict(_parse_arg(spec) for spec in (arg or []))
+    result = _call(
+        "tool.call",
+        {"tool": tool, "session_id": session, "args": args},
+    )
+
+    if json_output:
+        console.print_json(data=result)
+        return
+
+    color = {
+        "allow": "green",
+        "deny": "red",
+        "require_approval": "yellow",
+    }.get(result.get("decision"), "white")
+    console.print(f"[{color}]decision: {result.get('decision', '?')}[/{color}]")
+    if result.get("approval_id") is not None:
+        console.print(f"approval id: {result['approval_id']}")
+    if result.get("rule"):
+        console.print(f"rule: {result['rule']}")
+    if result.get("reason"):
+        console.print(f"reason: {result['reason']}")
+    if result.get("error"):
+        err_console.print(f"[red]error:[/red] {result['error']}")
+    if result.get("output") is not None:
+        console.print(result["output"])

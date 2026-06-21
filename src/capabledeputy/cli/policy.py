@@ -198,6 +198,49 @@ def policy_validate() -> None:
     raise typer.Exit(code=1)
 
 
+@policy_app.command("explain")
+def policy_explain(
+    session_id: Annotated[
+        str | None,
+        typer.Option("--session", help="Filter to one session id"),
+    ] = None,
+    audit_id: Annotated[
+        str | None,
+        typer.Option("--audit-id", help="Explain one policy decision audit id"),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of rendered output"),
+    ] = False,
+) -> None:
+    """Explain the most recent matching daemon policy decision."""
+    params: dict[str, Any] = {}
+    if session_id:
+        params["session_id"] = session_id
+    if audit_id:
+        params["audit_id"] = audit_id
+    result = _call("policy.explain", params)
+    if json_output:
+        console.print_json(data=result)
+        return
+    if not result.get("found"):
+        message = result.get("message", "No matching policy decision.")
+        err_console.print(f"[yellow]{message}[/yellow]")
+        raise typer.Exit(code=1)
+    decision = result.get("decision", "")
+    color = {
+        "allow": "green",
+        "deny": "red",
+        "require_approval": "yellow",
+    }.get(decision, "white")
+    console.print(f"[{color}]decision: {decision}[/{color}]")
+    if result.get("rule"):
+        console.print(f"rule: {result['rule']}")
+    if result.get("reason"):
+        console.print(f"reason: {result['reason']}")
+    console.print(result.get("plain_english", ""))
+
+
 @policy_app.command("test")
 def policy_test(
     action: Annotated[str, typer.Option("--action", help="Capability kind, e.g. SEND_EMAIL")],

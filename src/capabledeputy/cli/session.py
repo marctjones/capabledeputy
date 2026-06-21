@@ -143,6 +143,29 @@ def session_fork(
     _render_session(s)
 
 
+@session_app.command("children")
+def session_children(
+    session_id: Annotated[str, typer.Argument(help="Parent session id")],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a table"),
+    ] = False,
+) -> None:
+    """List child sessions delegated from a parent session."""
+    result = _call("session.children", {"session_id": session_id})
+    sessions = result["sessions"]
+    if json_output:
+        console.print_json(data=sessions)
+        return
+    table = Table(title=f"Child sessions ({len(sessions)})")
+    table.add_column("ID")
+    table.add_column("Status")
+    table.add_column("Intent")
+    for s in sessions:
+        table.add_row(_short_id(s["id"]), s["status"], s.get("intent") or "")
+    console.print(table)
+
+
 @session_app.command("revoke")
 def session_revoke(
     session_id: Annotated[str, typer.Argument(help="Session that holds the capability")],
@@ -250,6 +273,64 @@ def session_abort(
 ) -> None:
     """Abort a non-terminal session."""
     s = _call("session.abort", {"session_id": session_id})
+    _render_session(s)
+
+
+@session_app.command("cancel")
+def session_cancel(
+    session_id: Annotated[str, typer.Argument(help="Session id with an active turn")],
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of rendered output"),
+    ] = False,
+) -> None:
+    """Cancel an active agent turn for a session."""
+    result = _call("session.cancel", {"session_id": session_id})
+    if json_output:
+        console.print_json(data=result)
+        return
+    if result.get("cancelled"):
+        console.print(f"[yellow]cancelled active turn for {session_id[:8]}[/yellow]")
+    else:
+        console.print(f"[dim]no active turn for {session_id[:8]}[/dim]")
+
+
+@session_app.command("add-labels")
+def session_add_labels(
+    session_id: Annotated[str, typer.Argument(help="Session id")],
+    labels: Annotated[
+        list[str],
+        typer.Option("--label", help="Label to add (repeatable)"),
+    ],
+) -> None:
+    """Add labels to a session through the daemon."""
+    s = _call("session.add_labels", {"session_id": session_id, "labels": labels})
+    _render_session(s)
+
+
+@session_app.command("set-enforcement")
+def session_set_enforcement(
+    session_id: Annotated[str, typer.Argument(help="Session id")],
+    mode: Annotated[str, typer.Option("--mode", help="enforce|shadow")],
+) -> None:
+    """Set a session's daemon enforcement posture."""
+    s = _call("session.set_enforcement", {"session_id": session_id, "mode": mode})
+    _render_session(s)
+
+
+@session_app.command("first-use-prompts")
+def session_first_use_prompts(
+    session_id: Annotated[str, typer.Argument(help="Session id")],
+    enabled: Annotated[
+        bool,
+        typer.Option("--enabled/--disabled", help="Enable or disable first-use prompts"),
+    ] = True,
+) -> None:
+    """Enable or disable first-use prompts for a session."""
+    s = _call(
+        "session.set_first_use_prompts",
+        {"session_id": session_id, "enabled": enabled},
+    )
     _render_session(s)
 
 

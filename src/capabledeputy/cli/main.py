@@ -662,6 +662,102 @@ console = Console()
 err_console = Console(stderr=True)
 
 
+@app.command("status")
+def app_status_command(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Show daemon-owned application status for all client surfaces."""
+    result = anyio.run(DaemonClient(default_socket_path()).call, "app.status", {})
+    if json_output:
+        console.print_json(data=result)
+        return
+    daemon = result.get("daemon", {})
+    model = result.get("model", {})
+    console.print(f"[bold]capdep[/bold] {result.get('version', '')}")
+    console.print(f"daemon connected: {daemon.get('connected', False)}")
+    console.print(f"sessions: {daemon.get('session_count', 0)}")
+    console.print(f"active sessions: {daemon.get('active_session_count', 0)}")
+    console.print(f"pending approvals: {daemon.get('pending_approval_count', 0)}")
+    console.print(f"tools: {daemon.get('tool_count', 0)}")
+    console.print(f"planner model: {model.get('planner', '') or '(none)'}")
+    console.print(f"local model available: {model.get('local_available', False)}")
+
+
+@app.command("setup-status")
+def setup_status_command(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Show daemon-owned setup checks and remediation hints."""
+    result = anyio.run(DaemonClient(default_socket_path()).call, "setup.status", {})
+    if json_output:
+        console.print_json(data=result)
+        return
+    from rich.table import Table
+
+    checks = result.get("checks", [])
+    table = Table(title=f"Setup checks ({len(checks)})")
+    table.add_column("ID")
+    table.add_column("Status")
+    table.add_column("Detail")
+    table.add_column("Actions")
+    for check in checks:
+        actions = ", ".join(action.get("label", "") for action in check.get("actions", []))
+        table.add_row(
+            check.get("id", ""),
+            check.get("status", ""),
+            check.get("detail", ""),
+            actions,
+        )
+    console.print(table)
+
+
+@app.command("memory")
+def memory_command(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """List daemon memory entries and labels."""
+    result = anyio.run(DaemonClient(default_socket_path()).call, "memory.entries", {})
+    if json_output:
+        console.print_json(data=result)
+        return
+    from rich.table import Table
+
+    entries = result.get("entries", [])
+    table = Table(title=f"Memory entries ({len(entries)})")
+    table.add_column("Key")
+    table.add_column("Labels")
+    for entry in entries:
+        table.add_row(entry.get("key", ""), ", ".join(entry.get("labels", [])))
+    console.print(table)
+
+
+@app.command("provenance")
+def provenance_command(
+    session_id: Annotated[
+        str | None,
+        typer.Option("--session", help="Filter to one session id"),
+    ] = None,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Show the daemon materialized provenance graph."""
+    params: dict[str, Any] = {}
+    if session_id:
+        params["session_id"] = session_id
+    result = anyio.run(DaemonClient(default_socket_path()).call, "provenance.graph", params)
+    if json_output:
+        console.print_json(data=result)
+        return
+    console.print(
+        f"nodes: {len(result.get('nodes', []))}  edges: {len(result.get('edges', []))}",
+    )
+    for node in result.get("nodes", [])[:25]:
+        console.print(f"  node {node.get('id', '')} [{node.get('kind', '')}]")
+    for edge in result.get("edges", [])[:25]:
+        console.print(
+            f"  edge {edge.get('from', '')} -> {edge.get('to', '')} [{edge.get('kind', '')}]",
+        )
+
+
 @app.command()
 def version() -> None:
     """Print the CapableDeputy version. Round-trips through the daemon if running."""

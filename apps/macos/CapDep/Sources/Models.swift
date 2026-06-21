@@ -333,3 +333,49 @@ struct ApprovalPatternViewData: Identifiable, Hashable {
         self.createdBy = dictionary["created_by"] as? String ?? ""
     }
 }
+
+struct MemoryEntryViewData: Identifiable, Hashable {
+    let id: String
+    let key: String
+    let labels: [String]
+
+    init(dictionary: [String: Any]) {
+        self.key = dictionary["key"] as? String ?? ""
+        self.id = key
+        self.labels = dictionary["labels"] as? [String] ?? []
+    }
+}
+
+struct DaemonToolViewData: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let description: String
+    let capabilityKind: String
+    let targetArg: String
+
+    init(dictionary: [String: Any]) {
+        self.name = dictionary["name"] as? String ?? ""
+        self.id = name
+        self.description = dictionary["description"] as? String ?? ""
+        self.capabilityKind = dictionary["capability_kind"] as? String ?? ""
+        self.targetArg = dictionary["target_arg"] as? String ?? ""
+    }
+}
+
+struct OverrideGrantViewData: Identifiable, Hashable {
+    let id: String
+    let sessionID: String
+    let actionKind: String
+    let target: String
+    let state: String
+    let expiresAt: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["id"] as? String ?? UUID().uuidString
+        self.sessionID = dictionary["session_id"] as? String ?? ""
+        self.actionKind = dictionary["action_kind"] as? String ?? ""
+        self.target = dictionary["target"] as? String ?? ""
+        self.state = dictionary["state"] as? String ?? ""
+        self.expiresAt = dictionary["expires_at"] as? String ?? ""
+    }
+}

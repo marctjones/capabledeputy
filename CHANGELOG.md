@@ -24,6 +24,10 @@ breaking changes).
 - Added `capdep mcp-control-server`, a daemon-control MCP client surface for
   Codex/Claude-style hosts to inspect sessions, approvals, setup status,
   audit/provenance data, and invoke policy-gated daemon tool calls.
+- Expanded the MCP-control client to cover the daemon's automation-safe
+  session, policy, approval-pattern, override, relationship-group, memory,
+  demo, extract, devbox, and programmatic RPC surfaces while preserving daemon
+  policy/approval/provenance enforcement.
 - Added `outputSchema` propagation for CapDep MCP tools and upstream MCP tool
   wrappers.
 - Changed session-bound MCP elicitation to approve existing daemon-queued
@@ -35,6 +39,20 @@ breaking changes).
 - Added a current MCP compatibility/security review documenting protocol
   coverage, default security posture for each MCP surface, and ARD as
   operator-curated discovery only.
+
+### Client parity
+
+- Added an executable client parity contract at `docs/client-parity.json` plus
+  tests that fail when daemon RPC coverage changes without an explicit client
+  parity decision.
+- Added CLI commands for daemon app status, setup status, memory, provenance,
+  policy explanation, real policy-gated `tool.call`, child sessions, turn
+  cancel, session labels, enforcement mode, and first-use prompt controls.
+- Added TUI live-supervision actions for selected-session pause/resume/abort,
+  active-turn cancel, approval defer, and approval-group approve.
+- Expanded the Swift macOS app model with daemon-backed memory, tool,
+  override, session-child, session-label, enforcement, first-use, policy,
+  relationship, approval-pattern, and tool-call wrappers.
 
 ## [0.24.0] - 2026-06-20
 

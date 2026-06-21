@@ -6,10 +6,43 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-06-20, after v0.24.0 and the local v0.25 MCP
-compatibility/security milestone work.
+**Last refreshed:** 2026-06-21, after the v0.26 client-parity implementation
+pass.
 
-## Current Focus — v0.25.0 MCP Compatibility + Security Integration
+## Current Focus — v0.26.0 Client Parity Over Daemon RPC
+
+Goal: every client should expose the daemon functionality appropriate for its
+surface while preserving the daemon as the single owner of policy, approvals,
+provenance, connector setup, settings, and audit. Parity does **not** mean
+every client exposes every RPC blindly; it means every daemon method has an
+explicit support decision for CLI, TUI, Swift GUI, and MCP-control.
+
+### v0.26.0 client parity scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #90 | Define client parity contract for daemon RPC surfaces | Implemented locally |
+| #89 | Bring CLI to full daemon operator parity | Implemented locally |
+| #84 | Bring TUI to live-supervision parity with core daemon workflows | Implemented locally |
+| #91 | Bring Swift macOS GUI to desktop assistant parity | Implemented locally |
+| #85 | Bring MCP-control client to automation parity with daemon-safe operations | Implemented locally |
+| #88 | Add automated client parity tests and documentation | Implemented locally |
+
+### v0.26.0 done-when
+
+- `docs/client-parity.json` covers every daemon RPC method and states whether
+  each client implements it, intentionally omits it, or treats it as
+  surface-specific.
+- Tests fail when a daemon RPC is added without a parity decision.
+- CLI exposes the broad non-visual operator/admin surface.
+- TUI exposes live-supervision controls without becoming an admin/config
+  console.
+- Swift GUI exposes desktop-assistant operations through daemon-backed model
+  methods.
+- MCP-control exposes automation-safe daemon operations as MCP tools while
+  routing dangerous work through daemon policy and approvals.
+
+## Previous Focus — v0.25.0 MCP Compatibility + Security Integration
 
 Goal: make MCP a well-specified integration substrate for CapDep without
 letting MCP become a second authority path. The daemon remains the security

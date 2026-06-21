@@ -14,6 +14,10 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var provenanceEdges: [ProvenanceEdge] = []
     @Published private(set) var relationshipGroups: [RelationshipGroupViewData] = []
     @Published private(set) var approvalPatterns: [ApprovalPatternViewData] = []
+    @Published private(set) var memoryEntries: [MemoryEntryViewData] = []
+    @Published private(set) var daemonTools: [DaemonToolViewData] = []
+    @Published private(set) var overrideGrants: [OverrideGrantViewData] = []
+    @Published private(set) var selectedSessionChildren: [CapDepSession] = []
     @Published private(set) var approvalDetails: [Int: ApprovalDetail] = [:]
     @Published private(set) var currentSessionID: String?
     @Published private(set) var currentAssistantOutput = ""
@@ -87,6 +91,9 @@ final class CapDepAppModel: ObservableObject {
             async let provenanceResult = client.call(method: "provenance.graph")
             async let relationshipResult = client.call(method: "relationship_group.list")
             async let patternsResult = client.call(method: "approval_pattern.list")
+            async let memoryResult = client.call(method: "memory.entries")
+            async let toolsResult = client.call(method: "tool.list")
+            async let overridesResult = client.call(method: "override.list")
 
             let approvalsObject = try await approvalsResult as? [String: Any]
             let sessionsObject = try await sessionsResult as? [String: Any]
@@ -97,6 +104,9 @@ final class CapDepAppModel: ObservableObject {
             let provenanceObject = try await provenanceResult as? [String: Any]
             let relationshipObject = try await relationshipResult as? [String: Any]
             let patternsObject = try await patternsResult as? [String: Any]
+            let memoryObject = try await memoryResult as? [String: Any]
+            let toolsObject = try await toolsResult as? [String: Any]
+            let overridesObject = try await overridesResult as? [String: Any]
 
             let approvals = (approvalsObject?["approvals"] as? [[String: Any]] ?? [])
                 .map(Approval.init(dictionary:))
@@ -120,6 +130,12 @@ final class CapDepAppModel: ObservableObject {
                 .map(RelationshipGroupViewData.init(dictionary:))
             approvalPatterns = (patternsObject?["patterns"] as? [[String: Any]] ?? [])
                 .map(ApprovalPatternViewData.init(dictionary:))
+            memoryEntries = (memoryObject?["entries"] as? [[String: Any]] ?? [])
+                .map(MemoryEntryViewData.init(dictionary:))
+            daemonTools = (toolsObject?["tools"] as? [[String: Any]] ?? [])
+                .map(DaemonToolViewData.init(dictionary:))
+            overrideGrants = (overridesObject?["grants"] as? [[String: Any]] ?? [])
+                .map(OverrideGrantViewData.init(dictionary:))
             connected = true
             lastError = nil
             await refreshFrontmostContext()
@@ -267,6 +283,42 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
+    func removeRelationshipMember(groupID: String, principalID: String) async {
+        do {
+            _ = try await client.call(
+                method: "relationship_group.remove_member",
+                params: ["group_id": groupID, "principal_id": principalID],
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func promoteRelationshipMember(groupID: String, principalID: String, tier: String) async {
+        do {
+            _ = try await client.call(
+                method: "relationship_group.promote",
+                params: ["group_id": groupID, "principal_id": principalID, "tier": tier],
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func refreshRelationshipAudit(principalID: String) async -> [String: Any]? {
+        do {
+            return try await client.call(
+                method: "relationship_group.aggregate_audit",
+                params: ["principal_id": principalID],
+            ) as? [String: Any]
+        } catch {
+            lastError = error.localizedDescription
+            return nil
+        }
+    }
+
     func refreshApprovalDetail(_ approval: Approval) async {
         do {
             let result = try await client.call(
@@ -276,6 +328,19 @@ final class CapDepAppModel: ObservableObject {
             approvalDetails[approval.id] = ApprovalDetail(dictionary: result ?? [:])
         } catch {
             lastError = error.localizedDescription
+        }
+    }
+
+    func showApproval(_ approval: Approval) async -> Approval? {
+        do {
+            let result = try await client.call(
+                method: "approval.show",
+                params: ["id": approval.id],
+            ) as? [String: Any]
+            return Approval(dictionary: result ?? [:])
+        } catch {
+            lastError = error.localizedDescription
+            return nil
         }
     }
 
@@ -289,6 +354,30 @@ final class CapDepAppModel: ObservableObject {
                     "created_by": "CapDepMac",
                     "ttl_hours": 720,
                 ],
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func revokeApprovalPattern(_ pattern: ApprovalPatternViewData) async {
+        do {
+            _ = try await client.call(
+                method: "approval_pattern.revoke",
+                params: ["id": pattern.id],
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func importApprovalPatterns(path: String) async {
+        do {
+            _ = try await client.call(
+                method: "approval_pattern.import",
+                params: ["path": path],
             )
             await refresh()
         } catch {
@@ -378,6 +467,148 @@ final class CapDepAppModel: ObservableObject {
                 method: "session.cancel",
                 params: ["session_id": currentSessionID],
             )
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func refreshCurrentSessionChildren() async {
+        guard let currentSessionID else {
+            selectedSessionChildren = []
+            return
+        }
+        do {
+            let result = try await client.call(
+                method: "session.children",
+                params: ["session_id": currentSessionID],
+            ) as? [String: Any]
+            selectedSessionChildren = (result?["sessions"] as? [[String: Any]] ?? [])
+                .map(CapDepSession.init(dictionary:))
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func addLabelsToCurrentSession(_ labels: [String]) async {
+        guard let currentSessionID else {
+            return
+        }
+        do {
+            _ = try await client.call(
+                method: "session.add_labels",
+                params: ["session_id": currentSessionID, "labels": labels],
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func setCurrentSessionEnforcement(_ mode: String) async {
+        guard let currentSessionID else {
+            return
+        }
+        do {
+            _ = try await client.call(
+                method: "session.set_enforcement",
+                params: ["session_id": currentSessionID, "mode": mode],
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func setCurrentSessionFirstUsePrompts(enabled: Bool) async {
+        guard let currentSessionID else {
+            return
+        }
+        do {
+            _ = try await client.call(
+                method: "session.set_first_use_prompts",
+                params: ["session_id": currentSessionID, "enabled": enabled],
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func explainPolicy(sessionID: String? = nil) async -> [String: Any]? {
+        var params: [String: Any] = [:]
+        if let sessionID {
+            params["session_id"] = sessionID
+        }
+        do {
+            return try await client.call(method: "policy.explain", params: params) as? [String: Any]
+        } catch {
+            lastError = error.localizedDescription
+            return nil
+        }
+    }
+
+    func validatePolicy() async -> [String: Any]? {
+        do {
+            return try await client.call(method: "policy.validate") as? [String: Any]
+        } catch {
+            lastError = error.localizedDescription
+            return nil
+        }
+    }
+
+    func daemonVersion() async -> String {
+        do {
+            let result = try await client.call(method: "version") as? [String: Any]
+            return result?["version"] as? String ?? ""
+        } catch {
+            lastError = error.localizedDescription
+            return ""
+        }
+    }
+
+    func testTool(_ tool: DaemonToolViewData, sessionID: String, args: [String: Any]) async -> [String: Any]? {
+        do {
+            return try await client.call(
+                method: "tool.test",
+                params: ["tool": tool.name, "session_id": sessionID, "args": args],
+            ) as? [String: Any]
+        } catch {
+            lastError = error.localizedDescription
+            return nil
+        }
+    }
+
+    func callTool(_ tool: DaemonToolViewData, sessionID: String, args: [String: Any]) async -> [String: Any]? {
+        do {
+            return try await client.call(
+                method: "tool.call",
+                params: ["tool": tool.name, "session_id": sessionID, "args": args],
+            ) as? [String: Any]
+        } catch {
+            lastError = error.localizedDescription
+            return nil
+        }
+    }
+
+    func showOverride(_ grant: OverrideGrantViewData) async -> [String: Any]? {
+        do {
+            return try await client.call(
+                method: "override.show",
+                params: ["grant_id": grant.id],
+            ) as? [String: Any]
+        } catch {
+            lastError = error.localizedDescription
+            return nil
+        }
+    }
+
+    func refuseOverride(_ grant: OverrideGrantViewData) async {
+        do {
+            _ = try await client.call(
+                method: "override.refuse",
+                params: ["grant_id": grant.id],
+            )
+            await refresh()
         } catch {
             lastError = error.localizedDescription
         }

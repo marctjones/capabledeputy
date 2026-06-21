@@ -114,6 +114,12 @@ class CapDepTUI(App[None]):
         Binding("g", "toggle_graph", "Graph view", show=True),
         Binding("enter", "open_approval", "Open approval", show=True),
         Binding("o", "list_overrides", "Overrides", show=True),
+        Binding("p", "pause_session", "Pause", show=True),
+        Binding("u", "resume_session", "Resume", show=True),
+        Binding("x", "abort_session", "Abort", show=True),
+        Binding("c", "cancel_session", "Cancel turn", show=True),
+        Binding("e", "defer_approval", "Defer", show=True),
+        Binding("A", "approve_group", "Approve group", show=True),
     ]
 
     CSS = """
@@ -427,6 +433,80 @@ class CapDepTUI(App[None]):
             ApprovalDetailScreen(chosen),
             self._handle_approval_decision_for(chosen["id"]),
         )
+
+    def action_pause_session(self) -> None:
+        self._run_selected_session_rpc("session.pause", "paused")
+
+    def action_resume_session(self) -> None:
+        self._run_selected_session_rpc("session.resume", "resumed")
+
+    def action_abort_session(self) -> None:
+        self._run_selected_session_rpc("session.abort", "aborted")
+
+    def action_cancel_session(self) -> None:
+        self._run_selected_session_rpc("session.cancel", "cancel requested")
+
+    def _run_selected_session_rpc(self, method: str, message: str) -> None:
+        if not self._selected_session_id:
+            self.notify("select a session first", severity="warning")
+            return
+        self.run_worker(
+            self._call_session_rpc(method, self._selected_session_id, message),
+            exclusive=False,
+        )
+
+    async def _call_session_rpc(self, method: str, session_id: str, message: str) -> None:
+        try:
+            await self._client.call(method, {"session_id": session_id})
+        except Exception as e:
+            self.notify(f"{method} failed: {e}", severity="error")
+            return
+        self.notify(f"{message}: {session_id[:8]}")
+        self.refresh_now()
+
+    def action_defer_approval(self) -> None:
+        chosen = self._selected_approval()
+        if chosen is None:
+            return
+        self.run_worker(self._call_approval_rpc("approval.defer", chosen["id"], "deferred"))
+
+    def action_approve_group(self) -> None:
+        chosen = self._selected_approval()
+        if chosen is None:
+            return
+        group_id = chosen.get("sibling_group_id")
+        if not group_id:
+            self.notify("selected approval has no sibling group", severity="warning")
+            return
+        self.run_worker(self._approve_group(str(group_id)))
+
+    def _selected_approval(self) -> dict[str, Any] | None:
+        approvals_table = self.query_one("#approvals", DataTable)
+        if not approvals_table.is_valid_row_index(approvals_table.cursor_row):
+            self.notify("select an approval first", severity="warning")
+            return None
+        if approvals_table.cursor_row >= len(self._approvals):
+            self.notify("select an approval first", severity="warning")
+            return None
+        return self._approvals[approvals_table.cursor_row]
+
+    async def _call_approval_rpc(self, method: str, approval_id: int, message: str) -> None:
+        try:
+            await self._client.call(method, {"id": approval_id})
+        except Exception as e:
+            self.notify(f"{method} failed: {e}", severity="error")
+            return
+        self.notify(f"{message}: approval #{approval_id}")
+        self.refresh_now()
+
+    async def _approve_group(self, group_id: str) -> None:
+        try:
+            await self._client.call("approval.approve_group", {"group_id": group_id})
+        except Exception as e:
+            self.notify(f"approval.approve_group failed: {e}", severity="error")
+            return
+        self.notify(f"approved group {group_id[:8]}")
+        self.refresh_now()
 
     async def _update_status_bar(self, recent_events: list[dict[str, Any]]) -> None:
         """Refresh the always-visible status bar at the top of the TUI.

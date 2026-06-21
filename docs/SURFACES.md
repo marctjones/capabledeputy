@@ -58,6 +58,37 @@ exist in the macOS GUI, it should first exist as daemon RPC/state/event
 contract so the CLI, TUI, Swift GUI, and future Windows/Linux GUIs can reach
 feature parity without reimplementing enforcement.
 
+## Client parity contract
+
+The checked-in parity contract is [client-parity.json](client-parity.json).
+It maps every daemon RPC method to each supported client:
+
+- `implemented`: the client exposes the daemon method directly or through a
+  purpose-built UI action.
+- `intentional`: the method is intentionally not exposed on that surface
+  because it belongs to another client shape.
+- `surface_specific`: the method only makes sense on a particular surface.
+
+The contract is executable. `tests/test_client_parity.py` fails when a daemon
+RPC is added without a matching parity decision, and it checks that the Swift
+GUI and MCP-control client continue to expose the methods they claim to
+support.
+
+Current client roles:
+
+- CLI is the complete operator/admin surface for non-visual workflows:
+  sessions, approvals, tools, policy, audit, memory, provenance, setup status,
+  programmatic mode, demos, overrides, and relationship management.
+- TUI is the live-supervision surface: session monitoring, turn cancellation,
+  pause/resume/abort, approval review, defer, group approval, audit ticker, and
+  override visibility.
+- Swift GUI is the desktop-assistant surface: daemon lifecycle, setup, OAuth,
+  approvals, sessions, provenance, memory, tools, relationship groups, approval
+  patterns, overrides, notifications, and macOS frontmost-context.
+- MCP-control is the automation/control surface for external hosts. It exposes
+  daemon operations as MCP tools, with annotations and all dangerous work still
+  routed through daemon policy/approval/provenance/audit.
+
 ## Recovering from a block
 
 A `DENY` is structural, not "ask nicely." Match the recovery to the
