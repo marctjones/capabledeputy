@@ -6,10 +6,40 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-06-21, after the v0.26 client-parity implementation
-pass.
+**Last refreshed:** 2026-06-21, after closing v0.26 client parity and starting
+the v0.27 practical setup milestone.
 
-## Current Focus — v0.26.0 Client Parity Over Daemon RPC
+## Current Focus — v0.27.0 Practical Setup + Daemon-Owned Settings
+
+Goal: make CapDep practical to configure from its clients without moving
+authority out of the daemon. The daemon owns settings persistence, connector
+setup state, config validation, log locations, and remediation actions; CLI,
+TUI, Swift GUI, and MCP-control only present or invoke those daemon contracts.
+
+### v0.27.0 practical setup scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #69 | Daemon-owned settings store and settings RPCs for CapDepMac | In progress |
+| #75 | Daemon config validation and log-location RPCs for Advanced settings | In progress |
+| #70 | Wire CapDepMac settings controls to daemon settings instead of constants | In progress |
+| #71 | Replace empty Setup/Open/Fix buttons with daemon remediation actions | Planned |
+| #72 | Daemon-backed account and OAuth setup workflows for Google and local app connectors | Planned |
+| #76 | Fix CapDepMac task/menu actions that navigate without completing the intended action | Planned |
+| #74 | Wire automation pause, screen-control enablement, and Touch ID policy through daemon | Planned |
+| #73 | Daemon-owned source bindings and labeling editor for CapDepMac | Planned |
+
+### v0.27.0 done-when
+
+- Settings are persisted by the daemon and exposed through stable RPCs.
+- CapDepMac settings controls save through daemon RPCs rather than local
+  constants.
+- Configuration validation and log-location diagnostics come from the daemon.
+- Setup/Open/Fix actions either complete daemon-backed work or are removed.
+- Connector setup status covers Gmail, Google Workspace expansion, and local
+  macOS app permission checks through one reusable shape.
+
+## Completed Focus — v0.26.0 Client Parity Over Daemon RPC
 
 Goal: every client should expose the daemon functionality appropriate for its
 surface while preserving the daemon as the single owner of policy, approvals,
@@ -21,12 +51,12 @@ explicit support decision for CLI, TUI, Swift GUI, and MCP-control.
 
 | Issue | Work | Status |
 |---|---|---|
-| #90 | Define client parity contract for daemon RPC surfaces | Implemented locally |
-| #89 | Bring CLI to full daemon operator parity | Implemented locally |
-| #84 | Bring TUI to live-supervision parity with core daemon workflows | Implemented locally |
-| #91 | Bring Swift macOS GUI to desktop assistant parity | Implemented locally |
-| #85 | Bring MCP-control client to automation parity with daemon-safe operations | Implemented locally |
-| #88 | Add automated client parity tests and documentation | Implemented locally |
+| #90 | Define client parity contract for daemon RPC surfaces | Done |
+| #89 | Bring CLI to full daemon operator parity | Done |
+| #84 | Bring TUI to live-supervision parity with core daemon workflows | Done |
+| #91 | Bring Swift macOS GUI to desktop assistant parity | Done |
+| #85 | Bring MCP-control client to automation parity with daemon-safe operations | Done |
+| #88 | Add automated client parity tests and documentation | Done |
 
 ### v0.26.0 done-when
 

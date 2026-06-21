@@ -19,6 +19,7 @@ from capabledeputy.daemon.google_gmail_setup import (
     run_gmail_oauth_login,
 )
 from capabledeputy.daemon.handlers import Handler
+from capabledeputy.daemon.settings_store import load_settings
 from capabledeputy.version import __version__
 
 
@@ -54,6 +55,7 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
         gmail_status = gmail_oauth_status()
         relationship_groups = getattr(app.policy_context, "relationship_groups", None)
         relationship_group_count = len(getattr(relationship_groups, "groups", {}) or {})
+        settings = load_settings()
         return {
             "checks": [
                 {
@@ -117,8 +119,38 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
                 {
                     "id": "notifications",
                     "title": "Notifications",
+                    "status": "manual" if settings.notifications_enabled else "warning",
+                    "detail": (
+                        "The native app must request notification permission from macOS."
+                        if settings.notifications_enabled
+                        else "Notifications are disabled in daemon-owned settings."
+                    ),
+                },
+                {
+                    "id": "daemon-settings",
+                    "title": "Daemon-owned settings",
+                    "status": "ok",
+                    "detail": "Client preferences are loaded from the daemon settings store.",
+                },
+                {
+                    "id": "config-validation",
+                    "title": "Configuration validation",
                     "status": "manual",
-                    "detail": "The native app must request notification permission from macOS.",
+                    "detail": (
+                        "Run config.validate for exact daemon config and manifest diagnostics."
+                    ),
+                    "actions": [
+                        {
+                            "id": "config.validate",
+                            "label": "Validate Configuration",
+                            "kind": "daemon_rpc",
+                        },
+                        {
+                            "id": "config.log_locations",
+                            "label": "Open Logs",
+                            "kind": "daemon_rpc",
+                        },
+                    ],
                 },
             ],
         }

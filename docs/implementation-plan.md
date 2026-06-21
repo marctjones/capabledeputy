@@ -2,11 +2,11 @@
 
 Living plan that organizes the open GitHub issues into sequenced
 milestones with dependencies. Authoritative status is GitHub; this doc is
-the *sequencing rationale*. Last refreshed 2026-06-20 after v0.24.0 and
-the local v0.25 MCP compatibility/security work.
+the *sequencing rationale*. Last refreshed 2026-06-21 after v0.26 client
+parity closed and v0.27 practical setup started.
 
-Milestones (GitHub): **v0.25.0** MCP compatibility and security integration ·
-**v0.24.0** Connector setup + daemon-owned settings ·
+Milestones (GitHub): **v0.27.0** Practical setup + daemon-owned settings ·
+**v0.25.0** MCP compatibility and security integration ·
 **v0.16** Policy expressiveness & labeling · **v0.17** Gap hardening &
 explainability · **v0.5** UX EPIC · **Backlog** Substrate breadth & formal
 models.
@@ -15,10 +15,11 @@ models.
 dependencies, and why the next pull should focus on one milestone over another.
 
 Three themes currently drive priority:
-1. **MCP security integration** — MCP must remain an integration substrate, not
-   a second authority path. This is the v0.25 track.
-2. **Practical setup** — CapDepMac must let a user configure real connectors
-   without hand-editing YAML. This remains the v0.24/v0.26 product track.
+1. **Practical setup** — CapDepMac must let a user configure real connectors
+   without hand-editing YAML. This is the active v0.27 product track.
+2. **MCP security integration** — MCP must remain an integration substrate, not
+   a second authority path. The v0.25 track is shipped; future work should keep
+   that posture.
 3. **Decision fatigue** — coarse policy → rubber-stamping → eroded human
    oversight. Fixed by the decision-refinement layer (EPIC #41).
 4. **The labeling oracle** — IFC guarantees ride on correct labels. Fixed
@@ -33,6 +34,7 @@ The policy themes come from `docs/security-alignment-assessment.md`:
 | # | What | Milestone |
 |---|---|---|
 | #77-#83 | MCP compatibility/security milestone: output schemas, daemon approval elicitation, upstream resource label propagation, admin separation, and ARD scope docs | v0.25.0 |
+| #84/#85/#88-#91 | Client parity over daemon RPC: CLI/TUI/Swift/MCP-control parity contract, tests, and surface implementations | v0.26.0 |
 | #72 | Gmail MCP OAuth setup slice: daemon-owned client storage, generated server config, browser OAuth RPC, CapDepMac Accounts UI | v0.24.0 |
 | — | Native CapDepMac shell, daemon supervision, single-instance guard, local launcher hardening | v0.24.0 |
 | — | Daemon idle shutdown and durable daemon memory store | v0.24.0 |
@@ -81,9 +83,9 @@ surface, and ARD scope.
 
 ---
 
-## v0.24.0 — Connector setup + daemon-owned settings
+## v0.27.0 — Practical setup + daemon-owned settings
 
-This practical-product milestone shipped in v0.24.0. It does not replace the
+This practical-product milestone is active. It does not replace the
 policy/labeling roadmap; it pulls forward the setup work required to make the
 macOS + Google Workspace assistant usable without CLI/YAML handholding.
 
@@ -92,10 +94,12 @@ macOS + Google Workspace assistant usable without CLI/YAML handholding.
 - **#72** daemon-backed account and OAuth setup workflows for Google and local
   app connectors. Gmail is partially landed; remaining work is the generic
   connector setup/status shape and Calendar/Drive/local-app flows.
-- **#69** daemon-owned settings store and settings RPCs for CapDepMac.
+- **#69** daemon-owned settings store and settings RPCs for CapDepMac
+  (started: `settings.get`, `settings.update`).
 - **#70** wire CapDepMac settings controls to daemon settings instead of
   constants.
-- **#75** daemon config validation and log-location RPCs for Advanced settings.
+- **#75** daemon config validation and log-location RPCs for Advanced settings
+  (started: `config.validate`, `config.log_locations`).
 - **#71** replace empty Setup/Open/Fix buttons with daemon remediation actions.
 - **#76** fix task/menu actions that navigate without completing the intended
   action.
@@ -105,12 +109,12 @@ macOS + Google Workspace assistant usable without CLI/YAML handholding.
 
 ### Sequencing
 
-1. Generalize `google_gmail_setup` into reusable connector setup primitives.
-2. Add daemon RPCs for connector status, OAuth client configuration, browser
+1. Finish daemon-owned settings persistence and Advanced diagnostics.
+2. Generalize `google_gmail_setup` into reusable connector setup primitives.
+3. Add daemon RPCs for connector status, OAuth client configuration, browser
    login, revoke/clear-auth, reload, and remediation actions.
-3. Wire CapDepMac Accounts and Advanced settings to those daemon RPCs.
-4. Add daemon-owned settings persistence and update Settings controls.
-5. Add an admin MCP surface after the daemon connector API is stable.
+4. Wire CapDepMac Accounts and Advanced settings to those daemon RPCs.
+5. Replace no-op setup/navigation buttons with daemon remediation actions.
 
 ### Done-when
 

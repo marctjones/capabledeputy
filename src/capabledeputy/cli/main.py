@@ -711,6 +711,54 @@ def setup_status_command(
     console.print(table)
 
 
+@app.command("settings")
+def settings_command(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Show daemon-owned client/operator settings."""
+    result = anyio.run(DaemonClient(default_socket_path()).call, "settings.get", {})
+    if json_output:
+        console.print_json(data=result)
+        return
+    settings = result.get("settings", {})
+    console.print(f"[bold]settings[/bold] {result.get('path', '')}")
+    for key, value in sorted(settings.items()):
+        console.print(f"{key}: {value}")
+
+
+@config_app.command("validate-daemon")
+def config_validate_daemon_command(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Validate the running daemon's config and runtime manifest."""
+    result = anyio.run(DaemonClient(default_socket_path()).call, "config.validate", {})
+    if json_output:
+        console.print_json(data=result)
+        return
+    console.print("[bold]daemon config validation[/bold]")
+    console.print(f"ok: {result.get('ok', False)}")
+    console.print(f"config: {result.get('config_path') or '(none)'}")
+    for issue in result.get("issues", []):
+        style = "red" if issue.get("severity") == "error" else "yellow"
+        console.print(
+            f"[{style}]{issue.get('severity')}[/{style}] "
+            f"{issue.get('subject')}: {issue.get('message')}",
+        )
+
+
+@config_app.command("log-locations")
+def config_log_locations_command(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Show daemon-owned audit/config log locations."""
+    result = anyio.run(DaemonClient(default_socket_path()).call, "config.log_locations", {})
+    if json_output:
+        console.print_json(data=result)
+        return
+    for row in result.get("logs", []) + result.get("directories", []):
+        console.print(f"{row.get('title', row.get('id', ''))}: {row.get('path', '')}")
+
+
 @app.command("memory")
 def memory_command(
     json_output: Annotated[bool, typer.Option("--json")] = False,

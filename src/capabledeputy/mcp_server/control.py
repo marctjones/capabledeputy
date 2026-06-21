@@ -178,6 +178,60 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
         _annotations("Setup status", read_only=True, idempotent=True),
     ),
     ControlToolSpec(
+        "settings_get",
+        "Get settings",
+        "Return daemon-owned client/operator settings.",
+        "settings.get",
+        _EMPTY_INPUT,
+        _annotations("Get settings", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "settings_update",
+        "Update settings",
+        "Update daemon-owned client/operator settings.",
+        "settings.update",
+        _schema(
+            {
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "properties": {
+                        "default_purpose": {"type": "string"},
+                        "launch_at_login": {"type": "boolean"},
+                        "notifications_enabled": {"type": "boolean"},
+                        "prefer_local_mlx": {"type": "boolean"},
+                        "show_thinking_output": {"type": "boolean"},
+                        "enable_screen_control": {"type": "boolean"},
+                        "require_touch_id_for_high_risk": {"type": "boolean"},
+                        "verbose_daemon_logging": {"type": "boolean"},
+                    },
+                },
+            },
+            required=["settings"],
+        ),
+        _annotations("Update settings", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "config_validate",
+        "Validate daemon config",
+        "Validate daemon config and runtime manifest diagnostics.",
+        "config.validate",
+        _schema(
+            {
+                "config_path": {"type": "string"},
+            },
+        ),
+        _annotations("Validate daemon config", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "config_log_locations",
+        "Config log locations",
+        "Return daemon-owned audit/config log locations.",
+        "config.log_locations",
+        _EMPTY_INPUT,
+        _annotations("Config log locations", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
         "policy_explain",
         "Explain policy",
         "Explain the active policy context for a session or tool.",

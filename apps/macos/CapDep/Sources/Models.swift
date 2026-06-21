@@ -285,6 +285,83 @@ struct GmailOAuthStatus: Hashable {
     static let empty = GmailOAuthStatus(dictionary: [:])
 }
 
+struct DaemonSettings: Hashable {
+    var defaultPurpose: String
+    var launchAtLogin: Bool
+    var notificationsEnabled: Bool
+    var preferLocalMLX: Bool
+    var showThinkingOutput: Bool
+    var enableScreenControl: Bool
+    var requireTouchIDForHighRisk: Bool
+    var verboseDaemonLogging: Bool
+
+    init(dictionary: [String: Any]) {
+        self.defaultPurpose = dictionary["default_purpose"] as? String ?? "general"
+        self.launchAtLogin = dictionary["launch_at_login"] as? Bool ?? false
+        self.notificationsEnabled = dictionary["notifications_enabled"] as? Bool ?? true
+        self.preferLocalMLX = dictionary["prefer_local_mlx"] as? Bool ?? true
+        self.showThinkingOutput = dictionary["show_thinking_output"] as? Bool ?? false
+        self.enableScreenControl = dictionary["enable_screen_control"] as? Bool ?? false
+        self.requireTouchIDForHighRisk = dictionary["require_touch_id_for_high_risk"] as? Bool ?? false
+        self.verboseDaemonLogging = dictionary["verbose_daemon_logging"] as? Bool ?? false
+    }
+
+    var rpcDictionary: [String: Any] {
+        [
+            "default_purpose": defaultPurpose,
+            "launch_at_login": launchAtLogin,
+            "notifications_enabled": notificationsEnabled,
+            "prefer_local_mlx": preferLocalMLX,
+            "show_thinking_output": showThinkingOutput,
+            "enable_screen_control": enableScreenControl,
+            "require_touch_id_for_high_risk": requireTouchIDForHighRisk,
+            "verbose_daemon_logging": verboseDaemonLogging,
+        ]
+    }
+
+    static let empty = DaemonSettings(dictionary: [:])
+}
+
+struct ConfigValidation: Hashable {
+    let ok: Bool
+    let configPath: String
+    let issues: [ConfigValidationIssue]
+
+    init(dictionary: [String: Any]) {
+        self.ok = dictionary["ok"] as? Bool ?? false
+        self.configPath = dictionary["config_path"] as? String ?? ""
+        self.issues = (dictionary["issues"] as? [[String: Any]] ?? [])
+            .map(ConfigValidationIssue.init(dictionary:))
+    }
+
+    static let empty = ConfigValidation(dictionary: [:])
+}
+
+struct ConfigValidationIssue: Identifiable, Hashable {
+    let id = UUID()
+    let severity: String
+    let subject: String
+    let message: String
+
+    init(dictionary: [String: Any]) {
+        self.severity = dictionary["severity"] as? String ?? ""
+        self.subject = dictionary["subject"] as? String ?? ""
+        self.message = dictionary["message"] as? String ?? ""
+    }
+}
+
+struct LogLocation: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let path: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["id"] as? String ?? UUID().uuidString
+        self.title = dictionary["title"] as? String ?? ""
+        self.path = dictionary["path"] as? String ?? ""
+    }
+}
+
 struct ProvenanceNode: Identifiable, Hashable {
     let id: String
     let kind: String

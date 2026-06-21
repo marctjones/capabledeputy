@@ -1,14 +1,13 @@
+import AppKit
 import SwiftUI
 
 struct CapDepSettingsView: View {
     @EnvironmentObject private var model: CapDepAppModel
-    @State private var launchAtLogin = false
-    @State private var requireTouchID = false
-    @State private var enableScreenControl = false
 
     var body: some View {
         TabView {
-            GeneralSettingsView(launchAtLogin: $launchAtLogin)
+            GeneralSettingsView()
+                .environmentObject(model)
                 .tabItem {
                     Label("General", systemImage: "gearshape")
                 }
@@ -25,12 +24,14 @@ struct CapDepSettingsView: View {
                     Label("Accounts", systemImage: "person.crop.circle")
                 }
 
-            AutomationSettingsView(enableScreenControl: $enableScreenControl)
+            AutomationSettingsView()
+                .environmentObject(model)
                 .tabItem {
                     Label("Automation", systemImage: "wand.and.stars")
                 }
 
-            TrustSettingsView(requireTouchID: $requireTouchID)
+            TrustSettingsView()
+                .environmentObject(model)
                 .tabItem {
                     Label("Trust", systemImage: "person.2.badge.gearshape")
                 }
@@ -46,20 +47,38 @@ struct CapDepSettingsView: View {
 }
 
 private struct GeneralSettingsView: View {
-    @Binding var launchAtLogin: Bool
+    @EnvironmentObject private var model: CapDepAppModel
 
     var body: some View {
         Form {
-            Toggle("Launch CapDep at login", isOn: $launchAtLogin)
+            Toggle(
+                "Launch CapDep at login",
+                isOn: settingBinding(\.launchAtLogin),
+            )
             Picker("Default purpose", selection: .constant(Purpose.general)) {
                 ForEach(Purpose.allCases) { purpose in
                     Text(purpose.rawValue.capitalized).tag(purpose)
                 }
             }
             TextField("Global shortcut", text: .constant("Option-Space"))
-            Toggle("Show notifications for pending approvals", isOn: .constant(true))
+            Toggle(
+                "Show notifications for pending approvals",
+                isOn: settingBinding(\.notificationsEnabled),
+            )
         }
         .formStyle(.grouped)
+    }
+
+    private func settingBinding(_ keyPath: WritableKeyPath<DaemonSettings, Bool>) -> Binding<Bool> {
+        Binding {
+            model.daemonSettings[keyPath: keyPath]
+        } set: { value in
+            var updated = model.daemonSettings
+            updated[keyPath: keyPath] = value
+            Task {
+                await model.updateSettings(updated)
+            }
+        }
     }
 }
 
@@ -71,10 +90,28 @@ private struct AssistantSettingsView: View {
             LabeledContent("Daemon", value: model.connected ? "Connected" : "Offline")
             LabeledContent("Socket", value: model.client.socketPath)
             LabeledContent("Model backend", value: "Daemon configured")
-            Toggle("Prefer local MLX when available", isOn: .constant(true))
-            Toggle("Show thinking output when model supports it", isOn: .constant(false))
+            Toggle(
+                "Prefer local MLX when available",
+                isOn: settingBinding(\.preferLocalMLX),
+            )
+            Toggle(
+                "Show thinking output when model supports it",
+                isOn: settingBinding(\.showThinkingOutput),
+            )
         }
         .formStyle(.grouped)
+    }
+
+    private func settingBinding(_ keyPath: WritableKeyPath<DaemonSettings, Bool>) -> Binding<Bool> {
+        Binding {
+            model.daemonSettings[keyPath: keyPath]
+        } set: { value in
+            var updated = model.daemonSettings
+            updated[keyPath: keyPath] = value
+            Task {
+                await model.updateSettings(updated)
+            }
+        }
     }
 }
 
@@ -206,11 +243,14 @@ private struct GmailOAuthSetupView: View {
 }
 
 private struct AutomationSettingsView: View {
-    @Binding var enableScreenControl: Bool
+    @EnvironmentObject private var model: CapDepAppModel
 
     var body: some View {
         Form {
-            Toggle("Enable generic screen control for this session", isOn: $enableScreenControl)
+            Toggle(
+                "Enable generic screen control for this session",
+                isOn: settingBinding(\.enableScreenControl),
+            )
             Text("Generic screen control is intentionally high-friction. Prefer MCP/API connectors and app-specific AppleScript tools.")
                 .foregroundStyle(.secondary)
             SetupProviderRow(name: "Mail", status: "Ask when workflow first needs it")
@@ -220,19 +260,46 @@ private struct AutomationSettingsView: View {
         }
         .formStyle(.grouped)
     }
+
+    private func settingBinding(_ keyPath: WritableKeyPath<DaemonSettings, Bool>) -> Binding<Bool> {
+        Binding {
+            model.daemonSettings[keyPath: keyPath]
+        } set: { value in
+            var updated = model.daemonSettings
+            updated[keyPath: keyPath] = value
+            Task {
+                await model.updateSettings(updated)
+            }
+        }
+    }
 }
 
 private struct TrustSettingsView: View {
-    @Binding var requireTouchID: Bool
+    @EnvironmentObject private var model: CapDepAppModel
 
     var body: some View {
         Form {
-            Toggle("Require Touch ID for high-risk approvals", isOn: $requireTouchID)
+            Toggle(
+                "Require Touch ID for high-risk approvals",
+                isOn: settingBinding(\.requireTouchIDForHighRisk),
+            )
             SetupProviderRow(name: "Relationship groups", status: "Edit self/family/work/trusted recipients")
             SetupProviderRow(name: "Approval patterns", status: "Create narrow recurring approvals from reviewed actions")
             SetupProviderRow(name: "Source bindings", status: "Label files, apps, and service URI scopes")
         }
         .formStyle(.grouped)
+    }
+
+    private func settingBinding(_ keyPath: WritableKeyPath<DaemonSettings, Bool>) -> Binding<Bool> {
+        Binding {
+            model.daemonSettings[keyPath: keyPath]
+        } set: { value in
+            var updated = model.daemonSettings
+            updated[keyPath: keyPath] = value
+            Task {
+                await model.updateSettings(updated)
+            }
+        }
     }
 }
 
@@ -242,12 +309,52 @@ private struct AdvancedSettingsView: View {
     var body: some View {
         Form {
             LabeledContent("Socket path", value: model.client.socketPath)
-            LabeledContent("Daemon config", value: "configs/personal-assistant/daemon.yaml")
-            Toggle("Verbose daemon logging", isOn: .constant(false))
-            Button("Validate Configuration") {}
-            Button("Open Logs Folder") {}
+            LabeledContent("Daemon config", value: model.configValidation.configPath.isEmpty ? "(none)" : model.configValidation.configPath)
+            Toggle(
+                "Verbose daemon logging",
+                isOn: settingBinding(\.verboseDaemonLogging),
+            )
+            Button("Validate Configuration") {
+                Task {
+                    await model.validateConfiguration()
+                }
+            }
+            Button("Open Logs Folder") {
+                Task {
+                    await model.refreshLogLocations()
+                    openFirstLogDirectory()
+                }
+            }
+            ForEach(model.configValidation.issues) { issue in
+                Text("\(issue.severity): \(issue.subject) \(issue.message)")
+                    .font(.caption)
+                    .foregroundStyle(issue.severity == "error" ? .red : .secondary)
+            }
+            ForEach(model.logLocations) { location in
+                LabeledContent(location.title, value: location.path)
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private func settingBinding(_ keyPath: WritableKeyPath<DaemonSettings, Bool>) -> Binding<Bool> {
+        Binding {
+            model.daemonSettings[keyPath: keyPath]
+        } set: { value in
+            var updated = model.daemonSettings
+            updated[keyPath: keyPath] = value
+            Task {
+                await model.updateSettings(updated)
+            }
+        }
+    }
+
+    private func openFirstLogDirectory() {
+        guard let path = model.logLocations.first(where: { !$0.path.isEmpty })?.path else {
+            return
+        }
+        let url = URL(fileURLWithPath: path).deletingLastPathComponent()
+        NSWorkspace.shared.open(url)
     }
 }
 

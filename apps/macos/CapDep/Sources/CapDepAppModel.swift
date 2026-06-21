@@ -10,6 +10,9 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var appStatus = AppStatus.empty
     @Published private(set) var setupChecks: [SetupCheck] = []
     @Published private(set) var gmailOAuthStatus = GmailOAuthStatus.empty
+    @Published private(set) var daemonSettings = DaemonSettings.empty
+    @Published private(set) var configValidation = ConfigValidation.empty
+    @Published private(set) var logLocations: [LogLocation] = []
     @Published private(set) var provenanceNodes: [ProvenanceNode] = []
     @Published private(set) var provenanceEdges: [ProvenanceEdge] = []
     @Published private(set) var relationshipGroups: [RelationshipGroupViewData] = []
@@ -88,6 +91,9 @@ final class CapDepAppModel: ObservableObject {
             async let statusResult = client.call(method: "app.status")
             async let setupResult = client.call(method: "setup.status")
             async let gmailOAuthResult = client.call(method: "setup.google_gmail.oauth_status")
+            async let settingsResult = client.call(method: "settings.get")
+            async let validationResult = client.call(method: "config.validate")
+            async let logLocationsResult = client.call(method: "config.log_locations")
             async let provenanceResult = client.call(method: "provenance.graph")
             async let relationshipResult = client.call(method: "relationship_group.list")
             async let patternsResult = client.call(method: "approval_pattern.list")
@@ -101,6 +107,9 @@ final class CapDepAppModel: ObservableObject {
             let statusObject = try await statusResult as? [String: Any]
             let setupObject = try await setupResult as? [String: Any]
             let gmailOAuthObject = try await gmailOAuthResult as? [String: Any]
+            let settingsObject = try await settingsResult as? [String: Any]
+            let validationObject = try await validationResult as? [String: Any]
+            let logLocationsObject = try await logLocationsResult as? [String: Any]
             let provenanceObject = try await provenanceResult as? [String: Any]
             let relationshipObject = try await relationshipResult as? [String: Any]
             let patternsObject = try await patternsResult as? [String: Any]
@@ -122,6 +131,15 @@ final class CapDepAppModel: ObservableObject {
             setupChecks = (setupObject?["checks"] as? [[String: Any]] ?? [])
                 .map(SetupCheck.init(dictionary:))
             gmailOAuthStatus = GmailOAuthStatus(dictionary: gmailOAuthObject ?? [:])
+            daemonSettings = DaemonSettings(
+                dictionary: settingsObject?["settings"] as? [String: Any] ?? [:],
+            )
+            configValidation = ConfigValidation(dictionary: validationObject ?? [:])
+            logLocations = (
+                (logLocationsObject?["logs"] as? [[String: Any]] ?? [])
+                    + (logLocationsObject?["directories"] as? [[String: Any]] ?? [])
+            )
+            .map(LogLocation.init(dictionary:))
             provenanceNodes = (provenanceObject?["nodes"] as? [[String: Any]] ?? [])
                 .map(ProvenanceNode.init(dictionary:))
             provenanceEdges = (provenanceObject?["edges"] as? [[String: Any]] ?? [])
@@ -403,6 +421,43 @@ final class CapDepAppModel: ObservableObject {
             ) as? [String: Any]
             gmailOAuthStatus = GmailOAuthStatus(dictionary: result ?? [:])
             await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func updateSettings(_ settings: DaemonSettings) async {
+        do {
+            let result = try await client.call(
+                method: "settings.update",
+                params: ["settings": settings.rpcDictionary],
+            ) as? [String: Any]
+            daemonSettings = DaemonSettings(
+                dictionary: result?["settings"] as? [String: Any] ?? [:],
+            )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func validateConfiguration() async {
+        do {
+            let result = try await client.call(method: "config.validate") as? [String: Any]
+            configValidation = ConfigValidation(dictionary: result ?? [:])
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func refreshLogLocations() async {
+        do {
+            let result = try await client.call(method: "config.log_locations") as? [String: Any]
+            logLocations = (
+                (result?["logs"] as? [[String: Any]] ?? [])
+                    + (result?["directories"] as? [[String: Any]] ?? [])
+            )
+            .map(LogLocation.init(dictionary:))
         } catch {
             lastError = error.localizedDescription
         }

@@ -561,6 +561,9 @@ async def run_daemon(
     handlers.update(make_programmatic_handlers(app))
     handlers.update(make_bundle_handlers(app))
     handlers.update(make_gui_handlers(app))
+    from capabledeputy.daemon.settings_handlers import make_settings_handlers
+
+    handlers.update(make_settings_handlers(app, config_path=resolved_pre_app))
     # 003 US6 — override RPC handlers bridge the CLI to the daemon's
     # OverrideGrantStore + OverridePolicies. Without these, the
     # `capdep override` CLI mutates a process-local store that the
@@ -728,20 +731,32 @@ async def run_daemon(
                 # depend on the manager type — duck-typed `server_status`.
                 app.upstream_manager = manager  # type: ignore[attr-defined]
                 _report_admission(manager)
-                _report_runtime_manifest(
-                    RuntimeManifest.from_runtime(
-                        registry=app.registry,
-                        policy_context=policy_context,
-                        upstream_servers=tuple(upstream_configs),
+                runtime_manifest = RuntimeManifest.from_runtime(
+                    registry=app.registry,
+                    policy_context=policy_context,
+                    upstream_servers=tuple(upstream_configs),
+                )
+                _report_runtime_manifest(runtime_manifest)
+                handlers.update(
+                    make_settings_handlers(
+                        app,
+                        config_path=resolved,
+                        runtime_manifest=runtime_manifest,
                     ),
                 )
                 await daemon.serve()
         else:
-            _report_runtime_manifest(
-                RuntimeManifest.from_runtime(
-                    registry=app.registry,
-                    policy_context=policy_context,
-                    upstream_servers=(),
+            runtime_manifest = RuntimeManifest.from_runtime(
+                registry=app.registry,
+                policy_context=policy_context,
+                upstream_servers=(),
+            )
+            _report_runtime_manifest(runtime_manifest)
+            handlers.update(
+                make_settings_handlers(
+                    app,
+                    config_path=resolved,
+                    runtime_manifest=runtime_manifest,
                 ),
             )
             await daemon.serve()

@@ -54,6 +54,19 @@ breaking changes).
   override, session-child, session-label, enforcement, first-use, policy,
   relationship, approval-pattern, and tool-call wrappers.
 
+### Practical setup and daemon-owned settings
+
+- Renamed the active connector/settings milestone to `v0.27.0 — Practical
+  setup + daemon-owned settings`.
+- Added daemon-owned settings persistence with `settings.get` and
+  `settings.update` RPCs, including audit events for settings changes.
+- Added daemon config diagnostics with `config.validate` and
+  `config.log_locations` RPCs for clients to surface setup failures and logs
+  without reading config files directly.
+- Wired CapDepMac settings toggles and Advanced diagnostics to daemon RPCs
+  instead of local constants.
+- Exposed settings and config diagnostics through CLI and MCP-control surfaces.
+
 ## [0.24.0] - 2026-06-20
 
 Connector setup, durable daemon memory, and local daemon lifecycle release.

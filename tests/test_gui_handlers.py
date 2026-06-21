@@ -38,7 +38,14 @@ async def test_setup_status_reports_actionable_checks(app: App) -> None:
     result = await handlers["setup.status"]({})
 
     check_ids = {check["id"] for check in result["checks"]}
-    assert {"daemon", "model", "relationship-groups", "apple-automation"} <= check_ids
+    assert {
+        "daemon",
+        "model",
+        "relationship-groups",
+        "apple-automation",
+        "daemon-settings",
+        "config-validation",
+    } <= check_ids
 
 
 async def test_policy_explain_returns_plain_english_for_recent_decision(app: App) -> None:
