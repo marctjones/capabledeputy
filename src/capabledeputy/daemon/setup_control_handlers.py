@@ -16,7 +16,11 @@ import yaml
 from capabledeputy.app import App
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.cli._managed_config import user_config_dir
-from capabledeputy.daemon.google_gmail_setup import gmail_oauth_status
+from capabledeputy.daemon.google_gmail_setup import (
+    GOOGLE_GMAIL_SERVER,
+    GOOGLE_OAUTH_SERVICES,
+    google_oauth_status,
+)
 from capabledeputy.daemon.handlers import Handler
 from capabledeputy.daemon.settings_store import update_settings
 from capabledeputy.policy.bindings import (
@@ -57,6 +61,11 @@ def make_setup_control_handlers(
                 "setup.google_gmail.configure_oauth",
                 "Show the Gmail OAuth client form; the daemon stores secrets.",
             )
+        if action_id.startswith("setup.google.") and action_id.endswith(".configure_oauth"):
+            return _native_action(
+                "setup.google.configure_oauth",
+                "Show the Google OAuth client form; the daemon stores secrets.",
+            )
         if action_id == "source_binding.list":
             return {
                 "action_id": action_id,
@@ -65,7 +74,7 @@ def make_setup_control_handlers(
                 "enabled": True,
             }
         if action_id in {"google_gmail.oauth_login", "setup.google_gmail.oauth_login"}:
-            status = gmail_oauth_status()
+            status = google_oauth_status(GOOGLE_GMAIL_SERVER)
             return {
                 "action_id": action_id,
                 "kind": "daemon_rpc",
@@ -74,6 +83,22 @@ def make_setup_control_handlers(
                     status["client_id_configured"] and status["client_secret_configured"],
                 ),
                 "params": {"open_browser": True, "timeout_seconds": 180},
+            }
+        if action_id.startswith("setup.google.") and action_id.endswith(".oauth_login"):
+            service_id = _service_id_from_action(action_id)
+            status = google_oauth_status(service_id)
+            return {
+                "action_id": action_id,
+                "kind": "daemon_rpc",
+                "method": "setup.google.oauth_login",
+                "enabled": bool(
+                    status["client_id_configured"] and status["client_secret_configured"],
+                ),
+                "params": {
+                    "service_id": service_id,
+                    "open_browser": True,
+                    "timeout_seconds": 180,
+                },
             }
         if action_id in {
             "macos.automation_settings",
@@ -90,14 +115,19 @@ def make_setup_control_handlers(
         raise ValueError(f"unknown setup action: {action_id}")
 
     async def connector_status(params: dict[str, Any]) -> dict[str, Any]:
-        gmail = gmail_oauth_status()
         status_map = getattr(getattr(app, "upstream_manager", None), "server_status", {}) or {}
         upstream_names = {getattr(status, "name", "") for status in status_map.values()}
         return {
             "connectors": [
-                _google_connector("google-gmail", "Google Gmail", gmail, upstream_names),
-                _generic_google_connector("google-calendar", "Google Calendar", upstream_names),
-                _generic_google_connector("google-drive", "Google Drive", upstream_names),
+                _google_connector(
+                    service_id,
+                    service.display_name,
+                    google_oauth_status(service_id),
+                    upstream_names,
+                )
+                for service_id, service in GOOGLE_OAUTH_SERVICES.items()
+            ]
+            + [
                 {
                     "id": "apple-mail",
                     "name": "Apple Mail",
@@ -325,50 +355,37 @@ def _google_connector(
         "detail": detail,
         "actions": [
             {
-                "id": "setup.google_gmail.configure_oauth",
+                "id": f"setup.google.{connector_id}.configure_oauth",
                 "label": "Save OAuth Client",
                 "kind": "daemon_form",
                 "enabled": True,
             },
             {
-                "id": "setup.google_gmail.oauth_login",
-                "label": "Authorize Gmail",
+                "id": f"setup.google.{connector_id}.oauth_login",
+                "label": f"Authorize {name.removeprefix('Google ')}",
                 "kind": "daemon_browser_oauth",
                 "enabled": bool(
                     status["client_id_configured"] and status["client_secret_configured"],
                 ),
             },
-        ],
-    }
-
-
-def _generic_google_connector(
-    connector_id: str,
-    name: str,
-    upstream_names: set[str],
-) -> dict[str, Any]:
-    loaded = connector_id in upstream_names
-    return {
-        "id": connector_id,
-        "name": name,
-        "type": "oauth_mcp",
-        "status": "connected" if loaded else "not_configured",
-        "detail": (
-            "Upstream MCP server is loaded."
-            if loaded
-            else (
-                "Use daemon config / servers.d setup; first-class OAuth form is not configured yet."
-            )
-        ),
-        "actions": [
             {
-                "id": "config.validate",
-                "label": "Validate daemon config",
+                "id": f"setup.google.{connector_id}.oauth_revoke",
+                "label": "Revoke Token",
                 "kind": "daemon_rpc",
-                "enabled": True,
+                "enabled": bool(status["token_configured"]),
             },
         ],
     }
+
+
+def _service_id_from_action(action_id: str) -> str:
+    parts = action_id.split(".")
+    if len(parts) < 4:
+        raise ValueError(f"unknown setup action: {action_id}")
+    service_id = parts[2]
+    if service_id not in GOOGLE_OAUTH_SERVICES:
+        raise ValueError(f"unknown Google OAuth service: {service_id}")
+    return service_id
 
 
 def _open_macos_automation_action() -> dict[str, Any]:

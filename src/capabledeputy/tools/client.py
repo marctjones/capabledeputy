@@ -331,6 +331,7 @@ class LabeledToolClient:
             action,
             tool_name,
             policy_decision,
+            v2_kwargs.get("effective_reversibility"),
         )
 
         # Cookbook Pattern ⑥ — shadow-mode rewrite. When the session

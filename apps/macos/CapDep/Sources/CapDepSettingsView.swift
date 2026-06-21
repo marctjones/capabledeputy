@@ -141,17 +141,20 @@ private struct AssistantSettingsView: View {
 
 private struct AccountsSettingsView: View {
     @EnvironmentObject private var model: CapDepAppModel
-    @State private var googleClientID = ""
-    @State private var googleClientSecret = ""
+    @State private var googleClientIDs: [String: String] = [:]
+    @State private var googleClientSecrets: [String: String] = [:]
 
     var body: some View {
         Form {
-            GmailOAuthSetupView(
-                clientID: $googleClientID,
-                clientSecret: $googleClientSecret,
-            )
-            .environmentObject(model)
-            ForEach(model.connectorStatuses.filter { $0.id != "google-gmail" }) { connector in
+            ForEach(model.connectorStatuses.filter { $0.id.hasPrefix("google-") }) { connector in
+                GoogleOAuthSetupView(
+                    connector: connector,
+                    clientID: binding(for: connector.id, in: $googleClientIDs),
+                    clientSecret: binding(for: connector.id, in: $googleClientSecrets),
+                )
+                .environmentObject(model)
+            }
+            ForEach(model.connectorStatuses.filter { !$0.id.hasPrefix("google-") }) { connector in
                 SetupProviderRow(
                     name: connector.name,
                     status: connector.detail,
@@ -162,19 +165,31 @@ private struct AccountsSettingsView: View {
         }
         .formStyle(.grouped)
     }
+
+    private func binding(
+        for key: String,
+        in storage: Binding<[String: String]>,
+    ) -> Binding<String> {
+        Binding {
+            storage.wrappedValue[key] ?? ""
+        } set: { value in
+            storage.wrappedValue[key] = value
+        }
+    }
 }
 
-private struct GmailOAuthSetupView: View {
+private struct GoogleOAuthSetupView: View {
     @EnvironmentObject private var model: CapDepAppModel
+    let connector: ConnectorStatus
     @Binding var clientID: String
     @Binding var clientSecret: String
 
     var body: some View {
-        Section("Google Gmail MCP") {
+        Section("\(connector.name) MCP") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Google Gmail")
+                        Text(connector.name)
                         Text(statusText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -191,7 +206,8 @@ private struct GmailOAuthSetupView: View {
                 HStack {
                     Button("Save OAuth Client") {
                         Task {
-                            await model.configureGmailOAuth(
+                            await model.configureGoogleOAuth(
+                                serviceID: connector.id,
                                 clientID: clientID,
                                 clientSecret: clientSecret,
                             )
@@ -199,39 +215,46 @@ private struct GmailOAuthSetupView: View {
                         }
                     }
                     .disabled(
-                        model.isConfiguringGmailOAuth
+                        model.isConfiguringGoogleOAuth
                             || clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             || clientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                     )
 
-                    Button("Authorize Gmail") {
+                    Button("Authorize") {
                         Task {
-                            await model.authorizeGmailOAuth()
+                            await model.authorizeGoogleOAuth(serviceID: connector.id)
                         }
                     }
                     .disabled(
-                        model.isConfiguringGmailOAuth
-                            || !model.gmailOAuthStatus.clientIDConfigured
-                            || !model.gmailOAuthStatus.clientSecretConfigured,
+                        model.isConfiguringGoogleOAuth
+                            || !status.clientIDConfigured
+                            || !status.clientSecretConfigured,
                     )
 
-                    if model.isConfiguringGmailOAuth {
+                    Button("Revoke Token") {
+                        Task {
+                            await model.revokeGoogleOAuth(serviceID: connector.id)
+                        }
+                    }
+                    .disabled(model.isConfiguringGoogleOAuth || !status.tokenConfigured)
+
+                    if model.isConfiguringGoogleOAuth {
                         ProgressView()
                             .controlSize(.small)
                     }
                 }
 
-                if !model.gmailOAuthStatus.serverYAML.isEmpty {
-                    Text("Server config: \(model.gmailOAuthStatus.serverYAML)")
+                if !status.serverYAML.isEmpty {
+                    Text("Server config: \(status.serverYAML)")
                         .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
-                if model.gmailOAuthStatus.restartRequired
-                    && model.gmailOAuthStatus.configured
-                    && !model.appStatus.upstreamServers.contains(where: { $0.name == "google-gmail" })
+                if status.restartRequired
+                    && status.configured
+                    && !model.appStatus.upstreamServers.contains(where: { $0.name == connector.id })
                 {
-                    Text("Restart the daemon after authorization so Gmail MCP is loaded into the tool registry.")
+                    Text("Restart the daemon after authorization so \(connector.name) MCP is loaded into the tool registry.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -239,12 +262,16 @@ private struct GmailOAuthSetupView: View {
         }
     }
 
+    private var status: GoogleOAuthStatus {
+        model.googleOAuthStatus(for: connector.id)
+    }
+
     private var statusText: String {
-        if model.gmailOAuthStatus.tokenConfigured {
-            return "OAuth token cache exists. Gmail MCP can load after daemon restart."
+        if status.tokenConfigured {
+            return "OAuth token cache exists. \(connector.name) MCP can load after daemon restart."
         }
-        if model.gmailOAuthStatus.clientIDConfigured && model.gmailOAuthStatus.clientSecretConfigured {
-            return "OAuth client saved by the daemon. Authorize Gmail next."
+        if status.clientIDConfigured && status.clientSecretConfigured {
+            return "OAuth client saved by the daemon. Authorize \(connector.name) next."
         }
         return "Enter the OAuth client ID and secret from your Google Cloud OAuth client."
     }
@@ -252,10 +279,10 @@ private struct GmailOAuthSetupView: View {
     private var statusBadge: some View {
         let text: String
         let color: Color
-        if model.gmailOAuthStatus.tokenConfigured {
+        if status.tokenConfigured {
             text = "Authorized"
             color = .green
-        } else if model.gmailOAuthStatus.clientIDConfigured {
+        } else if status.clientIDConfigured {
             text = "Client Saved"
             color = .yellow
         } else {

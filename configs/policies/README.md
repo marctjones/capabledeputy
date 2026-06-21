@@ -15,9 +15,11 @@ by default.
 
 ```
 action           = {"kind": str, "target": str, "amount": int|None,
-                    "relationship_groups": [str]}
+                    "relationship_groups": [str],
+                    "reversibility": {"degree": str, "agent": str}}
 session          = {"purpose": str, "categories": [str], "tiers": [str],
                     "provenance": [str], "risk_preference": str,
+                    "reversibility": {"degree": str, "agent": str},
                     "history": {"counts_by_kind": {kind: int},
                                 "used_kinds": [str], "total_uses": int}}
 proposed_outcome = {"decision": str, "rule": str, "reason": str}
@@ -44,10 +46,10 @@ clock-free (scripts have no clock), so time-windowed rates
   `after_hours_purchase_tightener` builtin, not a script. Time-*windowed*
   frequency ("> N / hour") is likewise not expressible; cumulative
   session counts via `session["history"]` are (#48, done).
-- **No reversibility fields** yet — "reversible-write auto" (relax a write
-  the system proved reversible/system) needs the reversibility verdict
-  threaded into the inspector inputs; not available yet (use rules for now).
-  Relationship-aware relax IS available via `action["relationship_groups"]`.
+- **No clock** — use the `after_hours_purchase_tightener` builtin for
+  time-of-day logic. Relationship-aware relax is available via
+  `action["relationship_groups"]`; reversible-write relax is available via
+  `session["reversibility"]`.
 
 ## Shipped starters
 
@@ -66,3 +68,7 @@ clock-free (scripts have no clock), so time-windowed rates
 - `relationship_relax.star` — RELAX: allow email to a recipient in a vetted
   relationship group (uses `action["relationship_groups"]`, #47). Keep this
   opt-in; the personal-assistant preset does not enable relax scripts.
+- `reversible_write_auto.star` — RELAX: allow write-like actions only when the
+  current action is already proven `reversible/system` and the session carries
+  no high-tier data. Keep this opt-in until the operator has source bindings and
+  rollback paths they trust.

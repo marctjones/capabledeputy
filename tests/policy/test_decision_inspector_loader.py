@@ -242,6 +242,60 @@ def inspect(action, session, proposed_outcome):
     return abstain()
 """
 
+_REVERSIBLE_WRITE_SCRIPT = """
+def inspect(action, session, proposed_outcome):
+    if proposed_outcome["decision"] != "require_approval":
+        return abstain()
+    if (
+        session["reversibility"]["degree"] == "reversible"
+        and session["reversibility"]["agent"] == "system"
+    ):
+        return relax(to="allow", rule="reversible-write", rationale="system rollback")
+    return abstain()
+"""
+
+
+async def test_reversibility_projection_enables_reversible_write_relax() -> None:
+    from types import SimpleNamespace
+
+    from capabledeputy.policy.reversibility import (
+        ReversalAgent,
+        ReversibilityDegree,
+        ReversibilityLabel,
+    )
+
+    (insp,) = load_decision_inspectors(
+        {
+            "decision_inspectors": [
+                {"source": _REVERSIBLE_WRITE_SCRIPT, "runtime": "python-reference"},
+            ],
+        },
+    )
+
+    out = await insp.inspect(
+        action=Action(kind=CapabilityKind.MODIFY_FS, target="file:///tmp/a"),
+        session=object(),
+        proposed_outcome=_proposed(Decision.REQUIRE_APPROVAL),
+    )
+    assert out is None
+
+    action = SimpleNamespace(
+        kind=CapabilityKind.MODIFY_FS,
+        target="file:///tmp/a",
+        amount=None,
+        effective_reversibility=ReversibilityLabel(
+            degree=ReversibilityDegree.REVERSIBLE,
+            agent=ReversalAgent.SYSTEM,
+        ),
+    )
+    out = await insp.inspect(
+        action=action,
+        session=object(),
+        proposed_outcome=_proposed(Decision.REQUIRE_APPROVAL),
+    )
+    assert isinstance(out, DecisionRelax)
+    assert out.rule == "reversible-write"
+
 
 async def test_relationship_groups_resolved_into_inspector(tmp_path) -> None:
     """#47 — the chokepoint resolves the target's relationship groups and
@@ -765,3 +819,81 @@ async def test_frequency_cap_uses_higher_calendar_purpose_threshold() -> None:
     )
     assert isinstance(out, DecisionTighten)
     assert out.rule == "session-frequency-cap"
+
+
+@pytest.mark.skipif(not _starlark_available(), reason="starlark extra not installed")
+async def test_reversible_write_auto_relaxes_system_reversible_write() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from capabledeputy.policy.reversibility import (
+        ReversalAgent,
+        ReversibilityDegree,
+        ReversibilityLabel,
+    )
+
+    repo = Path(__file__).resolve().parents[2]
+    (insp,) = load_decision_inspectors(
+        {"decision_inspectors": [{"script": "reversible_write_auto.star"}]},
+        base_dir=repo / "configs" / "policies",
+    )
+    action = SimpleNamespace(
+        kind=CapabilityKind.MODIFY_FS,
+        target="file:///tmp/draft.md",
+        amount=None,
+        relationship_group_ids=frozenset(),
+        effective_reversibility=ReversibilityLabel(
+            degree=ReversibilityDegree.REVERSIBLE,
+            agent=ReversalAgent.SYSTEM,
+        ),
+    )
+
+    out = await insp.inspect(
+        action=action,
+        session=object(),
+        proposed_outcome=_proposed(Decision.REQUIRE_APPROVAL),
+    )
+
+    assert isinstance(out, DecisionRelax)
+    assert out.rule == "reversible-system-write-auto"
+
+
+@pytest.mark.skipif(not _starlark_available(), reason="starlark extra not installed")
+async def test_reversible_write_auto_abstains_for_restricted_session() -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from capabledeputy.policy.labels import CategoryTag, LabelState
+    from capabledeputy.policy.reversibility import (
+        ReversalAgent,
+        ReversibilityDegree,
+        ReversibilityLabel,
+    )
+    from capabledeputy.policy.tiers import Tier
+
+    repo = Path(__file__).resolve().parents[2]
+    (insp,) = load_decision_inspectors(
+        {"decision_inspectors": [{"script": "reversible_write_auto.star"}]},
+        base_dir=repo / "configs" / "policies",
+    )
+    action = SimpleNamespace(
+        kind=CapabilityKind.MODIFY_FS,
+        target="file:///tmp/draft.md",
+        amount=None,
+        relationship_group_ids=frozenset(),
+        effective_reversibility=ReversibilityLabel(
+            degree=ReversibilityDegree.REVERSIBLE,
+            agent=ReversalAgent.SYSTEM,
+        ),
+    )
+    session = SimpleNamespace(
+        label_state=LabelState(a=frozenset({CategoryTag("finance", Tier.RESTRICTED)})),
+    )
+
+    out = await insp.inspect(
+        action=action,
+        session=session,
+        proposed_outcome=_proposed(Decision.REQUIRE_APPROVAL),
+    )
+
+    assert out is None

@@ -96,6 +96,7 @@ class ToolPolicyHooks:
         action: Any,
         tool_name: str,
         proposed: PolicyDecision,
+        effective_reversibility: Any = None,
     ) -> PolicyDecision:
         """Run DecisionInspectors and compose their relax/tighten outcomes."""
         decision_inspectors = (
@@ -109,6 +110,7 @@ class ToolPolicyHooks:
             target=getattr(action, "target", ""),
             amount=getattr(action, "amount", None),
             relationship_group_ids=self._relationship_groups_for_action(action),
+            effective_reversibility=effective_reversibility,
         )
 
         outcomes: list[tuple[str, Any]] = []

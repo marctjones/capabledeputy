@@ -132,6 +132,12 @@ _SESSION_MESSAGE_SCHEMA = _schema(
 
 _GRANT_ID_SCHEMA = _schema({"grant_id": {"type": "string"}}, required=["grant_id"])
 
+_GOOGLE_SERVICE_ID = {
+    "type": "string",
+    "enum": ["google-gmail", "google-calendar", "google-drive"],
+    "description": "Managed Google Workspace MCP service ID.",
+}
+
 _RELATIONSHIP_MEMBER_SCHEMA = _schema(
     {
         "group_id": {"type": "string"},
@@ -1032,6 +1038,57 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
         _annotations("Bundle run", read_only=False, idempotent=False, destructive=True),
     ),
     ControlToolSpec(
+        "google_oauth_status",
+        "Google OAuth status",
+        "Return daemon-owned Google Workspace MCP OAuth status for all services or one service.",
+        "setup.google.oauth_status",
+        _schema({"service_id": _GOOGLE_SERVICE_ID}),
+        _annotations("Google OAuth status", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "google_configure_oauth_client",
+        "Configure Google OAuth client",
+        "Store Google OAuth client values for a managed Workspace MCP server.",
+        "setup.google.configure_oauth",
+        _schema(
+            {
+                "service_id": _GOOGLE_SERVICE_ID,
+                "client_id": {"type": "string"},
+                "client_secret": {"type": "string"},
+            },
+            required=["service_id", "client_id", "client_secret"],
+        ),
+        _annotations("Configure Google OAuth client", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "google_oauth_login",
+        "Authorize Google OAuth",
+        "Launch the daemon-owned browser OAuth flow for a managed Workspace MCP server.",
+        "setup.google.oauth_login",
+        _schema(
+            {
+                "service_id": _GOOGLE_SERVICE_ID,
+                "open_browser": {"type": "boolean", "default": True},
+                "timeout_seconds": {"type": "integer", "minimum": 1, "default": 180},
+            },
+            required=["service_id"],
+        ),
+        _annotations(
+            "Authorize Google OAuth",
+            read_only=False,
+            idempotent=False,
+            open_world=True,
+        ),
+    ),
+    ControlToolSpec(
+        "google_oauth_revoke",
+        "Revoke Google OAuth token",
+        "Remove the local OAuth token cache for a managed Workspace MCP server.",
+        "setup.google.oauth_revoke",
+        _schema({"service_id": _GOOGLE_SERVICE_ID}, required=["service_id"]),
+        _annotations("Revoke Google OAuth token", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
         "gmail_oauth_status",
         "Gmail OAuth status",
         "Return daemon-owned Google Gmail MCP OAuth configuration status.",
@@ -1124,6 +1181,18 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
         return None
     if name in {"gmail_oauth_status", "macos_frontmost_context"}:
         return None
+    if name == "google_oauth_status":
+        return _copy(args, "service_id") if args.get("service_id") else None
+    if name == "google_configure_oauth_client":
+        return _copy(args, "service_id", "client_id", "client_secret")
+    if name == "google_oauth_login":
+        return {
+            "service_id": str(args.get("service_id") or ""),
+            "open_browser": bool(args.get("open_browser", True)),
+            "timeout_seconds": int(args.get("timeout_seconds") or 180),
+        }
+    if name == "google_oauth_revoke":
+        return {"service_id": str(args.get("service_id") or "")}
     if name == "setup_run_action":
         return {"action_id": str(args.get("action_id") or "")}
     if name == "runtime_automation_pause":

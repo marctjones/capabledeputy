@@ -12,6 +12,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var appStatus = AppStatus.empty
     @Published private(set) var setupChecks: [SetupCheck] = []
     @Published private(set) var gmailOAuthStatus = GmailOAuthStatus.empty
+    @Published private(set) var googleOAuthStatuses: [String: GoogleOAuthStatus] = [:]
     @Published private(set) var daemonSettings = DaemonSettings.empty
     @Published private(set) var configValidation = ConfigValidation.empty
     @Published private(set) var logLocations: [LogLocation] = []
@@ -32,7 +33,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
     @Published private(set) var isRunningTurn = false
     @Published private(set) var isRecoveringDaemon = false
-    @Published private(set) var isConfiguringGmailOAuth = false
+    @Published private(set) var isConfiguringGoogleOAuth = false
     @Published var selectedSection: DashboardSection = .today
     @Published var selectedPurpose: Purpose = .general
     @Published var focusedApprovalID: Int?
@@ -97,7 +98,7 @@ final class CapDepAppModel: ObservableObject {
             async let auditResult = client.call(method: "audit.tail", params: ["limit": 40])
             async let statusResult = client.call(method: "app.status")
             async let setupResult = client.call(method: "setup.status")
-            async let gmailOAuthResult = client.call(method: "setup.google_gmail.oauth_status")
+            async let googleOAuthResult = client.call(method: "setup.google.oauth_status")
             async let settingsResult = client.call(method: "settings.get")
             async let validationResult = client.call(method: "config.validate")
             async let logLocationsResult = client.call(method: "config.log_locations")
@@ -116,7 +117,7 @@ final class CapDepAppModel: ObservableObject {
             let auditObject = try await auditResult as? [String: Any]
             let statusObject = try await statusResult as? [String: Any]
             let setupObject = try await setupResult as? [String: Any]
-            let gmailOAuthObject = try await gmailOAuthResult as? [String: Any]
+            let googleOAuthObject = try await googleOAuthResult as? [String: Any]
             let settingsObject = try await settingsResult as? [String: Any]
             let validationObject = try await validationResult as? [String: Any]
             let logLocationsObject = try await logLocationsResult as? [String: Any]
@@ -143,7 +144,13 @@ final class CapDepAppModel: ObservableObject {
             appStatus = AppStatus(dictionary: statusObject ?? [:])
             setupChecks = (setupObject?["checks"] as? [[String: Any]] ?? [])
                 .map(SetupCheck.init(dictionary:))
-            gmailOAuthStatus = GmailOAuthStatus(dictionary: gmailOAuthObject ?? [:])
+            let googleStatuses = (
+                googleOAuthObject?["services"] as? [[String: Any]] ?? []
+            ).map(GoogleOAuthStatus.init(dictionary:))
+            googleOAuthStatuses = Dictionary(
+                uniqueKeysWithValues: googleStatuses.map { ($0.serviceID, $0) },
+            )
+            gmailOAuthStatus = googleOAuthStatuses["google-gmail"] ?? GmailOAuthStatus.empty
             daemonSettings = DaemonSettings(
                 dictionary: settingsObject?["settings"] as? [String: Any] ?? [:],
             )
@@ -433,27 +440,50 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
-    func configureGmailOAuth(clientID: String, clientSecret: String) async {
-        guard !isConfiguringGmailOAuth else {
+    func googleOAuthStatus(for serviceID: String) -> GoogleOAuthStatus {
+        googleOAuthStatuses[serviceID] ?? GoogleOAuthStatus(
+            dictionary: ["service_id": serviceID, "display_name": serviceID],
+        )
+    }
+
+    func configureGoogleOAuth(
+        serviceID: String,
+        clientID: String,
+        clientSecret: String,
+    ) async {
+        guard !isConfiguringGoogleOAuth else {
             return
         }
-        isConfiguringGmailOAuth = true
+        isConfiguringGoogleOAuth = true
         defer {
-            isConfiguringGmailOAuth = false
+            isConfiguringGoogleOAuth = false
         }
         do {
             let result = try await client.call(
-                method: "setup.google_gmail.configure_oauth",
+                method: "setup.google.configure_oauth",
                 params: [
+                    "service_id": serviceID,
                     "client_id": clientID,
                     "client_secret": clientSecret,
                 ],
             ) as? [String: Any]
-            gmailOAuthStatus = GmailOAuthStatus(dictionary: result ?? [:])
+            let status = GoogleOAuthStatus(dictionary: result ?? [:])
+            googleOAuthStatuses[status.serviceID] = status
+            if status.serviceID == "google-gmail" {
+                gmailOAuthStatus = status
+            }
             await refresh()
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    func configureGmailOAuth(clientID: String, clientSecret: String) async {
+        await configureGoogleOAuth(
+            serviceID: "google-gmail",
+            clientID: clientID,
+            clientSecret: clientSecret,
+        )
     }
 
     func updateSettings(_ settings: DaemonSettings) async {
@@ -493,23 +523,56 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
-    func authorizeGmailOAuth() async {
-        guard !isConfiguringGmailOAuth else {
+    func authorizeGoogleOAuth(serviceID: String) async {
+        guard !isConfiguringGoogleOAuth else {
             return
         }
-        isConfiguringGmailOAuth = true
+        isConfiguringGoogleOAuth = true
         defer {
-            isConfiguringGmailOAuth = false
+            isConfiguringGoogleOAuth = false
         }
         do {
             let result = try await client.call(
-                method: "setup.google_gmail.oauth_login",
+                method: "setup.google.oauth_login",
                 params: [
+                    "service_id": serviceID,
                     "open_browser": true,
                     "timeout_seconds": 180,
                 ],
             ) as? [String: Any]
-            gmailOAuthStatus = GmailOAuthStatus(dictionary: result ?? [:])
+            let status = GoogleOAuthStatus(dictionary: result ?? [:])
+            googleOAuthStatuses[status.serviceID] = status
+            if status.serviceID == "google-gmail" {
+                gmailOAuthStatus = status
+            }
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func authorizeGmailOAuth() async {
+        await authorizeGoogleOAuth(serviceID: "google-gmail")
+    }
+
+    func revokeGoogleOAuth(serviceID: String) async {
+        guard !isConfiguringGoogleOAuth else {
+            return
+        }
+        isConfiguringGoogleOAuth = true
+        defer {
+            isConfiguringGoogleOAuth = false
+        }
+        do {
+            let result = try await client.call(
+                method: "setup.google.oauth_revoke",
+                params: ["service_id": serviceID],
+            ) as? [String: Any]
+            let status = GoogleOAuthStatus(dictionary: result ?? [:])
+            googleOAuthStatuses[status.serviceID] = status
+            if status.serviceID == "google-gmail" {
+                gmailOAuthStatus = status
+            }
             await refresh()
         } catch {
             lastError = error.localizedDescription
@@ -529,6 +592,11 @@ final class CapDepAppModel: ObservableObject {
                     await refreshLogLocations()
                 } else if method == "setup.google_gmail.oauth_login" {
                     await authorizeGmailOAuth()
+                } else if method == "setup.google.oauth_login",
+                          let serviceID = (result?["params"] as? [String: Any])?["service_id"]
+                            as? String
+                {
+                    await authorizeGoogleOAuth(serviceID: serviceID)
                 }
             } else if let url = result?["url"] as? String, let target = URL(string: url) {
                 NSWorkspace.shared.open(target)

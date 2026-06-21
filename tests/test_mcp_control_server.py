@@ -26,6 +26,7 @@ def test_control_tools_include_daemon_client_surface() -> None:
     assert "tool_call" in names
     assert "approval_approve" in names
     assert "setup_status" in names
+    assert "google_oauth_status" in names
     assert "gmail_oauth_login" in names
     assert "provenance_graph" in names
 
@@ -146,6 +147,33 @@ async def test_control_gmail_oauth_login_dispatches(fake_daemon) -> None:
             "setup.google_gmail.oauth_login",
             {"open_browser": True, "timeout_seconds": 90},
         ),
+    ]
+
+
+async def test_control_google_oauth_tools_dispatch_to_generic_daemon_rpc(fake_daemon) -> None:
+    client = fake_daemon(
+        {
+            "setup.google.oauth_status": {"service_id": "google-calendar"},
+            "setup.google.oauth_revoke": {"token_configured": False},
+        },
+    )
+
+    status = await dispatch_control_tool(
+        client,
+        "google_oauth_status",
+        {"service_id": "google-calendar"},
+    )
+    revoke = await dispatch_control_tool(
+        client,
+        "google_oauth_revoke",
+        {"service_id": "google-drive"},
+    )
+
+    assert status.isError is False
+    assert revoke.isError is False
+    assert client.calls == [
+        ("setup.google.oauth_status", {"service_id": "google-calendar"}),
+        ("setup.google.oauth_revoke", {"service_id": "google-drive"}),
     ]
 
 

@@ -101,9 +101,28 @@ def _action_to_dict(action: Any) -> dict[str, Any]:
         "kind": kind,
         "target": (getattr(action, "target", "") or ""),
         "amount": getattr(action, "amount", None),
+        "reversibility": _reversibility_to_dict(
+            getattr(action, "effective_reversibility", None),
+        ),
         # #47 — relationship-group membership of the target (resolved at
         # the chokepoint), so scripts can do relationship-aware relaxes.
         "relationship_groups": sorted(getattr(action, "relationship_group_ids", ()) or ()),
+    }
+
+
+def _reversibility_to_dict(value: Any) -> dict[str, str]:
+    if value is None:
+        return {"degree": "irreversible", "agent": "external"}
+    if isinstance(value, dict):
+        return {
+            "degree": str(value.get("degree", "irreversible")),
+            "agent": str(value.get("agent", "external")),
+        }
+    degree = getattr(value, "degree", "irreversible")
+    agent = getattr(value, "agent", "external")
+    return {
+        "degree": str(getattr(degree, "value", degree)),
+        "agent": str(getattr(agent, "value", agent)),
     }
 
 
@@ -154,6 +173,9 @@ def _session_to_dict(session: Any) -> dict[str, Any]:
         "tiers": tiers,
         "provenance": provenance,
         "risk_preference": getattr(session, "risk_preference_at_spawn", "cautious"),
+        "reversibility": _reversibility_to_dict(
+            getattr(session, "current_action_reversibility", None),
+        ),
         # #48 — bounded read-only history summary for frequency/aggregation.
         "history": _history_summary(session),
     }
@@ -234,10 +256,13 @@ class ScriptDecisionInspector:
         session: Any,
         proposed_outcome: Any,
     ) -> DecisionRelax | DecisionTighten | None:
+        action_dict = _action_to_dict(action)
+        session_dict = _session_to_dict(session)
+        session_dict["reversibility"] = action_dict["reversibility"]
         outcome = await self._host.evaluate(
             self._script,
-            action=_action_to_dict(action),
-            session=_session_to_dict(session),
+            action=action_dict,
+            session=session_dict,
             proposed_outcome=_proposed_to_dict(proposed_outcome),
         )
         return _outcome_to_adjustment(outcome)

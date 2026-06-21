@@ -323,6 +323,8 @@ struct SourceBindingViewData: Identifiable, Hashable {
 }
 
 struct GmailOAuthStatus: Hashable {
+    let serviceID: String
+    let displayName: String
     let configured: Bool
     let clientIDConfigured: Bool
     let clientSecretConfigured: Bool
@@ -334,6 +336,10 @@ struct GmailOAuthStatus: Hashable {
     let restartRequired: Bool
 
     init(dictionary: [String: Any]) {
+        self.serviceID = dictionary["service_id"] as? String
+            ?? dictionary["server"] as? String
+            ?? "google-gmail"
+        self.displayName = dictionary["display_name"] as? String ?? "Google Gmail"
         self.configured = dictionary["configured"] as? Bool ?? false
         self.clientIDConfigured = dictionary["client_id_configured"] as? Bool ?? false
         self.clientSecretConfigured = dictionary["client_secret_configured"] as? Bool ?? false
@@ -347,6 +353,8 @@ struct GmailOAuthStatus: Hashable {
 
     static let empty = GmailOAuthStatus(dictionary: [:])
 }
+
+typealias GoogleOAuthStatus = GmailOAuthStatus
 
 struct DaemonSettings: Hashable {
     var defaultPurpose: String

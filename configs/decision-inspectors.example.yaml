@@ -54,6 +54,8 @@ decision_inspectors:
   #   runtime: starlark
   # - script: policies/relationship_relax.star
   #   runtime: starlark
+  # - script: policies/reversible_write_auto.star
+  #   runtime: starlark
 
   # Inline source is also supported (handy for one-liners / tests):
   # - source: |

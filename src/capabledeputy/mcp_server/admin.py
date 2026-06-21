@@ -28,6 +28,11 @@ _ADMIN_META: dict[str, Any] = {
 }
 
 _GENERIC_OBJECT_OUTPUT: dict[str, Any] = {"type": "object", "additionalProperties": True}
+_GOOGLE_SERVICE_ID: dict[str, Any] = {
+    "type": "string",
+    "enum": ["google-gmail", "google-calendar", "google-drive"],
+    "description": "Managed Google Workspace MCP service ID.",
+}
 
 
 _ADMIN_TOOLS: tuple[mcp_types.Tool, ...] = (
@@ -40,6 +45,113 @@ _ADMIN_TOOLS: tuple[mcp_types.Tool, ...] = (
         annotations=mcp_types.ToolAnnotations(
             title="Setup status",
             readOnlyHint=True,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+        **{"_meta": _ADMIN_META},  # pyright: ignore[reportArgumentType]
+    ),
+    mcp_types.Tool(
+        name="google_oauth_status",
+        title="Google OAuth status",
+        description="Return daemon-owned Google Workspace MCP OAuth configuration status.",
+        inputSchema={
+            "type": "object",
+            "properties": {"service_id": _GOOGLE_SERVICE_ID},
+            "additionalProperties": False,
+        },
+        outputSchema=_GENERIC_OBJECT_OUTPUT,
+        annotations=mcp_types.ToolAnnotations(
+            title="Google OAuth status",
+            readOnlyHint=True,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+        **{"_meta": _ADMIN_META},  # pyright: ignore[reportArgumentType]
+    ),
+    mcp_types.Tool(
+        name="google_configure_oauth_client",
+        title="Configure Google OAuth client",
+        description=(
+            "Store a Google OAuth client ID/secret through the daemon and "
+            "write the managed Workspace MCP server config."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "service_id": _GOOGLE_SERVICE_ID,
+                "client_id": {
+                    "type": "string",
+                    "description": "Google OAuth client ID.",
+                },
+                "client_secret": {
+                    "type": "string",
+                    "description": "Google OAuth client secret.",
+                },
+            },
+            "required": ["service_id", "client_id", "client_secret"],
+            "additionalProperties": False,
+        },
+        outputSchema=_GENERIC_OBJECT_OUTPUT,
+        annotations=mcp_types.ToolAnnotations(
+            title="Configure Google OAuth client",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+        **{"_meta": _ADMIN_META},  # pyright: ignore[reportArgumentType]
+    ),
+    mcp_types.Tool(
+        name="google_oauth_login",
+        title="Authorize Google OAuth",
+        description=(
+            "Launch the browser OAuth flow through the daemon and store the "
+            "token cache after the user completes Google login."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "service_id": _GOOGLE_SERVICE_ID,
+                "open_browser": {
+                    "type": "boolean",
+                    "description": "Open the default browser automatically.",
+                    "default": True,
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Seconds to wait for the OAuth callback.",
+                    "minimum": 1,
+                    "default": 180,
+                },
+            },
+            "required": ["service_id"],
+            "additionalProperties": False,
+        },
+        outputSchema=_GENERIC_OBJECT_OUTPUT,
+        annotations=mcp_types.ToolAnnotations(
+            title="Authorize Google OAuth",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        ),
+        **{"_meta": _ADMIN_META},  # pyright: ignore[reportArgumentType]
+    ),
+    mcp_types.Tool(
+        name="google_oauth_revoke",
+        title="Revoke Google OAuth token",
+        description="Remove the local OAuth token cache for a managed Workspace MCP server.",
+        inputSchema={
+            "type": "object",
+            "properties": {"service_id": _GOOGLE_SERVICE_ID},
+            "required": ["service_id"],
+            "additionalProperties": False,
+        },
+        outputSchema=_GENERIC_OBJECT_OUTPUT,
+        annotations=mcp_types.ToolAnnotations(
+            title="Revoke Google OAuth token",
+            readOnlyHint=False,
+            destructiveHint=False,
             idempotentHint=True,
             openWorldHint=False,
         ),
@@ -141,6 +253,35 @@ async def dispatch_admin_tool(
     try:
         if name == "setup_status":
             result = await client.call("setup.status")
+        elif name == "google_oauth_status":
+            service_id = str(args.get("service_id") or "")
+            result = await client.call(
+                "setup.google.oauth_status",
+                {"service_id": service_id} if service_id else None,
+            )
+        elif name == "google_configure_oauth_client":
+            result = await client.call(
+                "setup.google.configure_oauth",
+                {
+                    "service_id": str(args.get("service_id") or ""),
+                    "client_id": str(args.get("client_id") or ""),
+                    "client_secret": str(args.get("client_secret") or ""),
+                },
+            )
+        elif name == "google_oauth_login":
+            result = await client.call(
+                "setup.google.oauth_login",
+                {
+                    "service_id": str(args.get("service_id") or ""),
+                    "open_browser": bool(args.get("open_browser", True)),
+                    "timeout_seconds": int(args.get("timeout_seconds") or 180),
+                },
+            )
+        elif name == "google_oauth_revoke":
+            result = await client.call(
+                "setup.google.oauth_revoke",
+                {"service_id": str(args.get("service_id") or "")},
+            )
         elif name == "gmail_oauth_status":
             result = await client.call("setup.google_gmail.oauth_status")
         elif name == "gmail_configure_oauth_client":

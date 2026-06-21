@@ -15,6 +15,10 @@ def test_admin_tools_include_gmail_oauth_setup() -> None:
     tools = discover_admin_tools()
     names = {tool.name for tool in tools}
     assert "setup_status" in names
+    assert "google_oauth_status" in names
+    assert "google_configure_oauth_client" in names
+    assert "google_oauth_login" in names
+    assert "google_oauth_revoke" in names
     assert "gmail_oauth_status" in names
     assert "gmail_configure_oauth_client" in names
     assert "gmail_oauth_login" in names
@@ -100,6 +104,50 @@ async def test_admin_gmail_login_dispatches_to_daemon(fake_daemon) -> None:
             "setup.google_gmail.oauth_login",
             {"open_browser": True, "timeout_seconds": 60},
         ),
+    ]
+
+
+async def test_admin_google_oauth_tools_dispatch_to_generic_daemon_rpc(fake_daemon) -> None:
+    client = fake_daemon(
+        {
+            "setup.google.configure_oauth": {
+                "service_id": "google-drive",
+                "configured": True,
+            },
+            "setup.google.oauth_revoke": {
+                "service_id": "google-calendar",
+                "token_configured": False,
+            },
+        },
+    )
+
+    configured = await dispatch_admin_tool(
+        client,
+        "google_configure_oauth_client",
+        {
+            "service_id": "google-drive",
+            "client_id": "id",
+            "client_secret": "secret",
+        },
+    )
+    revoked = await dispatch_admin_tool(
+        client,
+        "google_oauth_revoke",
+        {"service_id": "google-calendar"},
+    )
+
+    assert configured.isError is False
+    assert revoked.isError is False
+    assert client.calls == [
+        (
+            "setup.google.configure_oauth",
+            {
+                "service_id": "google-drive",
+                "client_id": "id",
+                "client_secret": "secret",
+            },
+        ),
+        ("setup.google.oauth_revoke", {"service_id": "google-calendar"}),
     ]
 
 
