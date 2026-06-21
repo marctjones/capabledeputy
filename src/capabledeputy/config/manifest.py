@@ -139,12 +139,6 @@ class RuntimeManifest:
             "tools": len(self.tools),
             "upstream_servers": len(self.upstream_servers),
             "hooks": list(self.hook_names),
-            "errors": [
-                {"subject": i.subject, "message": i.message}
-                for i in validation.errors
-            ],
-            "warnings": [
-                {"subject": i.subject, "message": i.message}
-                for i in validation.warnings
-            ],
+            "errors": [{"subject": i.subject, "message": i.message} for i in validation.errors],
+            "warnings": [{"subject": i.subject, "message": i.message} for i in validation.warnings],
         }

@@ -23,6 +23,7 @@ from capabledeputy.policy.actions import Action
 from capabledeputy.policy.assurance import (
     should_emit_residual_risk,
 )
+from capabledeputy.policy.capabilities import kind_name
 from capabledeputy.policy.engine import PolicyDecision
 from capabledeputy.policy.labels import LabelState, ProvenanceLevel
 from capabledeputy.policy.overrides import (
@@ -138,14 +139,9 @@ def build_policy_decided_payload(
             else None
         ),
         "matched_capability_kind": (
-            str(decision.matched_capability.kind.value)
+            kind_name(decision.matched_capability.kind)
             if decision.matched_capability is not None
-            and hasattr(decision.matched_capability.kind, "value")
-            else (
-                str(decision.matched_capability.kind)
-                if decision.matched_capability is not None
-                else None
-            )
+            else None
         ),
         "matched_capability_pattern": (
             decision.matched_capability.pattern if decision.matched_capability is not None else None
@@ -615,9 +611,7 @@ class LabeledToolClient:
                 kind="capability",
                 materialized_id=f"capability:{matched.audit_id}",
                 metadata={
-                    "kind": (
-                        matched.kind.value if hasattr(matched.kind, "value") else str(matched.kind)
-                    ),
+                    "kind": kind_name(matched.kind),
                     "pattern": matched.pattern,
                     "origin": matched.origin.value,
                 },

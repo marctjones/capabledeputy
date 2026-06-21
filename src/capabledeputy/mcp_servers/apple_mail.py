@@ -71,7 +71,7 @@ on split_text(valueText, delimiterText)
 end split_text
 '''
 
-_MAILBOX_HELPERS = r'''
+_MAILBOX_HELPERS = r"""
 on resolve_mailbox(mailboxName)
   tell application "Mail"
     repeat with acct in accounts
@@ -85,7 +85,7 @@ on resolve_mailbox(mailboxName)
   end tell
   error "mailbox not found: " & mailboxName
 end resolve_mailbox
-'''
+"""
 
 _TOOL_SPECS: list[dict[str, Any]] = [
     {
@@ -102,7 +102,7 @@ _TOOL_SPECS: list[dict[str, Any]] = [
             "properties": {},
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   set output to "["
   tell application "Mail"
@@ -116,7 +116,7 @@ on run argv
 end run
 
 {_JSON_HELPERS}
-''',
+""",
     },
     {
         "name": "apple_mail.list_mailboxes",
@@ -132,7 +132,7 @@ end run
             "properties": {},
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   set output to "["
   set rowCount to 0
@@ -151,7 +151,7 @@ on run argv
 end run
 
 {_JSON_HELPERS}
-''',
+""",
     },
     {
         "name": "apple_mail.search_messages",
@@ -176,7 +176,7 @@ end run
             },
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   set mailboxName to item 1 of argv
   set queryText to item 2 of argv
@@ -212,7 +212,7 @@ end run
 
 {_MAILBOX_HELPERS}
 {_JSON_HELPERS}
-''',
+""",
     },
     {
         "name": "apple_mail.get_message",
@@ -234,7 +234,7 @@ end run
             "required": ["message_id"],
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   set mailboxName to item 1 of argv
   set wantedId to item 2 of argv
@@ -261,7 +261,7 @@ end run
 
 {_MAILBOX_HELPERS}
 {_JSON_HELPERS}
-''',
+""",
     },
     {
         "name": "apple_mail.create_draft",
@@ -291,7 +291,7 @@ end run
             "required": ["to", "subject", "body"],
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   set toText to item 1 of argv
   set subjectText to item 2 of argv
@@ -332,7 +332,7 @@ on add_recipients(addressText, recipientKind, draftMessage)
 end add_recipients
 
 {_JSON_HELPERS}
-''',
+""",
     },
 ]
 

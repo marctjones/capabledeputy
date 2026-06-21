@@ -67,7 +67,7 @@ _TOOL_SPECS: list[dict[str, Any]] = [
             "properties": {},
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   tell application "System Events"
     set frontApp to first application process whose frontmost is true
@@ -82,7 +82,7 @@ on run argv
 end run
 
 {_JSON_HELPERS}
-''',
+""",
     },
     {
         "name": "macos.list_running_applications",
@@ -101,7 +101,7 @@ end run
             },
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   set maxItems to item 1 of argv as integer
   set output to "{{\"applications\":["
@@ -127,7 +127,7 @@ on run argv
 end run
 
 {_JSON_HELPERS}
-''',
+""",
     },
     {
         "name": "macos.open_application",
@@ -153,7 +153,7 @@ end run
             "required": ["bundle_id"],
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   set requestedBundleId to item 1 of argv
   if requestedBundleId does not contain "." then
@@ -164,7 +164,7 @@ on run argv
 end run
 
 {_JSON_HELPERS}
-''',
+""",
     },
     {
         "name": "macos.get_clipboard_text",
@@ -180,14 +180,14 @@ end run
             "properties": {},
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   set clipText to the clipboard as text
   return "{{\"text\":" & my json_string(clipText) & "}}"
 end run
 
 {_JSON_HELPERS}
-''',
+""",
     },
     {
         "name": "macos.set_clipboard_text",
@@ -213,12 +213,12 @@ end run
             "required": ["text"],
             "additionalProperties": False,
         },
-        "script": '''
+        "script": """
 on run argv
   set the clipboard to item 1 of argv
   return "{\"updated\":true}"
 end run
-''',
+""",
     },
     {
         "name": "macos.show_notification",
@@ -245,7 +245,7 @@ end run
             "required": ["message"],
             "additionalProperties": False,
         },
-        "script": f'''
+        "script": f"""
 on run argv
   set titleText to item 1 of argv
   set messageText to item 2 of argv
@@ -254,7 +254,7 @@ on run argv
 end run
 
 {_JSON_HELPERS}
-''',
+""",
     },
 ]
 

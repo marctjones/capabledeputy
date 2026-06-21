@@ -397,9 +397,7 @@ class LabeledMcpAdapter:
             "mime_type": str(
                 getattr(contents[0], "mimeType", "text/plain") if contents else "text/plain"
             ),
-            "labels": sorted(
-                _tag_to_str(t) for t in all_tags.a | all_tags.b
-            ),
+            "labels": sorted(_tag_to_str(t) for t in all_tags.a | all_tags.b),
             "server": self._config.name,
         }
 

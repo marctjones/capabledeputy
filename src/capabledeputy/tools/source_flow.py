@@ -205,9 +205,7 @@ class ToolSourceFlow:
         args: dict[str, Any],
     ) -> str:
         return (
-            tool.extract_target(args)
-            if tool.surfaces_destination_id
-            else f"tool:{tool_name}"
+            tool.extract_target(args) if tool.surfaces_destination_id else f"tool:{tool_name}"
         ) or f"tool:{tool_name}"
 
     def _handle_tokens_in_value(self, value: Any, path: str) -> list[tuple[str, UUID]]:

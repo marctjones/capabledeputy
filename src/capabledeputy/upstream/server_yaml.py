@@ -143,15 +143,11 @@ class ServerYamlConfig:
             raise ServerYamlError(f"{filename}: stdio server requires `command`")
         if transport == "streamable_http" and not url:
             raise ServerYamlError(f"{filename}: HTTP server requires `url`")
-        inherent_tags = _parse_label_state(
-            raw.get("inherent_tags", raw.get("inherent_labels", {}))
-        )
+        inherent_tags = _parse_label_state(raw.get("inherent_tags", raw.get("inherent_labels", {})))
         env_raw = raw.get("env") or {}
         env = {str(k): expand_env_value(str(v)) for k, v in env_raw.items()}
         isolation = _parse_isolation(raw.get("isolation"))
-        headers = {
-            str(k): expand_env_value(str(v)) for k, v in (raw.get("headers") or {}).items()
-        }
+        headers = {str(k): expand_env_value(str(v)) for k, v in (raw.get("headers") or {}).items()}
         auth = _parse_auth(raw.get("auth"))
 
         # Tool mappings — accept both the new short form (tool_mappings:

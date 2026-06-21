@@ -21,7 +21,11 @@ def _cap_pairs(purpose_id: str) -> set[tuple[CapabilityKind, str]]:
     purposes = load_purposes(_PRESET / "purposes.yaml")
     purpose = purposes.get(purpose_id)
     assert purpose is not None
-    return {(cap.kind, cap.pattern) for cap in purpose.default_capabilities}
+    pairs: set[tuple[CapabilityKind, str]] = set()
+    for cap in purpose.default_capabilities:
+        assert isinstance(cap.kind, CapabilityKind)
+        pairs.add((cap.kind, cap.pattern))
+    return pairs
 
 
 def test_personal_assistant_daemon_uses_official_google_and_macos_servers() -> None:
