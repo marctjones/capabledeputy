@@ -79,6 +79,31 @@ explicit support decision for CLI, TUI, Swift GUI, and MCP-control.
 - MCP-control exposes automation-safe daemon operations as MCP tools while
   routing dangerous work through daemon policy and approvals.
 
+## Next Focus — v0.28.0 Onguard Clients + Daemon Coordination
+
+Goal: make headless background work extensible without making the daemon a
+giant application server. Onguard clients are normal daemon clients that claim
+approved schedules/queues, while the daemon owns identity, origin metadata,
+shared config, queues, events/results, schedules, labels, provenance, audit,
+and policy enforcement.
+
+### v0.28.0 onguard scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #92 | EPIC: Onguard clients and daemon coordination substrate | Planned |
+| #93 | Structured origin metadata for sessions, policy, audit, and Starlark | Planned |
+| #94 | Daemon client registry for onguard client identity and admission | Planned |
+| #95 | Daemon-owned client config store with proposal and approval states | Planned |
+| #96 | Daemon client command queue with leases, labels, and provenance | Planned |
+| #97 | Daemon client events/results and artifact store for background work | Planned |
+| #98 | Daemon scheduler contracts with recurrence, leases, and run history | Planned |
+| #99 | Onguard policy and Starlark starter rules | Planned |
+| #100 | Onguard client runtime and CLI runner | Planned |
+| #101 | Daily newspaper digest onguard client and interest profile | Planned |
+| #102 | Client parity for schedules, queues, config, events, and artifacts | Planned |
+| #103 | Onguard security demos and violation tests | Planned |
+
 ## Previous Focus — v0.25.0 MCP Compatibility + Security Integration
 
 Goal: make MCP a well-specified integration substrate for CapDep without

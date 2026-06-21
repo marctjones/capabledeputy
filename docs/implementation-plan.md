@@ -6,6 +6,7 @@ the *sequencing rationale*. Last refreshed 2026-06-21 after v0.26 client
 parity closed and v0.27 practical setup started.
 
 Milestones (GitHub): **v0.27.0** Practical setup + daemon-owned settings ·
+**v0.28.0** Onguard clients + daemon coordination ·
 **v0.25.0** MCP compatibility and security integration ·
 **v0.16** Policy expressiveness & labeling · **v0.17** Gap hardening &
 explainability · **v0.5** UX EPIC · **Backlog** Substrate breadth & formal
@@ -134,6 +135,54 @@ macOS + Google Workspace assistant usable without CLI/YAML handholding.
 - Background workflows such as the daily newspaper run as ordinary onguard
   clients and cannot bypass daemon policy, labels, approvals, provenance, or
   audit.
+
+---
+
+## v0.28.0 — Onguard clients + daemon coordination
+
+This milestone turns the documented onguard-client architecture into an
+implementation substrate. Onguard clients are ordinary headless daemon clients:
+they orchestrate background work, but the daemon owns identity, origin,
+schedules, queues, shared config, events/results, labels, provenance, audit,
+approval, and tool dispatch.
+
+### Scope
+
+- **#92** EPIC: Onguard clients and daemon coordination substrate.
+- **#93** structured origin metadata for sessions, policy, audit, and
+  Starlark.
+- **#94** daemon client registry for onguard client identity and admission.
+- **#95** daemon-owned client config store with proposal and approval states.
+- **#96** daemon client command queue with leases, labels, and provenance.
+- **#97** daemon client events/results and artifact store for background work.
+- **#98** daemon scheduler contracts with recurrence, leases, and run history.
+- **#99** onguard policy and Starlark starter rules.
+- **#100** onguard client runtime and CLI runner.
+- **#101** daily newspaper digest onguard client and interest profile.
+- **#102** client parity for schedules, queues, config, events, and artifacts.
+- **#103** onguard security demos and violation tests.
+
+### Sequencing
+
+1. Add structured origin metadata first, because policy/Starlark and audit need
+   to distinguish scheduled/queued/headless work from human foreground work.
+2. Add daemon-owned registry/config/queue/event/artifact stores before building
+   the worker runtime, so clients do not invent private coordination paths.
+3. Add schedule leases and run history before any recurring job runs.
+4. Add policy/Starlark starter rules before enabling useful background work.
+5. Build the reusable onguard runtime and then the daily newspaper client.
+6. Add client parity and violation demos before closing the milestone.
+
+### Done-when
+
+- Onguard clients can run scheduled or queued work without direct tool,
+  credential, or trusted-state access.
+- AI-proposed schedules/config changes are drafts until approved.
+- Queue items, events, artifacts, and digest outputs carry labels,
+  provenance, actor identity, timestamps, and audit ids.
+- Policy/Starlark can express general onguard rules and client-specific rules.
+- The daily newspaper demo succeeds for allowed sources and blocks prompt
+  injection, profile poisoning, sensitive egress, and unauthorized publication.
 
 ---
 
