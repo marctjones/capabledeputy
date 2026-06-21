@@ -174,8 +174,7 @@ def google_oauth_status(
 def google_oauth_statuses(config_home: Path | None = None) -> dict[str, Any]:
     return {
         "services": [
-            google_oauth_status(service_id, config_home)
-            for service_id in GOOGLE_OAUTH_SERVICES
+            google_oauth_status(service_id, config_home) for service_id in GOOGLE_OAUTH_SERVICES
         ],
     }
 
