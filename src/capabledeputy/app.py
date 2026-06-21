@@ -9,6 +9,7 @@ from uuid import UUID
 from capabledeputy.approval.queue import ApprovalQueue
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.client import LLMClient
+from capabledeputy.onguard import OnguardStore
 from capabledeputy.paths import default_audit_log_path, default_state_db_path
 from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.purposes import Purposes
@@ -51,6 +52,7 @@ class App:
         resolved_state_db_path = state_db_path or default_state_db_path()
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(resolved_state_db_path)
+        self.onguard = OnguardStore(resolved_state_db_path)
         # Resolve quarantined LLM first so we can signal availability
         # to SessionGraph. Falls back to the main llm_client when no
         # separate quarantined client was provided — the same model
@@ -186,6 +188,7 @@ class App:
 
     async def startup(self) -> None:
         await self.store.initialize()
+        await self.onguard.initialize()
         await self.graph.load()
         self._maybe_start_devbox_reaper()
 

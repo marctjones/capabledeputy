@@ -219,6 +219,34 @@ async def test_revoked_audit_ids_survives_reload(store_path: Path) -> None:
     assert loaded == s
 
 
+async def test_origin_metadata_survives_store_reload(store_path: Path) -> None:
+    store = SessionStore(store_path)
+    s = Session.new(
+        owner="scheduler",
+        origin={
+            "kind": "onguard",
+            "client_id": "onguard.digest.daily",
+            "schedule_id": "daily-news",
+            "command_id": "cmd-1",
+            "proposed_by": "ai",
+            "approved_by": "marc",
+            "metadata": {"surface": "background"},
+        },
+    )
+    await store.upsert(s)
+
+    loaded = await store.get(s.id)
+
+    assert loaded is not None
+    assert loaded.origin.kind == "onguard"
+    assert loaded.origin.client_id == "onguard.digest.daily"
+    assert loaded.origin.schedule_id == "daily-news"
+    assert loaded.origin.command_id == "cmd-1"
+    assert loaded.origin.proposed_by == "ai"
+    assert loaded.origin.approved_by == "marc"
+    assert loaded.origin.metadata == {"surface": "background"}
+
+
 async def test_legacy_session_dict_without_revoked_set(store_path: Path) -> None:
     s = Session.new(intent="legacy")
     d = s.to_dict()

@@ -7,7 +7,8 @@ maps this roadmap onto GitHub issues and dependencies. The older
 historical backlog snapshots, not the current roadmap.
 
 **Last refreshed:** 2026-06-21, after landing the main v0.27 practical setup
-slice and opening the v0.28 onguard-client substrate.
+slice, opening the v0.28 onguard-client substrate, and adding the MCP/client
+test/security-context hardening milestones.
 
 ## Current Focus — v0.27.0 Practical Setup + Daemon-Owned Settings
 
@@ -93,13 +94,13 @@ and policy enforcement.
 
 | Issue | Work | Status |
 |---|---|---|
-| #92 | EPIC: Onguard clients and daemon coordination substrate | Planned |
-| #93 | Structured origin metadata for sessions, policy, audit, and Starlark | Planned |
-| #94 | Daemon client registry for onguard client identity and admission | Planned |
-| #95 | Daemon-owned client config store with proposal and approval states | Planned |
-| #96 | Daemon client command queue with leases, labels, and provenance | Planned |
-| #97 | Daemon client events/results and artifact store for background work | Planned |
-| #98 | Daemon scheduler contracts with recurrence, leases, and run history | Planned |
+| #92 | EPIC: Onguard clients and daemon coordination substrate | In progress |
+| #93 | Structured origin metadata for sessions, policy, audit, and Starlark | Implemented locally |
+| #94 | Daemon client registry for onguard client identity and admission | Implemented locally |
+| #95 | Daemon-owned client config store with proposal and approval states | Implemented locally |
+| #96 | Daemon client command queue with leases, labels, and provenance | Implemented locally |
+| #97 | Daemon client events/results and artifact store for background work | Partial: events/results implemented; artifact store remains |
+| #98 | Daemon scheduler contracts with recurrence, leases, and run history | Partial: schedule records implemented; recurrence/leases/run history remain |
 | #99 | Onguard policy and Starlark starter rules | Planned |
 | #100 | Onguard client runtime and CLI runner | Planned |
 | #101 | Daily newspaper digest onguard client and interest profile | Planned |
@@ -114,6 +115,93 @@ and policy enforcement.
 | #110 | Local desktop automation monitor onguard client | Planned |
 | #111 | Finance document guard onguard client | Planned |
 | #112 | Deterministic onguard approval/denial clients and examples | Planned |
+
+## Follow-On Focus — v0.29.0 MCP Security Conformance + External Server Labeling
+
+Goal: turn the current targeted MCP tests into a comprehensive conformance
+suite proving that MCP cannot become a second authority path. This is
+prioritized after the onguard substrate because onguard clients will rely on
+external MCP servers, resources, prompts, and control surfaces.
+
+### v0.29.0 MCP conformance scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #113 | EPIC: MCP security conformance and external server labeling | Planned |
+| #114 | Reusable MCP conformance fixture harness | Planned |
+| #115 | Session-bound MCP multi-turn labels, approvals, provenance, and audit | Planned |
+| #116 | Upstream MCP tool classification, target extraction, and fail-closed labeling | Planned |
+| #117 | Upstream MCP resources and prompts as labeled inputs | Planned |
+| #118 | MCP-control and admin MCP separation, authority boundaries, and audit | Planned |
+| #119 | Opt-in real MCP server smoke matrix for common external servers | Planned |
+
+### v0.29.0 done-when
+
+- Fake malicious/ambiguous MCP servers cannot register unsafe tools or content
+  without fail-closed classification.
+- Upstream MCP tool/resource/prompt content carries labels and provenance into
+  the session before later tool calls.
+- MCP-control and admin MCP remain client surfaces that forward daemon RPCs;
+  they do not mutate authority outside daemon policy, approvals, provenance, or
+  audit.
+- Optional real-server smoke tests cover common external MCP integrations
+  without making deterministic CI depend on network services.
+
+## Follow-On Focus — v0.30.0 Client Integration Test Parity
+
+Goal: move client parity from source/manifest checks to live daemon integration
+tests. Parity still means explicit support decisions per client, not blindly
+exposing every RPC everywhere.
+
+### v0.30.0 client integration scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #120 | EPIC: Client integration test parity across CLI, TUI, Swift GUI, and MCP-control | Planned |
+| #121 | Shared daemon integration fixtures for client parity tests | Planned |
+| #122 | CLI live-daemon integration tests for core operator workflows | Planned |
+| #123 | TUI live-daemon integration and regression tests | Planned |
+| #124 | Swift GUI daemon-contract and UI action tests | Planned |
+| #125 | MCP-control live-daemon integration tests | Planned |
+| #126 | CI test tiers for client and MCP coverage | Planned |
+
+### v0.30.0 done-when
+
+- Every implemented client path has at least one automated test proving it calls
+  daemon contracts rather than duplicating safety logic.
+- CLI, TUI, Swift GUI, and MCP-control tests share daemon fixtures where
+  possible.
+- CI distinguishes deterministic, live-daemon, macOS GUI-sensitive, and
+  external/network MCP test tiers.
+
+## Follow-On Focus — v0.31.0 Multi-Session Security Context Observability
+
+Goal: make multi-turn safety inspectable. A user or external controller should
+be able to ask what security models, flow patterns, labels, external MCP
+servers, tools, onguard clients, approvals, policy rules, and provenance are
+active in a session and why a decision was made.
+
+### v0.31.0 security context scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #127 | EPIC: Multi-session security context and external actor observability | Planned |
+| #128 | Daemon `session.security_context` model and RPCs | Planned |
+| #129 | Session security event ledger and provenance index across turns | Planned |
+| #130 | Policy and Starlark context with actor, flow, and external-tool metadata | Planned |
+| #131 | Expose session security context across all clients | Planned |
+| #132 | Multi-session external-actor regression tests for security context | Planned |
+
+### v0.31.0 done-when
+
+- The daemon can produce a stable security-context JSON view for each session.
+- The view explains labels, capabilities, flow pattern, policy/Starlark rules,
+  external MCP servers/tools/resources, onguard origins, approvals, provenance,
+  and audit evidence.
+- CLI, TUI, Swift GUI, and MCP-control render the daemon view instead of
+  reconstructing security state independently.
+- Regression tests cover multiple sessions, external MCP input, onguard queued
+  work, delayed approvals, approval timeouts, and blocked egress.
 
 ## Previous Focus — v0.25.0 MCP Compatibility + Security Integration
 

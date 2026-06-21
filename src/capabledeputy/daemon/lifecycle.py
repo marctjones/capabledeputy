@@ -21,13 +21,14 @@ from capabledeputy.daemon.extract_handlers import make_extract_handlers
 from capabledeputy.daemon.gui_handlers import make_gui_handlers
 from capabledeputy.daemon.handlers import default_handlers
 from capabledeputy.daemon.memory_handlers import make_memory_handlers
+from capabledeputy.daemon.onguard_handlers import make_onguard_handlers
 from capabledeputy.daemon.pattern_handlers import make_pattern_handlers
 from capabledeputy.daemon.policy_handlers import make_policy_handlers
 from capabledeputy.daemon.programmatic_handlers import make_programmatic_handlers
 from capabledeputy.daemon.relationship_handlers import make_relationship_handlers
 from capabledeputy.daemon.server import Daemon
-from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
 from capabledeputy.daemon.session_handlers import make_session_handlers
+from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
 from capabledeputy.daemon.tool_handlers import make_tool_handlers
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
@@ -562,6 +563,7 @@ async def run_daemon(
     handlers.update(make_programmatic_handlers(app))
     handlers.update(make_bundle_handlers(app))
     handlers.update(make_gui_handlers(app))
+    handlers.update(make_onguard_handlers(app))
     handlers.update(
         make_setup_control_handlers(
             app,

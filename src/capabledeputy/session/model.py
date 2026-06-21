@@ -50,6 +50,49 @@ class EnforcementMode(StrEnum):
     SHADOW = "shadow"
 
 
+@dataclass(frozen=True)
+class OriginMetadata:
+    """Structured actor metadata for multi-client and onguard sessions.
+
+    The daemon stores this on the session so policy/Starlark/audit can reason
+    about whether work came from a foreground human, MCP-control host, upstream
+    MCP bridge, scheduled onguard client, queued worker, or system-internal
+    maintenance path.
+    """
+
+    kind: str = "human_interactive"
+    client_id: str | None = None
+    schedule_id: str | None = None
+    command_id: str | None = None
+    proposed_by: str | None = None
+    approved_by: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "client_id": self.client_id,
+            "schedule_id": self.schedule_id,
+            "command_id": self.command_id,
+            "proposed_by": self.proposed_by,
+            "approved_by": self.approved_by,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any] | None) -> Self:
+        raw = d or {}
+        return cls(
+            kind=str(raw.get("kind") or "human_interactive"),
+            client_id=raw.get("client_id"),
+            schedule_id=raw.get("schedule_id"),
+            command_id=raw.get("command_id"),
+            proposed_by=raw.get("proposed_by"),
+            approved_by=raw.get("approved_by"),
+            metadata=dict(raw.get("metadata") or {}),
+        )
+
+
 _TERMINAL_STATUSES: frozenset[SessionStatus] = frozenset(
     {SessionStatus.DONE, SessionStatus.ABORTED},
 )
@@ -156,6 +199,7 @@ class Session:
     # session and every test fixture is preserved. SHADOW is the
     # operator-opt-in mode for new-rule validation.
     enforcement_mode: EnforcementMode = EnforcementMode.STRICT
+    origin: OriginMetadata = field(default_factory=OriginMetadata)
     # Cookbook §4 #6 — first-action-of-kind prompt. When True, the
     # engine returns SUGGEST instead of ALLOW the FIRST time this
     # session exercises any promptable capability kind (sends,
@@ -190,8 +234,12 @@ class Session:
         effective_isolation_region_id: str | None = None,
         clearance_profile_id: str | None = None,
         first_use_prompt_enabled: bool = False,
+        origin: OriginMetadata | dict[str, Any] | None = None,
     ) -> Self:
         now = _utcnow()
+        origin_metadata = (
+            origin if isinstance(origin, OriginMetadata) else OriginMetadata.from_dict(origin)
+        )
         return cls(
             id=uuid4(),
             parent=parent,
@@ -216,6 +264,7 @@ class Session:
             effective_isolation_region_id=effective_isolation_region_id,
             clearance_profile_id=clearance_profile_id,
             first_use_prompt_enabled=first_use_prompt_enabled,
+            origin=origin_metadata,
         )
 
     @property
@@ -258,6 +307,7 @@ class Session:
             "clearance_profile_id": self.clearance_profile_id,
             "enforcement_mode": self.enforcement_mode.value,
             "first_use_prompt_enabled": self.first_use_prompt_enabled,
+            "origin": self.origin.to_dict(),
         }
 
     @classmethod
@@ -301,4 +351,5 @@ class Session:
             first_use_prompt_enabled=bool(
                 d.get("first_use_prompt_enabled", False),
             ),
+            origin=OriginMetadata.from_dict(d.get("origin")),
         )

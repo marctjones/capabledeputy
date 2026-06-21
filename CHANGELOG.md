@@ -68,6 +68,26 @@ breaking changes).
   without reading config files directly.
 - Wired CapDepMac settings toggles and Advanced diagnostics to daemon RPCs
   instead of local constants.
+
+### Onguard coordination substrate
+
+- Added persisted structured session origin metadata so human, queued,
+  scheduled, and headless-client work can be distinguished in sessions and
+  audit payloads.
+- Added daemon-owned onguard registry, config, command queue, event/result, and
+  schedule RPCs backed by the shared SQLite state database.
+- Added onguard audit events and regression tests for durable client
+  registration, config proposal/approval, queued command claiming/completion,
+  event publication, schedule creation, and session-origin persistence.
+
+### Testing
+
+- Added an independent coverage ratchet for daemon groups, clients, MCP
+  surfaces, bundled MCP servers, and native tools, with checked-in per-group
+  floors and 85% near-term / 90% stretch targets.
+- CI now writes `coverage.json` during pytest and runs the coverage ratchet so
+  each surface can improve independently without hiding regressions in a
+  repository-wide aggregate.
 - Exposed settings and config diagnostics through CLI and MCP-control surfaces.
 - Added daemon-owned setup remediation descriptors, connector status, runtime
   automation pause/screen-control request state, and source-binding edit/preview

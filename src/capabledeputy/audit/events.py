@@ -116,6 +116,13 @@ class EventType(StrEnum):
     APPROVAL_DEFERRED = "approval.deferred"
     APPROVAL_EXPIRED = "approval.expired"
     SETUP_CHANGED = "setup.changed"
+    ONGUARD_CLIENT_REGISTERED = "onguard.client_registered"
+    ONGUARD_CONFIG_CHANGED = "onguard.config_changed"
+    ONGUARD_COMMAND_QUEUED = "onguard.command_queued"
+    ONGUARD_COMMAND_CLAIMED = "onguard.command_claimed"
+    ONGUARD_COMMAND_FINISHED = "onguard.command_finished"
+    ONGUARD_EVENT_PUBLISHED = "onguard.event_published"
+    ONGUARD_SCHEDULE_CHANGED = "onguard.schedule_changed"
 
 
 def _utcnow() -> datetime:

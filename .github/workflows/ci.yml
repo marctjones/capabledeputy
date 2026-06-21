@@ -39,6 +39,9 @@ jobs:
       - name: Test (pytest)
         run: uv run pytest --cov-report=xml
 
+      - name: Coverage ratchet
+        run: uv run python scripts/coverage_ratchet.py
+
       - name: Upload coverage
         if: matrix.python-version == '3.14'
         uses: actions/upload-artifact@v4

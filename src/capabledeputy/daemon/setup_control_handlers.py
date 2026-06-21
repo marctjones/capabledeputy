@@ -25,6 +25,8 @@ from capabledeputy.policy.bindings import (
     SourceLocationLabelBinding,
     WriteDiscipline,
     canonicalize,
+)
+from capabledeputy.policy.bindings import (
     load as load_bindings,
 )
 from capabledeputy.policy.reversibility import MutabilityLabel, ReversibilityLabel
@@ -355,8 +357,7 @@ def _generic_google_connector(
             "Upstream MCP server is loaded."
             if loaded
             else (
-                "Use daemon config / servers.d setup; first-class OAuth form "
-                "is not configured yet."
+                "Use daemon config / servers.d setup; first-class OAuth form is not configured yet."
             )
         ),
         "actions": [

@@ -3,10 +3,14 @@
 Living plan that organizes the open GitHub issues into sequenced
 milestones with dependencies. Authoritative status is GitHub; this doc is
 the *sequencing rationale*. Last refreshed 2026-06-21 after v0.26 client
-parity closed and v0.27 practical setup started.
+parity closed, v0.27 practical setup started, and the MCP/client
+test/security-context hardening milestones were opened.
 
 Milestones (GitHub): **v0.27.0** Practical setup + daemon-owned settings ·
 **v0.28.0** Onguard clients + daemon coordination ·
+**v0.29.0** MCP security conformance + external server labeling ·
+**v0.30.0** Client integration test parity ·
+**v0.31.0** Multi-session security context observability ·
 **v0.25.0** MCP compatibility and security integration ·
 **v0.16** Policy expressiveness & labeling · **v0.17** Gap hardening &
 explainability · **v0.5** UX EPIC · **Backlog** Substrate breadth & formal
@@ -18,12 +22,25 @@ dependencies, and why the next pull should focus on one milestone over another.
 Three themes currently drive priority:
 1. **Practical setup** — CapDepMac must let a user configure real connectors
    without hand-editing YAML. This is the active v0.27 product track.
-2. **MCP security integration** — MCP must remain an integration substrate, not
-   a second authority path. The v0.25 track is shipped; future work should keep
-   that posture.
-3. **Decision fatigue** — coarse policy → rubber-stamping → eroded human
+2. **Onguard extensibility** — background clients should be normal daemon
+   clients, not privileged sidecars or daemon-embedded product workflows.
+3. **MCP security integration** — MCP must remain an integration substrate, not
+   a second authority path. v0.29 turns the current targeted tests into a
+   security conformance suite before CapDep relies heavily on external MCP
+   servers and headless clients.
+4. **Client proof, not just parity claims** — v0.30 replaces source/manifest
+   checks with live daemon integration coverage for CLI, TUI, Swift GUI, and
+   MCP-control.
+   Coverage is ratcheted independently for daemon files, clients, MCP
+   surfaces, bundled MCP servers, and tools; the near-term target is 85% per
+   group and the stretch target is 90%, but CI first enforces non-regression
+   from the checked-in baseline.
+5. **Multi-session explainability** — v0.31 makes labels, flow patterns,
+   external actors, approvals, policy rules, provenance, and audit inspectable
+   across turns and clients.
+6. **Decision fatigue** — coarse policy → rubber-stamping → eroded human
    oversight. Fixed by the decision-refinement layer (EPIC #41).
-4. **The labeling oracle** — IFC guarantees ride on correct labels. Fixed
+7. **The labeling oracle** — IFC guarantees ride on correct labels. Fixed
    by broadening label coverage (EPIC #42).
 
 The policy themes come from `docs/security-alignment-assessment.md`:
@@ -34,6 +51,7 @@ The policy themes come from `docs/security-alignment-assessment.md`:
 
 | # | What | Milestone |
 |---|---|---|
+| #113-#132 | New tracker plan for MCP conformance, client integration test parity, and multi-session security context observability | v0.29.0-v0.31.0 |
 | #77-#83 | MCP compatibility/security milestone: output schemas, daemon approval elicitation, upstream resource label propagation, admin separation, and ARD scope docs | v0.25.0 |
 | #84/#85/#88-#91 | Client parity over daemon RPC: CLI/TUI/Swift/MCP-control parity contract, tests, and surface implementations | v0.26.0 |
 | #72 | Gmail MCP OAuth setup slice: daemon-owned client storage, generated server config, browser OAuth RPC, CapDepMac Accounts UI | v0.24.0 |
@@ -184,6 +202,18 @@ approval, and tool dispatch.
 5. Build the reusable onguard runtime and then the daily newspaper client.
 6. Add client parity and violation demos before closing the milestone.
 
+### Current implementation status
+
+- Structured session origin metadata is persisted and included in session
+  creation audit payloads.
+- The daemon now exposes onguard registry, config, command queue,
+  events/results, and schedule RPCs backed by the shared SQLite state DB.
+- The client parity manifest explicitly marks the new onguard coordination RPCs
+  as intentionally omitted until #102 wires the clients.
+- Remaining substrate gaps are artifact storage, schedule recurrence/leases/run
+  history, policy/Starlark starter rules, the reusable onguard runtime, and
+  violation demos.
+
 ### Done-when
 
 - Onguard clients can run scheduled or queued work without direct tool,
@@ -194,6 +224,122 @@ approval, and tool dispatch.
 - Policy/Starlark can express general onguard rules and client-specific rules.
 - The daily newspaper demo succeeds for allowed sources and blocks prompt
   injection, profile poisoning, sensitive egress, and unauthorized publication.
+
+---
+
+## v0.29.0 — MCP security conformance + external server labeling
+
+This milestone hardens the MCP boundary before CapDep depends on many external
+MCP servers and background clients. The current implementation has useful
+targeted tests; this milestone adds adversarial conformance coverage.
+
+### Scope
+
+- **#113** EPIC: MCP security conformance and external server labeling.
+- **#114** reusable fake-server fixture harness for deterministic conformance
+  tests.
+- **#115** session-bound MCP multi-turn labels, approvals, provenance, and
+  audit.
+- **#116** upstream MCP classification, target extraction, disabled-kind, and
+  fail-closed labeling tests.
+- **#117** upstream MCP resources and prompts as labeled inputs.
+- **#118** MCP-control/admin separation, authority boundaries, and audit.
+- **#119** opt-in real MCP server smoke matrix for common external servers.
+
+### Sequencing
+
+1. Build the reusable harness first; all later tests should reuse it.
+2. Lock down session-bound MCP, because it is the direct LLM-host surface.
+3. Lock down upstream tool classification and label floors before resources and
+   prompts.
+4. Prove admin/control surfaces are not alternate authority paths.
+5. Add opt-in real-server smoke tests only after deterministic coverage exists.
+
+### Done-when
+
+- A fake malicious MCP server cannot bypass registration, labels, policy,
+  approvals, provenance, or audit.
+- External MCP tool/resource/prompt content raises session labels before later
+  egress decisions.
+- Real-server smoke tests are useful locally but not required for deterministic
+  CI.
+
+---
+
+## v0.30.0 — Client integration test parity
+
+This milestone converts client parity from a manifest/source assertion into
+live daemon integration coverage. The daemon remains the safety owner; clients
+only present or invoke daemon contracts.
+
+### Scope
+
+- **#120** EPIC: Client integration test parity across CLI, TUI, Swift GUI, and
+  MCP-control.
+- **#121** shared daemon integration fixtures.
+- **#122** CLI live-daemon integration tests.
+- **#123** TUI live-daemon integration and regression tests.
+- **#124** Swift GUI daemon-contract and UI action tests.
+- **#125** MCP-control live-daemon integration tests.
+- **#126** documented and enforced CI test tiers.
+
+### Sequencing
+
+1. Build shared daemon fixtures before adding per-client tests.
+2. Add CLI and MCP-control integration tests first because they are easiest to
+   automate and cover broad daemon surface area.
+3. Add TUI and Swift model/action tests with limited brittle UI automation.
+4. Document deterministic, integration, macOS-sensitive, and external-server
+   test tiers before closing.
+
+### Done-when
+
+- Every implemented client path has an automated test proving it calls the
+  daemon contract.
+- Each intentional omission remains explicit in `docs/client-parity.json`.
+- CI failures identify whether a regression is daemon contract, client routing,
+  GUI-sensitive, or external-server related.
+
+---
+
+## v0.31.0 — Multi-session security context observability
+
+This milestone makes CapDep's safety state inspectable across multi-turn,
+multi-client workflows. It is the answer to: which security model, flow
+pattern, labels, tools, external MCP servers, onguard clients, approvals,
+policy rules, and provenance are active in this session?
+
+### Scope
+
+- **#127** EPIC: Multi-session security context and external actor
+  observability.
+- **#128** daemon `session.security_context` model and RPCs.
+- **#129** session security event ledger and provenance index across turns.
+- **#130** policy/Starlark context with actor, flow, and external-tool
+  metadata.
+- **#131** client exposure for CLI, TUI, Swift GUI, and MCP-control.
+- **#132** multi-session external-actor regression tests.
+
+### Sequencing
+
+1. Define the daemon security-context JSON model and RPC.
+2. Add the ledger/provenance index needed to populate it without client-side
+   inference.
+3. Extend policy/Starlark context so decisions can use the same structured
+   actor and flow metadata shown to users.
+4. Expose the daemon view across clients.
+5. Add multi-session regression tests that compare security context,
+   provenance, audit, and final policy decisions.
+
+### Done-when
+
+- A user can inspect why a session is allowed, blocked, or waiting for
+  approval.
+- The answer includes labels, flow pattern, policy/Starlark rules, external
+  MCP servers/tools/resources, onguard origins, approvals, provenance, and
+  audit evidence.
+- Clients render daemon state rather than reconstructing safety context
+  independently.
 
 ---
 

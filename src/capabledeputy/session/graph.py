@@ -32,7 +32,7 @@ from capabledeputy.policy.purposes import (
     categories_of_capability,
 )
 from capabledeputy.provenance import ProvenanceRecorder, capability_node_id
-from capabledeputy.session.model import Session, SessionStatus, Turn
+from capabledeputy.session.model import OriginMetadata, Session, SessionStatus, Turn
 from capabledeputy.session.store import SessionStore
 
 
@@ -186,6 +186,7 @@ class SessionGraph:
         purpose_handle: str = UNSET_PURPOSE_HANDLE,
         candidate_capability_categories: frozenset[str] | None = None,
         restricted_tier_modes_available: tuple[bool, bool] | None = None,
+        origin: OriginMetadata | dict[str, Any] | None = None,
     ) -> Session:
         """Spawn a new session.
 
@@ -287,6 +288,7 @@ class SessionGraph:
             capability_set=default_caps,
             risk_preference_at_spawn=risk_preference_at_spawn,
             first_use_prompt_enabled=first_use_prompt_enabled,
+            origin=origin,
         )
         await self._save(session)
         self._sessions[session.id] = session
@@ -298,6 +300,7 @@ class SessionGraph:
             tool_aliasing=tool_aliasing or None,
             prefer_programmatic=prefer_programmatic or None,
             purpose_handle=(purpose_handle if purpose_handle != UNSET_PURPOSE_HANDLE else None),
+            origin=session.origin.to_dict(),
         )
         # Audit the auto-granted caps individually so the trace shows
         # what the session is born with — same shape as explicit
@@ -348,6 +351,7 @@ class SessionGraph:
             declassification_log=parent.declassification_log,
             purpose_handle=parent.purpose_handle,
             risk_preference_at_spawn=parent.risk_preference_at_spawn,
+            origin=parent.origin,
         )
         await self._save(child)
         self._sessions[child.id] = child

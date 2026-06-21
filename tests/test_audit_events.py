@@ -66,6 +66,8 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         "credential",
         # Daemon-owned setup/configuration changes.
         "setup",
+        # Headless onguard client substrate.
+        "onguard",
     }
     for et in EventType:
         head, sep, _ = et.value.partition(".")
@@ -139,6 +141,14 @@ def test_event_type_taxonomy_matches_design() -> None:
         "credential.injected",
         # Daemon-owned setup/configuration changes.
         "setup.changed",
+        # Headless onguard client substrate.
+        "onguard.client_registered",
+        "onguard.config_changed",
+        "onguard.command_queued",
+        "onguard.command_claimed",
+        "onguard.command_finished",
+        "onguard.event_published",
+        "onguard.schedule_changed",
     }
     actual = {et.value for et in EventType}
     assert actual == expected, f"missing: {expected - actual}, extra: {actual - expected}"

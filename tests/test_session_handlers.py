@@ -30,6 +30,24 @@ async def test_session_new_accepts_purpose_handle(graph: SessionGraph) -> None:
     assert result["purpose_handle"] == "inbox"
 
 
+async def test_session_new_accepts_structured_origin(graph: SessionGraph) -> None:
+    handlers = make_session_handlers(graph)
+    result = await handlers["session.new"](
+        {
+            "intent": "daily digest",
+            "origin": {
+                "kind": "onguard",
+                "client_id": "onguard.digest.daily",
+                "schedule_id": "daily-news",
+                "proposed_by": "human",
+            },
+        }
+    )
+    assert result["origin"]["kind"] == "onguard"
+    assert result["origin"]["client_id"] == "onguard.digest.daily"
+    assert result["origin"]["schedule_id"] == "daily-news"
+
+
 async def test_session_list_returns_all_when_no_filter(graph: SessionGraph) -> None:
     handlers = make_session_handlers(graph)
     a = await handlers["session.new"]({})

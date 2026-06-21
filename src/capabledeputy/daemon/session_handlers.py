@@ -35,6 +35,7 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
             tool_aliasing=bool(params.get("tool_aliasing", False)),
             prefer_programmatic=bool(params.get("prefer_programmatic", False)),
             parent=parent,
+            origin=params.get("origin"),
         )
         return s.to_dict()
 

@@ -7,8 +7,8 @@ import pytest
 from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
-from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
 from capabledeputy.daemon.settings_store import update_settings
+from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
 
 
 @pytest.fixture

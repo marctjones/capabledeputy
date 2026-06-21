@@ -1200,11 +1200,13 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
     if name in {"approval_show", "approval_detail"}:
         return {"id": int(args.get("id") or 0)}
     if name == "approval_approve":
-        return {
+        params = {
             "id": int(args.get("id") or 0),
             "decided_by": str(args.get("decided_by") or "mcp-control"),
-            "strong_auth": str(args.get("strong_auth") or ""),
         }
+        if args.get("strong_auth"):
+            params["strong_auth"] = str(args["strong_auth"])
+        return params
     if name in {"approval_deny", "approval_defer"}:
         params = {
             "id": int(args.get("id") or 0),
@@ -1214,11 +1216,13 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
             params["reason"] = str(args["reason"])
         return params
     if name == "approval_approve_group":
-        return {
+        params = {
             "group_id": str(args.get("group_id") or ""),
             "decided_by": str(args.get("decided_by") or "mcp-control"),
-            "strong_auth": str(args.get("strong_auth") or ""),
         }
+        if args.get("strong_auth"):
+            params["strong_auth"] = str(args["strong_auth"])
+        return params
     if name.startswith("approval_pattern_"):
         return dict(args)
     if name.startswith("override_"):

@@ -114,6 +114,7 @@ addopts = [
     "--strict-config",
     "--cov=capabledeputy",
     "--cov-report=term-missing",
+    "--cov-report=json:coverage.json",
 ]
 asyncio_mode = "auto"
 markers = [

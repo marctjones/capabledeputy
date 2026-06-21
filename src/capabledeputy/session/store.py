@@ -19,7 +19,7 @@ from anyio.to_thread import run_sync as run_in_thread
 
 from capabledeputy.session.model import Session
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     enforcement_mode TEXT NOT NULL DEFAULT 'strict',
     -- Cookbook §4 #6 — first-action-of-kind prompt.
     first_use_prompt_enabled INTEGER NOT NULL DEFAULT 0,
+    -- v0.28 onguard coordination — structured client/origin metadata.
+    origin TEXT NOT NULL DEFAULT '{}',
     FOREIGN KEY (parent_id) REFERENCES sessions(id)
 );
 
@@ -216,9 +218,9 @@ class SessionStore:
                     label_state, axis_d, purpose_handle,
                     reference_handles, risk_preference_at_spawn,
                     effective_isolation_region_id, enforcement_mode,
-                    first_use_prompt_enabled
+                    first_use_prompt_enabled, origin
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          ?, ?, ?, ?, ?, ?, ?, ?)
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status = excluded.status,
                     intent = excluded.intent,
@@ -239,7 +241,8 @@ class SessionStore:
                     risk_preference_at_spawn = excluded.risk_preference_at_spawn,
                     effective_isolation_region_id = excluded.effective_isolation_region_id,
                     enforcement_mode = excluded.enforcement_mode,
-                    first_use_prompt_enabled = excluded.first_use_prompt_enabled
+                    first_use_prompt_enabled = excluded.first_use_prompt_enabled,
+                    origin = excluded.origin
                 """,
                 (
                     d["id"],
@@ -265,6 +268,7 @@ class SessionStore:
                     d["effective_isolation_region_id"],
                     d.get("enforcement_mode", "strict"),
                     1 if d.get("first_use_prompt_enabled", False) else 0,
+                    json.dumps(d.get("origin", {})),
                 ),
             )
 
@@ -329,5 +333,6 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "effective_isolation_region_id": _col("effective_isolation_region_id", None),
             "enforcement_mode": _col("enforcement_mode", "strict"),
             "first_use_prompt_enabled": bool(_col("first_use_prompt_enabled", 0)),
+            "origin": json.loads(str(_col("origin", "{}"))),
         },
     )

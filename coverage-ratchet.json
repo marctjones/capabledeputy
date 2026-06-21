@@ -1,0 +1,564 @@
+{
+  "groups": {
+    "clients.cli": {
+      "covered": 1601,
+      "files": [
+        "src/capabledeputy/cli/__init__.py",
+        "src/capabledeputy/cli/_managed_config.py",
+        "src/capabledeputy/cli/approval.py",
+        "src/capabledeputy/cli/audit.py",
+        "src/capabledeputy/cli/audit_cmd.py",
+        "src/capabledeputy/cli/chat.py",
+        "src/capabledeputy/cli/completer.py",
+        "src/capabledeputy/cli/init_cmd.py",
+        "src/capabledeputy/cli/main.py",
+        "src/capabledeputy/cli/maintenance.py",
+        "src/capabledeputy/cli/override_cmd.py",
+        "src/capabledeputy/cli/policy.py",
+        "src/capabledeputy/cli/session.py",
+        "src/capabledeputy/cli/terminal_caps.py",
+        "src/capabledeputy/cli/tool.py"
+      ],
+      "min_percent": 37.63,
+      "statements": 4255
+    },
+    "clients.mcp_control": {
+      "covered": 116,
+      "files": [
+        "src/capabledeputy/mcp_server/control.py"
+      ],
+      "min_percent": 69.05,
+      "statements": 168
+    },
+    "clients.tui": {
+      "covered": 451,
+      "files": [
+        "src/capabledeputy/tui/inline/__init__.py",
+        "src/capabledeputy/tui/inline/__main__.py",
+        "src/capabledeputy/tui/inline/app.py",
+        "src/capabledeputy/tui/inline/decision.py",
+        "src/capabledeputy/tui/inline/demo.py",
+        "src/capabledeputy/tui/inline/glyphs.py",
+        "src/capabledeputy/tui/inline/harness.py",
+        "src/capabledeputy/tui/inline/model.py",
+        "src/capabledeputy/tui/inline/render.py",
+        "src/capabledeputy/tui/inline/status.py",
+        "src/capabledeputy/tui/inline/view.py"
+      ],
+      "min_percent": 90.93,
+      "statements": 496
+    },
+    "daemon.all": {
+      "covered": 1481,
+      "files": [
+        "src/capabledeputy/daemon/__init__.py",
+        "src/capabledeputy/daemon/agent_handlers.py",
+        "src/capabledeputy/daemon/approval_handlers.py",
+        "src/capabledeputy/daemon/audit_handlers.py",
+        "src/capabledeputy/daemon/bundle_handlers.py",
+        "src/capabledeputy/daemon/demo_handlers.py",
+        "src/capabledeputy/daemon/devbox_handlers.py",
+        "src/capabledeputy/daemon/extract_handlers.py",
+        "src/capabledeputy/daemon/google_gmail_setup.py",
+        "src/capabledeputy/daemon/gui_handlers.py",
+        "src/capabledeputy/daemon/handlers.py",
+        "src/capabledeputy/daemon/lifecycle.py",
+        "src/capabledeputy/daemon/memory_handlers.py",
+        "src/capabledeputy/daemon/onguard_handlers.py",
+        "src/capabledeputy/daemon/override_handlers.py",
+        "src/capabledeputy/daemon/pattern_handlers.py",
+        "src/capabledeputy/daemon/policy_handlers.py",
+        "src/capabledeputy/daemon/programmatic_handlers.py",
+        "src/capabledeputy/daemon/relationship_handlers.py",
+        "src/capabledeputy/daemon/server.py",
+        "src/capabledeputy/daemon/session_handlers.py",
+        "src/capabledeputy/daemon/settings_handlers.py",
+        "src/capabledeputy/daemon/settings_store.py",
+        "src/capabledeputy/daemon/setup_control_handlers.py",
+        "src/capabledeputy/daemon/tool_handlers.py",
+        "src/capabledeputy/daemon/verbose_log.py"
+      ],
+      "min_percent": 75.72,
+      "statements": 1956
+    },
+    "daemon.file.agent-handlers": {
+      "covered": 40,
+      "files": [
+        "src/capabledeputy/daemon/agent_handlers.py"
+      ],
+      "min_percent": 93.02,
+      "statements": 43
+    },
+    "daemon.file.approval-handlers": {
+      "covered": 91,
+      "files": [
+        "src/capabledeputy/daemon/approval_handlers.py"
+      ],
+      "min_percent": 76.47,
+      "statements": 119
+    },
+    "daemon.file.audit-handlers": {
+      "covered": 28,
+      "files": [
+        "src/capabledeputy/daemon/audit_handlers.py"
+      ],
+      "min_percent": 93.33,
+      "statements": 30
+    },
+    "daemon.file.bundle-handlers": {
+      "covered": 31,
+      "files": [
+        "src/capabledeputy/daemon/bundle_handlers.py"
+      ],
+      "min_percent": 70.45,
+      "statements": 44
+    },
+    "daemon.file.demo-handlers": {
+      "covered": 17,
+      "files": [
+        "src/capabledeputy/daemon/demo_handlers.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 17
+    },
+    "daemon.file.devbox-handlers": {
+      "covered": 38,
+      "files": [
+        "src/capabledeputy/daemon/devbox_handlers.py"
+      ],
+      "min_percent": 90.48,
+      "statements": 42
+    },
+    "daemon.file.extract-handlers": {
+      "covered": 24,
+      "files": [
+        "src/capabledeputy/daemon/extract_handlers.py"
+      ],
+      "min_percent": 88.89,
+      "statements": 27
+    },
+    "daemon.file.google-gmail-setup": {
+      "covered": 68,
+      "files": [
+        "src/capabledeputy/daemon/google_gmail_setup.py"
+      ],
+      "min_percent": 80.0,
+      "statements": 85
+    },
+    "daemon.file.gui-handlers": {
+      "covered": 110,
+      "files": [
+        "src/capabledeputy/daemon/gui_handlers.py"
+      ],
+      "min_percent": 67.9,
+      "statements": 162
+    },
+    "daemon.file.handlers": {
+      "covered": 42,
+      "files": [
+        "src/capabledeputy/daemon/handlers.py"
+      ],
+      "min_percent": 40.0,
+      "statements": 105
+    },
+    "daemon.file.lifecycle": {
+      "covered": 255,
+      "files": [
+        "src/capabledeputy/daemon/lifecycle.py"
+      ],
+      "min_percent": 75.89,
+      "statements": 336
+    },
+    "daemon.file.memory-handlers": {
+      "covered": 13,
+      "files": [
+        "src/capabledeputy/daemon/memory_handlers.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 13
+    },
+    "daemon.file.onguard-handlers": {
+      "covered": 48,
+      "files": [
+        "src/capabledeputy/daemon/onguard_handlers.py"
+      ],
+      "min_percent": 84.21,
+      "statements": 57
+    },
+    "daemon.file.override-handlers": {
+      "covered": 41,
+      "files": [
+        "src/capabledeputy/daemon/override_handlers.py"
+      ],
+      "min_percent": 80.39,
+      "statements": 51
+    },
+    "daemon.file.pattern-handlers": {
+      "covered": 16,
+      "files": [
+        "src/capabledeputy/daemon/pattern_handlers.py"
+      ],
+      "min_percent": 42.11,
+      "statements": 38
+    },
+    "daemon.file.policy-handlers": {
+      "covered": 24,
+      "files": [
+        "src/capabledeputy/daemon/policy_handlers.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 24
+    },
+    "daemon.file.programmatic-handlers": {
+      "covered": 23,
+      "files": [
+        "src/capabledeputy/daemon/programmatic_handlers.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 23
+    },
+    "daemon.file.relationship-handlers": {
+      "covered": 84,
+      "files": [
+        "src/capabledeputy/daemon/relationship_handlers.py"
+      ],
+      "min_percent": 77.06,
+      "statements": 109
+    },
+    "daemon.file.server": {
+      "covered": 106,
+      "files": [
+        "src/capabledeputy/daemon/server.py"
+      ],
+      "min_percent": 72.6,
+      "statements": 146
+    },
+    "daemon.file.session-handlers": {
+      "covered": 49,
+      "files": [
+        "src/capabledeputy/daemon/session_handlers.py"
+      ],
+      "min_percent": 74.24,
+      "statements": 66
+    },
+    "daemon.file.settings-handlers": {
+      "covered": 38,
+      "files": [
+        "src/capabledeputy/daemon/settings_handlers.py"
+      ],
+      "min_percent": 77.55,
+      "statements": 49
+    },
+    "daemon.file.settings-store": {
+      "covered": 65,
+      "files": [
+        "src/capabledeputy/daemon/settings_store.py"
+      ],
+      "min_percent": 94.2,
+      "statements": 69
+    },
+    "daemon.file.setup-control-handlers": {
+      "covered": 143,
+      "files": [
+        "src/capabledeputy/daemon/setup_control_handlers.py"
+      ],
+      "min_percent": 86.14,
+      "statements": 166
+    },
+    "daemon.file.tool-handlers": {
+      "covered": 33,
+      "files": [
+        "src/capabledeputy/daemon/tool_handlers.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 33
+    },
+    "daemon.file.verbose-log": {
+      "covered": 54,
+      "files": [
+        "src/capabledeputy/daemon/verbose_log.py"
+      ],
+      "min_percent": 52.94,
+      "statements": 102
+    },
+    "mcp.admin_server": {
+      "covered": 35,
+      "files": [
+        "src/capabledeputy/mcp_server/admin.py"
+      ],
+      "min_percent": 68.63,
+      "statements": 51
+    },
+    "mcp.resources_prompts": {
+      "covered": 59,
+      "files": [
+        "src/capabledeputy/mcp_server/prompts.py",
+        "src/capabledeputy/mcp_server/resources.py"
+      ],
+      "min_percent": 95.16,
+      "statements": 62
+    },
+    "mcp.session_server": {
+      "covered": 89,
+      "files": [
+        "src/capabledeputy/mcp_server/server.py"
+      ],
+      "min_percent": 66.42,
+      "statements": 134
+    },
+    "mcp_server.bundled.apple-mail": {
+      "covered": 14,
+      "files": [
+        "src/capabledeputy/mcp_servers/apple_mail.py"
+      ],
+      "min_percent": 87.5,
+      "statements": 16
+    },
+    "mcp_server.bundled.applescript": {
+      "covered": 180,
+      "files": [
+        "src/capabledeputy/mcp_servers/applescript.py"
+      ],
+      "min_percent": 81.08,
+      "statements": 222
+    },
+    "mcp_server.bundled.common": {
+      "covered": 40,
+      "files": [
+        "src/capabledeputy/mcp_servers/_common.py"
+      ],
+      "min_percent": 88.89,
+      "statements": 45
+    },
+    "mcp_server.bundled.fetch": {
+      "covered": 14,
+      "files": [
+        "src/capabledeputy/mcp_servers/fetch.py"
+      ],
+      "min_percent": 41.18,
+      "statements": 34
+    },
+    "mcp_server.bundled.fs": {
+      "covered": 55,
+      "files": [
+        "src/capabledeputy/mcp_servers/fs.py"
+      ],
+      "min_percent": 87.3,
+      "statements": 63
+    },
+    "mcp_server.bundled.git": {
+      "covered": 37,
+      "files": [
+        "src/capabledeputy/mcp_servers/git.py"
+      ],
+      "min_percent": 80.43,
+      "statements": 46
+    },
+    "mcp_server.bundled.imap": {
+      "covered": 146,
+      "files": [
+        "src/capabledeputy/mcp_servers/imap.py"
+      ],
+      "min_percent": 77.66,
+      "statements": 188
+    },
+    "mcp_server.bundled.imap-creds": {
+      "covered": 26,
+      "files": [
+        "src/capabledeputy/mcp_servers/_imap_creds.py"
+      ],
+      "min_percent": 47.27,
+      "statements": 55
+    },
+    "mcp_server.bundled.keynote": {
+      "covered": 14,
+      "files": [
+        "src/capabledeputy/mcp_servers/keynote.py"
+      ],
+      "min_percent": 87.5,
+      "statements": 16
+    },
+    "mcp_server.bundled.macos": {
+      "covered": 13,
+      "files": [
+        "src/capabledeputy/mcp_servers/macos.py"
+      ],
+      "min_percent": 86.67,
+      "statements": 15
+    },
+    "mcp_server.bundled.memory": {
+      "covered": 77,
+      "files": [
+        "src/capabledeputy/mcp_servers/memory.py"
+      ],
+      "min_percent": 95.06,
+      "statements": 81
+    },
+    "mcp_server.bundled.numbers": {
+      "covered": 14,
+      "files": [
+        "src/capabledeputy/mcp_servers/numbers.py"
+      ],
+      "min_percent": 87.5,
+      "statements": 16
+    },
+    "mcp_server.bundled.pages": {
+      "covered": 13,
+      "files": [
+        "src/capabledeputy/mcp_servers/pages.py"
+      ],
+      "min_percent": 86.67,
+      "statements": 15
+    },
+    "mcp_server.bundled.search": {
+      "covered": 19,
+      "files": [
+        "src/capabledeputy/mcp_servers/search.py"
+      ],
+      "min_percent": 35.85,
+      "statements": 53
+    },
+    "tools.native.calendar": {
+      "covered": 67,
+      "files": [
+        "src/capabledeputy/tools/native/calendar.py"
+      ],
+      "min_percent": 79.76,
+      "statements": 84
+    },
+    "tools.native.devbox": {
+      "covered": 63,
+      "files": [
+        "src/capabledeputy/tools/native/devbox.py"
+      ],
+      "min_percent": 82.89,
+      "statements": 76
+    },
+    "tools.native.email": {
+      "covered": 70,
+      "files": [
+        "src/capabledeputy/tools/native/email.py"
+      ],
+      "min_percent": 88.61,
+      "statements": 79
+    },
+    "tools.native.extract": {
+      "covered": 23,
+      "files": [
+        "src/capabledeputy/tools/native/extract.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 23
+    },
+    "tools.native.fs": {
+      "covered": 76,
+      "files": [
+        "src/capabledeputy/tools/native/fs.py"
+      ],
+      "min_percent": 64.41,
+      "statements": 118
+    },
+    "tools.native.inbox": {
+      "covered": 43,
+      "files": [
+        "src/capabledeputy/tools/native/inbox.py"
+      ],
+      "min_percent": 93.48,
+      "statements": 46
+    },
+    "tools.native.memory": {
+      "covered": 136,
+      "files": [
+        "src/capabledeputy/tools/native/memory.py"
+      ],
+      "min_percent": 93.15,
+      "statements": 146
+    },
+    "tools.native.policy-preview": {
+      "covered": 22,
+      "files": [
+        "src/capabledeputy/tools/native/policy_preview.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 22
+    },
+    "tools.native.purchase": {
+      "covered": 32,
+      "files": [
+        "src/capabledeputy/tools/native/purchase.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 32
+    },
+    "tools.native.resources": {
+      "covered": 25,
+      "files": [
+        "src/capabledeputy/tools/native/resources.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 25
+    },
+    "tools.native.sandbox": {
+      "covered": 60,
+      "files": [
+        "src/capabledeputy/tools/native/sandbox.py"
+      ],
+      "min_percent": 92.31,
+      "statements": 65
+    },
+    "tools.native.tasks": {
+      "covered": 61,
+      "files": [
+        "src/capabledeputy/tools/native/tasks.py"
+      ],
+      "min_percent": 89.71,
+      "statements": 68
+    },
+    "tools.native.web": {
+      "covered": 68,
+      "files": [
+        "src/capabledeputy/tools/native/web.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 68
+    },
+    "tools.native_all": {
+      "covered": 746,
+      "files": [
+        "src/capabledeputy/tools/native/__init__.py",
+        "src/capabledeputy/tools/native/calendar.py",
+        "src/capabledeputy/tools/native/devbox.py",
+        "src/capabledeputy/tools/native/email.py",
+        "src/capabledeputy/tools/native/extract.py",
+        "src/capabledeputy/tools/native/fs.py",
+        "src/capabledeputy/tools/native/inbox.py",
+        "src/capabledeputy/tools/native/memory.py",
+        "src/capabledeputy/tools/native/policy_preview.py",
+        "src/capabledeputy/tools/native/purchase.py",
+        "src/capabledeputy/tools/native/resources.py",
+        "src/capabledeputy/tools/native/sandbox.py",
+        "src/capabledeputy/tools/native/tasks.py",
+        "src/capabledeputy/tools/native/web.py"
+      ],
+      "min_percent": 87.56,
+      "statements": 852
+    },
+    "tools.registry_dispatch": {
+      "covered": 633,
+      "files": [
+        "src/capabledeputy/tools/client.py",
+        "src/capabledeputy/tools/descriptors.py",
+        "src/capabledeputy/tools/policy_hooks.py",
+        "src/capabledeputy/tools/registry.py",
+        "src/capabledeputy/tools/source_flow.py"
+      ],
+      "min_percent": 93.23,
+      "statements": 679
+    }
+  },
+  "schema": 1,
+  "targets": {
+    "near_term": 85.0,
+    "stretch": 90.0
+  }
+}
