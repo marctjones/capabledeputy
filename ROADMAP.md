@@ -111,6 +111,7 @@ and policy enforcement.
 | #109 | Research monitor onguard client | Planned |
 | #110 | Local desktop automation monitor onguard client | Planned |
 | #111 | Finance document guard onguard client | Planned |
+| #112 | Deterministic onguard approval/denial clients and examples | Planned |
 
 ## Previous Focus — v0.25.0 MCP Compatibility + Security Integration
 

@@ -169,6 +169,7 @@ approval, and tool dispatch.
 - **#109** research monitor onguard client.
 - **#110** local desktop automation monitor onguard client.
 - **#111** finance document guard onguard client.
+- **#112** deterministic onguard approval/denial clients and examples.
 
 ### Sequencing
 
