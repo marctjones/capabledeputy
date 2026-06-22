@@ -10,6 +10,7 @@ from capabledeputy.policy.email_labeling import (
     load_email_label_rules,
     parse_email_label_rules,
 )
+from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.policy.tiers import Tier
 
 
@@ -73,6 +74,19 @@ def test_labels_for_output_convenience() -> None:
     lab = _lab([{"match": {"from_domain": "chase.com"}, "labels": ["confidential.financial"]}])
     out = lab.labels_for_output({"from": "x@chase.com", "subject": "s", "body": ""})
     assert {t.category for t in out.a} == {"financial"}
+
+
+def test_labels_for_message_preserves_base_floor_and_adds_specific_labels() -> None:
+    lab = _lab([{"match": {"from_domain": "chase.com"}, "labels": ["confidential.financial"]}])
+    base = LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}))
+
+    out = lab.labels_for_message(
+        {"from": "alerts@chase.com", "subject": "statement", "body": ""},
+        base=base,
+    )
+
+    assert {t.category for t in out.a} == {"financial"}
+    assert {t.level for t in out.b} == {ProvenanceLevel.EXTERNAL_UNTRUSTED}
 
 
 def test_shipped_example_parses() -> None:

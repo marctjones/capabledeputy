@@ -214,6 +214,54 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
         app.cancellation_flags[session_uuid] = True
         return {"cancelled": True}
 
+    async def session_turn_start(params: dict[str, Any]) -> dict[str, Any]:
+        force_mode = None
+        if params.get("mode"):
+            from capabledeputy.mode.dispatcher import ExecutionMode
+
+            force_mode = ExecutionMode(str(params["mode"]))
+        return await app.turns.start(
+            session_id=UUID(params["session_id"]),
+            message=str(params["message"]),
+            client_id=str(params.get("client_id") or "interactive-client"),
+            force_mode=force_mode,
+            max_iterations=(
+                int(params["max_iterations"]) if params.get("max_iterations") is not None else None
+            ),
+            lease_token=params.get("lease_token"),
+            lease_seconds=int(params.get("lease_seconds") or 300),
+            heartbeat_interval_seconds=float(params.get("heartbeat_interval_seconds") or 5.0),
+            heartbeat_timeout_seconds=float(params.get("heartbeat_timeout_seconds") or 30.0),
+            heartbeat_enabled=bool(params.get("heartbeat_enabled", True)),
+            admin_override=bool(params.get("admin_override", False)),
+        )
+
+    async def session_turn_get(params: dict[str, Any]) -> dict[str, Any]:
+        return await app.turns.get(str(params["turn_id"]))
+
+    async def session_turn_list(params: dict[str, Any]) -> dict[str, Any]:
+        session_id = UUID(params["session_id"]) if params.get("session_id") else None
+        return await app.turns.list(session_id=session_id)
+
+    async def session_turn_events(params: dict[str, Any]) -> dict[str, Any]:
+        return await app.turns.events_since(
+            str(params["turn_id"]),
+            cursor=int(params.get("cursor") or 0),
+            limit=int(params.get("limit") or 200),
+        )
+
+    async def session_turn_ack(params: dict[str, Any]) -> dict[str, Any]:
+        return await app.turns.ack(
+            str(params["turn_id"]),
+            client_id=(str(params["client_id"]) if params.get("client_id") else None),
+        )
+
+    async def session_turn_cancel(params: dict[str, Any]) -> dict[str, Any]:
+        return await app.turns.cancel(
+            str(params["turn_id"]),
+            reason=str(params.get("reason") or "cancelled"),
+        )
+
     async def session_grant_capability(params: dict[str, Any]) -> dict[str, Any]:
         from capabledeputy.policy.capabilities import Capability
 
@@ -224,5 +272,11 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
     return {
         "session.send": session_send,
         "session.cancel": session_cancel,
+        "session.turn.start": session_turn_start,
+        "session.turn.get": session_turn_get,
+        "session.turn.list": session_turn_list,
+        "session.turn.events": session_turn_events,
+        "session.turn.ack": session_turn_ack,
+        "session.turn.cancel": session_turn_cancel,
         "session.grant_capability": session_grant_capability,
     }

@@ -24,6 +24,7 @@ def make_state_handlers(app: App) -> dict[str, Handler]:
         onguard_snapshot = await _onguard_snapshot(app)
         coordinator_snapshot = _coordinator_snapshot(app)
         daemon_snapshot = await _daemon_snapshot(app)
+        turn_snapshot = app.turns.snapshot()
 
         return {
             "schema_version": 1,
@@ -86,6 +87,7 @@ def make_state_handlers(app: App) -> dict[str, Handler]:
             "memory": memory_snapshot,
             "audit": _audit_snapshot(app),
             "coordination": coordinator_snapshot,
+            "turns": turn_snapshot,
             "workstreams": workstream_snapshot,
             "onguard": onguard_snapshot,
         }

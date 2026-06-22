@@ -14,6 +14,8 @@ from prompt_toolkit.formatted_text import to_plain_text
 
 from capabledeputy.cli.chat import (
     _DENY_RECOVERY,
+    _clip_html_visible,
+    _clip_plain_to_width,
     _compartment_summary,
     _label_rich_style,
     _make_bottom_toolbar,
@@ -116,6 +118,42 @@ def test_toolbar_tainted_with_pending() -> None:
     assert "TAINTED" in txt
     assert "untrusted.external" in txt
     assert "2 pending" in txt
+
+
+def test_clip_plain_to_width_counts_wide_glyphs() -> None:
+    assert _clip_plain_to_width("abc界def", 6) == "abc界…"
+    assert _clip_plain_to_width("abc", 6) == "abc"
+
+
+def test_clip_html_visible_preserves_markup_and_counts_wide_glyphs() -> None:
+    clipped = _clip_html_visible("<ansired>abc界def</ansired>", 6)
+    assert clipped.startswith("<ansired>")
+    assert "…" in clipped
+    assert "界" in clipped
+
+
+def test_toolbar_clips_to_configured_terminal_width() -> None:
+    sid = "abcd1234-0000-0000-0000-000000000003"
+    cache = _FakeCache(
+        [
+            {
+                "id": sid,
+                "label_set": ["confidential.financial", "untrusted.external"],
+                "capability_set": [1, 2, 3, 4],
+            },
+        ],
+        [7, 9],
+    )
+    focus = {"id": sid, "label": sid[:8]}
+    render = _make_bottom_toolbar(
+        cast(CompletionCache, cache),
+        focus,
+        state={"terminal_columns": 38, "terminal_size_warning": "terminal too small"},
+    )
+    lines = to_plain_text(render()).splitlines()
+    assert len(lines) == 2
+    assert all(len(line) <= 38 for line in lines)
+    assert "…" in "\n".join(lines)
 
 
 def _capture_outcomes(outcomes: list[dict[str, Any]]) -> str:

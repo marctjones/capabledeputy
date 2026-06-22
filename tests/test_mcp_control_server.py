@@ -25,6 +25,9 @@ def test_control_tools_include_daemon_client_surface() -> None:
     assert "session_list" in names
     assert "session_new" in names
     assert "session_security_context" in names
+    assert "session_turn_start" in names
+    assert "session_turn_events" in names
+    assert "session_turn_cancel" in names
     assert "tool_call" in names
     assert "workstream_claim" in names
     assert "workstream_ensure" in names
@@ -127,6 +130,66 @@ async def test_control_session_security_context_dispatches_to_daemon(fake_daemon
     assert result.structuredContent is not None
     assert result.structuredContent["session"]["id"] == "s1"
     assert client.calls == [("session.security_context", {"session_id": "s1"})]
+
+
+async def test_control_session_turn_start_dispatches_to_daemon(fake_daemon) -> None:
+    client = fake_daemon({"session.turn.start": {"turn": {"id": "t1"}}})
+
+    result = await dispatch_control_tool(
+        client,
+        "session_turn_start",
+        {
+            "session_id": "s1",
+            "message": "hello",
+            "client_id": "codex",
+            "heartbeat_enabled": True,
+            "heartbeat_timeout_seconds": 5,
+        },
+    )
+
+    assert result.isError is False
+    assert client.calls == [
+        (
+            "session.turn.start",
+            {
+                "session_id": "s1",
+                "message": "hello",
+                "client_id": "codex",
+                "heartbeat_enabled": True,
+                "heartbeat_timeout_seconds": 5,
+            },
+        ),
+    ]
+
+
+async def test_control_session_turn_events_and_cancel_dispatch(fake_daemon) -> None:
+    client = fake_daemon(
+        {
+            "session.turn.events": {"events": []},
+            "session.turn.cancel": {"turn": {"id": "t1", "status": "cancelled"}},
+        },
+    )
+
+    events = await dispatch_control_tool(
+        client,
+        "session_turn_events",
+        {"turn_id": "t1", "after": 3},
+    )
+    cancel = await dispatch_control_tool(
+        client,
+        "session_turn_cancel",
+        {"turn_id": "t1", "reason": "operator", "client_id": "codex"},
+    )
+
+    assert events.isError is False
+    assert cancel.isError is False
+    assert client.calls == [
+        ("session.turn.events", {"turn_id": "t1", "after": 3}),
+        (
+            "session.turn.cancel",
+            {"turn_id": "t1", "reason": "operator", "client_id": "codex"},
+        ),
+    ]
 
 
 async def test_control_tool_call_dispatches_policy_gated_call(fake_daemon) -> None:

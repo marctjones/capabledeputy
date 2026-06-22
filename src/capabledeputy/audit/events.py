@@ -59,6 +59,7 @@ class EventType(StrEnum):
     # Operator-visible signal so latency regressions are caught
     # before they manifest as subjective REPL sluggishness.
     DECISION_LATENCY_DEGRADED = "decision.latency_degraded"
+    TURN_INTERRUPTED = "turn.interrupted"
 
     MODE_SELECTED = "mode.selected"
     POLICY_DECIDED = "policy.decided"

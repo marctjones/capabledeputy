@@ -15,7 +15,7 @@ from contextlib import suppress
 from pathlib import Path
 
 import anyio
-from anyio.abc import SocketStream
+from anyio.abc import SocketStream, TaskGroup
 
 from capabledeputy.daemon.handlers import Handler, default_handlers
 from capabledeputy.daemon.verbose_log import VerboseLogger
@@ -43,18 +43,25 @@ class Daemon:
         self._shutdown_event = anyio.Event()
         self._subscribers: dict[str, set[SocketStream]] = {}
         self._connection_streams: dict[int, set[str]] = {}
+        self._connection_cancel_turns: dict[int, set[str]] = {}
         self._sub_lock = anyio.Lock()
         self._connection_lock = anyio.Lock()
         self._active_connections = 0
         self._last_client_disconnect_at = time.monotonic()
         self._idle_shutdown_seconds = idle_shutdown_seconds
         self._verbose = VerboseLogger() if verbose else None
+        self._background_tg: TaskGroup | None = None
 
     def register(self, method: str, handler: Handler) -> None:
         self._handlers[method] = handler
 
     def request_shutdown(self) -> None:
         self._shutdown_event.set()
+
+    def start_background(self, func: object, *args: object) -> None:
+        if self._background_tg is None:
+            raise RuntimeError("daemon background task group is not running")
+        self._background_tg.start_soon(func, *args)  # type: ignore[arg-type]
 
     async def publish(self, stream_name: str, payload: dict) -> None:
         """Push a JSON-RPC notification to all subscribers of the given stream."""
@@ -99,6 +106,28 @@ class Daemon:
             if not self._connection_streams.get(id(stream)):
                 self._connection_streams.pop(id(stream), None)
 
+    async def _register_disconnect_turn_cancels(
+        self,
+        stream: SocketStream,
+        turn_ids: list[str],
+    ) -> None:
+        if not turn_ids:
+            return
+        async with self._sub_lock:
+            self._connection_cancel_turns.setdefault(id(stream), set()).update(
+                str(t) for t in turn_ids
+            )
+
+    async def _cancel_disconnect_turns(self, stream: SocketStream) -> None:
+        async with self._sub_lock:
+            turn_ids = sorted(self._connection_cancel_turns.pop(id(stream), set()))
+        handler = self._handlers.get("session.turn.cancel")
+        if handler is None:
+            return
+        for turn_id in turn_ids:
+            with suppress(Exception):
+                await handler({"turn_id": turn_id, "reason": "client_disconnect"})
+
     async def snapshot(self) -> dict[str, object]:
         async with self._connection_lock:
             active_connections = self._active_connections
@@ -128,6 +157,7 @@ class Daemon:
         try:
             os.chmod(self._socket_path, 0o600)
             async with anyio.create_task_group() as tg:
+                self._background_tg = tg
 
                 async def _wait_shutdown() -> None:
                     await self._shutdown_event.wait()
@@ -139,6 +169,7 @@ class Daemon:
                 with suppress(anyio.ClosedResourceError):
                     await listener.serve(self._handle_connection)
         finally:
+            self._background_tg = None
             await listener.aclose()
             with suppress(FileNotFoundError):
                 self._socket_path.unlink()
@@ -172,6 +203,7 @@ class Daemon:
             # connection, never propagate out and take down the daemon.
             pass
         finally:
+            await self._cancel_disconnect_turns(stream)
             await self._unsubscribe_stream(stream)
             async with self._connection_lock:
                 self._active_connections = max(0, self._active_connections - 1)
@@ -200,6 +232,10 @@ class Daemon:
             streams_to_join = request.params.get("streams") or []
             for s in streams_to_join:
                 await self._subscribe_stream(stream, str(s))
+            await self._register_disconnect_turn_cancels(
+                stream,
+                [str(t) for t in (request.params.get("cancel_turns_on_disconnect") or [])],
+            )
             response = RpcResponse(
                 id=request.id,
                 result={"subscribed": list(streams_to_join)},

@@ -145,6 +145,7 @@ async def test_daemon_state_materializes_clients_sessions_workflows_and_memory(
         assert state["labels"]["memory"]["company.policy"]["b"] == []
         assert state["coordination"]["pending_input_count"] == 1
         assert state["workstreams"]["count"] == 0
+        assert state["turns"]["count"] == 0
         assert any(
             client["client_id"] == "onguard.daily.digest" for client in state["onguard"]["clients"]
         )

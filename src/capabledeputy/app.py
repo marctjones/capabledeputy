@@ -112,6 +112,9 @@ class App:
         self.cancellation_flags: dict[UUID, bool] = {}
         self.session_coordinator = SessionCoordinator()
         self.workstreams = WorkstreamCoordinator()
+        from capabledeputy.daemon.turn_lifecycle import TurnLifecycleManager
+
+        self.turns = TurnLifecycleManager(self)
         self._skills_dir = skills_dir
         self._enable_policy_preview = enable_policy_preview
         # Background devbox idle-reaper task, started by `startup()`

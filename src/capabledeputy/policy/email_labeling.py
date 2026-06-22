@@ -163,6 +163,15 @@ class EmailLabeler:
         """Convenience: extract fields from an upstream result then label."""
         return self.labels_for(extract_email_fields(output))
 
+    def labels_for_message(self, output: Any, *, base: LabelState | None = None) -> LabelState:
+        """Return base labels plus per-message labels, raise-only.
+
+        This is the explicit per-message hook used by Gmail-like adapters:
+        the server-level floor remains intact, and message-specific rules
+        can only add more restrictive categories/provenance.
+        """
+        return most_restrictive_inherit(base or LabelState(), self.labels_for_output(output))
+
 
 def _parse_rule(index: int, raw: Any) -> EmailLabelRule:
     if not isinstance(raw, dict):

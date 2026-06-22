@@ -133,6 +133,30 @@ _SESSION_MESSAGE_SCHEMA = _schema(
     },
     required=["session_id", "message"],
 )
+_TURN_ID_SCHEMA = _schema({"turn_id": {"type": "string"}}, required=["turn_id"])
+_TURN_EVENTS_SCHEMA = _schema(
+    {
+        "turn_id": {"type": "string"},
+        "after": {"type": "integer", "minimum": 0},
+    },
+    required=["turn_id"],
+)
+_TURN_ACK_SCHEMA = _schema(
+    {
+        "turn_id": {"type": "string"},
+        "client_id": {"type": "string"},
+    },
+    required=["turn_id", "client_id"],
+)
+_TURN_CANCEL_SCHEMA = _schema(
+    {
+        "turn_id": {"type": "string"},
+        "reason": {"type": "string"},
+        "client_id": {"type": "string"},
+        "admin_override": {"type": "boolean"},
+    },
+    required=["turn_id"],
+)
 
 _WORKSTREAM_ID_SCHEMA = _schema({"workstream_id": {"type": "string"}}, required=["workstream_id"])
 
@@ -485,6 +509,73 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
         "session.send",
         _SESSION_MESSAGE_SCHEMA,
         _annotations("Send session message", read_only=False, idempotent=False, open_world=True),
+    ),
+    ControlToolSpec(
+        "session_turn_start",
+        "Start streamed session turn",
+        "Start a daemon-managed session turn with replayable events and heartbeat leases.",
+        "session.turn.start",
+        _schema(
+            {
+                **_SESSION_MESSAGE_SCHEMA["properties"],
+                "heartbeat_enabled": {"type": "boolean"},
+                "heartbeat_interval_seconds": {"type": "number", "minimum": 0},
+                "heartbeat_timeout_seconds": {"type": "number", "minimum": 0},
+                "admin_override": {"type": "boolean"},
+            },
+            required=["session_id", "message"],
+        ),
+        _annotations(
+            "Start streamed session turn",
+            read_only=False,
+            idempotent=False,
+            open_world=True,
+        ),
+    ),
+    ControlToolSpec(
+        "session_turn_get",
+        "Get session turn",
+        "Return daemon-owned state for one streamed turn.",
+        "session.turn.get",
+        _TURN_ID_SCHEMA,
+        _annotations("Get session turn", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "session_turn_list",
+        "List session turns",
+        "List daemon-owned streamed turns, optionally filtered by session or client.",
+        "session.turn.list",
+        _schema(
+            {
+                **_optional_string_properties("session_id", "client_id", "status"),
+                "active_only": {"type": "boolean"},
+            },
+        ),
+        _annotations("List session turns", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "session_turn_events",
+        "List session turn events",
+        "Return replayable events for a streamed session turn.",
+        "session.turn.events",
+        _TURN_EVENTS_SCHEMA,
+        _annotations("List session turn events", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "session_turn_ack",
+        "Acknowledge session turn heartbeat",
+        "Renew the daemon heartbeat lease for a streamed session turn.",
+        "session.turn.ack",
+        _TURN_ACK_SCHEMA,
+        _annotations("Acknowledge session turn heartbeat", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "session_turn_cancel",
+        "Cancel streamed session turn",
+        "Cancel one daemon-managed streamed session turn.",
+        "session.turn.cancel",
+        _TURN_CANCEL_SCHEMA,
+        _annotations("Cancel streamed session turn", read_only=False, idempotent=True),
     ),
     ControlToolSpec(
         "workstream_claim",
@@ -1736,29 +1827,74 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
             params["first_use_prompts"] = bool(args["first_use_prompts"])
         return params
     if name == "session_send":
-        params = {
-            "session_id": str(args.get("session_id") or ""),
-            "message": str(args.get("message") or ""),
+        return _session_message_params(args)
+    if name == "session_turn_start":
+        params = _session_message_params(args)
+        for key in (
+            "heartbeat_enabled",
+            "heartbeat_interval_seconds",
+            "heartbeat_timeout_seconds",
+            "admin_override",
+        ):
+            if args.get(key) is not None:
+                params[key] = args[key]
+        return params
+    if name == "session_turn_get":
+        return {"turn_id": str(args.get("turn_id") or "")}
+    if name == "session_turn_list":
+        params = _copy(args, "session_id", "client_id", "status")
+        if args.get("active_only") is not None:
+            params["active_only"] = bool(args["active_only"])
+        return params
+    if name == "session_turn_events":
+        params = {"turn_id": str(args.get("turn_id") or "")}
+        if args.get("after") is not None:
+            params["after"] = int(args["after"])
+        return params
+    if name == "session_turn_ack":
+        return {
+            "turn_id": str(args.get("turn_id") or ""),
+            "client_id": str(args.get("client_id") or ""),
         }
-        if args.get("mode"):
-            params["mode"] = str(args["mode"])
-        if args.get("max_iterations") is not None:
-            params["max_iterations"] = int(args["max_iterations"])
+    if name == "session_turn_cancel":
+        params = {"turn_id": str(args.get("turn_id") or "")}
+        if args.get("reason"):
+            params["reason"] = str(args["reason"])
         if args.get("client_id"):
             params["client_id"] = str(args["client_id"])
-        if args.get("workstream_id"):
-            params["workstream_id"] = str(args["workstream_id"])
-        if args.get("lease_token"):
-            params["lease_token"] = str(args["lease_token"])
-        if args.get("lease_seconds") is not None:
-            params["lease_seconds"] = int(args["lease_seconds"])
-        if args.get("claim_if_missing") is not None:
-            params["claim_if_missing"] = bool(args["claim_if_missing"])
         if args.get("admin_override") is not None:
             params["admin_override"] = bool(args["admin_override"])
         return params
     if name == "session_cancel":
         return {"session_id": str(args.get("session_id") or "")}
+    return _params_for_continued(name, args)
+
+
+def _session_message_params(args: dict[str, Any]) -> dict[str, Any]:
+    params = {
+        "session_id": str(args.get("session_id") or ""),
+        "message": str(args.get("message") or ""),
+    }
+    if args.get("mode"):
+        params["mode"] = str(args["mode"])
+    if args.get("max_iterations") is not None:
+        params["max_iterations"] = int(args["max_iterations"])
+    if args.get("client_id"):
+        params["client_id"] = str(args["client_id"])
+    if args.get("workstream_id"):
+        params["workstream_id"] = str(args["workstream_id"])
+    if args.get("lease_token"):
+        params["lease_token"] = str(args["lease_token"])
+    if args.get("lease_seconds") is not None:
+        params["lease_seconds"] = int(args["lease_seconds"])
+    if args.get("claim_if_missing") is not None:
+        params["claim_if_missing"] = bool(args["claim_if_missing"])
+    if args.get("admin_override") is not None:
+        params["admin_override"] = bool(args["admin_override"])
+    return params
+
+
+def _params_for_continued(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
     if name == "session_fork":
         params = {"parent_id": str(args.get("parent_id") or "")}
         if args.get("intent"):

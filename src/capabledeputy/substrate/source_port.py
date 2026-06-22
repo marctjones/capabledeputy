@@ -52,4 +52,17 @@ def get_source_port(kind: str, **kwargs: object) -> SourcePort:
         from capabledeputy.substrate.git_source import GitSourcePort
 
         return GitSourcePort(**kwargs)  # type: ignore[arg-type]
-    raise ValueError(f"unknown source-port provider {kind!r}; known: ['git']")
+    if kind in {"gmail", "google_gmail", "google-gmail"}:
+        from capabledeputy.substrate.google_source import GmailSourcePort
+
+        return GmailSourcePort(**kwargs)  # type: ignore[arg-type]
+    if kind in {"drive", "google_drive", "google-drive", "gdrive"}:
+        from capabledeputy.substrate.google_source import GoogleDriveSourcePort
+
+        return GoogleDriveSourcePort(**kwargs)  # type: ignore[arg-type]
+    if kind in {"calendar", "google_calendar", "google-calendar"}:
+        from capabledeputy.substrate.google_source import GoogleCalendarSourcePort
+
+        return GoogleCalendarSourcePort(**kwargs)  # type: ignore[arg-type]
+    known = ["git", "gmail", "google-drive", "google-calendar"]
+    raise ValueError(f"unknown source-port provider {kind!r}; known: {known}")

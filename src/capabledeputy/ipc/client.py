@@ -72,6 +72,8 @@ class DaemonClient:
     async def subscribe(
         self,
         streams: list[str],
+        *,
+        cancel_turns_on_disconnect: list[str] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Open a long-lived connection and yield event notifications.
 
@@ -80,12 +82,18 @@ class DaemonClient:
         unsubscribe; closing the connection on the daemon side also
         ends iteration.
         """
-        return _subscribe_iter(self._socket_path, streams)
+        return _subscribe_iter(
+            self._socket_path,
+            streams,
+            cancel_turns_on_disconnect=cancel_turns_on_disconnect,
+        )
 
 
 async def _subscribe_iter(
     socket_path: Path,
     streams: list[str],
+    *,
+    cancel_turns_on_disconnect: list[str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     try:
         stream = await anyio.connect_unix(str(socket_path))
@@ -99,7 +107,10 @@ async def _subscribe_iter(
                     "jsonrpc": JSONRPC_VERSION,
                     "method": "subscribe",
                     "id": 1,
-                    "params": {"streams": streams},
+                    "params": {
+                        "streams": streams,
+                        "cancel_turns_on_disconnect": cancel_turns_on_disconnect or [],
+                    },
                 },
                 separators=(",", ":"),
             )

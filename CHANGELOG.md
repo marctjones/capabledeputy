@@ -48,6 +48,14 @@ breaking changes).
 
 ### Client parity
 
+- Added daemon-owned `session.turn.*` lifecycle RPCs for replayable streamed
+  turns, heartbeat timeout cancellation, disconnect cancellation, and
+  MCP-control/CLI integration.
+- Switched the CLI Rich streaming path from broad audit tailing to
+  turn-specific daemon events, with exact-turn Ctrl-C cancellation and a
+  non-blocking approval-review key binding.
+- Added terminal-width hardening for the CLI toolbar so wide glyphs and narrow
+  terminals do not corrupt prompt-toolkit HTML rendering.
 - Added daemon-enforced interactive workstream coordination surfaces across
   CLI, TUI, and MCP-control, including owner-only send/cancel behavior,
   lease-token release/renew semantics, admin takeover, release-by-client, and
@@ -66,6 +74,9 @@ breaking changes).
 
 ### Practical setup and daemon-owned settings
 
+- Added Google Workspace SourcePort providers for Gmail, Drive, and Calendar
+  canonical resource/destination IDs, plus explicit per-message email label
+  composition that preserves server-level label floors.
 - Renamed the active connector/settings milestone to `v0.27.0 — Practical
   setup + daemon-owned settings`.
 - Adopted the onguard-client architecture: headless background workers are

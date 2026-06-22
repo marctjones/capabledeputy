@@ -52,6 +52,8 @@ message — the only path through the LLM is the non-slash one.
 from __future__ import annotations
 
 import contextlib
+import re
+import shutil
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -66,6 +68,16 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
+
+try:  # prompt-toolkit depends on wcwidth; keep a small fallback for minimal envs.
+    from wcwidth import wcwidth
+except Exception:  # pragma: no cover - dependency is present in normal installs.
+    import unicodedata
+
+    def wcwidth(char: str) -> int:  # type: ignore[no-redef]
+        if unicodedata.combining(char):
+            return 0
+        return 2 if unicodedata.east_asian_width(char) in {"F", "W"} else 1
 
 from capabledeputy.cli.completer import CapDepCompleter, CompletionCache
 from capabledeputy.cli.styles import (
@@ -1428,90 +1440,99 @@ def _send_message_streaming(
             return Group(spinner)
 
         rpc_client = _client()
+        turn_start = await rpc_client.call("session.turn.start", params)
+        turn = turn_start.get("turn") or {}
+        turn_id = str(turn.get("id") or "")
+        turn_stream = str(turn.get("stream") or f"turn:{turn_id}")
+        if not turn_id:
+            raise RuntimeError("daemon did not return a turn id")
 
-        async def _drain_audit(scope: Any) -> None:
-            """Consume audit events for our session_id; update state."""
+        def _handle_turn_event(evt: dict[str, Any]) -> None:
+            et = str(evt.get("type") or "")
+            payload = evt.get("payload") or {}
+            if et == "llm_request_sent":
+                state["iter"] = payload.get("n_messages", state["iter"])
+                n_tools = payload.get("n_tools", state["n_tools"])
+                state["n_tools"] = n_tools
+                state["line"] = f"asking LLM ({state['n_tools']} tools available)..."
+            elif et == "llm_response_received":
+                clen = payload.get("content_length", 0)
+                n_tc = payload.get("n_tool_calls", 0)
+                state["line"] = f"received {clen}-char response · {n_tc} tool call(s)"
+            elif et == "tool_dispatched":
+                tn = payload.get("tool_name", "?")
+                state["line"] = f"→ calling {tn}"
+            elif et == "tool_returned":
+                outcome = payload.get("outcome") or {}
+                tn = outcome.get("tool_name") or payload.get("tool", "?")
+                out = outcome.get("output", "")
+                out_len = len(str(out))
+                state["line"] = f"← {tn} returned ({out_len} bytes)"
+                decision = str(outcome.get("decision") or "").upper()
+                if decision == "DENY":
+                    state["line"] = "[policy denied — finalizing]"
+                elif decision == "REQUIRE_APPROVAL":
+                    state["line"] = "[approval queued — finalizing]"
+            elif et == "completed":
+                result = payload.get("result") or {}
+                if isinstance(result, dict):
+                    result_holder["result"] = result
+            elif et == "interrupted":
+                result_holder["result"] = {
+                    "content": payload.get("partial_content")
+                    or f"[turn interrupted: {payload.get('reason', 'cancelled')}]",
+                    "iterations": 0,
+                    "finish_reason": "length",
+                    "tool_outcomes": payload.get("partial_outcomes") or [],
+                }
+            elif et == "error":
+                result_holder["error"] = RuntimeError(str(payload.get("message") or "turn error"))
+
+        async def _drain_turn(scope: Any) -> None:
+            """Consume daemon-owned turn events for this turn only."""
             try:
-                async for evt in await rpc_client.subscribe(["audit"]):
+                async for evt in await rpc_client.subscribe(
+                    [turn_stream],
+                    cancel_turns_on_disconnect=[turn_id],
+                ):
                     if scope.cancel_called:
                         return
                     data = evt.get("data") or {}
-                    if str(data.get("session_id", "")) != str(session_id):
+                    if str(data.get("turn_id", "")) != turn_id:
                         continue
-                    et = data.get("event_type", "")
-                    payload = data.get("payload") or {}
-                    if et == "llm.request_sent":
-                        state["iter"] = payload.get("n_messages", state["iter"])
-                        n_tools = payload.get("n_tools", state["n_tools"])
-                        state["n_tools"] = n_tools
-                        state["line"] = f"asking LLM ({state['n_tools']} tools available)..."
-                        # Surface the freshly-computed context estimate
-                        # into the toolbar's state dict so the bottom
-                        # band can render `ctx 24k/200k 12%` in real
-                        # time. Stale until the next turn fires — but
-                        # the post-turn value is still informative.
-                        ct = payload.get("context_tokens_estimate")
-                        cw = payload.get("context_window")
-                        if shared_state is not None and ct is not None:
-                            shared_state["context_tokens"] = int(ct)
-                            if cw is not None:
-                                shared_state["context_window"] = int(cw)
-                            # Timestamp lets the toolbar fade the
-                            # segment to `(stale)` after 5 minutes —
-                            # the value is from the LAST turn, not now,
-                            # and stays accurate only as long as
-                            # nothing else changed.
-                            shared_state["context_tokens_at"] = datetime.now(UTC)
-                    elif et == "llm.response_received":
-                        clen = payload.get("content_length", 0)
-                        n_tc = payload.get("n_tool_calls", 0)
-                        state["line"] = f"received {clen}-char response · {n_tc} tool call(s)"
-                        # Real provider usage — accumulate into both
-                        # session and month-to-date totals so the
-                        # toolbar's usage segment updates live as the
-                        # turn progresses. Fakes / providers that
-                        # don't report usage emit zeros, which leave
-                        # the counters untouched.
-                        pt = int(payload.get("prompt_tokens", 0) or 0)
-                        ct_tok = int(payload.get("completion_tokens", 0) or 0)
-                        if shared_state is not None and (pt or ct_tok):
-                            shared_state["session_prompt_tokens"] = (
-                                int(shared_state.get("session_prompt_tokens", 0)) + pt
-                            )
-                            shared_state["session_completion_tokens"] = (
-                                int(shared_state.get("session_completion_tokens", 0)) + ct_tok
-                            )
-                            shared_state["mtd_prompt_tokens"] = (
-                                int(shared_state.get("mtd_prompt_tokens", 0)) + pt
-                            )
-                            shared_state["mtd_completion_tokens"] = (
-                                int(shared_state.get("mtd_completion_tokens", 0)) + ct_tok
-                            )
-                    elif et == "tool.dispatched":
-                        tn = payload.get("tool_name", "?")
-                        state["line"] = f"→ calling {tn}"
-                    elif et == "tool.returned":
-                        tn = payload.get("tool", "?")
-                        out = payload.get("output", "")
-                        out_len = len(str(out))
-                        state["line"] = f"← {tn} returned ({out_len} bytes)"
-                    elif et == "policy.decided":
-                        d = (payload.get("decision") or "").upper()
-                        if d == "DENY":
-                            state["line"] = "[policy denied — finalizing]"
-                        elif d == "REQUIRE_APPROVAL":
-                            state["line"] = "[approval queued — finalizing]"
-                    elif et == "llm.context_warning":
-                        ratio = payload.get("ratio", 0.0)
-                        state["line"] = f"⚠ context {int(ratio * 100)}% of window; summarizing soon"
+                    _handle_turn_event(data)
+                    if "result" in result_holder or "error" in result_holder:
+                        return
             except Exception:
                 return  # subscriber died; live keeps showing last line
 
-        async def _send_rpc() -> None:
-            try:
-                result_holder["result"] = await rpc_client.call("session.send", params)
-            except Exception as e:
-                result_holder["error"] = e
+        async def _poll_turn() -> None:
+            while "result" not in result_holder and "error" not in result_holder:
+                await anyio.sleep(0.25)
+                try:
+                    observed = await rpc_client.call("session.turn.get", {"turn_id": turn_id})
+                except Exception as e:
+                    result_holder["error"] = e
+                    return
+                observed_turn = observed.get("turn") or {}
+                status = observed_turn.get("status")
+                if status == "completed":
+                    result_holder["result"] = observed_turn.get("result") or {}
+                    return
+                if status == "interrupted":
+                    result_holder["result"] = {
+                        "content": observed_turn.get("partial_content")
+                        or f"[turn interrupted: {observed_turn.get('cancel_reason', 'cancelled')}]",
+                        "iterations": 0,
+                        "finish_reason": "length",
+                        "tool_outcomes": observed_turn.get("partial_outcomes") or [],
+                    }
+                    return
+                if status == "error":
+                    result_holder["error"] = RuntimeError(
+                        str(observed_turn.get("error") or "turn error"),
+                    )
+                    return
 
         # Issue #23 — convert SIGINT (Ctrl-C) into a session.cancel
         # RPC so the operator can stop a runaway turn without killing
@@ -1532,8 +1553,8 @@ def _send_message_streaming(
                         # second Ctrl-C still escapes.
                         with contextlib.suppress(Exception):
                             await rpc_client.call(
-                                "session.cancel",
-                                {"session_id": session_id},
+                                "session.turn.cancel",
+                                {"turn_id": turn_id, "reason": "ctrl-c"},
                             )
                     else:
                         raise KeyboardInterrupt
@@ -1544,8 +1565,8 @@ def _send_message_streaming(
 
         async with anyio.create_task_group() as tg:
             with Live(_render(), console=console, refresh_per_second=4, transient=True) as live:
-                tg.start_soon(_drain_audit, tg.cancel_scope)
-                tg.start_soon(_send_rpc)
+                tg.start_soon(_drain_turn, tg.cancel_scope)
+                tg.start_soon(_poll_turn)
                 tg.start_soon(_watch_sigint)
                 # Re-render until RPC settles
                 while "result" not in result_holder and "error" not in result_holder:
@@ -2872,6 +2893,100 @@ def _toolbar_label_ansi(label: str) -> str:
     return label
 
 
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+MIN_REPL_COLUMNS = 64
+MIN_REPL_ROWS = 18
+
+
+def _visible_width(text: str) -> int:
+    """Terminal cell width for plain text, treating wide glyphs correctly."""
+    return sum(max(wcwidth(ch), 0) for ch in text)
+
+
+def _clip_plain_to_width(text: str, max_width: int, *, ellipsis: str = "…") -> str:
+    if max_width <= 0:
+        return ""
+    if _visible_width(text) <= max_width:
+        return text
+    ellipsis_width = max(_visible_width(ellipsis), 1)
+    if max_width <= ellipsis_width:
+        return ellipsis[:1]
+    out: list[str] = []
+    used = 0
+    for ch in text:
+        width = max(wcwidth(ch), 0)
+        if used + width + ellipsis_width > max_width:
+            break
+        out.append(ch)
+        used += width
+    return "".join(out) + ellipsis
+
+
+def _clip_html_visible(html: str, max_width: int) -> str:
+    """Clip prompt-toolkit HTML by visible terminal width.
+
+    Markup tags are preserved as zero-width spans; visible characters are
+    clipped on cell width so emoji/CJK glyphs do not wrap the toolbar.
+    """
+    if max_width <= 0:
+        return ""
+    plain = _HTML_TAG_RE.sub("", html)
+    if _visible_width(plain) <= max_width:
+        return html
+    out: list[str] = []
+    open_tags: list[str] = []
+    used = 0
+    ellipsis_width = 1
+    i = 0
+    while i < len(html):
+        if html[i] == "<":
+            end = html.find(">", i)
+            if end == -1:
+                break
+            tag = html[i : end + 1]
+            out.append(tag)
+            tag_body = tag[1:-1].strip()
+            if tag_body.startswith("/"):
+                closing = tag_body[1:].split()[0]
+                if closing in open_tags:
+                    open_tags.reverse()
+                    open_tags.remove(closing)
+                    open_tags.reverse()
+            else:
+                open_tags.append(tag_body.split()[0])
+            i = end + 1
+            continue
+        ch = html[i]
+        width = max(wcwidth(ch), 0)
+        if used + width + ellipsis_width > max_width:
+            out.append("…")
+            for tag_name in reversed(open_tags):
+                out.append(f"</{tag_name}>")
+            break
+        out.append(ch)
+        used += width
+        i += 1
+    return "".join(out)
+
+
+def _toolbar_columns(state: dict[str, Any]) -> int:
+    configured = state.get("terminal_columns")
+    if configured is not None:
+        return max(int(configured), 20)
+    if not sys.stdout.isatty():
+        return 120
+    return max(shutil.get_terminal_size((80, 24)).columns, 20)
+
+
+def _terminal_size_warning(columns: int, rows: int) -> str:
+    if columns >= MIN_REPL_COLUMNS and rows >= MIN_REPL_ROWS:
+        return ""
+    return (
+        f"terminal {columns}x{rows}; recommended at least "
+        f"{MIN_REPL_COLUMNS}x{MIN_REPL_ROWS}"
+    )
+
+
 # How long until the toolbar's context segment is considered stale.
 # Chosen to roughly match the Anthropic prompt cache TTL (5 min) — if
 # nothing has happened in 5 minutes, the most-recent context estimate
@@ -3049,13 +3164,21 @@ def _make_bottom_toolbar(
     state = state if state is not None else {}
 
     def render() -> HTML:
+        columns = _toolbar_columns(state)
         sid = focus["id"]
         sess = next((s for s in cache.sessions if s["id"] == sid), None)
         short = sid[:8]
         if sess is None:
+            line1 = _clip_html_visible(
+                f" session <b>{short}</b> · <ansicyan>(syncing…)</ansicyan> ",
+                columns,
+            )
+            line2 = _clip_html_visible(
+                " <ansigray>Tab complete · Alt-Enter newline · ? help · /quit to exit</ansigray>",
+                columns,
+            )
             return HTML(
-                f" session <b>{short}</b> · <ansicyan>(syncing…)</ansicyan> \n"
-                f" <ansigray>Tab complete · Alt-Enter newline · ? help · /quit to exit</ansigray>"
+                f"{line1}\n{line2}"
             )
         labels = sess.get("label_set", [])
         caps_list = sess.get("capability_set", [])
@@ -3149,8 +3272,11 @@ def _make_bottom_toolbar(
             hints.append("<ansigray>Tab · ? help</ansigray>")
 
         line2 = " " + " · ".join(hints) + " "
+        warning = state.get("terminal_size_warning")
+        if isinstance(warning, str) and warning:
+            line2 = f" <ansiyellow>{warning}</ansiyellow> · " + line2
 
-        return HTML(line1 + "\n" + line2)
+        return HTML(_clip_html_visible(line1, columns) + "\n" + _clip_html_visible(line2, columns))
 
     return render
 
@@ -3352,6 +3478,10 @@ def _repl_loop(session_id: str, no_stream: bool = False) -> None:
         "mtd_prompt_tokens": 0,
         "mtd_completion_tokens": 0,
     }
+    terminal_size = shutil.get_terminal_size((80, 24))
+    size_warning = _terminal_size_warning(terminal_size.columns, terminal_size.lines)
+    if size_warning:
+        state["terminal_size_warning"] = size_warning
     try:
         _info_for_mtd = _call("daemon.info")
         _audit_path = _info_for_mtd.get("audit_path", "")
@@ -3417,6 +3547,16 @@ def _repl_loop(session_id: str, no_stream: bool = False) -> None:
     @kb.add("f3", filter=recovery_condition)
     def _recover_3(event) -> None:  # pyright: ignore[reportUnusedFunction]
         _run_recovery_step(event, 2)
+
+    def _approval_available() -> bool:
+        return bool(cache.approval_ids)
+
+    approval_condition = Condition(_approval_available)
+
+    @kb.add("a", filter=approval_condition)
+    def _review_approval(event) -> None:  # pyright: ignore[reportUnusedFunction]
+        _inline_approval_review(list(cache.approval_ids))
+        event.app.invalidate()
 
     pt_session = PromptSession(
         history=FileHistory(str(_history_path())),
