@@ -6,44 +6,68 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-06-22, after closing v0.32, closing/reorganizing
-v0.17, and moving streaming/liveness work into v0.33.
+**Last refreshed:** 2026-06-22, after completing v0.33 and opening the
+product-onboarding/connectors milestone as the current focus.
 
-## Current Focus — v0.33.0 Streaming Turn Lifecycle and Liveness
+## Current Focus — v0.34.0 Product Onboarding and Connector Readiness
 
-Goal: make long-running interactive turns cancellable, observable, and safe
-across multiple local clients. v0.32 made workstream ownership daemon-enforced;
-v0.33 adds the missing turn lifecycle underneath it: streaming events,
-heartbeat acknowledgements, cancellation on disconnect, partial-turn
-persistence, slow-consumer backpressure, and per-call secret exposure for
-long-lived upstream MCP tools.
+Goal: make a fresh CapDep install practical without YAML handholding while
+preserving daemon-owned authority. The next product gap is not another client
+surface; it is a daemon-backed setup plan that tells each client what is
+missing, guides OAuth/connector readiness, and proves a first useful workflow
+works end-to-end under policy.
 
 The important design constraint stays unchanged: clients may render, request,
-acknowledge, and reconnect, but the daemon remains the only authority for
+configure through approved RPCs, and launch user-visible setup flows, but the
+daemon remains the only authority for connector settings, OAuth state,
 ownership, labels, policy, approvals, provenance, audit, tool dispatch, and
 turn cancellation.
 
-### v0.33.0 scope
+### v0.34.0 scope
 
 | Issue | Work | Status |
 |---|---|---|
-| #31 | Cancel in-flight turn when client surface disconnects | Open |
-| #32 | UI heartbeat: cancel agent loop when surface stops responding | Open |
-| #22 | Inline streaming agent output via Rich Live | Open: moved from v0.5 because real streaming is daemon lifecycle work |
-| #13 | Credential vault residual: per-call/no-env secret exposure for long-lived tools | Open |
+| #140 | EPIC: Product onboarding and connector readiness without client-side authority | Open |
+| #141 | Research onboarding flows in Claude Code, Codex, Goose, OpenHands, and desktop agents | Open |
+| #142 | Daemon setup plan/check RPCs for first-run readiness | Open |
+| #143 | Connector OAuth readiness tests and guided recovery actions | Open |
+| #144 | First useful workflow smoke: setup to safe morning briefing | Open |
+| #145 | Client setup surfaces consume daemon setup plan | Open |
 
-### v0.33.0 done-when
+### v0.34.0 done-when
 
-- A turn has a daemon-owned lifecycle record with status, owner, stream cursor,
-  heartbeat state, cancellation reason, and audit/provenance links.
-- Clients consume turn events instead of polling or blocking on one-shot
-  `session.send` responses for long-running work.
-- Disconnects and heartbeat timeouts cancel or retire active turns according to
-  daemon policy, not client-side best effort.
-- Streamed output can be resumed or inspected by another client without
-  granting that client control of the workstream.
-- Long-lived upstream tools receive secrets only at the call chokepoint and do
-  not inherit broad environment secrets for their whole process lifetime.
+- The daemon exposes a setup plan/check surface that identifies missing
+  connector credentials, OAuth state, model readiness, policy configuration,
+  and first workflow readiness.
+- CLI, TUI, Swift GUI, and MCP-control consume the same daemon setup plan
+  rather than duplicating setup logic.
+- Google Workspace/Gmail OAuth readiness has guided recovery actions and
+  tests for connected, missing, expired, and misconfigured states.
+- A first useful workflow smoke test proves a user can get from setup to a
+  safe morning briefing without bypassing policy or daemon ownership.
+
+## Completed Focus — v0.33.0 Streaming Turn Lifecycle and Liveness
+
+Goal: make long-running interactive turns cancellable, observable, and safe
+across multiple local clients. v0.33 added the daemon-owned turn lifecycle
+underneath workstream ownership: streaming events, heartbeat acknowledgements,
+cancellation on disconnect, partial-turn persistence, slow-consumer replay, and
+reduced stdio upstream credential exposure.
+
+### v0.33.0 completed scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #31 | Cancel in-flight turn when client surface disconnects | Done |
+| #32 | UI heartbeat: cancel agent loop when surface stops responding | Done |
+| #22 | Inline streaming agent output via Rich Live | Done |
+| #13 | Credential vault residual: no broad environment inheritance for long-lived tools | Done |
+
+Stdio MCP upstreams still receive secrets explicitly granted to that server at
+spawn time because stdio MCP servers are long-lived processes. The completed
+hardening prevents unrelated daemon environment secrets from being inherited;
+true per-dispatch stdio secret materialization requires per-call isolation or
+a server-specific auth channel.
 
 ## Completed Focus — v0.32.0 Interactive Workstream Coordination
 

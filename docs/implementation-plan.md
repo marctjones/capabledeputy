@@ -2,15 +2,15 @@
 
 Living plan that organizes the open GitHub issues into sequenced
 milestones with dependencies. Authoritative status is GitHub; this doc is
-the *sequencing rationale*. Last refreshed 2026-06-22 after v0.32 closed,
-v0.17 closed/reorganized, and v0.33 opened as the next daemon/client
-lifecycle milestone.
+the *sequencing rationale*. Last refreshed 2026-06-22 after v0.33 completed
+and v0.34 opened as the product-onboarding/connectors milestone.
 
-Milestones (GitHub): **v0.33.0** Streaming turn lifecycle and liveness ·
+Milestones (GitHub): **v0.34.0** Product onboarding and connector readiness ·
 **v0.16** Policy expressiveness & labeling · **v0.5** terminal UX polish ·
 **Backlog** Substrate breadth & formal models. Recently closed:
-**v0.32.0** Interactive workstream coordination · **v0.17** Gap hardening &
-explainability · **v0.27.0** Practical setup + daemon-owned settings ·
+**v0.33.0** Streaming turn lifecycle and liveness · **v0.32.0** Interactive
+workstream coordination · **v0.17** Gap hardening & explainability ·
+**v0.27.0** Practical setup + daemon-owned settings ·
 **v0.28.0** Onguard clients + daemon coordination · **v0.29.0** MCP security
 conformance + external server labeling · **v0.30.0** Client integration test
 parity · **v0.31.0** Multi-session security context observability ·
@@ -20,9 +20,10 @@ parity · **v0.31.0** Multi-session security context observability ·
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **Streaming turn lifecycle** — v0.32 made workstream ownership explicit;
-   v0.33 must make the active turn itself cancellable, resumable, observable,
-   heartbeat-aware, and safe for slow or disconnected clients.
+1. **Product onboarding and connector readiness** — the daemon now needs a
+   first-run setup/check surface that lets every client guide OAuth,
+   connector, model, and first-workflow readiness without moving authority into
+   the client.
 2. **Onguard extensibility** — background clients should be normal daemon
    clients, not privileged sidecars or daemon-embedded product workflows.
 3. **MCP security integration** — MCP must remain an integration substrate, not
@@ -54,6 +55,7 @@ The policy themes come from `docs/security-alignment-assessment.md`:
 | # | What | Milestone |
 |---|---|---|
 | #137/#136/#134/#133/#138 | Daemon-enforced workstream ownership, daemon state views, client parity, MCP-control workstream tools, and multi-client tests | v0.32.0 |
+| #31/#32/#22/#13 | Daemon-owned turn lifecycle, heartbeat/disconnect cancellation, CLI Rich Live turn streaming, and stdio upstream no-broad-env hardening | v0.33.0 |
 | #11/#54 | Quarantined forwardable/public-facts schemas and purpose-contamination residual audit | v0.17 |
 | #28 | Shared CLI semantic style palette | v0.5 |
 | #113-#132 | New tracker plan for MCP conformance, client integration test parity, and multi-session security context observability | v0.29.0-v0.31.0 |
@@ -73,7 +75,7 @@ The policy themes come from `docs/security-alignment-assessment.md`:
 | #5 | Dynamic filesystem labeling | v0.16 / #42 |
 | #33 | Design: Workspace capability mapping | v0.16 / #42 |
 | #34 | Email labeling — design + content-rule impl (raise-only labeler) | v0.16 / #42 |
-| #13 | Credential vault (spawn-time; per-call needs #15/#16) | v0.17 |
+| #13 | Credential vault and stdio upstream no-broad-env hardening | v0.33.0 |
 
 **EPIC #41 is closed** (layer live, frequency policy, `capdep why`).
 **EPIC #42 is still open but narrowed** to #51 canonical IDs and #139
@@ -83,50 +85,75 @@ moved to the milestone where implementation belongs.
 
 ---
 
-## v0.33.0 — Streaming turn lifecycle and liveness
+## v0.34.0 — Product onboarding and connector readiness
 
-This is the active milestone. v0.32 proved daemon-owned workstream ownership,
-but the one-shot `session.send` RPC cannot correctly distinguish an ordinary
-closed request socket from a dead client surface. v0.33 should add a real turn
-lifecycle and event stream before implementing disconnect/heartbeat
-cancellation and Rich Live streaming.
+This is the active milestone. v0.33 made long-running turns observable and
+cancellable; v0.34 should make a first install usable by exposing daemon-owned
+setup checks and guided remediation to all clients.
 
 ### Scope
+
+- **#140** EPIC: Product onboarding and connector readiness without
+  client-side authority.
+- **#141** research onboarding flows in Claude Code, Codex, Goose, OpenHands,
+  and desktop agents.
+- **#142** daemon setup plan/check RPCs for first-run readiness.
+- **#143** connector OAuth readiness tests and guided recovery actions.
+- **#144** first useful workflow smoke: setup to safe morning briefing.
+- **#145** client setup surfaces consume daemon setup plan.
+
+### Sequencing
+
+1. Research peer onboarding only far enough to identify practical setup
+   patterns worth adopting without weakening daemon authority.
+2. Add daemon setup/check RPCs that report connector, OAuth, model, policy,
+   and first-workflow readiness with remediation descriptors.
+3. Harden Google Workspace/Gmail OAuth readiness tests and recovery paths.
+4. Add one first-use workflow smoke that exercises the setup path through a
+   safe morning briefing.
+5. Update CLI, TUI, Swift GUI, and MCP-control surfaces to consume the same
+   daemon setup plan.
+
+### Done-when
+
+- All clients render the same daemon setup plan instead of duplicating
+  readiness logic.
+- OAuth/connector failures are classified with actionable recovery steps.
+- A new user can move from setup to a useful safe workflow without editing YAML
+  directly for the common macOS + Google Workspace case.
+- Setup helpers remain daemon-mediated and do not bypass labels, policy,
+  approvals, provenance, or audit.
+
+## v0.33.0 — Streaming turn lifecycle and liveness
+
+This milestone is complete. v0.32 proved daemon-owned workstream ownership,
+and v0.33 added the real turn lifecycle and event stream required for
+disconnect/heartbeat cancellation and Rich Live streaming.
+
+### Completed scope
 
 - **#31** cancel in-flight turn when a client surface disconnects.
 - **#32** heartbeat/liveness cancellation when a connected client stops
   responding.
 - **#22** inline streaming agent output via Rich Live, backed by daemon turn
   events rather than client-local streaming hacks.
-- **#13** residual credential-vault work: inject secrets per call for
-  long-lived stdio/upstream tools without broad process-env exposure.
+- **#13** residual credential-vault hardening: stdio upstreams no longer
+  inherit the daemon's broad process environment; they receive only the
+  supervisor allowlist plus explicit per-server/vault env.
 
-### Sequencing
-
-1. Add a daemon turn record and event stream for active agent turns, including
-   owner, status, cursor, heartbeat, cancellation reason, partial output, and
-   audit/provenance references.
-2. Change long-running client paths to consume stream events while preserving
-   one-shot compatibility for short RPCs where safe.
-3. Enforce disconnect and heartbeat cancellation in daemon lifecycle logic,
-   tied to workstream ownership and explicit admin override paths.
-4. Wire REPL Rich Live rendering through the stream events and test slow
-   consumer/reconnect behavior.
-5. Move residual credential-vault exposure from process-start injection toward
-   per-call injection for long-lived upstream tools.
-
-### Done-when
+### Completion notes
 
 - A client can disconnect or stop heartbeating during an active turn and the
-  daemon reliably cancels/retires that turn without relying on client honesty.
+  daemon cancels/retires that turn without relying on client honesty.
 - Multiple clients can observe the same streamed turn without gaining control.
 - A reconnecting owner can resume from a stream cursor where policy permits.
 - Rich Live output is a renderer over daemon events, not a separate execution
   path.
-- Secrets for long-lived upstream processes are not exposed for longer or wider
-  than the tool call requires.
-
----
+- Stdio upstream servers are still long-lived processes, so secrets explicitly
+  granted to a server are spawn-time for that server. The completed hardening
+  prevents unrelated daemon environment secrets from being inherited; true
+  per-dispatch stdio secrets require per-call isolation or a server-specific
+  auth channel.
 
 ## v0.16 — Labeling oracle remainder
 

@@ -110,10 +110,10 @@ class UpstreamServerConfig:
     inherent_tags: LabelState = field(default_factory=LabelState)
     tool_overrides: dict[str, UpstreamToolOverride] = field(default_factory=dict)
     isolation: ContainerIsolation | None = None
-    # Per-server environment variables, applied when spawning the
-    # subprocess. Values are already expanded; ${VAR} references
-    # resolved at parse_config time. Empty dict = inherit operator
-    # shell env only.
+    # Per-server environment variables, applied when spawning the subprocess.
+    # Values are already expanded; ${VAR} references resolved at parse_config
+    # time. Empty dict = only the supervisor's minimal process-bootstrap
+    # allowlist is passed, not the daemon's full environment.
     env: dict[str, str] = field(default_factory=dict)
     # Operator hard-disable list: tool names here are NEVER registered,
     # regardless of override or inference. Use to remove a capability the

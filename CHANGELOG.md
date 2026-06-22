@@ -8,6 +8,10 @@ breaking changes).
 
 ### Security
 
+- Hardened stdio upstream MCP process spawning so long-lived upstream servers
+  receive only a minimal process-bootstrap environment plus explicitly
+  configured per-server/vault secrets, instead of inheriting the daemon's full
+  environment.
 - Added quarantined declassification schemas for forwardable email and public
   web facts that refuse validation when executable content, prompt injection,
   or embedded credentials are detected.

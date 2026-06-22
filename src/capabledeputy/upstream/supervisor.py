@@ -29,8 +29,9 @@ Design notes:
 from __future__ import annotations
 
 import contextlib
+import os
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Any
 
@@ -41,6 +42,55 @@ from pydantic import AnyUrl
 
 if TYPE_CHECKING:
     from capabledeputy.upstream.config import UpstreamServerConfig
+
+
+_DEFAULT_UPSTREAM_ENV_ALLOWLIST = frozenset(
+    {
+        # Process discovery and normal user-local tool caches.
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "XDG_CONFIG_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+        # Locale and temp dirs. Many Node/Python CLIs assume these exist.
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        # TLS trust roots. These are paths, not credentials, and are needed by
+        # enterprise-managed machines and custom trust stores.
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "NODE_EXTRA_CA_CERTS",
+    },
+)
+
+
+def build_stdio_env(
+    config: UpstreamServerConfig,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Build the environment for a stdio MCP upstream.
+
+    Subprocesses must not inherit the daemon's full process environment:
+    hosted-model keys, local service tokens, and CapDep internals would
+    otherwise be visible to any upstream server that can read its own env.
+    The daemon passes only mundane process-bootstrap variables plus the
+    operator-approved per-server env, including credential-vault injections.
+    """
+
+    source = os.environ if environ is None else environ
+    env = {name: value for name in _DEFAULT_UPSTREAM_ENV_ALLOWLIST if (value := source.get(name))}
+    env.update(config.env)
+    return env
 
 
 class UpstreamDead(RuntimeError):  # noqa: N818 (descriptive domain exception)
@@ -141,19 +191,15 @@ class LiveSession:
             self._session = None
 
     async def _spawn(self) -> None:
-        import os
-
         stack = AsyncExitStack()
         try:
             await stack.__aenter__()
             if self._config.transport == "stdio":
                 cmd = self._config.effective_command()
-                merged_env: dict[str, str] = dict(os.environ)
-                merged_env.update(self._config.env)
                 params = StdioServerParameters(
                     command=cmd[0],
                     args=list(cmd[1:]),
-                    env=merged_env if self._config.env else None,
+                    env=build_stdio_env(self._config),
                 )
                 read, write = await stack.enter_async_context(stdio_client(params))
             elif self._config.transport == "streamable_http":

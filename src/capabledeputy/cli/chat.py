@@ -79,6 +79,7 @@ except Exception:  # pragma: no cover - dependency is present in normal installs
             return 0
         return 2 if unicodedata.east_asian_width(char) in {"F", "W"} else 1
 
+
 from capabledeputy.cli.completer import CapDepCompleter, CompletionCache
 from capabledeputy.cli.styles import (
     DECISION_STYLE,
@@ -1394,23 +1395,17 @@ def _send_message_streaming(
     shared_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Issue #22 — send a message and render per-iteration progress
-    via Rich Live while the daemon's session.send RPC runs.
+    via Rich Live from daemon-owned turn lifecycle events.
 
-    Mechanism: subscribe to the daemon's audit stream and consume
-    events for *this session* as they arrive, rendering a spinner
-    + activity line in a Rich Live region above the prompt. When
-    session.send returns, the Live region exits cleanly and the
-    final turn renders normally (via _render_turn).
+    Mechanism: start `session.turn.start`, subscribe to `turn:<id>`,
+    and render events for that exact turn as they arrive. The daemon
+    owns turn status, cancellation, heartbeat timeout, and replay cursor;
+    the CLI is only the renderer and owner-side cancellation surface.
 
     Falls back to the non-streaming path when:
     - `no_stream=True` is forced by the operator
     - terminal isn't a TTY (scripts / pipes)
-    - the daemon doesn't support the audit subscribe stream
-
-    This is the MVP version of #22: per-iteration progress (one event
-    per LLM call + tool dispatch). True token-by-token streaming
-    requires the LLM client + daemon RPC protocol to also stream;
-    that's a separate follow-on.
+    - the daemon doesn't support the turn lifecycle stream
     """
     if no_stream or not console.is_terminal:
         return _send_message(session_id, message, max_iterations)
@@ -2981,10 +2976,7 @@ def _toolbar_columns(state: dict[str, Any]) -> int:
 def _terminal_size_warning(columns: int, rows: int) -> str:
     if columns >= MIN_REPL_COLUMNS and rows >= MIN_REPL_ROWS:
         return ""
-    return (
-        f"terminal {columns}x{rows}; recommended at least "
-        f"{MIN_REPL_COLUMNS}x{MIN_REPL_ROWS}"
-    )
+    return f"terminal {columns}x{rows}; recommended at least {MIN_REPL_COLUMNS}x{MIN_REPL_ROWS}"
 
 
 # How long until the toolbar's context segment is considered stale.
@@ -3177,9 +3169,7 @@ def _make_bottom_toolbar(
                 " <ansigray>Tab complete · Alt-Enter newline · ? help · /quit to exit</ansigray>",
                 columns,
             )
-            return HTML(
-                f"{line1}\n{line2}"
-            )
+            return HTML(f"{line1}\n{line2}")
         labels = sess.get("label_set", [])
         caps_list = sess.get("capability_set", [])
         ncaps = len(caps_list)

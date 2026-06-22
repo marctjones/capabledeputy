@@ -10,13 +10,16 @@ vault and injects them into *that server's* subprocess env at spawn,
 auditing only the vault **ref** (`server:ENVVAR`), never the value.
 
 Scope (be honest about the boundary): stdio MCP servers are long-lived, so
-secrets are materialized at **spawn**, not per dispatch. A tool that dumps
-*its own* process env can therefore still surface its secret — true
-per-call / echo-resistance needs per-call isolated execution (container
-per call, #15/#16). What the vault *does* guarantee today: secrets are not
-in committed configs, not in the daemon's global environment, not in the
-audit log, and never authored by or shown to the LLM. The container
-follow-up tightens the rest.
+secrets for those servers are materialized at **spawn**, not per dispatch.
+The supervisor now passes only a minimal process-bootstrap environment plus
+that server's explicit env/vault entries, so unrelated daemon environment
+secrets are not inherited by long-lived upstreams. A tool that dumps *its
+own* process env can still surface secrets explicitly granted to that server
+— true per-call / echo-resistance for stdio needs per-call isolated execution
+or a server-specific auth channel. What the vault *does* guarantee today:
+secrets are not in committed configs, not in the daemon's global environment,
+not in the audit log, never authored by or shown to the LLM, and never
+accidentally inherited from ambient daemon env.
 """
 
 from __future__ import annotations
