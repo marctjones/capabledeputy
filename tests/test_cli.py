@@ -39,6 +39,13 @@ def test_help_runs() -> None:
     assert "capable deputy" in result.stdout.lower()
 
 
+def test_onguard_builtins_lists_packaged_clients() -> None:
+    result = runner.invoke(app, ["onguard", "builtins"])
+    assert result.exit_code == 0
+    assert "onguard.digest.daily" in result.stdout
+    assert "onguard.finance.guard" in result.stdout
+
+
 def test_daemon_help_runs() -> None:
     result = runner.invoke(app, ["daemon", "--help"])
     assert result.exit_code == 0

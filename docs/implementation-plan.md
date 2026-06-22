@@ -211,15 +211,19 @@ approval, and tool dispatch.
 - The daemon now exposes onguard registry, config, command queue,
   events/results, artifacts, schedules, schedule leases, and schedule history
   RPCs backed by the shared SQLite state DB.
-- The client parity manifest explicitly marks the new onguard coordination RPCs
-  as intentionally omitted until #102 wires the clients.
+- MCP-control exposes the new onguard coordination RPCs for external control
+  clients; Swift/TUI review ergonomics remain follow-up surface work.
 - Policy/Starlark inputs include session origin metadata, and the shipped
   personal-assistant policy bundle includes onguard starter rules for declared
   workflows, sensitive background publication, and low-integrity write review.
 - A reusable onguard runtime and `capdep onguard run` CLI runner can claim
   schedules or queued commands and report completion/failure through daemon RPC.
-- Remaining gaps are packaged useful clients, client parity surfaces, and
-  violation demos.
+- Packaged deterministic handlers cover daily digest, inbox triage, meeting
+  prep, watch folders, knowledge updates, task follow-up, research monitoring,
+  desktop monitoring, finance quarantine, and deny-only deterministic approval
+  sweeps.
+- Remaining gaps are richer Swift/TUI review surfaces and fully productized
+  data-source adapters for the packaged workflows.
 
 ### Done-when
 

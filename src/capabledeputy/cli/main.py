@@ -64,18 +64,13 @@ async def _run_onguard_client(
     once: bool,
     interval_seconds: float,
 ) -> None:
-    from capabledeputy.onguard import OnguardRuntime
+    from capabledeputy.onguard import OnguardRuntime, packaged_handlers
 
     daemon = DaemonClient(default_socket_path() if socket_path is None else Path(socket_path))
     runtime = OnguardRuntime(
         daemon,
         client_id=client_id,
-        handlers={
-            "schedule": lambda task: {
-                "ok": True,
-                "message": f"claimed {task.record['schedule_id']}; no packaged handler installed",
-            }
-        },
+        handlers=packaged_handlers(daemon),
     )
     while True:
         did_work = await runtime.run_once()
@@ -113,6 +108,15 @@ def onguard_run_command(
     except DaemonNotRunningError as e:
         err_console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=2) from e
+
+
+@onguard_app.command("builtins")
+def onguard_builtins_command() -> None:
+    """List packaged onguard client IDs."""
+    from capabledeputy.onguard import DEFAULT_ONGUARD_CLIENT_IDS
+
+    for client_id in DEFAULT_ONGUARD_CLIENT_IDS:
+        console.print(client_id)
 
 
 @oauth_app.command("login")

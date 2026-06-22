@@ -138,6 +138,13 @@ _GOOGLE_SERVICE_ID = {
     "description": "Managed Google Workspace MCP service ID.",
 }
 
+_ONGUARD_CLIENT_ID = {"type": "string", "description": "Registered onguard client ID."}
+_ONGUARD_COMMAND_ID = {"type": "string", "description": "Daemon onguard command ID."}
+_ONGUARD_SCHEDULE_ID = {"type": "string", "description": "Daemon onguard schedule ID."}
+_ONGUARD_ARTIFACT_ID = {"type": "string", "description": "Daemon onguard artifact ID."}
+_LABELS_SCHEMA = {"type": "array", "items": {"type": "string"}}
+_JSON_OBJECT_SCHEMA = {"type": "object", "additionalProperties": True}
+
 _RELATIONSHIP_MEMBER_SCHEMA = _schema(
     {
         "group_id": {"type": "string"},
@@ -998,6 +1005,381 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
         _annotations("Devbox summary", read_only=True, idempotent=True),
     ),
     ControlToolSpec(
+        "onguard_registry_list",
+        "List onguard clients",
+        "List daemon-admitted clients, optionally filtered to onguard clients.",
+        "client.registry.list",
+        _schema({"kind": {"type": "string", "default": "onguard"}}),
+        _annotations("List onguard clients", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_registry_register",
+        "Register onguard client",
+        "Register or update a daemon-admitted onguard client identity.",
+        "client.registry.register",
+        _schema(
+            {
+                "client_id": _ONGUARD_CLIENT_ID,
+                "kind": {"type": "string", "default": "onguard"},
+                "display_name": {"type": "string"},
+                "metadata": _JSON_OBJECT_SCHEMA,
+                "status": {"type": "string"},
+            },
+            required=["client_id"],
+        ),
+        _annotations("Register onguard client", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_config_list",
+        "List onguard config",
+        "List daemon-owned onguard client configuration entries.",
+        "client.config.list",
+        _schema({"client_id": _ONGUARD_CLIENT_ID}),
+        _annotations("List onguard config", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_config_propose",
+        "Propose onguard config",
+        "Propose daemon-owned onguard client configuration for approval.",
+        "client.config.propose",
+        _schema(
+            {
+                "client_id": _ONGUARD_CLIENT_ID,
+                "key": {"type": "string"},
+                "value": _JSON_OBJECT_SCHEMA,
+                "proposed_by": {"type": "string", "default": "mcp-control"},
+            },
+            required=["client_id", "key", "value"],
+        ),
+        _annotations("Propose onguard config", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "onguard_config_approve",
+        "Approve onguard config",
+        "Approve a daemon-owned onguard client configuration proposal.",
+        "client.config.approve",
+        _schema(
+            {
+                "config_id": {"type": "string"},
+                "approved_by": {"type": "string", "default": "mcp-control"},
+            },
+            required=["config_id"],
+        ),
+        _annotations("Approve onguard config", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "onguard_queue_list",
+        "List onguard queue",
+        "List daemon-owned onguard queued commands.",
+        "client.queue.list",
+        _schema({"client_id": _ONGUARD_CLIENT_ID, "status": {"type": "string"}}),
+        _annotations("List onguard queue", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_queue_enqueue",
+        "Enqueue onguard command",
+        "Enqueue a daemon-owned onguard client command.",
+        "client.queue.enqueue",
+        _schema(
+            {
+                "client_id": _ONGUARD_CLIENT_ID,
+                "command": {"type": "string"},
+                "payload": _JSON_OBJECT_SCHEMA,
+                "labels": _LABELS_SCHEMA,
+                "provenance": _JSON_OBJECT_SCHEMA,
+            },
+            required=["client_id", "command"],
+        ),
+        _annotations("Enqueue onguard command", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "onguard_queue_claim",
+        "Claim onguard command",
+        "Claim one daemon-owned onguard queued command for a worker.",
+        "client.queue.claim",
+        _schema(
+            {
+                "client_id": _ONGUARD_CLIENT_ID,
+                "claimed_by": {"type": "string"},
+                "lease_seconds": {"type": "integer", "minimum": 1},
+            },
+            required=["client_id", "claimed_by"],
+        ),
+        _annotations("Claim onguard command", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "onguard_queue_complete",
+        "Complete onguard command",
+        "Mark a daemon-owned onguard queued command complete.",
+        "client.queue.complete",
+        _schema(
+            {
+                "command_id": _ONGUARD_COMMAND_ID,
+                "result": _JSON_OBJECT_SCHEMA,
+                "artifact_ref": {"type": "string"},
+            },
+            required=["command_id"],
+        ),
+        _annotations("Complete onguard command", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_queue_fail",
+        "Fail onguard command",
+        "Mark a daemon-owned onguard queued command failed.",
+        "client.queue.fail",
+        _schema(
+            {
+                "command_id": _ONGUARD_COMMAND_ID,
+                "result": _JSON_OBJECT_SCHEMA,
+                "artifact_ref": {"type": "string"},
+            },
+            required=["command_id"],
+        ),
+        _annotations("Fail onguard command", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_events_list",
+        "List onguard events",
+        "List daemon-owned onguard events and results.",
+        "client.events.list",
+        _schema(
+            {
+                "client_id": _ONGUARD_CLIENT_ID,
+                "event_type": {"type": "string"},
+                "include_acked": {"type": "boolean"},
+                "limit": {"type": "integer", "minimum": 1},
+            },
+        ),
+        _annotations("List onguard events", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_events_ack",
+        "Acknowledge onguard event",
+        "Acknowledge a daemon-owned onguard event.",
+        "client.events.ack",
+        _schema(
+            {
+                "event_id": {"type": "string"},
+                "acked_by": {"type": "string", "default": "mcp-control"},
+            },
+            required=["event_id"],
+        ),
+        _annotations("Acknowledge onguard event", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_events_publish",
+        "Publish onguard event",
+        "Publish a daemon-owned onguard client event or result notification.",
+        "client.events.publish",
+        _schema(
+            {
+                "client_id": _ONGUARD_CLIENT_ID,
+                "command_id": _ONGUARD_COMMAND_ID,
+                "schedule_id": _ONGUARD_SCHEDULE_ID,
+                "event_type": {"type": "string"},
+                "payload": _JSON_OBJECT_SCHEMA,
+                "labels": _LABELS_SCHEMA,
+            },
+            required=["client_id", "event_type"],
+        ),
+        _annotations("Publish onguard event", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "onguard_artifact_list",
+        "List onguard artifacts",
+        "List daemon-owned onguard artifacts.",
+        "artifact.list",
+        _schema(
+            {
+                "client_id": _ONGUARD_CLIENT_ID,
+                "artifact_type": {"type": "string"},
+                "status": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1},
+            },
+        ),
+        _annotations("List onguard artifacts", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_artifact_read",
+        "Read onguard artifact",
+        "Read one daemon-owned onguard artifact.",
+        "artifact.read",
+        _schema({"artifact_id": _ONGUARD_ARTIFACT_ID}, required=["artifact_id"]),
+        _annotations("Read onguard artifact", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_artifact_create",
+        "Create onguard artifact",
+        "Create a daemon-owned onguard artifact.",
+        "artifact.create",
+        _schema(
+            {
+                "client_id": _ONGUARD_CLIENT_ID,
+                "command_id": _ONGUARD_COMMAND_ID,
+                "schedule_id": _ONGUARD_SCHEDULE_ID,
+                "artifact_type": {"type": "string"},
+                "content": _JSON_OBJECT_SCHEMA,
+                "labels": _LABELS_SCHEMA,
+                "provenance": _JSON_OBJECT_SCHEMA,
+            },
+            required=["client_id", "artifact_type", "content"],
+        ),
+        _annotations("Create onguard artifact", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "onguard_artifact_promote",
+        "Promote onguard artifact",
+        "Promote a daemon-owned onguard artifact after approval/review.",
+        "artifact.promote",
+        _schema(
+            {
+                "artifact_id": _ONGUARD_ARTIFACT_ID,
+                "promoted_by": {"type": "string", "default": "mcp-control"},
+            },
+            required=["artifact_id"],
+        ),
+        _annotations("Promote onguard artifact", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "onguard_artifact_delete",
+        "Delete onguard artifact",
+        "Delete a daemon-owned onguard artifact record.",
+        "artifact.delete",
+        _schema({"artifact_id": _ONGUARD_ARTIFACT_ID}, required=["artifact_id"]),
+        _annotations("Delete onguard artifact", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_schedule_list",
+        "List onguard schedules",
+        "List daemon-owned onguard schedules.",
+        "schedule.list",
+        _schema({"client_id": _ONGUARD_CLIENT_ID, "active": {"type": "boolean"}}),
+        _annotations("List onguard schedules", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_schedule_create",
+        "Create onguard schedule",
+        "Create a daemon-owned onguard schedule.",
+        "schedule.create",
+        _schema(
+            {
+                "client_id": _ONGUARD_CLIENT_ID,
+                "name": {"type": "string"},
+                "recurrence": _JSON_OBJECT_SCHEMA,
+                "payload": _JSON_OBJECT_SCHEMA,
+                "labels": _LABELS_SCHEMA,
+                "provenance": _JSON_OBJECT_SCHEMA,
+                "active": {"type": "boolean"},
+                "next_run_at": {"type": "string"},
+                "created_by": {"type": "string", "default": "mcp-control"},
+            },
+            required=["client_id", "name", "recurrence"],
+        ),
+        _annotations("Create onguard schedule", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "onguard_schedule_update",
+        "Update onguard schedule",
+        "Update a daemon-owned onguard schedule.",
+        "schedule.update",
+        _schema(
+            {
+                "schedule_id": _ONGUARD_SCHEDULE_ID,
+                "name": {"type": "string"},
+                "recurrence": _JSON_OBJECT_SCHEMA,
+                "payload": _JSON_OBJECT_SCHEMA,
+                "labels": _LABELS_SCHEMA,
+                "provenance": _JSON_OBJECT_SCHEMA,
+                "active": {"type": "boolean"},
+                "next_run_at": {"type": "string"},
+            },
+            required=["schedule_id"],
+        ),
+        _annotations("Update onguard schedule", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_schedule_disable",
+        "Disable onguard schedule",
+        "Disable a daemon-owned onguard schedule.",
+        "schedule.disable",
+        _schema({"schedule_id": _ONGUARD_SCHEDULE_ID}, required=["schedule_id"]),
+        _annotations("Disable onguard schedule", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_schedule_run_now",
+        "Run onguard schedule now",
+        "Queue one immediate run of a daemon-owned onguard schedule.",
+        "schedule.run_now",
+        _schema(
+            {
+                "schedule_id": _ONGUARD_SCHEDULE_ID,
+                "requested_by": {"type": "string", "default": "mcp-control"},
+            },
+            required=["schedule_id"],
+        ),
+        _annotations("Run onguard schedule now", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "onguard_schedule_claim_due",
+        "Claim due onguard schedule",
+        "Claim one due daemon-owned onguard schedule for a worker.",
+        "schedule.claim_due",
+        _schema(
+            {
+                "client_id": _ONGUARD_CLIENT_ID,
+                "claimed_by": {"type": "string"},
+                "lease_seconds": {"type": "integer", "minimum": 1},
+            },
+            required=["client_id", "claimed_by"],
+        ),
+        _annotations("Claim due onguard schedule", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "onguard_schedule_complete_run",
+        "Complete onguard schedule run",
+        "Mark a daemon-owned onguard schedule run complete.",
+        "schedule.complete_run",
+        _schema(
+            {
+                "run_id": {"type": "string"},
+                "result": _JSON_OBJECT_SCHEMA,
+                "artifact_ref": {"type": "string"},
+            },
+            required=["run_id"],
+        ),
+        _annotations("Complete onguard schedule run", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_schedule_fail_run",
+        "Fail onguard schedule run",
+        "Mark a daemon-owned onguard schedule run failed.",
+        "schedule.fail_run",
+        _schema(
+            {
+                "run_id": {"type": "string"},
+                "result": _JSON_OBJECT_SCHEMA,
+                "error": {"type": "string"},
+                "artifact_ref": {"type": "string"},
+            },
+            required=["run_id"],
+        ),
+        _annotations("Fail onguard schedule run", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "onguard_schedule_history",
+        "Onguard schedule history",
+        "List daemon-owned onguard schedule run history.",
+        "schedule.history",
+        _schema(
+            {
+                "schedule_id": _ONGUARD_SCHEDULE_ID,
+                "client_id": _ONGUARD_CLIENT_ID,
+                "limit": {"type": "integer", "minimum": 1},
+            },
+        ),
+        _annotations("Onguard schedule history", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
         "programmatic_dry_run",
         "Programmatic dry run",
         "Dry-run a programmatic-mode source file through the daemon.",
@@ -1302,6 +1684,23 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
         return dict(args)
     if name.startswith("extract_"):
         return dict(args)
+    if name.startswith("onguard_"):
+        params = dict(args)
+        if name in {"onguard_registry_list", "onguard_registry_register"}:
+            params.setdefault("kind", "onguard")
+        if name.startswith("onguard_config_") and "approved_by" not in params:
+            params["approved_by"] = "mcp-control"
+        if name.startswith("onguard_config_") and "proposed_by" not in params:
+            params["proposed_by"] = "mcp-control"
+        if name in {"onguard_events_ack"} and "acked_by" not in params:
+            params["acked_by"] = "mcp-control"
+        if name in {"onguard_artifact_promote"} and "promoted_by" not in params:
+            params["promoted_by"] = "mcp-control"
+        if name in {"onguard_schedule_run_now"} and "requested_by" not in params:
+            params["requested_by"] = "mcp-control"
+        if name in {"onguard_schedule_create"} and "created_by" not in params:
+            params["created_by"] = "mcp-control"
+        return params
     if name.startswith("programmatic_"):
         return dict(args.get("args") or args)
     if name == "gmail_configure_oauth_client":

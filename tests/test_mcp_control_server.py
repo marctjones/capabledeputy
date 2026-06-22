@@ -29,6 +29,9 @@ def test_control_tools_include_daemon_client_surface() -> None:
     assert "google_oauth_status" in names
     assert "gmail_oauth_login" in names
     assert "provenance_graph" in names
+    assert "onguard_schedule_create" in names
+    assert "onguard_queue_enqueue" in names
+    assert "onguard_artifact_promote" in names
 
     tool_call = next(tool for tool in tools if tool.name == "tool_call")
     assert tool_call.annotations is not None
@@ -174,6 +177,73 @@ async def test_control_google_oauth_tools_dispatch_to_generic_daemon_rpc(fake_da
     assert client.calls == [
         ("setup.google.oauth_status", {"service_id": "google-calendar"}),
         ("setup.google.oauth_revoke", {"service_id": "google-drive"}),
+    ]
+
+
+async def test_control_onguard_tools_dispatch_to_daemon_rpc(fake_daemon) -> None:
+    client = fake_daemon(
+        {
+            "schedule.create": {"schedule": {"schedule_id": "sched-1"}},
+            "client.queue.enqueue": {"command": {"command_id": "cmd-1"}},
+            "artifact.promote": {"artifact": {"artifact_id": "art-1", "status": "promoted"}},
+        },
+    )
+
+    schedule = await dispatch_control_tool(
+        client,
+        "onguard_schedule_create",
+        {
+            "client_id": "onguard.digest.daily",
+            "name": "Daily digest",
+            "recurrence": {"kind": "daily", "hour": 7, "minute": 30},
+            "payload": {"command": "build_daily_digest"},
+            "labels": ["personal.profile"],
+        },
+    )
+    queued = await dispatch_control_tool(
+        client,
+        "onguard_queue_enqueue",
+        {
+            "client_id": "onguard.finance.guard",
+            "command": "guard_finance_document",
+            "payload": {"source": "email"},
+            "labels": ["external-untrusted"],
+        },
+    )
+    promoted = await dispatch_control_tool(
+        client,
+        "onguard_artifact_promote",
+        {"artifact_id": "art-1"},
+    )
+
+    assert schedule.isError is False
+    assert queued.isError is False
+    assert promoted.isError is False
+    assert client.calls == [
+        (
+            "schedule.create",
+            {
+                "client_id": "onguard.digest.daily",
+                "name": "Daily digest",
+                "recurrence": {"kind": "daily", "hour": 7, "minute": 30},
+                "payload": {"command": "build_daily_digest"},
+                "labels": ["personal.profile"],
+                "created_by": "mcp-control",
+            },
+        ),
+        (
+            "client.queue.enqueue",
+            {
+                "client_id": "onguard.finance.guard",
+                "command": "guard_finance_document",
+                "payload": {"source": "email"},
+                "labels": ["external-untrusted"],
+            },
+        ),
+        (
+            "artifact.promote",
+            {"artifact_id": "art-1", "promoted_by": "mcp-control"},
+        ),
     ]
 
 

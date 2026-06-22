@@ -78,18 +78,18 @@ and policy enforcement.
 | #98 | Daemon scheduler contracts with recurrence, leases, and run history | Implemented locally |
 | #99 | Onguard policy and Starlark starter rules | Implemented locally |
 | #100 | Onguard client runtime and CLI runner | Implemented locally |
-| #101 | Daily newspaper digest onguard client and interest profile | Planned |
-| #102 | Client parity for schedules, queues, config, events, and artifacts | Planned |
-| #103 | Onguard security demos and violation tests | Planned |
-| #104 | Inbox triage onguard client | Planned |
-| #105 | Meeting prep onguard client | Planned |
-| #106 | Watch-folder and downloads processor onguard client | Planned |
-| #107 | Personal knowledge update onguard client | Planned |
-| #108 | Task follow-up onguard client | Planned |
-| #109 | Research monitor onguard client | Planned |
-| #110 | Local desktop automation monitor onguard client | Planned |
-| #111 | Finance document guard onguard client | Planned |
-| #112 | Deterministic onguard approval/denial clients and examples | Planned |
+| #101 | Daily newspaper digest onguard client and interest profile | Implemented locally: deterministic preview artifact |
+| #102 | Client parity for schedules, queues, config, events, and artifacts | Partial: MCP-control implemented; richer Swift/TUI surfaces remain |
+| #103 | Onguard security demos and violation tests | Implemented locally: finance quarantine and deterministic deny tests |
+| #104 | Inbox triage onguard client | Implemented locally: deterministic preview artifact |
+| #105 | Meeting prep onguard client | Implemented locally: deterministic preview artifact |
+| #106 | Watch-folder and downloads processor onguard client | Implemented locally: recommendation artifact, no file mutation |
+| #107 | Personal knowledge update onguard client | Implemented locally: low-integrity candidate artifact |
+| #108 | Task follow-up onguard client | Implemented locally: deterministic preview artifact |
+| #109 | Research monitor onguard client | Implemented locally: labeled result artifact |
+| #110 | Local desktop automation monitor onguard client | Implemented locally: observation artifact, no app control |
+| #111 | Finance document guard onguard client | Implemented locally: untrusted finance quarantine |
+| #112 | Deterministic onguard approval/denial clients and examples | Implemented locally: explicit-rule deny-only sweep |
 
 ## Follow-On Focus — v0.29.0 MCP Security Conformance + External Server Labeling
 

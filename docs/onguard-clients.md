@@ -113,6 +113,36 @@ audit id. Queue items that contain untrusted data must remain labeled. Results
 that summarize sensitive inputs must inherit labels or pass through an explicit
 declassifier.
 
+## Packaged Clients
+
+CapDep ships deterministic handlers for these normal onguard client IDs:
+
+- `onguard.digest.daily`: creates a labeled daily digest preview artifact for
+  human review.
+- `onguard.inbox.triage`: creates read-only inbox triage recommendation
+  artifacts.
+- `onguard.meeting.prep`: creates meeting prep brief artifacts from approved
+  context.
+- `onguard.watch_folder`: creates safe file-processing recommendation
+  artifacts without moving files.
+- `onguard.knowledge.update`: creates low-integrity knowledge update candidates
+  that require approval before promotion.
+- `onguard.task.followup`: creates follow-up recommendation artifacts.
+- `onguard.research.monitor`: creates labeled research monitor result
+  artifacts.
+- `onguard.desktop.monitor`: records local desktop automation observations
+  without controlling applications.
+- `onguard.finance.guard`: quarantines emailed or otherwise untrusted finance
+  documents so they cannot overwrite trusted financial records without human
+  override.
+- `onguard.approval.deterministic`: deterministically denies pending approvals
+  only when explicit configured deny rules match; it does not approve sensitive
+  actions by default.
+
+These handlers are examples and base functionality. They communicate only
+through daemon RPCs such as `artifact.create`, `client.queue.complete`,
+`approval.list`, and `approval.deny`.
+
 ## Daily Newspaper / Digest Pattern
 
 The daily newspaper should be an onguard client, not daemon core logic.
@@ -140,9 +170,10 @@ should be drafts or low-risk suggestions until accepted.
 2. Add daemon-owned client registry and config store.
 3. Add daemon-owned queue and event/result stream.
 4. Add scheduler records and lease/history semantics.
-5. Implement one onguard client: `onguard.digest.daily`.
-6. Expose all of the above through CLI, Swift GUI, TUI status, and MCP-control
-   parity.
+5. Implement the packaged deterministic onguard clients.
+6. Expose the coordination APIs through MCP-control and add CLI runner support.
+7. Add richer Swift GUI and TUI review surfaces for schedules, events, and
+   artifacts.
 
 This keeps onguard clients extensible while preserving the single daemon
 chokepoint.
