@@ -303,8 +303,8 @@ only present or invoke daemon contracts.
 - **#121** shared daemon integration fixtures — implemented locally.
 - **#122** CLI live-daemon integration tests — implemented locally for onguard
   read paths.
-- **#123** TUI live-daemon integration and regression tests — partial:
-  deterministic model tests exist; full live/UI tier remains.
+- **#123** TUI live-daemon integration and regression tests — implemented
+  locally for console and spectator live-daemon smoke.
 - **#124** Swift GUI daemon-contract and UI action tests — partial:
   daemon-backed model/action coverage exists; macOS UI-sensitive tier remains.
 - **#125** MCP-control live-daemon integration tests — implemented locally for
@@ -326,12 +326,16 @@ only present or invoke daemon contracts.
 - `tests/daemon_integration.py` provides the shared live-daemon fixture and
   mirrors the production handler surface for client-contract tests.
 - `tests/test_client_integration_parity.py` starts a real daemon and proves
-  MCP-control and CLI onguard paths call daemon RPCs.
+  MCP-control, CLI onguard paths, and TUI console/spectator surfaces call
+  daemon RPCs.
 - `capdep onguard clients`, `queue`, `schedules`, and `artifacts` expose
   read-only daemon-owned coordination state for operators.
 - MCP-control's schedule-create schema now matches the daemon RPC contract
   (`schedule_id`, `client_id`, `command`, `recurrence`), preventing the mock
   tests from accepting invalid daemon calls.
+- The TUI spectator refresh path now tolerates teardown races after awaited
+  daemon RPCs, avoiding false failures when the UI exits while a refresh is in
+  flight.
 - `docs/testing.md` defines deterministic default CI, live-daemon
   integration, macOS GUI-sensitive, external MCP smoke, and coverage-ratchet
   tiers.

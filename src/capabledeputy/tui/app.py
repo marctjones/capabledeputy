@@ -269,13 +269,19 @@ class CapDepTUI(App[None]):
             return
 
         self._sessions = sessions_resp["sessions"]
-        self._render_sessions()
+        try:
+            self._render_sessions()
+        except Exception:
+            return
 
         if not self._live_events:
             self._live_events = list(audit_resp["events"][-40:])
             self._update_events_table()
 
-        approvals_table = self.query_one("#approvals", DataTable)
+        try:
+            approvals_table = self.query_one("#approvals", DataTable)
+        except Exception:
+            return
         approvals_table.clear()
         self._approvals = approvals_resp["approvals"]
         for a in self._approvals:

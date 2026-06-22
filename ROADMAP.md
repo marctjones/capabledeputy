@@ -135,7 +135,7 @@ exposing every RPC everywhere.
 | #120 | EPIC: Client integration test parity across CLI, TUI, Swift GUI, and MCP-control | In progress |
 | #121 | Shared daemon integration fixtures for client parity tests | Implemented locally |
 | #122 | CLI live-daemon integration tests for core operator workflows | Implemented locally for onguard read paths |
-| #123 | TUI live-daemon integration and regression tests | Partial: deterministic model tests exist; full live/UI tier remains |
+| #123 | TUI live-daemon integration and regression tests | Implemented locally: console and spectator live-daemon smoke |
 | #124 | Swift GUI daemon-contract and UI action tests | Partial: daemon-backed model/action coverage exists; macOS UI-sensitive tier remains |
 | #125 | MCP-control live-daemon integration tests | Implemented locally for onguard control paths |
 | #126 | CI test tiers for client and MCP coverage | Documented locally |
@@ -157,6 +157,9 @@ exposing every RPC everywhere.
   queue operations; the test caught and fixed a schedule-create contract drift.
 - CLI now exposes read-only `capdep onguard clients|queue|schedules|artifacts`
   commands and tests them against the live daemon.
+- TUI console and spectator surfaces mount against a live daemon in deterministic
+  integration tests; refresh teardown now tolerates the app closing while a
+  daemon RPC is returning.
 - `docs/testing.md` defines deterministic, live-daemon, macOS GUI-sensitive,
   external MCP smoke, and coverage-ratchet tiers.
 
