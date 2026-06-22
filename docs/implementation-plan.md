@@ -114,20 +114,20 @@ macOS + Google Workspace assistant usable without CLI/YAML handholding.
 - **#75** daemon config validation and log-location RPCs for Advanced settings
   — done.
 - **#70** wire CapDepMac settings controls to daemon settings instead of
-  constants — implemented locally.
+  constants — done.
 - **#71** replace empty Setup/Open/Fix buttons with daemon remediation actions
-  — implemented locally with `setup.run_action` and action descriptors.
-- **#73** source bindings and labeling editor — implemented locally through
+  — done with `setup.run_action` and action descriptors.
+- **#73** source bindings and labeling editor — done through
   daemon-owned `source_binding.*` RPCs and CapDepMac Trust UI.
 - **#76** fix task/menu actions that navigate without completing the intended
-  action — implemented locally for approval focus, config validation,
+  action — done for approval focus, config validation,
   automation pause/resume, and screen-control requests.
 - **#72** daemon-backed account and OAuth setup workflows for Google and local
-  app connectors — partial: Gmail OAuth is first-class; connector status now
-  covers Gmail, Calendar, Drive, and local apps, but Calendar/Drive do not yet
-  have first-class OAuth forms.
+  app connectors — done: Gmail, Calendar, and Drive OAuth have first-class
+  daemon status/configure/login/revoke flows across clients; local Apple app
+  rows remain user-mediated permission checks by design.
 - **#74** automation pause, screen-control enablement, and Touch ID policy —
-  implemented locally: pause/resume and screen-control requests are
+  done: pause/resume and screen-control requests are
   daemon-visible and audited; high-risk approvals require a daemon-recognized
   strong-auth marker when Touch ID policy is enabled, with CapDepMac performing
   the local device authentication challenge.
@@ -225,7 +225,7 @@ approval, and tool dispatch.
   sweeps.
 - Remaining product work is fully productized data-source adapters for the
   packaged workflows; the coordination substrate and client review surfaces are
-  implemented locally.
+  done.
 
 ### Done-when
 
@@ -303,17 +303,17 @@ only present or invoke daemon contracts.
 ### Scope
 
 - **#120** EPIC: Client integration test parity across CLI, TUI, Swift GUI, and
-  MCP-control — implemented locally.
-- **#121** shared daemon integration fixtures — implemented locally.
-- **#122** CLI live-daemon integration tests — implemented locally for onguard
+  MCP-control — done.
+- **#121** shared daemon integration fixtures — done.
+- **#122** CLI live-daemon integration tests — done for onguard
   read paths.
-- **#123** TUI live-daemon integration and regression tests — implemented
-  locally for console and spectator live-daemon smoke.
-- **#124** Swift GUI daemon-contract and UI action tests — implemented locally:
+- **#123** TUI live-daemon integration and regression tests — done for console
+  and spectator live-daemon smoke.
+- **#124** Swift GUI daemon-contract and UI action tests — done:
   SwiftPM daemon-contract model tests cover CapDepMac parsing for security
   context and onguard coordination; launch/window smoke remains in the
   macOS-sensitive tier.
-- **#125** MCP-control live-daemon integration tests — implemented locally for
+- **#125** MCP-control live-daemon integration tests — done for
   onguard control paths.
 - **#126** documented and enforced CI test tiers — documented locally in
   `docs/testing.md`.

@@ -18,7 +18,7 @@ approved schedules/queues, while the daemon owns identity, origin metadata,
 shared config, queues, events/results, artifacts, schedules, labels,
 provenance, audit, and policy enforcement.
 
-The first v0.28 substrate slice is implemented locally: origin-aware policy
+The first v0.28 substrate slice is done: origin-aware policy
 inputs, registry/config/queue/event/artifact/schedule RPCs, schedule leases and
 history, onguard Starlark starter rules, and a reusable `capdep onguard run`
 runtime. The next v0.28 work is packaged useful clients, client parity surfaces,
@@ -69,27 +69,27 @@ and policy enforcement.
 
 | Issue | Work | Status |
 |---|---|---|
-| #92 | EPIC: Onguard clients and daemon coordination substrate | Implemented locally |
-| #93 | Structured origin metadata for sessions, policy, audit, and Starlark | Implemented locally |
-| #94 | Daemon client registry for onguard client identity and admission | Implemented locally |
-| #95 | Daemon-owned client config store with proposal and approval states | Implemented locally |
-| #96 | Daemon client command queue with leases, labels, and provenance | Implemented locally |
-| #97 | Daemon client events/results and artifact store for background work | Implemented locally |
-| #98 | Daemon scheduler contracts with recurrence, leases, and run history | Implemented locally |
-| #99 | Onguard policy and Starlark starter rules | Implemented locally |
-| #100 | Onguard client runtime and CLI runner | Implemented locally |
-| #101 | Daily newspaper digest onguard client and interest profile | Implemented locally: deterministic preview artifact |
-| #102 | Client parity for schedules, queues, config, events, and artifacts | Implemented locally: CLI read paths, TUI/Swift read-only operator views, MCP-control full coordination |
-| #103 | Onguard security demos and violation tests | Implemented locally: finance quarantine and deterministic deny tests |
-| #104 | Inbox triage onguard client | Implemented locally: deterministic preview artifact |
-| #105 | Meeting prep onguard client | Implemented locally: deterministic preview artifact |
-| #106 | Watch-folder and downloads processor onguard client | Implemented locally: recommendation artifact, no file mutation |
-| #107 | Personal knowledge update onguard client | Implemented locally: low-integrity candidate artifact |
-| #108 | Task follow-up onguard client | Implemented locally: deterministic preview artifact |
-| #109 | Research monitor onguard client | Implemented locally: labeled result artifact |
-| #110 | Local desktop automation monitor onguard client | Implemented locally: observation artifact, no app control |
-| #111 | Finance document guard onguard client | Implemented locally: untrusted finance quarantine |
-| #112 | Deterministic onguard approval/denial clients and examples | Implemented locally: explicit-rule deny-only sweep |
+| #92 | EPIC: Onguard clients and daemon coordination substrate | Done |
+| #93 | Structured origin metadata for sessions, policy, audit, and Starlark | Done |
+| #94 | Daemon client registry for onguard client identity and admission | Done |
+| #95 | Daemon-owned client config store with proposal and approval states | Done |
+| #96 | Daemon client command queue with leases, labels, and provenance | Done |
+| #97 | Daemon client events/results and artifact store for background work | Done |
+| #98 | Daemon scheduler contracts with recurrence, leases, and run history | Done |
+| #99 | Onguard policy and Starlark starter rules | Done |
+| #100 | Onguard client runtime and CLI runner | Done |
+| #101 | Daily newspaper digest onguard client and interest profile | Done: deterministic preview artifact |
+| #102 | Client parity for schedules, queues, config, events, and artifacts | Done: CLI read paths, TUI/Swift read-only operator views, MCP-control full coordination |
+| #103 | Onguard security demos and violation tests | Done: finance quarantine and deterministic deny tests |
+| #104 | Inbox triage onguard client | Done: deterministic preview artifact |
+| #105 | Meeting prep onguard client | Done: deterministic preview artifact |
+| #106 | Watch-folder and downloads processor onguard client | Done: recommendation artifact, no file mutation |
+| #107 | Personal knowledge update onguard client | Done: low-integrity candidate artifact |
+| #108 | Task follow-up onguard client | Done: deterministic preview artifact |
+| #109 | Research monitor onguard client | Done: labeled result artifact |
+| #110 | Local desktop automation monitor onguard client | Done: observation artifact, no app control |
+| #111 | Finance document guard onguard client | Done: untrusted finance quarantine |
+| #112 | Deterministic onguard approval/denial clients and examples | Done: explicit-rule deny-only sweep |
 
 ## Follow-On Focus — v0.29.0 MCP Security Conformance + External Server Labeling
 
@@ -102,13 +102,13 @@ external MCP servers, resources, prompts, and control surfaces.
 
 | Issue | Work | Status |
 |---|---|---|
-| #113 | EPIC: MCP security conformance and external server labeling | Implemented locally |
-| #114 | Reusable MCP conformance fixture harness | Implemented locally |
+| #113 | EPIC: MCP security conformance and external server labeling | Done |
+| #114 | Reusable MCP conformance fixture harness | Done |
 | #115 | Session-bound MCP multi-turn labels, approvals, provenance, and audit | Covered by existing MCP/control/resource tests plus conformance harness |
-| #116 | Upstream MCP tool classification, target extraction, and fail-closed labeling | Implemented locally |
-| #117 | Upstream MCP resources and prompts as labeled inputs | Implemented locally for resources; prompt surface remains static/workflow scoped |
-| #118 | MCP-control and admin MCP separation, authority boundaries, and audit | Implemented locally |
-| #119 | Opt-in real MCP server smoke matrix for common external servers | Implemented locally: skipped-by-default `CAPDEP_REAL_MCP_SMOKE_CONFIG` matrix |
+| #116 | Upstream MCP tool classification, target extraction, and fail-closed labeling | Done |
+| #117 | Upstream MCP resources and prompts as labeled inputs | Done for resources; prompt surface remains static/workflow scoped |
+| #118 | MCP-control and admin MCP separation, authority boundaries, and audit | Done |
+| #119 | Opt-in real MCP server smoke matrix for common external servers | Done: skipped-by-default `CAPDEP_REAL_MCP_SMOKE_CONFIG` matrix |
 
 ### v0.29.0 done-when
 
@@ -132,12 +132,12 @@ exposing every RPC everywhere.
 
 | Issue | Work | Status |
 |---|---|---|
-| #120 | EPIC: Client integration test parity across CLI, TUI, Swift GUI, and MCP-control | Implemented locally |
-| #121 | Shared daemon integration fixtures for client parity tests | Implemented locally |
-| #122 | CLI live-daemon integration tests for core operator workflows | Implemented locally for onguard read paths |
-| #123 | TUI live-daemon integration and regression tests | Implemented locally: console and spectator live-daemon smoke |
-| #124 | Swift GUI daemon-contract and UI action tests | Implemented locally: SwiftPM daemon-contract model tests; macOS UI smoke stays opt-in |
-| #125 | MCP-control live-daemon integration tests | Implemented locally for onguard control paths |
+| #120 | EPIC: Client integration test parity across CLI, TUI, Swift GUI, and MCP-control | Done |
+| #121 | Shared daemon integration fixtures for client parity tests | Done |
+| #122 | CLI live-daemon integration tests for core operator workflows | Done for onguard read paths |
+| #123 | TUI live-daemon integration and regression tests | Done: console and spectator live-daemon smoke |
+| #124 | Swift GUI daemon-contract and UI action tests | Done: SwiftPM daemon-contract model tests; macOS UI smoke stays opt-in |
+| #125 | MCP-control live-daemon integration tests | Done for onguard control paths |
 | #126 | CI test tiers for client and MCP coverage | Documented locally |
 
 ### v0.30.0 done-when
@@ -174,12 +174,12 @@ active in a session and why a decision was made.
 
 | Issue | Work | Status |
 |---|---|---|
-| #127 | EPIC: Multi-session security context and external actor observability | Implemented locally |
-| #128 | Daemon `session.security_context` model and RPCs | Implemented locally |
-| #129 | Session security event ledger and provenance index across turns | Implemented locally via audit/provenance projection |
-| #130 | Policy and Starlark context with actor, flow, and external-tool metadata | Implemented locally: origin, tool, effect, external actor, and flow metadata exposed to scripts |
-| #131 | Expose session security context across all clients | Implemented locally: CLI, TUI, Swift GUI inspector, and MCP-control |
-| #132 | Multi-session external-actor regression tests for security context | Implemented locally for onguard, approvals, policy, provenance, CLI, TUI, and MCP-control |
+| #127 | EPIC: Multi-session security context and external actor observability | Done |
+| #128 | Daemon `session.security_context` model and RPCs | Done |
+| #129 | Session security event ledger and provenance index across turns | Done via audit/provenance projection |
+| #130 | Policy and Starlark context with actor, flow, and external-tool metadata | Done: origin, tool, effect, external actor, and flow metadata exposed to scripts |
+| #131 | Expose session security context across all clients | Done: CLI, TUI, Swift GUI inspector, and MCP-control |
+| #132 | Multi-session external-actor regression tests for security context | Done for onguard, approvals, policy, provenance, CLI, TUI, and MCP-control |
 
 ### v0.31.0 done-when
 
@@ -232,13 +232,13 @@ explicit daemon contracts.
 
 | Issue | Work | Status |
 |---|---|---|
-| #77 | MCP compatibility matrix and protocol tests | Implemented locally |
-| #78 | Add `outputSchema` to CapDep MCP tools | Implemented locally |
-| #79 | Unify MCP elicitation with daemon approval objects | Implemented locally |
-| #80 | Make upstream MCP resources first-class labeled inputs | Implemented locally |
-| #81 | Define explicit policy posture for every MCP surface | Implemented locally |
-| #82 | Strengthen admin MCP server separation and audit | Implemented locally |
-| #83 | Refresh MCP and ARD documentation against implementation | Implemented locally |
+| #77 | MCP compatibility matrix and protocol tests | Done |
+| #78 | Add `outputSchema` to CapDep MCP tools | Done |
+| #79 | Unify MCP elicitation with daemon approval objects | Done |
+| #80 | Make upstream MCP resources first-class labeled inputs | Done |
+| #81 | Define explicit policy posture for every MCP surface | Done |
+| #82 | Strengthen admin MCP server separation and audit | Done |
+| #83 | Refresh MCP and ARD documentation against implementation | Done |
 
 ### v0.25.0 done-when
 
