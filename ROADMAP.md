@@ -69,7 +69,7 @@ and policy enforcement.
 
 | Issue | Work | Status |
 |---|---|---|
-| #92 | EPIC: Onguard clients and daemon coordination substrate | In progress |
+| #92 | EPIC: Onguard clients and daemon coordination substrate | Implemented locally |
 | #93 | Structured origin metadata for sessions, policy, audit, and Starlark | Implemented locally |
 | #94 | Daemon client registry for onguard client identity and admission | Implemented locally |
 | #95 | Daemon-owned client config store with proposal and approval states | Implemented locally |
@@ -79,7 +79,7 @@ and policy enforcement.
 | #99 | Onguard policy and Starlark starter rules | Implemented locally |
 | #100 | Onguard client runtime and CLI runner | Implemented locally |
 | #101 | Daily newspaper digest onguard client and interest profile | Implemented locally: deterministic preview artifact |
-| #102 | Client parity for schedules, queues, config, events, and artifacts | Partial: MCP-control implemented; richer Swift/TUI surfaces remain |
+| #102 | Client parity for schedules, queues, config, events, and artifacts | Implemented locally: CLI read paths, TUI/Swift read-only operator views, MCP-control full coordination |
 | #103 | Onguard security demos and violation tests | Implemented locally: finance quarantine and deterministic deny tests |
 | #104 | Inbox triage onguard client | Implemented locally: deterministic preview artifact |
 | #105 | Meeting prep onguard client | Implemented locally: deterministic preview artifact |

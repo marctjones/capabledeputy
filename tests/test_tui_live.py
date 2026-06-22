@@ -138,6 +138,51 @@ async def test_spectator_session_detail_renders_caps_and_recovery(
         assert "recover:" in trace  # deny recovery hint surfaced
 
 
+async def test_spectator_renders_onguard_coordination_summary(fake_daemon) -> None:
+    client = fake_daemon(
+        {
+            "session.list": {"sessions": []},
+            "approval.list": {"approvals": []},
+            "audit.tail": {"events": []},
+            "client.registry.list": {
+                "clients": [
+                    {
+                        "client_id": "onguard.digest.daily",
+                        "kind": "onguard",
+                        "status": "active",
+                    }
+                ]
+            },
+            "client.queue.list": {
+                "commands": [{"client_id": "onguard.digest.daily", "status": "queued"}]
+            },
+            "schedule.list": {
+                "schedules": [{"client_id": "onguard.digest.daily", "status": "proposed"}]
+            },
+            "artifact.list": {
+                "artifacts": [{"client_id": "onguard.digest.daily", "status": "draft"}]
+            },
+            "client.events.list": {
+                "events": [{"client_id": "onguard.digest.daily", "event_type": "digest.ready"}]
+            },
+        }
+    )
+    app = CapDepTUI(poll_interval=999.0)
+    app._client = client
+    async with app.run_test() as pilot:
+        await _settle(pilot)
+        assert app._onguard_summary == [
+            {
+                "client_id": "onguard.digest.daily",
+                "status": "active",
+                "queue": 1,
+                "schedules": 1,
+                "artifacts": 1,
+                "events": 1,
+            }
+        ]
+
+
 # ---- drive-loop resilience ---------------------------------------------
 
 

@@ -155,6 +155,7 @@ class CapDepTUI(App[None]):
         self._selected_session_id: str | None = None
         self._graph_view: bool = False
         self._live_events: list[dict[str, Any]] = []
+        self._onguard_summary: list[dict[str, Any]] = []
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -172,6 +173,8 @@ class CapDepTUI(App[None]):
                 yield Static("(select a session)", id="trace")
         yield Static("Events (live ticker)", classes="pane-title")
         yield DataTable(id="events")
+        yield Static("Onguard Coordination", classes="pane-title")
+        yield DataTable(id="onguard")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -181,6 +184,9 @@ class CapDepTUI(App[None]):
 
         events = self.query_one("#events", DataTable)
         events.add_columns("ts", "type", "session", "decision/labels")
+
+        onguard = self.query_one("#onguard", DataTable)
+        onguard.add_columns("client", "status", "queue", "schedules", "artifacts", "events")
 
         approvals = self.query_one("#approvals", DataTable)
         approvals.add_columns("id", "action", "target", "labels")
@@ -261,6 +267,7 @@ class CapDepTUI(App[None]):
                 {"status": "pending"},
             )
             audit_resp = await self._client.call("audit.tail", {"limit": 50})
+            onguard_summary = await self._load_onguard_summary()
         except DaemonNotRunningError:
             self.notify(
                 "daemon not running — start it with `capdep daemon start`",
@@ -269,8 +276,10 @@ class CapDepTUI(App[None]):
             return
 
         self._sessions = sessions_resp["sessions"]
+        self._onguard_summary = onguard_summary
         try:
             self._render_sessions()
+            self._render_onguard()
         except Exception:
             return
 
@@ -296,6 +305,76 @@ class CapDepTUI(App[None]):
             await self._update_session_detail(self._selected_session_id, audit_resp["events"])
 
         await self._update_status_bar(audit_resp["events"])
+
+    async def _load_onguard_summary(self) -> list[dict[str, Any]]:
+        try:
+            clients_resp = await self._client.call("client.registry.list", {"kind": "onguard"})
+            queue_resp = await self._client.call("client.queue.list", {})
+            schedules_resp = await self._client.call("schedule.list", {})
+            artifacts_resp = await self._client.call("artifact.list", {})
+            events_resp = await self._client.call("client.events.list", {"limit": 100})
+        except Exception:
+            return []
+
+        by_client: dict[str, dict[str, Any]] = {}
+        for client in clients_resp.get("clients", []):
+            client_id = str(client.get("client_id") or "")
+            if not client_id:
+                continue
+            by_client[client_id] = {
+                "client_id": client_id,
+                "status": client.get("status", ""),
+                "queue": 0,
+                "schedules": 0,
+                "artifacts": 0,
+                "events": 0,
+            }
+
+        for collection_name, key in (
+            ("commands", "queue"),
+            ("schedules", "schedules"),
+            ("artifacts", "artifacts"),
+            ("events", "events"),
+        ):
+            if collection_name == "commands":
+                values = queue_resp.get(collection_name, [])
+            elif collection_name == "schedules":
+                values = schedules_resp.get(collection_name, [])
+            elif collection_name == "artifacts":
+                values = artifacts_resp.get(collection_name, [])
+            else:
+                values = events_resp.get(collection_name, [])
+            for item in values:
+                client_id = str(item.get("client_id") or "")
+                if not client_id:
+                    continue
+                summary = by_client.setdefault(
+                    client_id,
+                    {
+                        "client_id": client_id,
+                        "status": "(unregistered)",
+                        "queue": 0,
+                        "schedules": 0,
+                        "artifacts": 0,
+                        "events": 0,
+                    },
+                )
+                summary[key] += 1
+
+        return sorted(by_client.values(), key=lambda row: row["client_id"])
+
+    def _render_onguard(self) -> None:
+        table = self.query_one("#onguard", DataTable)
+        table.clear()
+        for row in self._onguard_summary:
+            table.add_row(
+                row["client_id"],
+                row["status"],
+                str(row["queue"]),
+                str(row["schedules"]),
+                str(row["artifacts"]),
+                str(row["events"]),
+            )
 
     def _render_sessions(self) -> None:
         sessions_table = self.query_one("#sessions", DataTable)

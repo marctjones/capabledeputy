@@ -212,7 +212,8 @@ approval, and tool dispatch.
   events/results, artifacts, schedules, schedule leases, and schedule history
   RPCs backed by the shared SQLite state DB.
 - MCP-control exposes the new onguard coordination RPCs for external control
-  clients; Swift/TUI review ergonomics remain follow-up surface work.
+  clients; TUI and Swift GUI expose read-only operator views over onguard
+  clients, queues, schedules, configs, artifacts, and events.
 - Policy/Starlark inputs include session origin metadata, and the shipped
   personal-assistant policy bundle includes onguard starter rules for declared
   workflows, sensitive background publication, and low-integrity write review.
@@ -222,8 +223,9 @@ approval, and tool dispatch.
   prep, watch folders, knowledge updates, task follow-up, research monitoring,
   desktop monitoring, finance quarantine, and deny-only deterministic approval
   sweeps.
-- Remaining gaps are richer Swift/TUI review surfaces and fully productized
-  data-source adapters for the packaged workflows.
+- Remaining product work is fully productized data-source adapters for the
+  packaged workflows; the coordination substrate and client review surfaces are
+  implemented locally.
 
 ### Done-when
 

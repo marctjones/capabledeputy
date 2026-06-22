@@ -613,3 +613,95 @@ struct OverrideGrantViewData: Identifiable, Hashable {
         self.expiresAt = dictionary["expires_at"] as? String ?? ""
     }
 }
+
+struct OnguardClientViewData: Identifiable, Hashable {
+    let id: String
+    let kind: String
+    let status: String
+    let owner: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["client_id"] as? String ?? UUID().uuidString
+        self.kind = dictionary["kind"] as? String ?? ""
+        self.status = dictionary["status"] as? String ?? ""
+        self.owner = dictionary["owner"] as? String ?? ""
+    }
+}
+
+struct OnguardCommandViewData: Identifiable, Hashable {
+    let id: String
+    let clientID: String
+    let command: String
+    let status: String
+    let labels: [String]
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["command_id"] as? String ?? UUID().uuidString
+        self.clientID = dictionary["client_id"] as? String ?? ""
+        self.command = dictionary["command"] as? String ?? ""
+        self.status = dictionary["status"] as? String ?? ""
+        self.labels = dictionary["labels"] as? [String] ?? []
+    }
+}
+
+struct OnguardScheduleViewData: Identifiable, Hashable {
+    let id: String
+    let clientID: String
+    let command: String
+    let status: String
+    let nextRunAt: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["schedule_id"] as? String ?? UUID().uuidString
+        self.clientID = dictionary["client_id"] as? String ?? ""
+        self.command = dictionary["command"] as? String ?? ""
+        self.status = dictionary["status"] as? String ?? ""
+        self.nextRunAt = dictionary["next_run_at"] as? String ?? ""
+    }
+}
+
+struct OnguardArtifactViewData: Identifiable, Hashable {
+    let id: String
+    let clientID: String
+    let artifactType: String
+    let status: String
+    let labels: [String]
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["artifact_id"] as? String ?? UUID().uuidString
+        self.clientID = dictionary["client_id"] as? String ?? ""
+        self.artifactType = dictionary["artifact_type"] as? String ?? ""
+        self.status = dictionary["status"] as? String ?? ""
+        self.labels = dictionary["labels"] as? [String] ?? []
+    }
+}
+
+struct OnguardEventViewData: Identifiable, Hashable {
+    let id: String
+    let clientID: String
+    let eventType: String
+    let acknowledgedBy: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["event_id"] as? String ?? UUID().uuidString
+        self.clientID = dictionary["client_id"] as? String ?? ""
+        self.eventType = dictionary["event_type"] as? String ?? ""
+        self.acknowledgedBy = dictionary["acknowledged_by"] as? String ?? ""
+    }
+}
+
+struct OnguardConfigViewData: Identifiable, Hashable {
+    let id: String
+    let clientID: String
+    let schemaName: String
+    let status: String
+    let labels: [String]
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["config_id"] as? String ?? UUID().uuidString
+        self.clientID = dictionary["client_id"] as? String ?? ""
+        self.schemaName = dictionary["schema_name"] as? String ?? ""
+        self.status = dictionary["status"] as? String ?? ""
+        self.labels = dictionary["labels"] as? [String] ?? []
+    }
+}

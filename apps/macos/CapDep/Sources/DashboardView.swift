@@ -82,6 +82,8 @@ private struct SectionContentView: View {
             SessionListView(selectedSession: $selectedSession)
         case .workflows:
             WorkflowLibraryView()
+        case .onguard:
+            OnguardView()
         case .policyTrace:
             PolicyTraceView()
         case .provenance:
@@ -266,6 +268,109 @@ private struct PolicyTraceView: View {
             }
             .padding(24)
         }
+    }
+}
+
+private struct OnguardView: View {
+    @EnvironmentObject private var model: CapDepAppModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Onguard Coordination")
+                    .font(.largeTitle.weight(.bold))
+                Text("Read-only daemon-owned background-client state. Use this to review scheduled and queued work without giving headless clients extra privilege.")
+                    .foregroundStyle(.secondary)
+
+                HStack(alignment: .top, spacing: 14) {
+                    MetricCard(title: "Clients", value: "\(model.onguardClients.count)", systemImage: "person.crop.circle.badge.clock")
+                    MetricCard(title: "Queue", value: "\(model.onguardCommands.count)", systemImage: "tray.full")
+                    MetricCard(title: "Schedules", value: "\(model.onguardSchedules.count)", systemImage: "calendar.badge.clock")
+                }
+
+                LiveCard(title: "Registered Clients", systemImage: "person.3.sequence") {
+                    OnguardRows(
+                        empty: "No onguard clients registered.",
+                        rows: model.onguardClients.map {
+                            ($0.id, "\($0.kind) · \($0.status)" + ($0.owner.isEmpty ? "" : " · owner \($0.owner)"))
+                        },
+                    )
+                }
+
+                LiveCard(title: "Queued Commands", systemImage: "list.bullet.clipboard") {
+                    OnguardRows(
+                        empty: "No queued commands.",
+                        rows: model.onguardCommands.map {
+                            ($0.command, "\($0.clientID) · \($0.status) · \($0.labels.joined(separator: ", "))")
+                        },
+                    )
+                }
+
+                HStack(alignment: .top, spacing: 14) {
+                    LiveCard(title: "Schedules", systemImage: "calendar") {
+                        OnguardRows(
+                            empty: "No schedules configured.",
+                            rows: model.onguardSchedules.map {
+                                ($0.id, "\($0.clientID) · \($0.command) · \($0.status)" + ($0.nextRunAt.isEmpty ? "" : " · next \($0.nextRunAt)"))
+                            },
+                        )
+                    }
+                    LiveCard(title: "Artifacts", systemImage: "doc.badge.clock") {
+                        OnguardRows(
+                            empty: "No artifacts produced.",
+                            rows: model.onguardArtifacts.map {
+                                ($0.artifactType, "\($0.clientID) · \($0.status) · \($0.labels.joined(separator: ", "))")
+                            },
+                        )
+                    }
+                }
+
+                HStack(alignment: .top, spacing: 14) {
+                    LiveCard(title: "Config Proposals", systemImage: "slider.horizontal.3") {
+                        OnguardRows(
+                            empty: "No config proposals.",
+                            rows: model.onguardConfigs.map {
+                                ($0.id, "\($0.clientID) · \($0.schemaName) · \($0.status)")
+                            },
+                        )
+                    }
+                    LiveCard(title: "Recent Events", systemImage: "bell.badge") {
+                        OnguardRows(
+                            empty: "No onguard events.",
+                            rows: model.onguardEvents.prefix(20).map {
+                                ($0.eventType, "\($0.clientID)" + ($0.acknowledgedBy.isEmpty ? "" : " · acked by \($0.acknowledgedBy)"))
+                            },
+                        )
+                    }
+                }
+            }
+            .padding(24)
+        }
+    }
+}
+
+private struct OnguardRows: View {
+    let empty: String
+    let rows: [(String, String)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if rows.isEmpty {
+                Text(empty)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(row.0.isEmpty ? "(unnamed)" : row.0)
+                        .font(.headline)
+                    Text(row.1.isEmpty ? "(no detail)" : row.1)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

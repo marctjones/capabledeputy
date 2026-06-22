@@ -29,6 +29,12 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var selectedSessionChildren: [CapDepSession] = []
     @Published private(set) var approvalDetails: [Int: ApprovalDetail] = [:]
     @Published private(set) var sessionSecurityContexts: [String: SessionSecurityContext] = [:]
+    @Published private(set) var onguardClients: [OnguardClientViewData] = []
+    @Published private(set) var onguardCommands: [OnguardCommandViewData] = []
+    @Published private(set) var onguardSchedules: [OnguardScheduleViewData] = []
+    @Published private(set) var onguardArtifacts: [OnguardArtifactViewData] = []
+    @Published private(set) var onguardEvents: [OnguardEventViewData] = []
+    @Published private(set) var onguardConfigs: [OnguardConfigViewData] = []
     @Published private(set) var currentSessionID: String?
     @Published private(set) var currentAssistantOutput = ""
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
@@ -112,6 +118,18 @@ final class CapDepAppModel: ObservableObject {
             async let memoryResult = client.call(method: "memory.entries")
             async let toolsResult = client.call(method: "tool.list")
             async let overridesResult = client.call(method: "override.list")
+            async let onguardClientsResult = client.call(
+                method: "client.registry.list",
+                params: ["kind": "onguard"],
+            )
+            async let onguardCommandsResult = client.call(method: "client.queue.list")
+            async let onguardSchedulesResult = client.call(method: "schedule.list")
+            async let onguardArtifactsResult = client.call(method: "artifact.list")
+            async let onguardEventsResult = client.call(
+                method: "client.events.list",
+                params: ["limit": 100],
+            )
+            async let onguardConfigsResult = client.call(method: "client.config.list")
 
             let approvalsObject = try await approvalsResult as? [String: Any]
             let sessionsObject = try await sessionsResult as? [String: Any]
@@ -131,6 +149,12 @@ final class CapDepAppModel: ObservableObject {
             let memoryObject = try await memoryResult as? [String: Any]
             let toolsObject = try await toolsResult as? [String: Any]
             let overridesObject = try await overridesResult as? [String: Any]
+            let onguardClientsObject = try await onguardClientsResult as? [String: Any]
+            let onguardCommandsObject = try await onguardCommandsResult as? [String: Any]
+            let onguardSchedulesObject = try await onguardSchedulesResult as? [String: Any]
+            let onguardArtifactsObject = try await onguardArtifactsResult as? [String: Any]
+            let onguardEventsObject = try await onguardEventsResult as? [String: Any]
+            let onguardConfigsObject = try await onguardConfigsResult as? [String: Any]
 
             let approvals = (approvalsObject?["approvals"] as? [[String: Any]] ?? [])
                 .map(Approval.init(dictionary:))
@@ -182,6 +206,18 @@ final class CapDepAppModel: ObservableObject {
                 .map(DaemonToolViewData.init(dictionary:))
             overrideGrants = (overridesObject?["grants"] as? [[String: Any]] ?? [])
                 .map(OverrideGrantViewData.init(dictionary:))
+            onguardClients = (onguardClientsObject?["clients"] as? [[String: Any]] ?? [])
+                .map(OnguardClientViewData.init(dictionary:))
+            onguardCommands = (onguardCommandsObject?["commands"] as? [[String: Any]] ?? [])
+                .map(OnguardCommandViewData.init(dictionary:))
+            onguardSchedules = (onguardSchedulesObject?["schedules"] as? [[String: Any]] ?? [])
+                .map(OnguardScheduleViewData.init(dictionary:))
+            onguardArtifacts = (onguardArtifactsObject?["artifacts"] as? [[String: Any]] ?? [])
+                .map(OnguardArtifactViewData.init(dictionary:))
+            onguardEvents = (onguardEventsObject?["events"] as? [[String: Any]] ?? [])
+                .map(OnguardEventViewData.init(dictionary:))
+            onguardConfigs = (onguardConfigsObject?["configs"] as? [[String: Any]] ?? [])
+                .map(OnguardConfigViewData.init(dictionary:))
             connected = true
             lastError = nil
             await refreshFrontmostContext()
