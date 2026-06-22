@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated, Any
 
 import anyio
@@ -32,7 +33,9 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 daemon_app = typer.Typer(help="Manage the CapableDeputy daemon.", no_args_is_help=True)
+onguard_app = typer.Typer(help="Run headless onguard clients.", no_args_is_help=True)
 app.add_typer(daemon_app, name="daemon")
+app.add_typer(onguard_app, name="onguard")
 app.add_typer(session_app, name="session")
 app.add_typer(audit_app, name="audit")
 app.add_typer(policy_app, name="policy")
@@ -52,6 +55,64 @@ app.command("chat")(chat_command)
 app.command("init")(init_command)
 app.command("watch")(watch_command)
 audit_app.command("storage-shape")(storage_shape_command)
+
+
+async def _run_onguard_client(
+    *,
+    client_id: str,
+    socket_path: str | None,
+    once: bool,
+    interval_seconds: float,
+) -> None:
+    from capabledeputy.onguard import OnguardRuntime
+
+    daemon = DaemonClient(default_socket_path() if socket_path is None else Path(socket_path))
+    runtime = OnguardRuntime(
+        daemon,
+        client_id=client_id,
+        handlers={
+            "schedule": lambda task: {
+                "ok": True,
+                "message": f"claimed {task.record['schedule_id']}; no packaged handler installed",
+            }
+        },
+    )
+    while True:
+        did_work = await runtime.run_once()
+        if once:
+            return
+        await anyio.sleep(interval_seconds if not did_work else 0)
+
+
+@onguard_app.command("run")
+def onguard_run_command(
+    client_id: Annotated[str, typer.Argument(help="Registered onguard client id.")],
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+    once: Annotated[
+        bool,
+        typer.Option("--once", help="Run at most one due schedule or queued command."),
+    ] = False,
+    interval_seconds: Annotated[
+        float,
+        typer.Option("--interval", help="Polling interval when not using --once."),
+    ] = 5.0,
+) -> None:
+    """Run a registered onguard client through daemon RPC only."""
+    try:
+        anyio.run(
+            lambda: _run_onguard_client(
+                client_id=client_id,
+                socket_path=socket_path,
+                once=once,
+                interval_seconds=interval_seconds,
+            )
+        )
+    except DaemonNotRunningError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2) from e
 
 
 @oauth_app.command("login")

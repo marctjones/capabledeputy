@@ -6,48 +6,23 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-06-21, after landing the main v0.27 practical setup
-slice, opening the v0.28 onguard-client substrate, and adding the MCP/client
-test/security-context hardening milestones.
+**Last refreshed:** 2026-06-21, after closing the v0.27 practical setup
+slice and implementing the first v0.28 onguard coordination, policy, and
+runtime substrate.
 
-## Current Focus — v0.27.0 Practical Setup + Daemon-Owned Settings
+## Current Focus — v0.28.0 Onguard Clients + Daemon Coordination
 
-Goal: make CapDep practical to configure from its clients without moving
-authority out of the daemon. The daemon owns settings persistence, connector
-setup state, config validation, log locations, and remediation actions; CLI,
-TUI, Swift GUI, and MCP-control only present or invoke those daemon contracts.
-This milestone also adopts the onguard-client architecture for future
-background work: headless clients may orchestrate schedules and queues, but the
-daemon owns shared coordination state and remains the only authority path.
+Goal: make headless background work extensible without making the daemon a
+giant application server. Onguard clients are normal daemon clients that claim
+approved schedules/queues, while the daemon owns identity, origin metadata,
+shared config, queues, events/results, artifacts, schedules, labels,
+provenance, audit, and policy enforcement.
 
-### v0.27.0 practical setup scope
-
-| Issue | Work | Status |
-|---|---|---|
-| #69 | Daemon-owned settings store and settings RPCs for CapDepMac | Done |
-| #75 | Daemon config validation and log-location RPCs for Advanced settings | Done |
-| #70 | Wire CapDepMac settings controls to daemon settings instead of constants | Implemented locally |
-| #71 | Replace empty Setup/Open/Fix buttons with daemon remediation actions | Implemented locally |
-| #72 | Daemon-backed account and OAuth setup workflows for Google and local app connectors | Partial |
-| #76 | Fix CapDepMac task/menu actions that navigate without completing the intended action | Implemented locally |
-| #74 | Wire automation pause, screen-control enablement, and Touch ID policy through daemon | Implemented locally |
-| #73 | Daemon-owned source bindings and labeling editor for CapDepMac | Implemented locally |
-| — | Adopt onguard-client architecture and define daemon coordination contracts | Done |
-
-### v0.27.0 done-when
-
-- Settings are persisted by the daemon and exposed through stable RPCs.
-- CapDepMac settings controls save through daemon RPCs rather than local
-  constants.
-- Configuration validation and log-location diagnostics come from the daemon.
-- Setup/Open/Fix actions either complete daemon-backed work or are removed.
-- Connector setup status covers Gmail, Google Workspace expansion, and local
-  macOS app permission checks through one reusable shape.
-- First-class Calendar/Drive OAuth setup remains follow-up work before v0.27
-  can be closed completely.
-- Onguard clients are documented as normal headless clients, and the missing
-  daemon contracts for schedules, queues, client config, and events are tracked
-  before implementing daily digest/news workflows.
+The first v0.28 substrate slice is implemented locally: origin-aware policy
+inputs, registry/config/queue/event/artifact/schedule RPCs, schedule leases and
+history, onguard Starlark starter rules, and a reusable `capdep onguard run`
+runtime. The next v0.28 work is packaged useful clients, client parity surfaces,
+and violation demos.
 
 ## Completed Focus — v0.26.0 Client Parity Over Daemon RPC
 
@@ -99,10 +74,10 @@ and policy enforcement.
 | #94 | Daemon client registry for onguard client identity and admission | Implemented locally |
 | #95 | Daemon-owned client config store with proposal and approval states | Implemented locally |
 | #96 | Daemon client command queue with leases, labels, and provenance | Implemented locally |
-| #97 | Daemon client events/results and artifact store for background work | Partial: events/results implemented; artifact store remains |
-| #98 | Daemon scheduler contracts with recurrence, leases, and run history | Partial: schedule records implemented; recurrence/leases/run history remain |
-| #99 | Onguard policy and Starlark starter rules | Planned |
-| #100 | Onguard client runtime and CLI runner | Planned |
+| #97 | Daemon client events/results and artifact store for background work | Implemented locally |
+| #98 | Daemon scheduler contracts with recurrence, leases, and run history | Implemented locally |
+| #99 | Onguard policy and Starlark starter rules | Implemented locally |
+| #100 | Onguard client runtime and CLI runner | Implemented locally |
 | #101 | Daily newspaper digest onguard client and interest profile | Planned |
 | #102 | Client parity for schedules, queues, config, events, and artifacts | Planned |
 | #103 | Onguard security demos and violation tests | Planned |

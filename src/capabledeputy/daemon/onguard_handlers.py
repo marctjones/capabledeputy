@@ -199,6 +199,91 @@ def make_onguard_handlers(app: App) -> dict[str, Handler]:
             )
         }
 
+    async def events_ack(params: dict[str, Any]) -> dict[str, Any]:
+        event = await app.onguard.acknowledge_event(
+            event_id=str(params["event_id"]),
+            acknowledged_by=str(params.get("acknowledged_by", "operator")),
+        )
+        await _audit(
+            app,
+            EventType.ONGUARD_EVENT_PUBLISHED,
+            {
+                "event_id": event["event_id"],
+                "client_id": event["client_id"],
+                "acknowledged_by": event["acknowledged_by"],
+            },
+        )
+        return {"event": event}
+
+    async def artifact_create(params: dict[str, Any]) -> dict[str, Any]:
+        artifact = await app.onguard.create_artifact(
+            artifact_id=params.get("artifact_id"),
+            client_id=str(params["client_id"]),
+            command_id=params.get("command_id"),
+            schedule_id=params.get("schedule_id"),
+            session_id=params.get("session_id"),
+            artifact_type=str(params.get("artifact_type", "document")),
+            payload=dict(params.get("payload") or {}),
+            labels=[str(v) for v in params.get("labels", [])],
+            provenance=dict(params.get("provenance") or {}),
+            created_by=str(params.get("created_by", "operator")),
+            status=str(params.get("status", "draft")),
+        )
+        await _audit(
+            app,
+            EventType.ONGUARD_ARTIFACT_CHANGED,
+            {
+                "artifact_id": artifact["artifact_id"],
+                "client_id": artifact["client_id"],
+                "status": artifact["status"],
+                "labels": artifact["labels"],
+                "provenance": artifact["provenance"],
+            },
+        )
+        return {"artifact": artifact}
+
+    async def artifact_read(params: dict[str, Any]) -> dict[str, Any]:
+        return {"artifact": await app.onguard.read_artifact(artifact_id=str(params["artifact_id"]))}
+
+    async def artifact_list(params: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "artifacts": await app.onguard.list_artifacts(
+                client_id=params.get("client_id"),
+                status=params.get("status"),
+            )
+        }
+
+    async def artifact_promote(params: dict[str, Any]) -> dict[str, Any]:
+        artifact = await app.onguard.promote_artifact(
+            artifact_id=str(params["artifact_id"]),
+            promoted_by=str(params.get("promoted_by", "operator")),
+            status=str(params.get("status", "promoted")),
+        )
+        await _audit(
+            app,
+            EventType.ONGUARD_ARTIFACT_CHANGED,
+            {
+                "artifact_id": artifact["artifact_id"],
+                "client_id": artifact["client_id"],
+                "status": artifact["status"],
+                "promoted_by": artifact["promoted_by"],
+            },
+        )
+        return {"artifact": artifact}
+
+    async def artifact_delete(params: dict[str, Any]) -> dict[str, Any]:
+        artifact = await app.onguard.delete_artifact(artifact_id=str(params["artifact_id"]))
+        await _audit(
+            app,
+            EventType.ONGUARD_ARTIFACT_CHANGED,
+            {
+                "artifact_id": artifact["artifact_id"],
+                "client_id": artifact["client_id"],
+                "status": artifact["status"],
+            },
+        )
+        return {"artifact": artifact}
+
     async def schedule_create(params: dict[str, Any]) -> dict[str, Any]:
         schedule = await app.onguard.create_schedule(
             schedule_id=str(params["schedule_id"]),
@@ -232,6 +317,130 @@ def make_onguard_handlers(app: App) -> dict[str, Handler]:
             )
         }
 
+    async def schedule_update(params: dict[str, Any]) -> dict[str, Any]:
+        schedule = await app.onguard.update_schedule(
+            schedule_id=str(params["schedule_id"]),
+            recurrence=dict(params["recurrence"]) if "recurrence" in params else None,
+            payload=dict(params["payload"]) if "payload" in params else None,
+            labels=[str(v) for v in params["labels"]] if "labels" in params else None,
+            status=str(params["status"]) if "status" in params else None,
+            next_run_at=params.get("next_run_at"),
+        )
+        await _audit(
+            app,
+            EventType.ONGUARD_SCHEDULE_CHANGED,
+            {
+                "schedule_id": schedule["schedule_id"],
+                "client_id": schedule["client_id"],
+                "status": schedule["status"],
+                "labels": schedule["labels"],
+            },
+        )
+        return {"schedule": schedule}
+
+    async def schedule_disable(params: dict[str, Any]) -> dict[str, Any]:
+        schedule = await app.onguard.disable_schedule(schedule_id=str(params["schedule_id"]))
+        await _audit(
+            app,
+            EventType.ONGUARD_SCHEDULE_CHANGED,
+            {
+                "schedule_id": schedule["schedule_id"],
+                "client_id": schedule["client_id"],
+                "status": schedule["status"],
+            },
+        )
+        return {"schedule": schedule}
+
+    async def schedule_run_now(params: dict[str, Any]) -> dict[str, Any]:
+        command = await app.onguard.run_schedule_now(
+            schedule_id=str(params["schedule_id"]),
+            created_by=str(params.get("created_by", "operator")),
+            command_id=params.get("command_id"),
+        )
+        await _audit(
+            app,
+            EventType.ONGUARD_SCHEDULE_RUN,
+            {
+                "schedule_id": params["schedule_id"],
+                "client_id": command["client_id"],
+                "command_id": command["command_id"],
+                "status": command["status"],
+            },
+        )
+        return {"command": command}
+
+    async def schedule_claim_due(params: dict[str, Any]) -> dict[str, Any]:
+        run = await app.onguard.claim_due_schedule(
+            client_id=str(params["client_id"]),
+            claimed_by=str(params.get("claimed_by", params["client_id"])),
+            lease_seconds=int(params.get("lease_seconds", 300)),
+        )
+        if run is None:
+            return {"run": None}
+        await _audit(
+            app,
+            EventType.ONGUARD_SCHEDULE_RUN,
+            {
+                "schedule_id": run["schedule_id"],
+                "client_id": run["client_id"],
+                "run_id": run["run_id"],
+                "status": run["status"],
+            },
+        )
+        return {"run": run}
+
+    async def schedule_complete_run(params: dict[str, Any]) -> dict[str, Any]:
+        run = await app.onguard.complete_schedule_run(
+            run_id=str(params["run_id"]),
+            result=dict(params.get("result") or {}),
+            artifact_ref=params.get("artifact_ref"),
+            command_id=params.get("command_id"),
+            next_run_at=params.get("next_run_at"),
+        )
+        await _audit(
+            app,
+            EventType.ONGUARD_SCHEDULE_RUN,
+            {
+                "schedule_id": run["schedule_id"],
+                "client_id": run["client_id"],
+                "run_id": run["run_id"],
+                "status": run["status"],
+                "artifact_ref": run["artifact_ref"],
+            },
+        )
+        return {"run": run}
+
+    async def schedule_fail_run(params: dict[str, Any]) -> dict[str, Any]:
+        run = await app.onguard.fail_schedule_run(
+            run_id=str(params["run_id"]),
+            result=dict(params.get("result") or {}),
+            error=str(params["error"]),
+            artifact_ref=params.get("artifact_ref"),
+            command_id=params.get("command_id"),
+            next_run_at=params.get("next_run_at"),
+        )
+        await _audit(
+            app,
+            EventType.ONGUARD_SCHEDULE_RUN,
+            {
+                "schedule_id": run["schedule_id"],
+                "client_id": run["client_id"],
+                "run_id": run["run_id"],
+                "status": run["status"],
+                "error": run["error"],
+            },
+        )
+        return {"run": run}
+
+    async def schedule_history(params: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "runs": await app.onguard.schedule_history(
+                schedule_id=params.get("schedule_id"),
+                client_id=params.get("client_id"),
+                limit=int(params.get("limit", 100)),
+            )
+        }
+
     return {
         "client.registry.register": client_register,
         "client.registry.list": client_list,
@@ -245,6 +454,19 @@ def make_onguard_handlers(app: App) -> dict[str, Handler]:
         "client.queue.list": queue_list,
         "client.events.publish": events_publish,
         "client.events.list": events_list,
+        "client.events.ack": events_ack,
+        "artifact.create": artifact_create,
+        "artifact.read": artifact_read,
+        "artifact.list": artifact_list,
+        "artifact.promote": artifact_promote,
+        "artifact.delete": artifact_delete,
         "schedule.create": schedule_create,
         "schedule.list": schedule_list,
+        "schedule.update": schedule_update,
+        "schedule.disable": schedule_disable,
+        "schedule.run_now": schedule_run_now,
+        "schedule.claim_due": schedule_claim_due,
+        "schedule.complete_run": schedule_complete_run,
+        "schedule.fail_run": schedule_fail_run,
+        "schedule.history": schedule_history,
     }

@@ -8,6 +8,8 @@ a separate test exercises the real Starlark host when it's installed.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from capabledeputy.policy.actions import Action
@@ -18,7 +20,10 @@ from capabledeputy.policy.decision_inspector_loader import (
     ScriptDecisionInspector,
     load_decision_inspectors,
 )
+from capabledeputy.policy.labels import CategoryTag, LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.policy.rules import Decision
+from capabledeputy.policy.tiers import Tier
+from capabledeputy.session.model import OriginMetadata, Session
 from capabledeputy.substrate.decision_inspector_port import (
     DecisionRelax,
     DecisionTighten,
@@ -118,6 +123,13 @@ def inspect(action, session, proposed_outcome):
     return abstain()
 """
 
+_ORIGIN_SCRIPT = """
+def inspect(action, session, proposed_outcome):
+    if session["origin"]["kind"] == "onguard":
+        return tighten(to="require_approval", rule="origin-seen", rationale="onguard origin")
+    return abstain()
+"""
+
 
 def _proposed(decision: Decision):
     from dataclasses import dataclass
@@ -180,6 +192,85 @@ async def test_script_inspector_tightens() -> None:
     )
     assert isinstance(out, DecisionTighten)
     assert out.to == Decision.REQUIRE_APPROVAL
+
+
+async def test_script_inspector_exposes_onguard_origin_metadata() -> None:
+    cfg = {
+        "decision_inspectors": [
+            {"source": _ORIGIN_SCRIPT, "runtime": "python-reference", "name": "origin"},
+        ],
+    }
+    (insp,) = load_decision_inspectors(cfg)
+    session = Session.new(
+        origin=OriginMetadata(
+            kind="onguard",
+            client_id="onguard.digest.daily",
+            schedule_id="daily-news",
+            command_id="cmd-1",
+            approved_by="marc",
+        )
+    )
+
+    out = await insp.inspect(
+        action=Action(kind=CapabilityKind.READ_FS, target="notes"),
+        session=session,
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+
+    assert isinstance(out, DecisionTighten)
+    assert out.rule == "origin-seen"
+
+
+async def test_onguard_starter_rules_require_approval_and_deny_mismatches() -> None:
+    cfg = {
+        "decision_inspectors": [
+            {"script": "onguard_declared_workflows.star", "runtime": "python-reference"},
+            {"script": "onguard_sensitive_publish_confirm.star", "runtime": "python-reference"},
+            {"script": "onguard_low_integrity_suggestions.star", "runtime": "python-reference"},
+        ],
+    }
+    inspectors = load_decision_inspectors(cfg, base_dir=Path("configs/policies"))
+    session = Session.new(
+        origin=OriginMetadata(
+            kind="onguard",
+            client_id="onguard.digest.daily",
+            approved_by="marc",
+            metadata={
+                "workflow": "financial-record-update",
+                "allowed_workflows": ["daily-digest"],
+            },
+        ),
+        label_state=LabelState(
+            a=frozenset({CategoryTag(category="personal", tier=Tier.RESTRICTED)}),
+            b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+        ),
+    )
+
+    workflow = await inspectors[0].inspect(
+        action=Action(kind=CapabilityKind.READ_FS, target="source"),
+        session=session,
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+    publish = await inspectors[1].inspect(
+        action=Action(kind=CapabilityKind.APPLE_MAIL_DRAFT, target="friend@example.com"),
+        session=session,
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+    low_integrity_write = await inspectors[2].inspect(
+        action=Action(kind=CapabilityKind.PAGES_EDIT, target="trusted-profile"),
+        session=session,
+        proposed_outcome=_proposed(Decision.ALLOW),
+    )
+
+    assert isinstance(workflow, DecisionTighten)
+    assert workflow.to == Decision.DENY
+    assert workflow.rule == "onguard-workflow-not-declared"
+    assert isinstance(publish, DecisionTighten)
+    assert publish.to == Decision.REQUIRE_APPROVAL
+    assert publish.rule == "onguard-sensitive-publish-confirm"
+    assert isinstance(low_integrity_write, DecisionTighten)
+    assert low_integrity_write.to == Decision.REQUIRE_APPROVAL
+    assert low_integrity_write.rule == "onguard-low-integrity-write-review"
 
 
 _FREQ_SCRIPT = """

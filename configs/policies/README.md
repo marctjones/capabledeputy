@@ -19,6 +19,10 @@ action           = {"kind": str, "target": str, "amount": int|None,
                     "reversibility": {"degree": str, "agent": str}}
 session          = {"purpose": str, "categories": [str], "tiers": [str],
                     "provenance": [str], "risk_preference": str,
+                    "origin": {"kind": str, "client_id": str|None,
+                               "schedule_id": str|None, "command_id": str|None,
+                               "proposed_by": str|None, "approved_by": str|None,
+                               "metadata": dict},
                     "reversibility": {"degree": str, "agent": str},
                     "history": {"counts_by_kind": {kind: int},
                                 "used_kinds": [str], "total_uses": int}}
@@ -62,6 +66,16 @@ clock-free (scripts have no clock), so time-windowed rates
 - `frequency_cap.star` — TIGHTEN: require approval once a send/draft/local-app/
   document/calendar action kind has been used enough times in the session to
   look like a runaway loop (uses `session["history"]`, #48).
+- `onguard_declared_workflows.star` — TIGHTEN/DENY: require approval for
+  unapproved onguard-origin actions and deny workflow/client mismatches when a
+  declared workflow allowlist is present in origin metadata.
+- `onguard_sensitive_publish_confirm.star` — TIGHTEN: require approval before a
+  background client publishes, drafts, writes, edits, exports, or mutates
+  externally visible state when the session carries sensitive or low-integrity
+  labels.
+- `onguard_low_integrity_suggestions.star` — TIGHTEN: let low-integrity
+  background inputs produce suggestions/artifacts, but require approval before
+  overwriting profiles, memory, source bindings, or trusted records.
 - `purpose_scoped_relax.star` — RELAX: example only; currently limited to local
   notifications for the `research` purpose. Do not enable broader relax rules
   without workflow-specific tests.

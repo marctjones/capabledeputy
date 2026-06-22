@@ -25,6 +25,15 @@ decision_inspectors:
   - script: ../policies/frequency_cap.star
     runtime: starlark
     failure_mode: require_approval
+  - script: ../policies/onguard_declared_workflows.star
+    runtime: starlark
+    failure_mode: require_approval
+  - script: ../policies/onguard_sensitive_publish_confirm.star
+    runtime: starlark
+    failure_mode: require_approval
+  - script: ../policies/onguard_low_integrity_suggestions.star
+    runtime: starlark
+    failure_mode: require_approval
 
 upstream_servers:
   # ---------------- bundled Python servers ----------------

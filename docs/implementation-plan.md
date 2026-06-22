@@ -137,15 +137,17 @@ macOS + Google Workspace assistant usable without CLI/YAML handholding.
 
 ### Sequencing
 
-1. Finish the remaining v0.27 gap: first-class Calendar/Drive OAuth forms and
-   reauth/revoke flows.
-2. Add the shared coordination contracts required by onguard clients:
+1. Continue v0.28 by adding the first useful packaged onguard clients and
+   violation demos.
+2. Extend client parity for the shared coordination contracts required by
+   onguard clients:
    `schedule.*`, `client.config.*`, `client.queue.*`, `client.events.*`, and
    structured origin metadata for policy/Starlark.
 
 ### Done-when
 
-- A user can configure Gmail from CapDepMac without editing YAML.
+- A user can configure Google Workspace OAuth from CapDepMac without editing
+  YAML for the supported MCP servers.
 - The same daemon API can support Calendar, Drive, GitHub, Kagi/custom HTTP MCP,
   and local app permission checks.
 - CapDepMac has no visible no-op buttons for setup/action flows.
@@ -207,11 +209,16 @@ approval, and tool dispatch.
 - Structured session origin metadata is persisted and included in session
   creation audit payloads.
 - The daemon now exposes onguard registry, config, command queue,
-  events/results, and schedule RPCs backed by the shared SQLite state DB.
+  events/results, artifacts, schedules, schedule leases, and schedule history
+  RPCs backed by the shared SQLite state DB.
 - The client parity manifest explicitly marks the new onguard coordination RPCs
   as intentionally omitted until #102 wires the clients.
-- Remaining substrate gaps are artifact storage, schedule recurrence/leases/run
-  history, policy/Starlark starter rules, the reusable onguard runtime, and
+- Policy/Starlark inputs include session origin metadata, and the shipped
+  personal-assistant policy bundle includes onguard starter rules for declared
+  workflows, sensitive background publication, and low-integrity write review.
+- A reusable onguard runtime and `capdep onguard run` CLI runner can claim
+  schedules or queued commands and report completion/failure through daemon RPC.
+- Remaining gaps are packaged useful clients, client parity surfaces, and
   violation demos.
 
 ### Done-when

@@ -123,6 +123,8 @@ class EventType(StrEnum):
     ONGUARD_COMMAND_FINISHED = "onguard.command_finished"
     ONGUARD_EVENT_PUBLISHED = "onguard.event_published"
     ONGUARD_SCHEDULE_CHANGED = "onguard.schedule_changed"
+    ONGUARD_SCHEDULE_RUN = "onguard.schedule_run"
+    ONGUARD_ARTIFACT_CHANGED = "onguard.artifact_changed"
 
 
 def _utcnow() -> datetime:

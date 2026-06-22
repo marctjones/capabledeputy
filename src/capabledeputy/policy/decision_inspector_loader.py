@@ -167,11 +167,20 @@ def _session_to_dict(session: Any) -> dict[str, Any]:
         provenance = sorted(
             {getattr(t.level, "value", str(t.level)) for t in label_state.b},
         )
+    origin = getattr(session, "origin", None)
+    to_dict = getattr(origin, "to_dict", None)
+    if callable(to_dict):
+        origin_dict = to_dict()
+    elif isinstance(origin, dict):
+        origin_dict = dict(origin)
+    else:
+        origin_dict = {"kind": "human_interactive"}
     return {
         "purpose": (getattr(session, "purpose_handle", "") or ""),
         "categories": categories,
         "tiers": tiers,
         "provenance": provenance,
+        "origin": origin_dict,
         "risk_preference": getattr(session, "risk_preference_at_spawn", "cautious"),
         "reversibility": _reversibility_to_dict(
             getattr(session, "current_action_reversibility", None),

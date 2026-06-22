@@ -48,6 +48,18 @@ decision_inspectors:
     runtime: starlark
     failure_mode: require_approval
 
+  - script: policies/onguard_declared_workflows.star
+    runtime: starlark
+    failure_mode: require_approval
+
+  - script: policies/onguard_sensitive_publish_confirm.star
+    runtime: starlark
+    failure_mode: require_approval
+
+  - script: policies/onguard_low_integrity_suggestions.star
+    runtime: starlark
+    failure_mode: require_approval
+
   # Relax scripts are intentionally opt-in. They can be useful, but should
   # only be enabled with purpose/relationship-specific workflow tests.
   # - script: policies/purpose_scoped_relax.star

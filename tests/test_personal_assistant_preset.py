@@ -99,6 +99,9 @@ def test_personal_assistant_enables_conservative_starlark_inspectors() -> None:
         "../policies/sensitive_egress_confirm.star",
         "../policies/local_app_confirm.star",
         "../policies/frequency_cap.star",
+        "../policies/onguard_declared_workflows.star",
+        "../policies/onguard_sensitive_publish_confirm.star",
+        "../policies/onguard_low_integrity_suggestions.star",
     ]
     assert "../policies/purpose_scoped_relax.star" not in scripts
     assert "../policies/relationship_relax.star" not in scripts
@@ -111,6 +114,9 @@ def test_personal_assistant_enables_conservative_starlark_inspectors() -> None:
         "sensitive_egress_confirm",
         "local_app_confirm",
         "frequency_cap",
+        "onguard_declared_workflows",
+        "onguard_sensitive_publish_confirm",
+        "onguard_low_integrity_suggestions",
     ]
 
 

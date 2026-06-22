@@ -32,8 +32,7 @@ briefings, newspaper digests, file watchers, inbox triage, reminder processors,
 and sync jobs without expanding the daemon's trusted codebase for every
 workflow.
 
-The daemon still needs a small amount of new infrastructure so these clients can
-coordinate safely:
+The daemon owns the infrastructure these clients use to coordinate safely:
 
 - A **client registry** describing known clients, client kind, owner, version,
   allowed schedule names, and policy identity.
@@ -42,8 +41,10 @@ coordinate safely:
   headless clients.
 - A **client event/result stream** for onguard clients to report progress,
   previews, failures, and completed artifacts back to interactive clients.
-- A **scheduler contract** for recurrence, leases, run history, and disabled or
-  paused schedules.
+- A **labeled artifact store** for previews/results that keeps source
+  provenance, session/client/schedule/command references, and promotion state.
+- A **scheduler contract** for deterministic recurrence, leases, run history,
+  run-now, and disabled or paused schedules.
 
 These are coordination protocols. They are not replacement tool paths.
 
@@ -91,11 +92,20 @@ Recommended daemon RPC families:
 - `client.queue.fail`
 - `client.events.list`
 - `client.events.publish`
+- `client.events.ack`
+- `artifact.create`
+- `artifact.read`
+- `artifact.list`
+- `artifact.promote`
+- `artifact.delete`
 - `schedule.list`
 - `schedule.create`
 - `schedule.update`
 - `schedule.disable`
 - `schedule.run_now`
+- `schedule.claim_due`
+- `schedule.complete_run`
+- `schedule.fail_run`
 - `schedule.history`
 
 Each record should carry labels, provenance, actor identity, timestamps, and an
