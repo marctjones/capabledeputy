@@ -236,7 +236,8 @@ def _external_actors(
 ) -> dict[str, list[dict[str, Any]]]:
     mcp: dict[str, dict[str, Any]] = {}
     manager = getattr(app, "upstream_manager", None)
-    for status in getattr(manager, "server_status", []) or []:
+    server_status = getattr(manager, "server_status", {}) or {}
+    for status in server_status.values():
         mcp[str(status.name)] = {
             "name": status.name,
             "state": status.state,

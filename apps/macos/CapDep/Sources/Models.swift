@@ -461,6 +461,89 @@ struct ProvenanceEdge: Identifiable, Hashable {
     }
 }
 
+struct SessionSecurityContext: Hashable {
+    let sessionID: String
+    let enforcementMode: String
+    let labelCount: Int
+    let activeCapabilityCount: Int
+    let usedKinds: [String]
+    let pendingApprovalCount: Int
+    let policyDecisionCount: Int
+    let policyDenyCount: Int
+    let matchedRuleIDs: [String]
+    let provenanceNodeCount: Int
+    let provenanceEdgeCount: Int
+    let externalMCPActors: [String]
+    let toolActors: [String]
+    let onguardClientID: String
+    let securityModels: [SecurityContextItem]
+    let flowPatterns: [SecurityContextItem]
+    let limitations: [String]
+
+    init(dictionary: [String: Any]) {
+        let session = dictionary["session"] as? [String: Any] ?? [:]
+        let labels = dictionary["labels"] as? [String: Any] ?? [:]
+        let capabilities = dictionary["capabilities"] as? [String: Any] ?? [:]
+        let approvals = dictionary["approvals"] as? [String: Any] ?? [:]
+        let policy = dictionary["policy"] as? [String: Any] ?? [:]
+        let provenance = dictionary["provenance"] as? [String: Any] ?? [:]
+        let actors = dictionary["actors"] as? [String: Any] ?? [:]
+        let onguard = actors["onguard"] as? [String: Any] ?? [:]
+        let onguardClient = onguard["client"] as? [String: Any] ?? [:]
+
+        self.sessionID = session["id"] as? String ?? ""
+        self.enforcementMode = session["enforcement_mode"] as? String ?? ""
+        self.labelCount = CapDepSession.flattenLabels(
+            labels["label_state"] as? [String: Any] ?? [:],
+        ).count
+        self.activeCapabilityCount = (capabilities["active"] as? [[String: Any]] ?? []).count
+        self.usedKinds = capabilities["used_kinds"] as? [String] ?? []
+        self.pendingApprovalCount = approvals["pending_count"] as? Int ?? 0
+        self.policyDecisionCount = policy["decision_count"] as? Int ?? 0
+        self.policyDenyCount = policy["deny_count"] as? Int ?? 0
+        self.matchedRuleIDs = policy["matched_rule_ids"] as? [String] ?? []
+        self.provenanceNodeCount = provenance["node_count"] as? Int ?? 0
+        self.provenanceEdgeCount = provenance["edge_count"] as? Int ?? 0
+        self.externalMCPActors = (actors["external_mcp"] as? [[String: Any]] ?? [])
+            .compactMap { $0["name"] as? String }
+            .sorted()
+        self.toolActors = (actors["tools"] as? [[String: Any]] ?? [])
+            .compactMap { $0["name"] as? String }
+            .sorted()
+        self.onguardClientID = onguardClient["client_id"] as? String ?? ""
+        self.securityModels = (dictionary["security_models"] as? [[String: Any]] ?? [])
+            .map(SecurityContextItem.init(dictionary:))
+        self.flowPatterns = (dictionary["flow_patterns"] as? [[String: Any]] ?? [])
+            .map(SecurityContextItem.init(dictionary:))
+        self.limitations = dictionary["limitations"] as? [String] ?? []
+    }
+
+    static let empty = SessionSecurityContext(dictionary: [:])
+}
+
+struct SecurityContextItem: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let active: Bool
+    let evidenceSummary: String
+
+    init(dictionary: [String: Any]) {
+        self.name = dictionary["name"] as? String ?? ""
+        self.id = name
+        if let implemented = dictionary["implemented"] as? Bool {
+            self.active = implemented
+        } else {
+            self.active = dictionary["active"] as? Bool ?? false
+        }
+        let evidence = dictionary["evidence"] as? [String: Any] ?? [:]
+        self.evidenceSummary = evidence
+            .sorted { $0.key < $1.key }
+            .prefix(5)
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: "  ")
+    }
+}
+
 struct RelationshipGroupViewData: Identifiable, Hashable {
     let id: String
     let members: [String]

@@ -28,6 +28,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var overrideGrants: [OverrideGrantViewData] = []
     @Published private(set) var selectedSessionChildren: [CapDepSession] = []
     @Published private(set) var approvalDetails: [Int: ApprovalDetail] = [:]
+    @Published private(set) var sessionSecurityContexts: [String: SessionSecurityContext] = [:]
     @Published private(set) var currentSessionID: String?
     @Published private(set) var currentAssistantOutput = ""
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
@@ -230,6 +231,9 @@ final class CapDepAppModel: ObservableObject {
     func focusSession(_ session: CapDepSession) {
         focusedSessionID = session.id
         selectedSection = .sessions
+        Task {
+            await refreshSecurityContext(sessionID: session.id)
+        }
     }
 
     func deny(_ approval: Approval) async {
@@ -381,6 +385,21 @@ final class CapDepAppModel: ObservableObject {
                 params: ["id": approval.id],
             ) as? [String: Any]
             approvalDetails[approval.id] = ApprovalDetail(dictionary: result ?? [:])
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func refreshSecurityContext(sessionID: String) async {
+        guard !sessionID.isEmpty else {
+            return
+        }
+        do {
+            let result = try await client.call(
+                method: "session.security_context",
+                params: ["session_id": sessionID],
+            ) as? [String: Any]
+            sessionSecurityContexts[sessionID] = SessionSecurityContext(dictionary: result ?? [:])
         } catch {
             lastError = error.localizedDescription
         }

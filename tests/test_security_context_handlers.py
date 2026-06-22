@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.daemon.security_context_handlers import make_security_context_handlers
 from capabledeputy.policy.labels import tags_for_labels_strings
+from capabledeputy.upstream.manager import UpstreamServerStatus
 
 
 async def test_session_security_context_materializes_daemon_security_state(
@@ -90,5 +92,45 @@ async def test_session_security_context_materializes_daemon_security_state(
             pattern["name"] == "human_approval_gate" and pattern["active"]
             for pattern in ctx["flow_patterns"]
         )
+    finally:
+        await app.shutdown()
+
+
+async def test_session_security_context_includes_upstream_mcp_server_status(
+    tmp_path: Path,
+) -> None:
+    app = App(state_db_path=tmp_path / "state.db", audit_log_path=tmp_path / "audit.jsonl")
+    await app.startup()
+    try:
+        session = await app.graph.new(owner="operator", intent="inspect upstreams")
+
+        class FakeUpstreamManager:
+            @property
+            def server_status(self) -> dict[str, UpstreamServerStatus]:
+                return {
+                    "gmail": UpstreamServerStatus(
+                        name="gmail",
+                        state="registered",
+                        registered_at_epoch=1,
+                        registered_tool_count=3,
+                        rejected_tool_count=1,
+                        transport="stdio",
+                    ),
+                }
+
+        cast(Any, app).upstream_manager = FakeUpstreamManager()
+        handlers = make_security_context_handlers(app)
+
+        ctx = await handlers["session.security_context"]({"session_id": str(session.id)})
+
+        assert ctx["actors"]["external_mcp"] == [
+            {
+                "name": "gmail",
+                "state": "registered",
+                "transport": "stdio",
+                "registered_tool_count": 3,
+                "rejected_tool_count": 1,
+            },
+        ]
     finally:
         await app.shutdown()

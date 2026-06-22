@@ -178,7 +178,7 @@ active in a session and why a decision was made.
 | #128 | Daemon `session.security_context` model and RPCs | Implemented locally |
 | #129 | Session security event ledger and provenance index across turns | Implemented locally via audit/provenance projection |
 | #130 | Policy and Starlark context with actor, flow, and external-tool metadata | Implemented locally: origin, tool, effect, external actor, and flow metadata exposed to scripts |
-| #131 | Expose session security context across all clients | Partial: CLI, TUI, and MCP-control implemented; Swift GUI rendering remains macOS UI-sensitive follow-up |
+| #131 | Expose session security context across all clients | Implemented locally: CLI, TUI, Swift GUI inspector, and MCP-control |
 | #132 | Multi-session external-actor regression tests for security context | Implemented locally for onguard, approvals, policy, provenance, CLI, TUI, and MCP-control |
 
 ### v0.31.0 done-when
@@ -203,6 +203,9 @@ active in a session and why a decision was made.
 - TUI spectator trace uses the daemon security context when available and falls
   back to older `session.get` data for compatibility with older daemons/test
   doubles.
+- Swift GUI inspector loads `session.security_context` for selected sessions
+  and renders labels, capabilities, policy, provenance, actors, security
+  models, flow patterns, and limitations from the daemon-owned projection.
 - MCP-control exposes `session_security_context` as a read-only daemon
   passthrough.
 - Regression coverage includes direct daemon projection, MCP-control dispatch,

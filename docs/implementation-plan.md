@@ -380,9 +380,9 @@ policy rules, and provenance are active in this session?
    actor and flow metadata shown to users. **Done locally**: script-backed
    decision inspectors receive session origin plus action tool/effect,
    external-tool, and flow metadata.
-4. Expose the daemon view across clients. **Partial**: CLI, TUI, and
-   MCP-control are wired and tested; Swift GUI rendering is a macOS
-   UI-sensitive follow-up.
+4. Expose the daemon view across clients. **Done locally**: CLI, TUI, Swift
+   GUI inspector, and MCP-control consume `session.security_context`. Full
+   Swift UI automation remains in the macOS-sensitive test tier.
 5. Add multi-session regression tests that compare security context,
    provenance, audit, and final policy decisions. **Done locally** for direct
    daemon projection plus live CLI/MCP-control parity and TUI rendering

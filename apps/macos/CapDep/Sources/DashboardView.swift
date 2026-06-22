@@ -60,6 +60,9 @@ struct DashboardView: View {
                 return
             }
             selectedSession = model.sessions.first { $0.id == id }
+            Task {
+                await model.refreshSecurityContext(sessionID: id)
+            }
         }
     }
 }
@@ -567,6 +570,7 @@ private struct EventCard: View {
 }
 
 private struct InspectorView: View {
+    @EnvironmentObject private var model: CapDepAppModel
     let selectedApproval: Approval?
     let selectedSession: CapDepSession?
 
@@ -589,6 +593,15 @@ private struct InspectorView: View {
                         ("Purpose", session.purpose.isEmpty ? "unset" : session.purpose),
                     ])
                     InspectorSection(title: "Labels", rows: session.labels.map { ("Label", $0) })
+                    if let context = model.sessionSecurityContexts[session.id] {
+                        SecurityContextSummaryView(context: context)
+                    } else {
+                        Button("Load Security Context") {
+                            Task {
+                                await model.refreshSecurityContext(sessionID: session.id)
+                            }
+                        }
+                    }
                 } else {
                     PlaceholderDetailView(
                         title: "Select an item",
@@ -599,6 +612,68 @@ private struct InspectorView: View {
             }
             .padding(20)
         }
+        .task(id: selectedSession?.id) {
+            if let selectedSession {
+                await model.refreshSecurityContext(sessionID: selectedSession.id)
+            }
+        }
+    }
+}
+
+private struct SecurityContextSummaryView: View {
+    let context: SessionSecurityContext
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            InspectorSection(title: "Security Context", rows: [
+                ("Enforcement", context.enforcementMode),
+                ("Labels", "\(context.labelCount)"),
+                ("Capabilities", "\(context.activeCapabilityCount) active"),
+                ("Used Kinds", context.usedKinds.isEmpty ? "(none)" : context.usedKinds.joined(separator: ", ")),
+                ("Pending Approvals", "\(context.pendingApprovalCount)"),
+                ("Policy Decisions", "\(context.policyDecisionCount) decisions, \(context.policyDenyCount) denies"),
+                ("Policy Rules", context.matchedRuleIDs.isEmpty ? "(none)" : context.matchedRuleIDs.joined(separator: ", ")),
+                ("Provenance", "\(context.provenanceNodeCount) nodes, \(context.provenanceEdgeCount) edges"),
+                ("MCP Actors", context.externalMCPActors.isEmpty ? "(none)" : context.externalMCPActors.joined(separator: ", ")),
+                ("Tool Actors", context.toolActors.isEmpty ? "(none)" : context.toolActors.joined(separator: ", ")),
+                ("Onguard", context.onguardClientID.isEmpty ? "(none)" : context.onguardClientID),
+            ])
+            InspectorItemList(title: "Security Models", items: context.securityModels)
+            InspectorItemList(title: "Flow Patterns", items: context.flowPatterns)
+            InspectorSection(title: "Limitations", rows: context.limitations.map { ("Limit", $0) })
+        }
+    }
+}
+
+private struct InspectorItemList: View {
+    let title: String
+    let items: [SecurityContextItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            if items.isEmpty {
+                Text("(none)")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(items) { item in
+                VStack(alignment: .leading, spacing: 3) {
+                    Label(
+                        item.name,
+                        systemImage: item.active ? "checkmark.shield" : "shield.slash",
+                    )
+                    .foregroundStyle(item.active ? .green : .secondary)
+                    Text(item.evidenceSummary.isEmpty ? "(no evidence)" : item.evidenceSummary)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.30), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
