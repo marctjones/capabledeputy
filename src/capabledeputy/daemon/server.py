@@ -99,6 +99,27 @@ class Daemon:
             if not self._connection_streams.get(id(stream)):
                 self._connection_streams.pop(id(stream), None)
 
+    async def snapshot(self) -> dict[str, object]:
+        async with self._connection_lock:
+            active_connections = self._active_connections
+            last_disconnect = self._last_client_disconnect_at
+        async with self._sub_lock:
+            subscribers_by_stream = {
+                stream_name: len(streams)
+                for stream_name, streams in self._subscribers.items()
+            }
+            connection_subscriptions = {
+                str(conn_id): sorted(streams)
+                for conn_id, streams in self._connection_streams.items()
+            }
+        return {
+            "active_connections": active_connections,
+            "last_client_disconnect_at_monotonic": last_disconnect,
+            "subscribers_by_stream": subscribers_by_stream,
+            "connection_subscriptions": connection_subscriptions,
+            "subscription_count": sum(subscribers_by_stream.values()),
+        }
+
     async def serve(self) -> None:
         with suppress(FileNotFoundError):
             self._socket_path.unlink()

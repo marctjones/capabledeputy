@@ -47,6 +47,43 @@ async def test_session_send_no_llm_raises(tmp_path: Path) -> None:
         await handlers["session.send"]({"session_id": str(s.id), "message": "hi"})
 
 
+async def test_session_send_returns_partial_result_on_llm_error(app: App) -> None:
+    await app.startup()
+    app.llm_client = FakeLLMClient([])
+    s = await app.graph.new()
+    handlers = make_agent_handlers(app)
+
+    class _RaisingLLM:
+        async def respond(self, messages, tools):
+            raise RuntimeError("simulated provider 503")
+
+    app.llm_client = _RaisingLLM()
+
+    result = await handlers["session.send"](
+        {"session_id": str(s.id), "message": "hi"},
+    )
+    assert result["finish_reason"] == "length"
+    assert result["content"] == "[turn interrupted: llm_error:RuntimeError]"
+
+
+async def test_session_send_returns_partial_result_on_context_overflow(
+    app: App, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await app.startup()
+    s = await app.graph.new()
+    handlers = make_agent_handlers(app)
+
+    from capabledeputy.agent import loop as loop_mod
+
+    monkeypatch.setattr(loop_mod, "_context_window_for", lambda model: 1)
+
+    result = await handlers["session.send"](
+        {"session_id": str(s.id), "message": "hi"},
+    )
+    assert result["finish_reason"] == "length"
+    assert result["content"] == "[turn interrupted: context_overflow]"
+
+
 async def test_session_grant_capability_persists(app: App) -> None:
     await app.startup()
     s = await app.graph.new()

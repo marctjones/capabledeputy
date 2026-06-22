@@ -27,8 +27,10 @@ from capabledeputy.daemon.policy_handlers import make_policy_handlers
 from capabledeputy.daemon.programmatic_handlers import make_programmatic_handlers
 from capabledeputy.daemon.relationship_handlers import make_relationship_handlers
 from capabledeputy.daemon.security_context_handlers import make_security_context_handlers
+from capabledeputy.daemon.state_handlers import make_state_handlers
 from capabledeputy.daemon.server import Daemon
 from capabledeputy.daemon.session_handlers import make_session_handlers
+from capabledeputy.daemon.workstream_handlers import make_workstream_handlers
 from capabledeputy.daemon.settings_handlers import make_settings_handlers
 from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
 from capabledeputy.daemon.tool_handlers import make_tool_handlers
@@ -65,7 +67,7 @@ def daemon_test_paths(tmp_path: Path) -> DaemonTestPaths:
 def build_test_handlers(app: App, paths: DaemonTestPaths) -> dict[str, Any]:
     handlers = default_handlers()
     handlers["daemon.info"] = make_info_handler(app)
-    handlers.update(make_session_handlers(app.graph))
+    handlers.update(make_session_handlers(app.graph, app.session_coordinator, app.workstreams))
     handlers.update(make_devbox_handlers(app))
     handlers.update(make_relationship_handlers(app))
     handlers.update(make_security_context_handlers(app))
@@ -76,6 +78,8 @@ def build_test_handlers(app: App, paths: DaemonTestPaths) -> dict[str, Any]:
     handlers.update(make_approval_handlers(app))
     handlers.update(make_pattern_handlers(app))
     handlers.update(make_memory_handlers(app))
+    handlers.update(make_state_handlers(app))
+    handlers.update(make_workstream_handlers(app))
     handlers.update(make_programmatic_handlers(app))
     handlers.update(make_bundle_handlers(app))
     handlers.update(make_gui_handlers(app))
@@ -90,7 +94,9 @@ def build_test_handlers(app: App, paths: DaemonTestPaths) -> dict[str, Any]:
 async def build_test_daemon(paths: DaemonTestPaths) -> tuple[Daemon, App]:
     app = App(state_db_path=paths.state_db, audit_log_path=paths.audit_log)
     await app.startup()
-    return Daemon(paths.socket, handlers=build_test_handlers(app, paths)), app
+    daemon = Daemon(paths.socket, handlers=build_test_handlers(app, paths))
+    setattr(app, "daemon_server", daemon)
+    return daemon, app
 
 
 async def wait_for_socket(path: Path, timeout: float = 2.0) -> None:

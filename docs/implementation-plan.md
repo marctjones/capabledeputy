@@ -2,26 +2,25 @@
 
 Living plan that organizes the open GitHub issues into sequenced
 milestones with dependencies. Authoritative status is GitHub; this doc is
-the *sequencing rationale*. Last refreshed 2026-06-21 after v0.26 client
-parity closed, v0.27 practical setup started, and the MCP/client
-test/security-context hardening milestones were opened.
+the *sequencing rationale*. Last refreshed 2026-06-22 after v0.27-v0.31
+closed and v0.32 interactive workstream coordination opened.
 
-Milestones (GitHub): **v0.27.0** Practical setup + daemon-owned settings ·
-**v0.28.0** Onguard clients + daemon coordination ·
-**v0.29.0** MCP security conformance + external server labeling ·
-**v0.30.0** Client integration test parity ·
-**v0.31.0** Multi-session security context observability ·
-**v0.25.0** MCP compatibility and security integration ·
-**v0.16** Policy expressiveness & labeling · **v0.17** Gap hardening &
-explainability · **v0.5** UX EPIC · **Backlog** Substrate breadth & formal
-models.
+Milestones (GitHub): **v0.32.0** Interactive workstream coordination ·
+**v0.5** terminal UX polish · **v0.16** Policy expressiveness & labeling ·
+**v0.17** Gap hardening & explainability · **Backlog** Substrate breadth &
+formal models. Recently closed: **v0.27.0** Practical setup + daemon-owned
+settings · **v0.28.0** Onguard clients + daemon coordination · **v0.29.0**
+MCP security conformance + external server labeling · **v0.30.0** Client
+integration test parity · **v0.31.0** Multi-session security context
+observability · **v0.25.0** MCP compatibility and security integration.
 
 `ROADMAP.md` is the canonical product roadmap. This file explains sequencing,
 dependencies, and why the next pull should focus on one milestone over another.
 
-Three themes currently drive priority:
-1. **Practical setup** — CapDepMac must let a user configure real connectors
-   without hand-editing YAML. This is the active v0.27 product track.
+Themes currently driving priority:
+1. **Interactive coordination** — multiple local clients may connect at once,
+   but the daemon must own active workstream control, state projection, liveness,
+   cancellation, and audit.
 2. **Onguard extensibility** — background clients should be normal daemon
    clients, not privileged sidecars or daemon-embedded product workflows.
 3. **MCP security integration** — MCP must remain an integration substrate, not
@@ -35,7 +34,7 @@ Three themes currently drive priority:
    surfaces, bundled MCP servers, and tools; the near-term target is 85% per
    group and the stretch target is 90%, but CI first enforces non-regression
    from the checked-in baseline.
-5. **Multi-session explainability** — v0.31 makes labels, flow patterns,
+5. **Multi-session explainability** — v0.31 made labels, flow patterns,
    external actors, approvals, policy rules, provenance, and audit inspectable
    across turns and clients.
 6. **Decision fatigue** — coarse policy → rubber-stamping → eroded human
@@ -73,6 +72,52 @@ The policy themes come from `docs/security-alignment-assessment.md`:
 **EPIC #41 essentially complete** (layer live, frequency policy, `capdep why`).
 **EPIC #42 core shipped** (catalog tiers, fs + email labelers); remaining
 is #51 (canonical ids) + the identity-dependent email layers.
+
+---
+
+## v0.32.0 — Interactive workstream coordination
+
+This is the active milestone. The current branch adds the first implementation
+of a daemon-owned workstream lease model and a comprehensive `daemon.state`
+projection. The milestone closes the gap between those daemon contracts and the
+client/UX/test surface.
+
+### Scope
+
+- **#137** EPIC: Interactive workstream coordination and daemon state
+  observability.
+- **#136** add `daemon.state` and `workstream.*` RPCs to the client parity
+  contract.
+- **#134** expose workstream ownership and daemon state in interactive clients.
+- **#133** harden workstream lease expiry, reconnect, takeover, and cancellation
+  semantics.
+- **#138** add coordinated multi-client daemon integration and torture tests.
+- **#31** cancel in-flight turn when a client surface disconnects.
+- **#32** heartbeat/liveness cancellation when a connected client stops
+  responding.
+
+### Sequencing
+
+1. Bring the parity manifest and roadmap into line with the new daemon RPCs.
+2. Validate the daemon APIs with focused tests for owner-only send/cancel,
+   release, expiry, reclaim, and state projection.
+3. Add first-class read views in the interactive clients where they help users:
+   terminal/TUI status, Swift GUI inspectors, and MCP-control automation.
+4. Bind disconnect and heartbeat behavior to the same daemon-owned ownership and
+   turn-cancellation mechanisms.
+
+### Done-when
+
+- A custom client cannot skip workstream ownership enforcement by calling daemon
+  RPCs directly.
+- Multiple clients can safely monitor the same session, but only the owner can
+  drive or cancel the active interactive workstream unless the daemon grants an
+  explicit administrative path.
+- `daemon.state` is the common read model for client monitoring, workflows,
+  approvals, tools, MCP configuration, memory, labels, audit, and active
+  workstreams.
+- The client parity manifest and tests fail if a new daemon RPC appears without
+  an explicit client support decision.
 
 ---
 
@@ -483,18 +528,23 @@ assurance work tracked in `workflow-plan.md`.
 
 ---
 
-## v0.5 — UX EPIC (in flight, parallel track)
+## v0.5 — Terminal UX polish (parallel track)
 
-Surface convergence + the agent-cancellation papercuts. Independent of the
-policy/labeling work, so it can proceed in parallel by whoever owns UX.
-- P1 cluster: **#16** REPL parity, **#22** Rich Live streaming, **#23**
-  Ctrl-C cancel, **#27** inline approval banner, **#31** cancel on
-  disconnect, **#17** split-pane viewer.
-- P2/P3: **#32** UI heartbeat, **#19** sixel/kitty, **#28** color palette,
-  **#29** unicode width safety.
+This milestone is now terminal-client quality work, not the whole product UX
+strategy. CapDep has multiple clients: CLI/chat for terminal work, TUI for
+live supervision, Swift GUI for the primary macOS desktop workspace, and
+MCP-control for automation. Rich desktop inspection and coordination should be
+daemon-backed and surfaced through the appropriate client instead of forcing
+all UX into the REPL.
 
-Note: #23/#31/#32 (turn cancellation) share machinery with the agent loop
-already touched by #2 — coordinate so the cancel paths stay consistent.
+- Active terminal UX: **#16** REPL polish, **#22** Rich Live streaming,
+  **#27** inline approval banner, **#28** semantic CLI styles, and **#29**
+  unicode/minimum-size safety.
+- Moved to v0.32: **#31** disconnect cancellation and **#32** heartbeat
+  cancellation, because these are daemon/client coordination guarantees.
+- Moved to backlog: **#17** split-pane terminal viewer and **#19** terminal
+  graphics, because the Swift GUI is the preferred rich workspace and terminal
+  versions are optional fallback polish.
 
 ---
 
@@ -516,22 +566,19 @@ Deferred provider backends + formal work. Pull forward on demand.
 #5 (fs labeler shape) ──▶ email labeler (#34 impl)
 #51 (canonical ids) ──▶ external-recipient gates (#33), message-id bind (#34)
 #13 (credential vault) ── independent, high value
-agent-loop cancel (#23/#31/#32) ── coordinate with #2's loop changes
+workstream coordination (#31/#32/#133/#134/#136/#138) ── coordinate with daemon
+  state, session coordinator, client liveness, and agent-loop cancellation
 ```
 
 ## Recommended next 3 (refreshed)
 
-1. **#72** finish daemon-backed connector setup beyond the Gmail slice. This is
-   the shortest path to a usable macOS/Google Workspace assistant.
-2. **#69/#70/#75** daemon-owned settings + validation/log RPCs. This keeps the
-   GUI thin and makes configuration supportable.
-3. **#71/#76** remove no-op setup/action UI and replace it with daemon-backed
-   remediation.
+1. **#136** finish the parity contract for `daemon.state` and `workstream.*`
+   and keep the manifest ratchet green.
+2. **#133/#138** harden and test owner-only send/cancel, release, expiry,
+   reclaim, disconnect, heartbeat, and multi-client monitoring behavior.
+3. **#134** expose workstream ownership and daemon state in the clients that
+   need first-class UX, especially Swift GUI and TUI operator views.
 
-After v0.24.0, return to **#51** SourcePort canonical ids and the
-labeling-oracle completeness work. Those remain important, but they depend on
-real connector setup being practical enough to exercise.
-
-Container-per-call isolation (#15/#16) is the prerequisite for the
-*remaining* halves of #13 (echo-resistance) — pull it forward if
-credential echo-resistance becomes a priority.
+After v0.32, return to **#13** credential vault as the highest-value security
+hardening item, then pull forward **#9/#14** if upstream MCP isolation becomes
+the main operational risk.

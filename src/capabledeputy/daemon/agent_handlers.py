@@ -9,6 +9,7 @@ from capabledeputy.agent.loop import run_turn
 from capabledeputy.app import App
 from capabledeputy.daemon.handlers import Handler
 from capabledeputy.tools.client import ToolCallOutcome
+from capabledeputy.session.coordination import WorkstreamOwnershipError
 
 
 def _serialize_recovery_step(step: Any) -> dict[str, Any]:
@@ -120,6 +121,18 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
         from capabledeputy.daemon.lifecycle import agent_max_iterations
 
         max_iterations = int(params.get("max_iterations") or agent_max_iterations())
+        workstream = None
+        try:
+            workstream = await app.workstreams.ensure(
+                session_uuid,
+                str(params.get("client_id") or "interactive-client"),
+                lease_seconds=int(params.get("lease_seconds") or 300),
+                lease_token=params.get("lease_token"),
+                reason=str(params.get("reason") or "interactive session activity"),
+                auto_claim=bool(params.get("claim_if_missing", True)),
+            )
+        except WorkstreamOwnershipError as e:
+            raise RuntimeError(str(e)) from e
         lock = await app.session_coordinator.acquire_turn(session_uuid)
         if lock is None:
             if params.get("enqueue_if_busy", True):
@@ -141,6 +154,7 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
                     "queued": True,
                     "reason": "session_busy",
                     "input": item.to_dict(),
+                    "workstream": workstream.to_dict(include_token=False) if workstream else None,
                 }
             raise RuntimeError(f"session {session_uuid} already has an active turn")
 
@@ -172,6 +186,8 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
             app.session_coordinator.release_turn(session_uuid, lock)
         if queued_results:
             first_result["queued_results"] = queued_results
+        if workstream is not None:
+            first_result["workstream"] = workstream.to_dict(include_token=False)
         return first_result
 
     async def session_cancel(params: dict[str, Any]) -> dict[str, Any]:
@@ -183,6 +199,13 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
         so the CLI's "send cancel on every Ctrl-C" pattern is safe.
         """
         session_uuid = UUID(params["session_id"])
+        workstream = await app.workstreams.owner_for_session(session_uuid)
+        if workstream is not None:
+            actor = str(params.get("client_id") or "interactive-client")
+            if workstream["client_id"] != actor:
+                raise RuntimeError(
+                    f"workstream {workstream['id']} is owned by {workstream['client_id']}",
+                )
         if session_uuid not in app.cancellation_flags:
             return {"cancelled": False, "reason": "no active turn"}
         app.cancellation_flags[session_uuid] = True

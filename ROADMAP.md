@@ -6,23 +6,51 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-06-21, after closing the v0.27 practical setup
-slice and implementing the first v0.28 onguard coordination, policy, and
-runtime substrate.
+**Last refreshed:** 2026-06-22, after closing v0.27-v0.31 and opening the
+v0.32 interactive workstream coordination milestone.
 
-## Current Focus — v0.28.0 Onguard Clients + Daemon Coordination
+## Current Focus — v0.32.0 Interactive Workstream Coordination
 
-Goal: make headless background work extensible without making the daemon a
-giant application server. Onguard clients are normal daemon clients that claim
-approved schedules/queues, while the daemon owns identity, origin metadata,
-shared config, queues, events/results, artifacts, schedules, labels,
-provenance, audit, and policy enforcement.
+Goal: make multi-client interactive work safe, inspectable, and practical.
+The daemon is the only authority for active turns, workstream ownership,
+client liveness, approvals, labels, provenance, audit, and policy decisions.
+Clients may request control, render state, and acknowledge leases; they do not
+enforce ownership or safety rules locally.
 
-The first v0.28 substrate slice is done: origin-aware policy
-inputs, registry/config/queue/event/artifact/schedule RPCs, schedule leases and
-history, onguard Starlark starter rules, and a reusable `capdep onguard run`
-runtime. The next v0.28 work is packaged useful clients, client parity surfaces,
-and violation demos.
+The implementation substrate is partially landed in the current branch:
+`daemon.state` provides a comprehensive runtime projection, and `workstream.*`
+RPCs provide daemon-owned leases for the primary client controlling an
+interactive session. The remaining work is to finish the parity contract,
+surface ownership state in clients, harden disconnect/heartbeat behavior, and
+prove the behavior with multi-client integration tests.
+
+### v0.32.0 coordination scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #137 | EPIC: Interactive workstream coordination and daemon state observability | Open |
+| #136 | Add `daemon.state` and `workstream.*` RPCs to the client parity contract | In progress |
+| #134 | Expose workstream ownership and daemon state in interactive clients | Open |
+| #133 | Harden workstream lease expiry, reconnect, takeover, and cancellation semantics | Open |
+| #138 | Add coordinated multi-client daemon integration and torture tests | Open |
+| #31 | Cancel in-flight turn when client surface disconnects | Open: moved from terminal UX into daemon/client coordination |
+| #32 | UI heartbeat: cancel agent loop when surface stops responding | Open: moved from terminal UX into daemon/client coordination |
+
+### v0.32.0 done-when
+
+- `docs/client-parity.json` covers `daemon.state` and every `workstream.*`
+  daemon RPC with explicit decisions for CLI, TUI, Swift GUI, and MCP-control.
+- `daemon.state` is the stable read model for operator dashboards, automation,
+  client monitoring, sessions, workflows, approvals, tools, MCP configuration,
+  memory, labels, audit, coordination, and workstreams.
+- `workstream.*` leases prevent a custom client from bypassing primary-owner
+  coordination for active interactive work.
+- CLI, TUI, Swift GUI, and MCP-control either expose workstream ownership
+  directly or intentionally omit first-class controls while retaining generic
+  daemon RPC access where appropriate.
+- Tests cover competing clients, owner-only send/cancel behavior, release,
+  expiry, reclaim, disconnect, heartbeat timeout, and state projection during
+  active work.
 
 ## Completed Focus — v0.26.0 Client Parity Over Daemon RPC
 

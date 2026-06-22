@@ -25,6 +25,7 @@ from capabledeputy.agent.events import (
 from capabledeputy.agent.loop import (
     _context_window_for,
     _estimate_message_tokens,
+    run_turn,
     run_turn_streaming,
 )
 from capabledeputy.audit.events import EventType
@@ -162,6 +163,28 @@ async def test_llm_exception_audits_llm_error_event(session_setup) -> None:
     assert "simulated provider 503" in (payload.get("message") or "")
 
 
+async def test_llm_exception_wrapper_returns_partial_result(session_setup) -> None:
+    """The non-streaming wrapper should preserve the terminal interrupt
+    as a partial turn result instead of raising the generic
+    no-terminal-event error."""
+    sid, graph, audit, _, registry, tool_client = session_setup
+    llm = _RaisingLLM(RuntimeError("simulated provider 503"))
+
+    result = await run_turn(
+        session_id=sid,
+        user_message="hi",
+        llm=llm,
+        tool_client=tool_client,
+        registry=registry,
+        graph=graph,
+        audit=audit,
+    )
+
+    assert result.finish_reason == FinishReason.LENGTH
+    assert result.iterations == 1
+    assert result.content == "[turn interrupted: llm_error:RuntimeError]"
+
+
 # --- context window guardrail ---------------------------------------------
 
 
@@ -222,6 +245,29 @@ async def test_hard_limit_yields_context_overflow(session_setup, monkeypatch) ->
     llm_errors = _events_of_type(audit_events, EventType.LLM_ERROR.value)
     assert len(llm_errors) == 1
     assert llm_errors[0]["payload"]["error_type"] == "ContextOverflowError"
+
+
+async def test_hard_limit_wrapper_returns_partial_result(session_setup, monkeypatch) -> None:
+    """The wrapper should return a partial result when context
+    preflight interrupts the turn."""
+    sid, graph, audit, _, registry, tool_client = session_setup
+    from capabledeputy.agent import loop as loop_mod
+
+    monkeypatch.setattr(loop_mod, "_context_window_for", lambda model: 1)
+
+    result = await run_turn(
+        session_id=sid,
+        user_message="hi",
+        llm=_BigContextStubLLM(),
+        tool_client=tool_client,
+        registry=registry,
+        graph=graph,
+        audit=audit,
+    )
+
+    assert result.finish_reason == FinishReason.LENGTH
+    assert result.iterations == 1
+    assert result.content == "[turn interrupted: context_overflow]"
 
 
 # --- normal turn (no false positives) -------------------------------------

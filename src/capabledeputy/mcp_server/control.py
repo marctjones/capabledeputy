@@ -126,8 +126,27 @@ _SESSION_MESSAGE_SCHEMA = _schema(
         "message": {"type": "string"},
         "mode": {"type": "string"},
         "max_iterations": {"type": "integer", "minimum": 1},
+        "client_id": {"type": "string"},
+        "workstream_id": {"type": "string"},
+        "lease_token": {"type": "string"},
+        "lease_seconds": {"type": "integer", "minimum": 1},
     },
     required=["session_id", "message"],
+)
+
+_WORKSTREAM_ID_SCHEMA = _schema({"workstream_id": {"type": "string"}}, required=["workstream_id"])
+
+_WORKSTREAM_SESSION_SCHEMA = _schema(
+    {
+        "session_id": {"type": "string"},
+        "client_id": {"type": "string"},
+        "lease_seconds": {"type": "integer", "minimum": 1},
+        "lease_token": {"type": "string"},
+        "reason": {"type": "string"},
+        "workstream_id": {"type": "string"},
+        "auto_claim": {"type": "boolean"},
+    },
+    required=["session_id"],
 )
 
 _GRANT_ID_SCHEMA = _schema({"grant_id": {"type": "string"}}, required=["grant_id"])
@@ -177,6 +196,14 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
         "daemon.info",
         _EMPTY_INPUT,
         _annotations("Daemon info", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "daemon_state",
+        "Daemon state",
+        "Return the daemon-owned comprehensive runtime snapshot.",
+        "daemon.state",
+        _EMPTY_INPUT,
+        _annotations("Daemon state", read_only=True, idempotent=True),
     ),
     ControlToolSpec(
         "app_status",
@@ -457,6 +484,72 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
         "session.send",
         _SESSION_MESSAGE_SCHEMA,
         _annotations("Send session message", read_only=False, idempotent=False, open_world=True),
+    ),
+    ControlToolSpec(
+        "workstream_claim",
+        "Claim workstream",
+        "Claim or renew the daemon-owned primary lease for an interactive workstream.",
+        "workstream.claim",
+        _WORKSTREAM_SESSION_SCHEMA,
+        _annotations("Claim workstream", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "workstream_ensure",
+        "Ensure workstream",
+        "Ensure a client has a live interactive workstream lease, auto-claiming if needed.",
+        "workstream.ensure",
+        _WORKSTREAM_SESSION_SCHEMA,
+        _annotations("Ensure workstream", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "workstream_renew",
+        "Renew workstream",
+        "Renew an existing workstream lease.",
+        "workstream.renew",
+        _schema(
+            {
+                **_WORKSTREAM_ID_SCHEMA["properties"],
+                **_optional_string_properties("client_id", "lease_token"),
+                "lease_seconds": {"type": "integer", "minimum": 1},
+            },
+            required=["workstream_id"],
+        ),
+        _annotations("Renew workstream", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "workstream_release",
+        "Release workstream",
+        "Release a workstream lease back to the daemon.",
+        "workstream.release",
+        _schema(
+            {
+                **_WORKSTREAM_ID_SCHEMA["properties"],
+                **_optional_string_properties("client_id", "lease_token", "reason"),
+            },
+            required=["workstream_id"],
+        ),
+        _annotations("Release workstream", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "workstream_get",
+        "Get workstream",
+        "Return details for an interactive workstream.",
+        "workstream.get",
+        _WORKSTREAM_ID_SCHEMA,
+        _annotations("Get workstream", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "workstream_list",
+        "List workstreams",
+        "List daemon-owned workstreams by session or client.",
+        "workstream.list",
+        _schema(
+            {
+                **_optional_string_properties("session_id", "client_id"),
+                "active_only": {"type": "boolean"},
+            },
+        ),
+        _annotations("List workstreams", read_only=True, idempotent=True),
     ),
     ControlToolSpec(
         "session_cancel",
@@ -1552,6 +1645,7 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
         "capdep_ping",
         "capdep_version",
         "daemon_info",
+        "daemon_state",
         "app_status",
         "setup_status",
         "connector_status",
@@ -1620,6 +1714,16 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
             params["mode"] = str(args["mode"])
         if args.get("max_iterations") is not None:
             params["max_iterations"] = int(args["max_iterations"])
+        if args.get("client_id"):
+            params["client_id"] = str(args["client_id"])
+        if args.get("workstream_id"):
+            params["workstream_id"] = str(args["workstream_id"])
+        if args.get("lease_token"):
+            params["lease_token"] = str(args["lease_token"])
+        if args.get("lease_seconds") is not None:
+            params["lease_seconds"] = int(args["lease_seconds"])
+        if args.get("claim_if_missing") is not None:
+            params["claim_if_missing"] = bool(args["claim_if_missing"])
         return params
     if name == "session_cancel":
         return {"session_id": str(args.get("session_id") or "")}
@@ -1643,6 +1747,61 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
             "session_id": str(args.get("session_id") or ""),
             "enabled": bool(args.get("enabled")),
         }
+    if name == "workstream_claim":
+        return {
+            "session_id": str(args.get("session_id") or ""),
+            "client_id": str(args.get("client_id") or ""),
+            "lease_seconds": int(args["lease_seconds"]) if args.get("lease_seconds") is not None else None,
+            "lease_token": str(args.get("lease_token")) if args.get("lease_token") else None,
+            "reason": str(args.get("reason")) if args.get("reason") else None,
+            "workstream_id": str(args.get("workstream_id")) if args.get("workstream_id") else None,
+        }
+    if name == "workstream_ensure":
+        params = {
+            "session_id": str(args.get("session_id") or ""),
+        }
+        if args.get("client_id"):
+            params["client_id"] = str(args["client_id"])
+        if args.get("lease_seconds") is not None:
+            params["lease_seconds"] = int(args["lease_seconds"])
+        if args.get("lease_token"):
+            params["lease_token"] = str(args["lease_token"])
+        if args.get("reason"):
+            params["reason"] = str(args["reason"])
+        if args.get("workstream_id"):
+            params["workstream_id"] = str(args["workstream_id"])
+        if args.get("auto_claim") is not None:
+            params["auto_claim"] = bool(args["auto_claim"])
+        return params
+    if name == "workstream_renew":
+        params = {"workstream_id": str(args.get("workstream_id") or "")}
+        if args.get("client_id"):
+            params["client_id"] = str(args["client_id"])
+        if args.get("lease_token"):
+            params["lease_token"] = str(args["lease_token"])
+        if args.get("lease_seconds") is not None:
+            params["lease_seconds"] = int(args["lease_seconds"])
+        return params
+    if name == "workstream_release":
+        params = {"workstream_id": str(args.get("workstream_id") or "")}
+        if args.get("client_id"):
+            params["client_id"] = str(args["client_id"])
+        if args.get("lease_token"):
+            params["lease_token"] = str(args["lease_token"])
+        if args.get("reason"):
+            params["reason"] = str(args["reason"])
+        return params
+    if name == "workstream_get":
+        return {"workstream_id": str(args.get("workstream_id") or "")}
+    if name == "workstream_list":
+        params = {}
+        if args.get("session_id"):
+            params["session_id"] = str(args["session_id"])
+        if args.get("client_id"):
+            params["client_id"] = str(args["client_id"])
+        if args.get("active_only") is not None:
+            params["active_only"] = bool(args["active_only"])
+        return params
     if name in {"session_delegate", "session_grant_capability", "capability_revoke"}:
         return dict(args)
     if name == "tool_list":

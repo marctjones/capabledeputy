@@ -104,6 +104,18 @@ class LabeledMemoryStore:
         """Alias for label_state_of (backward compat)."""
         return self.label_state_of(key)
 
+    def snapshot(self) -> dict[str, Any]:
+        keys = self.keys()
+        return {
+            "durable": self.durable,
+            "path": str(self._db_path) if self._db_path is not None else None,
+            "entry_count": len(keys),
+            "keys": keys,
+            "labels_by_key": {
+                key: self.label_state_of(key).to_dict() for key in keys
+            },
+        }
+
     def delete(self, key: str) -> bool:
         if self._db_path is None:
             return self._data.pop(key, None) is not None

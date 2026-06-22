@@ -21,10 +21,15 @@ def test_control_tools_include_daemon_client_surface() -> None:
 
     assert "capdep_ping" in names
     assert "app_status" in names
+    assert "daemon_state" in names
     assert "session_list" in names
     assert "session_new" in names
     assert "session_security_context" in names
     assert "tool_call" in names
+    assert "workstream_claim" in names
+    assert "workstream_ensure" in names
+    assert "workstream_release" in names
+    assert "workstream_list" in names
     assert "approval_approve" in names
     assert "setup_status" in names
     assert "google_oauth_status" in names
@@ -62,6 +67,17 @@ async def test_control_status_dispatches_to_daemon(fake_daemon) -> None:
     assert result.meta is not None
     assert result.meta["io.capabledeputy/surface"] == "control"
     assert client.calls == [("app.status", None)]
+
+
+async def test_control_daemon_state_dispatches_to_daemon(fake_daemon) -> None:
+    client = fake_daemon({"daemon.state": {"schema_version": 1, "daemon": {"pid": 123}}})
+
+    result = await dispatch_control_tool(client, "daemon_state")
+
+    assert result.isError is False
+    assert result.structuredContent is not None
+    assert result.structuredContent["schema_version"] == 1
+    assert client.calls == [("daemon.state", None)]
 
 
 async def test_control_session_new_dispatches_params(fake_daemon) -> None:
@@ -167,6 +183,36 @@ async def test_control_gmail_oauth_login_dispatches(fake_daemon) -> None:
         (
             "setup.google_gmail.oauth_login",
             {"open_browser": True, "timeout_seconds": 90},
+        ),
+    ]
+
+
+async def test_control_workstream_claim_dispatches(fake_daemon) -> None:
+    client = fake_daemon({"workstream.claim": {"workstream": {"id": "w1"}}})
+
+    result = await dispatch_control_tool(
+        client,
+        "workstream_claim",
+        {
+            "session_id": "s1",
+            "client_id": "gui",
+            "lease_seconds": 120,
+            "reason": "interactive edit",
+        },
+    )
+
+    assert result.isError is False
+    assert client.calls == [
+        (
+            "workstream.claim",
+            {
+                "session_id": "s1",
+                "client_id": "gui",
+                "lease_seconds": 120,
+                "reason": "interactive edit",
+                "workstream_id": None,
+                "lease_token": None,
+            },
         ),
     ]
 

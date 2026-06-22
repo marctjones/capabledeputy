@@ -14,7 +14,7 @@ from capabledeputy.paths import default_audit_log_path, default_state_db_path
 from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.purposes import Purposes
 from capabledeputy.resources.static import StaticResourcePublisher
-from capabledeputy.session.coordination import SessionCoordinator
+from capabledeputy.session.coordination import SessionCoordinator, WorkstreamCoordinator
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.store import SessionStore
 from capabledeputy.tools.client import LabeledToolClient
@@ -111,6 +111,7 @@ class App:
         # we only care about a tripwire that's checked, not awaited.
         self.cancellation_flags: dict[UUID, bool] = {}
         self.session_coordinator = SessionCoordinator()
+        self.workstreams = WorkstreamCoordinator()
         self._skills_dir = skills_dir
         self._enable_policy_preview = enable_policy_preview
         # Background devbox idle-reaper task, started by `startup()`

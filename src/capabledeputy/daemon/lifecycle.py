@@ -27,6 +27,8 @@ from capabledeputy.daemon.policy_handlers import make_policy_handlers
 from capabledeputy.daemon.programmatic_handlers import make_programmatic_handlers
 from capabledeputy.daemon.relationship_handlers import make_relationship_handlers
 from capabledeputy.daemon.security_context_handlers import make_security_context_handlers
+from capabledeputy.daemon.state_handlers import make_state_handlers
+from capabledeputy.daemon.workstream_handlers import make_workstream_handlers
 from capabledeputy.daemon.server import Daemon
 from capabledeputy.daemon.session_handlers import make_session_handlers
 from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
@@ -551,7 +553,7 @@ async def run_daemon(
     from capabledeputy.daemon.handlers import make_info_handler
 
     handlers["daemon.info"] = make_info_handler(app)
-    handlers.update(make_session_handlers(app.graph, app.session_coordinator))
+    handlers.update(make_session_handlers(app.graph, app.session_coordinator, app.workstreams))
     handlers.update(make_devbox_handlers(app))
     handlers.update(make_relationship_handlers(app))
     handlers.update(make_security_context_handlers(app))
@@ -562,6 +564,8 @@ async def run_daemon(
     handlers.update(make_approval_handlers(app))
     handlers.update(make_pattern_handlers(app))
     handlers.update(make_memory_handlers(app))
+    handlers.update(make_state_handlers(app))
+    handlers.update(make_workstream_handlers(app))
     handlers.update(make_programmatic_handlers(app))
     handlers.update(make_bundle_handlers(app))
     handlers.update(make_gui_handlers(app))
@@ -597,6 +601,7 @@ async def run_daemon(
         verbose=verbose,
         idle_shutdown_seconds=idle_shutdown_seconds(),
     )
+    setattr(app, "daemon_server", daemon)
 
     async def _relay_audit(event) -> None:
         await daemon.publish("audit", event.to_dict())

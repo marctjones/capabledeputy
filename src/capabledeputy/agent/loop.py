@@ -435,11 +435,33 @@ async def run_turn(
             finish_reason=FinishReason.LENGTH,
             tool_outcomes=interrupt_event.partial_outcomes,
         )
+    if interrupt_event is not None and (
+        interrupt_reason == "context_overflow"
+        or (
+            interrupt_reason is not None
+            and interrupt_reason.startswith("llm_error:")
+        )
+    ):
+        # Issue #36 / LLM error handling — the streaming generator has
+        # already emitted a terminal interrupt event and audited the
+        # failure. Preserve the daemon RPC contract by returning a
+        # partial turn result rather than collapsing into the generic
+        # "no terminal event" wrapper error.
+        return AgentTurnResult(
+            content=(
+                interrupt_event.partial_content
+                or f"[turn interrupted: {interrupt_reason}]"
+            ),
+            iterations=interrupt_event.iteration,
+            finish_reason=FinishReason.LENGTH,
+            tool_outcomes=interrupt_event.partial_outcomes,
+        )
     if final_result is None:
-        # Defensive: streaming generator must yield exactly one of
-        # TurnCompleted or TurnInterrupted before returning.
+        # Defensive: streaming generator must yield exactly one terminal
+        # event before returning.
         raise RuntimeError(
-            "run_turn_streaming exited without a terminal event",
+            "run_turn_streaming exited without a terminal event "
+            f"(last interrupt reason={interrupt_reason!r})",
         )
     return final_result
 

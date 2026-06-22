@@ -14,11 +14,16 @@ from capabledeputy.policy.capabilities import (
     DelegationRequest,
     RateLimit,
 )
+from capabledeputy.session.coordination import WorkstreamOwnershipError
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import SessionStatus
 
 
-def make_session_handlers(graph: SessionGraph, coordinator: Any = None) -> dict[str, Handler]:
+def make_session_handlers(
+    graph: SessionGraph,
+    coordinator: Any = None,
+    workstreams: Any = None,
+) -> dict[str, Handler]:
     async def session_list(params: dict[str, Any]) -> dict[str, Any]:
         status_str = params.get("status")
         status = SessionStatus(status_str) if status_str else None
@@ -53,6 +58,8 @@ def make_session_handlers(graph: SessionGraph, coordinator: Any = None) -> dict[
         return s.to_dict()
 
     async def session_abort(params: dict[str, Any]) -> dict[str, Any]:
+        if workstreams is not None:
+            await workstreams.release_session(UUID(params["session_id"]), reason="session aborted")
         s = await graph.abort(UUID(params["session_id"]))
         return s.to_dict()
 
@@ -74,17 +81,31 @@ def make_session_handlers(graph: SessionGraph, coordinator: Any = None) -> dict[
         if coordinator is None:
             raise RuntimeError("session coordinator unavailable")
         session_id = UUID(params["session_id"])
+        workstream = None
+        if workstreams is not None:
+            workstream = await _claim_or_verify_workstream(
+                session_id,
+                params,
+                workstreams,
+            )
         item = coordinator.enqueue_input(
             session_id,
             str(params["message"]),
-            submitted_by=str(params.get("submitted_by", "client")),
+            submitted_by=str(
+                params.get("submitted_by")
+                or params.get("client_id")
+                or "client",
+            ),
         )
         await coordinator.emit(
             session_id,
             "input_queued",
             {"input": item.to_dict(), "pending_count": len(coordinator.pending_inputs(session_id))},
         )
-        return {"queued": True, "input": item.to_dict()}
+        result = {"queued": True, "input": item.to_dict()}
+        if workstream is not None:
+            result["workstream"] = workstream.to_dict(include_token=False)
+        return result
 
     async def session_input_queue(params: dict[str, Any]) -> dict[str, Any]:
         if coordinator is None:
@@ -190,3 +211,32 @@ def make_session_handlers(graph: SessionGraph, coordinator: Any = None) -> dict[
         "session.delegate": session_delegate,
         "capability.revoke": capability_revoke,
     }
+
+
+async def _claim_or_verify_workstream(
+    session_id: UUID,
+    params: dict[str, Any],
+    workstreams: Any,
+) -> Any:
+    client_id = str(params.get("client_id") or "interactive-client")
+    try:
+        workstream_id = params.get("workstream_id")
+        if workstream_id is not None:
+            return await workstreams.claim(
+                session_id,
+                client_id,
+                lease_seconds=int(params.get("lease_seconds") or 300),
+                lease_token=params.get("lease_token"),
+                reason=str(params.get("reason") or "interactive session activity"),
+                workstream_id=str(workstream_id),
+            )
+        return await workstreams.ensure(
+            session_id,
+            client_id,
+            lease_seconds=int(params.get("lease_seconds") or 300),
+            lease_token=params.get("lease_token"),
+            reason=str(params.get("reason") or "interactive session activity"),
+            auto_claim=bool(params.get("claim_if_missing", True)),
+        )
+    except WorkstreamOwnershipError as e:
+        raise RuntimeError(str(e)) from e
