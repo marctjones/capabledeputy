@@ -62,6 +62,9 @@ External MCP smoke should prove:
 - label/provenance propagation for resources and tool outputs;
 - daemon policy/approval routing for actions.
 
+Use `docs/external-mcp-smoke.md` for the opt-in matrix driven by
+`CAPDEP_REAL_MCP_SMOKE_CONFIG`.
+
 ## Coverage Ratchet
 
 Coverage is ratcheted independently for daemon code, clients, MCP surfaces,

@@ -108,7 +108,7 @@ external MCP servers, resources, prompts, and control surfaces.
 | #116 | Upstream MCP tool classification, target extraction, and fail-closed labeling | Implemented locally |
 | #117 | Upstream MCP resources and prompts as labeled inputs | Implemented locally for resources; prompt surface remains static/workflow scoped |
 | #118 | MCP-control and admin MCP separation, authority boundaries, and audit | Implemented locally |
-| #119 | Opt-in real MCP server smoke matrix for common external servers | Deferred as opt-in external smoke, not deterministic CI |
+| #119 | Opt-in real MCP server smoke matrix for common external servers | Implemented locally: skipped-by-default `CAPDEP_REAL_MCP_SMOKE_CONFIG` matrix |
 
 ### v0.29.0 done-when
 

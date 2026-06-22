@@ -278,8 +278,10 @@ targeted tests; this milestone adds adversarial conformance coverage.
   separation.
 - Existing MCP adapter, resource, prompt, session-bound, and MCP-control tests
   continue to cover the daemon-mediated paths.
-- Real external MCP server smoke tests remain opt-in follow-up work because
-  they depend on local tools, credentials, and network state.
+- Real external MCP server smoke tests are implemented as a skipped-by-default
+  matrix in `tests/test_external_mcp_smoke_matrix.py`, configured with
+  `CAPDEP_REAL_MCP_SMOKE_CONFIG`, because they depend on local tools,
+  credentials, and network state.
 
 ### Done-when
 

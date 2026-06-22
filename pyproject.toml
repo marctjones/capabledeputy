@@ -123,6 +123,7 @@ markers = [
     "snapshot: visual SVG regression (brittle across Textual bumps; isolate with -m 'not snapshot')",
     "invariant: 003 security-model invariant tests (Principle III).",
     "perf: latency or throughput benchmark (skip with -m 'not perf' on slow CI).",
+    "external_mcp: opt-in real upstream MCP server smoke tests.",
 ]
 
 [tool.coverage.run]
