@@ -266,6 +266,19 @@ targeted tests; this milestone adds adversarial conformance coverage.
 4. Prove admin/control surfaces are not alternate authority paths.
 5. Add opt-in real-server smoke tests only after deterministic coverage exists.
 
+### Current implementation status
+
+- `tests/mcp_conformance.py` provides a reusable in-memory MCP conformance
+  harness for deterministic fake-server tests.
+- `tests/test_mcp_security_conformance.py` covers ambiguous-tool fail-closed
+  behavior, disabled-kind enforcement for renamed tools, explicit override
+  requirements, tool/resource label propagation, and admin/control surface
+  separation.
+- Existing MCP adapter, resource, prompt, session-bound, and MCP-control tests
+  continue to cover the daemon-mediated paths.
+- Real external MCP server smoke tests remain opt-in follow-up work because
+  they depend on local tools, credentials, and network state.
+
 ### Done-when
 
 - A fake malicious MCP server cannot bypass registration, labels, policy,

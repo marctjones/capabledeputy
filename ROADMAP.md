@@ -102,13 +102,13 @@ external MCP servers, resources, prompts, and control surfaces.
 
 | Issue | Work | Status |
 |---|---|---|
-| #113 | EPIC: MCP security conformance and external server labeling | Planned |
-| #114 | Reusable MCP conformance fixture harness | Planned |
-| #115 | Session-bound MCP multi-turn labels, approvals, provenance, and audit | Planned |
-| #116 | Upstream MCP tool classification, target extraction, and fail-closed labeling | Planned |
-| #117 | Upstream MCP resources and prompts as labeled inputs | Planned |
-| #118 | MCP-control and admin MCP separation, authority boundaries, and audit | Planned |
-| #119 | Opt-in real MCP server smoke matrix for common external servers | Planned |
+| #113 | EPIC: MCP security conformance and external server labeling | Implemented locally |
+| #114 | Reusable MCP conformance fixture harness | Implemented locally |
+| #115 | Session-bound MCP multi-turn labels, approvals, provenance, and audit | Covered by existing MCP/control/resource tests plus conformance harness |
+| #116 | Upstream MCP tool classification, target extraction, and fail-closed labeling | Implemented locally |
+| #117 | Upstream MCP resources and prompts as labeled inputs | Implemented locally for resources; prompt surface remains static/workflow scoped |
+| #118 | MCP-control and admin MCP separation, authority boundaries, and audit | Implemented locally |
+| #119 | Opt-in real MCP server smoke matrix for common external servers | Deferred as opt-in external smoke, not deterministic CI |
 
 ### v0.29.0 done-when
 
