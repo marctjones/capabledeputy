@@ -174,12 +174,12 @@ active in a session and why a decision was made.
 
 | Issue | Work | Status |
 |---|---|---|
-| #127 | EPIC: Multi-session security context and external actor observability | Planned |
-| #128 | Daemon `session.security_context` model and RPCs | Planned |
-| #129 | Session security event ledger and provenance index across turns | Planned |
-| #130 | Policy and Starlark context with actor, flow, and external-tool metadata | Planned |
-| #131 | Expose session security context across all clients | Planned |
-| #132 | Multi-session external-actor regression tests for security context | Planned |
+| #127 | EPIC: Multi-session security context and external actor observability | Implemented locally |
+| #128 | Daemon `session.security_context` model and RPCs | Implemented locally |
+| #129 | Session security event ledger and provenance index across turns | Implemented locally via audit/provenance projection |
+| #130 | Policy and Starlark context with actor, flow, and external-tool metadata | Partial: policy/audit actor metadata projected; deeper Starlark convenience helpers remain future hardening |
+| #131 | Expose session security context across all clients | Partial: CLI, TUI, and MCP-control implemented; Swift GUI rendering remains macOS UI-sensitive follow-up |
+| #132 | Multi-session external-actor regression tests for security context | Implemented locally for onguard, approvals, policy, provenance, CLI, TUI, and MCP-control |
 
 ### v0.31.0 done-when
 
@@ -191,6 +191,22 @@ active in a session and why a decision was made.
   reconstructing security state independently.
 - Regression tests cover multiple sessions, external MCP input, onguard queued
   work, delayed approvals, approval timeouts, and blocked egress.
+
+### v0.31.0 current implementation status
+
+- Daemon exposes `session.security_context` as a stable JSON projection of
+  session metadata, labels, capabilities, origin, approvals, policy decisions,
+  materialized provenance, audit evidence, onguard actors, and external-tool
+  actors.
+- CLI exposes `capdep session security-context SESSION_ID` with `--json` and a
+  read-only `--socket` override for integration tests and alternate daemons.
+- TUI spectator trace uses the daemon security context when available and falls
+  back to older `session.get` data for compatibility with older daemons/test
+  doubles.
+- MCP-control exposes `session_security_context` as a read-only daemon
+  passthrough.
+- Regression coverage includes direct daemon projection, MCP-control dispatch,
+  live-daemon CLI/MCP parity, and existing TUI session-detail behavior.
 
 ## Previous Focus — v0.25.0 MCP Compatibility + Security Integration
 

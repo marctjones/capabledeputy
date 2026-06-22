@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json as json_mod
+from pathlib import Path
 from typing import Annotated, Any
 
 import anyio
@@ -28,6 +29,16 @@ def _call(method: str, params: dict[str, Any] | None = None) -> Any:
     return anyio.run(_client().call, method, params or {})
 
 
+def _call_socket(
+    method: str,
+    params: dict[str, Any] | None = None,
+    *,
+    socket_path: str | None = None,
+) -> Any:
+    client = DaemonClient(Path(socket_path) if socket_path else default_socket_path())
+    return anyio.run(client.call, method, params or {})
+
+
 def _short_id(s: str) -> str:
     return s[:8]
 
@@ -51,6 +62,52 @@ def _render_session(s: dict[str, Any]) -> None:
         console.print("  flags:   tool_aliasing")
     if s.get("prefer_programmatic"):
         console.print("  flags:   prefer_programmatic")
+
+
+def _render_security_context(ctx: dict[str, Any]) -> None:
+    session = ctx["session"]
+    labels = ctx["labels"]
+    caps = ctx["capabilities"]
+    policy = ctx["policy"]
+    approvals = ctx["approvals"]
+    provenance = ctx["provenance"]
+    console.print(f"[bold]security context[/bold] {session['id']}")
+    console.print(f"  status:       {session['status']}")
+    console.print(f"  purpose:      {session['purpose_handle']}")
+    console.print(f"  enforcement:  {session['enforcement_mode']}")
+    console.print(f"  origin:       {ctx['origin'].get('kind')}")
+    if labels["legacy_label_set"]:
+        console.print(f"  labels:       {', '.join(labels['legacy_label_set'])}")
+    else:
+        console.print("  labels:       clean")
+    console.print(
+        f"  caps:         {len(caps['active'])} active, "
+        f"{len(caps['used_kinds'])} used kind(s)",
+    )
+    console.print(
+        f"  policy:       {policy['decision_count']} decision(s), "
+        f"{policy['deny_count']} denied, {policy['approval_gate_count']} approval gate(s)",
+    )
+    console.print(
+        f"  approvals:    {len(approvals['requests'])} request(s), "
+        f"{approvals['pending_count']} pending, {approvals['expired_count']} expired",
+    )
+    console.print(
+        f"  provenance:   {provenance['node_count']} node(s), "
+        f"{provenance['edge_count']} edge(s)",
+    )
+    if policy["recent_decisions"]:
+        console.print("  recent policy:")
+        for decision in policy["recent_decisions"][-5:]:
+            console.print(
+                "    - "
+                f"{decision.get('decision')} tool={decision.get('tool')} "
+                f"rule={decision.get('rule') or '-'}",
+            )
+    if ctx["limitations"]:
+        console.print("  limitations:")
+        for limitation in ctx["limitations"]:
+            console.print(f"    - {limitation}")
 
 
 @session_app.command("list")
@@ -348,3 +405,27 @@ def session_show(
         console.print(json_mod.dumps(s, indent=2))
     else:
         _render_session(s)
+
+
+@session_app.command("security-context")
+def session_security_context(
+    session_id: Annotated[str, typer.Argument(help="Session id to inspect")],
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit daemon security-context JSON"),
+    ] = False,
+) -> None:
+    """Show the daemon-owned security context for one session."""
+    ctx = _call_socket(
+        "session.security_context",
+        {"session_id": session_id},
+        socket_path=socket_path,
+    )
+    if json_output:
+        console.print(json_mod.dumps(ctx, indent=2))
+    else:
+        _render_security_context(ctx)

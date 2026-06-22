@@ -23,6 +23,7 @@ def test_control_tools_include_daemon_client_surface() -> None:
     assert "app_status" in names
     assert "session_list" in names
     assert "session_new" in names
+    assert "session_security_context" in names
     assert "tool_call" in names
     assert "approval_approve" in names
     assert "setup_status" in names
@@ -91,6 +92,23 @@ async def test_control_session_new_dispatches_params(fake_daemon) -> None:
             },
         ),
     ]
+
+
+async def test_control_session_security_context_dispatches_to_daemon(fake_daemon) -> None:
+    client = fake_daemon(
+        {"session.security_context": {"session": {"id": "s1"}, "schema_version": 1}},
+    )
+
+    result = await dispatch_control_tool(
+        client,
+        "session_security_context",
+        {"session_id": "s1"},
+    )
+
+    assert result.isError is False
+    assert result.structuredContent is not None
+    assert result.structuredContent["session"]["id"] == "s1"
+    assert client.calls == [("session.security_context", {"session_id": "s1"})]
 
 
 async def test_control_tool_call_dispatches_policy_gated_call(fake_daemon) -> None:

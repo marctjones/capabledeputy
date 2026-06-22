@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import anyio
+from anyio.to_thread import run_sync
 from typer.testing import CliRunner
 
 from capabledeputy.cli.main import app
@@ -15,7 +15,7 @@ runner = CliRunner()
 
 
 async def _invoke_cli(args: list[str]):
-    return await anyio.to_thread.run_sync(lambda: runner.invoke(app, args))
+    return await run_sync(lambda: runner.invoke(app, args))
 
 
 async def test_mcp_control_onguard_tools_use_live_daemon(tmp_path: Path) -> None:
@@ -70,6 +70,56 @@ async def test_mcp_control_onguard_tools_use_live_daemon(tmp_path: Path) -> None
             {"client_id": "onguard.digest.daily"},
         )
         assert listed["commands"][0]["command_id"] == command["command_id"]
+
+
+async def test_security_context_is_available_to_cli_and_mcp_control(
+    tmp_path: Path,
+) -> None:
+    async with running_daemon(tmp_path) as daemon:
+        socket_arg = str(daemon.paths.socket)
+        created = await daemon.client.call(
+            "session.new",
+            {
+                "owner": "operator",
+                "intent": "security context parity",
+                "purpose_handle": "personal_assistant",
+            },
+        )
+        await daemon.client.call(
+            "approval.submit",
+            {
+                "from_session": created["id"],
+                "action": "SEND_EMAIL",
+                "payload": '{"to":"user@example.com"}',
+                "target": "user@example.com",
+                "labels_in": ["untrusted.external"],
+                "justification": "requires approval",
+            },
+        )
+
+        cli = await _invoke_cli(
+            [
+                "session",
+                "security-context",
+                created["id"],
+                "--socket",
+                socket_arg,
+                "--json",
+            ],
+        )
+        mcp = await dispatch_control_tool(
+            daemon.client,
+            "session_security_context",
+            {"session_id": created["id"]},
+        )
+
+        assert cli.exit_code == 0
+        assert '"schema_version": 1' in cli.stdout
+        assert '"pending_count": 1' in cli.stdout
+        assert mcp.isError is False
+        assert mcp.structuredContent is not None
+        assert mcp.structuredContent["session"]["id"] == created["id"]
+        assert mcp.structuredContent["approvals"]["pending_count"] == 1
 
 
 async def test_cli_onguard_read_paths_use_live_daemon(tmp_path: Path) -> None:

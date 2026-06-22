@@ -370,14 +370,23 @@ policy rules, and provenance are active in this session?
 
 ### Sequencing
 
-1. Define the daemon security-context JSON model and RPC.
+1. Define the daemon security-context JSON model and RPC. **Done locally** via
+   `session.security_context`.
 2. Add the ledger/provenance index needed to populate it without client-side
-   inference.
+   inference. **Done locally** as a deterministic projection over session
+   state, audit, approvals, provenance, onguard store, and upstream/tool
+   metadata.
 3. Extend policy/Starlark context so decisions can use the same structured
-   actor and flow metadata shown to users.
-4. Expose the daemon view across clients.
+   actor and flow metadata shown to users. **Partial**: origin and actor
+   metadata are projected and available in audit/session state; deeper
+   Starlark helper APIs remain a hardening follow-up.
+4. Expose the daemon view across clients. **Partial**: CLI, TUI, and
+   MCP-control are wired and tested; Swift GUI rendering is a macOS
+   UI-sensitive follow-up.
 5. Add multi-session regression tests that compare security context,
-   provenance, audit, and final policy decisions.
+   provenance, audit, and final policy decisions. **Done locally** for direct
+   daemon projection plus live CLI/MCP-control parity and TUI rendering
+   compatibility.
 
 ### Done-when
 
@@ -388,6 +397,18 @@ policy rules, and provenance are active in this session?
   audit evidence.
 - Clients render daemon state rather than reconstructing safety context
   independently.
+
+Current implementation notes:
+
+- `session.security_context` returns a versioned JSON document containing
+  session, labels, capabilities, origin, actors, approvals, policy decisions,
+  provenance, security-model evidence, flow-pattern evidence, audit evidence,
+  and explicit limitations.
+- The projection is read-only and daemon-owned; clients should render this
+  view instead of joining lower-level RPCs themselves.
+- The handler intentionally reports limitations when no provenance or upstream
+  MCP actor evidence exists, rather than implying unobserved controls are
+  active.
 
 ---
 

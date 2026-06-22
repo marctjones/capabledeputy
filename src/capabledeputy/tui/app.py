@@ -337,6 +337,13 @@ class CapDepTUI(App[None]):
             full = await self._client.call("session.get", {"session_id": session_id})
         except Exception:
             return
+        try:
+            security_context = await self._client.call(
+                "session.security_context",
+                {"session_id": session_id},
+            )
+        except Exception:
+            security_context = None
 
         history = full.get("history") or []
         if not history:
@@ -393,15 +400,37 @@ class CapDepTUI(App[None]):
                         lines.append(f"  [cyan]↳ recover:[/cyan] [dim]{hint}[/dim]")
             trace_text = "\n".join(lines)
 
-        # Prepend the session's compartment + capability constraints so
-        # the whole v0.7 family (expiry / rate / revocation / one-shot /
-        # destructive) is visible in the TUI, not just the REPL.
-        labels = full.get("label_set", [])
+        # Prepend daemon-owned security context when available. Older
+        # daemon/test doubles may only support session.get, so keep a
+        # fallback but do not duplicate security derivation in the TUI.
+        labels = (
+            (security_context or {})
+            .get("labels", {})
+            .get("legacy_label_set", full.get("label_set", []))
+        )
         word, style = compartment_summary(labels)
         header = [
             f"[bold]compartment[/bold] [{style}]{word}[/{style}]  {render_labels(labels)}",
         ]
-        caps = full.get("capability_set", [])
+        if security_context:
+            session_ctx = security_context["session"]
+            policy_ctx = security_context["policy"]
+            approval_ctx = security_context["approvals"]
+            provenance_ctx = security_context["provenance"]
+            header.append(
+                "[bold]security[/bold] "
+                f"purpose={session_ctx['purpose_handle']} "
+                f"enforcement={session_ctx['enforcement_mode']} "
+                f"decisions={policy_ctx['decision_count']} "
+                f"denies={policy_ctx['deny_count']} "
+                f"approvals={approval_ctx['pending_count']} pending "
+                f"provenance={provenance_ctx['node_count']}/{provenance_ctx['edge_count']}",
+            )
+        caps = (
+            (security_context or {})
+            .get("capabilities", {})
+            .get("active", full.get("capability_set", []))
+        )
         if caps:
             header.append(f"[bold]capabilities[/bold] ({len(caps)}):")
             header.extend(f"  - {capability_line(c)}" for c in caps)

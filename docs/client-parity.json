@@ -98,6 +98,7 @@
     "session.new": {"tier": "core", "cli": "implemented", "tui": "intentional", "swift_gui": "implemented", "mcp_control": "implemented"},
     "session.pause": {"tier": "core", "cli": "implemented", "tui": "implemented", "swift_gui": "implemented", "mcp_control": "implemented"},
     "session.resume": {"tier": "core", "cli": "implemented", "tui": "implemented", "swift_gui": "implemented", "mcp_control": "implemented"},
+    "session.security_context": {"tier": "core", "cli": "implemented", "tui": "implemented", "swift_gui": "intentional", "mcp_control": "implemented"},
     "session.send": {"tier": "core", "cli": "implemented", "tui": "implemented", "swift_gui": "implemented", "mcp_control": "implemented"},
     "session.set_enforcement": {"tier": "core", "cli": "implemented", "tui": "intentional", "swift_gui": "implemented", "mcp_control": "implemented"},
     "session.set_first_use_prompts": {"tier": "core", "cli": "implemented", "tui": "intentional", "swift_gui": "implemented", "mcp_control": "implemented"},

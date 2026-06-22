@@ -435,6 +435,14 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
         _annotations("Get session", read_only=True, idempotent=True),
     ),
     ControlToolSpec(
+        "session_security_context",
+        "Session security context",
+        "Return the daemon-owned security context for a CapDep session.",
+        "session.security_context",
+        _SESSION_ID_SCHEMA,
+        _annotations("Session security context", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
         "session_children",
         "List child sessions",
         "Return delegated child sessions for a CapDep session.",
