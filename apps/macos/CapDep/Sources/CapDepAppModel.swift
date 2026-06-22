@@ -948,6 +948,47 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
+    func callDaemonRPC(method: String, paramsJSON: String) async -> String {
+        let trimmedMethod = method.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedMethod.isEmpty else {
+            return "Method is required."
+        }
+        do {
+            let params = try Self.parseJSONObject(paramsJSON)
+            let result = try await client.call(method: trimmedMethod, params: params)
+            return Self.prettyJSON(result)
+        } catch {
+            lastError = error.localizedDescription
+            return "Error: \(error.localizedDescription)"
+        }
+    }
+
+    nonisolated private static func parseJSONObject(_ text: String) throws -> [String: Any] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return [:]
+        }
+        let data = Data(trimmed.utf8)
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let dictionary = object as? [String: Any] else {
+            throw DaemonRPCWorkbenchError.paramsMustBeObject
+        }
+        return dictionary
+    }
+
+    nonisolated private static func prettyJSON(_ value: Any) -> String {
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(
+                withJSONObject: value,
+                options: [.prettyPrinted, .sortedKeys],
+              ),
+              let rendered = String(data: data, encoding: .utf8)
+        else {
+            return "\(value)"
+        }
+        return rendered
+    }
+
     func showOverride(_ grant: OverrideGrantViewData) async -> [String: Any]? {
         do {
             return try await client.call(
@@ -1014,6 +1055,17 @@ final class CapDepAppModel: ObservableObject {
             return true
         default:
             return false
+        }
+    }
+}
+
+enum DaemonRPCWorkbenchError: LocalizedError {
+    case paramsMustBeObject
+
+    var errorDescription: String? {
+        switch self {
+        case .paramsMustBeObject:
+            return "params JSON must be an object"
         }
     }
 }

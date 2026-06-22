@@ -1,3 +1,4 @@
+import inspect
 from pathlib import Path
 
 import anyio
@@ -25,6 +26,34 @@ async def _wait_for_socket(path: Path, timeout: float = 2.0) -> None:
                 pass
         await anyio.sleep(0.01)
     raise TimeoutError(f"socket {path} did not become available within {timeout}s")
+
+
+def test_daemon_rpc_transport_is_unix_socket_only() -> None:
+    """Daemon client RPC is same-user local IPC, not a network service."""
+    import capabledeputy.daemon.server as server_module
+    import capabledeputy.ipc.client as client_module
+
+    server_source = inspect.getsource(server_module)
+    client_source = inspect.getsource(client_module)
+
+    assert "create_unix_listener" in server_source
+    assert "connect_unix" in client_source
+
+    forbidden = (
+        "create_tcp_listener",
+        "connect_tcp",
+        "AF_INET",
+        "AF_INET6",
+        "SOCK_DGRAM",
+        "UDPServer",
+        "TCPServer",
+        "HTTPServer",
+        "uvicorn",
+        "websockets.serve",
+    )
+    combined = server_source + "\n" + client_source
+    for token in forbidden:
+        assert token not in combined
 
 
 async def test_version_round_trip(socket_path: Path) -> None:

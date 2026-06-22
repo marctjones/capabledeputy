@@ -551,7 +551,7 @@ async def run_daemon(
     from capabledeputy.daemon.handlers import make_info_handler
 
     handlers["daemon.info"] = make_info_handler(app)
-    handlers.update(make_session_handlers(app.graph))
+    handlers.update(make_session_handlers(app.graph, app.session_coordinator))
     handlers.update(make_devbox_handlers(app))
     handlers.update(make_relationship_handlers(app))
     handlers.update(make_security_context_handlers(app))
@@ -602,6 +602,7 @@ async def run_daemon(
         await daemon.publish("audit", event.to_dict())
 
     app.audit.subscribe(_relay_audit)
+    app.session_coordinator.set_publisher(daemon.publish)
 
     # Opt-in: if a daemon config file with an `upstream_servers:` section
     # is provided, spawn those MCP servers for the daemon's lifetime and

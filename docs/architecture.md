@@ -34,6 +34,12 @@ This is a release-blocking architecture rule:
 - **Presentation can differ.** Clients may have different layouts, shortcuts,
   accessibility affordances, notification integrations, and platform-native
   shell behavior. Those differences must sit above the daemon contract.
+- **Daemon RPC is local IPC only.** CapDep trusts same-user local clients that
+  can connect to its owner-only Unix-domain socket. The daemon must not expose
+  JSON-RPC, client sessions, approvals, configuration, or control APIs over TCP,
+  UDP, WebSocket, HTTP, gRPC, or any other network listener. Network activity is
+  allowed only for explicit tools/connectors or short-lived OAuth loopback flows,
+  never as an alternate daemon client transport.
 
 Practical review checklist for any client change:
 

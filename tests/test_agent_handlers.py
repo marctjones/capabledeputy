@@ -6,7 +6,7 @@ import pytest
 from capabledeputy.app import App
 from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.fake import FakeLLMClient
-from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
+from capabledeputy.llm.types import FinishReason, LLMResponse, Message, ToolCall, ToolDescription
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.tiers import Tier
@@ -275,3 +275,64 @@ async def test_session_send_cancel_during_turn_interrupts(app: App) -> None:
     # Flag was cleared after the turn returned — next turn is not
     # pre-cancelled.
     assert s.id not in app.cancellation_flags
+
+
+async def test_session_send_queues_concurrent_same_session_input(app: App) -> None:
+    import anyio
+
+    class BlockingLLM:
+        def __init__(self) -> None:
+            self.entered = anyio.Event()
+            self.release = anyio.Event()
+            self.calls = 0
+
+        async def respond(
+            self,
+            messages: list[Message],
+            tools: list[ToolDescription],
+        ) -> LLMResponse:
+            self.calls += 1
+            if self.calls == 1:
+                self.entered.set()
+                await self.release.wait()
+                return LLMResponse(content="first")
+            return LLMResponse(content="second")
+
+    await app.startup()
+    blocking = BlockingLLM()
+    app.llm_client = blocking
+    s = await app.graph.new()
+    handlers = make_agent_handlers(app)
+    first_result: dict = {}
+    second_result: dict = {}
+
+    async def _first() -> None:
+        first_result.update(
+            await handlers["session.send"](
+                {"session_id": str(s.id), "message": "first", "submitted_by": "gui"},
+            ),
+        )
+
+    async def _second() -> None:
+        await blocking.entered.wait()
+        second_result.update(
+            await handlers["session.send"](
+                {"session_id": str(s.id), "message": "second", "submitted_by": "tui"},
+            ),
+        )
+        blocking.release.set()
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(_first)
+        tg.start_soon(_second)
+
+    assert second_result["queued"] is True
+    assert second_result["reason"] == "session_busy"
+    assert first_result["content"] == "first"
+    assert first_result["queued_results"][0]["content"] == "second"
+
+    events = app.session_coordinator.events_since(session_id=s.id)
+    event_types = [event["type"] for event in events["events"]]
+    assert event_types.count("turn_started") == 2
+    assert "input_queued" in event_types
+    assert event_types.count("turn_completed") == 2

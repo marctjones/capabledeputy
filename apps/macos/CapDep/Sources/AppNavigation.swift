@@ -10,6 +10,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
     case provenance = "Provenance"
     case trust = "Trust"
     case setup = "Setup"
+    case daemonRPC = "Daemon RPC"
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -25,6 +26,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
         case .provenance: "point.3.connected.trianglepath.dotted"
         case .trust: "person.2.badge.gearshape"
         case .setup: "checklist"
+        case .daemonRPC: "terminal"
         case .settings: "gearshape"
         }
     }

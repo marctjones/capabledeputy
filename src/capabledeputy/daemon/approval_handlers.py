@@ -59,6 +59,11 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         return request.to_dict()
 
     async def approval_deny(params: dict[str, Any]) -> dict[str, Any]:
+        existing = app.approval_queue.get(int(params["id"]))
+        if existing.status != ApprovalStatus.PENDING:
+            result = existing.to_dict()
+            result["already_decided"] = True
+            return result
         request = await app.approval_queue.deny(
             int(params["id"]),
             decided_by=str(params.get("decided_by", "user")),
@@ -67,11 +72,18 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         return request.to_dict()
 
     async def approval_defer(params: dict[str, Any]) -> dict[str, Any]:
+        existing = app.approval_queue.get(int(params["id"]))
+        if existing.status != ApprovalStatus.PENDING:
+            result = existing.to_dict()
+            result["already_decided"] = True
+            return result
         request = await app.approval_queue.defer(int(params["id"]))
         return request.to_dict()
 
     async def approval_approve(params: dict[str, Any]) -> dict[str, Any]:
         request = app.approval_queue.get(int(params["id"]))
+        if request.status != ApprovalStatus.PENDING:
+            return {"approval": request.to_dict(), "already_decided": True}
         decided_by = str(params.get("decided_by", "user"))
         settings = load_settings()
         if (

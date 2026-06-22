@@ -49,8 +49,63 @@ def _outcome_to_dict(outcome: ToolCallOutcome) -> dict[str, Any]:
 
 
 def make_agent_handlers(app: App) -> dict[str, Handler]:
+    async def _run_single_turn(
+        *,
+        session_uuid: UUID,
+        message: str,
+        llm: Any,
+        force_mode: Any = None,
+        max_iterations: int | None = None,
+        source: str = "client",
+    ) -> dict[str, Any]:
+        app.cancellation_flags[session_uuid] = False
+        from capabledeputy.daemon.lifecycle import agent_max_iterations
+
+        await app.session_coordinator.emit(
+            session_uuid,
+            "turn_started",
+            {"source": source, "message": message},
+        )
+        try:
+            result = await run_turn(
+                session_id=session_uuid,
+                user_message=message,
+                llm=llm,
+                tool_client=app.tool_client,
+                registry=app.registry,
+                graph=app.graph,
+                audit=app.audit,
+                max_iterations=max_iterations or agent_max_iterations(),
+                force_mode=force_mode,
+                cancel_check=lambda sid=session_uuid: app.cancellation_flags.get(
+                    sid,
+                    False,
+                ),
+            )
+        finally:
+            app.cancellation_flags.pop(session_uuid, None)
+        response = {
+            "content": result.content,
+            "iterations": result.iterations,
+            "finish_reason": result.finish_reason.value,
+            "tool_outcomes": [_outcome_to_dict(o) for o in result.tool_outcomes],
+        }
+        await app.session_coordinator.emit(
+            session_uuid,
+            "turn_completed",
+            {
+                "source": source,
+                "content": result.content,
+                "iterations": result.iterations,
+                "finish_reason": result.finish_reason.value,
+                "tool_outcomes": response["tool_outcomes"],
+            },
+        )
+        return response
+
     async def session_send(params: dict[str, Any]) -> dict[str, Any]:
-        if app.llm_client is None:
+        llm = app.llm_client
+        if llm is None:
             raise RuntimeError(
                 "no LLM client configured; daemon cannot drive the agent loop",
             )
@@ -61,40 +116,63 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
 
             force_mode = ExecutionMode(force_mode_str)
         session_uuid = UUID(params["session_id"])
-        # Issue #23 — register the cancellation flag so session.cancel
-        # (issued from a different RPC connection) can flip it. Clear
-        # in `finally` so the entry doesn't outlive the turn — a stale
-        # flag would otherwise cancel the *next* turn before it
-        # started.
-        app.cancellation_flags[session_uuid] = False
+        message = str(params["message"])
         from capabledeputy.daemon.lifecycle import agent_max_iterations
 
+        max_iterations = int(params.get("max_iterations") or agent_max_iterations())
+        lock = await app.session_coordinator.acquire_turn(session_uuid)
+        if lock is None:
+            if params.get("enqueue_if_busy", True):
+                item = app.session_coordinator.enqueue_input(
+                    session_uuid,
+                    message,
+                    submitted_by=str(params.get("submitted_by", "client")),
+                )
+                await app.session_coordinator.emit(
+                    session_uuid,
+                    "input_queued",
+                    {
+                        "input": item.to_dict(),
+                        "reason": "session_busy",
+                        "pending_count": len(app.session_coordinator.pending_inputs(session_uuid)),
+                    },
+                )
+                return {
+                    "queued": True,
+                    "reason": "session_busy",
+                    "input": item.to_dict(),
+                }
+            raise RuntimeError(f"session {session_uuid} already has an active turn")
+
+        queued_results: list[dict[str, Any]] = []
         try:
-            result = await run_turn(
-                session_id=session_uuid,
-                user_message=str(params["message"]),
-                llm=app.llm_client,
-                tool_client=app.tool_client,
-                registry=app.registry,
-                graph=app.graph,
-                audit=app.audit,
-                max_iterations=int(
-                    params.get("max_iterations") or agent_max_iterations(),
-                ),
+            first_result = await _run_single_turn(
+                session_uuid=session_uuid,
+                message=message,
+                llm=llm,
                 force_mode=force_mode,
-                cancel_check=lambda sid=session_uuid: app.cancellation_flags.get(
-                    sid,
-                    False,
-                ),
+                max_iterations=max_iterations,
+                source=str(params.get("submitted_by", "client")),
             )
+            while True:
+                item = app.session_coordinator.pop_next_input(session_uuid)
+                if item is None:
+                    break
+                queued_results.append(
+                    await _run_single_turn(
+                        session_uuid=session_uuid,
+                        message=item.message,
+                        llm=llm,
+                        force_mode=force_mode,
+                        max_iterations=max_iterations,
+                        source=item.submitted_by,
+                    ),
+                )
         finally:
-            app.cancellation_flags.pop(session_uuid, None)
-        return {
-            "content": result.content,
-            "iterations": result.iterations,
-            "finish_reason": result.finish_reason.value,
-            "tool_outcomes": [_outcome_to_dict(o) for o in result.tool_outcomes],
-        }
+            app.session_coordinator.release_turn(session_uuid, lock)
+        if queued_results:
+            first_result["queued_results"] = queued_results
+        return first_result
 
     async def session_cancel(params: dict[str, Any]) -> dict[str, Any]:
         """Issue #23 — flip the cancellation flag for `session_id`'s

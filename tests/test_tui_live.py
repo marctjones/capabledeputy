@@ -6,12 +6,12 @@ audit events) + Pilot. No socket, no new deps."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
-from textual.widgets import Static
+from textual.widgets import Input, Static
 
 from capabledeputy.ipc.client import DaemonNotRunningError
-from capabledeputy.tui.app import CapDepTUI
+from capabledeputy.tui.app import CapDepTUI, DaemonRPCWorkbenchScreen, GoogleWorkspaceSetupScreen
 from capabledeputy.tui.console import CapDepConsole
 
 _SID = "abcd1234-0000-0000-0000-000000000000"
@@ -181,6 +181,159 @@ async def test_spectator_renders_onguard_coordination_summary(fake_daemon) -> No
                 "events": 1,
             }
         ]
+
+
+async def test_tui_google_workspace_setup_dispatches_daemon_oauth_rpcs(fake_daemon) -> None:
+    client = fake_daemon(
+        {
+            "session.list": {"sessions": []},
+            "approval.list": {"approvals": []},
+            "audit.tail": {"events": []},
+            "client.registry.list": {"clients": []},
+            "client.queue.list": {"commands": []},
+            "schedule.list": {"schedules": []},
+            "artifact.list": {"artifacts": []},
+            "client.events.list": {"events": []},
+            "setup.google.oauth_status": {
+                "services": [
+                    {
+                        "service_id": "google-gmail",
+                        "display_name": "Google Gmail",
+                        "configured": False,
+                        "client_id_configured": False,
+                        "client_secret_configured": False,
+                        "token_configured": False,
+                    }
+                ]
+            },
+            "setup.google.configure_oauth": {
+                "service_id": "google-gmail",
+                "display_name": "Google Gmail",
+                "configured": True,
+                "client_id_configured": True,
+                "client_secret_configured": True,
+                "token_configured": False,
+            },
+            "setup.google.oauth_login": {
+                "service_id": "google-gmail",
+                "display_name": "Google Gmail",
+                "configured": True,
+                "client_id_configured": True,
+                "client_secret_configured": True,
+                "token_configured": True,
+            },
+            "setup.google.oauth_revoke": {
+                "service_id": "google-gmail",
+                "display_name": "Google Gmail",
+                "configured": True,
+                "client_id_configured": True,
+                "client_secret_configured": True,
+                "token_configured": False,
+            },
+        }
+    )
+    app = CapDepTUI(poll_interval=999.0)
+    app._client = client
+    async with app.run_test() as pilot:
+        await _settle(pilot)
+        await pilot.press("w")
+        await _settle(pilot)
+
+        screen = cast(GoogleWorkspaceSetupScreen, app.screen)
+        screen.query_one("#service-id", Input).value = "google-gmail"
+        screen.query_one("#client-id", Input).value = "cid"
+        screen.query_one("#client-secret", Input).value = "secret"
+        screen.action_save_client()
+        await _settle(pilot)
+        assert screen.query_one("#client-secret", Input).value == ""
+
+        screen.action_login()
+        await _settle(pilot)
+        screen.action_revoke()
+        await _settle(pilot)
+
+    assert ("setup.google.oauth_status", {}) in client.calls
+    assert (
+        "setup.google.configure_oauth",
+        {"service_id": "google-gmail", "client_id": "cid", "client_secret": "secret"},
+    ) in client.calls
+    assert (
+        "setup.google.oauth_login",
+        {"service_id": "google-gmail", "open_browser": True, "timeout_seconds": 180},
+    ) in client.calls
+    assert ("setup.google.oauth_revoke", {"service_id": "google-gmail"}) in client.calls
+
+
+async def test_tui_google_workspace_setup_renders_status_without_secrets(fake_daemon) -> None:
+    client = fake_daemon(
+        {
+            "session.list": {"sessions": []},
+            "approval.list": {"approvals": []},
+            "audit.tail": {"events": []},
+            "client.registry.list": {"clients": []},
+            "client.queue.list": {"commands": []},
+            "schedule.list": {"schedules": []},
+            "artifact.list": {"artifacts": []},
+            "client.events.list": {"events": []},
+            "setup.google.oauth_status": {
+                "services": [
+                    {
+                        "service_id": "google-calendar",
+                        "display_name": "Google Calendar",
+                        "configured": True,
+                        "client_id_configured": True,
+                        "client_secret_configured": True,
+                        "token_configured": False,
+                        "server_yaml": "/tmp/google-calendar.yaml",
+                    }
+                ]
+            },
+        }
+    )
+    app = CapDepTUI(poll_interval=999.0)
+    app._client = client
+    async with app.run_test() as pilot:
+        await _settle(pilot)
+        await pilot.press("w")
+        await _settle(pilot)
+        status = _text(app.screen, "#google-status")
+        assert "Google Calendar" in status
+        assert "client=yes" in status
+        assert "token=no" in status
+        assert "client_secret" not in status
+
+
+async def test_tui_daemon_rpc_workbench_calls_arbitrary_daemon_method(fake_daemon) -> None:
+    client = fake_daemon(
+        {
+            "session.list": {"sessions": []},
+            "approval.list": {"approvals": []},
+            "audit.tail": {"events": []},
+            "client.registry.list": {"clients": []},
+            "client.queue.list": {"commands": []},
+            "schedule.list": {"schedules": []},
+            "artifact.list": {"artifacts": []},
+            "client.events.list": {"events": []},
+            "policy.validate": {"ok": True, "checked": ["rules"]},
+        }
+    )
+    app = CapDepTUI(poll_interval=999.0)
+    app._client = client
+    async with app.run_test() as pilot:
+        await _settle(pilot)
+        await pilot.press("m")
+        await _settle(pilot)
+
+        screen = cast(DaemonRPCWorkbenchScreen, app.screen)
+        screen.query_one("#rpc-method", Input).value = "policy.validate"
+        screen.query_one("#rpc-params", Input).value = "{\"strict\": true}"
+        screen.action_run_rpc()
+        await _settle(pilot)
+
+        result = _text(screen, "#rpc-result")
+        assert '"ok": true' in result
+
+    assert ("policy.validate", {"strict": True}) in client.calls
 
 
 # ---- drive-loop resilience ---------------------------------------------

@@ -18,7 +18,7 @@ from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import SessionStatus
 
 
-def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
+def make_session_handlers(graph: SessionGraph, coordinator: Any = None) -> dict[str, Handler]:
     async def session_list(params: dict[str, Any]) -> dict[str, Any]:
         status_str = params.get("status")
         status = SessionStatus(status_str) if status_str else None
@@ -59,6 +59,37 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
     async def session_get(params: dict[str, Any]) -> dict[str, Any]:
         s = graph.get(UUID(params["session_id"]))
         return s.to_dict()
+
+    async def session_events(params: dict[str, Any]) -> dict[str, Any]:
+        if coordinator is None:
+            return {"events": [], "next_cursor": int(params.get("cursor") or 0)}
+        session_id = UUID(params["session_id"]) if params.get("session_id") else None
+        return coordinator.events_since(
+            session_id=session_id,
+            cursor=int(params.get("cursor") or 0),
+            limit=int(params.get("limit") or 200),
+        )
+
+    async def session_input_submit(params: dict[str, Any]) -> dict[str, Any]:
+        if coordinator is None:
+            raise RuntimeError("session coordinator unavailable")
+        session_id = UUID(params["session_id"])
+        item = coordinator.enqueue_input(
+            session_id,
+            str(params["message"]),
+            submitted_by=str(params.get("submitted_by", "client")),
+        )
+        await coordinator.emit(
+            session_id,
+            "input_queued",
+            {"input": item.to_dict(), "pending_count": len(coordinator.pending_inputs(session_id))},
+        )
+        return {"queued": True, "input": item.to_dict()}
+
+    async def session_input_queue(params: dict[str, Any]) -> dict[str, Any]:
+        if coordinator is None:
+            return {"inputs": []}
+        return {"inputs": coordinator.pending_inputs(UUID(params["session_id"]))}
 
     async def session_children(params: dict[str, Any]) -> dict[str, Any]:
         children = graph.children(UUID(params["session_id"]))
@@ -149,6 +180,9 @@ def make_session_handlers(graph: SessionGraph) -> dict[str, Handler]:
         "session.resume": session_resume,
         "session.abort": session_abort,
         "session.get": session_get,
+        "session.events": session_events,
+        "session.input.submit": session_input_submit,
+        "session.input.queue": session_input_queue,
         "session.children": session_children,
         "session.add_labels": session_add_labels,
         "session.set_enforcement": session_set_enforcement,

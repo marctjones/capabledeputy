@@ -51,6 +51,11 @@ oauth_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(oauth_app, name="oauth")
+google_oauth_app = typer.Typer(
+    help="Configure daemon-owned Google Workspace MCP OAuth.",
+    no_args_is_help=True,
+)
+oauth_app.add_typer(google_oauth_app, name="google")
 app.command("chat")(chat_command)
 app.command("init")(init_command)
 app.command("watch")(watch_command)
@@ -244,6 +249,195 @@ def onguard_artifacts_command(
             f"type={artifact.get('artifact_type')} "
             f"status={artifact.get('status')}"
         )
+
+
+@google_oauth_app.command("status")
+def google_oauth_status_command(
+    service_id: Annotated[
+        str | None,
+        typer.Argument(help="Google MCP service id, e.g. google-gmail or google-calendar."),
+    ] = None,
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a status summary."),
+    ] = False,
+) -> None:
+    """Show daemon-owned Google Workspace OAuth setup status."""
+    import json as _json
+
+    params = {"service_id": service_id} if service_id else {}
+    try:
+        result = anyio.run(
+            lambda: _onguard_call("setup.google.oauth_status", params, socket_path=socket_path)
+        )
+    except DaemonNotRunningError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2) from e
+
+    if json_output:
+        console.print(_json.dumps(result, indent=2))
+        return
+    _print_google_oauth_status(result)
+
+
+@google_oauth_app.command("configure")
+def google_oauth_configure_command(
+    service_id: Annotated[
+        str,
+        typer.Argument(help="Google MCP service id, e.g. google-gmail or google-calendar."),
+    ],
+    client_id: Annotated[
+        str,
+        typer.Option("--client-id", prompt=True, help="Google OAuth client ID."),
+    ],
+    client_secret: Annotated[
+        str,
+        typer.Option(
+            "--client-secret",
+            prompt=True,
+            hide_input=True,
+            help="Google OAuth client secret.",
+        ),
+    ],
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a status summary."),
+    ] = False,
+) -> None:
+    """Persist a Google OAuth client through the daemon."""
+    import json as _json
+
+    params = {
+        "service_id": service_id,
+        "client_id": client_id,
+        "client_secret": client_secret,
+    }
+    try:
+        result = anyio.run(
+            lambda: _onguard_call("setup.google.configure_oauth", params, socket_path=socket_path)
+        )
+    except DaemonNotRunningError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2) from e
+
+    if json_output:
+        console.print(_json.dumps(result, indent=2))
+        return
+    _print_google_oauth_status(result)
+
+
+@google_oauth_app.command("login")
+def google_oauth_login_command(
+    service_id: Annotated[
+        str,
+        typer.Argument(help="Google MCP service id, e.g. google-gmail or google-calendar."),
+    ],
+    no_browser: Annotated[
+        bool,
+        typer.Option("--no-browser", help="Print the authorization URL without opening it."),
+    ] = False,
+    timeout: Annotated[
+        int,
+        typer.Option("--timeout", help="Seconds to wait for the local OAuth callback."),
+    ] = 180,
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a status summary."),
+    ] = False,
+) -> None:
+    """Launch Google OAuth login through the daemon."""
+    import json as _json
+
+    params = {
+        "service_id": service_id,
+        "open_browser": not no_browser,
+        "timeout_seconds": timeout,
+    }
+    try:
+        result = anyio.run(
+            lambda: _onguard_call("setup.google.oauth_login", params, socket_path=socket_path)
+        )
+    except DaemonNotRunningError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2) from e
+
+    if json_output:
+        console.print(_json.dumps(result, indent=2))
+        return
+    _print_google_oauth_status(result)
+
+
+@google_oauth_app.command("revoke")
+def google_oauth_revoke_command(
+    service_id: Annotated[
+        str,
+        typer.Argument(help="Google MCP service id, e.g. google-gmail or google-calendar."),
+    ],
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a status summary."),
+    ] = False,
+) -> None:
+    """Remove a daemon-owned Google OAuth token cache."""
+    import json as _json
+
+    try:
+        result = anyio.run(
+            lambda: _onguard_call(
+                "setup.google.oauth_revoke",
+                {"service_id": service_id},
+                socket_path=socket_path,
+            )
+        )
+    except DaemonNotRunningError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2) from e
+
+    if json_output:
+        console.print(_json.dumps(result, indent=2))
+        return
+    _print_google_oauth_status(result)
+
+
+def _print_google_oauth_status(result: dict[str, Any]) -> None:
+    services = result.get("services")
+    if isinstance(services, list):
+        for service in services:
+            if isinstance(service, dict):
+                _print_google_oauth_service_status(service)
+        return
+    _print_google_oauth_service_status(result)
+
+
+def _print_google_oauth_service_status(status: dict[str, Any]) -> None:
+    name = status.get("display_name") or status.get("service_id") or status.get("server")
+    configured = "yes" if status.get("configured") else "no"
+    client = (
+        "yes"
+        if status.get("client_id_configured") and status.get("client_secret_configured")
+        else "no"
+    )
+    token = "yes" if status.get("token_configured") else "no"
+    console.print(f"[bold]{name}[/bold]: configured={configured} client={client} token={token}")
+    server_yaml = status.get("server_yaml")
+    if server_yaml:
+        console.print(f"  server config: {server_yaml}")
 
 
 @oauth_app.command("login")

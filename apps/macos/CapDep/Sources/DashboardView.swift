@@ -92,6 +92,8 @@ private struct SectionContentView: View {
             TrustView()
         case .setup:
             SetupAssistantView()
+        case .daemonRPC:
+            DaemonRPCWorkbenchView()
         case .settings:
             CapDepSettingsView()
         }
@@ -547,6 +549,82 @@ private struct SetupAssistantView: View {
                 }
             }
             .padding(24)
+        }
+    }
+}
+
+private struct DaemonRPCWorkbenchView: View {
+    @EnvironmentObject private var model: CapDepAppModel
+    @State private var method = "app.status"
+    @State private var paramsJSON = "{}"
+    @State private var responseText = "Run a daemon RPC to inspect the raw result."
+    @State private var isRunning = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Daemon RPC Workbench")
+                    .font(.largeTitle.weight(.bold))
+                Text("Advanced functional parity surface. Use first-class views for normal work; use this when the daemon supports a method that does not yet have bespoke GUI chrome.")
+                    .foregroundStyle(.secondary)
+
+                LiveCard(title: "Request", systemImage: "terminal") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("method, e.g. session.list", text: $method)
+                            .textFieldStyle(.roundedBorder)
+                        Text("Params JSON object")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $paramsJSON)
+                            .font(.system(.body, design: .monospaced))
+                            .frame(minHeight: 120)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(.quaternary),
+                            )
+                        HStack {
+                            Button("Run RPC") {
+                                run()
+                            }
+                            .keyboardShortcut(.return, modifiers: [.command])
+                            .disabled(
+                                isRunning
+                                    || method.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                            )
+                            Button("Use Empty Params") {
+                                paramsJSON = "{}"
+                            }
+                            Spacer()
+                            if isRunning {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
+                }
+
+                LiveCard(title: "Response", systemImage: "doc.text.magnifyingglass") {
+                    ScrollView {
+                        Text(responseText)
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(minHeight: 220)
+                }
+            }
+            .padding(24)
+        }
+    }
+
+    private func run() {
+        isRunning = true
+        Task {
+            let output = await model.callDaemonRPC(method: method, paramsJSON: paramsJSON)
+            await MainActor.run {
+                responseText = output
+                isRunning = false
+            }
         }
     }
 }
