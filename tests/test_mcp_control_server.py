@@ -30,6 +30,8 @@ def test_control_tools_include_daemon_client_surface() -> None:
     assert "workstream_ensure" in names
     assert "workstream_release" in names
     assert "workstream_list" in names
+    assert "workstream_release_client" in names
+    assert "workstream_sweep_expired" in names
     assert "approval_approve" in names
     assert "setup_status" in names
     assert "google_oauth_status" in names
@@ -215,6 +217,33 @@ async def test_control_workstream_claim_dispatches(fake_daemon) -> None:
             },
         ),
     ]
+
+
+async def test_control_workstream_release_client_dispatches(fake_daemon) -> None:
+    client = fake_daemon({"workstream.release_client": {"workstreams": []}})
+
+    result = await dispatch_control_tool(
+        client,
+        "workstream_release_client",
+        {"client_id": "gui-a", "reason": "heartbeat lost"},
+    )
+
+    assert result.isError is False
+    assert client.calls == [
+        (
+            "workstream.release_client",
+            {"client_id": "gui-a", "reason": "heartbeat lost"},
+        ),
+    ]
+
+
+async def test_control_workstream_sweep_expired_dispatches(fake_daemon) -> None:
+    client = fake_daemon({"workstream.sweep_expired": {"workstreams": []}})
+
+    result = await dispatch_control_tool(client, "workstream_sweep_expired")
+
+    assert result.isError is False
+    assert client.calls == [("workstream.sweep_expired", None)]
 
 
 async def test_control_google_oauth_tools_dispatch_to_generic_daemon_rpc(fake_daemon) -> None:

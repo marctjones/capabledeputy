@@ -7,10 +7,10 @@ with each other directly.
 
 from __future__ import annotations
 
+import secrets
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import secrets
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -106,7 +106,14 @@ class WorkstreamCoordinator:
         self._client_index.setdefault(workstream.client_id, set()).add(workstream.id)
         return workstream
 
-    def _retire(self, workstream: InteractiveWorkstream, *, status: str, now: datetime) -> InteractiveWorkstream:
+    def _retire(
+        self,
+        workstream: InteractiveWorkstream,
+        *,
+        status: str,
+        now: datetime,
+        reason: str | None = None,
+    ) -> InteractiveWorkstream:
         retired = InteractiveWorkstream(
             id=workstream.id,
             session_id=workstream.session_id,
@@ -115,7 +122,7 @@ class WorkstreamCoordinator:
             claimed_at=workstream.claimed_at,
             lease_until=workstream.lease_until,
             status=status,
-            reason=workstream.reason,
+            reason=reason if reason is not None else workstream.reason,
             released_at=now if status != "active" else workstream.released_at,
             last_renewed_at=workstream.last_renewed_at,
         )
@@ -123,7 +130,12 @@ class WorkstreamCoordinator:
         self._drop_indexes(workstream)
         return retired
 
-    def _current_for_session(self, session_id: UUID, *, now: datetime) -> InteractiveWorkstream | None:
+    def _current_for_session(
+        self,
+        session_id: UUID,
+        *,
+        now: datetime,
+    ) -> InteractiveWorkstream | None:
         workstream_id = self._session_index.get(session_id)
         if workstream_id is None:
             return None
@@ -145,9 +157,15 @@ class WorkstreamCoordinator:
         *,
         client_id: str,
         lease_token: str | None,
+        admin_override: bool = False,
+        require_token: bool = False,
     ) -> None:
+        if admin_override:
+            return
         if workstream.client_id == client_id:
-            if lease_token is None or lease_token == workstream.lease_token:
+            if lease_token == workstream.lease_token:
+                return
+            if lease_token is None and not require_token:
                 return
         raise WorkstreamOwnershipError(
             f"workstream {workstream.id} is owned by {workstream.client_id}",
@@ -162,34 +180,44 @@ class WorkstreamCoordinator:
         lease_token: str | None = None,
         reason: str | None = None,
         workstream_id: str | None = None,
+        admin_override: bool = False,
     ) -> InteractiveWorkstream:
         now = self._now()
         async with self._lock:
             current = self._current_for_session(session_id, now=now)
             if current is not None:
-                if workstream_id is not None and workstream_id != current.id:
+                if admin_override:
+                    self._retire(
+                        current,
+                        status="released",
+                        now=now,
+                        reason=reason or "admin override takeover",
+                    )
+                elif workstream_id is not None and workstream_id != current.id:
                     raise WorkstreamOwnershipError(
                         f"session {session_id} already has active workstream {current.id}",
                     )
-                self._check_owner(current, client_id=client_id, lease_token=lease_token)
-                updated = InteractiveWorkstream(
-                    id=current.id,
-                    session_id=current.session_id,
-                    client_id=current.client_id,
-                    lease_token=current.lease_token,
-                    claimed_at=current.claimed_at,
-                    lease_until=now + _lease_delta(self._lease_seconds(lease_seconds)),
-                    status="active",
-                    reason=reason if reason is not None else current.reason,
-                    released_at=None,
-                    last_renewed_at=now,
-                )
-                return self._store(updated)
+                else:
+                    self._check_owner(current, client_id=client_id, lease_token=lease_token)
+                    updated = InteractiveWorkstream(
+                        id=current.id,
+                        session_id=current.session_id,
+                        client_id=current.client_id,
+                        lease_token=current.lease_token,
+                        claimed_at=current.claimed_at,
+                        lease_until=now + _lease_delta(self._lease_seconds(lease_seconds)),
+                        status="active",
+                        reason=reason if reason is not None else current.reason,
+                        released_at=None,
+                        last_renewed_at=now,
+                    )
+                    return self._store(updated)
             if workstream_id is not None and workstream_id in self._workstreams:
                 existing = self._workstreams[workstream_id]
                 if existing.status == "active" and existing.session_id != session_id:
                     raise WorkstreamOwnershipError(
-                        f"workstream {workstream_id} is already bound to session {existing.session_id}",
+                        "workstream "
+                        f"{workstream_id} is already bound to session {existing.session_id}",
                     )
             token = lease_token or secrets.token_urlsafe(32)
             workstream = InteractiveWorkstream(
@@ -215,12 +243,18 @@ class WorkstreamCoordinator:
         lease_token: str | None = None,
         reason: str | None = None,
         auto_claim: bool = True,
+        admin_override: bool = False,
     ) -> InteractiveWorkstream:
         now = self._now()
         async with self._lock:
             current = self._current_for_session(session_id, now=now)
             if current is not None:
-                self._check_owner(current, client_id=client_id, lease_token=lease_token)
+                self._check_owner(
+                    current,
+                    client_id=client_id,
+                    lease_token=lease_token,
+                    admin_override=admin_override,
+                )
                 updated = InteractiveWorkstream(
                     id=current.id,
                     session_id=current.session_id,
@@ -258,6 +292,7 @@ class WorkstreamCoordinator:
         client_id: str,
         lease_token: str | None = None,
         lease_seconds: int | None = None,
+        admin_override: bool = False,
     ) -> InteractiveWorkstream:
         now = self._now()
         async with self._lock:
@@ -267,7 +302,13 @@ class WorkstreamCoordinator:
             if self._lease_expired(workstream, now):
                 self._retire(workstream, status="expired", now=now)
                 raise WorkstreamOwnershipError(f"workstream {workstream_id} has expired")
-            self._check_owner(workstream, client_id=client_id, lease_token=lease_token)
+            self._check_owner(
+                workstream,
+                client_id=client_id,
+                lease_token=lease_token,
+                admin_override=admin_override,
+                require_token=True,
+            )
             updated = InteractiveWorkstream(
                 id=workstream.id,
                 session_id=workstream.session_id,
@@ -289,13 +330,20 @@ class WorkstreamCoordinator:
         client_id: str,
         lease_token: str | None = None,
         reason: str | None = None,
+        admin_override: bool = False,
     ) -> InteractiveWorkstream:
         now = self._now()
         async with self._lock:
             workstream = self._workstreams.get(workstream_id)
             if workstream is None:
                 raise WorkstreamOwnershipError(f"workstream {workstream_id} not found")
-            self._check_owner(workstream, client_id=client_id, lease_token=lease_token)
+            self._check_owner(
+                workstream,
+                client_id=client_id,
+                lease_token=lease_token,
+                admin_override=admin_override,
+                require_token=True,
+            )
             retired = InteractiveWorkstream(
                 id=workstream.id,
                 session_id=workstream.session_id,
@@ -311,6 +359,39 @@ class WorkstreamCoordinator:
             self._workstreams[workstream.id] = retired
             self._drop_indexes(workstream)
             return retired
+
+    async def release_client(
+        self,
+        client_id: str,
+        *,
+        reason: str | None = None,
+    ) -> list[dict[str, Any]]:
+        now = self._now()
+        async with self._lock:
+            ids = sorted(self._client_index.get(client_id, set()))
+            released: list[dict[str, Any]] = []
+            for workstream_id in ids:
+                workstream = self._workstreams.get(workstream_id)
+                if workstream is None or workstream.status != "active":
+                    continue
+                retired = self._retire(
+                    workstream,
+                    status="released",
+                    now=now,
+                    reason=reason or "client released",
+                )
+                released.append(retired.to_dict(include_token=False))
+            return released
+
+    async def sweep_expired(self) -> list[dict[str, Any]]:
+        now = self._now()
+        async with self._lock:
+            expired: list[dict[str, Any]] = []
+            for workstream in list(self._workstreams.values()):
+                if self._lease_expired(workstream, now):
+                    retired = self._retire(workstream, status="expired", now=now)
+                    expired.append(retired.to_dict(include_token=False))
+            return expired
 
     async def release_session(self, session_id: UUID, *, reason: str | None = None) -> None:
         now = self._now()

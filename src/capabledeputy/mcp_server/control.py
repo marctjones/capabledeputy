@@ -145,6 +145,7 @@ _WORKSTREAM_SESSION_SCHEMA = _schema(
         "reason": {"type": "string"},
         "workstream_id": {"type": "string"},
         "auto_claim": {"type": "boolean"},
+        "admin_override": {"type": "boolean"},
     },
     required=["session_id"],
 )
@@ -511,6 +512,7 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
                 **_WORKSTREAM_ID_SCHEMA["properties"],
                 **_optional_string_properties("client_id", "lease_token"),
                 "lease_seconds": {"type": "integer", "minimum": 1},
+                "admin_override": {"type": "boolean"},
             },
             required=["workstream_id"],
         ),
@@ -525,6 +527,7 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
             {
                 **_WORKSTREAM_ID_SCHEMA["properties"],
                 **_optional_string_properties("client_id", "lease_token", "reason"),
+                "admin_override": {"type": "boolean"},
             },
             required=["workstream_id"],
         ),
@@ -550,6 +553,33 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
             },
         ),
         _annotations("List workstreams", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "workstream_release_client",
+        "Release client workstreams",
+        "Release all active daemon-owned workstreams held by a client.",
+        "workstream.release_client",
+        _schema(
+            {
+                "client_id": {"type": "string"},
+                "reason": {"type": "string"},
+            },
+            required=["client_id"],
+        ),
+        _annotations(
+            "Release client workstreams",
+            read_only=False,
+            idempotent=True,
+            destructive=True,
+        ),
+    ),
+    ControlToolSpec(
+        "workstream_sweep_expired",
+        "Sweep expired workstreams",
+        "Retire expired daemon-owned workstream leases.",
+        "workstream.sweep_expired",
+        _EMPTY_INPUT,
+        _annotations("Sweep expired workstreams", read_only=False, idempotent=True),
     ),
     ControlToolSpec(
         "session_cancel",
@@ -1724,6 +1754,8 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
             params["lease_seconds"] = int(args["lease_seconds"])
         if args.get("claim_if_missing") is not None:
             params["claim_if_missing"] = bool(args["claim_if_missing"])
+        if args.get("admin_override") is not None:
+            params["admin_override"] = bool(args["admin_override"])
         return params
     if name == "session_cancel":
         return {"session_id": str(args.get("session_id") or "")}
@@ -1748,14 +1780,19 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
             "enabled": bool(args.get("enabled")),
         }
     if name == "workstream_claim":
-        return {
+        params = {
             "session_id": str(args.get("session_id") or ""),
             "client_id": str(args.get("client_id") or ""),
-            "lease_seconds": int(args["lease_seconds"]) if args.get("lease_seconds") is not None else None,
+            "lease_seconds": (
+                int(args["lease_seconds"]) if args.get("lease_seconds") is not None else None
+            ),
             "lease_token": str(args.get("lease_token")) if args.get("lease_token") else None,
             "reason": str(args.get("reason")) if args.get("reason") else None,
             "workstream_id": str(args.get("workstream_id")) if args.get("workstream_id") else None,
         }
+        if args.get("admin_override") is not None:
+            params["admin_override"] = bool(args["admin_override"])
+        return params
     if name == "workstream_ensure":
         params = {
             "session_id": str(args.get("session_id") or ""),
@@ -1772,6 +1809,8 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
             params["workstream_id"] = str(args["workstream_id"])
         if args.get("auto_claim") is not None:
             params["auto_claim"] = bool(args["auto_claim"])
+        if args.get("admin_override") is not None:
+            params["admin_override"] = bool(args["admin_override"])
         return params
     if name == "workstream_renew":
         params = {"workstream_id": str(args.get("workstream_id") or "")}
@@ -1781,6 +1820,8 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
             params["lease_token"] = str(args["lease_token"])
         if args.get("lease_seconds") is not None:
             params["lease_seconds"] = int(args["lease_seconds"])
+        if args.get("admin_override") is not None:
+            params["admin_override"] = bool(args["admin_override"])
         return params
     if name == "workstream_release":
         params = {"workstream_id": str(args.get("workstream_id") or "")}
@@ -1790,6 +1831,8 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
             params["lease_token"] = str(args["lease_token"])
         if args.get("reason"):
             params["reason"] = str(args["reason"])
+        if args.get("admin_override") is not None:
+            params["admin_override"] = bool(args["admin_override"])
         return params
     if name == "workstream_get":
         return {"workstream_id": str(args.get("workstream_id") or "")}
@@ -1802,6 +1845,13 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
         if args.get("active_only") is not None:
             params["active_only"] = bool(args["active_only"])
         return params
+    if name == "workstream_release_client":
+        params = {"client_id": str(args.get("client_id") or "")}
+        if args.get("reason"):
+            params["reason"] = str(args["reason"])
+        return params
+    if name == "workstream_sweep_expired":
+        return None
     if name in {"session_delegate", "session_grant_capability", "capability_revoke"}:
         return dict(args)
     if name == "tool_list":

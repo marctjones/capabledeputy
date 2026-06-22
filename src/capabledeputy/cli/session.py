@@ -110,6 +110,64 @@ def _render_security_context(ctx: dict[str, Any]) -> None:
             console.print(f"    - {limitation}")
 
 
+def _render_workstreams(workstreams: list[dict[str, Any]]) -> None:
+    table = Table(title=f"Workstreams ({len(workstreams)})")
+    table.add_column("ID")
+    table.add_column("Session")
+    table.add_column("Client")
+    table.add_column("Status")
+    table.add_column("Active")
+    table.add_column("Lease until")
+    table.add_column("Reason")
+    for workstream in workstreams:
+        table.add_row(
+            _short_id(str(workstream.get("id") or "")),
+            _short_id(str(workstream.get("session_id") or "")),
+            str(workstream.get("client_id") or ""),
+            str(workstream.get("status") or ""),
+            "yes" if workstream.get("active") else "no",
+            str(workstream.get("lease_until") or ""),
+            str(workstream.get("reason") or ""),
+        )
+    console.print(table)
+
+
+def _render_daemon_state(state: dict[str, Any]) -> None:
+    daemon = state.get("daemon", {})
+    sessions = state.get("sessions", {})
+    workflows = state.get("workflows", {})
+    workstreams = state.get("workstreams", {})
+    approvals = state.get("approvals", {})
+    tools = state.get("tools", {})
+    memory = state.get("memory", {})
+    console.print("[bold]daemon state[/bold]")
+    console.print(
+        f"  pid:          {daemon.get('pid')}  version={daemon.get('version')}",
+    )
+    console.print(
+        f"  sessions:     {sessions.get('count', 0)} total, "
+        f"{len(workflows.get('interactive', []))} interactive workflow(s)",
+    )
+    console.print(
+        f"  workstreams:  {workstreams.get('active_count', 0)} active, "
+        f"{workstreams.get('expired_count', 0)} expired, "
+        f"{workstreams.get('released_count', 0)} released",
+    )
+    console.print(
+        f"  approvals:    {approvals.get('pending_count', 0)} pending, "
+        f"{approvals.get('expired_count', 0)} expired",
+    )
+    console.print(
+        f"  tools:        {tools.get('count', 0)} registered",
+    )
+    console.print(
+        f"  memory:       {memory.get('entry_count', 0)} entrie(s)",
+    )
+    active = list(workstreams.get("items") or [])
+    if active:
+        _render_workstreams(active)
+
+
 @session_app.command("list")
 def session_list(
     status: Annotated[
@@ -147,6 +205,62 @@ def session_list(
             s["updated_at"],
         )
     console.print(table)
+
+
+@session_app.command("state")
+def session_state(
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit daemon.state JSON"),
+    ] = False,
+) -> None:
+    """Show the daemon-owned session, workstream, and workflow state."""
+    state = _call_socket("daemon.state", {}, socket_path=socket_path)
+    if json_output:
+        console.print(json_mod.dumps(state, indent=2))
+    else:
+        _render_daemon_state(state)
+
+
+@session_app.command("workstreams")
+def session_workstreams(
+    session_id: Annotated[
+        str | None,
+        typer.Option("--session-id", help="Filter by session id."),
+    ] = None,
+    client_id: Annotated[
+        str | None,
+        typer.Option("--client-id", help="Filter by client id."),
+    ] = None,
+    active_only: Annotated[
+        bool,
+        typer.Option("--active-only", help="Only show active leases."),
+    ] = False,
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a table"),
+    ] = False,
+) -> None:
+    """List daemon-owned interactive workstream leases."""
+    params: dict[str, Any] = {"active_only": active_only}
+    if session_id:
+        params["session_id"] = session_id
+    if client_id:
+        params["client_id"] = client_id
+    result = _call_socket("workstream.list", params, socket_path=socket_path)
+    workstreams = result.get("workstreams", [])
+    if json_output:
+        console.print(json_mod.dumps(workstreams, indent=2))
+    else:
+        _render_workstreams(workstreams)
 
 
 @session_app.command("new")

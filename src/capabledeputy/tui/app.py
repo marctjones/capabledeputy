@@ -412,6 +412,7 @@ class CapDepTUI(App[None]):
         self._graph_view: bool = False
         self._live_events: list[dict[str, Any]] = []
         self._onguard_summary: list[dict[str, Any]] = []
+        self._daemon_state: dict[str, Any] = {}
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -435,7 +436,7 @@ class CapDepTUI(App[None]):
 
     def on_mount(self) -> None:
         sessions = self.query_one("#sessions", DataTable)
-        sessions.add_columns("id", "status", "compartment", "intent", "labels")
+        sessions.add_columns("id", "status", "workstream", "compartment", "intent", "labels")
         sessions.cursor_type = "row"
 
         events = self.query_one("#events", DataTable)
@@ -529,6 +530,7 @@ class CapDepTUI(App[None]):
                 {"status": "pending"},
             )
             audit_resp = await self._client.call("audit.tail", {"limit": 50})
+            daemon_state = await self._client.call("daemon.state", {})
             onguard_summary = await self._load_onguard_summary()
         except DaemonNotRunningError:
             self.notify(
@@ -538,6 +540,7 @@ class CapDepTUI(App[None]):
             return
 
         self._sessions = sessions_resp["sessions"]
+        self._daemon_state = daemon_state
         self._onguard_summary = onguard_summary
         try:
             self._render_sessions()
@@ -645,9 +648,20 @@ class CapDepTUI(App[None]):
         def _cells(s: dict[str, Any], id_text: str) -> tuple[Any, ...]:
             labels = s.get("label_set", [])
             word, style = compartment_summary(labels)
+            workstream = (
+                self._daemon_state.get("workstreams", {})
+                .get("by_session", {})
+                .get(s.get("id"), {})
+            )
+            workstream_text = ""
+            if workstream:
+                owner = str(workstream.get("client_id") or "")
+                status = str(workstream.get("status") or "")
+                workstream_text = f"{owner}:{status}" if owner else status
             return (
                 id_text,
                 s["status"],
+                workstream_text,
                 Text(word, style=style),
                 s["intent"] or "",
                 Text.from_markup(render_labels(labels)),
@@ -704,6 +718,22 @@ class CapDepTUI(App[None]):
                     lines.append(f"  {content_line}")
                 lines.append("")
             convo = "\n".join(lines)
+
+        workstream = (
+            self._daemon_state.get("workstreams", {})
+            .get("by_session", {})
+            .get(session_id, {})
+        )
+        if workstream:
+            lease = str(workstream.get("lease_until") or "")
+            header = (
+                "[bold]workstream[/bold] "
+                f"{str(workstream.get('id') or '')[:8]} "
+                f"owner={workstream.get('client_id') or ''} "
+                f"status={workstream.get('status') or ''} "
+                f"lease_until={lease}"
+            )
+            convo = header + "\n\n" + convo
 
         self.query_one("#conversation", Static).update(convo)
 
@@ -914,6 +944,11 @@ class CapDepTUI(App[None]):
 
         active_sessions = sum(1 for s in self._sessions if s["status"] == "active")
         pending_approvals = len(self._approvals)
+        active_workstreams = (
+            self._daemon_state.get("workstreams", {}).get("active_count", 0)
+            if self._daemon_state
+            else 0
+        )
 
         # Selected session compartment, if any
         compartment_part = ""
@@ -932,6 +967,7 @@ class CapDepTUI(App[None]):
             f"overrides [bold cyan]{pending_overrides}[/bold cyan]"
             if pending_overrides
             else "overrides 0",
+            f"workstreams {active_workstreams}",
             f"recent denials [bold red]{denials}[/bold red]" if denials else "recent denials 0",
         ]
         import contextlib

@@ -8,8 +8,8 @@ from uuid import UUID
 from capabledeputy.agent.loop import run_turn
 from capabledeputy.app import App
 from capabledeputy.daemon.handlers import Handler
-from capabledeputy.tools.client import ToolCallOutcome
 from capabledeputy.session.coordination import WorkstreamOwnershipError
+from capabledeputy.tools.client import ToolCallOutcome
 
 
 def _serialize_recovery_step(step: Any) -> dict[str, Any]:
@@ -130,6 +130,7 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
                 lease_token=params.get("lease_token"),
                 reason=str(params.get("reason") or "interactive session activity"),
                 auto_claim=bool(params.get("claim_if_missing", True)),
+                admin_override=bool(params.get("admin_override", False)),
             )
         except WorkstreamOwnershipError as e:
             raise RuntimeError(str(e)) from e
@@ -202,7 +203,9 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
         workstream = await app.workstreams.owner_for_session(session_uuid)
         if workstream is not None:
             actor = str(params.get("client_id") or "interactive-client")
-            if workstream["client_id"] != actor:
+            if workstream["client_id"] != actor and not bool(
+                params.get("admin_override", False),
+            ):
                 raise RuntimeError(
                     f"workstream {workstream['id']} is owned by {workstream['client_id']}",
                 )

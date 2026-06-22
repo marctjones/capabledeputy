@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -82,3 +83,122 @@ async def test_workstream_release_allows_reclaim_by_another_client(tmp_path: Pat
             },
         )
         assert second["workstream"]["client_id"] == "gui-b"
+
+
+async def test_workstream_release_requires_token_even_for_same_client(tmp_path: Path) -> None:
+    llm = FakeLLMClient([LLMResponse(content="ok", finish_reason=FinishReason.STOP)])
+
+    async with live_daemon(tmp_path, llm) as (_app, client, _paths):
+        session = await client.call("session.new", {"intent": "strict release"})
+        claimed = await client.call(
+            "workstream.claim",
+            {
+                "session_id": session["id"],
+                "client_id": "gui-a",
+            },
+        )
+
+        with pytest.raises(DaemonError, match="owned by gui-a"):
+            await client.call(
+                "workstream.release",
+                {
+                    "workstream_id": claimed["workstream"]["id"],
+                    "client_id": "gui-a",
+                },
+            )
+
+
+async def test_admin_override_can_take_over_and_cancel_workstream(tmp_path: Path) -> None:
+    llm = FakeLLMClient([LLMResponse(content="ok", finish_reason=FinishReason.STOP)])
+
+    async with live_daemon(tmp_path, llm) as (app, client, _paths):
+        session = await client.call("session.new", {"intent": "admin takeover"})
+        first = await client.call(
+            "workstream.claim",
+            {
+                "session_id": session["id"],
+                "client_id": "gui-a",
+            },
+        )
+
+        second = await client.call(
+            "workstream.claim",
+            {
+                "session_id": session["id"],
+                "client_id": "gui-b",
+                "admin_override": True,
+                "reason": "operator takeover",
+            },
+        )
+        assert second["workstream"]["client_id"] == "gui-b"
+        assert second["workstream"]["id"] != first["workstream"]["id"]
+
+        app.cancellation_flags[UUID(session["id"])] = False
+        cancelled = await client.call(
+            "session.cancel",
+            {
+                "session_id": session["id"],
+                "client_id": "operator",
+                "admin_override": True,
+            },
+        )
+        assert cancelled == {"cancelled": True}
+
+
+async def test_expired_workstream_can_be_reclaimed(tmp_path: Path) -> None:
+    llm = FakeLLMClient([LLMResponse(content="ok", finish_reason=FinishReason.STOP)])
+
+    async with live_daemon(tmp_path, llm) as (_app, client, _paths):
+        session = await client.call("session.new", {"intent": "lease expiry"})
+        first = await client.call(
+            "workstream.claim",
+            {
+                "session_id": session["id"],
+                "client_id": "gui-a",
+                "lease_seconds": 1,
+            },
+        )
+
+        import anyio
+
+        await anyio.sleep(1.1)
+        expired = await client.call("workstream.sweep_expired")
+        assert [item["id"] for item in expired["workstreams"]] == [first["workstream"]["id"]]
+
+        second = await client.call(
+            "workstream.claim",
+            {
+                "session_id": session["id"],
+                "client_id": "gui-b",
+            },
+        )
+        assert second["workstream"]["client_id"] == "gui-b"
+
+
+async def test_release_client_retires_active_workstreams(tmp_path: Path) -> None:
+    llm = FakeLLMClient([LLMResponse(content="ok", finish_reason=FinishReason.STOP)])
+
+    async with live_daemon(tmp_path, llm) as (_app, client, _paths):
+        session1 = await client.call("session.new", {"intent": "client cleanup 1"})
+        session2 = await client.call("session.new", {"intent": "client cleanup 2"})
+        for session in (session1, session2):
+            await client.call(
+                "workstream.claim",
+                {
+                    "session_id": session["id"],
+                    "client_id": "gui-a",
+                },
+            )
+
+        released = await client.call(
+            "workstream.release_client",
+            {
+                "client_id": "gui-a",
+                "reason": "heartbeat lost",
+            },
+        )
+        assert len(released["workstreams"]) == 2
+        assert {item["status"] for item in released["workstreams"]} == {"released"}
+
+        state = await client.call("daemon.state")
+        assert state["workstreams"]["active_count"] == 0

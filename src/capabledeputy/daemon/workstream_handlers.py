@@ -18,6 +18,7 @@ def make_workstream_handlers(app: App) -> dict[str, Handler]:
             lease_token=params.get("lease_token"),
             reason=params.get("reason"),
             workstream_id=params.get("workstream_id"),
+            admin_override=bool(params.get("admin_override", False)),
         )
         return {"workstream": workstream.to_dict(include_token=True)}
 
@@ -29,6 +30,7 @@ def make_workstream_handlers(app: App) -> dict[str, Handler]:
             lease_token=params.get("lease_token"),
             reason=params.get("reason"),
             auto_claim=bool(params.get("auto_claim", True)),
+            admin_override=bool(params.get("admin_override", False)),
         )
         return {"workstream": workstream.to_dict(include_token=True)}
 
@@ -38,6 +40,7 @@ def make_workstream_handlers(app: App) -> dict[str, Handler]:
             client_id=str(params.get("client_id") or "interactive-client"),
             lease_token=params.get("lease_token"),
             lease_seconds=int(params.get("lease_seconds") or 300),
+            admin_override=bool(params.get("admin_override", False)),
         )
         return {"workstream": workstream.to_dict(include_token=True)}
 
@@ -47,8 +50,20 @@ def make_workstream_handlers(app: App) -> dict[str, Handler]:
             client_id=str(params.get("client_id") or "interactive-client"),
             lease_token=params.get("lease_token"),
             reason=params.get("reason"),
+            admin_override=bool(params.get("admin_override", False)),
         )
         return {"workstream": workstream.to_dict(include_token=False)}
+
+    async def workstream_release_client(params: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "workstreams": await app.workstreams.release_client(
+                str(params["client_id"]),
+                reason=params.get("reason"),
+            )
+        }
+
+    async def workstream_sweep_expired(params: dict[str, Any]) -> dict[str, Any]:
+        return {"workstreams": await app.workstreams.sweep_expired()}
 
     async def workstream_get(params: dict[str, Any]) -> dict[str, Any]:
         workstream = await app.workstreams.get(str(params["workstream_id"]))
@@ -70,6 +85,8 @@ def make_workstream_handlers(app: App) -> dict[str, Handler]:
         "workstream.ensure": workstream_ensure,
         "workstream.renew": workstream_renew,
         "workstream.release": workstream_release,
+        "workstream.release_client": workstream_release_client,
+        "workstream.sweep_expired": workstream_sweep_expired,
         "workstream.get": workstream_get,
         "workstream.list": workstream_list,
     }

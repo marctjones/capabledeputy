@@ -229,6 +229,7 @@ async def _claim_or_verify_workstream(
                 lease_token=params.get("lease_token"),
                 reason=str(params.get("reason") or "interactive session activity"),
                 workstream_id=str(workstream_id),
+                admin_override=bool(params.get("admin_override", False)),
             )
         return await workstreams.ensure(
             session_id,
@@ -237,6 +238,7 @@ async def _claim_or_verify_workstream(
             lease_token=params.get("lease_token"),
             reason=str(params.get("reason") or "interactive session activity"),
             auto_claim=bool(params.get("claim_if_missing", True)),
+            admin_override=bool(params.get("admin_override", False)),
         )
     except WorkstreamOwnershipError as e:
         raise RuntimeError(str(e)) from e
