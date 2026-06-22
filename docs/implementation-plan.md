@@ -2,25 +2,27 @@
 
 Living plan that organizes the open GitHub issues into sequenced
 milestones with dependencies. Authoritative status is GitHub; this doc is
-the *sequencing rationale*. Last refreshed 2026-06-22 after v0.27-v0.31
-closed and v0.32 interactive workstream coordination opened.
+the *sequencing rationale*. Last refreshed 2026-06-22 after v0.32 closed,
+v0.17 closed/reorganized, and v0.33 opened as the next daemon/client
+lifecycle milestone.
 
-Milestones (GitHub): **v0.32.0** Interactive workstream coordination ·
-**v0.5** terminal UX polish · **v0.16** Policy expressiveness & labeling ·
-**v0.17** Gap hardening & explainability · **Backlog** Substrate breadth &
-formal models. Recently closed: **v0.27.0** Practical setup + daemon-owned
-settings · **v0.28.0** Onguard clients + daemon coordination · **v0.29.0**
-MCP security conformance + external server labeling · **v0.30.0** Client
-integration test parity · **v0.31.0** Multi-session security context
-observability · **v0.25.0** MCP compatibility and security integration.
+Milestones (GitHub): **v0.33.0** Streaming turn lifecycle and liveness ·
+**v0.16** Policy expressiveness & labeling · **v0.5** terminal UX polish ·
+**Backlog** Substrate breadth & formal models. Recently closed:
+**v0.32.0** Interactive workstream coordination · **v0.17** Gap hardening &
+explainability · **v0.27.0** Practical setup + daemon-owned settings ·
+**v0.28.0** Onguard clients + daemon coordination · **v0.29.0** MCP security
+conformance + external server labeling · **v0.30.0** Client integration test
+parity · **v0.31.0** Multi-session security context observability ·
+**v0.25.0** MCP compatibility and security integration.
 
 `ROADMAP.md` is the canonical product roadmap. This file explains sequencing,
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **Interactive coordination** — multiple local clients may connect at once,
-   but the daemon must own active workstream control, state projection, liveness,
-   cancellation, and audit.
+1. **Streaming turn lifecycle** — v0.32 made workstream ownership explicit;
+   v0.33 must make the active turn itself cancellable, resumable, observable,
+   heartbeat-aware, and safe for slow or disconnected clients.
 2. **Onguard extensibility** — background clients should be normal daemon
    clients, not privileged sidecars or daemon-embedded product workflows.
 3. **MCP security integration** — MCP must remain an integration substrate, not
@@ -37,10 +39,11 @@ Themes currently driving priority:
 5. **Multi-session explainability** — v0.31 made labels, flow patterns,
    external actors, approvals, policy rules, provenance, and audit inspectable
    across turns and clients.
-6. **Decision fatigue** — coarse policy → rubber-stamping → eroded human
-   oversight. Fixed by the decision-refinement layer (EPIC #41).
-7. **The labeling oracle** — IFC guarantees ride on correct labels. Fixed
-   by broadening label coverage (EPIC #42).
+6. **The labeling oracle** — IFC guarantees ride on correct labels. v0.16 is
+   now narrowed to canonical source identity and per-message email labeling.
+7. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
+   human oversight. The decision-refinement layer is live; future work should
+   add concrete inspectors or policy scripts, not revive the old epic.
 
 The policy themes come from `docs/security-alignment-assessment.md`:
 
@@ -50,6 +53,9 @@ The policy themes come from `docs/security-alignment-assessment.md`:
 
 | # | What | Milestone |
 |---|---|---|
+| #137/#136/#134/#133/#138 | Daemon-enforced workstream ownership, daemon state views, client parity, MCP-control workstream tools, and multi-client tests | v0.32.0 |
+| #11/#54 | Quarantined forwardable/public-facts schemas and purpose-contamination residual audit | v0.17 |
+| #28 | Shared CLI semantic style palette | v0.5 |
 | #113-#132 | New tracker plan for MCP conformance, client integration test parity, and multi-session security context observability | v0.29.0-v0.31.0 |
 | #77-#83 | MCP compatibility/security milestone: output schemas, daemon approval elicitation, upstream resource label propagation, admin separation, and ARD scope docs | v0.25.0 |
 | #84/#85/#88-#91 | Client parity over daemon RPC: CLI/TUI/Swift/MCP-control parity contract, tests, and surface implementations | v0.26.0 |
@@ -69,55 +75,112 @@ The policy themes come from `docs/security-alignment-assessment.md`:
 | #34 | Email labeling — design + content-rule impl (raise-only labeler) | v0.16 / #42 |
 | #13 | Credential vault (spawn-time; per-call needs #15/#16) | v0.17 |
 
-**EPIC #41 essentially complete** (layer live, frequency policy, `capdep why`).
-**EPIC #42 core shipped** (catalog tiers, fs + email labelers); remaining
-is #51 (canonical ids) + the identity-dependent email layers.
+**EPIC #41 is closed** (layer live, frequency policy, `capdep why`).
+**EPIC #42 is still open but narrowed** to #51 canonical IDs and #139
+per-message email labeling.
+**v0.17 is closed/reorganized**: its concrete hardening issues are done or
+moved to the milestone where implementation belongs.
 
 ---
 
-## v0.32.0 — Interactive workstream coordination
+## v0.33.0 — Streaming turn lifecycle and liveness
 
-This is the active milestone. The current branch adds the first implementation
-of a daemon-owned workstream lease model and a comprehensive `daemon.state`
-projection. The milestone closes the gap between those daemon contracts and the
-client/UX/test surface.
+This is the active milestone. v0.32 proved daemon-owned workstream ownership,
+but the one-shot `session.send` RPC cannot correctly distinguish an ordinary
+closed request socket from a dead client surface. v0.33 should add a real turn
+lifecycle and event stream before implementing disconnect/heartbeat
+cancellation and Rich Live streaming.
 
 ### Scope
 
-- **#137** EPIC: Interactive workstream coordination and daemon state
-  observability.
-- **#136** add `daemon.state` and `workstream.*` RPCs to the client parity
-  contract.
-- **#134** expose workstream ownership and daemon state in interactive clients.
-- **#133** harden workstream lease expiry, reconnect, takeover, and cancellation
-  semantics.
-- **#138** add coordinated multi-client daemon integration and torture tests.
 - **#31** cancel in-flight turn when a client surface disconnects.
 - **#32** heartbeat/liveness cancellation when a connected client stops
   responding.
+- **#22** inline streaming agent output via Rich Live, backed by daemon turn
+  events rather than client-local streaming hacks.
+- **#13** residual credential-vault work: inject secrets per call for
+  long-lived stdio/upstream tools without broad process-env exposure.
 
 ### Sequencing
 
-1. Bring the parity manifest and roadmap into line with the new daemon RPCs.
-2. Validate the daemon APIs with focused tests for owner-only send/cancel,
-   release, expiry, reclaim, and state projection.
-3. Add first-class read views in the interactive clients where they help users:
-   terminal/TUI status, Swift GUI inspectors, and MCP-control automation.
-4. Bind disconnect and heartbeat behavior to the same daemon-owned ownership and
-   turn-cancellation mechanisms.
+1. Add a daemon turn record and event stream for active agent turns, including
+   owner, status, cursor, heartbeat, cancellation reason, partial output, and
+   audit/provenance references.
+2. Change long-running client paths to consume stream events while preserving
+   one-shot compatibility for short RPCs where safe.
+3. Enforce disconnect and heartbeat cancellation in daemon lifecycle logic,
+   tied to workstream ownership and explicit admin override paths.
+4. Wire REPL Rich Live rendering through the stream events and test slow
+   consumer/reconnect behavior.
+5. Move residual credential-vault exposure from process-start injection toward
+   per-call injection for long-lived upstream tools.
 
 ### Done-when
 
-- A custom client cannot skip workstream ownership enforcement by calling daemon
-  RPCs directly.
-- Multiple clients can safely monitor the same session, but only the owner can
-  drive or cancel the active interactive workstream unless the daemon grants an
-  explicit administrative path.
-- `daemon.state` is the common read model for client monitoring, workflows,
-  approvals, tools, MCP configuration, memory, labels, audit, and active
-  workstreams.
-- The client parity manifest and tests fail if a new daemon RPC appears without
-  an explicit client support decision.
+- A client can disconnect or stop heartbeating during an active turn and the
+  daemon reliably cancels/retires that turn without relying on client honesty.
+- Multiple clients can observe the same streamed turn without gaining control.
+- A reconnecting owner can resume from a stream cursor where policy permits.
+- Rich Live output is a renderer over daemon events, not a separate execution
+  path.
+- Secrets for long-lived upstream processes are not exposed for longer or wider
+  than the tool call requires.
+
+---
+
+## v0.16 — Labeling oracle remainder
+
+v0.16 has been redesigned around the remaining correctness gap: accurate labels
+at source boundaries. The decision-refinement/Starlark layer is already live,
+so new work here should not be generic policy plumbing.
+
+### Scope
+
+- **#42** EPIC: Strengthen the labeling oracle.
+- **#51** Gmail / Drive / Calendar SourcePort canonical-id providers.
+- **#139** Email labeler implementation: rule file plus per-message hook.
+
+### Done-when
+
+- Google Workspace objects have stable source identities for label decisions
+  and provenance.
+- Email message labels can be raised by configurable rules at ingestion or
+  per-message fetch time.
+- Tests prove labels fail closed when source identity or message metadata is
+  ambiguous.
+
+---
+
+## v0.5 — Terminal UX polish remainder
+
+v0.5 remains lower priority than v0.33 and v0.16. It should improve practical
+terminal use without duplicating daemon safety enforcement. Streaming moved to
+v0.33 because the correct implementation depends on daemon turn events.
+
+### Scope
+
+- **#16** REPL feature parity with Claude Code: markdown, multiline input, and
+  expandable tool detail; streaming depends on #22/v0.33.
+- **#27** Inline approval as a non-blocking banner that does not steal focus.
+- **#29** Unicode width safety in the bottom toolbar plus 80x24 minimum-size
+  behavior.
+
+### Done-when
+
+- The terminal remains usable during pending approvals and long-running turns.
+- Width-sensitive chrome is tested against narrow terminals and wide glyphs.
+- UX polish does not become a second policy or approval implementation.
+
+---
+
+## Backlog reassessment
+
+Backlog remains valid but explicitly lower priority than v0.33 and v0.16:
+
+- **Upstream isolation breadth:** #9, #14, #44.
+- **Formal-model completeness:** #45, #58, #59.
+- **Provider/federation breadth:** #55, #56, #57.
+- **Terminal media/navigation polish:** #17, #19.
 
 ---
 

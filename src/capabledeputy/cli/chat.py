@@ -68,6 +68,16 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 from capabledeputy.cli.completer import CapDepCompleter, CompletionCache
+from capabledeputy.cli.styles import (
+    DECISION_STYLE,
+    SPEAKER_GLYPH,
+    STYLE_ASSISTANT,
+    STYLE_DIM,
+    STYLE_ERROR,
+    STYLE_SUCCESS,
+    STYLE_USER,
+    STYLE_WARNING,
+)
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
 from capabledeputy.presentation import (
@@ -81,11 +91,7 @@ console = Console()
 err_console = Console(stderr=True)
 
 
-_DECISION_COLOR = {
-    "allow": "green",
-    "deny": "red",
-    "require_approval": "yellow",
-}
+_DECISION_COLOR = DECISION_STYLE
 
 
 # ---- visual palette ---------------------------------------------------
@@ -100,18 +106,17 @@ _DECISION_COLOR = {
 # default theme — close enough to Claude's brand color on truecolor
 # terminals (Ghostty/kitty/iTerm2) while degrading cleanly on basic
 # xterms that only have the 256-color palette.
-ASSISTANT_COLOR = "orange3"
-USER_COLOR = "cyan"
-DIM_COLOR = "dim"
-ERROR_COLOR = "red"
-SUCCESS_COLOR = "green"
-WARNING_COLOR = "yellow"
+ASSISTANT_COLOR = STYLE_ASSISTANT
+USER_COLOR = STYLE_USER
+DIM_COLOR = STYLE_DIM
+ERROR_COLOR = STYLE_ERROR
+SUCCESS_COLOR = STYLE_SUCCESS
+WARNING_COLOR = STYLE_WARNING
 
 # Speaker glyph — the colored `●` that prefixes each turn header.
 # Claude Code, Cursor, Aider, and friends all use a colored dot
 # convention; it's the single highest-signal "this app feels like
 # Claude Code" cue and costs one character per turn.
-SPEAKER_GLYPH = "●"
 
 
 def _speaker_line(

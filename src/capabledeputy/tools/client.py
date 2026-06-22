@@ -23,7 +23,7 @@ from capabledeputy.policy.actions import Action
 from capabledeputy.policy.assurance import (
     should_emit_residual_risk,
 )
-from capabledeputy.policy.capabilities import kind_name
+from capabledeputy.policy.capabilities import CapabilityKind, kind_name
 from capabledeputy.policy.engine import PolicyDecision
 from capabledeputy.policy.labels import LabelState, ProvenanceLevel
 from capabledeputy.policy.overrides import (
@@ -61,6 +61,34 @@ _INTEGRITY_FLOOR_RANK: dict[str, int] = {
     ProvenanceLevel.SYSTEM_INTERNAL.value: 1,
     ProvenanceLevel.PRINCIPAL_DIRECT.value: 2,
 }
+_EGRESS_LIKE_KINDS: frozenset[CapabilityKind] = frozenset(
+    {
+        CapabilityKind.SEND_EMAIL,
+        CapabilityKind.SEND_MESSAGE,
+        CapabilityKind.GMAIL_DRAFT,
+        CapabilityKind.APPLE_MAIL_DRAFT,
+        CapabilityKind.CALENDAR_WRITE,
+        CapabilityKind.CREATE_CAL,
+        CapabilityKind.MODIFY_CAL,
+        CapabilityKind.DELETE_CAL,
+        CapabilityKind.QUEUE_PURCHASE,
+        CapabilityKind.WEB_FETCH,
+        CapabilityKind.BROWSER_NAVIGATE,
+        CapabilityKind.BROWSER_INTERACT,
+        CapabilityKind.BROWSER_SCRIPT,
+        CapabilityKind.BROWSER_FILE,
+        CapabilityKind.MACOS_APP_CONTROL,
+        CapabilityKind.MACOS_CLIPBOARD_WRITE,
+        CapabilityKind.PAGES_EDIT,
+        CapabilityKind.PAGES_EXPORT,
+        CapabilityKind.NUMBERS_EDIT,
+        CapabilityKind.NUMBERS_EXPORT,
+        CapabilityKind.WRITE_FS,
+        CapabilityKind.CREATE_FS,
+        CapabilityKind.MODIFY_FS,
+        CapabilityKind.DELETE_FS,
+    }
+)
 
 
 def _replace_tool_result(
@@ -252,6 +280,49 @@ class LabeledToolClient:
             graph=self._graph,
         )
 
+    def _purpose_contamination_categories(self, session_id: UUID) -> tuple[str, ...]:
+        if self._policy_context is None or self._policy_context.purposes is None:
+            return ()
+        session = self._graph.get(session_id)
+        purpose_handle = getattr(session, "purpose_handle", "unset")
+        categories = sorted(tag.category for tag in session.label_state.a)
+        return tuple(
+            category
+            for category in categories
+            if not self._policy_context.purposes.admits(purpose_handle, category)
+        )
+
+    async def _emit_purpose_contamination_residual(
+        self,
+        session_id: UUID,
+        tool_name: str,
+        args: dict[str, Any],
+        action: Action,
+        decision: PolicyDecision,
+    ) -> None:
+        if decision.decision != Decision.ALLOW:
+            return
+        if action.kind in _EGRESS_LIKE_KINDS:
+            return
+        inadmissible = self._purpose_contamination_categories(session_id)
+        if not inadmissible:
+            return
+        session = self._graph.get(session_id)
+        await self._audit.write(
+            Event(
+                event_type=EventType.PURPOSE_CONTAMINATION_SUSPECTED,
+                session_id=session_id,
+                payload={
+                    "tool": tool_name,
+                    "args": args,
+                    "purpose_handle": session.purpose_handle,
+                    "inadmissible_categories": list(inadmissible),
+                    "decision_rule": decision.rule,
+                    "decision_reason": decision.reason,
+                },
+            ),
+        )
+
     async def call_tool(
         self,
         session_id: UUID,
@@ -364,6 +435,13 @@ class LabeledToolClient:
                 policy_decision = source_floor
 
         await self._emit_policy_decision(session_id, tool_name, args, policy_decision, tool)
+        await self._emit_purpose_contamination_residual(
+            session_id,
+            tool_name,
+            args,
+            action,
+            policy_decision,
+        )
         await self._emit_capability_checked(session_id, action, policy_decision)
 
         if policy_decision.decision != Decision.ALLOW:

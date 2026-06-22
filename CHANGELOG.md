@@ -8,6 +8,12 @@ breaking changes).
 
 ### Security
 
+- Added quarantined declassification schemas for forwardable email and public
+  web facts that refuse validation when executable content, prompt injection,
+  or embedded credentials are detected.
+- Added a purpose-contamination residual audit event for allowed no-egress
+  tool calls when a session already contains labels inadmissible for its
+  current purpose.
 - Updated the Python dependency lock to patched versions for Dependabot
   alerts covering `aiohttp`, `cryptography`, `pydantic-settings`, `PyJWT`,
   `pypdf`, `pytest`, `python-multipart`, and `starlette`.
@@ -42,6 +48,10 @@ breaking changes).
 
 ### Client parity
 
+- Added daemon-enforced interactive workstream coordination surfaces across
+  CLI, TUI, and MCP-control, including owner-only send/cancel behavior,
+  lease-token release/renew semantics, admin takeover, release-by-client, and
+  expired-lease sweeping.
 - Added an executable client parity contract at `docs/client-parity.json` plus
   tests that fail when daemon RPC coverage changes without an explicit client
   parity decision.
@@ -82,6 +92,9 @@ breaking changes).
 
 ### Testing
 
+- Added focused regression coverage for quarantined schema refusal,
+  purpose-contamination residual audit, CLI semantic styles, and multi-client
+  workstream ownership behavior.
 - Added an independent coverage ratchet for daemon groups, clients, MCP
   surfaces, bundled MCP servers, and native tools, with checked-in per-group
   floors and 85% near-term / 90% stretch targets.
@@ -100,6 +113,17 @@ breaking changes).
   daemon-recognized strong-auth marker.
 - Expanded MCP-control and the executable client parity manifest for connector,
   runtime-control, setup-action, and source-binding RPCs.
+
+### Roadmap
+
+- Closed v0.32 after landing daemon-owned workstream coordination and moved
+  true streaming/disconnect/heartbeat work into v0.33 where it can be built on
+  a cancellable turn lifecycle.
+- Closed and reorganized v0.17 after shipping its concrete gap-hardening work;
+  remaining source-labeling work is now tracked in v0.16 and future
+  federation/formal-model work is in Backlog.
+- Added a shared CLI semantic style module and retired the standalone v0.5
+  palette issue.
 
 ## [0.24.0] - 2026-06-20
 

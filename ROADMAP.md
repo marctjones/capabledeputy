@@ -6,51 +6,103 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-06-22, after closing v0.27-v0.31 and opening the
-v0.32 interactive workstream coordination milestone.
+**Last refreshed:** 2026-06-22, after closing v0.32, closing/reorganizing
+v0.17, and moving streaming/liveness work into v0.33.
 
-## Current Focus — v0.32.0 Interactive Workstream Coordination
+## Current Focus — v0.33.0 Streaming Turn Lifecycle and Liveness
 
-Goal: make multi-client interactive work safe, inspectable, and practical.
-The daemon is the only authority for active turns, workstream ownership,
-client liveness, approvals, labels, provenance, audit, and policy decisions.
-Clients may request control, render state, and acknowledge leases; they do not
-enforce ownership or safety rules locally.
+Goal: make long-running interactive turns cancellable, observable, and safe
+across multiple local clients. v0.32 made workstream ownership daemon-enforced;
+v0.33 adds the missing turn lifecycle underneath it: streaming events,
+heartbeat acknowledgements, cancellation on disconnect, partial-turn
+persistence, slow-consumer backpressure, and per-call secret exposure for
+long-lived upstream MCP tools.
 
-The implementation substrate is partially landed in the current branch:
-`daemon.state` provides a comprehensive runtime projection, and `workstream.*`
-RPCs provide daemon-owned leases for the primary client controlling an
-interactive session. The remaining work is to finish the parity contract,
-surface ownership state in clients, harden disconnect/heartbeat behavior, and
-prove the behavior with multi-client integration tests.
+The important design constraint stays unchanged: clients may render, request,
+acknowledge, and reconnect, but the daemon remains the only authority for
+ownership, labels, policy, approvals, provenance, audit, tool dispatch, and
+turn cancellation.
 
-### v0.32.0 coordination scope
+### v0.33.0 scope
 
 | Issue | Work | Status |
 |---|---|---|
-| #137 | EPIC: Interactive workstream coordination and daemon state observability | Open |
-| #136 | Add `daemon.state` and `workstream.*` RPCs to the client parity contract | In progress |
-| #134 | Expose workstream ownership and daemon state in interactive clients | Open |
-| #133 | Harden workstream lease expiry, reconnect, takeover, and cancellation semantics | Open |
-| #138 | Add coordinated multi-client daemon integration and torture tests | Open |
-| #31 | Cancel in-flight turn when client surface disconnects | Open: moved from terminal UX into daemon/client coordination |
-| #32 | UI heartbeat: cancel agent loop when surface stops responding | Open: moved from terminal UX into daemon/client coordination |
+| #31 | Cancel in-flight turn when client surface disconnects | Open |
+| #32 | UI heartbeat: cancel agent loop when surface stops responding | Open |
+| #22 | Inline streaming agent output via Rich Live | Open: moved from v0.5 because real streaming is daemon lifecycle work |
+| #13 | Credential vault residual: per-call/no-env secret exposure for long-lived tools | Open |
 
-### v0.32.0 done-when
+### v0.33.0 done-when
 
-- `docs/client-parity.json` covers `daemon.state` and every `workstream.*`
-  daemon RPC with explicit decisions for CLI, TUI, Swift GUI, and MCP-control.
-- `daemon.state` is the stable read model for operator dashboards, automation,
-  client monitoring, sessions, workflows, approvals, tools, MCP configuration,
-  memory, labels, audit, coordination, and workstreams.
-- `workstream.*` leases prevent a custom client from bypassing primary-owner
-  coordination for active interactive work.
-- CLI, TUI, Swift GUI, and MCP-control either expose workstream ownership
-  directly or intentionally omit first-class controls while retaining generic
-  daemon RPC access where appropriate.
-- Tests cover competing clients, owner-only send/cancel behavior, release,
-  expiry, reclaim, disconnect, heartbeat timeout, and state projection during
-  active work.
+- A turn has a daemon-owned lifecycle record with status, owner, stream cursor,
+  heartbeat state, cancellation reason, and audit/provenance links.
+- Clients consume turn events instead of polling or blocking on one-shot
+  `session.send` responses for long-running work.
+- Disconnects and heartbeat timeouts cancel or retire active turns according to
+  daemon policy, not client-side best effort.
+- Streamed output can be resumed or inspected by another client without
+  granting that client control of the workstream.
+- Long-lived upstream tools receive secrets only at the call chokepoint and do
+  not inherit broad environment secrets for their whole process lifetime.
+
+## Completed Focus — v0.32.0 Interactive Workstream Coordination
+
+Goal: make multi-client interactive work safe, inspectable, and practical.
+The daemon is now the only authority for active workstream ownership and
+related coordination state. Clients can request control and render state, but
+owner-only send/cancel behavior is enforced in daemon handlers.
+
+### v0.32.0 completed scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #137 | EPIC: Interactive workstream coordination and daemon state observability | Done |
+| #136 | Add `daemon.state` and `workstream.*` RPCs to the client parity contract | Done |
+| #134 | Expose workstream ownership and daemon state in interactive clients | Done |
+| #133 | Harden workstream lease expiry, reconnect, takeover, and cancellation semantics | Done |
+| #138 | Add coordinated multi-client daemon integration and torture tests | Done |
+
+True mid-RPC disconnect and heartbeat cancellation were intentionally moved to
+v0.33 because the existing IPC path is one-shot request/response. Treating a
+normal closed one-shot socket as a stale client would incorrectly retire every
+ordinary RPC call.
+
+## Active Supporting Work — v0.16, v0.5, and Backlog
+
+### v0.16 Policy Expressiveness and Labeling
+
+v0.16 is now narrowed to the labeling oracle. The DecisionInspector/Starlark
+layer is live and its old parent issue is closed; remaining work should improve
+the correctness of labels at ingress and source identity boundaries.
+
+| Issue | Work | Status |
+|---|---|---|
+| #42 | EPIC: Strengthen the labeling oracle | Open |
+| #51 | Gmail / Drive / Calendar SourcePort canonical-id providers | Open |
+| #139 | Email labeler implementation — rule file plus per-message hook | Open |
+
+### v0.5 Terminal UX Polish
+
+v0.5 remains useful as terminal-product polish, not daemon safety substrate.
+Streaming moved to v0.33. The remaining terminal UX issues should stay
+practical and should not duplicate daemon authority.
+
+| Issue | Work | Status |
+|---|---|---|
+| #16 | REPL feature parity with Claude Code | Open; streaming part depends on v0.33 |
+| #27 | Inline approval as non-blocking banner | Open |
+| #29 | Unicode width safety in bottom toolbar + 80x24 minimum size | Open |
+
+### Backlog Reassessment
+
+Backlog remains intentionally lower priority than v0.33/v0.16. It is grouped
+by why it is deferred:
+
+- Upstream isolation breadth: #9, #14, #44.
+- Formal-model completeness beyond current practical enforcement: #45, #58,
+  #59.
+- Additional provider/federation backends: #55, #56, #57.
+- Rich terminal media/navigation polish: #17, #19.
 
 ## Completed Focus — v0.26.0 Client Parity Over Daemon RPC
 

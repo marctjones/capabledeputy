@@ -14,7 +14,25 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+
+class UnsafeDeclassificationSchemaError(ValueError):
+    pass
+
+
+def _refuse_flagged_content(
+    *,
+    executable_content_detected: bool,
+    prompt_injection_detected: bool,
+    embedded_credentials_detected: bool,
+) -> None:
+    if executable_content_detected:
+        raise UnsafeDeclassificationSchemaError("executable content detected")
+    if prompt_injection_detected:
+        raise UnsafeDeclassificationSchemaError("prompt injection detected")
+    if embedded_credentials_detected:
+        raise UnsafeDeclassificationSchemaError("embedded credentials detected")
 
 
 class DoseSummary(BaseModel):
@@ -59,12 +77,62 @@ class EmailTriageItem(BaseModel):
     one_line_summary: str = Field(max_length=160)
 
 
+class EmailForwardable(BaseModel):
+    """Forwardable email fields extracted through Pattern ②.
+
+    The quarantined LLM must explicitly attest that the extracted payload does
+    not contain executable content, prompt-injection instructions, or embedded
+    credentials. A positive flag refuses validation instead of relying on the
+    planner or user to notice unsafe material later.
+    """
+
+    sender: str = Field(max_length=120)
+    recipients: list[str] = Field(default_factory=list, max_length=25)
+    date: str = Field(max_length=80)
+    subject: str = Field(max_length=200)
+    body: str = Field(max_length=10_000)
+    executable_content_detected: bool = False
+    prompt_injection_detected: bool = False
+    embedded_credentials_detected: bool = False
+
+    @model_validator(mode="after")
+    def refuse_unsafe_content(self) -> EmailForwardable:
+        _refuse_flagged_content(
+            executable_content_detected=self.executable_content_detected,
+            prompt_injection_detected=self.prompt_injection_detected,
+            embedded_credentials_detected=self.embedded_credentials_detected,
+        )
+        return self
+
+
 class WebPageSummary(BaseModel):
     """Bounded summary of a fetched untrusted web page."""
 
     title: str = Field(max_length=200)
     key_facts: list[str] = Field(max_length=5)
     relevant_to_query: bool
+
+
+class WebPagePublicFacts(BaseModel):
+    """Operator-reviewable public facts from an untrusted web page."""
+
+    title: str = Field(max_length=200)
+    byline: str | None = Field(default=None, max_length=120)
+    published_date: str | None = Field(default=None, max_length=80)
+    article_body: str | None = Field(default=None, max_length=8_000)
+    excerpts: list[str] = Field(default_factory=list, max_length=10)
+    executable_content_detected: bool = False
+    prompt_injection_detected: bool = False
+    embedded_credentials_detected: bool = False
+
+    @model_validator(mode="after")
+    def refuse_unsafe_content(self) -> WebPagePublicFacts:
+        _refuse_flagged_content(
+            executable_content_detected=self.executable_content_detected,
+            prompt_injection_detected=self.prompt_injection_detected,
+            embedded_credentials_detected=self.embedded_credentials_detected,
+        )
+        return self
 
 
 class FinancialSummaryForAccountant(BaseModel):
@@ -87,7 +155,9 @@ _SCHEMA_REGISTRY: dict[str, type[BaseModel]] = {
     "FinancialSummary": FinancialSummary,
     "ContactInfo": ContactInfo,
     "DailyBriefing": DailyBriefing,
+    "EmailForwardable": EmailForwardable,
     "EmailTriageItem": EmailTriageItem,
+    "WebPagePublicFacts": WebPagePublicFacts,
     "WebPageSummary": WebPageSummary,
     "FinancialSummaryForAccountant": FinancialSummaryForAccountant,
 }

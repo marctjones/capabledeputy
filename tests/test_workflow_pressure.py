@@ -27,6 +27,7 @@ from pathlib import Path
 import pytest
 
 from capabledeputy.app import App
+from capabledeputy.audit.events import EventType
 from capabledeputy.policy.capabilities import (
     Capability,
     CapabilityKind,
@@ -136,6 +137,53 @@ async def test_oracle_memory_read_propagates_stored_label(tmp_path) -> None:
     assert "health" not in _cats(app, s.id)
     await _call(app, s.id, "memory.read", {"key": "labs"})
     assert "health" in _cats(app, s.id)
+
+
+async def test_allowed_no_egress_emits_purpose_contamination_residual(tmp_path) -> None:
+    """A session whose context already contains inadmissible categories may
+    still make allowed no-egress reads, but the residual risk must not be
+    invisible to audit/operator review."""
+    purposes = Purposes(
+        purposes={
+            "work-only": Purpose(
+                purpose_id="work-only",
+                admissible_categories=frozenset({"work"}),
+                inadmissible_categories=frozenset({"health"}),
+            ),
+        },
+    )
+    app = App(
+        state_db_path=tmp_path / "purpose-contamination.db",
+        audit_log_path=tmp_path / "purpose-contamination.jsonl",
+        purposes=purposes,
+        policy_context=PolicyContext(purposes=purposes),
+    )
+    await app.startup()
+    app.memory.write(
+        "work-note",
+        "agenda",
+        LabelState(),
+    )
+    session = await app.graph.new(purpose_handle="work-only")
+    session = replace(
+        session,
+        capability_set=frozenset({Capability(kind=K.READ_FS, pattern="*")}),
+        label_state=LabelState(a=frozenset({CategoryTag("health", Tier.REGULATED)})),
+    )
+    app.graph._sessions[session.id] = session
+
+    out = await _call(app, session.id, "memory.read", {"key": "work-note"})
+
+    assert out.decision.value == "allow"
+    events = await app.audit.read_all()
+    residual = [
+        event
+        for event in events
+        if event.event_type == EventType.PURPOSE_CONTAMINATION_SUSPECTED
+    ]
+    assert len(residual) == 1
+    assert residual[0].payload["purpose_handle"] == "work-only"
+    assert residual[0].payload["inadmissible_categories"] == ["health"]
 
 
 # ============================================================ #
