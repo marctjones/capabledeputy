@@ -193,10 +193,11 @@ async def test_control_onguard_tools_dispatch_to_daemon_rpc(fake_daemon) -> None
         client,
         "onguard_schedule_create",
         {
+            "schedule_id": "sched-1",
             "client_id": "onguard.digest.daily",
-            "name": "Daily digest",
+            "command": "build_daily_digest",
             "recurrence": {"kind": "daily", "hour": 7, "minute": 30},
-            "payload": {"command": "build_daily_digest"},
+            "payload": {"topics": ["calendar", "mail"]},
             "labels": ["personal.profile"],
         },
     )
@@ -223,10 +224,11 @@ async def test_control_onguard_tools_dispatch_to_daemon_rpc(fake_daemon) -> None
         (
             "schedule.create",
             {
+                "schedule_id": "sched-1",
                 "client_id": "onguard.digest.daily",
-                "name": "Daily digest",
+                "command": "build_daily_digest",
                 "recurrence": {"kind": "daily", "hour": 7, "minute": 30},
-                "payload": {"command": "build_daily_digest"},
+                "payload": {"topics": ["calendar", "mail"]},
                 "labels": ["personal.profile"],
                 "created_by": "mcp-control",
             },

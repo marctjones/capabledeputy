@@ -299,13 +299,18 @@ only present or invoke daemon contracts.
 ### Scope
 
 - **#120** EPIC: Client integration test parity across CLI, TUI, Swift GUI, and
-  MCP-control.
-- **#121** shared daemon integration fixtures.
-- **#122** CLI live-daemon integration tests.
-- **#123** TUI live-daemon integration and regression tests.
-- **#124** Swift GUI daemon-contract and UI action tests.
-- **#125** MCP-control live-daemon integration tests.
-- **#126** documented and enforced CI test tiers.
+  MCP-control — in progress.
+- **#121** shared daemon integration fixtures — implemented locally.
+- **#122** CLI live-daemon integration tests — implemented locally for onguard
+  read paths.
+- **#123** TUI live-daemon integration and regression tests — partial:
+  deterministic model tests exist; full live/UI tier remains.
+- **#124** Swift GUI daemon-contract and UI action tests — partial:
+  daemon-backed model/action coverage exists; macOS UI-sensitive tier remains.
+- **#125** MCP-control live-daemon integration tests — implemented locally for
+  onguard control paths.
+- **#126** documented and enforced CI test tiers — documented locally in
+  `docs/testing.md`.
 
 ### Sequencing
 
@@ -315,6 +320,21 @@ only present or invoke daemon contracts.
 3. Add TUI and Swift model/action tests with limited brittle UI automation.
 4. Document deterministic, integration, macOS-sensitive, and external-server
    test tiers before closing.
+
+### Current implementation status
+
+- `tests/daemon_integration.py` provides the shared live-daemon fixture and
+  mirrors the production handler surface for client-contract tests.
+- `tests/test_client_integration_parity.py` starts a real daemon and proves
+  MCP-control and CLI onguard paths call daemon RPCs.
+- `capdep onguard clients`, `queue`, `schedules`, and `artifacts` expose
+  read-only daemon-owned coordination state for operators.
+- MCP-control's schedule-create schema now matches the daemon RPC contract
+  (`schedule_id`, `client_id`, `command`, `recurrence`), preventing the mock
+  tests from accepting invalid daemon calls.
+- `docs/testing.md` defines deterministic default CI, live-daemon
+  integration, macOS GUI-sensitive, external MCP smoke, and coverage-ratchet
+  tiers.
 
 ### Done-when
 

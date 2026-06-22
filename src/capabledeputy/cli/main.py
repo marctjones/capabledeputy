@@ -79,6 +79,17 @@ async def _run_onguard_client(
         await anyio.sleep(interval_seconds if not did_work else 0)
 
 
+async def _onguard_call(
+    rpc: str,
+    params: dict[str, Any],
+    *,
+    socket_path: str | None,
+) -> dict[str, Any]:
+    daemon = DaemonClient(default_socket_path() if socket_path is None else Path(socket_path))
+    result = await daemon.call(rpc, params)
+    return dict(result)
+
+
 @onguard_app.command("run")
 def onguard_run_command(
     client_id: Annotated[str, typer.Argument(help="Registered onguard client id.")],
@@ -117,6 +128,122 @@ def onguard_builtins_command() -> None:
 
     for client_id in DEFAULT_ONGUARD_CLIENT_IDS:
         console.print(client_id)
+
+
+@onguard_app.command("clients")
+def onguard_clients_command(
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+) -> None:
+    """List registered onguard clients from the daemon."""
+    try:
+        result = anyio.run(
+            lambda: _onguard_call(
+                "client.registry.list",
+                {"kind": "onguard"},
+                socket_path=socket_path,
+            )
+        )
+    except DaemonNotRunningError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2) from e
+    for client in result.get("clients", []):
+        console.print(
+            f"{client.get('client_id')} kind={client.get('kind')} status={client.get('status')}"
+        )
+
+
+@onguard_app.command("queue")
+def onguard_queue_command(
+    client_id: Annotated[
+        str | None,
+        typer.Option("--client-id", help="Filter by onguard client ID."),
+    ] = None,
+    status: Annotated[
+        str | None,
+        typer.Option("--status", help="Filter by command status."),
+    ] = None,
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+) -> None:
+    """List daemon-owned onguard queue items."""
+    params = {k: v for k, v in {"client_id": client_id, "status": status}.items() if v}
+    try:
+        result = anyio.run(
+            lambda: _onguard_call("client.queue.list", params, socket_path=socket_path)
+        )
+    except DaemonNotRunningError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2) from e
+    for command in result.get("commands", []):
+        console.print(
+            f"{command.get('command_id')} "
+            f"client={command.get('client_id')} "
+            f"command={command.get('command')} "
+            f"status={command.get('status')}"
+        )
+
+
+@onguard_app.command("schedules")
+def onguard_schedules_command(
+    client_id: Annotated[
+        str | None,
+        typer.Option("--client-id", help="Filter by onguard client ID."),
+    ] = None,
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+) -> None:
+    """List daemon-owned onguard schedules."""
+    params = {"client_id": client_id} if client_id else {}
+    try:
+        result = anyio.run(lambda: _onguard_call("schedule.list", params, socket_path=socket_path))
+    except DaemonNotRunningError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2) from e
+    for schedule in result.get("schedules", []):
+        console.print(
+            f"{schedule.get('schedule_id')} "
+            f"client={schedule.get('client_id')} "
+            f"recurrence={schedule.get('recurrence')} "
+            f"status={schedule.get('status')}"
+        )
+
+
+@onguard_app.command("artifacts")
+def onguard_artifacts_command(
+    client_id: Annotated[
+        str | None,
+        typer.Option("--client-id", help="Filter by onguard client ID."),
+    ] = None,
+    status: Annotated[
+        str | None,
+        typer.Option("--status", help="Filter by artifact status."),
+    ] = None,
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+) -> None:
+    """List daemon-owned onguard artifacts."""
+    params = {k: v for k, v in {"client_id": client_id, "status": status}.items() if v}
+    try:
+        result = anyio.run(lambda: _onguard_call("artifact.list", params, socket_path=socket_path))
+    except DaemonNotRunningError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2) from e
+    for artifact in result.get("artifacts", []):
+        console.print(
+            f"{artifact.get('artifact_id')} "
+            f"client={artifact.get('client_id')} "
+            f"type={artifact.get('artifact_type')} "
+            f"status={artifact.get('status')}"
+        )
 
 
 @oauth_app.command("login")

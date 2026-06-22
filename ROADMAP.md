@@ -132,13 +132,13 @@ exposing every RPC everywhere.
 
 | Issue | Work | Status |
 |---|---|---|
-| #120 | EPIC: Client integration test parity across CLI, TUI, Swift GUI, and MCP-control | Planned |
-| #121 | Shared daemon integration fixtures for client parity tests | Planned |
-| #122 | CLI live-daemon integration tests for core operator workflows | Planned |
-| #123 | TUI live-daemon integration and regression tests | Planned |
-| #124 | Swift GUI daemon-contract and UI action tests | Planned |
-| #125 | MCP-control live-daemon integration tests | Planned |
-| #126 | CI test tiers for client and MCP coverage | Planned |
+| #120 | EPIC: Client integration test parity across CLI, TUI, Swift GUI, and MCP-control | In progress |
+| #121 | Shared daemon integration fixtures for client parity tests | Implemented locally |
+| #122 | CLI live-daemon integration tests for core operator workflows | Implemented locally for onguard read paths |
+| #123 | TUI live-daemon integration and regression tests | Partial: deterministic model tests exist; full live/UI tier remains |
+| #124 | Swift GUI daemon-contract and UI action tests | Partial: daemon-backed model/action coverage exists; macOS UI-sensitive tier remains |
+| #125 | MCP-control live-daemon integration tests | Implemented locally for onguard control paths |
+| #126 | CI test tiers for client and MCP coverage | Documented locally |
 
 ### v0.30.0 done-when
 
@@ -148,6 +148,17 @@ exposing every RPC everywhere.
   possible.
 - CI distinguishes deterministic, live-daemon, macOS GUI-sensitive, and
   external/network MCP test tiers.
+
+### v0.30.0 current implementation status
+
+- Shared `tests/daemon_integration.py` builds a real test daemon with the
+  production handler surface and short macOS-safe Unix socket paths.
+- MCP-control now has live-daemon coverage for onguard registry, schedule, and
+  queue operations; the test caught and fixed a schedule-create contract drift.
+- CLI now exposes read-only `capdep onguard clients|queue|schedules|artifacts`
+  commands and tests them against the live daemon.
+- `docs/testing.md` defines deterministic, live-daemon, macOS GUI-sensitive,
+  external MCP smoke, and coverage-ratchet tiers.
 
 ## Follow-On Focus — v0.31.0 Multi-Session Security Context Observability
 

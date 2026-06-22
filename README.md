@@ -106,6 +106,7 @@ read — strengths, weaknesses, and prioritized fixes — is in
 - [docs/workflow-index.md](docs/workflow-index.md) — **categorized index of every workflow** — 26 narrated demos, the 1126-scenario allow/deny catalogue, and the enforcement suites, grouped by use case + security mechanism
 - [docs/workflow-plan.md](docs/workflow-plan.md) — the **executable assurance plan**: a coverage matrix (mechanisms × pressured?), a per-workflow scorecard, and two gates — the spec we execute against
 - [docs/workflow-registry.md](docs/workflow-registry.md) — the same workflows with **status + results** (implemented? tested? regression-guard vs. finding), prior gap closure, standing boundaries, and a findings log
+- [docs/testing.md](docs/testing.md) — deterministic, live-daemon, macOS GUI-sensitive, external MCP smoke, and coverage-ratchet test tiers
 - [docs/demos/README.md](docs/demos/README.md) — 21 historical walkthrough demos
 - [demos/scenarios/README.md](demos/scenarios/README.md) — **26 narrated executable demos** (runnable via pytest)
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development setup and contribution guide
