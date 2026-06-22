@@ -301,14 +301,16 @@ only present or invoke daemon contracts.
 ### Scope
 
 - **#120** EPIC: Client integration test parity across CLI, TUI, Swift GUI, and
-  MCP-control — in progress.
+  MCP-control — implemented locally.
 - **#121** shared daemon integration fixtures — implemented locally.
 - **#122** CLI live-daemon integration tests — implemented locally for onguard
   read paths.
 - **#123** TUI live-daemon integration and regression tests — implemented
   locally for console and spectator live-daemon smoke.
-- **#124** Swift GUI daemon-contract and UI action tests — partial:
-  daemon-backed model/action coverage exists; macOS UI-sensitive tier remains.
+- **#124** Swift GUI daemon-contract and UI action tests — implemented locally:
+  SwiftPM daemon-contract model tests cover CapDepMac parsing for security
+  context and onguard coordination; launch/window smoke remains in the
+  macOS-sensitive tier.
 - **#125** MCP-control live-daemon integration tests — implemented locally for
   onguard control paths.
 - **#126** documented and enforced CI test tiers — documented locally in
@@ -330,6 +332,9 @@ only present or invoke daemon contracts.
 - `tests/test_client_integration_parity.py` starts a real daemon and proves
   MCP-control, CLI onguard paths, and TUI console/spectator surfaces call
   daemon RPCs.
+- `apps/macos/CapDep/Tests/DaemonContractModelTests.swift` covers CapDepMac
+  daemon response models for session security context and onguard coordination
+  state under `swift test`.
 - `capdep onguard clients`, `queue`, `schedules`, and `artifacts` expose
   read-only daemon-owned coordination state for operators.
 - MCP-control's schedule-create schema now matches the daemon RPC contract

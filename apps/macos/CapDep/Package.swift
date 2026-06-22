@@ -15,5 +15,10 @@ let package = Package(
             name: "CapDepMac",
             path: "Sources",
         ),
+        .testTarget(
+            name: "CapDepMacTests",
+            dependencies: ["CapDepMac"],
+            path: "Tests",
+        ),
     ],
 )

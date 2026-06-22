@@ -28,6 +28,10 @@ Current coverage includes:
 - MCP-control onguard operations dispatching into daemon-owned registry,
   queue, schedule, and artifact state.
 - CLI onguard read paths calling the daemon instead of duplicating store logic.
+- TUI console/spectator live-daemon smoke tests and onguard coordination
+  rendering.
+- SwiftPM CapDepMac daemon-contract model tests for security context and
+  onguard coordination payloads.
 
 These tests are deterministic and should remain part of default CI unless they
 become slow or platform-sensitive.

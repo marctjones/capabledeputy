@@ -132,11 +132,11 @@ exposing every RPC everywhere.
 
 | Issue | Work | Status |
 |---|---|---|
-| #120 | EPIC: Client integration test parity across CLI, TUI, Swift GUI, and MCP-control | In progress |
+| #120 | EPIC: Client integration test parity across CLI, TUI, Swift GUI, and MCP-control | Implemented locally |
 | #121 | Shared daemon integration fixtures for client parity tests | Implemented locally |
 | #122 | CLI live-daemon integration tests for core operator workflows | Implemented locally for onguard read paths |
 | #123 | TUI live-daemon integration and regression tests | Implemented locally: console and spectator live-daemon smoke |
-| #124 | Swift GUI daemon-contract and UI action tests | Partial: daemon-backed model/action coverage exists; macOS UI-sensitive tier remains |
+| #124 | Swift GUI daemon-contract and UI action tests | Implemented locally: SwiftPM daemon-contract model tests; macOS UI smoke stays opt-in |
 | #125 | MCP-control live-daemon integration tests | Implemented locally for onguard control paths |
 | #126 | CI test tiers for client and MCP coverage | Documented locally |
 
