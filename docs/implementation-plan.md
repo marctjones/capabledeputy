@@ -377,9 +377,9 @@ policy rules, and provenance are active in this session?
    state, audit, approvals, provenance, onguard store, and upstream/tool
    metadata.
 3. Extend policy/Starlark context so decisions can use the same structured
-   actor and flow metadata shown to users. **Partial**: origin and actor
-   metadata are projected and available in audit/session state; deeper
-   Starlark helper APIs remain a hardening follow-up.
+   actor and flow metadata shown to users. **Done locally**: script-backed
+   decision inspectors receive session origin plus action tool/effect,
+   external-tool, and flow metadata.
 4. Expose the daemon view across clients. **Partial**: CLI, TUI, and
    MCP-control are wired and tested; Swift GUI rendering is a macOS
    UI-sensitive follow-up.
@@ -409,6 +409,10 @@ Current implementation notes:
 - The handler intentionally reports limitations when no provenance or upstream
   MCP actor evidence exists, rather than implying unobserved controls are
   active.
+- Script-backed decision inspectors see the same actor/flow posture through
+  `session["origin"]`, `action["tool"]`, `action["effect_class"]`,
+  `action["external_tool"]`, and `action["flow"]`, so Starlark/Python-reference
+  policy can tighten decisions without reconstructing daemon state.
 
 ---
 

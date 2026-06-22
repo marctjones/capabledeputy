@@ -177,7 +177,7 @@ active in a session and why a decision was made.
 | #127 | EPIC: Multi-session security context and external actor observability | Implemented locally |
 | #128 | Daemon `session.security_context` model and RPCs | Implemented locally |
 | #129 | Session security event ledger and provenance index across turns | Implemented locally via audit/provenance projection |
-| #130 | Policy and Starlark context with actor, flow, and external-tool metadata | Partial: policy/audit actor metadata projected; deeper Starlark convenience helpers remain future hardening |
+| #130 | Policy and Starlark context with actor, flow, and external-tool metadata | Implemented locally: origin, tool, effect, external actor, and flow metadata exposed to scripts |
 | #131 | Expose session security context across all clients | Partial: CLI, TUI, and MCP-control implemented; Swift GUI rendering remains macOS UI-sensitive follow-up |
 | #132 | Multi-session external-actor regression tests for security context | Implemented locally for onguard, approvals, policy, provenance, CLI, TUI, and MCP-control |
 

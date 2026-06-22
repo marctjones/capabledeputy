@@ -9,6 +9,7 @@ a separate test exercises the real Starlark host when it's installed.
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -130,6 +131,13 @@ def inspect(action, session, proposed_outcome):
     return abstain()
 """
 
+_FLOW_SCRIPT = """
+def inspect(action, session, proposed_outcome):
+    if action["tool"] == "email.send" and action["flow"]["is_egress"]:
+        return tighten(to="require_approval", rule="flow-egress-seen", rationale="egress flow")
+    return abstain()
+"""
+
 
 def _proposed(decision: Decision):
     from dataclasses import dataclass
@@ -219,6 +227,39 @@ async def test_script_inspector_exposes_onguard_origin_metadata() -> None:
 
     assert isinstance(out, DecisionTighten)
     assert out.rule == "origin-seen"
+
+
+async def test_script_inspector_exposes_tool_and_flow_metadata(tmp_path) -> None:
+    from capabledeputy.audit.writer import AuditWriter
+    from capabledeputy.policy.engine import PolicyDecision
+    from capabledeputy.session.graph import SessionGraph
+
+    audit = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(audit=audit)
+    (insp,) = load_decision_inspectors(
+        {
+            "decision_inspectors": [
+                {"source": _FLOW_SCRIPT, "runtime": "python-reference", "name": "flow"},
+            ],
+        },
+    )
+    hooks = ToolPolicyHooks(
+        policy_context=PolicyContext(decision_inspectors=(insp,)),
+        audit=audit,
+        graph=graph,
+    )
+
+    adjusted = await hooks.apply_decision_inspectors(
+        uuid4(),
+        Session.new(),
+        Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
+        "email.send",
+        PolicyDecision(decision=Decision.ALLOW, rule="base"),
+        effect_class="social.send_email",
+    )
+
+    assert adjusted.decision == Decision.REQUIRE_APPROVAL
+    assert adjusted.rule == "flow:flow-egress-seen"
 
 
 async def test_onguard_starter_rules_require_approval_and_deny_mismatches() -> None:

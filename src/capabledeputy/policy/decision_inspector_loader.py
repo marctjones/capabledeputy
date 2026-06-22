@@ -97,16 +97,46 @@ def _unsafe_python_reference_allowed() -> bool:
 
 def _action_to_dict(action: Any) -> dict[str, Any]:
     kind = getattr(action.kind, "value", str(action.kind))
+    effect_class = getattr(action, "effect_class", None)
     return {
         "kind": kind,
         "target": (getattr(action, "target", "") or ""),
         "amount": getattr(action, "amount", None),
+        "tool": getattr(action, "tool_name", None),
+        "effect_class": effect_class,
+        "external_tool": _external_tool_to_dict(action),
+        "flow": _flow_to_dict(kind=kind, effect_class=effect_class),
         "reversibility": _reversibility_to_dict(
             getattr(action, "effective_reversibility", None),
         ),
         # #47 — relationship-group membership of the target (resolved at
         # the chokepoint), so scripts can do relationship-aware relaxes.
         "relationship_groups": sorted(getattr(action, "relationship_group_ids", ()) or ()),
+    }
+
+
+def _external_tool_to_dict(action: Any) -> dict[str, Any]:
+    tool_name = getattr(action, "tool_name", None)
+    upstream_server = getattr(action, "upstream_server", None)
+    return {
+        "tool_name": tool_name,
+        "upstream_server": upstream_server,
+        "resource_uri": getattr(action, "resource_uri", None),
+        "prompt_name": getattr(action, "prompt_name", None),
+        "is_upstream_mcp": bool(upstream_server),
+    }
+
+
+def _flow_to_dict(*, kind: str, effect_class: Any) -> dict[str, Any]:
+    effect = str(effect_class or "")
+    effect_lower = effect.lower()
+    return {
+        "capability_kind": kind,
+        "effect_class": effect or None,
+        "is_egress": any(token in effect_lower for token in ("egress", "send", "communicate")),
+        "is_control_plane": "control" in effect_lower or "setup" in effect_lower,
+        "is_local_write": "write" in effect_lower or "modify" in effect_lower,
+        "is_destructive": "delete" in effect_lower or "destroy" in effect_lower,
     }
 
 
