@@ -9,6 +9,7 @@ from typing import Any
 import mcp.types as mcp_types
 from mcp.server.lowlevel import Server
 from mcp.shared.memory import create_connected_server_and_client_session
+from pydantic import AnyUrl
 
 from capabledeputy.policy.labels import LabelState
 from capabledeputy.tools.registry import ToolRegistry
@@ -102,7 +103,11 @@ class InMemoryMcpConformanceHarness:
             return list(self.resources)
 
         @server.read_resource()
-        async def _read_resource(uri: str) -> str:
-            return self.resource_text.get(str(uri), "")
+        async def _read_resource(uri: AnyUrl) -> str:
+            uri_text = str(uri)
+            return self.resource_text.get(
+                uri_text,
+                self.resource_text.get(uri_text.rstrip("/"), ""),
+            )
 
         return server

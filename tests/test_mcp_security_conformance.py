@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
+
 import mcp.types as mcp_types
+from pydantic import AnyUrl
 
 from capabledeputy.mcp_server.admin import discover_admin_tools
 from capabledeputy.mcp_server.control import discover_control_tools
@@ -20,15 +23,14 @@ def _tool(
     name: str,
     *,
     annotations: mcp_types.ToolAnnotations | None = None,
-    meta: dict | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> mcp_types.Tool:
-    kwargs = {"_meta": meta} if meta else {}
     return mcp_types.Tool(
         name=name,
         description=f"Conformance tool {name}",
         inputSchema={"type": "object", "additionalProperties": True},
         annotations=annotations,
-        **kwargs,
+        _meta=meta,
     )
 
 
@@ -108,22 +110,20 @@ async def test_conformance_resources_are_labeled_inputs() -> None:
     harness = InMemoryMcpConformanceHarness(
         resources=[
             mcp_types.Resource(
-                uri="upstream://news/prompt-injection",
+                uri=AnyUrl("upstream://news/prompt-injection"),
                 name="Injected article",
                 description="Article that attempts instruction override.",
                 mimeType="text/plain",
-                **{
-                    "_meta": {
-                        "io.capabledeputy/inherent_tags": {
-                            "a": [
-                                {
-                                    "kind": "category",
-                                    "category": "news",
-                                    "tier": "sensitive",
-                                    "assignment_provenance": "source-declared",
-                                }
-                            ]
-                        }
+                _meta={
+                    "io.capabledeputy/inherent_tags": {
+                        "a": [
+                            {
+                                "kind": "category",
+                                "category": "news",
+                                "tier": "sensitive",
+                                "assignment_provenance": "source-declared",
+                            }
+                        ]
                     }
                 },
             )
