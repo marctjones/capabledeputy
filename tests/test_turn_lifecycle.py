@@ -16,6 +16,14 @@ class _SlowLLM:
         return LLMResponse(content="too late", finish_reason=FinishReason.STOP)
 
 
+class _TokenStreamingLLM:
+    _model = "stream-test"
+
+    async def respond_streaming(self, messages, tools, *, max_tokens=None):
+        for piece in ("stream", "ed"):
+            yield piece
+
+
 async def _new_session(running, intent: str = "turn lifecycle") -> str:
     session = await running.client.call("session.new", {"intent": intent})
     return str(session["id"])
@@ -34,6 +42,28 @@ async def _wait_for_status(running, turn_id: str, status: str, timeout: float = 
 
 async def _consume_next(agen) -> None:
     await agen.__anext__()
+
+
+async def test_llm_token_events_update_partial_content(tmp_path: Path) -> None:
+    async with running_daemon(tmp_path) as running:
+        running.app.llm_client = _TokenStreamingLLM()  # type: ignore[assignment]
+        session_id = await _new_session(running)
+        started = await running.client.call(
+            "session.turn.start",
+            {
+                "session_id": session_id,
+                "message": "hello",
+                "client_id": "cli-test",
+                "heartbeat_enabled": False,
+            },
+        )
+        turn_id = started["turn"]["id"]
+        done = await _wait_for_status(running, turn_id, "completed")
+        assert done["turn"]["result"]["content"] == "streamed"
+        events = await running.client.call("session.turn.events", {"turn_id": turn_id})
+        token_events = [event for event in events["events"] if event["type"] == "llm_token"]
+        assert [event["payload"]["text"] for event in token_events] == ["stream", "ed"]
+        assert token_events[-1]["payload"]["partial_content"] == "streamed"
 
 
 async def test_streaming_turn_completes_and_records_events(tmp_path: Path) -> None:

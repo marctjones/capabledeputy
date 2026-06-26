@@ -7,6 +7,9 @@ depend on host GPU visibility and cached model weights.
 
 from __future__ import annotations
 
+from importlib import import_module
+from unittest.mock import patch
+
 import pytest
 
 from capabledeputy.llm.mlx_client import (
@@ -16,6 +19,7 @@ from capabledeputy.llm.mlx_client import (
     _messages_to_chat,
     _strip_reasoning_blocks,
     _try_parse_tool_calls,
+    finalize_mlx_text,
     parse_mlx_response,
 )
 from capabledeputy.llm.types import FinishReason, Message, Role, ToolDescription
@@ -175,46 +179,66 @@ def test_render_prompt_can_enable_thinking() -> None:
     assert tokenizer.calls[0]["enable_thinking"] is True
 
 
-async def test_client_respond_uses_generate_helper() -> None:
-    client = MLXLLMClient(model=DEFAULT_MLX_MODEL)
+def _fake_mlx_lm(chunks: list[str]):
+    class _StreamChunk:
+        def __init__(self, text: str) -> None:
+            self.text = text
 
+    def fake_stream_generate(*_args, **_kwargs):
+        cumulative = ""
+        for chunk in chunks:
+            cumulative += chunk
+            yield _StreamChunk(cumulative)
+
+    return type("mlx_lm", (), {"stream_generate": fake_stream_generate})()
+
+
+def _install_streaming_stub(client: MLXLLMClient, *, chunks: list[str]):
     class _FakeTokenizer:
         chat_template = None
 
-    def fake_load():
-        return object(), _FakeTokenizer()
-
-    def fake_generate(model, tokenizer, prompt: str) -> str:
-        return "scripted answer"
-
-    client._load_model_sync = fake_load  # type: ignore[method-assign]
-    client._generate_sync = fake_generate  # type: ignore[method-assign]
-    response = await client.respond(
-        [Message(role=Role.USER, content="hi")],
-        [],
+    client._load_model_sync = lambda: (object(), _FakeTokenizer())  # type: ignore[method-assign]
+    return patch(
+        "capabledeputy.llm.mlx_client.import_module",
+        side_effect=lambda name: _fake_mlx_lm(chunks)
+        if name == "mlx_lm"
+        else import_module(name),
     )
+
+
+async def test_client_respond_uses_streaming_helper() -> None:
+    client = MLXLLMClient(model=DEFAULT_MLX_MODEL)
+    with _install_streaming_stub(client, chunks=["scripted ", "answer"]):
+        response = await client.respond(
+            [Message(role=Role.USER, content="hi")],
+            [],
+        )
     assert response.content == "scripted answer"
     assert response.model == DEFAULT_MLX_MODEL
 
 
+async def test_client_respond_streaming_yields_deltas() -> None:
+    client = MLXLLMClient(model=DEFAULT_MLX_MODEL)
+    with _install_streaming_stub(client, chunks=["hel", "lo"]):
+        deltas = [
+            chunk
+            async for chunk in client.respond_streaming(
+                [Message(role=Role.USER, content="hi")],
+                [],
+            )
+        ]
+    assert deltas == ["hel", "lo"]
+    assert finalize_mlx_text("".join(deltas), [], model=DEFAULT_MLX_MODEL).content == "hello"
+
+
 async def test_client_respond_extracts_tool_calls() -> None:
     client = MLXLLMClient(model=DEFAULT_MLX_MODEL)
-
-    class _FakeTokenizer:
-        chat_template = None
-
-    def fake_load():
-        return object(), _FakeTokenizer()
-
-    def fake_generate(model, tokenizer, prompt: str) -> str:
-        return '{"tool_calls":[{"id":"c1","name":"memory.read","args":{"k":"x"}}]}'
-
-    client._load_model_sync = fake_load  # type: ignore[method-assign]
-    client._generate_sync = fake_generate  # type: ignore[method-assign]
-    response = await client.respond(
-        [Message(role=Role.USER, content="please read")],
-        [ToolDescription(name="memory.read", description="read")],
-    )
+    payload = '{"tool_calls":[{"id":"c1","name":"memory.read","args":{"k":"x"}}]}'
+    with _install_streaming_stub(client, chunks=[payload]):
+        response = await client.respond(
+            [Message(role=Role.USER, content="please read")],
+            [ToolDescription(name="memory.read", description="read")],
+        )
     assert len(response.tool_calls) == 1
     assert response.tool_calls[0].name == "memory.read"
     assert response.finish_reason == FinishReason.TOOL_CALLS
@@ -222,66 +246,34 @@ async def test_client_respond_extracts_tool_calls() -> None:
 
 async def test_client_respond_without_tools_does_not_parse_json_as_tool_calls() -> None:
     client = MLXLLMClient(model=DEFAULT_MLX_MODEL)
-
-    class _FakeTokenizer:
-        chat_template = None
-
-    def fake_load():
-        return object(), _FakeTokenizer()
-
-    def fake_generate(model, tokenizer, prompt: str) -> str:
-        return '{"medication_name":"lisinopril","dosage_mg":10,"frequency":"daily"}'
-
-    client._load_model_sync = fake_load  # type: ignore[method-assign]
-    client._generate_sync = fake_generate  # type: ignore[method-assign]
-    response = await client.respond(
-        [Message(role=Role.USER, content="extract")],
-        [],
-    )
-    assert response.content == '{"medication_name":"lisinopril","dosage_mg":10,"frequency":"daily"}'
+    payload = '{"medication_name":"lisinopril","dosage_mg":10,"frequency":"daily"}'
+    with _install_streaming_stub(client, chunks=[payload]):
+        response = await client.respond(
+            [Message(role=Role.USER, content="extract")],
+            [],
+        )
+    assert response.content == payload
     assert response.tool_calls == ()
     assert response.finish_reason == FinishReason.STOP
 
 
 async def test_client_respond_without_tools_strips_reasoning_blocks() -> None:
     client = MLXLLMClient(model=DEFAULT_MLX_MODEL)
-
-    class _FakeTokenizer:
-        chat_template = None
-
-    def fake_load():
-        return object(), _FakeTokenizer()
-
-    def fake_generate(model, tokenizer, prompt: str) -> str:
-        return '<think>hidden</think>{"ok":true}'
-
-    client._load_model_sync = fake_load  # type: ignore[method-assign]
-    client._generate_sync = fake_generate  # type: ignore[method-assign]
-    response = await client.respond(
-        [Message(role=Role.USER, content="extract")],
-        [],
-    )
+    with _install_streaming_stub(client, chunks=['<think>hidden</think>{"ok":true}']):
+        response = await client.respond(
+            [Message(role=Role.USER, content="extract")],
+            [],
+        )
     assert response.content == '{"ok":true}'
 
 
 async def test_client_respond_without_tools_strips_json_fence() -> None:
     client = MLXLLMClient(model=DEFAULT_MLX_MODEL)
-
-    class _FakeTokenizer:
-        chat_template = None
-
-    def fake_load():
-        return object(), _FakeTokenizer()
-
-    def fake_generate(model, tokenizer, prompt: str) -> str:
-        return '```json\n{"ok":true}\n```'
-
-    client._load_model_sync = fake_load  # type: ignore[method-assign]
-    client._generate_sync = fake_generate  # type: ignore[method-assign]
-    response = await client.respond(
-        [Message(role=Role.USER, content="extract")],
-        [],
-    )
+    with _install_streaming_stub(client, chunks=['```json\n{"ok":true}\n```']):
+        response = await client.respond(
+            [Message(role=Role.USER, content="extract")],
+            [],
+        )
     assert response.content == '{"ok":true}'
 
 

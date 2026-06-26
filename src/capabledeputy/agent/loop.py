@@ -551,23 +551,24 @@ async def run_turn_streaming(
         will surface 'ctrl-c', 'surface-disconnect', and
         'heartbeat-timeout' as additional reasons.
 
-    Token-level streaming (LLMTokenReceived) requires the LLM
-    client to support streaming — left as a future extension once
-    the underlying client gains that capability. The generator
-    structure is designed to accommodate it without further
-    architectural changes.
+    Token-level streaming (`LLMTokenReceived`) is emitted when the
+    active LLM client exposes `respond_streaming` (MLX on macOS).
     """
     from capabledeputy.agent.events import (
         IterationStarted,
         LLMRequestSent,
+        LLMTokenReceived,
         LLMResponseReceived,
         ToolDispatched,
         ToolReturned,
         TurnCompleted,
         TurnInterrupted,
     )
+    from capabledeputy.llm.mlx_client import finalize_mlx_text
+    from capabledeputy.agent.chat_turn import is_conversational_turn
     from capabledeputy.agent.tool_families import load_tool_families
     from capabledeputy.agent.tool_selection import (
+        ToolSelectionResult,
         select_tools_for_turn_async,
         widen_tool_surface,
     )
@@ -688,13 +689,43 @@ async def run_turn_streaming(
     )
 
     visible_all = visible_tools(registry, session, mode)
+    conversational = is_conversational_turn(user_message)
+
+    families_cfg = tool_families or load_tool_families()
+    selection_cfg = (
+        model_pool.config.tool_selection if model_pool is not None else ToolSelectionConfig()
+    )
+    if conversational:
+        tool_surface = ToolSelectionResult(
+            selected=(),
+            candidates=(),
+            n_visible=len(visible_all),
+            method="conversational",
+        )
+    else:
+        router_llm = (
+            model_pool.default_planner_client()
+            if model_pool is not None and selection_cfg.mode == "retrieve+ai"
+            else None
+        )
+        tool_surface = await select_tools_for_turn_async(
+            registry,
+            session,
+            mode,
+            visible_all,
+            user_message=user_message,
+            router_llm=router_llm,
+            families=families_cfg,
+            selection_config=selection_cfg,
+        )
+
     effective_llm = llm
     if model_pool is not None:
         effective_llm, routing = model_pool.resolve_planner(
             ModelRoutingContext(
                 purpose_handle=session.purpose_handle,
                 execution_mode=mode,
-                n_visible_tools=len(visible_all),
+                n_visible_tools=len(tool_surface.selected),
             ),
         )
         await audit.write(
@@ -707,29 +738,11 @@ async def run_turn_streaming(
                     "reason": routing.reason,
                     "mlx_model": routing.mlx_model,
                     "n_visible_tools": len(visible_all),
+                    "n_selected_tools": len(tool_surface.selected),
+                    "conversational": conversational,
                 },
             ),
         )
-
-    families_cfg = tool_families or load_tool_families()
-    selection_cfg = (
-        model_pool.config.tool_selection if model_pool is not None else ToolSelectionConfig()
-    )
-    router_llm = (
-        model_pool.default_planner_client()
-        if model_pool is not None and selection_cfg.mode == "retrieve+ai"
-        else None
-    )
-    tool_surface = await select_tools_for_turn_async(
-        registry,
-        session,
-        mode,
-        visible_all,
-        user_message=user_message,
-        router_llm=router_llm,
-        families=families_cfg,
-        selection_config=selection_cfg,
-    )
     await audit.write(
         Event(
             event_type=EventType.TOOL_SURFACE_SELECTED,
@@ -781,9 +794,10 @@ async def run_turn_streaming(
         tool_descriptions,
         tool_registry_dict,
         recent_events,
-        max_recent_decisions=10,
-        sandbox_summary=sandbox_summary,
+        max_recent_decisions=10 if not conversational else 0,
+        sandbox_summary=None if conversational else sandbox_summary,
         tool_call_instructions=tool_call_instructions_for_llm(effective_llm),
+        chat_only=conversational,
     )
 
     # Audit the context for replay purposes
@@ -979,7 +993,19 @@ async def run_turn_streaming(
         # handler silently — operators saw a red "rpc error" in chat
         # but the audit log had no trace.
         try:
-            response = await effective_llm.respond(messages, tool_descriptions)
+            stream_fn = getattr(effective_llm, "respond_streaming", None)
+            if stream_fn is not None:
+                accumulated = ""
+                async for chunk in stream_fn(messages, tool_descriptions):
+                    accumulated += chunk
+                    yield LLMTokenReceived(iteration=iteration, text=chunk)
+                response = finalize_mlx_text(
+                    accumulated,
+                    tool_descriptions,
+                    model=str(getattr(effective_llm, "_model", last_model or "unknown")),
+                )
+            else:
+                response = await effective_llm.respond(messages, tool_descriptions)
         except Exception as e:
             await audit.write(
                 Event(

@@ -14,9 +14,11 @@ keeps almost all local planning/extraction traffic on-device.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import threading
+from collections.abc import AsyncIterator
 from importlib import import_module
 from typing import Any, ClassVar
 from uuid import uuid4
@@ -279,6 +281,22 @@ def _try_parse_tool_calls(text: str) -> tuple[ToolCall, ...] | None:
     return tuple(parsed)
 
 
+def finalize_mlx_text(
+    text: str,
+    tools: list[ToolDescription],
+    *,
+    model: str,
+) -> LLMResponse:
+    """Turn raw MLX generation output into a typed LLMResponse."""
+    if tools:
+        return parse_mlx_response(text, model=model)
+    return LLMResponse(
+        content=_strip_markdown_fence(_strip_reasoning_blocks(text)),
+        finish_reason=FinishReason.STOP,
+        model=model,
+    )
+
+
 def parse_mlx_response(text: str, *, model: str) -> LLMResponse:
     tool_calls = _try_parse_tool_calls(text)
     if tool_calls is not None:
@@ -316,17 +334,58 @@ class MLXLLMClient:
         self,
         messages: list[Message],
         tools: list[ToolDescription],
+        *,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
-        model, tokenizer = await run_sync(self._load_model_sync)
-        prompt = self._render_prompt(tokenizer, messages, tools)
-        text = await run_sync(self._generate_sync, model, tokenizer, prompt)
-        if tools:
-            return parse_mlx_response(text, model=self._model)
-        return LLMResponse(
-            content=_strip_markdown_fence(_strip_reasoning_blocks(text)),
-            finish_reason=FinishReason.STOP,
-            model=self._model,
-        )
+        accumulated = ""
+        async for chunk in self.respond_streaming(
+            messages,
+            tools,
+            max_tokens=max_tokens,
+        ):
+            accumulated += chunk
+        return finalize_mlx_text(accumulated, tools, model=self._model)
+
+    async def respond_streaming(
+        self,
+        messages: list[Message],
+        tools: list[ToolDescription],
+        *,
+        max_tokens: int | None = None,
+    ) -> AsyncIterator[str]:
+        """Yield incremental text deltas as MLX generates them."""
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[str | None | BaseException] = asyncio.Queue()
+        limit = max_tokens if max_tokens is not None else self._max_tokens
+
+        def worker() -> None:
+            try:
+                model, tokenizer = self._load_model_sync()
+                prompt = self._render_prompt(tokenizer, messages, tools)
+                stream_generate = import_module("mlx_lm").stream_generate
+                previous = ""
+                for response in stream_generate(
+                    model,
+                    tokenizer,
+                    prompt,
+                    max_tokens=limit,
+                ):
+                    delta = response.text[len(previous) :]
+                    previous = response.text
+                    if delta:
+                        loop.call_soon_threadsafe(queue.put_nowait, delta)
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+            except BaseException as exc:
+                loop.call_soon_threadsafe(queue.put_nowait, exc)
+
+        threading.Thread(target=worker, daemon=True).start()
+        while True:
+            item = await queue.get()
+            if item is None:
+                return
+            if isinstance(item, BaseException):
+                raise item
+            yield item
 
     def _generate_sync(self, model: Any, tokenizer: Any, prompt: str) -> str:
         try:

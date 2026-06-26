@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 import anyio
 
 from capabledeputy.agent.events import (
+    LLMTokenReceived,
     ToolReturned,
     TurnCompleted,
     TurnInterrupted,
@@ -374,7 +375,12 @@ class TurnLifecycleManager:
 
     async def _record_agent_event(self, turn_id: str, event: Any) -> None:
         payload = event_to_dict(event)
-        if isinstance(event, ToolReturned):
+        if isinstance(event, LLMTokenReceived):
+            payload["partial_content"] = await self._append_partial_content(
+                turn_id,
+                event.text,
+            )
+        elif isinstance(event, ToolReturned):
             payload["outcome"] = _outcome_to_dict(event.outcome)
             await self._merge_partial_outcome(turn_id, payload["outcome"])
         elif isinstance(event, TurnCompleted):
@@ -395,6 +401,17 @@ class TurnLifecycleManager:
                 partial_outcomes=tuple(payload["partial_outcomes"]),
             )
         await self._emit(turn_id, event.kind, payload)
+
+    async def _append_partial_content(self, turn_id: str, text: str) -> str:
+        async with self._lock:
+            turn = self._turns[turn_id]
+            updated = turn.partial_content + text
+            self._turns[turn_id] = replace(
+                turn,
+                partial_content=updated,
+                updated_at=datetime.now(UTC),
+            )
+            return updated
 
     async def _merge_partial_outcome(self, turn_id: str, outcome: dict[str, Any]) -> None:
         async with self._lock:

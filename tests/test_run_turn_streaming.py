@@ -24,6 +24,7 @@ import pytest
 from capabledeputy.agent.events import (
     IterationStarted,
     LLMRequestSent,
+    LLMTokenReceived,
     LLMResponseReceived,
     TurnCompleted,
     TurnInterrupted,
@@ -59,6 +60,25 @@ class _StubLLM:
                 model="stub",
             )
         return self._responses.pop(0)
+
+
+class _StreamingStubLLM:
+    """Yields token deltas via respond_streaming like MLXLLMClient."""
+
+    _model = "stream-stub"
+
+    def __init__(self, chunks: list[str]) -> None:
+        self._chunks = chunks
+
+    async def respond_streaming(
+        self,
+        messages: list[Message],
+        tools: list[ToolDescription],
+        *,
+        max_tokens: int | None = None,
+    ):
+        for chunk in self._chunks:
+            yield chunk
 
 
 @pytest.fixture
@@ -117,6 +137,30 @@ async def test_no_tool_calls_yields_terminal_completed_event(
     assert events[3].result.iterations == 1
     # No more events after TurnCompleted
     assert len(events) == 4
+
+
+async def test_streaming_llm_emits_token_events(
+    session_setup: tuple[UUID, SessionGraph, AuditWriter, ToolRegistry, LabeledToolClient],
+) -> None:
+    sid, graph, audit, registry, tool_client = session_setup
+    llm = _StreamingStubLLM(["hello ", "world"])
+
+    events = []
+    async for evt in run_turn_streaming(
+        session_id=sid,
+        user_message="hi",
+        llm=llm,
+        tool_client=tool_client,
+        registry=registry,
+        graph=graph,
+        audit=audit,
+    ):
+        events.append(evt)
+
+    token_events = [evt for evt in events if isinstance(evt, LLMTokenReceived)]
+    assert [evt.text for evt in token_events] == ["hello ", "world"]
+    assert isinstance(events[-1], TurnCompleted)
+    assert events[-1].result.content == "hello world"
 
 
 async def test_run_turn_wrapper_returns_same_result(
