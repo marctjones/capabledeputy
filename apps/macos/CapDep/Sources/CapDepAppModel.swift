@@ -39,6 +39,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var onguardEvents: [OnguardEventViewData] = []
     @Published private(set) var onguardConfigs: [OnguardConfigViewData] = []
     @Published private(set) var currentSessionID: String?
+    @Published private(set) var currentUserMessage = ""
     @Published private(set) var currentAssistantOutput = ""
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
     @Published private(set) var isRunningTurn = false
@@ -326,6 +327,8 @@ final class CapDepAppModel: ObservableObject {
         guard !trimmed.isEmpty else {
             return
         }
+        currentUserMessage = trimmed
+        commandText = ""
         let chosenPurpose = purpose ?? selectedPurpose
         guard let session = await ensureSession(
             intent: trimmed,
@@ -335,7 +338,6 @@ final class CapDepAppModel: ObservableObject {
             return
         }
         await send(message: trimmed, sessionID: session.id)
-        commandText = ""
     }
 
     func ensureSession(
