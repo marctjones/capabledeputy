@@ -266,6 +266,12 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
         from capabledeputy.policy.capabilities import Capability
 
         cap = Capability.from_dict(params["capability"])
+        if cap.allows_destructive:
+            raise ValueError(
+                "allows_destructive capabilities cannot be granted via "
+                "session.grant_capability — use operator.grant_capability "
+                "after explicit operator consent, or approve the pending action",
+            )
         session = await app.graph.grant_capability(UUID(params["session_id"]), cap)
         return session.to_dict()
 

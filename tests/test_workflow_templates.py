@@ -39,7 +39,8 @@ def test_inbox_triage_template_includes_playbook_and_turn_message() -> None:
     template = workflow_template_by_id("inbox-triage")
     assert template is not None
     assert "Urgent" in template["agent_guidance"]
-    assert "mail.imap.search" in template["turn_message"]
+    assert "connector tools" in template["turn_message"]
+    assert "mail.imap" not in template["turn_message"]
     assert template["turn_message"].startswith(template["prompt"])
 
 
@@ -47,10 +48,21 @@ def test_morning_briefing_template_includes_playbook_and_turn_message() -> None:
     template = workflow_template_by_id("morning-briefing")
     assert template is not None
     assert "Calendar" in template["agent_guidance"]
-    assert "mail.imap.search" in template["turn_message"]
+    assert "connector tools" in template["turn_message"]
+    assert "google-gmail" not in template["turn_message"]
     assert template["turn_message"].startswith(template["prompt"])
 
 
 def test_workflow_turn_message_omits_blank_guidance() -> None:
     message = workflow_turn_message({"prompt": "hello", "agent_guidance": ""})
     assert message == "hello"
+
+
+def test_workflow_catalog_loads_from_configs_yaml() -> None:
+    from capabledeputy.daemon.workflow_templates import _resolve_configs_dir
+
+    path = _resolve_configs_dir() / "workflows.yaml"
+    assert path.is_file()
+    template = workflow_template_by_id("calendar-planning")
+    assert template is not None
+    assert template["requires_foreground_review"] is True

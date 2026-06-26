@@ -158,3 +158,22 @@ async def test_session_add_labels_is_additive(graph: SessionGraph) -> None:
     # confidential.personal maps to CategoryTag("personal") in label_state.a
     a_list = label_state.get("a", [])
     assert any(c["category"] == "personal" for c in a_list)
+
+
+async def test_operator_grant_capability_allows_destructive(graph: SessionGraph) -> None:
+    from capabledeputy.policy.capabilities import Capability, CapabilityKind
+
+    handlers = make_session_handlers(graph)
+    s = await handlers["session.new"]({})
+    cap = Capability(
+        kind=CapabilityKind.MODIFY_FS,
+        pattern="/tmp/*",
+        allows_destructive=True,
+    )
+    updated = await handlers["operator.grant_capability"](
+        {"session_id": s["id"], "capability": cap.to_dict()},
+    )
+    assert any(
+        c.get("allows_destructive") and c.get("pattern") == "/tmp/*"
+        for c in updated["capability_set"]
+    )

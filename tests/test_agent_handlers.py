@@ -96,6 +96,22 @@ async def test_session_grant_capability_persists(app: App) -> None:
     assert any(c["pattern"] == "/home/*" for c in result["capability_set"])
 
 
+async def test_session_grant_capability_refuses_destructive_widening(app: App) -> None:
+    await app.startup()
+    s = await app.graph.new()
+    handlers = make_agent_handlers(app)
+
+    cap = Capability(
+        kind=CapabilityKind.MODIFY_FS,
+        pattern="/tmp/*",
+        allows_destructive=True,
+    )
+    with pytest.raises(ValueError, match="allows_destructive"):
+        await handlers["session.grant_capability"](
+            {"session_id": str(s.id), "capability": cap.to_dict()},
+        )
+
+
 async def test_session_send_returns_tool_outcomes(app: App) -> None:
     await app.startup()
     fake = FakeLLMClient(

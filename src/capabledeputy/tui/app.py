@@ -33,7 +33,8 @@ from __future__ import annotations
 
 import json
 import webbrowser
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 from rich.text import Text
 from textual import on, work
@@ -559,9 +560,15 @@ class WorkflowLibraryScreen(ModalScreen[None]):
     #workflow-table { height: 1fr; }
     """
 
-    def __init__(self, client: DaemonClient) -> None:
+    def __init__(
+        self,
+        client: DaemonClient,
+        *,
+        on_turn_started: Callable[[str, str], None] | None = None,
+    ) -> None:
         super().__init__()
         self._client = client
+        self._on_turn_started = on_turn_started
         self._templates: list[dict[str, Any]] = []
 
     def compose(self) -> ComposeResult:
@@ -610,12 +617,12 @@ class WorkflowLibraryScreen(ModalScreen[None]):
             )
 
     async def _run_template(self, template: dict[str, Any]) -> None:
-        prompt = str(template.get("prompt", ""))
+        message = str(template.get("turn_message") or template.get("prompt", ""))
         try:
             session = await self._client.call(
                 "session.new",
                 {
-                    "intent": prompt or template.get("title", ""),
+                    "intent": message or template.get("title", ""),
                     "owner": "capdep-tui",
                     "purpose_handle": template.get("purpose_handle", "general"),
                 },
@@ -624,7 +631,7 @@ class WorkflowLibraryScreen(ModalScreen[None]):
                 "session.turn.start",
                 {
                     "session_id": session["id"],
-                    "message": prompt,
+                    "message": message,
                     "client_id": "capdep-tui",
                 },
             )
@@ -632,12 +639,160 @@ class WorkflowLibraryScreen(ModalScreen[None]):
             self.notify(f"workflow run failed: {e}", severity="error")
             return
         turn = turn_result.get("turn", {})
+        turn_id = str(turn.get("id", ""))
+        session_id = str(session["id"])
+        if self._on_turn_started and turn_id:
+            self._on_turn_started(session_id, turn_id)
         self.notify(
             f"started {template.get('title', '')} "
-            f"session={session['id'][:8]} turn={str(turn.get('id', ''))[:8]}",
+            f"session={session_id[:8]} turn={turn_id[:8]}",
             timeout=8,
         )
         self.dismiss(None)
+
+
+class BundleRunnerScreen(ModalScreen[None]):
+    """Operator surface for programmatic bundle dry-run and execute."""
+
+    BINDINGS = [  # noqa: RUF012
+        Binding("enter", "dry_run", "Dry run", show=True),
+        Binding("a", "approve_execute", "Approve+run", show=True),
+        Binding("escape", "close", "Close", show=True),
+        Binding("q", "close", "Close"),
+    ]
+
+    DEFAULT_CSS = """
+    BundleRunnerScreen { align: center middle; }
+    #bundle-box {
+        width: 92%;
+        max-width: 110;
+        height: 85%;
+        border: thick $primary;
+        padding: 1 2;
+        background: $surface;
+    }
+    #bundle-source { margin: 1 0; }
+    #bundle-output {
+        height: 1fr;
+        overflow: auto;
+        background: $surface-darken-1;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, client: DaemonClient) -> None:
+        super().__init__()
+        self._client = client
+        self._source = ""
+        self._impact: dict[str, Any] | None = None
+        self._rendered = ""
+        self._session_id = ""
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="bundle-box"):
+            yield Static("[bold]Bundle Runner[/bold]")
+            yield Static(
+                "[dim]Dry-run a programmatic-mode source file, review the impact "
+                "tree, then approve+execute from the daemon.[/dim]",
+            )
+            yield Input(placeholder="path/to/workflow.py", id="bundle-source")
+            yield Static("(no dry-run yet)", id="bundle-output")
+            yield Static(
+                "[dim]enter dry-run  ·  a approve+run  ·  esc close[/dim]",
+            )
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+    def action_dry_run(self) -> None:
+        self.run_worker(self._dry_run(), exclusive=False)
+
+    def action_approve_execute(self) -> None:
+        self.run_worker(self._approve_execute(), exclusive=False)
+
+    async def _load_source(self) -> str | None:
+        path_text = self.query_one("#bundle-source", Input).value.strip()
+        if not path_text:
+            self.notify("enter a source file path", severity="warning")
+            return None
+        path = Path(path_text).expanduser()
+        if not path.is_file():
+            self.notify(f"file not found: {path}", severity="error")
+            return None
+        return path.read_text(encoding="utf-8")
+
+    async def _ensure_session(self) -> str | None:
+        if self._session_id:
+            return self._session_id
+        session = await self._client.call(
+            "session.new",
+            {
+                "intent": "bundle execution",
+                "owner": "capdep-tui",
+                "purpose_handle": "general",
+            },
+        )
+        self._session_id = str(session["id"])
+        return self._session_id
+
+    async def _dry_run(self) -> None:
+        try:
+            source = await self._load_source()
+            if source is None:
+                return
+            self._source = source
+            preview = await self._client.call(
+                "programmatic.bundle_dry_run",
+                {"source": source},
+            )
+        except Exception as e:
+            self.notify(f"bundle dry-run failed: {e}", severity="error")
+            return
+        self._impact = preview.get("impact")
+        self._rendered = str(preview.get("rendered") or "")
+        approvable = preview.get("is_approvable")
+        header = (
+            f"[bold]{'approvable' if approvable else 'not approvable'}[/bold]\n\n"
+            if approvable is not None
+            else ""
+        )
+        self.query_one("#bundle-output", Static).update(header + self._rendered)
+        self.notify("bundle dry-run complete", timeout=4)
+
+    async def _approve_execute(self) -> None:
+        if not self._source or not self._impact:
+            self.notify("run a dry-run first", severity="warning")
+            return
+        try:
+            from capabledeputy.daemon.bundle_handlers import _impact_from_dict
+
+            session_id = await self._ensure_session()
+            if session_id is None:
+                return
+            impact = _impact_from_dict(self._impact)
+            if not impact.is_approvable:
+                self.notify("bundle is not approvable", severity="error")
+                return
+            approved = impact.approve_all()
+            result = await self._client.call(
+                "programmatic.bundle_execute",
+                {
+                    "source": self._source,
+                    "session_id": session_id,
+                    "impact": approved.to_dict(),
+                },
+            )
+        except Exception as e:
+            self.notify(f"bundle execute failed: {e}", severity="error")
+            return
+        if result.get("ok"):
+            self.notify(
+                f"bundle executed ({result.get('n_steps', 0)} steps)",
+                timeout=8,
+            )
+            self.dismiss(None)
+            return
+        self.notify(str(result.get("error") or "bundle execute failed"), severity="error")
 
 
 class CapDepTUI(App[None]):
@@ -656,6 +811,7 @@ class CapDepTUI(App[None]):
         Binding("w", "google_setup", "Workspace setup", show=True),
         Binding("s", "setup_assistant", "Setup", show=True),
         Binding("W", "workflow_library", "Workflows", show=True),
+        Binding("B", "bundle_runner", "Bundle", show=True),
         Binding("m", "daemon_rpc", "Daemon RPC", show=True),
     ]
 
@@ -694,6 +850,9 @@ class CapDepTUI(App[None]):
         self._live_events: list[dict[str, Any]] = []
         self._onguard_summary: list[dict[str, Any]] = []
         self._daemon_state: dict[str, Any] = {}
+        self._active_turn_session_id: str | None = None
+        self._active_turn_id: str | None = None
+        self._turn_pending_approval_ids: list[int] = []
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -751,7 +910,41 @@ class CapDepTUI(App[None]):
         self.push_screen(SetupAssistantScreen(self._client))
 
     def action_workflow_library(self) -> None:
-        self.push_screen(WorkflowLibraryScreen(self._client))
+        self.push_screen(
+            WorkflowLibraryScreen(
+                self._client,
+                on_turn_started=self._track_active_turn,
+            ),
+        )
+
+    def action_bundle_runner(self) -> None:
+        self.push_screen(BundleRunnerScreen(self._client))
+
+    def _track_active_turn(self, session_id: str, turn_id: str) -> None:
+        self._active_turn_session_id = session_id
+        self._active_turn_id = turn_id
+        self._turn_pending_approval_ids = []
+        self._selected_session_id = session_id
+        self.refresh_now()
+
+    def _maybe_couple_turn_approval(self, event: dict[str, Any]) -> None:
+        if not self._active_turn_session_id:
+            return
+        if (event.get("session_id") or "") != self._active_turn_session_id:
+            return
+        payload = event.get("payload") or {}
+        approval_id = payload.get("approval_id")
+        if approval_id is None:
+            return
+        approval_int = int(approval_id)
+        if approval_int not in self._turn_pending_approval_ids:
+            self._turn_pending_approval_ids.append(approval_int)
+        self.notify(
+            f"turn {self._active_turn_id[:8] if self._active_turn_id else '?'} "
+            f"needs approval #{approval_int} — press Enter on Approvals",
+            severity="warning",
+            timeout=10,
+        )
 
     def action_daemon_rpc(self) -> None:
         self.push_screen(DaemonRPCWorkbenchScreen(self._client))
@@ -781,6 +974,8 @@ class CapDepTUI(App[None]):
                 }
                 if data.get("event_type") in triggers:
                     self.refresh_now()
+                if data.get("event_type") == "approval.requested":
+                    self._maybe_couple_turn_approval(data)
         except Exception as e:
             self.notify(f"event stream error: {e}", severity="error")
 
@@ -1239,6 +1434,12 @@ class CapDepTUI(App[None]):
 
         active_sessions = sum(1 for s in self._sessions if s["status"] == "active")
         pending_approvals = len(self._approvals)
+        turn_approval_part = ""
+        if self._turn_pending_approval_ids:
+            ids = ", ".join(f"#{aid}" for aid in self._turn_pending_approval_ids[:3])
+            turn_approval_part = (
+                f"  ·  [bold yellow]turn approvals {ids}[/bold yellow]"
+            )
         active_workstreams = (
             self._daemon_state.get("workstreams", {}).get("active_count", 0)
             if self._daemon_state
@@ -1267,7 +1468,7 @@ class CapDepTUI(App[None]):
         ]
         import contextlib
 
-        text = "  ·  ".join(parts) + compartment_part
+        text = "  ·  ".join(parts) + compartment_part + turn_approval_part
 
         with contextlib.suppress(Exception):
             self.query_one("#status-bar", Static).update(text)

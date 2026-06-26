@@ -43,6 +43,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
     @Published private(set) var isRunningTurn = false
     @Published private(set) var currentTurnID: String?
+    @Published private(set) var turnPendingApprovalIDs: [Int] = []
     @Published private(set) var isRecoveringDaemon = false
     @Published private(set) var isConfiguringGoogleOAuth = false
     @Published var selectedSection: DashboardSection = .today
@@ -386,6 +387,7 @@ final class CapDepAppModel: ObservableObject {
         isRunningTurn = true
         currentAssistantOutput = ""
         currentToolOutcomes = []
+        turnPendingApprovalIDs = []
         turnStatusLine = "Starting turn…"
         currentTurnID = nil
         defer {
@@ -433,12 +435,14 @@ final class CapDepAppModel: ObservableObject {
                     if let partial = observedTurn["partial_content"] as? String, !partial.isEmpty {
                         currentAssistantOutput = partial
                     }
+                    noteTurnApprovalRequest(from: event)
                 }
                 if status == "completed" {
                     let result = observedTurn["result"] as? [String: Any] ?? [:]
                     currentAssistantOutput = result["content"] as? String ?? currentAssistantOutput
                     currentToolOutcomes = (result["tool_outcomes"] as? [[String: Any]] ?? [])
                         .map(ToolOutcome.init(dictionary:))
+                    collectTurnApprovalIDs(from: currentToolOutcomes)
                     break
                 }
                 if status == "interrupted" {
@@ -446,6 +450,7 @@ final class CapDepAppModel: ObservableObject {
                         ?? "[turn interrupted: \(observedTurn["cancel_reason"] as? String ?? "cancelled")]"
                     currentToolOutcomes = (observedTurn["partial_outcomes"] as? [[String: Any]] ?? [])
                         .map(ToolOutcome.init(dictionary:))
+                    collectTurnApprovalIDs(from: currentToolOutcomes)
                     break
                 }
                 if status == "error" {
@@ -461,8 +466,38 @@ final class CapDepAppModel: ObservableObject {
                 try await Task.sleep(for: .milliseconds(250))
             }
             await refresh()
+            if let firstApproval = turnPendingApprovalIDs.first {
+                focusedApprovalID = firstApproval
+                approvalWindowID = firstApproval
+                selectedSection = .approvals
+            }
         } catch {
             lastError = error.localizedDescription
+        }
+    }
+
+    private func collectTurnApprovalIDs(from outcomes: [ToolOutcome]) {
+        for outcome in outcomes where outcome.decision == "require_approval" {
+            if let approvalID = outcome.approvalID, !turnPendingApprovalIDs.contains(approvalID) {
+                turnPendingApprovalIDs.append(approvalID)
+            }
+        }
+    }
+
+    private func noteTurnApprovalRequest(from event: [String: Any]) {
+        guard event["type"] as? String == "tool_returned" else { return }
+        let payload = event["payload"] as? [String: Any] ?? [:]
+        let outcome = payload["outcome"] as? [String: Any] ?? [:]
+        guard outcome["decision"] as? String == "require_approval" else { return }
+        if let rawID = outcome["approval_id"] as? Int {
+            if !turnPendingApprovalIDs.contains(rawID) {
+                turnPendingApprovalIDs.append(rawID)
+            }
+        } else if let rawID = outcome["approval_id"] as? NSNumber {
+            let approvalID = rawID.intValue
+            if !turnPendingApprovalIDs.contains(approvalID) {
+                turnPendingApprovalIDs.append(approvalID)
+            }
         }
     }
 
@@ -481,7 +516,11 @@ final class CapDepAppModel: ObservableObject {
         case "tool_returned":
             let outcome = payload["outcome"] as? [String: Any] ?? [:]
             let toolName = outcome["tool_name"] as? String ?? payload["tool"] as? String ?? "tool"
-            return "\(toolName) returned (\(outcome["decision"] as? String ?? "done"))"
+            let decision = outcome["decision"] as? String ?? "done"
+            if decision == "require_approval", let approvalID = outcome["approval_id"] {
+                return "\(toolName) needs approval #\(approvalID)"
+            }
+            return "\(toolName) returned (\(decision))"
         case "completed":
             return "Turn completed."
         case "interrupted":

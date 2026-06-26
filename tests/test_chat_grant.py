@@ -106,3 +106,10 @@ def test_grant_without_rate_has_none(captured: list[dict[str, Any]]) -> None:
     chat._handle_grant("READ_FS *", "sess-1")
     grant = next(c for c in captured if c["method"] == "session.grant_capability")
     assert grant["params"]["capability"]["rate_limit"] is None
+
+
+def test_grant_destructive_uses_operator_rpc(captured: list[dict[str, Any]]) -> None:
+    chat._handle_grant("MODIFY_FS /tmp/* --destructive", "sess-1")
+    grant = next(c for c in captured if c["method"] == "operator.grant_capability")
+    assert grant["params"]["capability"]["allows_destructive"] is True
+    assert not any(c["method"] == "session.grant_capability" for c in captured)

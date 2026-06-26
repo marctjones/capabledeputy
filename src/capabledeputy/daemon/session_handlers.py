@@ -167,6 +167,19 @@ def make_session_handlers(
         )
         return s.to_dict()
 
+    async def operator_grant_capability(params: dict[str, Any]) -> dict[str, Any]:
+        """Operator-only grant path; may set allows_destructive=True.
+
+        Agents and MCP control must use session.grant_capability, which
+        refuses destructive widening so destructive ops stay on the
+        approval / declassification path.
+        """
+        from capabledeputy.policy.capabilities import Capability
+
+        cap = Capability.from_dict(params["capability"])
+        session = await graph.grant_capability(UUID(params["session_id"]), cap)
+        return session.to_dict()
+
     async def session_delegate(params: dict[str, Any]) -> dict[str, Any]:
         # Lazy import breaks the lifecycle<->handlers cycle.
         from capabledeputy.daemon.lifecycle import max_delegation_depth
@@ -209,6 +222,7 @@ def make_session_handlers(
         "session.set_enforcement": session_set_enforcement,
         "session.set_first_use_prompts": session_set_first_use_prompts,
         "session.delegate": session_delegate,
+        "operator.grant_capability": operator_grant_capability,
         "capability.revoke": capability_revoke,
     }
 

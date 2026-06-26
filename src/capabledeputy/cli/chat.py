@@ -1806,9 +1806,12 @@ def _handle_grant(arg: str, session_id: str) -> None:
         "expires_at": expires_at,
         "rate_limit": rate_limit,
     }
+    grant_method = (
+        "operator.grant_capability" if allows_destructive else "session.grant_capability"
+    )
     try:
         _call(
-            "session.grant_capability",
+            grant_method,
             {"session_id": session_id, "capability": cap},
         )
     except Exception as e:

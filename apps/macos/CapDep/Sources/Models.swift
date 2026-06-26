@@ -115,6 +115,7 @@ struct ToolOutcome: Identifiable, Hashable {
     let error: String
     let output: String
     let toolName: String
+    let approvalID: Int?
 
     init(dictionary: [String: Any]) {
         self.decision = dictionary["decision"] as? String ?? ""
@@ -123,6 +124,13 @@ struct ToolOutcome: Identifiable, Hashable {
         self.error = dictionary["error"] as? String ?? ""
         self.output = dictionary["output"].map { "\($0)" } ?? ""
         self.toolName = dictionary["tool_name"] as? String ?? ""
+        if let rawID = dictionary["approval_id"] as? Int {
+            self.approvalID = rawID
+        } else if let rawID = dictionary["approval_id"] as? NSNumber {
+            self.approvalID = rawID.intValue
+        } else {
+            self.approvalID = nil
+        }
     }
 }
 

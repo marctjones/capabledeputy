@@ -57,6 +57,30 @@ struct TaskPanelView: View {
                 .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
             }
 
+            if !model.turnPendingApprovalIDs.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Awaiting Your Approval")
+                        .font(.headline)
+                    Text(
+                        "This turn paused on approval(s): "
+                            + model.turnPendingApprovalIDs.map { "#\($0)" }.joined(separator: ", ")
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    Button("Review Approvals") {
+                        model.selectedSection = .approvals
+                        if let first = model.turnPendingApprovalIDs.first {
+                            model.focusedApprovalID = first
+                            model.approvalWindowID = first
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+            }
+
             if !model.currentToolOutcomes.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Tool Outcomes")
