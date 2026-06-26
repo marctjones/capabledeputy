@@ -15,6 +15,10 @@ from capabledeputy.policy.capabilities import (
     RateLimit,
 )
 from capabledeputy.session.coordination import WorkstreamOwnershipError
+from capabledeputy.session.foreground_defaults import (
+    foreground_chat_default_capabilities,
+    should_apply_foreground_defaults,
+)
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import SessionStatus
 
@@ -33,15 +37,25 @@ def make_session_handlers(
     async def session_new(params: dict[str, Any]) -> dict[str, Any]:
         parent_str = params.get("parent")
         parent = UUID(parent_str) if parent_str else None
+        purpose_handle = str(params.get("purpose_handle", "unset"))
+        owner = params.get("owner")
         s = await graph.new(
-            owner=params.get("owner"),
+            owner=owner,
             intent=params.get("intent"),
-            purpose_handle=str(params.get("purpose_handle", "unset")),
+            purpose_handle=purpose_handle,
             tool_aliasing=bool(params.get("tool_aliasing", False)),
             prefer_programmatic=bool(params.get("prefer_programmatic", False)),
             parent=parent,
             origin=params.get("origin"),
         )
+        if should_apply_foreground_defaults(
+            owner=owner,
+            purpose_handle=purpose_handle,
+            capability_count=len(s.capability_set),
+        ):
+            for cap in foreground_chat_default_capabilities():
+                await graph.grant_capability(s.id, cap)
+            s = graph.get(s.id)
         return s.to_dict()
 
     async def session_fork(params: dict[str, Any]) -> dict[str, Any]:

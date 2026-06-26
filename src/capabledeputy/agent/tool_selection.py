@@ -171,7 +171,6 @@ def select_tools_for_turn(
     candidate_names = {t.name for t in candidates}
 
     mandatory_names: set[str] = set(families_cfg.mandatory_always)
-    mandatory_names.update(_tools_for_granted_kinds(session, visible))
     mandatory_names.update(_mode_required_tools(visible, mode))
     for name in mandatory_names:
         if any(t.name == name for t in visible):
@@ -179,21 +178,25 @@ def select_tools_for_turn(
 
     selected_map: dict[str, ToolDefinition] = {}
     scores: dict[str, float] = {}
-    for tool, score in ranked:
-        if len(selected_map) >= cfg.max_selected:
-            break
-        selected_map[tool.name] = tool
-        scores[tool.name] = score
-
     mandatory_added: list[str] = []
     visible_by_name = {t.name: t for t in visible}
     for name in sorted(mandatory_names):
+        if len(selected_map) >= cfg.max_selected:
+            break
         tool = visible_by_name.get(name)
         if tool is None:
             continue
-        if name not in selected_map:
-            mandatory_added.append(name)
-            selected_map[name] = tool
+        selected_map[name] = tool
+        mandatory_added.append(name)
+
+    for tool, score in ranked:
+        if len(selected_map) >= cfg.max_selected:
+            break
+        if tool.name in selected_map:
+            scores[tool.name] = score
+            continue
+        selected_map[tool.name] = tool
+        scores[tool.name] = score
 
     selected = tuple(sorted(selected_map.values(), key=lambda t: t.name))
     return ToolSelectionResult(

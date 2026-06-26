@@ -36,7 +36,7 @@ struct CommandPaletteView: View {
                     .onSubmit {
                         Task {
                             await model.submitCommand()
-                            openWindow(id: "task-panel")
+                            openWindow(id: "main")
                             dismiss()
                         }
                     }
@@ -54,7 +54,7 @@ struct CommandPaletteView: View {
                         Button {
                             Task {
                                 await model.launchWorkflow(workflow)
-                                openWindow(id: "task-panel")
+                                openWindow(id: "main")
                                 dismiss()
                             }
                         } label: {
@@ -71,13 +71,13 @@ struct CommandPaletteView: View {
                 Label(model.connected ? "Daemon connected" : "Daemon offline", systemImage: model.connected ? "checkmark.circle" : "xmark.octagon")
                     .foregroundStyle(model.connected ? .green : .red)
                 Spacer()
-                Button("Open Dashboard") {
+                Button("Open Chat") {
                     openWindow(id: "main")
                 }
                 Button("Submit") {
                     Task {
                         await model.submitCommand()
-                        openWindow(id: "task-panel")
+                        openWindow(id: "main")
                         dismiss()
                     }
                 }

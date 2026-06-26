@@ -106,7 +106,12 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
    ```
 
 5. (Optional) grant macOS Automation permissions when the OS prompts for Mail, Keynote, Pages, Numbers, or System Events.
-6. (Optional) `export BRAVE_SEARCH_API_KEY=...` — better web search than DDG
+6. (Optional) web search providers (export before `capdep daemon start`):
+   - `export KAGI_API_KEY=...` — full web/news search via `kagi_search_fetch`
+     (wired in `daemon.yaml`; also `servers.d/kagi.yaml` example)
+   - `export BRAVE_SEARCH_API_KEY=...` — full search via bundled `search.web`
+   - With neither key, bundled search uses DuckDuckGo Instant Answer only
+     (factoid queries; not headlines)
 
 ## Making AppleScript/macOS usable without broad ambient authority
 

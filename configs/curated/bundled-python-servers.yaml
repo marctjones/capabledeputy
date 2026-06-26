@@ -40,9 +40,10 @@ upstream_servers:
     command: ["capdep", "mcp-server-search"]
     # Search results are also untrusted external content.
     inherent_labels: ["untrusted.external"]
-    # Brave Search API key is read from operator's shell env at
-    # subprocess spawn time. To override per-server, declare an `env:`
-    # block below referencing ${VAR}.
+    # Brave Search API key is read from the daemon env at subprocess
+    # spawn time. Without it, DuckDuckGo Instant Answer is used (no key,
+    # factoid queries only). For news/headlines, wire kagi.yaml and set
+    # KAGI_API_KEY. Override per-server via an `env:` block if needed.
     tool_overrides:
       "search.web":
         capability_kind: WEB_FETCH

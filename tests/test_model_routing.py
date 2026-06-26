@@ -39,7 +39,7 @@ def test_resolve_tools_for_large_surface() -> None:
         ModelRoutingContext(
             purpose_handle="general",
             execution_mode=ExecutionMode.TURN_LEVEL,
-            n_visible_tools=25,
+            n_visible_tools=16,
         ),
     )
     assert result.role == "planner.tools"

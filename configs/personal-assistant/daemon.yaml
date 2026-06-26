@@ -69,6 +69,22 @@ upstream_servers:
         capability_kind: WEB_FETCH
         target_arg: query
 
+  # Kagi — full web/news search when KAGI_API_KEY is exported before
+  # daemon start. Prefer kagi_search_fetch for headlines; bundled-search
+  # uses Brave (if keyed) or DuckDuckGo Instant Answer as fallback.
+  - name: kagi
+    command: ["uvx", "kagimcp"]
+    env:
+      KAGI_API_KEY: "${KAGI_API_KEY}"
+    strict: true
+    inherent_labels: ["untrusted.external"]
+    tool_overrides:
+      kagi_search_fetch:
+        capability_kind: WEB_FETCH
+        target_arg: query
+      kagi_extract:
+        capability_kind: WEB_FETCH
+
   - name: bundled-memory
     command: ["capdep", "mcp-server-memory"]
     inherent_labels: []

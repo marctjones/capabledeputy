@@ -15,6 +15,9 @@ inherent_labels:
 
 strict: true
 
-tool_mappings:
-  kagi_search_fetch: WEB_FETCH
-  kagi_extract: WEB_FETCH
+tool_overrides:
+  kagi_search_fetch:
+    capability_kind: WEB_FETCH
+    target_arg: query
+  kagi_extract:
+    capability_kind: WEB_FETCH

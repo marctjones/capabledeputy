@@ -39,12 +39,21 @@ struct CapDepMacApp: App {
 
     var body: some Scene {
         WindowGroup("CapDep", id: "main") {
+            ChatView()
+                .environmentObject(model)
+                .task {
+                    notificationDelegate.model = model
+                    UNUserNotificationCenter.current().delegate = notificationDelegate
+                    await model.start()
+                }
+        }
+        .defaultSize(width: 720, height: 640)
+
+        Window("Console", id: "console") {
             DashboardView()
                 .environmentObject(model)
                 .frame(minWidth: 1040, minHeight: 720)
                 .task {
-                    notificationDelegate.model = model
-                    UNUserNotificationCenter.current().delegate = notificationDelegate
                     await model.start()
                 }
         }
@@ -58,26 +67,6 @@ struct CapDepMacApp: App {
         } label: {
             Label("CapDep", systemImage: model.pendingApprovals.isEmpty ? "shield" : "shield.lefthalf.filled")
         }
-
-        Window("Ask CapDep", id: "command-palette") {
-            CommandPaletteView()
-                .environmentObject(model)
-                .frame(width: 720, height: 520)
-                .task {
-                    await model.start()
-                }
-        }
-        .windowResizability(.contentSize)
-
-        Window("Current Task", id: "task-panel") {
-            TaskPanelView()
-                .environmentObject(model)
-                .frame(width: 460, height: 620)
-                .task {
-                    await model.start()
-                }
-        }
-        .windowResizability(.contentSize)
 
         Window("Approval", id: "approval-card") {
             ApprovalCardWindow()
@@ -122,8 +111,8 @@ struct CapDepCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
-            Button("New Ask") {
-                openWindow(id: "command-palette")
+            Button("Focus Chat") {
+                openWindow(id: "main")
             }
             .keyboardShortcut(" ", modifiers: [.option])
 
@@ -147,14 +136,14 @@ struct CapDepCommands: Commands {
                 }
             }
 
-            Button("Open Dashboard") {
-                openWindow(id: "main")
+            Button("Open Console") {
+                openWindow(id: "console")
             }
             .keyboardShortcut("0", modifiers: [.command])
 
             Button("Open Approval Queue") {
                 model.selectedSection = .approvals
-                openWindow(id: "main")
+                openWindow(id: "console")
             }
             .keyboardShortcut("a", modifiers: [.command, .shift])
         }
@@ -182,7 +171,7 @@ struct CapDepCommands: Commands {
         CommandMenu("Approvals") {
             Button("Show Pending Approvals") {
                 model.selectedSection = .approvals
-                openWindow(id: "main")
+                openWindow(id: "console")
             }
             ForEach(model.pendingApprovals.prefix(5)) { approval in
                 Button("Review Approval #\(approval.id)") {
@@ -205,7 +194,7 @@ struct CapDepCommands: Commands {
                 Button(workflow.title) {
                     Task {
                         await model.launchWorkflow(workflow)
-                        openWindow(id: "task-panel")
+                        openWindow(id: "main")
                     }
                 }
             }
@@ -218,7 +207,7 @@ struct CapDepCommands: Commands {
             }
             Button("Open Setup Assistant") {
                 model.selectedSection = .setup
-                openWindow(id: "main")
+                openWindow(id: "console")
             }
         }
 
@@ -235,19 +224,16 @@ struct CapDepCommands: Commands {
                 }
             }
             .disabled(!model.runtimeControls.automationPaused)
-            Button("Show Current Task Panel") {
-                openWindow(id: "task-panel")
-            }
             Divider()
             Button("Manage App Permissions") {
                 model.selectedSection = .setup
-                openWindow(id: "main")
+                openWindow(id: "console")
             }
             Button("Enable Screen Control for This Session") {
                 Task {
                     await model.requestScreenControl()
                     model.selectedSection = .setup
-                    openWindow(id: "main")
+                    openWindow(id: "console")
                 }
             }
         }
@@ -255,17 +241,17 @@ struct CapDepCommands: Commands {
         CommandMenu("Trust") {
             Button("Relationship Groups") {
                 model.selectedSection = .trust
-                openWindow(id: "main")
+                openWindow(id: "console")
             }
             Button("Approval Patterns") {
                 model.selectedSection = .trust
-                openWindow(id: "main")
+                openWindow(id: "console")
             }
             Button("Validate Configuration") {
                 Task {
                     await model.validateConfiguration()
                     model.selectedSection = .setup
-                    openWindow(id: "main")
+                    openWindow(id: "console")
                 }
             }
         }
@@ -273,7 +259,7 @@ struct CapDepCommands: Commands {
         CommandGroup(after: .help) {
             Button("Why Was This Blocked?") {
                 model.selectedSection = .policyTrace
-                openWindow(id: "main")
+                openWindow(id: "console")
             }
         }
     }

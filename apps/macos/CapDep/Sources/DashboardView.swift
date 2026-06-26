@@ -14,7 +14,7 @@ struct DashboardView: View {
                         .tag(section)
                 }
             }
-            .navigationTitle("CapDep")
+            .navigationTitle("Console")
             .safeAreaInset(edge: .bottom) {
                 StatusFooter()
             }
@@ -125,8 +125,8 @@ private struct TodayView: View {
                         Text("Start Work")
                             .font(.title2.weight(.semibold))
                         Spacer()
-                        Button("Ask Anything") {
-                            openWindow(id: "command-palette")
+                        Button("Open Chat") {
+                            openWindow(id: "main")
                         }
                     }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
@@ -134,7 +134,7 @@ private struct TodayView: View {
                             Button {
                                 Task {
                                     await model.launchWorkflow(workflow)
-                                    openWindow(id: "task-panel")
+                                    openWindow(id: "main")
                                 }
                             } label: {
                                 WorkflowTile(workflow: workflow)
@@ -242,7 +242,7 @@ private struct WorkflowLibraryView: View {
                     Button {
                         Task {
                             await model.launchWorkflow(workflow)
-                            openWindow(id: "task-panel")
+                            openWindow(id: "main")
                         }
                     } label: {
                         WorkflowTile(workflow: workflow)

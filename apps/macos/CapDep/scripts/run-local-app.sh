@@ -7,8 +7,17 @@ EXEC="$ROOT/.build/arm64-apple-macosx/debug/CapDepMac"
 REPO_ROOT="$(cd "$ROOT/../../.." && pwd)"
 CAPDEP="$REPO_ROOT/.venv/bin/capdep"
 DAEMON_LOG="${TMPDIR:-/tmp}/capdep-gui-daemon.log"
+# Default to a clean Swift rebuild and a fresh daemon so the GUI matches
+# the current repo Python + Swift sources.
+CLEAN_BUILD="${CLEAN_BUILD:-1}"
+FORCE_DAEMON_RESTART="${FORCE_DAEMON_RESTART:-1}"
 
 cd "$ROOT"
+if [[ "$CLEAN_BUILD" == "1" ]]; then
+  echo "[capdep-gui] swift package clean"
+  swift package clean
+fi
+echo "[capdep-gui] swift build"
 swift build
 
 rm -rf "$APP"
@@ -47,15 +56,32 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-if [[ -x "$CAPDEP" ]] && ! (cd "$REPO_ROOT" && "$CAPDEP" daemon status >/dev/null 2>&1); then
-  (cd "$REPO_ROOT" && "$CAPDEP" daemon stop >/dev/null 2>&1) || true
-  (cd "$REPO_ROOT" && "$CAPDEP" daemon start >"$DAEMON_LOG" 2>&1) &
-  for _ in {1..150}; do
-    if (cd "$REPO_ROOT" && "$CAPDEP" daemon status >/dev/null 2>&1); then
-      break
-    fi
-    sleep 0.2
-  done
+pkill -f "CapDepMac.app/Contents/MacOS/CapDepMac" 2>/dev/null || true
+sleep 0.5
+
+if [[ -x "$CAPDEP" ]]; then
+  if [[ "$FORCE_DAEMON_RESTART" == "1" ]]; then
+    echo "[capdep-gui] restarting daemon from $CAPDEP"
+    (cd "$REPO_ROOT" && "$CAPDEP" daemon stop >/dev/null 2>&1) || true
+    sleep 0.5
+  fi
+  if ! (cd "$REPO_ROOT" && "$CAPDEP" daemon status >/dev/null 2>&1); then
+    (cd "$REPO_ROOT" && "$CAPDEP" daemon start >"$DAEMON_LOG" 2>&1) &
+    for _ in {1..150}; do
+      if (cd "$REPO_ROOT" && "$CAPDEP" daemon status >/dev/null 2>&1); then
+        break
+      fi
+      sleep 0.2
+    done
+  fi
+  if [[ -f "$REPO_ROOT/scripts/verify-gui-parity.py" ]]; then
+    echo "[capdep-gui] verifying daemon RPC parity"
+    (cd "$REPO_ROOT" && "$REPO_ROOT/.venv/bin/python" scripts/verify-gui-parity.py) || {
+      echo "[capdep-gui] parity check failed; see output above" >&2
+      exit 1
+    }
+  fi
 fi
 
-open -n -W "$APP"
+echo "[capdep-gui] opening $APP"
+open -n "$APP"

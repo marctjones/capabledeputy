@@ -38,9 +38,9 @@ struct MenuBarView: View {
             Divider()
 
             Button {
-                openWindow(id: "command-palette")
+                openWindow(id: "main")
             } label: {
-                Label("New Ask", systemImage: "sparkle.magnifyingglass")
+                Label("Open Chat", systemImage: "bubble.left.and.bubble.right")
             }
             .keyboardShortcut(" ", modifiers: [.option])
 
@@ -50,22 +50,16 @@ struct MenuBarView: View {
                     openWindow(id: "approval-card")
                 } else {
                     model.selectedSection = .approvals
-                    openWindow(id: "main")
+                    openWindow(id: "console")
                 }
             } label: {
                 Label("Approvals", systemImage: "hand.raised")
             }
 
             Button {
-                openWindow(id: "task-panel")
+                openWindow(id: "console")
             } label: {
-                Label("Current Task Panel", systemImage: "sidebar.right")
-            }
-
-            Button {
-                openWindow(id: "main")
-            } label: {
-                Label("Dashboard", systemImage: "rectangle.3.group")
+                Label("Console", systemImage: "rectangle.3.group")
             }
 
             Divider()
@@ -78,7 +72,7 @@ struct MenuBarView: View {
                     Button {
                         Task {
                             await model.launchWorkflow(workflow)
-                            openWindow(id: "task-panel")
+                            openWindow(id: "main")
                         }
                     } label: {
                         Label(workflow.title, systemImage: workflow.systemImage)

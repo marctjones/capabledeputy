@@ -402,6 +402,22 @@ BUNDLED_SEARCH_BLOCK_BODY = """\
     strict: true
 """
 
+KAGI_BLOCK_ID = "kagi"
+KAGI_BLOCK_BODY = """\
+  - name: kagi
+    command: ["uvx", "kagimcp"]
+    env:
+      KAGI_API_KEY: "${KAGI_API_KEY}"
+    strict: true
+    inherent_labels: ["untrusted.external"]
+    tool_overrides:
+      kagi_search_fetch:
+        capability_kind: WEB_FETCH
+        target_arg: query
+      kagi_extract:
+        capability_kind: WEB_FETCH
+"""
+
 BUNDLED_MEMORY_BLOCK_ID = "bundled-memory"
 BUNDLED_MEMORY_BLOCK_BODY = """\
   - name: bundled-memory

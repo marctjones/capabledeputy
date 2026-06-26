@@ -107,6 +107,33 @@ def test_widen_adds_missing_tool() -> None:
     assert len(widened.selected) >= len(base.selected)
 
 
+def test_broad_caps_respect_max_selected() -> None:
+    registry = ToolRegistry()
+    tools = [
+        _tool(f"mail.tool{i}", CapabilityKind.GMAIL_READ) for i in range(20)
+    ] + [
+        _tool(f"fs.tool{i}", CapabilityKind.READ_FS) for i in range(20)
+    ] + [_tool("policy.preview", CapabilityKind.READ_FS)]
+    for tool in tools:
+        registry.register(tool)
+    session = _session_with_caps(
+        CapabilityKind.GMAIL_READ,
+        CapabilityKind.READ_FS,
+        CapabilityKind.DRIVE_READ,
+        CapabilityKind.WEB_FETCH,
+    )
+    result = select_tools_for_turn(
+        registry,
+        session,
+        ExecutionMode.TURN_LEVEL,
+        tools,
+        user_message="hi",
+        selection_config=ToolSelectionConfig(mode="retrieve", retrieval_top_k=20, max_selected=15),
+    )
+    assert len(result.selected) <= 15
+    assert "policy.preview" in {t.name for t in result.selected}
+
+
 def test_load_tool_families_from_repo() -> None:
     from pathlib import Path
 
