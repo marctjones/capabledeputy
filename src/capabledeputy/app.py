@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from capabledeputy.approval.queue import ApprovalQueue
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.client import LLMClient
+
+if TYPE_CHECKING:
+    from capabledeputy.llm.pool import ModelPool
 from capabledeputy.onguard import OnguardStore
 from capabledeputy.paths import default_audit_log_path, default_state_db_path
 from capabledeputy.policy.context import PolicyContext
@@ -39,6 +42,7 @@ class App:
         audit_log_path: Path | None = None,
         llm_client: LLMClient | None = None,
         quarantined_llm: LLMClient | None = None,
+        model_pool: ModelPool | None = None,
         skills_dir: Path | None = None,
         enable_policy_preview: bool = True,
         policy_context: PolicyContext | None = None,
@@ -54,11 +58,19 @@ class App:
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(resolved_state_db_path)
         self.onguard = OnguardStore(resolved_state_db_path)
-        # Resolve quarantined LLM first so we can signal availability
-        # to SessionGraph. Falls back to the main llm_client when no
-        # separate quarantined client was provided — the same model
-        # plays both roles (a single-LLM deployment).
-        _quarantined_resolved: LLMClient | None = quarantined_llm or llm_client
+        from capabledeputy.llm.pool import ModelPool as _ModelPool
+
+        self.model_pool: _ModelPool | None = model_pool
+        if model_pool is not None:
+            _planner = model_pool.default_planner_client()
+            _quarantined_resolved: LLMClient | None = model_pool.extractor_client()
+        else:
+            _planner = llm_client
+            # Resolve quarantined LLM first so we can signal availability
+            # to SessionGraph. Falls back to the main llm_client when no
+            # separate quarantined client was provided — the same model
+            # plays both roles (a single-LLM deployment).
+            _quarantined_resolved = quarantined_llm or llm_client
         # 003 runtime activation — SessionGraph receives the Purposes
         # registry so spawn/grant/delegate enforce FR-009 admissibility.
         # The `quarantined_available` flag enables the FR-047-style
@@ -101,7 +113,7 @@ class App:
             approval_queue=self.approval_queue,
             policy_context=policy_context,
         )
-        self.llm_client: LLMClient | None = llm_client
+        self.llm_client: LLMClient | None = _planner
         self.quarantined_llm: LLMClient | None = _quarantined_resolved
         # Issue #23 — per-session cancellation flags. session.send sets
         # the entry to False at turn start; session.cancel flips it

@@ -45,10 +45,34 @@ _TOOL_INSTRUCTION = (
 )
 
 
+def _compact_schema_summary(schema: dict[str, Any]) -> str:
+    props = schema.get("properties") if isinstance(schema, dict) else None
+    required = schema.get("required") if isinstance(schema, dict) else None
+    if not isinstance(props, dict) or not props:
+        return "{}"
+    req_set = set(required or [])
+    parts: list[str] = []
+    for key, spec in props.items():
+        if not isinstance(spec, dict):
+            parts.append(f"{key}?")
+            continue
+        typ = str(spec.get("type", "any"))
+        suffix = "" if key in req_set else "?"
+        parts.append(f"{key}{suffix}: {typ}")
+    summary = ", ".join(parts)
+    if req_set:
+        summary += f" (required: {', '.join(sorted(req_set))})"
+    return "{" + summary + "}"
+
+
 def _format_tool_descriptions(tools: list[ToolDescription]) -> str:
     if not tools:
         return "(no tools available)"
-    return "\n".join(f"- {t.name}: {t.description}" for t in tools)
+    lines: list[str] = []
+    for tool in tools:
+        schema = _compact_schema_summary(tool.parameters_schema)
+        lines.append(f"- {tool.name}: {tool.description}  args={schema}")
+    return "\n".join(lines)
 
 
 def _format_messages_for_prompt(messages: list[Message]) -> str:

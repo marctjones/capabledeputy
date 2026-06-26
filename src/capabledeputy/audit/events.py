@@ -38,6 +38,9 @@ class EventType(StrEnum):
     # operator/agent can see proactively that the turn is about to
     # outgrow its budget.
     LLM_CONTEXT_WARNING = "llm.context_warning"
+    LLM_MODEL_SELECTED = "llm.model_selected"
+    TOOL_SURFACE_SELECTED = "tool.surface_selected"
+    LLM_PARSE_RETRY = "llm.parse_retry"
     # Issue #2 — the agent loop terminated abnormally. AGENT_LOOP_EXCEEDED
     # fires when the iteration cap (`max_iterations`) is hit;
     # AGENT_LOOP_THRASHING fires earlier when the same (tool, args) is

@@ -306,6 +306,7 @@ class TurnLifecycleManager:
                         audit=self._app.audit,
                         max_iterations=max_iterations,
                         force_mode=force_mode,
+                        model_pool=self._app.model_pool,
                         cancel_check=lambda sid=turn.session_id: self._app.cancellation_flags.get(
                             sid,
                             False,

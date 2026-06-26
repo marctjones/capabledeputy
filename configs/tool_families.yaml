@@ -1,0 +1,45 @@
+# Maps workflow/session purpose handles to tool capability kinds and name prefixes.
+# Used by deterministic tool-surface narrowing before retrieval.
+
+mandatory_always:
+  - policy.preview
+
+families:
+  inbox:
+    purpose_handles: [inbox]
+    include_kinds:
+      - GMAIL_READ
+      - GMAIL_DRAFT
+      - IMAP_READ
+      - APPLE_MAIL_READ
+      - APPLE_MAIL_DRAFT
+    include_prefixes:
+      - inbox.
+      - email.
+
+  calendar:
+    purpose_handles: [calendar]
+    include_kinds:
+      - CALENDAR_READ
+      - CALENDAR_WRITE
+    include_prefixes:
+      - calendar.
+
+  research:
+    purpose_handles: [research]
+    include_kinds:
+      - WEB_FETCH
+      - WEB_SEARCH
+    include_prefixes:
+      - web.
+      - kagi_
+
+  writing:
+    purpose_handles: [writing]
+    include_prefixes:
+      - pages.
+      - numbers.
+      - memory.
+
+  general:
+    purpose_handles: [general, unset]

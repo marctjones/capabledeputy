@@ -1,0 +1,46 @@
+# Operator-owned MLX model roles and deterministic routing (v0.35+).
+# Load with CAPDEP_CONFIGS_DIR or the repo configs/ directory.
+#
+# HF weights: prefetch with `ai-fetch <org/model>` into $AI_MODELS_DIR.
+
+default_backend: mlx
+
+roles:
+  planner.fast:
+    mlx: Qwen/Qwen3-4B-MLX-4bit
+    max_tokens: 2048
+
+  planner.tools:
+    mlx: mlx-community/Qwen3-14B-4bit
+    max_tokens: 4096
+
+  extractor:
+    mlx: mlx-community/Phi-3.5-mini-instruct-4bit
+    max_tokens: 1024
+
+routing:
+  - when:
+      purpose_handle: [research, writing]
+    role: planner.tools
+    reason: purpose_handle_tier
+
+  - when:
+      execution_mode: PROGRAMMATIC
+    role: planner.tools
+    reason: programmatic_mode
+
+  - when:
+      n_visible_tools_gte: 20
+    role: planner.tools
+    reason: large_tool_surface
+
+  - default:
+    role: planner.fast
+    reason: default_fast
+
+tool_selection:
+  mode: retrieve
+  retrieval_top_k: 20
+  ai_top_k: 12
+  ai_gate_visible_gte: 15
+  max_selected: 15

@@ -68,6 +68,8 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         "setup",
         # Headless onguard client substrate.
         "onguard",
+        "turn",
+        "purpose",
     }
     for et in EventType:
         head, sep, _ = et.value.partition(".")
@@ -91,6 +93,11 @@ def test_event_type_taxonomy_matches_design() -> None:
         # Issue #36 — LLM error + context-window warning audit events.
         "llm.error",
         "llm.context_warning",
+        "llm.model_selected",
+        "llm.parse_retry",
+        "tool.surface_selected",
+        "turn.interrupted",
+        "purpose.contamination_suspected",
         # Issue #36 (Q4) — decide() latency exceeded SC-023 thresholds.
         "decision.latency_degraded",
         "mode.selected",

@@ -226,10 +226,16 @@ def make_info_handler(app: Any) -> Handler:
         import platform
         import sys
 
+        model_pool_status: dict[str, Any] = {}
+        pool = getattr(app, "model_pool", None)
+        if pool is not None:
+            model_pool_status = pool.status()
+
         return {
             **dict(_CODE_VERSION),  # version, git_rev, git_dirty, manifest_hash
             "pid": _DAEMON_PID,
             "uptime_seconds": uptime_seconds,
+            "model_pool": model_pool_status,
             "started_at_epoch": int(_DAEMON_STARTED_AT),
             "python_version": sys.version.split()[0],
             "platform": platform.platform(),

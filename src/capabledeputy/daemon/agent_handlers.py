@@ -78,6 +78,7 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
                 audit=app.audit,
                 max_iterations=max_iterations or agent_max_iterations(),
                 force_mode=force_mode,
+                model_pool=app.model_pool,
                 cancel_check=lambda sid=session_uuid: app.cancellation_flags.get(
                     sid,
                     False,

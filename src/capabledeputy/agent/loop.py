@@ -15,6 +15,7 @@ import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from capabledeputy.agent.context import build_llm_context
@@ -40,24 +41,42 @@ from capabledeputy.session.graph import SessionGraph, SessionStateError
 from capabledeputy.session.model import Session, Turn
 from capabledeputy.tools.aliasing import build_alias_map, build_reverse_map
 from capabledeputy.tools.client import LabeledToolClient, ToolCallOutcome
-from capabledeputy.tools.registry import ToolNotFoundError, ToolRegistry
+from capabledeputy.tools.registry import ToolDefinition, ToolNotFoundError, ToolRegistry
 
-DEFAULT_SYSTEM_PROMPT = """You are CapableDeputy, a structurally secure personal AI assistant.
+if TYPE_CHECKING:
+    from capabledeputy.agent.tool_families import ToolFamiliesConfig
+    from capabledeputy.agent.tool_selection import ToolSelectionResult
+    from capabledeputy.llm.pool import ModelPool
 
-You operate inside a runtime that gates every tool call by capability and
-information-flow policy. The runtime enforces these rules — you cannot
-bypass them, but you should understand them so you can give the user
-useful, accurate answers.
+_TOOL_CALL_INSTRUCTIONS_NATIVE = """CRITICAL — how you call tools:
 
-CRITICAL — how you call tools:
-
-- The ONLY way to invoke a tool is via the API's `tool_use` mechanism.
+- The ONLY way to invoke a tool is via the API's native `tool_use` mechanism.
   Tools available to you on this turn appear in the system-provided
   tool list. If a tool is not in that list, it does not exist for you,
   full stop.
 - NEVER write a tool call as text or code (e.g. backticked ```inbox.search(...)```).
   That is not an invocation — it is fabrication. The runtime cannot see
-  it, no policy is evaluated, no real action happens.
+  it, no policy is evaluated, no real action happens."""
+
+_TOOL_CALL_INSTRUCTIONS_JSON = """CRITICAL — how you call tools:
+
+- The ONLY way to invoke a tool is to emit a single JSON object with this shape:
+  `{"tool_calls": [{"id": "<unique_id>", "name": "<tool_name>", "args": {...}}]}`
+  Tools available to you on this turn appear in the system-provided tool list.
+  If a tool is not in that list, it does not exist for you, full stop.
+- If no tool call is needed, respond with plain natural-language text only.
+- NEVER write a tool call as prose or a code block — that is fabrication."""
+
+_SHARED_POLICY_PROMPT = """
+You operate inside a runtime that gates every tool call by capability and
+information-flow policy. The runtime enforces these rules — you cannot
+bypass them, but you should understand them so you can give the user
+useful, accurate answers.
+"""
+
+DEFAULT_SYSTEM_PROMPT = f"""You are CapableDeputy, a structurally secure personal AI assistant.
+{_SHARED_POLICY_PROMPT}
+{_TOOL_CALL_INSTRUCTIONS_NATIVE}
 - NEVER invent tool names. If the user asks for "forward email" and your
   tool list has only `email.send`, `inbox.read`, `inbox.list`, say so —
   do not invent `email.forward`.
@@ -149,6 +168,31 @@ _LOOP_RECOVERY_HINT = (
     "CAPDEP_AGENT_MAX_ITERATIONS), refine your intent, or split the "
     "request into smaller sub-turns"
 )
+
+_PARSE_RETRY_NOTICE = (
+    "NOTICE: your previous reply was not a valid tool-call JSON envelope. "
+    'Respond with ONLY {"tool_calls": [...]} to call tools, or plain text if done.'
+)
+
+
+def planner_uses_json_tools(llm: LLMClient) -> bool:
+    name = type(llm).__name__
+    return name in {"MLXLLMClient", "ClaudeCliClient"}
+
+
+def tool_call_instructions_for_llm(llm: LLMClient) -> str:
+    if planner_uses_json_tools(llm):
+        return _TOOL_CALL_INSTRUCTIONS_JSON
+    return _TOOL_CALL_INSTRUCTIONS_NATIVE
+
+
+def _looks_like_failed_tool_parse(content: str) -> bool:
+    lowered = content.lower()
+    if "tool_calls" in content or "```json" in lowered:
+        return True
+    if "{" in content and ("tool_call" in lowered or '"name"' in content):
+        return True
+    return False
 
 
 def _call_signature(tool_name: str, args: dict) -> str:
@@ -281,6 +325,8 @@ def build_tool_descriptions(
     registry: ToolRegistry,
     mode: ExecutionMode = ExecutionMode.TURN_LEVEL,
     session: Session | None = None,
+    *,
+    selected_tools: list[ToolDefinition] | tuple[ToolDefinition, ...] | None = None,
 ) -> list[ToolDescription]:
     """Build the tool list shown to the LLM.
 
@@ -288,8 +334,13 @@ def build_tool_descriptions(
     canonical name is replaced with a session-specific token. The
     reverse map is recomputed at dispatch time (also from the session id),
     so we don't have to thread state — the alias function is pure.
+
+    When `selected_tools` is provided, only that subset is described
+    (post capability/mode gating and tool-surface curation).
     """
-    if session is not None:
+    if selected_tools is not None:
+        tools = list(selected_tools)
+    elif session is not None:
         tools = visible_tools(registry, session, mode)
     else:
         tools = filter_tools_for_mode(registry.list(), mode)
@@ -362,6 +413,8 @@ async def run_turn(
     max_iterations: int = 50,
     force_mode: ExecutionMode | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    model_pool: ModelPool | None = None,
+    tool_families: ToolFamiliesConfig | None = None,
 ) -> AgentTurnResult:
     """Issue #21 — `run_turn` is now a thin wrapper around the
     streaming generator `run_turn_streaming`. Existing callers
@@ -396,6 +449,8 @@ async def run_turn(
         max_iterations=max_iterations,
         force_mode=force_mode,
         cancel_check=cancel_check,
+        model_pool=model_pool,
+        tool_families=tool_families,
     ):
         if isinstance(evt, TurnCompleted):
             final_result = evt.result
@@ -479,6 +534,8 @@ async def run_turn_streaming(
     max_iterations: int = 50,
     force_mode: ExecutionMode | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    model_pool: ModelPool | None = None,
+    tool_families: ToolFamiliesConfig | None = None,
 ):
     """Streaming variant of `run_turn` (Issue #21).
 
@@ -509,6 +566,13 @@ async def run_turn_streaming(
         TurnCompleted,
         TurnInterrupted,
     )
+    from capabledeputy.agent.tool_families import load_tool_families
+    from capabledeputy.agent.tool_selection import (
+        select_tools_for_turn_async,
+        widen_tool_surface,
+    )
+    from capabledeputy.llm.models_config import ToolSelectionConfig
+    from capabledeputy.llm.routing import ModelRoutingContext
 
     session = graph.get(session_id)
     if session.is_terminal:
@@ -572,10 +636,33 @@ async def run_turn_streaming(
                 payload={"mode": mode.value, "reason": mode_reason},
             ),
         )
+        prog_llm = llm
+        if model_pool is not None:
+            visible_for_route = visible_tools(registry, session, mode)
+            prog_llm, routing = model_pool.resolve_planner(
+                ModelRoutingContext(
+                    purpose_handle=session.purpose_handle,
+                    execution_mode=mode,
+                    n_visible_tools=len(visible_for_route),
+                ),
+            )
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_MODEL_SELECTED,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    payload={
+                        "role": routing.role,
+                        "reason": routing.reason,
+                        "mlx_model": routing.mlx_model,
+                        "n_visible_tools": len(visible_for_route),
+                    },
+                ),
+            )
         prog_result = await run_programmatic_turn(
             session_id=session_id,
             user_message=user_message,
-            llm=llm,
+            llm=prog_llm,
             tool_client=tool_client,
             registry=registry,
             graph=graph,
@@ -600,8 +687,71 @@ async def run_turn_streaming(
         ),
     )
 
+    visible_all = visible_tools(registry, session, mode)
+    effective_llm = llm
+    if model_pool is not None:
+        effective_llm, routing = model_pool.resolve_planner(
+            ModelRoutingContext(
+                purpose_handle=session.purpose_handle,
+                execution_mode=mode,
+                n_visible_tools=len(visible_all),
+            ),
+        )
+        await audit.write(
+            Event(
+                event_type=EventType.LLM_MODEL_SELECTED,
+                session_id=session_id,
+                turn_id=len(session.history),
+                payload={
+                    "role": routing.role,
+                    "reason": routing.reason,
+                    "mlx_model": routing.mlx_model,
+                    "n_visible_tools": len(visible_all),
+                },
+            ),
+        )
+
+    families_cfg = tool_families or load_tool_families()
+    selection_cfg = (
+        model_pool.config.tool_selection if model_pool is not None else ToolSelectionConfig()
+    )
+    router_llm = (
+        model_pool.default_planner_client()
+        if model_pool is not None and selection_cfg.mode == "retrieve+ai"
+        else None
+    )
+    tool_surface = await select_tools_for_turn_async(
+        registry,
+        session,
+        mode,
+        visible_all,
+        user_message=user_message,
+        router_llm=router_llm,
+        families=families_cfg,
+        selection_config=selection_cfg,
+    )
+    await audit.write(
+        Event(
+            event_type=EventType.TOOL_SURFACE_SELECTED,
+            session_id=session_id,
+            turn_id=len(session.history),
+            payload={
+                "method": tool_surface.method,
+                "n_visible": tool_surface.n_visible,
+                "n_selected": len(tool_surface.selected),
+                "selected": [t.name for t in tool_surface.selected],
+                "mandatory_added": list(tool_surface.mandatory_added),
+            },
+        ),
+    )
+
     # Build deterministic LLM context with session state, tool hints, recent decisions
-    tool_descriptions = build_tool_descriptions(registry, mode, session)
+    tool_descriptions = build_tool_descriptions(
+        registry,
+        mode,
+        session,
+        selected_tools=tool_surface.selected,
+    )
     recent_events = await audit.tail(limit=40)
 
     # Create tool registry dict for context builder
@@ -633,6 +783,7 @@ async def run_turn_streaming(
         recent_events,
         max_recent_decisions=10,
         sandbox_summary=sandbox_summary,
+        tool_call_instructions=tool_call_instructions_for_llm(effective_llm),
     )
 
     # Audit the context for replay purposes
@@ -663,15 +814,15 @@ async def run_turn_streaming(
     # that the list is empty and what the user has to do to fix it.
     if not tool_descriptions:
         messages.append(_no_tools_notice_message())
-    visible_tool_names = {t.name for t in visible_tools(registry, session, mode)}
+    visible_tool_names = {t.name for t in visible_all}
     reverse_map: dict[str, str] = {}
     if session.tool_aliasing:
-        visible = visible_tools(registry, session, mode)
-        reverse_map = build_reverse_map(session.id, [t.name for t in visible])
+        reverse_map = build_reverse_map(session.id, [t.name for t in visible_all])
     tool_outcomes: list[ToolCallOutcome] = []
 
     iteration = 0
     last_response: LLMResponse | None = None
+    parse_retry_used = False
     # Issue #36 — context-window guardrail.
     # We learn the model name on the first response; until then we
     # use a conservative default. The soft warning fires at 80%, the
@@ -828,7 +979,7 @@ async def run_turn_streaming(
         # handler silently — operators saw a red "rpc error" in chat
         # but the audit log had no trace.
         try:
-            response = await llm.respond(messages, tool_descriptions)
+            response = await effective_llm.respond(messages, tool_descriptions)
         except Exception as e:
             await audit.write(
                 Event(
@@ -888,6 +1039,29 @@ async def run_turn_streaming(
             finish_reason=response.finish_reason.value,
             model=response.model or "unknown",
         )
+
+        if (
+            not response.tool_calls
+            and tool_descriptions
+            and planner_uses_json_tools(effective_llm)
+            and not parse_retry_used
+            and _looks_like_failed_tool_parse(response.content or "")
+        ):
+            parse_retry_used = True
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_PARSE_RETRY,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    step_id=iteration,
+                    payload={"iteration": iteration, "content_length": len(response.content)},
+                ),
+            )
+            messages.append(
+                Message(role=Role.ASSISTANT, content=response.content or ""),
+            )
+            messages.append(Message(role=Role.SYSTEM, content=_PARSE_RETRY_NOTICE))
+            continue
 
         if not response.tool_calls:
             agent_turn = Turn(
@@ -969,6 +1143,18 @@ async def run_turn_streaming(
             try:
                 registry.get(real_name)
             except ToolNotFoundError:
+                tool_surface = widen_tool_surface(
+                    tool_surface,
+                    visible_all,
+                    missing_tool_name=real_name,
+                )
+                tool_descriptions = build_tool_descriptions(
+                    registry,
+                    mode,
+                    session,
+                    selected_tools=tool_surface.selected,
+                )
+                visible_tool_names = {t.name for t in tool_surface.selected}
                 outcome = ToolCallOutcome(
                     decision=Decision.DENY,
                     reason=f"tool not found: {tool_call.name}",
@@ -1049,11 +1235,26 @@ async def run_turn_streaming(
                     ),
                 )
 
-                tool_descriptions = build_tool_descriptions(registry, mode, session)
-                visible = visible_tools(registry, session, mode)
-                visible_tool_names = {t.name for t in visible}
+                visible_all = visible_tools(registry, session, mode)
+                tool_surface = await select_tools_for_turn_async(
+                    registry,
+                    session,
+                    mode,
+                    visible_all,
+                    user_message=user_message,
+                    router_llm=router_llm,
+                    families=families_cfg,
+                    selection_config=selection_cfg,
+                )
+                tool_descriptions = build_tool_descriptions(
+                    registry,
+                    mode,
+                    session,
+                    selected_tools=tool_surface.selected,
+                )
+                visible_tool_names = {t.name for t in tool_surface.selected}
                 reverse_map = (
-                    build_reverse_map(session.id, [t.name for t in visible])
+                    build_reverse_map(session.id, [t.name for t in visible_all])
                     if session.tool_aliasing
                     else {}
                 )
@@ -1065,6 +1266,7 @@ async def run_turn_streaming(
                     recent_events,
                     max_recent_decisions=10,
                     sandbox_summary=sandbox_summary,
+                    tool_call_instructions=tool_call_instructions_for_llm(effective_llm),
                 )
                 messages[0] = Message(role=Role.SYSTEM, content=llm_context.system_prompt)
                 await audit.write(

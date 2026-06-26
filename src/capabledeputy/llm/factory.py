@@ -58,9 +58,17 @@ def resolve_planner_model_spec(*, prefer_local_mlx: bool = True) -> str:
     on_apple_silicon = (
         platform.system() == "Darwin" and platform.machine().lower() in {"arm64", "aarch64"}
     )
+    allow_remote = os.environ.get("CAPDEP_ALLOW_REMOTE_LLM", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     if on_apple_silicon and prefer_local_mlx and mlx_metal_available():
         return default_llm_model_spec()
-    if ollama_reachable():
+    if on_apple_silicon and prefer_local_mlx and not allow_remote:
+        return default_llm_model_spec()
+    if ollama_reachable() and allow_remote:
         return _DEFAULT_OLLAMA_MODEL
     return default_llm_model_spec()
 

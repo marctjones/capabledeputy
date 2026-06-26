@@ -41,6 +41,7 @@ from capabledeputy.llm.factory import (
     make_llm_client,
     resolve_planner_model_spec,
 )
+from capabledeputy.llm.pool import ModelPool, require_mlx_on_apple_silicon
 from capabledeputy.policy.capabilities import DEFAULT_MAX_DELEGATION_DEPTH
 from capabledeputy.policy.overrides import OverridePolicies
 from capabledeputy.secrets import load_anthropic_api_key
@@ -494,6 +495,10 @@ async def run_daemon(
         enable_policy_preview = policy_preview
 
     settings = load_settings()
+    configs_dir = _resolve_v09_configs_dir()
+    require_mlx_on_apple_silicon(prefer_local_mlx=settings.prefer_local_mlx)
+    model_pool = ModelPool.from_config(configs_dir=configs_dir)
+    model_pool.preload("planner.fast")
     chosen_model = model or resolve_planner_model_spec(
         prefer_local_mlx=settings.prefer_local_mlx,
     )
@@ -528,9 +533,18 @@ async def run_daemon(
                 file=_sys_for_key.stderr,
             )
 
+    use_legacy_single_client = bool(
+        backend
+        or os.environ.get("CAPDEP_ALLOW_REMOTE_LLM", "").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
     quarantined_client = None
-    if quarantined_model:
-        quarantined_client = make_llm_client(quarantined_model)
+    legacy_llm_client = None
+    if use_legacy_single_client:
+        legacy_llm_client = make_llm_client(chosen_model)
+        if quarantined_model:
+            quarantined_client = make_llm_client(quarantined_model)
+        model_pool = None
 
     skills_env = os.environ.get("CAPDEP_SKILLS_DIR")
     skills_dir = Path(skills_env) if skills_env else None
@@ -545,8 +559,9 @@ async def run_daemon(
     app = App(
         state_db_path=state_db_path,
         audit_log_path=audit_log_path,
-        llm_client=make_llm_client(chosen_model),
+        llm_client=legacy_llm_client,
         quarantined_llm=quarantined_client,
+        model_pool=model_pool,
         skills_dir=skills_dir,
         enable_policy_preview=enable_policy_preview,
         policy_context=policy_context,

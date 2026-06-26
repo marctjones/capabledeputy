@@ -242,6 +242,7 @@ def build_llm_context(
     *,
     max_recent_decisions: int = 10,
     sandbox_summary: str | None = None,
+    tool_call_instructions: str | None = None,
 ) -> LLMContext:
     """Build deterministic LLM context given session + tools + audit events.
 
@@ -330,6 +331,16 @@ the guarantee.
     # contributed custom kinds.
     custom_kinds_section = _format_custom_kinds_section()
 
+    tool_instructions = tool_call_instructions or """CRITICAL — how you call tools:
+
+- The ONLY way to invoke a tool is via the API's `tool_use` mechanism.
+  Tools available to you on this turn appear in the system-provided
+  tool list. If a tool is not in that list, it does not exist for you,
+  full stop.
+- NEVER write a tool call as text or code (e.g. backticked ```inbox.search(...)```).
+  That is not an invocation — it is fabrication. The runtime cannot see
+  it, no policy is evaluated, no real action happens."""
+
     # --- Assemble full system prompt ---
     system_prompt = f"""You are an AI assistant operating inside CapableDeputy.
 
@@ -338,15 +349,7 @@ information-flow policy. The runtime enforces these rules — you cannot
 bypass them, but you should understand them so you can give the user
 useful, accurate answers.
 
-CRITICAL — how you call tools:
-
-- The ONLY way to invoke a tool is via the API's `tool_use` mechanism.
-  Tools available to you on this turn appear in the system-provided
-  tool list. If a tool is not in that list, it does not exist for you,
-  full stop.
-- NEVER write a tool call as text or code (e.g. backticked ```inbox.search(...)```).
-  That is not an invocation — it is fabrication. The runtime cannot see
-  it, no policy is evaluated, no real action happens.
+{tool_instructions}
 - NEVER invent tool names. If the user asks for "forward email" and your
   tool list has only `email.send`, `inbox.read`, `inbox.list`, say so —
   do not invent `email.forward`.
