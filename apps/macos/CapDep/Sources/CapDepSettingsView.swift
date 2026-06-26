@@ -141,11 +141,23 @@ private struct AssistantSettingsView: View {
 
 private struct AccountsSettingsView: View {
     @EnvironmentObject private var model: CapDepAppModel
+    @Environment(\.openWindow) private var openWindow
     @State private var googleClientIDs: [String: String] = [:]
     @State private var googleClientSecrets: [String: String] = [:]
 
     var body: some View {
         Form {
+            Section("Google Workspace") {
+                Text("Use the guided wizard to sign in with Google in your browser. One-time OAuth client setup is only needed the first time.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button {
+                    model.presentGoogleOAuthWizard()
+                    openWindow(id: "google-oauth-wizard")
+                } label: {
+                    Label("Set Up Google Account…", systemImage: "person.crop.circle.badge.plus")
+                }
+            }
             ForEach(model.connectorStatuses.filter { $0.id.hasPrefix("google-") }) { connector in
                 GoogleOAuthSetupView(
                     connector: connector,

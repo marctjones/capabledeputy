@@ -14,6 +14,8 @@ struct Approval: Identifiable, Hashable {
     let labelsOut: [String]
     let siblingGroupID: String
     let rule: String
+    let requiresStrongAuth: Bool
+    let touchIDPolicyEnabled: Bool
 
     init(dictionary: [String: Any]) {
         self.id = dictionary["id"] as? Int ?? 0
@@ -29,6 +31,8 @@ struct Approval: Identifiable, Hashable {
         self.labelsOut = Self.labels(from: dictionary["labels_out"])
         self.siblingGroupID = dictionary["sibling_group_id"] as? String ?? ""
         self.rule = dictionary["rule"] as? String ?? ""
+        self.requiresStrongAuth = dictionary["requires_strong_auth"] as? Bool ?? false
+        self.touchIDPolicyEnabled = dictionary["touch_id_policy_enabled"] as? Bool ?? false
     }
 
     private static func labels(from raw: Any?) -> [String] {
@@ -42,13 +46,7 @@ struct Approval: Identifiable, Hashable {
     }
 
     var requiresHighRiskAuthentication: Bool {
-        if action == "QUEUE_PURCHASE" || action == "EXECUTE_DESTRUCTIVE" {
-            return true
-        }
-        let rendered = (labelsIn + labelsOut).joined(separator: " ").lowercased()
-        return ["financial", "health", "restricted", "prohibited"].contains { token in
-            rendered.contains(token)
-        }
+        requiresStrongAuth
     }
 }
 
@@ -214,6 +212,44 @@ struct UpstreamServerStatus: Identifiable, Hashable {
         self.error = dictionary["error"] as? String ?? ""
         self.transport = dictionary["transport"] as? String ?? ""
         self.url = dictionary["url"] as? String ?? ""
+    }
+}
+
+struct SetupPlan: Hashable {
+    let ready: Bool
+    let workflowReady: Bool
+    let firstWorkflowID: String
+    let firstWorkflowTitle: String
+    let firstWorkflowHint: String
+    let steps: [SetupPlanStep]
+
+    init(dictionary: [String: Any]) {
+        self.ready = dictionary["ready"] as? Bool ?? false
+        self.workflowReady = dictionary["workflow_ready"] as? Bool ?? false
+        let workflow = dictionary["first_workflow"] as? [String: Any] ?? [:]
+        self.firstWorkflowID = workflow["id"] as? String ?? ""
+        self.firstWorkflowTitle = workflow["title"] as? String ?? ""
+        self.firstWorkflowHint = workflow["hint"] as? String ?? ""
+        self.steps = (dictionary["steps"] as? [[String: Any]] ?? [])
+            .map(SetupPlanStep.init(dictionary:))
+    }
+}
+
+struct SetupPlanStep: Identifiable, Hashable {
+    let id: String
+    let order: Int
+    let title: String
+    let status: String
+    let detail: String
+    let blocking: Bool
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["id"] as? String ?? UUID().uuidString
+        self.order = dictionary["order"] as? Int ?? 0
+        self.title = dictionary["title"] as? String ?? ""
+        self.status = dictionary["status"] as? String ?? ""
+        self.detail = dictionary["detail"] as? String ?? ""
+        self.blocking = dictionary["blocking"] as? Bool ?? false
     }
 }
 

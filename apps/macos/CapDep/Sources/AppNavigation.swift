@@ -48,8 +48,22 @@ struct WorkflowTemplate: Identifiable, Hashable {
     let subtitle: String
     let purpose: Purpose
     let prompt: String
+    let turnMessage: String
     let systemImage: String
     let requiresForegroundReview: Bool
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["id"] as? String ?? UUID().uuidString
+        self.title = dictionary["title"] as? String ?? ""
+        self.subtitle = dictionary["subtitle"] as? String ?? ""
+        let purposeHandle = dictionary["purpose_handle"] as? String ?? Purpose.general.rawValue
+        self.purpose = Purpose(rawValue: purposeHandle) ?? .general
+        self.prompt = dictionary["prompt"] as? String ?? ""
+        let explicitTurnMessage = dictionary["turn_message"] as? String ?? ""
+        self.turnMessage = explicitTurnMessage.isEmpty ? self.prompt : explicitTurnMessage
+        self.systemImage = dictionary["system_image"] as? String ?? "bolt.horizontal"
+        self.requiresForegroundReview = dictionary["requires_foreground_review"] as? Bool ?? false
+    }
 }
 
 struct ContextChip: Identifiable, Hashable {
@@ -61,59 +75,4 @@ struct ContextChip: Identifiable, Hashable {
     let isUntrusted: Bool
 }
 
-let defaultWorkflowTemplates: [WorkflowTemplate] = [
-    WorkflowTemplate(
-        id: "morning-briefing",
-        title: "Morning Briefing",
-        subtitle: "Calendar, inbox, notes, conflicts, and action items.",
-        purpose: .general,
-        prompt: "Prepare my morning briefing with calendar conflicts, urgent mail, and action items.",
-        systemImage: "sunrise",
-        requiresForegroundReview: false,
-    ),
-    WorkflowTemplate(
-        id: "inbox-triage",
-        title: "Inbox Triage",
-        subtitle: "Summarize and classify messages; draft replies without sending.",
-        purpose: .inbox,
-        prompt: "Triage my inbox and prepare drafts for messages that need replies.",
-        systemImage: "tray.full",
-        requiresForegroundReview: false,
-    ),
-    WorkflowTemplate(
-        id: "calendar-planning",
-        title: "Calendar Planning",
-        subtitle: "Find time, explain conflicts, and propose event changes.",
-        purpose: .calendar,
-        prompt: "Review my calendar, find scheduling conflicts, and propose safe calendar changes.",
-        systemImage: "calendar.badge.clock",
-        requiresForegroundReview: true,
-    ),
-    WorkflowTemplate(
-        id: "web-research",
-        title: "Web Research",
-        subtitle: "Research and synthesize external sources as untrusted input.",
-        purpose: .research,
-        prompt: "Research this topic, keep web sources labeled as untrusted, and produce a cited summary.",
-        systemImage: "safari",
-        requiresForegroundReview: false,
-    ),
-    WorkflowTemplate(
-        id: "summarize-selection",
-        title: "Summarize Selection",
-        subtitle: "Use selected text, files, or current app context.",
-        purpose: .general,
-        prompt: "Summarize the current selection and list any action items.",
-        systemImage: "selection.pin.in.out",
-        requiresForegroundReview: false,
-    ),
-    WorkflowTemplate(
-        id: "revise-document",
-        title: "Revise Frontmost Document",
-        subtitle: "Prepare bounded edits for Pages, Numbers, or Keynote.",
-        purpose: .writing,
-        prompt: "Review the frontmost document and suggest bounded edits before applying anything.",
-        systemImage: "doc.text.magnifyingglass",
-        requiresForegroundReview: true,
-    ),
-]
+

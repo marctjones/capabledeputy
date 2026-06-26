@@ -32,6 +32,7 @@ together cover the full state model without doubling load.
 from __future__ import annotations
 
 import json
+import webbrowser
 from typing import Any
 
 from rich.text import Text
@@ -93,10 +94,14 @@ class ApprovalDetailScreen(ModalScreen[str]):
             )
             yield Static(f"target:  {a['target']}")
             yield Static(f"from session:  {a['from_session']}")
-            yield Static(
-                "labels in:  " + (", ".join(a["labels_in"]) or "(none)"),
-            )
+            yield Static("labels in:  " + _format_label_summary(a.get("labels_in")))
             yield Static(f"justification:  {a['justification']}")
+            if a.get("requires_strong_auth") and a.get("touch_id_policy_enabled"):
+                yield Static(
+                    "[bold yellow]Strong authentication required[/bold yellow] "
+                    "(approve from the macOS app with Touch ID, or use "
+                    "`capdep approval approve --strong-auth touch_id`).",
+                )
             yield Static("[bold]payload (verbatim):[/bold]")
             yield Static(a["payload"], id="payload")
             yield Static("[dim]a=approve  d=deny  esc=cancel[/dim]")
@@ -361,6 +366,280 @@ class GoogleWorkspaceSetupScreen(ModalScreen[None]):
         return self.query_one("#service-id", Input).value.strip()
 
 
+def _approval_needs_touch_id(approval: dict[str, Any]) -> bool:
+    return bool(
+        approval.get("requires_strong_auth") and approval.get("touch_id_policy_enabled"),
+    )
+
+
+def _flatten_label_strings(raw: Any) -> list[str]:
+    if isinstance(raw, list):
+        return [str(item) for item in raw]
+    if isinstance(raw, dict):
+        labels: list[str] = []
+        for values in raw.values():
+            if not isinstance(values, list):
+                continue
+            for value in values:
+                if isinstance(value, str):
+                    labels.append(value)
+                elif isinstance(value, dict):
+                    category = value.get("category")
+                    if category:
+                        labels.append(str(category))
+        return labels
+    return []
+
+
+def _format_label_summary(raw: Any) -> str:
+    labels = _flatten_label_strings(raw)
+    if not labels:
+        return "(none)"
+    rendered = render_labels(labels)
+    return rendered.replace("[green]", "").replace("[/green]", "").replace("[", "").replace("]", "")
+
+
+class SetupAssistantScreen(ModalScreen[None]):
+    """First-class onboarding surface backed by daemon-owned setup.plan."""
+
+    BINDINGS = [  # noqa: RUF012
+        Binding("r", "refresh_plan", "Refresh", show=True),
+        Binding("f", "run_selected_action", "Fix", show=True),
+        Binding("escape", "close", "Close", show=True),
+        Binding("q", "close", "Close"),
+    ]
+
+    DEFAULT_CSS = """
+    SetupAssistantScreen { align: center middle; }
+    #setup-box {
+        width: 92%;
+        max-width: 110;
+        height: 85%;
+        border: thick $primary;
+        padding: 1 2;
+        background: $surface;
+    }
+    #setup-summary, #setup-checks {
+        height: 1fr;
+        overflow: auto;
+        background: $boost;
+        padding: 1;
+        border: solid $accent;
+    }
+    """
+
+    def __init__(self, client: DaemonClient) -> None:
+        super().__init__()
+        self._client = client
+        self._plan: dict[str, Any] = {}
+        self._selected_check_idx = 0
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="setup-box"):
+            yield Static("[bold]Setup Assistant[/bold]")
+            yield Static("Loading daemon-owned setup plan…", id="setup-summary")
+            yield Static("", id="setup-checks")
+            yield Static("[dim]f fix selected check  ·  r refresh  ·  esc close[/dim]")
+
+    def on_mount(self) -> None:
+        self.run_worker(self._refresh_plan(), exclusive=False)
+
+    def action_refresh_plan(self) -> None:
+        self.run_worker(self._refresh_plan(), exclusive=False)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+    def action_run_selected_action(self) -> None:
+        checks = self._plan.get("checks", [])
+        if not checks or self._selected_check_idx >= len(checks):
+            self.notify("no setup check selected", severity="warning")
+            return
+        actions = checks[self._selected_check_idx].get("actions") or []
+        if not actions:
+            self.notify("selected check has no remediation actions", severity="warning")
+            return
+        action_id = actions[0].get("id", "")
+        if not action_id:
+            self.notify("selected action is missing an id", severity="warning")
+            return
+        self.run_worker(self._run_setup_action(action_id), exclusive=False)
+
+    async def _refresh_plan(self) -> None:
+        try:
+            self._plan = await self._client.call("setup.plan", {})
+            check = await self._client.call("setup.check", {})
+            status = await self._client.call("setup.status", {})
+        except Exception as e:
+            self.query_one("#setup-summary", Static).update(f"[red]setup.plan failed:[/red] {e}")
+            return
+        workflow = self._plan.get("first_workflow", {})
+        summary = self._plan.get("summary", {})
+        summary_text = (
+            f"ready={self._plan.get('ready')}  "
+            f"workflow_ready={self._plan.get('workflow_ready')}  "
+            f"check_ok={check.get('ok')}\n"
+            f"first workflow: {workflow.get('title', '')} ({workflow.get('id', '')})\n"
+            f"{workflow.get('hint', '')}\n"
+            f"blocking={summary.get('blocking', 0)}  warning={summary.get('warning', 0)}  "
+            f"manual={summary.get('manual', 0)}  ok={summary.get('ok', 0)}  "
+            f"status_checks={len(status.get('checks', []))}"
+        )
+        self.query_one("#setup-summary", Static).update(summary_text)
+        lines = []
+        for index, check in enumerate(self._plan.get("checks", [])):
+            marker = ">" if index == self._selected_check_idx else " "
+            actions = ", ".join(action.get("label", "") for action in check.get("actions", []))
+            lines.append(
+                f"{marker} [{check.get('status', '')}] {check.get('title', '')}\n"
+                f"    {check.get('detail', '')}"
+                + (f"\n    actions: {actions}" if actions else ""),
+            )
+        self.query_one("#setup-checks", Static).update(
+            "\n\n".join(lines) if lines else "[dim]No setup checks returned.[/dim]",
+        )
+
+    async def _run_setup_action(self, action_id: str) -> None:
+        try:
+            result = await self._client.call("setup.run_action", {"action_id": action_id})
+        except Exception as e:
+            self.notify(f"setup.run_action failed: {e}", severity="error")
+            return
+        kind = result.get("kind", "")
+        if kind == "daemon_rpc":
+            method = str(result.get("method", ""))
+            params = result.get("params") or {}
+            if not result.get("enabled", True):
+                self.notify(f"{action_id} is not enabled yet", severity="warning")
+                return
+            try:
+                await self._client.call(method, params)
+            except Exception as e:
+                self.notify(f"{method} failed: {e}", severity="error")
+                return
+            self.notify(f"ran {method}")
+        elif kind == "open_url":
+            url = str(result.get("url", ""))
+            if url:
+                webbrowser.open(url)
+            self.notify(result.get("label", url) or "opened URL")
+        elif kind == "client_navigation":
+            section = result.get("section", "")
+            self.notify(
+                f"open the {section} section in a desktop client "
+                f"(TUI navigation for {action_id} is not available)",
+                severity="information",
+                timeout=8,
+            )
+        else:
+            self.notify(json.dumps(result, indent=2, default=str), timeout=8)
+        await self._refresh_plan()
+
+
+class WorkflowLibraryScreen(ModalScreen[None]):
+    """Daemon-owned workflow template launcher."""
+
+    BINDINGS = [  # noqa: RUF012
+        Binding("enter", "run_selected", "Run", show=True),
+        Binding("r", "refresh_templates", "Refresh", show=True),
+        Binding("escape", "close", "Close", show=True),
+        Binding("q", "close", "Close"),
+    ]
+
+    DEFAULT_CSS = """
+    WorkflowLibraryScreen { align: center middle; }
+    #workflow-box {
+        width: 90%;
+        max-width: 100;
+        height: 80%;
+        border: thick $primary;
+        padding: 1 2;
+        background: $surface;
+    }
+    #workflow-table { height: 1fr; }
+    """
+
+    def __init__(self, client: DaemonClient) -> None:
+        super().__init__()
+        self._client = client
+        self._templates: list[dict[str, Any]] = []
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="workflow-box"):
+            yield Static("[bold]Workflow Library[/bold]")
+            yield DataTable(id="workflow-table")
+            yield Static("[dim]enter run  ·  r refresh  ·  esc close[/dim]")
+
+    def on_mount(self) -> None:
+        table = self.query_one("#workflow-table", DataTable)
+        table.add_columns("id", "title", "purpose", "foreground")
+        table.cursor_type = "row"
+        self.run_worker(self._refresh_templates(), exclusive=False)
+
+    def action_refresh_templates(self) -> None:
+        self.run_worker(self._refresh_templates(), exclusive=False)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+    def action_run_selected(self) -> None:
+        table = self.query_one("#workflow-table", DataTable)
+        if not table.is_valid_row_index(table.cursor_row):
+            self.notify("select a workflow first", severity="warning")
+            return
+        if table.cursor_row >= len(self._templates):
+            return
+        template = self._templates[table.cursor_row]
+        self.run_worker(self._run_template(template), exclusive=False)
+
+    async def _refresh_templates(self) -> None:
+        try:
+            result = await self._client.call("workflow.templates", {})
+        except Exception as e:
+            self.notify(f"workflow.templates failed: {e}", severity="error")
+            return
+        self._templates = result.get("templates", [])
+        table = self.query_one("#workflow-table", DataTable)
+        table.clear()
+        for template in self._templates:
+            table.add_row(
+                template.get("id", ""),
+                template.get("title", ""),
+                template.get("purpose_handle", ""),
+                "yes" if template.get("requires_foreground_review") else "no",
+            )
+
+    async def _run_template(self, template: dict[str, Any]) -> None:
+        prompt = str(template.get("prompt", ""))
+        try:
+            session = await self._client.call(
+                "session.new",
+                {
+                    "intent": prompt or template.get("title", ""),
+                    "owner": "capdep-tui",
+                    "purpose_handle": template.get("purpose_handle", "general"),
+                },
+            )
+            turn_result = await self._client.call(
+                "session.turn.start",
+                {
+                    "session_id": session["id"],
+                    "message": prompt,
+                    "client_id": "capdep-tui",
+                },
+            )
+        except Exception as e:
+            self.notify(f"workflow run failed: {e}", severity="error")
+            return
+        turn = turn_result.get("turn", {})
+        self.notify(
+            f"started {template.get('title', '')} "
+            f"session={session['id'][:8]} turn={str(turn.get('id', ''))[:8]}",
+            timeout=8,
+        )
+        self.dismiss(None)
+
+
 class CapDepTUI(App[None]):
     BINDINGS = [  # noqa: RUF012
         Binding("q", "quit", "Quit", show=True),
@@ -375,6 +654,8 @@ class CapDepTUI(App[None]):
         Binding("e", "defer_approval", "Defer", show=True),
         Binding("A", "approve_group", "Approve group", show=True),
         Binding("w", "google_setup", "Workspace setup", show=True),
+        Binding("s", "setup_assistant", "Setup", show=True),
+        Binding("W", "workflow_library", "Workflows", show=True),
         Binding("m", "daemon_rpc", "Daemon RPC", show=True),
     ]
 
@@ -465,6 +746,12 @@ class CapDepTUI(App[None]):
 
     def action_google_setup(self) -> None:
         self.push_screen(GoogleWorkspaceSetupScreen(self._client))
+
+    def action_setup_assistant(self) -> None:
+        self.push_screen(SetupAssistantScreen(self._client))
+
+    def action_workflow_library(self) -> None:
+        self.push_screen(WorkflowLibraryScreen(self._client))
 
     def action_daemon_rpc(self) -> None:
         self.push_screen(DaemonRPCWorkbenchScreen(self._client))
@@ -563,7 +850,7 @@ class CapDepTUI(App[None]):
                 str(a["id"]),
                 a["action"],
                 a["target"],
-                ", ".join(a["labels_in"]),
+                _format_label_summary(a.get("labels_in")),
             )
 
         if self._selected_session_id:
@@ -837,7 +1124,7 @@ class CapDepTUI(App[None]):
         chosen = self._approvals[approvals_table.cursor_row]
         self.push_screen(
             ApprovalDetailScreen(chosen),
-            self._handle_approval_decision_for(chosen["id"]),
+            self._handle_approval_decision_for(chosen),
         )
 
     def action_pause_session(self) -> None:
@@ -879,6 +1166,14 @@ class CapDepTUI(App[None]):
     def action_approve_group(self) -> None:
         chosen = self._selected_approval()
         if chosen is None:
+            return
+        if _approval_needs_touch_id(chosen):
+            self.notify(
+                "group approval requires Touch ID — use the macOS app or "
+                "`capdep approval approve --strong-auth touch_id`",
+                severity="warning",
+                timeout=8,
+            )
             return
         group_id = chosen.get("sibling_group_id")
         if not group_id:
@@ -1012,12 +1307,22 @@ class CapDepTUI(App[None]):
             timeout=8,
         )
 
-    def _handle_approval_decision_for(self, approval_id: int):
+    def _handle_approval_decision_for(self, approval: dict[str, Any]):
+        approval_id = int(approval["id"])
+
         async def handler(decision: str | None) -> None:
             if decision in (None, "cancel"):
                 return
             try:
                 if decision == "approve":
+                    if _approval_needs_touch_id(approval):
+                        self.notify(
+                            "approval requires Touch ID — use the macOS app or "
+                            "`capdep approval approve --strong-auth touch_id`",
+                            severity="warning",
+                            timeout=8,
+                        )
+                        return
                     await self._client.call(
                         "approval.approve",
                         {"id": approval_id},

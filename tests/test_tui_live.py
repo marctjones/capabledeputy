@@ -11,7 +11,13 @@ from typing import Any, cast
 from textual.widgets import Input, Static
 
 from capabledeputy.ipc.client import DaemonNotRunningError
-from capabledeputy.tui.app import CapDepTUI, DaemonRPCWorkbenchScreen, GoogleWorkspaceSetupScreen
+from capabledeputy.tui.app import (
+    CapDepTUI,
+    DaemonRPCWorkbenchScreen,
+    GoogleWorkspaceSetupScreen,
+    SetupAssistantScreen,
+    WorkflowLibraryScreen,
+)
 from capabledeputy.tui.console import CapDepConsole
 
 _SID = "abcd1234-0000-0000-0000-000000000000"
@@ -334,6 +340,86 @@ async def test_tui_daemon_rpc_workbench_calls_arbitrary_daemon_method(fake_daemo
         assert '"ok": true' in result
 
     assert ("policy.validate", {"strict": True}) in client.calls
+
+
+async def test_tui_setup_assistant_renders_daemon_plan(fake_daemon) -> None:
+    client = fake_daemon(
+        {
+            "session.list": {"sessions": []},
+            "approval.list": {"approvals": []},
+            "audit.tail": {"events": []},
+            "client.registry.list": {"clients": []},
+            "client.queue.list": {"commands": []},
+            "schedule.list": {"schedules": []},
+            "artifact.list": {"artifacts": []},
+            "client.events.list": {"events": []},
+            "daemon.state": {"workstreams": {"active_count": 0}},
+            "setup.plan": {
+                "ready": False,
+                "workflow_ready": False,
+                "first_workflow": {
+                    "id": "morning-briefing",
+                    "title": "Morning Briefing",
+                    "hint": "Resolve blocking setup steps.",
+                },
+                "summary": {"blocking": 1, "warning": 0, "manual": 0, "ok": 3},
+                "checks": [
+                    {
+                        "id": "daemon",
+                        "title": "Daemon",
+                        "status": "ok",
+                        "detail": "Connected",
+                        "actions": [],
+                    }
+                ],
+            },
+            "setup.check": {"ok": False, "workflow_ready": False},
+            "setup.status": {"checks": [{"id": "daemon", "title": "Daemon", "status": "ok"}]},
+        }
+    )
+    app = CapDepTUI(poll_interval=999.0)
+    app._client = client
+    async with app.run_test() as pilot:
+        await _settle(pilot)
+        await pilot.press("s")
+        await _settle(pilot)
+        summary = _text(app.screen, "#setup-summary")
+        assert "Morning Briefing" in summary
+        assert "check_ok=False" in summary
+
+
+async def test_tui_workflow_library_lists_templates(fake_daemon) -> None:
+    client = fake_daemon(
+        {
+            "session.list": {"sessions": []},
+            "approval.list": {"approvals": []},
+            "audit.tail": {"events": []},
+            "client.registry.list": {"clients": []},
+            "client.queue.list": {"commands": []},
+            "schedule.list": {"schedules": []},
+            "artifact.list": {"artifacts": []},
+            "client.events.list": {"events": []},
+            "daemon.state": {"workstreams": {"active_count": 0}},
+            "workflow.templates": {
+                "templates": [
+                    {
+                        "id": "morning-briefing",
+                        "title": "Morning Briefing",
+                        "purpose_handle": "general",
+                        "requires_foreground_review": False,
+                    }
+                ]
+            },
+        }
+    )
+    app = CapDepTUI(poll_interval=999.0)
+    app._client = client
+    async with app.run_test() as pilot:
+        await _settle(pilot)
+        await pilot.press("W")
+        await _settle(pilot)
+        screen = cast(WorkflowLibraryScreen, app.screen)
+        assert screen._templates[0]["id"] == "morning-briefing"
 
 
 # ---- drive-loop resilience ---------------------------------------------

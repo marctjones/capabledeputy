@@ -11,6 +11,9 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var events: [AuditEvent] = []
     @Published private(set) var appStatus = AppStatus.empty
     @Published private(set) var setupChecks: [SetupCheck] = []
+    @Published private(set) var setupPlan = SetupPlan(dictionary: [:])
+    @Published var approvalWindowID: Int?
+    @Published private(set) var turnStatusLine = ""
     @Published private(set) var gmailOAuthStatus = GmailOAuthStatus.empty
     @Published private(set) var googleOAuthStatuses: [String: GoogleOAuthStatus] = [:]
     @Published private(set) var daemonSettings = DaemonSettings.empty
@@ -39,6 +42,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var currentAssistantOutput = ""
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
     @Published private(set) var isRunningTurn = false
+    @Published private(set) var currentTurnID: String?
     @Published private(set) var isRecoveringDaemon = false
     @Published private(set) var isConfiguringGoogleOAuth = false
     @Published var selectedSection: DashboardSection = .today
@@ -57,13 +61,16 @@ final class CapDepAppModel: ObservableObject {
     ]
     @Published var taskPanelPinned = false
     @Published var lastError: String?
+    @Published var googleOAuthWizardServiceID: String?
+    @Published var isGoogleOAuthWizardPresented = false
 
     let client = DaemonClient(socketPath: DaemonClient.defaultSocketPath())
-    let workflows = defaultWorkflowTemplates
+    @Published private(set) var workflows: [WorkflowTemplate] = []
     private let notifications = NotificationCenterBridge()
     private let daemonSupervisor = DaemonSupervisor()
     private var didStart = false
     private var lastPendingApprovalCount = 0
+    private var lastNotifiedApprovalID: Int?
 
     init() {
         Task {
@@ -104,7 +111,8 @@ final class CapDepAppModel: ObservableObject {
             async let sessionsResult = client.call(method: "session.list")
             async let auditResult = client.call(method: "audit.tail", params: ["limit": 40])
             async let statusResult = client.call(method: "app.status")
-            async let setupResult = client.call(method: "setup.status")
+            async let setupResult = client.call(method: "setup.plan")
+            async let workflowsResult = client.call(method: "workflow.templates")
             async let googleOAuthResult = client.call(method: "setup.google.oauth_status")
             async let settingsResult = client.call(method: "settings.get")
             async let validationResult = client.call(method: "config.validate")
@@ -136,6 +144,7 @@ final class CapDepAppModel: ObservableObject {
             let auditObject = try await auditResult as? [String: Any]
             let statusObject = try await statusResult as? [String: Any]
             let setupObject = try await setupResult as? [String: Any]
+            let workflowsObject = try await workflowsResult as? [String: Any]
             let googleOAuthObject = try await googleOAuthResult as? [String: Any]
             let settingsObject = try await settingsResult as? [String: Any]
             let validationObject = try await validationResult as? [String: Any]
@@ -167,8 +176,11 @@ final class CapDepAppModel: ObservableObject {
                 .map(AuditEvent.init(dictionary:))
                 .reversed()
             appStatus = AppStatus(dictionary: statusObject ?? [:])
+            setupPlan = SetupPlan(dictionary: setupObject ?? [:])
             setupChecks = (setupObject?["checks"] as? [[String: Any]] ?? [])
                 .map(SetupCheck.init(dictionary:))
+            workflows = (workflowsObject?["templates"] as? [[String: Any]] ?? [])
+                .map(WorkflowTemplate.init(dictionary:))
             let googleStatuses = (
                 googleOAuthObject?["services"] as? [[String: Any]] ?? []
             ).map(GoogleOAuthStatus.init(dictionary:))
@@ -221,8 +233,12 @@ final class CapDepAppModel: ObservableObject {
             connected = true
             lastError = nil
             await refreshFrontmostContext()
-            if approvals.count > lastPendingApprovalCount {
-                await notifications.notifyPendingApprovals(count: approvals.count)
+            if approvals.count > lastPendingApprovalCount, let first = approvals.first {
+                await notifications.notifyPendingApproval(
+                    count: approvals.count,
+                    approvalID: first.id,
+                )
+                lastNotifiedApprovalID = first.id
             }
             lastPendingApprovalCount = approvals.count
         } catch {
@@ -261,6 +277,13 @@ final class CapDepAppModel: ObservableObject {
 
     func focusApproval(_ approval: Approval) {
         focusedApprovalID = approval.id
+        approvalWindowID = approval.id
+        selectedSection = .approvals
+    }
+
+    func presentApproval(id: Int) {
+        focusedApprovalID = id
+        approvalWindowID = id
         selectedSection = .approvals
     }
 
@@ -301,42 +324,172 @@ final class CapDepAppModel: ObservableObject {
 
     func launchWorkflow(_ workflow: WorkflowTemplate) async {
         selectedPurpose = workflow.purpose
-        commandText = workflow.prompt
-        await submitCommand(purpose: workflow.purpose)
+        commandText = workflow.turnMessage
+        await submitCommand(purpose: workflow.purpose, forceNewSession: false)
     }
 
-    func submitCommand(purpose: Purpose? = nil) async {
+    func submitCommand(purpose: Purpose? = nil, forceNewSession: Bool = false) async {
         let trimmed = commandText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return
         }
-        guard let session = await createSession(intent: trimmed, purpose: purpose ?? selectedPurpose) else {
+        let chosenPurpose = purpose ?? selectedPurpose
+        guard let session = await ensureSession(
+            intent: trimmed,
+            purpose: chosenPurpose,
+            forceNew: forceNewSession,
+        ) else {
             return
         }
         await send(message: trimmed, sessionID: session.id)
+        commandText = ""
+    }
+
+    func ensureSession(
+        intent: String,
+        purpose: Purpose,
+        forceNew: Bool = false,
+    ) async -> CapDepSession? {
+        if !forceNew, let currentSessionID,
+           let existing = sessions.first(where: { $0.id == currentSessionID }),
+           existing.status == "active",
+           (existing.purpose.isEmpty || existing.purpose == purpose.rawValue) {
+            return existing
+        }
+        return await createSession(intent: intent, purpose: purpose)
+    }
+
+    func forkCleanSession() async -> CapDepSession? {
+        guard let parentID = currentSessionID ?? sessions.first(where: { $0.status == "active" })?.id else {
+            return await createSession(intent: "Clean recovery session")
+        }
+        do {
+            let result = try await client.call(
+                method: "session.fork",
+                params: [
+                    "parent_id": parentID,
+                    "intent": "Clean recovery session",
+                ],
+            ) as? [String: Any]
+            let session = CapDepSession(dictionary: result ?? [:])
+            currentSessionID = session.id
+            selectedSection = .sessions
+            await refresh()
+            return session
+        } catch {
+            lastError = error.localizedDescription
+            return nil
+        }
     }
 
     func send(message: String, sessionID: String) async {
         isRunningTurn = true
         currentAssistantOutput = ""
         currentToolOutcomes = []
+        turnStatusLine = "Starting turn…"
+        currentTurnID = nil
         defer {
             isRunningTurn = false
+            turnStatusLine = ""
+            currentTurnID = nil
         }
         do {
-            let result = try await client.call(
-                method: "session.send",
+            let start = try await client.call(
+                method: "session.turn.start",
                 params: [
                     "session_id": sessionID,
                     "message": message,
+                    "client_id": "CapDepMac",
                 ],
             ) as? [String: Any]
-            currentAssistantOutput = result?["content"] as? String ?? ""
-            currentToolOutcomes = (result?["tool_outcomes"] as? [[String: Any]] ?? [])
-                .map(ToolOutcome.init(dictionary:))
+            let turn = start?["turn"] as? [String: Any] ?? [:]
+            let turnID = turn["id"] as? String ?? ""
+            guard !turnID.isEmpty else {
+                throw NSError(
+                    domain: "CapDepMac",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Daemon did not return a turn id."],
+                )
+            }
+            currentTurnID = turnID
+            currentSessionID = sessionID
+
+            var cursor = 0
+            while true {
+                let observed = try await client.call(
+                    method: "session.turn.get",
+                    params: ["turn_id": turnID],
+                ) as? [String: Any]
+                let observedTurn = observed?["turn"] as? [String: Any] ?? [:]
+                let status = observedTurn["status"] as? String ?? ""
+                let events = try await client.call(
+                    method: "session.turn.events",
+                    params: ["turn_id": turnID, "cursor": cursor, "limit": 200],
+                ) as? [String: Any]
+                let batch = events?["events"] as? [[String: Any]] ?? []
+                cursor = events?["next_cursor"] as? Int ?? cursor
+                for event in batch {
+                    turnStatusLine = describeTurnEvent(event)
+                    if let partial = observedTurn["partial_content"] as? String, !partial.isEmpty {
+                        currentAssistantOutput = partial
+                    }
+                }
+                if status == "completed" {
+                    let result = observedTurn["result"] as? [String: Any] ?? [:]
+                    currentAssistantOutput = result["content"] as? String ?? currentAssistantOutput
+                    currentToolOutcomes = (result["tool_outcomes"] as? [[String: Any]] ?? [])
+                        .map(ToolOutcome.init(dictionary:))
+                    break
+                }
+                if status == "interrupted" {
+                    currentAssistantOutput = observedTurn["partial_content"] as? String
+                        ?? "[turn interrupted: \(observedTurn["cancel_reason"] as? String ?? "cancelled")]"
+                    currentToolOutcomes = (observedTurn["partial_outcomes"] as? [[String: Any]] ?? [])
+                        .map(ToolOutcome.init(dictionary:))
+                    break
+                }
+                if status == "error" {
+                    throw NSError(
+                        domain: "CapDepMac",
+                        code: 2,
+                        userInfo: [
+                            NSLocalizedDescriptionKey: observedTurn["error"] as? String
+                                ?? "Turn failed.",
+                        ],
+                    )
+                }
+                try await Task.sleep(for: .milliseconds(250))
+            }
             await refresh()
         } catch {
             lastError = error.localizedDescription
+        }
+    }
+
+    private func describeTurnEvent(_ event: [String: Any]) -> String {
+        let type = event["type"] as? String ?? ""
+        let payload = event["payload"] as? [String: Any] ?? [:]
+        switch type {
+        case "llm_request_sent":
+            let tools = payload["n_tools"] as? Int ?? 0
+            return "Asking model (\(tools) tools available)…"
+        case "llm_response_received":
+            let toolCalls = payload["n_tool_calls"] as? Int ?? 0
+            return "Model responded (\(toolCalls) tool call(s))…"
+        case "tool_dispatched":
+            return "Calling \(payload["tool_name"] as? String ?? "tool")…"
+        case "tool_returned":
+            let outcome = payload["outcome"] as? [String: Any] ?? [:]
+            let toolName = outcome["tool_name"] as? String ?? payload["tool"] as? String ?? "tool"
+            return "\(toolName) returned (\(outcome["decision"] as? String ?? "done"))"
+        case "completed":
+            return "Turn completed."
+        case "interrupted":
+            return "Turn interrupted."
+        case "error":
+            return payload["message"] as? String ?? "Turn error."
+        default:
+            return type.isEmpty ? "Working…" : type
         }
     }
 
@@ -501,6 +654,44 @@ final class CapDepAppModel: ObservableObject {
         )
     }
 
+    func presentGoogleOAuthWizard(serviceID: String? = nil) {
+        googleOAuthWizardServiceID = serviceID ?? preferredGoogleOAuthServiceID()
+        isGoogleOAuthWizardPresented = true
+    }
+
+    func dismissGoogleOAuthWizard() {
+        isGoogleOAuthWizardPresented = false
+        googleOAuthWizardServiceID = nil
+    }
+
+    func preferredGoogleOAuthServiceID() -> String {
+        for connector in connectorStatuses where connector.id.hasPrefix("google-") {
+            if connector.status != "connected" {
+                return connector.id
+            }
+        }
+        return connectorStatuses.first(where: { $0.id.hasPrefix("google-") })?.id ?? "google-gmail"
+    }
+
+    func restartDaemon() async {
+        guard !isRecoveringDaemon else {
+            return
+        }
+        isRecoveringDaemon = true
+        defer {
+            isRecoveringDaemon = false
+        }
+        do {
+            try await daemonSupervisor.restart(client: client)
+            connected = true
+            lastError = nil
+            await refresh()
+        } catch {
+            connected = false
+            lastError = error.localizedDescription
+        }
+    }
+
     func configureGoogleOAuth(
         serviceID: String,
         clientID: String,
@@ -635,23 +826,39 @@ final class CapDepAppModel: ObservableObject {
     }
 
     func runSetupAction(_ action: SetupAction) async {
+        if let serviceID = Self.serviceIDFromSetupAction(action.id),
+           action.kind == "daemon_form"
+               || action.kind == "daemon_browser_oauth"
+               || action.id.contains("configure_oauth")
+               || action.id.contains("oauth_login")
+        {
+            presentGoogleOAuthWizard(serviceID: serviceID)
+            return
+        }
+
         do {
             let result = try await client.call(
                 method: "setup.run_action",
                 params: ["action_id": action.id],
             ) as? [String: Any]
             if let method = result?["method"] as? String {
-                if method == "config.validate" {
+                if method == "setup.google.configure_oauth"
+                    || method == "setup.google_gmail.configure_oauth"
+                {
+                    let serviceID = (result?["params"] as? [String: Any])?["service_id"] as? String
+                        ?? Self.serviceIDFromSetupAction(action.id)
+                    presentGoogleOAuthWizard(serviceID: serviceID)
+                } else if method == "config.validate" {
                     await validateConfiguration()
                 } else if method == "config.log_locations" {
                     await refreshLogLocations()
                 } else if method == "setup.google_gmail.oauth_login" {
-                    await authorizeGmailOAuth()
+                    presentGoogleOAuthWizard(serviceID: "google-gmail")
                 } else if method == "setup.google.oauth_login",
                           let serviceID = (result?["params"] as? [String: Any])?["service_id"]
                             as? String
                 {
-                    await authorizeGoogleOAuth(serviceID: serviceID)
+                    presentGoogleOAuthWizard(serviceID: serviceID)
                 }
             } else if let url = result?["url"] as? String, let target = URL(string: url) {
                 NSWorkspace.shared.open(target)
@@ -754,8 +961,11 @@ final class CapDepAppModel: ObservableObject {
         guard !approval.siblingGroupID.isEmpty else {
             return
         }
+        let strongAuth = await strongAuthMarkerIfNeeded(for: approval)
+        guard strongAuthSatisfied(for: approval, marker: strongAuth) else {
+            return
+        }
         do {
-            let strongAuth = await strongAuthMarkerIfNeeded(for: approval)
             _ = try await client.call(
                 method: "approval.approve_group",
                 params: [
@@ -764,6 +974,7 @@ final class CapDepAppModel: ObservableObject {
                     "strong_auth": strongAuth,
                 ],
             )
+            approvalWindowID = nil
             await refresh()
         } catch {
             lastError = error.localizedDescription
@@ -771,6 +982,17 @@ final class CapDepAppModel: ObservableObject {
     }
 
     func cancelCurrentTurn() async {
+        if let currentTurnID {
+            do {
+                _ = try await client.call(
+                    method: "session.turn.cancel",
+                    params: ["turn_id": currentTurnID, "reason": "operator_stop"],
+                )
+            } catch {
+                lastError = error.localizedDescription
+            }
+            return
+        }
         guard let currentSessionID else {
             return
         }
@@ -847,13 +1069,20 @@ final class CapDepAppModel: ObservableObject {
     }
 
     private func decide(_ approval: Approval, approved: Bool) async {
+        var strongAuth = ""
+        if approved {
+            strongAuth = await strongAuthMarkerIfNeeded(for: approval)
+            guard strongAuthSatisfied(for: approval, marker: strongAuth) else {
+                return
+            }
+        }
         do {
             var params: [String: Any] = [
                 "id": approval.id,
                 "decided_by": "CapDepMac",
             ]
             if approved {
-                params["strong_auth"] = await strongAuthMarkerIfNeeded(for: approval)
+                params["strong_auth"] = strongAuth
             } else {
                 params["reason"] = "denied in CapDep macOS app"
             }
@@ -861,17 +1090,28 @@ final class CapDepAppModel: ObservableObject {
                 method: approved ? "approval.approve" : "approval.deny",
                 params: params,
             )
+            approvalWindowID = nil
             await refresh()
         } catch {
             lastError = error.localizedDescription
         }
     }
 
+    private func strongAuthSatisfied(for approval: Approval, marker: String) -> Bool {
+        guard approval.touchIDPolicyEnabled else {
+            return true
+        }
+        guard approval.requiresStrongAuth else {
+            return true
+        }
+        return marker == "touch_id"
+    }
+
     private func strongAuthMarkerIfNeeded(for approval: Approval) async -> String {
-        guard daemonSettings.requireTouchIDForHighRisk else {
+        guard approval.touchIDPolicyEnabled else {
             return ""
         }
-        guard approval.requiresHighRiskAuthentication else {
+        guard approval.requiresStrongAuth else {
             return ""
         }
         let context = LAContext()
@@ -1041,6 +1281,19 @@ final class CapDepAppModel: ObservableObject {
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    private static func serviceIDFromSetupAction(_ actionID: String) -> String? {
+        let prefix = "setup.google."
+        guard actionID.hasPrefix(prefix) else {
+            return nil
+        }
+        let remainder = actionID.dropFirst(prefix.count)
+        guard let dot = remainder.firstIndex(of: ".") else {
+            return nil
+        }
+        let serviceID = String(remainder[..<dot])
+        return serviceID.isEmpty ? nil : serviceID
     }
 
     private func shouldRecoverDaemon(after error: Error) -> Bool {

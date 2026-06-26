@@ -28,11 +28,13 @@ Design notes:
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import AsyncExitStack
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import anyio
@@ -100,20 +102,62 @@ class UpstreamDead(RuntimeError):  # noqa: N818 (descriptive domain exception)
     changes (operator restart, config update)."""
 
 
+class UpstreamCallFailed(RuntimeError):  # noqa: N818 (descriptive domain exception)
+    """Raised when an upstream tool call failed without transport death.
+
+    Streamable-http MCP clients often surface remote HTTP/MCP failures
+    as task cancellation (`asyncio.CancelledError`), which is a
+    `BaseException` and must not be mistaken for session death or
+    allowed to propagate uncaught through RPC handlers."""
+
+
+def _is_task_cancellation(exc: BaseException) -> bool:
+    """True when `exc` is asyncio/anyio task cancellation, not death."""
+    if isinstance(exc, asyncio.CancelledError):
+        return True
+    # anyio.CancelledError is a distinct type on some backends.
+    return type(exc).__name__ == "CancelledError"
+
+
+def _normalize_call_failure(exc: BaseException, upstream_name: str) -> BaseException:
+    """Convert non-death call failures into catchable `Exception`s."""
+    if _is_task_cancellation(exc):
+        return UpstreamCallFailed(
+            f"upstream {upstream_name!r} request cancelled (remote error?)",
+        )
+    return exc
+
+
 def _looks_like_session_death(exc: BaseException) -> bool:
     """Heuristic: is this exception consistent with the subprocess
     dying / pipe broken / stream closed?
 
-    Conservative: when in doubt, return True. The cost of a false
-    positive is one respawn (we kill a possibly-fine session and
-    bring it back); the cost of a false negative is a stuck upstream.
-    We err toward the cheap mistake.
+    Conservative for transport failures, but **not** for ordinary
+    remote HTTP/MCP errors. A 401/403 from Google's Gmail MCP is an
+    auth/permission problem — respawning the local session cannot fix
+    it and tearing down the streamable-http client during an in-flight
+    RPC has been observed to take down the whole daemon task group.
 
     Known-safe exceptions we DO NOT want to interpret as death:
       - mcp.shared.exceptions.McpError with `code != -32000` is a
         protocol-level error (tool not found, bad args). Don't tear
         down the session for these.
+      - httpx.HTTPStatusError — the remote server responded.
+      - asyncio/anyio CancelledError — remote HTTP failures in the MCP
+        streamable-http client cancel sibling tasks; not transport death.
+      - UpstreamCallFailed — normalized non-death call failure.
+      - ExceptionGroup/BaseExceptionGroup — inspect sub-exceptions; only
+        death if at least one sub-exception looks like transport death.
     """
+    if isinstance(exc, UpstreamCallFailed):
+        return False
+    if _is_task_cancellation(exc):
+        return False
+    if isinstance(exc, ExceptionGroup):
+        if not exc.exceptions:
+            return False
+        return any(_looks_like_session_death(sub) for sub in exc.exceptions)
+
     name = type(exc).__name__
     # Anyio stream errors during read/write to the subprocess
     if name in (
@@ -127,6 +171,9 @@ def _looks_like_session_death(exc: BaseException) -> bool:
     # Generic pipe / process errors
     if isinstance(exc, OSError):
         return True
+    # Remote HTTP MCP servers answered with an HTTP status — not death.
+    if name == "HTTPStatusError":
+        return False
     # MCP protocol errors that AREN'T death
     if name == "McpError":
         code = getattr(exc, "code", None)
@@ -134,6 +181,14 @@ def _looks_like_session_death(exc: BaseException) -> bool:
         return code in (None, -32000, -32603)
     # Unknown — treat as candidate death.
     return True
+
+
+@dataclass
+class _OwnerRequest:
+    coro: Callable[[], Awaitable[Any]]
+    done: anyio.Event = field(default_factory=anyio.Event)
+    result: Any = None
+    error: BaseException | None = None
 
 
 class LiveSession:
@@ -166,6 +221,13 @@ class LiveSession:
         self._respawn_lock = anyio.Lock()
         self._consecutive_failures = 0
         self._last_failure_at = 0.0
+        # streamable-http MCP clients must be spawned and called from the
+        # same task — otherwise cancel scopes tear down the daemon.
+        self._owner_stack: AsyncExitStack | None = None
+        self._owner_tg: anyio.abc.TaskGroup | None = None
+        self._ready = anyio.Event()
+        self._req_send: anyio.abc.ObjectSendStream[_OwnerRequest] | None = None
+        self._req_recv: anyio.abc.ObjectReceiveStream[_OwnerRequest] | None = None
 
     @property
     def name(self) -> str:
@@ -178,17 +240,72 @@ class LiveSession:
     async def start(self) -> None:
         """Initial spawn. Raises on failure (no retry). Subsequent
         respawn-on-death attempts handle their own backoff."""
+        if self._config.transport == "streamable_http":
+            self._req_send, self._req_recv = anyio.create_memory_object_stream[
+                _OwnerRequest
+            ](32)
+            self._owner_stack = AsyncExitStack()
+            await self._owner_stack.__aenter__()
+            self._owner_tg = await self._owner_stack.enter_async_context(
+                anyio.create_task_group(),
+            )
+            self._owner_tg.start_soon(self._owner_loop)
+            await self._ready.wait()
+            return
         await self._spawn()
 
     async def stop(self) -> None:
         """Tear down. Safe to call multiple times."""
+        if self._req_send is not None:
+            with contextlib.suppress(BaseException):
+                await self._req_send.aclose()
+            self._req_send = None
+            self._req_recv = None
+        if self._owner_stack is not None:
+            with contextlib.suppress(BaseException):
+                await self._owner_stack.__aexit__(None, None, None)
+            self._owner_stack = None
+            self._owner_tg = None
+            self._stack = None
+            self._session = None
+            return
         if self._stack is not None:
             # During shutdown, swallow tear-down errors so we don't
             # mask the more important shutdown.
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(BaseException):
                 await self._stack.__aexit__(None, None, None)
             self._stack = None
             self._session = None
+
+    async def _owner_loop(self) -> None:
+        """Own streamable-http MCP I/O in one task (spawn + calls)."""
+        try:
+            await self._spawn()
+            self._ready.set()
+            assert self._req_recv is not None
+            async for req in self._req_recv:
+                try:
+                    req.result = await req.coro()
+                except BaseException as e:
+                    req.error = _normalize_call_failure(e, self._config.name)
+                req.done.set()
+        finally:
+            if self._stack is not None:
+                with contextlib.suppress(BaseException):
+                    await self._stack.__aexit__(None, None, None)
+                self._stack = None
+                self._session = None
+
+    async def _dispatch(self, coro: Callable[[], Awaitable[Any]]) -> Any:
+        if self._config.transport != "streamable_http":
+            return await coro()
+        assert self._req_send is not None
+        req = _OwnerRequest(coro=coro)
+        await self._req_send.send(req)
+        await req.done.wait()
+        if req.error is not None:
+            raise req.error
+        return req.result
 
     async def _spawn(self) -> None:
         stack = AsyncExitStack()
@@ -222,7 +339,7 @@ class LiveSession:
             session = await stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
         except Exception:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(BaseException):
                 await stack.__aexit__(None, None, None)
             raise
         self._stack = stack
@@ -238,7 +355,7 @@ class LiveSession:
         """Tear down (if any) + sleep proportional to consecutive
         failures + spawn. Called under `_respawn_lock`."""
         if self._stack is not None:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(BaseException):
                 await self._stack.__aexit__(None, None, None)
         self._stack = None
         self._session = None
@@ -308,24 +425,48 @@ class LiveSession:
                     f"upstream {self._config.name!r} respawned but the retry "
                     f"call also failed: {type(retry_err).__name__}: {retry_err}",
                 ) from retry_err
+        except BaseException as e:
+            # CancelledError is BaseException, not Exception — it bypasses
+            # the death heuristic and has been observed to kill the daemon
+            # task group when allowed to propagate from tool.call handlers.
+            normalized = _normalize_call_failure(e, self._config.name)
+            if (
+                isinstance(normalized, UpstreamCallFailed)
+                and self._config.transport == "streamable_http"
+            ):
+                # A 401/cancel leaves the streamable-http transport wedged;
+                # respawn in the owner task so later calls can proceed.
+                with contextlib.suppress(BaseException):
+                    await self._respawn_with_backoff()
+            raise normalized from e
 
     # ---- Quack-like-ClientSession proxies. Adapter calls these. ----
 
     async def initialize(self) -> Any:
-        return await self._with_retry(lambda s: s.initialize())
+        return await self._dispatch(
+            lambda: self._with_retry(lambda s: s.initialize()),
+        )
 
     async def list_tools(self) -> Any:
-        return await self._with_retry(lambda s: s.list_tools())
+        return await self._dispatch(
+            lambda: self._with_retry(lambda s: s.list_tools()),
+        )
 
     async def list_resources(self) -> Any:
-        return await self._with_retry(lambda s: s.list_resources())
+        return await self._dispatch(
+            lambda: self._with_retry(lambda s: s.list_resources()),
+        )
 
     async def read_resource(self, uri: AnyUrl) -> Any:
         # Mirrors mcp.ClientSession.read_resource(uri: AnyUrl) so SessionLike
         # (ClientSession | LiveSession) is a coherent union for callers.
-        return await self._with_retry(lambda s: s.read_resource(uri))
+        return await self._dispatch(
+            lambda: self._with_retry(lambda s: s.read_resource(uri)),
+        )
 
     async def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> Any:
-        return await self._with_retry(
-            lambda s: s.call_tool(name, arguments=arguments),
+        return await self._dispatch(
+            lambda: self._with_retry(
+                lambda s: s.call_tool(name, arguments=arguments),
+            ),
         )

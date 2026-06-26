@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import urllib.error
+import urllib.request
 
 from capabledeputy.llm.client import LLMClient
 from capabledeputy.llm.mlx_client import DEFAULT_MLX_MODEL
@@ -10,6 +12,26 @@ from capabledeputy.llm.mlx_client import DEFAULT_MLX_MODEL
 _CLAUDE_CLI_ALIASES = frozenset({"claude-cli", "claude", "cli", "subscription"})
 _MLX_ALIASES = frozenset({"mlx", "metal", "local-mlx"})
 _LITELLM_ALIASES = frozenset({"litellm", "api", "anthropic"})
+_DEFAULT_OLLAMA_MODEL = "ollama/phi4:latest"
+
+
+def mlx_metal_available() -> bool:
+    """Return True when MLX can see an Apple Metal device."""
+    try:
+        import mlx.core as mx  # type: ignore[import-not-found]
+
+        return bool(mx.metal.is_available())
+    except Exception:
+        return False
+
+
+def ollama_reachable() -> bool:
+    """Return True when a local Ollama daemon responds on the default port."""
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=1.0) as response:
+            return response.status < 400
+    except (OSError, urllib.error.URLError, ValueError):
+        return False
 
 
 def default_llm_model_spec() -> str:
@@ -19,6 +41,28 @@ def default_llm_model_spec() -> str:
     if platform.system() == "Darwin" and platform.machine().lower() in {"arm64", "aarch64"}:
         return f"mlx/{DEFAULT_MLX_MODEL}"
     return "claude-haiku-4-5"
+
+
+def resolve_planner_model_spec(*, prefer_local_mlx: bool = True) -> str:
+    """Pick a local planner model when env vars did not override the backend.
+
+    On Apple Silicon: prefer MLX when Metal is available and the operator
+    has not disabled local MLX. Fall back to Ollama when MLX is unavailable
+    or disabled but Ollama is running.
+    """
+    if os.environ.get("CAPDEP_LLM_BACKEND") or os.environ.get("CAPDEP_LLM_MODEL"):
+        return os.environ.get("CAPDEP_LLM_MODEL") or default_llm_model_spec()
+
+    import platform
+
+    on_apple_silicon = (
+        platform.system() == "Darwin" and platform.machine().lower() in {"arm64", "aarch64"}
+    )
+    if on_apple_silicon and prefer_local_mlx and mlx_metal_available():
+        return default_llm_model_spec()
+    if ollama_reachable():
+        return _DEFAULT_OLLAMA_MODEL
+    return default_llm_model_spec()
 
 
 def mlx_enable_thinking() -> bool:

@@ -580,6 +580,21 @@ class LabeledToolClient:
                 tool_name=tool_name,
                 tool_args=args,
             )
+        except BaseException as e:
+            from capabledeputy.upstream.supervisor import _is_task_cancellation
+
+            if not _is_task_cancellation(e):
+                raise
+            return ToolCallOutcome(
+                decision=Decision.ALLOW,
+                error=(
+                    "UpstreamCallFailed: upstream request cancelled "
+                    "(remote error?)"
+                ),
+                rule=None,
+                tool_name=tool_name,
+                tool_args=args,
+            )
 
         tool_returned_event = Event(
             audit_id=uuid4(),

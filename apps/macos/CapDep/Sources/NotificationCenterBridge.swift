@@ -22,7 +22,7 @@ final class NotificationCenterBridge {
         }
     }
 
-    func notifyPendingApprovals(count: Int) async {
+    func notifyPendingApproval(count: Int, approvalID: Int) async {
         guard canUseUserNotifications else {
             return
         }
@@ -31,10 +31,13 @@ final class NotificationCenterBridge {
         }
         let content = UNMutableNotificationContent()
         content.title = "CapDep approval needed"
-        content.body = count == 1 ? "1 action is waiting for review." : "\(count) actions are waiting for review."
+        content.body = count == 1
+            ? "Approval #\(approvalID) is waiting for review."
+            : "\(count) actions are waiting for review. Open approval #\(approvalID)."
         content.sound = .default
+        content.userInfo = ["approval_id": approvalID]
         let request = UNNotificationRequest(
-            identifier: "capdep.pending-approvals.\(Date().timeIntervalSince1970)",
+            identifier: "capdep.pending-approval.\(approvalID)",
             content: content,
             trigger: nil,
         )

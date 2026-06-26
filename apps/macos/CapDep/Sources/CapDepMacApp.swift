@@ -1,9 +1,35 @@
 import SwiftUI
+import UserNotifications
+
+struct ApprovalCardWindow: View {
+    @EnvironmentObject private var model: CapDepAppModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        Group {
+            if let approval = model.pendingApprovals.first(where: { $0.id == model.approvalWindowID }) {
+                ApprovalDetailView(approval: approval)
+            } else {
+                ContentUnavailableView(
+                    "No Pending Approval",
+                    systemImage: "checkmark.shield",
+                    description: Text("The approval queue is empty or this item was already decided."),
+                )
+            }
+        }
+        .onChange(of: model.approvalWindowID) { _, newValue in
+            if newValue == nil {
+                dismiss()
+            }
+        }
+    }
+}
 
 @main
 struct CapDepMacApp: App {
     private static let singleInstanceGuard = SingleInstanceGuard(name: "capdepmac")
     @StateObject private var model = CapDepAppModel()
+    private let notificationDelegate = CapDepNotificationDelegate()
 
     init() {
         if !Self.singleInstanceGuard.didAcquire {
@@ -17,6 +43,8 @@ struct CapDepMacApp: App {
                 .environmentObject(model)
                 .frame(minWidth: 1040, minHeight: 720)
                 .task {
+                    notificationDelegate.model = model
+                    UNUserNotificationCenter.current().delegate = notificationDelegate
                     await model.start()
                 }
         }
@@ -47,6 +75,28 @@ struct CapDepMacApp: App {
                 .frame(width: 460, height: 620)
                 .task {
                     await model.start()
+                }
+        }
+        .windowResizability(.contentSize)
+
+        Window("Approval", id: "approval-card") {
+            ApprovalCardWindow()
+                .environmentObject(model)
+                .frame(minWidth: 640, minHeight: 520)
+                .task {
+                    await model.start()
+                }
+        }
+        .windowResizability(.contentSize)
+
+        Window("Google Account Setup", id: "google-oauth-wizard") {
+            GoogleOAuthWizardView()
+                .environmentObject(model)
+                .task {
+                    await model.start()
+                }
+                .onDisappear {
+                    model.dismissGoogleOAuthWizard()
                 }
         }
         .windowResizability(.contentSize)
@@ -112,7 +162,7 @@ struct CapDepCommands: Commands {
         CommandMenu("Session") {
             Button("Fork Clean Session") {
                 Task {
-                    await model.createSession(intent: "Clean recovery session")
+                    await model.forkCleanSession()
                 }
             }
             Button("Set Purpose: Inbox") {
@@ -136,8 +186,8 @@ struct CapDepCommands: Commands {
             }
             ForEach(model.pendingApprovals.prefix(5)) { approval in
                 Button("Review Approval #\(approval.id)") {
-                    model.focusApproval(approval)
-                    openWindow(id: "main")
+                    model.presentApproval(id: approval.id)
+                    openWindow(id: "approval-card")
                 }
             }
             Button("Deny Selected Approval") {
@@ -158,6 +208,17 @@ struct CapDepCommands: Commands {
                         openWindow(id: "task-panel")
                     }
                 }
+            }
+        }
+
+        CommandMenu("Setup") {
+            Button("Set Up Google Account…") {
+                model.presentGoogleOAuthWizard()
+                openWindow(id: "google-oauth-wizard")
+            }
+            Button("Open Setup Assistant") {
+                model.selectedSection = .setup
+                openWindow(id: "main")
             }
         }
 

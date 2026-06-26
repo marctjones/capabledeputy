@@ -19,6 +19,7 @@ from anyio.abc import SocketStream, TaskGroup
 
 from capabledeputy.daemon.handlers import Handler, default_handlers
 from capabledeputy.daemon.verbose_log import VerboseLogger
+from capabledeputy.upstream.supervisor import _is_task_cancellation
 from capabledeputy.ipc.rpc import (
     INTERNAL_ERROR,
     JSONRPC_VERSION,
@@ -166,8 +167,20 @@ class Daemon:
                 tg.start_soon(_wait_shutdown)
                 if self._idle_shutdown_seconds is not None and self._idle_shutdown_seconds > 0:
                     tg.start_soon(self._idle_shutdown_monitor)
-                with suppress(anyio.ClosedResourceError):
-                    await listener.serve(self._handle_connection)
+                # listener.serve() can receive spurious CancelledError when
+                # streamable-http upstream MCP clients tear down an in-flight
+                # request (Gmail 401). Restart accepting connections instead
+                # of letting that kill the daemon process.
+                while not self._shutdown_event.is_set():
+                    try:
+                        with suppress(anyio.ClosedResourceError):
+                            await listener.serve(self._handle_connection)
+                        break
+                    except BaseException as e:
+                        if self._shutdown_event.is_set():
+                            break
+                        if not _is_task_cancellation(e):
+                            raise
         finally:
             self._background_tg = None
             await listener.aclose()
@@ -202,6 +215,16 @@ class Daemon:
             # one-shot CLI closing — and MUST terminate only THIS
             # connection, never propagate out and take down the daemon.
             pass
+        except Exception:
+            # A single bad RPC must not take down listener.serve() and
+            # kill every other client (menu bar, REPL, agent turns).
+            pass
+        except BaseException as e:
+            # Upstream MCP HTTP failures can surface as task cancellation
+            # in the connection handler task. That is BaseException, not
+            # Exception — letting it propagate kills listener.serve().
+            if not _is_task_cancellation(e):
+                raise
         finally:
             await self._cancel_disconnect_turns(stream)
             await self._unsubscribe_stream(stream)
@@ -269,6 +292,21 @@ class Daemon:
             response = RpcResponse(
                 id=request.id,
                 error=error(INTERNAL_ERROR, f"handler error: {e}"),
+            )
+            await stream.send(response.encode())
+            return
+        except BaseException as e:
+            if not _is_task_cancellation(e):
+                raise
+            elapsed_ms = (time.monotonic() - start) * 1000
+            if self._verbose is not None:
+                self._verbose.log_error(request.method, request.params, e, elapsed_ms)
+            response = RpcResponse(
+                id=request.id,
+                error=error(
+                    INTERNAL_ERROR,
+                    "handler cancelled (upstream request failed)",
+                ),
             )
             await stream.send(response.encode())
             return

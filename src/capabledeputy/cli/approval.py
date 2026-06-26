@@ -117,13 +117,20 @@ def approval_submit(
 def approval_approve(
     request_id: Annotated[int, typer.Argument(help="Approval id")],
     decided_by: Annotated[str, typer.Option("--by")] = "user",
+    strong_auth: Annotated[
+        str | None,
+        typer.Option(
+            "--strong-auth",
+            help="Strong-auth marker when touch-id policy is enabled (e.g. touch_id)",
+        ),
+    ] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Approve a request and execute it (spawning a purpose-limited session if needed)."""
-    result = _call(
-        "approval.approve",
-        {"id": request_id, "decided_by": decided_by},
-    )
+    params: dict[str, Any] = {"id": request_id, "decided_by": decided_by}
+    if strong_auth:
+        params["strong_auth"] = strong_auth
+    result = _call("approval.approve", params)
     if json_output:
         console.print_json(data=result)
         return

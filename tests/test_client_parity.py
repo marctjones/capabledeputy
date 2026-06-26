@@ -134,6 +134,37 @@ def test_swift_gui_has_generic_daemon_rpc_workbench() -> None:
     assert "client.call(method: trimmedMethod" in swift_text
 
 
+def test_cli_implements_setup_and_workflow_manifested_methods() -> None:
+    manifest = _parity()["rpc_methods"]
+    cli_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "src" / "capabledeputy" / "cli").glob("*.py")
+    )
+    for method in (
+        "setup.run_action",
+        "workflow.templates",
+    ):
+        assert manifest[method]["cli"] == "implemented"
+        assert f'"{method}"' in cli_text, f"CLI missing {method}"
+
+
+def test_tui_implements_setup_and_workflow_manifested_methods() -> None:
+    manifest = _parity()["rpc_methods"]
+    tui_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "src" / "capabledeputy" / "tui").glob("*.py")
+    )
+    for method in (
+        "setup.plan",
+        "setup.check",
+        "setup.status",
+        "setup.run_action",
+        "workflow.templates",
+    ):
+        assert manifest[method]["tui"] == "implemented"
+        assert f'"{method}"' in tui_text, f"TUI missing {method}"
+
+
 def test_tui_has_generic_daemon_rpc_workbench() -> None:
     tui_text = "\n".join(
         path.read_text(encoding="utf-8")

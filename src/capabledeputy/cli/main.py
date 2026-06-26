@@ -19,6 +19,7 @@ from capabledeputy.cli.override_cmd import override_app
 from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.session import session_app
 from capabledeputy.cli.tool import tool_app
+from capabledeputy.cli.workflow import workflow_app
 from capabledeputy.daemon.lifecycle import (
     daemon_status,
     run_daemon,
@@ -51,6 +52,7 @@ oauth_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(oauth_app, name="oauth")
+app.add_typer(workflow_app, name="workflow")
 google_oauth_app = typer.Typer(
     help="Configure daemon-owned Google Workspace MCP OAuth.",
     no_args_is_help=True,
@@ -1069,6 +1071,90 @@ def app_status_command(
     console.print(f"local model available: {model.get('local_available', False)}")
 
 
+@app.command("setup-plan")
+def setup_plan_command(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Show daemon-owned onboarding plan with ordered steps and first workflow."""
+    result = anyio.run(DaemonClient(default_socket_path()).call, "setup.plan", {})
+    if json_output:
+        console.print_json(data=result)
+        return
+    from rich.table import Table
+
+    workflow = result.get("first_workflow", {})
+    console.print(
+        f"[bold]Setup plan[/bold] — ready={result.get('ready')} "
+        f"workflow_ready={result.get('workflow_ready')}"
+    )
+    console.print(
+        f"First workflow: {workflow.get('title', '')} "
+        f"({workflow.get('id', '')}) — {workflow.get('hint', '')}"
+    )
+    steps = result.get("steps", [])
+    table = Table(title=f"Steps ({len(steps)})")
+    table.add_column("Order")
+    table.add_column("ID")
+    table.add_column("Status")
+    table.add_column("Detail")
+    for step in steps:
+        table.add_row(
+            str(step.get("order", "")),
+            step.get("id", ""),
+            step.get("status", ""),
+            step.get("detail", ""),
+        )
+    console.print(table)
+
+
+@app.command("setup-check")
+def setup_check_command(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Quick readiness check for CI and first-run smoke gates."""
+    result = anyio.run(DaemonClient(default_socket_path()).call, "setup.check", {})
+    if json_output:
+        console.print_json(data=result)
+        return
+    console.print(
+        f"ok={result.get('ok')} workflow_ready={result.get('workflow_ready')} "
+        f"first_workflow={result.get('first_workflow', '')}"
+    )
+    blockers = result.get("blocking_steps", [])
+    if blockers:
+        console.print("[yellow]Blocking steps:[/yellow]")
+        for step in blockers:
+            console.print(f"  - {step.get('id')}: {step.get('detail')}")
+
+
+@app.command("setup-run-action")
+def setup_run_action_command(
+    action_id: Annotated[str, typer.Argument(help="Setup action id from setup.plan checks")],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Resolve a daemon-owned setup remediation action descriptor."""
+    result = anyio.run(
+        DaemonClient(default_socket_path()).call,
+        "setup.run_action",
+        {"action_id": action_id},
+    )
+    if json_output:
+        console.print_json(data=result)
+        return
+    kind = result.get("kind", "")
+    console.print(f"[bold]setup action[/bold] {action_id} kind={kind}")
+    if kind == "daemon_rpc":
+        console.print(f"  method: {result.get('method', '')}")
+        console.print(f"  params: {result.get('params', {})}")
+        console.print(f"  enabled: {result.get('enabled', False)}")
+    elif kind == "open_url":
+        console.print(f"  url: {result.get('url', '')}")
+    elif kind == "client_navigation":
+        console.print(f"  section: {result.get('section', '')}")
+    else:
+        console.print_json(data=result)
+
+
 @app.command("setup-status")
 def setup_status_command(
     json_output: Annotated[bool, typer.Option("--json")] = False,
@@ -1775,10 +1861,16 @@ def imap_setup(
         secrets_dir.mkdir(parents=True, exist_ok=True)
         if not username:
             username = typer.prompt("Email address")
-        password = typer.prompt(
-            "Password (App Password for Gmail; will be hidden)",
-            hide_input=True,
-        )
+        password = (
+            _os.environ.get("CAPDEP_IMAP_PASSWORD")
+            or _os.environ.get("IMAP_APP_PASSWORD")
+            or ""
+        ).strip()
+        if not password:
+            password = typer.prompt(
+                "Password (App Password for Gmail; will be hidden)",
+                hide_input=True,
+            )
 
         pw_path = secrets_dir / "imap-password"
         pw_path.write_text(password.strip() + "\n", encoding="utf-8")

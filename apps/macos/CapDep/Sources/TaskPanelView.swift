@@ -33,6 +33,16 @@ struct TaskPanelView: View {
                 ContextChipRow(chips: model.contextChips)
             }
 
+            if model.isRunningTurn, !model.turnStatusLine.isEmpty {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(model.turnStatusLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             if !model.currentAssistantOutput.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Result")

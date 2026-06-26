@@ -20,6 +20,7 @@ import pytest
 from capabledeputy.upstream.config import UpstreamServerConfig
 from capabledeputy.upstream.supervisor import (
     LiveSession,
+    UpstreamCallFailed,
     UpstreamDead,
     _looks_like_session_death,
 )
@@ -123,6 +124,39 @@ def test_session_death_heuristic_unknown_exc_is_treated_as_death() -> None:
     assert _looks_like_session_death(RuntimeError("???")) is True
 
 
+def test_session_death_heuristic_http_status_error_is_not_death() -> None:
+    import httpx
+
+    err = httpx.HTTPStatusError(
+        "401",
+        request=httpx.Request("POST", "https://gmailmcp.googleapis.com/mcp/v1"),
+        response=httpx.Response(401),
+    )
+    assert _looks_like_session_death(err) is False
+
+
+def test_session_death_heuristic_cancelled_error_is_not_death() -> None:
+    import asyncio
+
+    assert _looks_like_session_death(asyncio.CancelledError()) is False
+
+
+def test_session_death_heuristic_upstream_call_failed_is_not_death() -> None:
+    assert _looks_like_session_death(UpstreamCallFailed("nope")) is False
+
+
+def test_session_death_heuristic_exception_group_inspects_subexceptions() -> None:
+    import httpx
+
+    http_err = httpx.HTTPStatusError(
+        "401",
+        request=httpx.Request("POST", "https://example.test/mcp"),
+        response=httpx.Response(401),
+    )
+    assert _looks_like_session_death(ExceptionGroup("eg", [http_err])) is False
+    assert _looks_like_session_death(ExceptionGroup("eg", [BrokenPipeError()])) is True
+
+
 # --- Initial spawn ---
 
 
@@ -222,6 +256,27 @@ def test_call_tool_raises_upstream_dead_when_retry_also_fails(
 
 
 # --- Non-death exceptions pass through ---
+
+
+def test_call_tool_cancelled_error_raises_upstream_call_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Remote HTTP failures in streamable-http MCP clients surface as
+    CancelledError. That must not respawn the session or kill callers."""
+    import asyncio
+
+    live = LiveSession(_make_config(), max_backoff_seconds=0.01)
+    fake = _FakeSession(call_tool_raises=asyncio.CancelledError("cancel scope"))
+    spawn_calls = _patch_spawn_sequence(live, [fake])
+
+    async def go() -> Any:
+        await live.start()
+        return await live.call_tool("x")
+
+    with pytest.raises(UpstreamCallFailed, match="request cancelled"):
+        asyncio.run(go())
+    assert len(spawn_calls) == 1
+    assert fake.call_count == 1
 
 
 def test_call_tool_protocol_error_does_not_respawn(

@@ -35,7 +35,12 @@ from capabledeputy.daemon.setup_control_handlers import make_setup_control_handl
 from capabledeputy.daemon.tool_handlers import make_tool_handlers
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
-from capabledeputy.llm.factory import default_llm_model_spec, make_llm_client
+from capabledeputy.daemon.settings_store import load_settings
+from capabledeputy.llm.factory import (
+    default_llm_model_spec,
+    make_llm_client,
+    resolve_planner_model_spec,
+)
 from capabledeputy.policy.capabilities import DEFAULT_MAX_DELEGATION_DEPTH
 from capabledeputy.policy.overrides import OverridePolicies
 from capabledeputy.secrets import load_anthropic_api_key
@@ -488,7 +493,10 @@ async def run_daemon(
     else:
         enable_policy_preview = policy_preview
 
-    chosen_model = model or os.environ.get("CAPDEP_LLM_MODEL")
+    settings = load_settings()
+    chosen_model = model or resolve_planner_model_spec(
+        prefer_local_mlx=settings.prefer_local_mlx,
+    )
     warning_model = chosen_model or default_llm_model_spec()
     backend = os.environ.get("CAPDEP_LLM_BACKEND", "").strip().lower()
     quarantined_model = os.environ.get("CAPDEP_QUARANTINED_LLM_MODEL")

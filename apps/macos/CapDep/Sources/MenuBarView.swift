@@ -45,8 +45,13 @@ struct MenuBarView: View {
             .keyboardShortcut(" ", modifiers: [.option])
 
             Button {
-                model.selectedSection = .approvals
-                openWindow(id: "main")
+                if let first = model.pendingApprovals.first {
+                    model.presentApproval(id: first.id)
+                    openWindow(id: "approval-card")
+                } else {
+                    model.selectedSection = .approvals
+                    openWindow(id: "main")
+                }
             } label: {
                 Label("Approvals", systemImage: "hand.raised")
             }
@@ -89,10 +94,20 @@ struct MenuBarView: View {
                         .foregroundStyle(.secondary)
                     ForEach(model.pendingApprovals.prefix(3)) { approval in
                         Button("#\(approval.id) \(approval.action) -> \(approval.target)") {
-                            model.selectedSection = .approvals
-                            openWindow(id: "main")
+                            model.presentApproval(id: approval.id)
+                            openWindow(id: "approval-card")
                         }
                     }
+                }
+            }
+
+            if needsGoogleSetup {
+                Divider()
+                Button {
+                    model.presentGoogleOAuthWizard()
+                    openWindow(id: "google-oauth-wizard")
+                } label: {
+                    Label("Set Up Google Account…", systemImage: "person.crop.circle.badge.plus")
                 }
             }
 
@@ -119,6 +134,18 @@ struct MenuBarView: View {
         }
         .padding()
         .frame(width: 360)
+        .onChange(of: model.isGoogleOAuthWizardPresented) { _, presented in
+            if presented {
+                openWindow(id: "google-oauth-wizard")
+            }
+        }
+    }
+
+    private var needsGoogleSetup: Bool {
+        model.setupChecks.contains(where: { $0.id == "google-oauth" && $0.status != "ok" })
+            || model.connectorStatuses.contains(where: {
+                $0.id.hasPrefix("google-") && $0.status != "connected"
+            })
     }
 
     private var statusTitle: String {

@@ -16,6 +16,10 @@ from uuid import UUID
 
 from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction, ApprovalStatus
+from capabledeputy.approval.strong_auth import (
+    approval_requires_strong_auth,
+    approval_to_client_dict,
+)
 from capabledeputy.daemon.handlers import Handler
 from capabledeputy.daemon.settings_store import load_settings
 from capabledeputy.policy.capabilities import (
@@ -36,11 +40,24 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         status = params.get("status")
         status_enum = ApprovalStatus(status) if status else None
         requests = app.approval_queue.list(status=status_enum)
-        return {"approvals": [r.to_dict() for r in requests]}
+        settings = load_settings()
+        return {
+            "approvals": [
+                approval_to_client_dict(
+                    r,
+                    touch_id_policy_enabled=settings.require_touch_id_for_high_risk,
+                )
+                for r in requests
+            ],
+        }
 
     async def approval_show(params: dict[str, Any]) -> dict[str, Any]:
         request = app.approval_queue.get(int(params["id"]))
-        return request.to_dict()
+        settings = load_settings()
+        return approval_to_client_dict(
+            request,
+            touch_id_policy_enabled=settings.require_touch_id_for_high_risk,
+        )
 
     async def approval_submit(params: dict[str, Any]) -> dict[str, Any]:
         from capabledeputy.policy.labels import tags_for_labels_strings
@@ -222,14 +239,7 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
 
 
 def _approval_requires_strong_auth(request: Any) -> bool:
-    if request.action in {
-        ApprovalAction.QUEUE_PURCHASE,
-        ApprovalAction.EXECUTE_DESTRUCTIVE,
-    }:
-        return True
-    labels = request.labels_in.to_dict()
-    rendered = str(labels).lower()
-    return any(token in rendered for token in ("financial", "health", "restricted", "prohibited"))
+    return approval_requires_strong_auth(request)
 
 
 async def _execute_declassified_destructive(

@@ -33,6 +33,10 @@ final class DaemonSupervisor {
             return
         }
 
+        try await restart(client: client)
+    }
+
+    func restart(client: DaemonClient) async throws {
         _ = try? await runLifecycleCommand(["daemon", "stop"], wait: true)
         try await startDaemon()
         try await waitForDaemon(client: client)

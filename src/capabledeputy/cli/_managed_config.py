@@ -29,7 +29,11 @@ Layout:
 
 from __future__ import annotations
 
+import json
 import os
+import re
+import shutil
+import sys
 from pathlib import Path
 
 
@@ -44,6 +48,31 @@ def user_default_daemon_config_path() -> Path:
     """Where the user-local default daemon config lives. May not exist
     yet — setup commands create it the first time they register."""
     return user_config_dir() / "daemon.yaml"
+
+
+def capdep_spawn_command(mcp_subcommand: str) -> list[str]:
+    """Resolve the capdep CLI used to spawn bundled MCP subprocesses.
+
+    The daemon often starts without the operator's venv on PATH, so
+    managed blocks must record an absolute executable when possible.
+    """
+    capdep = shutil.which("capdep")
+    if capdep is None and sys.argv:
+        candidate = Path(sys.argv[0]).resolve()
+        if candidate.is_file():
+            capdep = str(candidate)
+    if capdep:
+        return [capdep, mcp_subcommand]
+    return [sys.executable, "-m", "capabledeputy.cli.main", mcp_subcommand]
+
+
+def materialize_capdep_commands(block_body: str) -> str:
+    """Replace placeholder `["capdep", "..."]` with a resolved command."""
+
+    def _replace(match: re.Match[str]) -> str:
+        return json.dumps(capdep_spawn_command(match.group(1)))
+
+    return re.sub(r'\["capdep", "([^"]+)"\]', _replace, block_body)
 
 
 def resolve_daemon_config_with_source(
@@ -134,7 +163,7 @@ def write_managed_block(
 
     begin = _begin_marker(block_id)
     end = _end_marker(block_id)
-    body_normalized = block_body.rstrip("\n")
+    body_normalized = materialize_capdep_commands(block_body.rstrip("\n"))
     new_block = f"{begin}\n{body_normalized}\n{end}\n"
 
     if not path.is_file():

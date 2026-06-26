@@ -41,6 +41,7 @@ GOOGLE_OAUTH_SERVICES: dict[str, GoogleOAuthService] = {
         scopes=(
             "https://www.googleapis.com/auth/gmail.readonly",
             "https://www.googleapis.com/auth/gmail.compose",
+            "https://www.googleapis.com/auth/gmail.settings.basic",
         ),
         disabled_kinds=("SEND_EMAIL",),
         tool_overrides={

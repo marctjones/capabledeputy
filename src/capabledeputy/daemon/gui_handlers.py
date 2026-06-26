@@ -11,6 +11,7 @@ from typing import Any
 
 from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction, ApprovalStatus
+from capabledeputy.approval.strong_auth import approval_to_client_dict
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.daemon.google_gmail_setup import (
     GOOGLE_GMAIL_SERVER,
@@ -28,6 +29,8 @@ from capabledeputy.daemon.google_gmail_setup import (
 )
 from capabledeputy.daemon.handlers import Handler
 from capabledeputy.daemon.settings_store import load_settings
+from capabledeputy.daemon.setup_plan import build_setup_checks, build_setup_check, build_setup_plan
+from capabledeputy.daemon.workflow_templates import build_workflow_templates
 from capabledeputy.version import __version__
 
 
@@ -59,119 +62,16 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
         }
 
     async def setup_status(params: dict[str, Any]) -> dict[str, Any]:
-        upstream = _upstream_status(app)
-        google_statuses = google_oauth_statuses()["services"]
-        gmail_status = google_oauth_status(GOOGLE_GMAIL_SERVER)
-        relationship_groups = getattr(app.policy_context, "relationship_groups", None)
-        relationship_group_count = len(getattr(relationship_groups, "groups", {}) or {})
-        settings = load_settings()
-        return {
-            "checks": [
-                {
-                    "id": "daemon",
-                    "title": "Daemon",
-                    "status": "ok",
-                    "detail": "Connected to CapDep daemon.",
-                },
-                {
-                    "id": "model",
-                    "title": "Model backend",
-                    "status": "ok" if app.llm_client is not None else "warning",
-                    "detail": (
-                        type(app.llm_client).__name__
-                        if app.llm_client is not None
-                        else "No planner LLM client is wired."
-                    ),
-                },
-                {
-                    "id": "google-oauth",
-                    "title": "Google OAuth / MCP",
-                    "status": _gmail_setup_check_status(gmail_status, upstream),
-                    "detail": _google_setup_check_detail(google_statuses, upstream),
-                    "actions": _google_setup_actions(google_statuses),
-                },
-                {
-                    "id": "relationship-groups",
-                    "title": "Relationship groups",
-                    "status": "ok" if relationship_group_count else "warning",
-                    "detail": f"{relationship_group_count} group(s) loaded.",
-                },
-                {
-                    "id": "approval-patterns",
-                    "title": "Approval patterns",
-                    "status": "ok",
-                    "detail": f"{len(app.approval_queue.patterns.list())} pattern(s) loaded.",
-                },
-                {
-                    "id": "apple-automation",
-                    "title": "Apple Automation / TCC",
-                    "status": "manual",
-                    "detail": (
-                        "macOS grants Automation permissions interactively in System Settings."
-                    ),
-                    "actions": [
-                        {
-                            "id": "macos.automation_settings",
-                            "label": "Open Settings",
-                            "kind": "open_url",
-                        },
-                    ],
-                },
-                {
-                    "id": "notifications",
-                    "title": "Notifications",
-                    "status": "manual" if settings.notifications_enabled else "warning",
-                    "detail": (
-                        "The native app must request notification permission from macOS."
-                        if settings.notifications_enabled
-                        else "Notifications are disabled in daemon-owned settings."
-                    ),
-                },
-                {
-                    "id": "daemon-settings",
-                    "title": "Daemon-owned settings",
-                    "status": "ok",
-                    "detail": "Client preferences are loaded from the daemon settings store.",
-                },
-                {
-                    "id": "source-bindings",
-                    "title": "Source bindings",
-                    "status": (
-                        "ok"
-                        if getattr(app.policy_context, "bindings", None) is not None
-                        else "manual"
-                    ),
-                    "detail": "Operator-curated source labels are edited through daemon RPCs.",
-                    "actions": [
-                        {
-                            "id": "source_binding.list",
-                            "label": "Open Bindings",
-                            "kind": "client_navigation",
-                        },
-                    ],
-                },
-                {
-                    "id": "config-validation",
-                    "title": "Configuration validation",
-                    "status": "manual",
-                    "detail": (
-                        "Run config.validate for exact daemon config and manifest diagnostics."
-                    ),
-                    "actions": [
-                        {
-                            "id": "config.validate",
-                            "label": "Validate Configuration",
-                            "kind": "daemon_rpc",
-                        },
-                        {
-                            "id": "config.log_locations",
-                            "label": "Open Logs",
-                            "kind": "daemon_rpc",
-                        },
-                    ],
-                },
-            ],
-        }
+        return {"checks": build_setup_checks(app)}
+
+    async def setup_plan(params: dict[str, Any]) -> dict[str, Any]:
+        return build_setup_plan(app)
+
+    async def setup_check(params: dict[str, Any]) -> dict[str, Any]:
+        return build_setup_check(app)
+
+    async def workflow_templates(params: dict[str, Any]) -> dict[str, Any]:
+        return build_workflow_templates()
 
     async def policy_explain(params: dict[str, Any]) -> dict[str, Any]:
         events = await app.audit.read_all()
@@ -212,8 +112,12 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
         pending_siblings = [s for s in siblings if s.status == ApprovalStatus.PENDING]
         rule = approval.rule or ""
         reason = approval.justification
+        settings = load_settings()
         return {
-            "approval": approval.to_dict(),
+            "approval": approval_to_client_dict(
+                approval,
+                touch_id_policy_enabled=settings.require_touch_id_for_high_risk,
+            ),
             "effect_text": _approval_effect_text(approval.action),
             "plain_policy_reason": _plain_policy_explanation(
                 "require_approval",
@@ -367,6 +271,9 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
     return {
         "app.status": app_status,
         "setup.status": setup_status,
+        "setup.plan": setup_plan,
+        "setup.check": setup_check,
+        "workflow.templates": workflow_templates,
         "setup.google.oauth_status": google_oauth_status_handler,
         "setup.google.configure_oauth": google_configure_oauth,
         "setup.google.oauth_login": google_oauth_login,
