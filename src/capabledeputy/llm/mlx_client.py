@@ -371,17 +371,20 @@ class MLXLLMClient:
                 model, tokenizer = self._load_model_sync()
                 prompt = self._render_prompt(tokenizer, messages, tools)
                 stream_generate = import_module("mlx_lm").stream_generate
-                previous = ""
+                accumulated = ""
                 for response in stream_generate(
                     model,
                     tokenizer,
                     prompt,
                     max_tokens=limit,
                 ):
-                    delta = response.text[len(previous) :]
-                    prev_len = len(previous)
-                    previous = response.text
+                    # mlx_lm yields detokenizer.last_segment per token — not
+                    # cumulative text. Slicing against a running prefix corrupts
+                    # output into the garbled "Ihaveolsableision..." strings.
+                    delta = response.text
                     if delta:
+                        prev_len = len(accumulated)
+                        accumulated += delta
                         if trace_ctx is not None:
                             try:
                                 from capabledeputy.debug.chat_trace import log_mlx_chunk
@@ -389,7 +392,7 @@ class MLXLLMClient:
                                 log_mlx_chunk(
                                     trace_ctx,
                                     delta=delta,
-                                    cumulative=previous,
+                                    cumulative=accumulated,
                                     previous_len=prev_len,
                                 )
                             except Exception:

@@ -826,7 +826,7 @@ async def run_turn_streaming(
     # to "be helpful" by writing code-block tool calls as text — which
     # bypasses the runtime entirely. Tell the LLM, in plain language,
     # that the list is empty and what the user has to do to fix it.
-    if not tool_descriptions:
+    if not tool_descriptions and not conversational:
         messages.append(_no_tools_notice_message())
     visible_tool_names = {t.name for t in visible_all}
     reverse_map: dict[str, str] = {}

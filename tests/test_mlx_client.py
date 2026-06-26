@@ -185,10 +185,8 @@ def _fake_mlx_lm(chunks: list[str]):
             self.text = text
 
     def fake_stream_generate(*_args, **_kwargs):
-        cumulative = ""
         for chunk in chunks:
-            cumulative += chunk
-            yield _StreamChunk(cumulative)
+            yield _StreamChunk(chunk)
 
     return type("mlx_lm", (), {"stream_generate": fake_stream_generate})()
 
