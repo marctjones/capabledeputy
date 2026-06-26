@@ -51,15 +51,7 @@ final class CapDepAppModel: ObservableObject {
     @Published var focusedApprovalID: Int?
     @Published var focusedSessionID: String?
     @Published var commandText = ""
-    @Published var contextChips: [ContextChip] = [
-        ContextChip(
-            title: "Frontmost app",
-            detail: "Not connected yet",
-            kind: "macOS",
-            isSensitive: false,
-            isUntrusted: false,
-        ),
-    ]
+    @Published var contextChips: [ContextChip] = []
     @Published var taskPanelPinned = false
     @Published var lastError: String?
     @Published var googleOAuthWizardServiceID: String?
@@ -233,7 +225,6 @@ final class CapDepAppModel: ObservableObject {
                 .map(OnguardConfigViewData.init(dictionary:))
             connected = true
             lastError = nil
-            await refreshFrontmostContext()
             if approvals.count > lastPendingApprovalCount, let first = approvals.first {
                 await notifications.notifyPendingApproval(
                     count: approvals.count,
@@ -289,6 +280,7 @@ final class CapDepAppModel: ObservableObject {
     }
 
     func focusSession(_ session: CapDepSession) {
+        currentSessionID = session.id
         focusedSessionID = session.id
         selectedSection = .sessions
         Task {
@@ -416,56 +408,34 @@ final class CapDepAppModel: ObservableObject {
             currentTurnID = turnID
             currentSessionID = sessionID
 
-            var cursor = 0
-            while true {
-                let observed = try await client.call(
-                    method: "session.turn.get",
-                    params: ["turn_id": turnID],
-                ) as? [String: Any]
-                let observedTurn = observed?["turn"] as? [String: Any] ?? [:]
-                let status = observedTurn["status"] as? String ?? ""
-                let events = try await client.call(
-                    method: "session.turn.events",
-                    params: ["turn_id": turnID, "cursor": cursor, "limit": 200],
-                ) as? [String: Any]
-                let batch = events?["events"] as? [[String: Any]] ?? []
-                cursor = events?["next_cursor"] as? Int ?? cursor
-                for event in batch {
-                    turnStatusLine = describeTurnEvent(event)
-                    if let partial = observedTurn["partial_content"] as? String, !partial.isEmpty {
-                        currentAssistantOutput = partial
+            let turnStream = turn["stream"] as? String ?? "turn:\(turnID)"
+            var finished = false
+            do {
+                let subscription = client.subscribe(
+                    streams: [turnStream],
+                    cancelTurnsOnDisconnect: [turnID],
+                )
+                for try await envelopeData in subscription {
+                    guard
+                        let envelope = try JSONSerialization.jsonObject(with: envelopeData) as? [String: Any]
+                    else {
+                        continue
                     }
-                    noteTurnApprovalRequest(from: event)
+                    let event = envelope["data"] as? [String: Any] ?? [:]
+                    guard (event["turn_id"] as? String) == turnID else {
+                        continue
+                    }
+                    if try applyTurnEvent(event) {
+                        finished = true
+                        break
+                    }
                 }
-                if status == "completed" {
-                    let result = observedTurn["result"] as? [String: Any] ?? [:]
-                    currentAssistantOutput = result["content"] as? String ?? currentAssistantOutput
-                    currentToolOutcomes = (result["tool_outcomes"] as? [[String: Any]] ?? [])
-                        .map(ToolOutcome.init(dictionary:))
-                    collectTurnApprovalIDs(from: currentToolOutcomes)
-                    break
-                }
-                if status == "interrupted" {
-                    currentAssistantOutput = observedTurn["partial_content"] as? String
-                        ?? "[turn interrupted: \(observedTurn["cancel_reason"] as? String ?? "cancelled")]"
-                    currentToolOutcomes = (observedTurn["partial_outcomes"] as? [[String: Any]] ?? [])
-                        .map(ToolOutcome.init(dictionary:))
-                    collectTurnApprovalIDs(from: currentToolOutcomes)
-                    break
-                }
-                if status == "error" {
-                    throw NSError(
-                        domain: "CapDepMac",
-                        code: 2,
-                        userInfo: [
-                            NSLocalizedDescriptionKey: observedTurn["error"] as? String
-                                ?? "Turn failed.",
-                        ],
-                    )
-                }
-                try await Task.sleep(for: .milliseconds(250))
+            } catch {
+                // Fall back to polling if the subscription drops.
             }
-            await refresh()
+            if !finished {
+                try await pollTurnUntilFinished(turnID: turnID)
+            }
             if let firstApproval = turnPendingApprovalIDs.first {
                 focusedApprovalID = firstApproval
                 approvalWindowID = firstApproval
@@ -501,6 +471,99 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
+    private func applyTurnEvent(_ event: [String: Any]) throws -> Bool {
+        turnStatusLine = describeTurnEvent(event)
+        let type = event["type"] as? String ?? ""
+        let payload = event["payload"] as? [String: Any] ?? [:]
+        if type == "llm_token" {
+            if let partial = payload["partial_content"] as? String, !partial.isEmpty {
+                currentAssistantOutput = partial
+            } else if let text = payload["text"] as? String {
+                currentAssistantOutput += text
+            }
+        }
+        noteTurnApprovalRequest(from: event)
+        switch type {
+        case "completed":
+            let result = payload["result"] as? [String: Any] ?? [:]
+            currentAssistantOutput = result["content"] as? String ?? currentAssistantOutput
+            currentToolOutcomes = (result["tool_outcomes"] as? [[String: Any]] ?? [])
+                .map(ToolOutcome.init(dictionary:))
+            collectTurnApprovalIDs(from: currentToolOutcomes)
+            return true
+        case "interrupted":
+            currentAssistantOutput = payload["partial_content"] as? String
+                ?? "[turn interrupted: \(payload["reason"] as? String ?? "cancelled")]"
+            currentToolOutcomes = (payload["partial_outcomes"] as? [[String: Any]] ?? [])
+                .map(ToolOutcome.init(dictionary:))
+            collectTurnApprovalIDs(from: currentToolOutcomes)
+            return true
+        case "error":
+            throw NSError(
+                domain: "CapDepMac",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey: payload["message"] as? String ?? "Turn failed.",
+                ],
+            )
+        default:
+            return false
+        }
+    }
+
+    private func pollTurnUntilFinished(turnID: String) async throws {
+        var cursor = 0
+        while true {
+            let observed = try await client.call(
+                method: "session.turn.get",
+                params: ["turn_id": turnID],
+            ) as? [String: Any]
+            let observedTurn = observed?["turn"] as? [String: Any] ?? [:]
+            let status = observedTurn["status"] as? String ?? ""
+            let events = try await client.call(
+                method: "session.turn.events",
+                params: ["turn_id": turnID, "cursor": cursor, "limit": 200],
+            ) as? [String: Any]
+            let batch = events?["events"] as? [[String: Any]] ?? []
+            cursor = events?["next_cursor"] as? Int ?? cursor
+            for event in batch {
+                if let partial = observedTurn["partial_content"] as? String, !partial.isEmpty {
+                    currentAssistantOutput = partial
+                }
+                if try applyTurnEvent(event) {
+                    return
+                }
+            }
+            if status == "completed" {
+                let result = observedTurn["result"] as? [String: Any] ?? [:]
+                currentAssistantOutput = result["content"] as? String ?? currentAssistantOutput
+                currentToolOutcomes = (result["tool_outcomes"] as? [[String: Any]] ?? [])
+                    .map(ToolOutcome.init(dictionary:))
+                collectTurnApprovalIDs(from: currentToolOutcomes)
+                return
+            }
+            if status == "interrupted" {
+                currentAssistantOutput = observedTurn["partial_content"] as? String
+                    ?? "[turn interrupted: \(observedTurn["cancel_reason"] as? String ?? "cancelled")]"
+                currentToolOutcomes = (observedTurn["partial_outcomes"] as? [[String: Any]] ?? [])
+                    .map(ToolOutcome.init(dictionary:))
+                collectTurnApprovalIDs(from: currentToolOutcomes)
+                return
+            }
+            if status == "error" {
+                throw NSError(
+                    domain: "CapDepMac",
+                    code: 2,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: observedTurn["error"] as? String
+                            ?? "Turn failed.",
+                    ],
+                )
+            }
+            try await Task.sleep(for: .milliseconds(80))
+        }
+    }
+
     private func describeTurnEvent(_ event: [String: Any]) -> String {
         let type = event["type"] as? String ?? ""
         let payload = event["payload"] as? [String: Any] ?? [:]
@@ -508,6 +571,8 @@ final class CapDepAppModel: ObservableObject {
         case "llm_request_sent":
             let tools = payload["n_tools"] as? Int ?? 0
             return "Asking model (\(tools) tools available)…"
+        case "llm_token":
+            return "Writing response…"
         case "llm_response_received":
             let toolCalls = payload["n_tool_calls"] as? Int ?? 0
             return "Model responded (\(toolCalls) tool call(s))…"
