@@ -186,6 +186,20 @@ class TurnLifecycleManager:
             max_iterations or agent_max_iterations(),
         )
         await self._emit(turn.id, "turn_started", {"turn": turn.to_dict(include_message=True)})
+        try:
+            from capabledeputy.debug.chat_trace import log_turn_started
+
+            session = self._app.graph.get(session_id)
+            log_turn_started(
+                turn_id=turn.id,
+                session_id=str(session_id),
+                client_id=client_id,
+                message=message,
+                purpose_handle=session.purpose_handle,
+                stream=turn.stream,
+            )
+        except Exception:
+            pass
         return {"turn": turn.to_dict(include_message=True)}
 
     async def cancel(self, turn_id: str, *, reason: str = "cancelled") -> dict[str, Any]:
@@ -285,6 +299,17 @@ class TurnLifecycleManager:
         lock: anyio.Lock | None = None
         turn = self._turns[turn_id]
         scope = anyio.CancelScope()
+        trace_token = None
+        try:
+            from capabledeputy.debug.chat_trace import bind_turn
+
+            trace_token = bind_turn(
+                turn_id=turn_id,
+                session_id=str(turn.session_id),
+                client_id=turn.client_id,
+            )
+        except Exception:
+            trace_token = None
         try:
             lock = await self._app.session_coordinator.acquire_turn(turn.session_id)
             if lock is None:
@@ -326,6 +351,13 @@ class TurnLifecycleManager:
             else:
                 await self._finish_error(turn_id, e)
         finally:
+            if trace_token is not None:
+                try:
+                    from capabledeputy.debug.chat_trace import unbind
+
+                    unbind(trace_token)
+                except Exception:
+                    pass
             reason_to_finish: str | None = None
             session_id_for_cleanup = self._turns[turn_id].session_id
             async with self._lock:
@@ -380,6 +412,17 @@ class TurnLifecycleManager:
                 turn_id,
                 event.text,
             )
+            try:
+                from capabledeputy.debug.chat_trace import log
+
+                log(
+                    "llm_token",
+                    text=event.text,
+                    partial_content=payload["partial_content"],
+                    iteration=event.iteration,
+                )
+            except Exception:
+                pass
         elif isinstance(event, ToolReturned):
             payload["outcome"] = _outcome_to_dict(event.outcome)
             await self._merge_partial_outcome(turn_id, payload["outcome"])
@@ -391,6 +434,20 @@ class TurnLifecycleManager:
                 "finish_reason": result.finish_reason.value,
                 "tool_outcomes": [_outcome_to_dict(o) for o in result.tool_outcomes],
             }
+            try:
+                from capabledeputy.debug.chat_trace import log
+
+                content = str(result.content or "")
+                log(
+                    "turn_completed",
+                    iterations=result.iterations,
+                    finish_reason=result.finish_reason.value,
+                    content_len=len(content),
+                    content_preview=content if len(content) <= 800 else content[:797] + "…",
+                    n_tool_outcomes=len(result.tool_outcomes),
+                )
+            except Exception:
+                pass
             await self._finish_completed(turn_id, payload["result"])
         elif isinstance(event, TurnInterrupted):
             payload["partial_outcomes"] = [_outcome_to_dict(o) for o in event.partial_outcomes]

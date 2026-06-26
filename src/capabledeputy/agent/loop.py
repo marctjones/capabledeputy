@@ -1009,6 +1009,27 @@ async def run_turn_streaming(
                     tool_descriptions,
                     model=str(getattr(effective_llm, "_model", last_model or "unknown")),
                 )
+                try:
+                    from capabledeputy.debug.chat_trace import log
+
+                    preview = accumulated if len(accumulated) <= 800 else accumulated[:797] + "…"
+                    log(
+                        "llm_finalized",
+                        iteration=iteration,
+                        raw_len=len(accumulated),
+                        raw_preview=preview,
+                        content_len=len(response.content),
+                        content_preview=(
+                            response.content
+                            if len(response.content) <= 800
+                            else response.content[:797] + "…"
+                        ),
+                        model=response.model,
+                        finish_reason=response.finish_reason.value,
+                        conversational=conversational,
+                    )
+                except Exception:
+                    pass
             elif isinstance(effective_llm, MLXLLMClient):
                 response = await effective_llm.respond(
                     messages,
@@ -1054,6 +1075,11 @@ async def run_turn_streaming(
                 step_id=iteration,
                 payload={
                     "content_length": len(response.content),
+                    "content_preview": (
+                        response.content
+                        if len(response.content) <= 300
+                        else response.content[:297] + "…"
+                    ),
                     "n_tool_calls": len(response.tool_calls),
                     "finish_reason": response.finish_reason.value,
                     "model": response.model,

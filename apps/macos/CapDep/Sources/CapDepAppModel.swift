@@ -330,13 +330,29 @@ final class CapDepAppModel: ObservableObject {
         currentUserMessage = trimmed
         commandText = ""
         let chosenPurpose = purpose ?? selectedPurpose
+        ChatDebugLog.log(
+            "submit",
+            metadata: [
+                "purpose": chosenPurpose.rawValue,
+                "message_len": String(trimmed.count),
+                "message_preview": String(trimmed.prefix(200)),
+            ],
+        )
         guard let session = await ensureSession(
             intent: trimmed,
             purpose: chosenPurpose,
             forceNew: forceNewSession,
         ) else {
+            ChatDebugLog.log("submit_failed", metadata: ["reason": "ensureSession returned nil"])
             return
         }
+        ChatDebugLog.log(
+            "session_ready",
+            metadata: [
+                "session_id": session.id,
+                "purpose": session.purpose,
+            ],
+        )
         await send(message: trimmed, sessionID: session.id)
     }
 
@@ -384,10 +400,27 @@ final class CapDepAppModel: ObservableObject {
         turnPendingApprovalIDs = []
         turnStatusLine = "Starting turn…"
         currentTurnID = nil
+        var observedTurnID = ""
+        ChatDebugLog.log(
+            "turn_send_start",
+            metadata: [
+                "session_id": sessionID,
+                "message_len": String(message.count),
+            ],
+        )
         defer {
             isRunningTurn = false
             turnStatusLine = ""
             currentTurnID = nil
+            ChatDebugLog.log(
+                "turn_send_end",
+                metadata: [
+                    "session_id": sessionID,
+                    "turn_id": observedTurnID,
+                    "output_len": String(currentAssistantOutput.count),
+                    "output_preview": String(currentAssistantOutput.prefix(200)),
+                ],
+            )
         }
         do {
             let start = try await client.call(
@@ -407,10 +440,19 @@ final class CapDepAppModel: ObservableObject {
                     userInfo: [NSLocalizedDescriptionKey: "Daemon did not return a turn id."],
                 )
             }
+            observedTurnID = turnID
             currentTurnID = turnID
             currentSessionID = sessionID
-
             let turnStream = turn["stream"] as? String ?? "turn:\(turnID)"
+            ChatDebugLog.log(
+                "turn_started",
+                metadata: [
+                    "turn_id": turnID,
+                    "session_id": sessionID,
+                    "stream": turnStream,
+                ],
+            )
+
             var finished = false
             do {
                 let subscription = client.subscribe(
@@ -433,9 +475,16 @@ final class CapDepAppModel: ObservableObject {
                     }
                 }
             } catch {
-                // Fall back to polling if the subscription drops.
+                ChatDebugLog.log(
+                    "subscribe_error",
+                    metadata: [
+                        "turn_id": turnID,
+                        "error": error.localizedDescription,
+                    ],
+                )
             }
             if !finished {
+                ChatDebugLog.log("subscribe_fallback_poll", metadata: ["turn_id": turnID])
                 try await pollTurnUntilFinished(turnID: turnID)
             }
             if let firstApproval = turnPendingApprovalIDs.first {
@@ -445,6 +494,14 @@ final class CapDepAppModel: ObservableObject {
             }
         } catch {
             lastError = error.localizedDescription
+            ChatDebugLog.log(
+                "turn_error",
+                metadata: [
+                    "session_id": sessionID,
+                    "turn_id": observedTurnID,
+                    "error": error.localizedDescription,
+                ],
+            )
         }
     }
 
@@ -483,6 +540,24 @@ final class CapDepAppModel: ObservableObject {
             } else if let text = payload["text"] as? String {
                 currentAssistantOutput += text
             }
+            ChatDebugLog.log(
+                "llm_token",
+                metadata: [
+                    "turn_id": currentTurnID ?? "",
+                    "token": payload["text"] as? String ?? "",
+                    "partial_len": String(currentAssistantOutput.count),
+                    "partial_tail": String(currentAssistantOutput.suffix(80)),
+                ],
+            )
+        } else {
+            ChatDebugLog.log(
+                "turn_event",
+                metadata: [
+                    "turn_id": currentTurnID ?? "",
+                    "type": type,
+                    "status": turnStatusLine,
+                ],
+            )
         }
         noteTurnApprovalRequest(from: event)
         switch type {

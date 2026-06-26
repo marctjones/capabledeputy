@@ -108,6 +108,8 @@ def make_settings_handlers(
         }
 
     async def config_log_locations(params: dict[str, Any]) -> dict[str, Any]:
+        from capabledeputy.debug.chat_trace import chat_trace_path
+
         audit_path = getattr(app.audit, "_path", None) or getattr(app.audit, "path", None)
         return {
             "logs": [
@@ -117,9 +119,19 @@ def make_settings_handlers(
                     "path": str(audit_path) if audit_path is not None else "",
                 },
                 {
+                    "id": "chat-trace",
+                    "title": "Chat trace (turns, tokens, MLX chunks)",
+                    "path": str(chat_trace_path()),
+                },
+                {
                     "id": "gui-daemon",
                     "title": "CapDepMac daemon stdout/stderr",
                     "path": "/tmp/capdep-gui-daemon.log",
+                },
+                {
+                    "id": "gui-chat",
+                    "title": "CapDepMac Swift chat trace",
+                    "path": str(Path.home() / "Library" / "Logs" / "CapDep" / "chat-trace.log"),
                 },
             ],
             "directories": [

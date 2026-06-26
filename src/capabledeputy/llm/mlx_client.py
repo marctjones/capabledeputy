@@ -358,6 +358,14 @@ class MLXLLMClient:
         queue: asyncio.Queue[str | None | BaseException] = asyncio.Queue()
         limit = max_tokens if max_tokens is not None else self._max_tokens
 
+        trace_ctx = None
+        try:
+            from capabledeputy.debug.chat_trace import snapshot_context
+
+            trace_ctx = snapshot_context()
+        except Exception:
+            trace_ctx = None
+
         def worker() -> None:
             try:
                 model, tokenizer = self._load_model_sync()
@@ -371,8 +379,21 @@ class MLXLLMClient:
                     max_tokens=limit,
                 ):
                     delta = response.text[len(previous) :]
+                    prev_len = len(previous)
                     previous = response.text
                     if delta:
+                        if trace_ctx is not None:
+                            try:
+                                from capabledeputy.debug.chat_trace import log_mlx_chunk
+
+                                log_mlx_chunk(
+                                    trace_ctx,
+                                    delta=delta,
+                                    cumulative=previous,
+                                    previous_len=prev_len,
+                                )
+                            except Exception:
+                                pass
                         loop.call_soon_threadsafe(queue.put_nowait, delta)
                 loop.call_soon_threadsafe(queue.put_nowait, None)
             except BaseException as exc:
