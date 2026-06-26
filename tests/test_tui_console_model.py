@@ -5,6 +5,8 @@ from __future__ import annotations
 from rich.text import Text
 
 from capabledeputy.tui.console_model import (
+    format_history_turn,
+    format_session_history,
     format_turn,
     outcome_line,
     pending_approvals,
@@ -99,6 +101,24 @@ def test_status_lines_show_compartment_and_caps() -> None:
     assert "capabilities (2)" in blob
     assert "SEND_EMAIL" in blob
     assert "rate 3/60s" in blob  # constraint surfaced via presentation
+
+
+def test_format_session_history_renders_user_and_agent_turns() -> None:
+    lines = format_session_history(
+        [
+            {"role": "user", "content": "hello"},
+            {"role": "agent", "content": "hi"},
+        ],
+    )
+    blob = _plain(lines)
+    assert "user" in blob and "hello" in blob
+    assert "agent" in blob and "hi" in blob
+
+
+def test_format_history_turn_preserves_multiline_content() -> None:
+    lines = format_history_turn({"role": "agent", "content": "line one\nline two"})
+    blob = _plain(lines)
+    assert "line one" in blob and "line two" in blob
 
 
 def test_status_lines_clean_session_no_caps() -> None:

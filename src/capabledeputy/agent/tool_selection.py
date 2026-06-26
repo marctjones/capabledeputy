@@ -6,6 +6,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+from capabledeputy.agent.chat_turn import has_web_search_intent
 from capabledeputy.agent.tool_families import (
     ToolFamiliesConfig,
     family_for_purpose,
@@ -52,6 +53,26 @@ def _score_tool(tool: ToolDefinition, query_tokens: set[str], family: bool) -> f
     if family:
         score += 5.0
     return score
+
+
+_KAGI_SEARCH_TOOL = "kagi.kagi_search_fetch"
+_LEGACY_DDG_SEARCH_TOOLS = frozenset({"web.search", "bundled-search.search.web"})
+
+
+def _kagi_search_available(tools: list[ToolDefinition]) -> bool:
+    return any(t.name == _KAGI_SEARCH_TOOL for t in tools)
+
+
+def _prefer_kagi_over_ddg_fallbacks(tools: list[ToolDefinition]) -> list[ToolDefinition]:
+    """When Kagi is registered, hide native/MCP DuckDuckGo search tools.
+
+    The model often picks the familiar ``web.search`` name even though it
+    never uses the Kagi API key — only the keyed Kagi MCP tool does.
+    """
+    if not _kagi_search_available(tools):
+        return tools
+    filtered = [t for t in tools if t.name not in _LEGACY_DDG_SEARCH_TOOLS]
+    return filtered or tools
 
 
 def _tools_for_granted_kinds(session: Session, tools: list[ToolDefinition]) -> set[str]:
@@ -159,6 +180,7 @@ def select_tools_for_turn(
         )
 
     narrowed = _apply_family_filter(visible, families_cfg, session.purpose_handle)
+    narrowed = _prefer_kagi_over_ddg_fallbacks(narrowed)
     method = "family+retrieve"
     ranked = _retrieval_rank(
         narrowed,
@@ -172,6 +194,13 @@ def select_tools_for_turn(
 
     mandatory_names: set[str] = set(families_cfg.mandatory_always)
     mandatory_names.update(_mode_required_tools(visible, mode))
+    if has_web_search_intent(user_message):
+        if _kagi_search_available(visible):
+            mandatory_names.add(_KAGI_SEARCH_TOOL)
+        else:
+            for name in _LEGACY_DDG_SEARCH_TOOLS:
+                if any(t.name == name for t in visible):
+                    mandatory_names.add(name)
     for name in mandatory_names:
         if any(t.name == name for t in visible):
             candidate_names.add(name)

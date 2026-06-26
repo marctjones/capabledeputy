@@ -50,6 +50,51 @@ struct Approval: Identifiable, Hashable {
     }
 }
 
+struct ChatMessage: Identifiable, Hashable {
+    enum Role: Hashable {
+        case user
+        case assistant
+    }
+
+    let id: String
+    let role: Role
+    var content: String
+    var isStreaming: Bool
+
+    init(
+        id: String = UUID().uuidString,
+        role: Role,
+        content: String,
+        isStreaming: Bool = false,
+    ) {
+        self.id = id
+        self.role = role
+        self.content = content
+        self.isStreaming = isStreaming
+    }
+
+    static func fromHistory(_ history: [[String: Any]]) -> [ChatMessage] {
+        history.enumerated().map { index, turn in
+            let roleRaw = turn["role"] as? String ?? ""
+            let role: Role = roleRaw == "user" ? .user : .assistant
+            let turnID = turn["turn_id"]
+            let id: String
+            if let intID = turnID as? Int {
+                id = "turn-\(intID)"
+            } else if let numID = turnID as? NSNumber {
+                id = "turn-\(numID.intValue)"
+            } else {
+                id = "turn-\(index)"
+            }
+            return ChatMessage(
+                id: id,
+                role: role,
+                content: turn["content"] as? String ?? "",
+            )
+        }
+    }
+}
+
 struct CapDepSession: Identifiable, Hashable {
     let id: String
     let status: String
@@ -107,6 +152,37 @@ struct AuditEvent: Identifiable, Hashable {
     }
 }
 
+struct RecoveryStep: Identifiable, Hashable {
+    let id = UUID()
+    let command: String
+    let args: [String]
+    let rationale: String
+
+    init(dictionary: [String: Any]) {
+        self.command = dictionary["command"] as? String ?? ""
+        self.args = dictionary["args"] as? [String] ?? []
+        self.rationale = dictionary["rationale"] as? String ?? ""
+    }
+
+    var grantKind: String? {
+        guard command == "/grant", let kind = args.first else {
+            return nil
+        }
+        return kind
+    }
+
+    var grantPattern: String? {
+        guard command == "/grant", args.count >= 2 else {
+            return nil
+        }
+        return args[1]
+    }
+
+    var isOneShot: Bool {
+        args.contains("--one-shot")
+    }
+}
+
 struct ToolOutcome: Identifiable, Hashable {
     let id = UUID()
     let decision: String
@@ -116,6 +192,7 @@ struct ToolOutcome: Identifiable, Hashable {
     let output: String
     let toolName: String
     let approvalID: Int?
+    let recoverySteps: [RecoveryStep]
 
     init(dictionary: [String: Any]) {
         self.decision = dictionary["decision"] as? String ?? ""
@@ -131,6 +208,12 @@ struct ToolOutcome: Identifiable, Hashable {
         } else {
             self.approvalID = nil
         }
+        self.recoverySteps = (dictionary["recovery_steps"] as? [[String: Any]] ?? [])
+            .map(RecoveryStep.init(dictionary:))
+    }
+
+    var grantRecoveryStep: RecoveryStep? {
+        recoverySteps.first { $0.command == "/grant" && $0.grantKind != nil && $0.grantPattern != nil }
     }
 }
 

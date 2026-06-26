@@ -39,8 +39,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var onguardEvents: [OnguardEventViewData] = []
     @Published private(set) var onguardConfigs: [OnguardConfigViewData] = []
     @Published private(set) var currentSessionID: String?
-    @Published private(set) var currentUserMessage = ""
-    @Published private(set) var currentAssistantOutput = ""
+    @Published private(set) var chatMessages: [ChatMessage] = []
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
     @Published private(set) var isRunningTurn = false
     @Published private(set) var currentTurnID: String?
@@ -65,6 +64,11 @@ final class CapDepAppModel: ObservableObject {
     private var didStart = false
     private var lastPendingApprovalCount = 0
     private var lastNotifiedApprovalID: Int?
+    private var streamingAssistantMessageID: String?
+
+    var currentAssistantOutput: String {
+        chatMessages.last(where: { $0.role == .assistant })?.content ?? ""
+    }
 
     init() {
         Task {
@@ -285,8 +289,70 @@ final class CapDepAppModel: ObservableObject {
         focusedSessionID = session.id
         selectedSection = .sessions
         Task {
+            await loadChatHistory(sessionID: session.id)
             await refreshSecurityContext(sessionID: session.id)
         }
+    }
+
+    func loadChatHistory(sessionID: String) async {
+        do {
+            let result = try await client.call(
+                method: "session.get",
+                params: ["session_id": sessionID],
+            ) as? [String: Any]
+            let history = result?["history"] as? [[String: Any]] ?? []
+            chatMessages = ChatMessage.fromHistory(history)
+            streamingAssistantMessageID = nil
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func beginTurn(userMessage: String) {
+        chatMessages.append(ChatMessage(role: .user, content: userMessage))
+        let assistant = ChatMessage(role: .assistant, content: "", isStreaming: true)
+        chatMessages.append(assistant)
+        streamingAssistantMessageID = assistant.id
+    }
+
+    private func setStreamingAssistantContent(_ content: String) {
+        guard
+            let messageID = streamingAssistantMessageID,
+            let index = chatMessages.firstIndex(where: { $0.id == messageID })
+        else {
+            return
+        }
+        var message = chatMessages[index]
+        message.content = content
+        chatMessages[index] = message
+    }
+
+    private func resolvedAssistantContent(
+        partial: String?,
+        fallback: String = "",
+    ) -> String {
+        if let partial, !partial.isEmpty {
+            return partial
+        }
+        let streamed = chatMessages.last(where: { $0.id == streamingAssistantMessageID })?.content ?? ""
+        if !streamed.isEmpty {
+            return streamed
+        }
+        return fallback
+    }
+
+    private func finalizeStreamingAssistant(_ content: String) {
+        guard
+            let messageID = streamingAssistantMessageID,
+            let index = chatMessages.firstIndex(where: { $0.id == messageID })
+        else {
+            return
+        }
+        var message = chatMessages[index]
+        message.content = ChatContentFormatter.displayText(content)
+        message.isStreaming = false
+        chatMessages[index] = message
+        streamingAssistantMessageID = nil
     }
 
     func deny(_ approval: Approval) async {
@@ -308,6 +374,7 @@ final class CapDepAppModel: ObservableObject {
             let session = CapDepSession(dictionary: result ?? [:])
             currentSessionID = session.id
             selectedSection = .sessions
+            await loadChatHistory(sessionID: session.id)
             await refresh()
             return session
         } catch {
@@ -327,7 +394,6 @@ final class CapDepAppModel: ObservableObject {
         guard !trimmed.isEmpty else {
             return
         }
-        currentUserMessage = trimmed
         commandText = ""
         let chosenPurpose = purpose ?? selectedPurpose
         ChatDebugLog.log(
@@ -385,6 +451,7 @@ final class CapDepAppModel: ObservableObject {
             let session = CapDepSession(dictionary: result ?? [:])
             currentSessionID = session.id
             selectedSection = .sessions
+            await loadChatHistory(sessionID: session.id)
             await refresh()
             return session
         } catch {
@@ -395,7 +462,7 @@ final class CapDepAppModel: ObservableObject {
 
     func send(message: String, sessionID: String) async {
         isRunningTurn = true
-        currentAssistantOutput = ""
+        beginTurn(userMessage: message)
         currentToolOutcomes = []
         turnPendingApprovalIDs = []
         turnStatusLine = "Starting turn…"
@@ -429,6 +496,7 @@ final class CapDepAppModel: ObservableObject {
                     "session_id": sessionID,
                     "message": message,
                     "client_id": "CapDepMac",
+                    "heartbeat_timeout_seconds": 120,
                 ],
             ) as? [String: Any]
             let turn = start?["turn"] as? [String: Any] ?? [:]
@@ -454,6 +522,20 @@ final class CapDepAppModel: ObservableObject {
             )
 
             var finished = false
+            let heartbeatTask = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(10))
+                    guard !Task.isCancelled else { return }
+                    _ = try? await client.call(
+                        method: "session.turn.ack",
+                        params: [
+                            "turn_id": turnID,
+                            "client_id": "CapDepMac",
+                        ],
+                    )
+                }
+            }
+            defer { heartbeatTask.cancel() }
             do {
                 let subscription = client.subscribe(
                     streams: [turnStream],
@@ -534,19 +616,26 @@ final class CapDepAppModel: ObservableObject {
         turnStatusLine = describeTurnEvent(event)
         let type = event["type"] as? String ?? ""
         let payload = event["payload"] as? [String: Any] ?? [:]
-        if type == "llm_token" {
-            if let partial = payload["partial_content"] as? String, !partial.isEmpty {
-                currentAssistantOutput = partial
-            } else if let text = payload["text"] as? String {
-                currentAssistantOutput += text
+        if type == "llm_response_received" {
+            let toolCalls = payload["n_tool_calls"] as? Int ?? 0
+            if toolCalls > 0 {
+                setStreamingAssistantContent("")
             }
+        } else if type == "llm_token" {
+            if let partial = payload["partial_content"] as? String, !partial.isEmpty {
+                setStreamingAssistantContent(partial)
+            } else if let text = payload["text"] as? String {
+                let current = chatMessages.last(where: { $0.id == streamingAssistantMessageID })?.content ?? ""
+                setStreamingAssistantContent(current + text)
+            }
+            let streamed = chatMessages.last(where: { $0.id == streamingAssistantMessageID })?.content ?? ""
             ChatDebugLog.log(
                 "llm_token",
                 metadata: [
                     "turn_id": currentTurnID ?? "",
                     "token": payload["text"] as? String ?? "",
-                    "partial_len": String(currentAssistantOutput.count),
-                    "partial_tail": String(currentAssistantOutput.suffix(80)),
+                    "partial_len": String(streamed.count),
+                    "partial_tail": String(streamed.suffix(80)),
                 ],
             )
         } else {
@@ -563,14 +652,20 @@ final class CapDepAppModel: ObservableObject {
         switch type {
         case "completed":
             let result = payload["result"] as? [String: Any] ?? [:]
-            currentAssistantOutput = result["content"] as? String ?? currentAssistantOutput
+            let content = result["content"] as? String
+                ?? chatMessages.last(where: { $0.id == streamingAssistantMessageID })?.content
+                ?? ""
+            finalizeStreamingAssistant(content)
             currentToolOutcomes = (result["tool_outcomes"] as? [[String: Any]] ?? [])
                 .map(ToolOutcome.init(dictionary:))
             collectTurnApprovalIDs(from: currentToolOutcomes)
             return true
         case "interrupted":
-            currentAssistantOutput = payload["partial_content"] as? String
-                ?? "[turn interrupted: \(payload["reason"] as? String ?? "cancelled")]"
+            let content = resolvedAssistantContent(
+                partial: payload["partial_content"] as? String,
+                fallback: "[turn interrupted: \(payload["reason"] as? String ?? "cancelled")]",
+            )
+            finalizeStreamingAssistant(content)
             currentToolOutcomes = (payload["partial_outcomes"] as? [[String: Any]] ?? [])
                 .map(ToolOutcome.init(dictionary:))
             collectTurnApprovalIDs(from: currentToolOutcomes)
@@ -605,7 +700,7 @@ final class CapDepAppModel: ObservableObject {
             cursor = events?["next_cursor"] as? Int ?? cursor
             for event in batch {
                 if let partial = observedTurn["partial_content"] as? String, !partial.isEmpty {
-                    currentAssistantOutput = partial
+                    setStreamingAssistantContent(partial)
                 }
                 if try applyTurnEvent(event) {
                     return
@@ -613,15 +708,21 @@ final class CapDepAppModel: ObservableObject {
             }
             if status == "completed" {
                 let result = observedTurn["result"] as? [String: Any] ?? [:]
-                currentAssistantOutput = result["content"] as? String ?? currentAssistantOutput
+                let content = result["content"] as? String
+                    ?? chatMessages.last(where: { $0.id == streamingAssistantMessageID })?.content
+                    ?? ""
+                finalizeStreamingAssistant(content)
                 currentToolOutcomes = (result["tool_outcomes"] as? [[String: Any]] ?? [])
                     .map(ToolOutcome.init(dictionary:))
                 collectTurnApprovalIDs(from: currentToolOutcomes)
                 return
             }
             if status == "interrupted" {
-                currentAssistantOutput = observedTurn["partial_content"] as? String
-                    ?? "[turn interrupted: \(observedTurn["cancel_reason"] as? String ?? "cancelled")]"
+                let content = resolvedAssistantContent(
+                    partial: observedTurn["partial_content"] as? String,
+                    fallback: "[turn interrupted: \(observedTurn["cancel_reason"] as? String ?? "cancelled")]",
+                )
+                finalizeStreamingAssistant(content)
                 currentToolOutcomes = (observedTurn["partial_outcomes"] as? [[String: Any]] ?? [])
                     .map(ToolOutcome.init(dictionary:))
                 collectTurnApprovalIDs(from: currentToolOutcomes)
@@ -1156,6 +1257,42 @@ final class CapDepAppModel: ObservableObject {
                 ],
             )
             approvalWindowID = nil
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    var pendingGrantRecovery: RecoveryStep? {
+        currentToolOutcomes
+            .first(where: { $0.decision.lowercased() == "deny" })?
+            .grantRecoveryStep
+    }
+
+    func grantCapability(from step: RecoveryStep, sessionID: String) async {
+        guard let kind = step.grantKind, let pattern = step.grantPattern else {
+            lastError = "This recovery step cannot be granted from the GUI."
+            return
+        }
+        let allowsDestructive = step.args.contains("--destructive")
+        let capability: [String: Any] = [
+            "kind": kind,
+            "pattern": pattern,
+            "expiry": step.isOneShot ? "one_shot" : "session",
+            "origin": "user_approved",
+            "audit_id": UUID().uuidString,
+            "allows_destructive": allowsDestructive,
+            "revoked_by": [] as [String],
+        ]
+        do {
+            _ = try await client.call(
+                method: allowsDestructive ? "operator.grant_capability" : "session.grant_capability",
+                params: [
+                    "session_id": sessionID,
+                    "capability": capability,
+                ],
+            )
+            lastError = nil
             await refresh()
         } catch {
             lastError = error.localizedDescription

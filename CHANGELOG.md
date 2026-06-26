@@ -76,6 +76,30 @@ breaking changes).
   override, session-child, session-label, enforcement, first-use, policy,
   relationship, approval-pattern, and tool-call wrappers.
 
+### macOS chat, web search, and policy recovery
+
+- Made the Swift GUI chat the primary surface with scrollable session
+  history loaded from `session.get` instead of rendering only the active turn.
+- Fixed streamed-turn reliability: daemon turn heartbeats now refresh on agent
+  progress, interrupted turns emit accumulated `partial_content`, and each new
+  LLM request resets streaming partials so MLX tool-call JSON does not prefix
+  user-facing answers.
+- Wired CapDepMac turn subscriptions with heartbeat acks, a longer turn timeout,
+  and preservation of streamed text when an interrupted event arrives empty.
+- Added `ChatContentFormatter` so assistant replies render markdown links and
+  condense verbose numbered search catalogs into chat-style bullet sources.
+- Routed web-search intent to Kagi when `kagi.kagi_search_fetch` is registered,
+  hiding DuckDuckGo fallback tools that never use the configured Kagi API key.
+- Tightened planner guidance for post-search replies: short prose summary plus
+  optional Sources links, not raw hit dumps.
+- Added a yellow **Capability needed** grant banner in chat when a filesystem
+  (or other) tool is policy-denied with `/grant` recovery steps; approvals and
+  capability grants remain distinct recovery paths.
+- Added scrollable conversation history to the TUI console via `RichLog` and
+  `format_session_history()`.
+- Stripped leaked MLX `{"tool_calls":…}` prefixes from finalized assistant
+  text before it is persisted or displayed.
+
 ### Practical setup and daemon-owned settings
 
 - Added Google Workspace SourcePort providers for Gmail, Drive, and Calendar

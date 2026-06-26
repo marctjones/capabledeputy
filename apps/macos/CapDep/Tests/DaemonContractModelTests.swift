@@ -52,6 +52,23 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(context.limitations.count, 1)
     }
 
+    func testToolOutcomeParsesGrantRecoverySteps() {
+        let outcome = ToolOutcome(dictionary: [
+            "decision": "deny",
+            "rule": "no-matching-capability",
+            "reason": "no matching capability for READ_FS on /tmp/foo",
+            "tool_name": "fs.read",
+            "recovery_steps": [[
+                "command": "/grant",
+                "args": ["READ_FS", "/tmp/foo", "--one-shot"],
+                "rationale": "Session lacks a capability for READ_FS on /tmp/foo.",
+            ]],
+        ])
+        XCTAssertEqual(outcome.grantRecoveryStep?.grantKind, "READ_FS")
+        XCTAssertEqual(outcome.grantRecoveryStep?.grantPattern, "/tmp/foo")
+        XCTAssertTrue(outcome.grantRecoveryStep?.isOneShot == true)
+    }
+
     func testOnguardDaemonModelsParseCoordinationState() {
         let client = OnguardClientViewData(dictionary: [
             "client_id": "onguard.finance.guard",

@@ -134,6 +134,66 @@ def test_broad_caps_respect_max_selected() -> None:
     assert "policy.preview" in {t.name for t in result.selected}
 
 
+def test_web_search_intent_includes_kagi_and_search_tools() -> None:
+    registry = ToolRegistry()
+    tools = [
+        _tool(f"mail.tool{i}", CapabilityKind.GMAIL_READ) for i in range(20)
+    ] + [
+        _tool(f"fs.tool{i}", CapabilityKind.READ_FS) for i in range(20)
+    ] + [
+        _tool("kagi.kagi_search_fetch", CapabilityKind.WEB_FETCH),
+        _tool("web.search", CapabilityKind.WEB_FETCH),
+        _tool("bundled-search.search.web", CapabilityKind.WEB_FETCH),
+        _tool("policy.preview", CapabilityKind.READ_FS),
+    ]
+    for tool in tools:
+        registry.register(tool)
+    session = _session_with_caps(CapabilityKind.WEB_FETCH, CapabilityKind.GMAIL_READ)
+    session = Session.new(capability_set=session.capability_set, purpose_handle="general")
+    result = select_tools_for_turn(
+        registry,
+        session,
+        ExecutionMode.TURN_LEVEL,
+        tools,
+        user_message="websearch today headlines",
+        selection_config=ToolSelectionConfig(mode="retrieve", retrieval_top_k=20, max_selected=15),
+    )
+    names = {t.name for t in result.selected}
+    assert "kagi.kagi_search_fetch" in names
+    assert "web.search" not in names
+    assert "bundled-search.search.web" not in names
+
+
+def test_kagi_hides_ddg_search_tools_for_general_lookup() -> None:
+    registry = ToolRegistry()
+    tools = [
+        _tool(f"mail.tool{i}", CapabilityKind.GMAIL_READ) for i in range(20)
+    ] + [
+        _tool("kagi.kagi_search_fetch", CapabilityKind.WEB_FETCH),
+        _tool("web.search", CapabilityKind.WEB_FETCH),
+        _tool("bundled-search.search.web", CapabilityKind.WEB_FETCH),
+        _tool("policy.preview", CapabilityKind.READ_FS),
+    ]
+    for tool in tools:
+        registry.register(tool)
+    session = Session.new(
+        capability_set=frozenset({Capability(CapabilityKind.WEB_FETCH, "*")}),
+        purpose_handle="general",
+    )
+    result = select_tools_for_turn(
+        registry,
+        session,
+        ExecutionMode.TURN_LEVEL,
+        tools,
+        user_message="wikipedia and cats",
+        selection_config=ToolSelectionConfig(mode="retrieve", retrieval_top_k=20, max_selected=15),
+    )
+    names = {t.name for t in result.selected}
+    assert "kagi.kagi_search_fetch" in names
+    assert "web.search" not in names
+    assert "bundled-search.search.web" not in names
+
+
 def test_load_tool_families_from_repo() -> None:
     from pathlib import Path
 

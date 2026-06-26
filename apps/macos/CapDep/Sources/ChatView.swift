@@ -44,6 +44,11 @@ struct ChatView: View {
         }
         .onAppear {
             inputFocused = true
+            if let sessionID = model.currentSessionID {
+                Task {
+                    await model.loadChatHistory(sessionID: sessionID)
+                }
+            }
         }
         .onChange(of: model.isGoogleOAuthWizardPresented) { _, presented in
             if presented {
@@ -61,9 +66,18 @@ struct ChatView: View {
                         workflowSuggestions
                     }
 
-                    if !model.currentUserMessage.isEmpty {
-                        UserMessageBubble(text: model.currentUserMessage)
-                            .id("user-message")
+                    ForEach(model.chatMessages) { message in
+                        switch message.role {
+                        case .user:
+                            UserMessageBubble(text: message.content)
+                                .id(message.id)
+                        case .assistant:
+                            AssistantMessageBubble(
+                                text: message.content,
+                                isStreaming: message.isStreaming,
+                            )
+                            .id(message.id)
+                        }
                     }
 
                     if model.isRunningTurn {
@@ -78,13 +92,13 @@ struct ChatView: View {
                         .id("turn-progress")
                     }
 
-                    if !model.currentAssistantOutput.isEmpty {
-                        AssistantMessageBubble(text: model.currentAssistantOutput)
-                            .id("assistant-response")
-                    }
-
                     if !model.turnPendingApprovalIDs.isEmpty {
                         approvalBanner
+                    }
+
+                    if let grantStep = model.pendingGrantRecovery,
+                       let sessionID = model.currentSessionID {
+                        capabilityGrantBanner(step: grantStep, sessionID: sessionID)
                     }
 
                     if !model.currentToolOutcomes.isEmpty {
@@ -103,23 +117,23 @@ struct ChatView: View {
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .onChange(of: model.currentUserMessage) { _, _ in
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo("user-message", anchor: .bottom)
-                }
-            }
-            .onChange(of: model.currentAssistantOutput) { _, _ in
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo("assistant-response", anchor: .bottom)
-                }
+            .onChange(of: model.chatMessages.count) { _, _ in
+                scrollToLatest(proxy: proxy)
             }
             .onChange(of: model.isRunningTurn) { _, running in
                 if running {
-                    withAnimation {
-                        proxy.scrollTo("turn-progress", anchor: .bottom)
-                    }
+                    scrollToLatest(proxy: proxy)
                 }
             }
+        }
+    }
+
+    private func scrollToLatest(proxy: ScrollViewProxy) {
+        guard let lastID = model.chatMessages.last?.id else {
+            return
+        }
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo(lastID, anchor: .bottom)
         }
     }
 
@@ -177,6 +191,37 @@ struct ChatView: View {
         }
         .padding(14)
         .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func capabilityGrantBanner(step: RecoveryStep, sessionID: String) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Capability needed")
+                    .font(.headline)
+                if let kind = step.grantKind, let pattern = step.grantPattern {
+                    Text("Grant \(kind) access to \(pattern) for this session.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if !step.rationale.isEmpty {
+                    Text(step.rationale)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Text("This is not an approval queue item — CapDep needs a capability grant before it can read files.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Grant access") {
+                Task {
+                    await model.grantCapability(from: step, sessionID: sessionID)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(14)
+        .background(.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var composerArea: some View {
@@ -298,9 +343,7 @@ struct ChatView: View {
     }
 
     private var shouldShowWelcome: Bool {
-        model.currentUserMessage.isEmpty
-            && model.currentAssistantOutput.isEmpty
-            && !model.isRunningTurn
+        model.chatMessages.isEmpty && !model.isRunningTurn
     }
 
     private func submitMessage() async {
@@ -327,16 +370,28 @@ private struct UserMessageBubble: View {
 
 private struct AssistantMessageBubble: View {
     let text: String
+    var isStreaming: Bool = false
+
+    private var rendered: AttributedString {
+        ChatContentFormatter.attributedMarkdown(from: text)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("CapDep")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text(text)
-                .font(.body)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if isStreaming, text.isEmpty {
+                Text("…")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(rendered)
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .tint(.accentColor)
+            }
         }
         .padding(14)
         .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
@@ -363,7 +418,14 @@ private struct ToolOutcomesPanel: View {
                             Text(outcome.error.isEmpty ? outcome.reason : outcome.error)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(2)
+                                .lineLimit(3)
+                        }
+                        if let step = outcome.grantRecoveryStep,
+                           let kind = step.grantKind,
+                           let pattern = step.grantPattern {
+                            Text("Needs grant: \(kind) \(pattern)")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
                         }
                     }
                 }

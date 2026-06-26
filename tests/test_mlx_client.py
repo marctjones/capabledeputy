@@ -78,6 +78,16 @@ def test_parse_tool_call_response_accepts_fenced_json() -> None:
     assert response.finish_reason == FinishReason.TOOL_CALLS
 
 
+def test_parse_strips_leading_tool_json_before_prose() -> None:
+    response = parse_mlx_response(
+        '{"tool_calls":[{"id":"1"}]}The summary.',
+        model=DEFAULT_MLX_MODEL,
+    )
+    assert response.content == "The summary."
+    assert response.tool_calls == ()
+    assert response.finish_reason == FinishReason.STOP
+
+
 def test_parse_tool_call_response_extracts_json_after_preface() -> None:
     response = parse_mlx_response(
         'Final answer:\n{"tool_calls":[{"name":"memory.read","args":{"key":"labs"}}]}',

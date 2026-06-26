@@ -297,6 +297,23 @@ def finalize_mlx_text(
     )
 
 
+def _strip_leading_tool_json(text: str) -> str:
+    """Drop MLX tool-call JSON prefixes that leaked before user-facing prose."""
+    stripped = _strip_markdown_fence(_strip_reasoning_blocks(text))
+    if _try_parse_tool_calls(stripped) is not None:
+        return ""
+    if "tool_calls" not in stripped:
+        return stripped
+    for marker in ("}]}", "}]"):
+        idx = stripped.find(marker)
+        if idx == -1:
+            continue
+        tail = stripped[idx + len(marker) :].lstrip()
+        if tail and not tail.startswith("{"):
+            return tail
+    return stripped
+
+
 def parse_mlx_response(text: str, *, model: str) -> LLMResponse:
     tool_calls = _try_parse_tool_calls(text)
     if tool_calls is not None:
@@ -307,7 +324,7 @@ def parse_mlx_response(text: str, *, model: str) -> LLMResponse:
             model=model,
         )
     return LLMResponse(
-        content=_strip_markdown_fence(_strip_reasoning_blocks(text)),
+        content=_strip_leading_tool_json(text),
         finish_reason=FinishReason.STOP,
         model=model,
     )

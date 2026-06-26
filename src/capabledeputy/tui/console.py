@@ -33,6 +33,7 @@ from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
 from capabledeputy.tui.app import ApprovalDetailScreen
 from capabledeputy.tui.console_model import (
+    format_history_turn,
     format_turn,
     pending_approvals,
     status_lines,
@@ -64,6 +65,7 @@ class CapDepConsole(App[None]):
         self._session_id = session_id
         self._client = DaemonClient(default_socket_path())
         self._pending: list[int] = []
+        self._history_loaded = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -139,6 +141,14 @@ class CapDepConsole(App[None]):
         self.query_one("#status", Static).update(
             "\n".join(status_lines(full)),
         )
+        if not self._history_loaded:
+            self._history_loaded = True
+            history = full.get("history") or []
+            if history:
+                log = self.query_one("#log", RichLog)
+                for turn in history:
+                    for line in format_history_turn(turn):
+                        log.write(line)
 
     @work(exclusive=False)
     async def _event_stream(self) -> None:

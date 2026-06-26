@@ -24,6 +24,30 @@ class _TokenStreamingLLM:
             yield piece
 
 
+class _ToolThenAnswerLLM:
+    _model = "tool-then-answer"
+
+    def __init__(self) -> None:
+        self._calls = 0
+
+    async def respond_streaming(self, messages, tools, *, max_tokens=None):
+        self._calls += 1
+        if self._calls == 1:
+            yield '{"tool_calls": [{"id": "1", "name": "noop", "args": {}}]}'
+            return
+        for piece in ("answer", " text"):
+            yield piece
+
+
+class _SlowStreamingLLM:
+    _model = "slow-stream"
+
+    async def respond_streaming(self, messages, tools, *, max_tokens=None):
+        yield "partial "
+        await anyio.sleep(5)
+        yield "answer"
+
+
 async def _new_session(running, intent: str = "turn lifecycle") -> str:
     session = await running.client.call("session.new", {"intent": intent})
     return str(session["id"])
@@ -143,6 +167,39 @@ async def test_turn_subscription_disconnect_cancels_registered_turn(tmp_path: Pa
         interrupted = await _wait_for_status(running, turn_id, "interrupted")
 
         assert interrupted["turn"]["cancel_reason"] == "client_disconnect"
+
+
+async def test_cancelled_turn_emits_streamed_partial_content(tmp_path: Path) -> None:
+    async with running_daemon(tmp_path) as running:
+        running.app.llm_client = _SlowStreamingLLM()  # type: ignore[assignment]
+        session_id = await _new_session(running)
+        started = await running.client.call(
+            "session.turn.start",
+            {
+                "session_id": session_id,
+                "message": "hello",
+                "client_id": "cli-test",
+                "heartbeat_enabled": False,
+            },
+        )
+        turn_id = started["turn"]["id"]
+        deadline = anyio.current_time() + 2.0
+        while anyio.current_time() < deadline:
+            observed = await running.client.call("session.turn.get", {"turn_id": turn_id})
+            if observed["turn"]["partial_content"] == "partial ":
+                break
+            await anyio.sleep(0.02)
+        else:
+            raise AssertionError("turn never accumulated streamed partial content")
+        await running.client.call(
+            "session.turn.cancel",
+            {"turn_id": turn_id, "reason": "test-cancel"},
+        )
+        interrupted = await _wait_for_status(running, turn_id, "interrupted")
+        assert interrupted["turn"]["partial_content"] == "partial "
+        events = await running.client.call("session.turn.events", {"turn_id": turn_id})
+        terminal = [event for event in events["events"] if event["type"] == "interrupted"][-1]
+        assert terminal["payload"]["partial_content"] == "partial "
 
 
 async def test_turn_ack_rejects_non_owner(tmp_path: Path) -> None:

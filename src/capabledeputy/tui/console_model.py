@@ -41,6 +41,31 @@ def outcome_line(o: dict[str, Any]) -> str:
     return f"  [{color}]{glyph} {decision}[/{color}] [bold]{tool}[/bold]{tail}"
 
 
+def format_history_turn(turn: dict[str, Any]) -> list[str]:
+    """Rich-markup lines for one persisted session-history turn."""
+    role = str(turn.get("role") or "?")
+    content = str(turn.get("content") or "")
+    if role == "user":
+        header = "[bold cyan]user[/bold cyan]"
+    elif role == "agent":
+        header = "[bold green]agent[/bold green]"
+    else:
+        header = f"[bold]{role}[/bold]"
+    lines = [header]
+    for content_line in content.split("\n"):
+        lines.append(f"  {content_line}")
+    lines.append("")
+    return lines
+
+
+def format_session_history(history: list[dict[str, Any]]) -> list[str]:
+    """Full scrollable transcript for a session's persisted history."""
+    lines: list[str] = []
+    for turn in history:
+        lines.extend(format_history_turn(turn))
+    return lines
+
+
 def format_turn(result: dict[str, Any]) -> list[str]:
     """Rich-markup lines for one agent turn: the reply, each tool
     outcome, and — for a denial — the deterministic recovery hint

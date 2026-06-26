@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 import anyio
 
 from capabledeputy.agent.events import (
+    LLMRequestSent,
     LLMTokenReceived,
     ToolReturned,
     TurnCompleted,
@@ -405,9 +406,36 @@ class TurnLifecycleManager:
                 scope.cancel()
                 return
 
+    async def _touch_heartbeat(self, turn_id: str) -> None:
+        """Refresh the heartbeat lease while the agent loop is making progress."""
+        async with self._lock:
+            turn = self._turns.get(turn_id)
+            if turn is None or not turn.heartbeat_enabled:
+                return
+            self._turns[turn_id] = replace(
+                turn,
+                last_heartbeat_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+
+    async def _reset_partial_content(self, turn_id: str) -> None:
+        async with self._lock:
+            turn = self._turns.get(turn_id)
+            if turn is None:
+                return
+            self._turns[turn_id] = replace(
+                turn,
+                partial_content="",
+                updated_at=datetime.now(UTC),
+            )
+
     async def _record_agent_event(self, turn_id: str, event: Any) -> None:
+        if not isinstance(event, (TurnCompleted, TurnInterrupted)):
+            await self._touch_heartbeat(turn_id)
         payload = event_to_dict(event)
-        if isinstance(event, LLMTokenReceived):
+        if isinstance(event, LLMRequestSent):
+            await self._reset_partial_content(turn_id)
+        elif isinstance(event, LLMTokenReceived):
             payload["partial_content"] = await self._append_partial_content(
                 turn_id,
                 event.text,
@@ -508,11 +536,12 @@ class TurnLifecycleManager:
             if turn.status in {"completed", "interrupted", "error"}:
                 return
             outcomes = partial_outcomes or turn.partial_outcomes
+            merged_partial = partial_content or turn.partial_content
             self._turns[turn_id] = replace(
                 turn,
                 status="interrupted",
                 cancel_reason=reason,
-                partial_content=partial_content or turn.partial_content,
+                partial_content=merged_partial,
                 partial_outcomes=outcomes,
                 updated_at=datetime.now(UTC),
             )
@@ -528,7 +557,7 @@ class TurnLifecycleManager:
             "interrupted",
             {
                 "reason": reason,
-                "partial_content": partial_content,
+                "partial_content": merged_partial,
                 "partial_outcomes": list(outcomes),
             },
         )

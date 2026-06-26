@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from textual.widgets import Input, Static
+from textual.widgets import Input, RichLog, Static
 
 from capabledeputy.ipc.client import DaemonNotRunningError
 from capabledeputy.tui.app import (
@@ -29,9 +29,11 @@ async def _settle(pilot: Any, n: int = 6) -> None:
 
 
 def _text(app: Any, sel: str) -> str:
-    """Plain text of a Static's current renderable (Textual 8.x:
-    .render(), not .renderable)."""
-    return str(app.query_one(sel, Static).render())
+    """Plain text of a widget's current content."""
+    widget = app.query_one(sel)
+    if isinstance(widget, RichLog):
+        return " ".join(s.text for s in widget.lines)
+    return str(widget.render())
 
 
 def _status(app: CapDepConsole) -> str:

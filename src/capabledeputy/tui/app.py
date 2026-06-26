@@ -42,7 +42,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import DataTable, Footer, Header, Input, Static
+from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
@@ -52,6 +52,7 @@ from capabledeputy.presentation import (
     compartment_summary,
     render_labels,
 )
+from capabledeputy.tui.console_model import format_session_history
 
 
 class ApprovalDetailScreen(ModalScreen[str]):
@@ -865,7 +866,12 @@ class CapDepTUI(App[None]):
                 yield DataTable(id="approvals")
             with Vertical(id="right"):
                 yield Static("Conversation", classes="pane-title")
-                yield Static("(select a session)", id="conversation")
+                yield RichLog(
+                    id="conversation",
+                    wrap=True,
+                    markup=True,
+                    highlight=False,
+                )
                 yield Static("Trace", classes="pane-title")
                 yield Static("(select a session)", id="trace")
         yield Static("Events (live ticker)", classes="pane-title")
@@ -971,6 +977,7 @@ class CapDepTUI(App[None]):
                     "approval.approved",
                     "approval.denied",
                     "capability.granted",
+                    "llm.response_received",
                 }
                 if data.get("event_type") in triggers:
                     self.refresh_now()
@@ -1183,23 +1190,7 @@ class CapDepTUI(App[None]):
             security_context = None
 
         history = full.get("history") or []
-        if not history:
-            convo = "(no turns yet)"
-        else:
-            lines: list[str] = []
-            for turn in history[-15:]:
-                role = turn["role"]
-                content = (turn["content"] or "")[:600]
-                if role == "user":
-                    lines.append("[bold cyan]user[/bold cyan]")
-                elif role == "agent":
-                    lines.append("[bold green]agent[/bold green]")
-                else:
-                    lines.append(f"[bold]{role}[/bold]")
-                for content_line in content.split("\n"):
-                    lines.append(f"  {content_line}")
-                lines.append("")
-            convo = "\n".join(lines)
+        convo_lines = format_session_history(history)
 
         workstream = (
             self._daemon_state.get("workstreams", {})
@@ -1215,9 +1206,15 @@ class CapDepTUI(App[None]):
                 f"status={workstream.get('status') or ''} "
                 f"lease_until={lease}"
             )
-            convo = header + "\n\n" + convo
+            convo_lines = [header, ""] + convo_lines
 
-        self.query_one("#conversation", Static).update(convo)
+        convo_log = self.query_one("#conversation", RichLog)
+        convo_log.clear()
+        if convo_lines:
+            for line in convo_lines:
+                convo_log.write(line)
+        else:
+            convo_log.write("[dim](no turns yet)[/dim]")
 
         scoped = [e for e in recent_events if (e.get("session_id") or "") == session_id]
         if not scoped:
