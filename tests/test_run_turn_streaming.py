@@ -69,6 +69,7 @@ class _StreamingStubLLM:
 
     def __init__(self, chunks: list[str]) -> None:
         self._chunks = chunks
+        self.last_max_tokens: int | None = None
 
     async def respond_streaming(
         self,
@@ -77,6 +78,7 @@ class _StreamingStubLLM:
         *,
         max_tokens: int | None = None,
     ):
+        self.last_max_tokens = max_tokens
         for chunk in self._chunks:
             yield chunk
 
@@ -137,6 +139,28 @@ async def test_no_tool_calls_yields_terminal_completed_event(
     assert events[3].result.iterations == 1
     # No more events after TurnCompleted
     assert len(events) == 4
+
+
+async def test_conversational_turn_caps_max_tokens(
+    session_setup: tuple[UUID, SessionGraph, AuditWriter, ToolRegistry, LabeledToolClient],
+) -> None:
+    from capabledeputy.agent.chat_turn import CHAT_MAX_TOKENS
+
+    sid, graph, audit, registry, tool_client = session_setup
+    llm = _StreamingStubLLM(["quick reply"])
+
+    async for _evt in run_turn_streaming(
+        session_id=sid,
+        user_message="hi",
+        llm=llm,
+        tool_client=tool_client,
+        registry=registry,
+        graph=graph,
+        audit=audit,
+    ):
+        pass
+
+    assert llm.last_max_tokens == CHAT_MAX_TOKENS
 
 
 async def test_streaming_llm_emits_token_events(

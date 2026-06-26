@@ -5,6 +5,8 @@
 
 default_backend: mlx
 
+# Conversational chat turns cap completion at CHAT_MAX_TOKENS (512) in
+# capabledeputy.agent.chat_turn — independent of role max_tokens below.
 roles:
   planner.fast:
     mlx: Qwen/Qwen3-4B-MLX-4bit
@@ -30,7 +32,7 @@ routing:
     reason: programmatic_mode
 
   - when:
-      n_visible_tools_gte: 20
+      n_visible_tools_gte: 16
     role: planner.tools
     reason: large_tool_surface
 

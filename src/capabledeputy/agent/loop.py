@@ -564,8 +564,8 @@ async def run_turn_streaming(
         TurnCompleted,
         TurnInterrupted,
     )
-    from capabledeputy.llm.mlx_client import finalize_mlx_text
-    from capabledeputy.agent.chat_turn import is_conversational_turn
+    from capabledeputy.agent.chat_turn import CHAT_MAX_TOKENS, is_conversational_turn
+    from capabledeputy.llm.mlx_client import MLXLLMClient, finalize_mlx_text
     from capabledeputy.agent.tool_families import load_tool_families
     from capabledeputy.agent.tool_selection import (
         ToolSelectionResult,
@@ -993,16 +993,27 @@ async def run_turn_streaming(
         # handler silently — operators saw a red "rpc error" in chat
         # but the audit log had no trace.
         try:
+            chat_max_tokens = CHAT_MAX_TOKENS if conversational else None
             stream_fn = getattr(effective_llm, "respond_streaming", None)
             if stream_fn is not None:
                 accumulated = ""
-                async for chunk in stream_fn(messages, tool_descriptions):
+                async for chunk in stream_fn(
+                    messages,
+                    tool_descriptions,
+                    max_tokens=chat_max_tokens,
+                ):
                     accumulated += chunk
                     yield LLMTokenReceived(iteration=iteration, text=chunk)
                 response = finalize_mlx_text(
                     accumulated,
                     tool_descriptions,
                     model=str(getattr(effective_llm, "_model", last_model or "unknown")),
+                )
+            elif isinstance(effective_llm, MLXLLMClient):
+                response = await effective_llm.respond(
+                    messages,
+                    tool_descriptions,
+                    max_tokens=chat_max_tokens,
                 )
             else:
                 response = await effective_llm.respond(messages, tool_descriptions)
