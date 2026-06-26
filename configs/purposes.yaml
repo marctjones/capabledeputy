@@ -151,3 +151,141 @@ purposes:
         pattern: "https://registry.npmjs.org/*"
       - kind: EXECUTE_DEVBOX
         pattern: "*"
+
+  # macOS Swift GUI + personal-assistant preset purposes. Sessions spawned
+  # with these handles are born with standing read grants so chat works
+  # without manual /grant. Egress and destructive ops still go through
+  # the chokepoint.
+  - purpose_id: general
+    label: "General assistance (default)"
+    admissible_categories:
+      - personal
+      - work
+      - public
+      - scratch
+      - code
+      - email
+    risk_preference_dial: balanced
+    default_capabilities:
+      - kind: READ_FS
+        pattern: "/Users/*/Documents/**"
+      - kind: READ_FS
+        pattern: "/Users/*/notes/**"
+      - kind: READ_FS
+        pattern: "/Users/*/Documents/GitHub/**"
+      - kind: READ_FS
+        pattern: "/Users/*/Desktop/**"
+      - kind: CREATE_FS
+        pattern: "/Users/*/notes/scratch/**"
+      - kind: WEB_FETCH
+        pattern: "*"
+      - kind: GMAIL_READ
+        pattern: "*"
+      - kind: DRIVE_READ
+        pattern: "*"
+      - kind: CALENDAR_READ
+        pattern: "*"
+      - kind: PEOPLE_READ
+        pattern: "*"
+      - kind: APPLE_MAIL_READ
+        pattern: "*"
+      - kind: KEYNOTE_READ
+        pattern: "*"
+      - kind: PAGES_READ
+        pattern: "*"
+      - kind: NUMBERS_READ
+        pattern: "*"
+      - kind: MACOS_CLIPBOARD_READ
+        pattern: "*"
+      - kind: MACOS_NOTIFICATION
+        pattern: "*"
+
+  - purpose_id: inbox
+    label: "Email triage and summarization"
+    admissible_categories: [personal, work, email, public]
+    risk_preference_dial: balanced
+    default_capabilities:
+      - kind: GMAIL_READ
+        pattern: "*"
+      - kind: GMAIL_DRAFT
+        pattern: "*"
+      - kind: IMAP_READ
+        pattern: "*"
+      - kind: APPLE_MAIL_READ
+        pattern: "*"
+      - kind: APPLE_MAIL_DRAFT
+        pattern: "*"
+      - kind: DRIVE_READ
+        pattern: "*"
+      - kind: CALENDAR_READ
+        pattern: "*"
+      - kind: PEOPLE_READ
+        pattern: "*"
+      - kind: CREATE_FS
+        pattern: "/Users/*/notes/inbox-summaries/**"
+
+  - purpose_id: calendar
+    label: "Calendar review and scheduling"
+    admissible_categories: [personal, work, public]
+    risk_preference_dial: balanced
+    default_capabilities:
+      - kind: CALENDAR_READ
+        pattern: "*"
+      - kind: CREATE_CAL
+        pattern: "*"
+      - kind: MODIFY_CAL
+        pattern: "*"
+      - kind: PEOPLE_READ
+        pattern: "*"
+      - kind: READ_FS
+        pattern: "/Users/*/notes/**"
+
+  - purpose_id: writing
+    label: "Document drafting and editing"
+    admissible_categories: [personal, work, public, scratch]
+    risk_preference_dial: balanced
+    default_capabilities:
+      - kind: READ_FS
+        pattern: "/Users/*/Documents/**"
+      - kind: READ_FS
+        pattern: "/Users/*/notes/**"
+      - kind: CREATE_FS
+        pattern: "/Users/*/Documents/drafts/**"
+      - kind: CREATE_FS
+        pattern: "/Users/*/notes/**"
+      - kind: MODIFY_FS
+        pattern: "/Users/*/Documents/drafts/**"
+      - kind: DRIVE_READ
+        pattern: "*"
+      - kind: PAGES_READ
+        pattern: "*"
+      - kind: PAGES_EDIT
+        pattern: "*"
+      - kind: PAGES_EXPORT
+        pattern: "*"
+      - kind: NUMBERS_READ
+        pattern: "*"
+      - kind: KEYNOTE_READ
+        pattern: "*"
+      - kind: WEB_FETCH
+        pattern: "*"
+
+  - purpose_id: research
+    label: "Web research with note-taking"
+    admissible_categories: [public, scratch, personal]
+    risk_preference_dial: balanced
+    default_capabilities:
+      - kind: WEB_FETCH
+        pattern: "*"
+      - kind: READ_FS
+        pattern: "/Users/*/notes/**"
+      - kind: CREATE_FS
+        pattern: "/Users/*/notes/research/**"
+      - kind: READ_FS
+        pattern: "/Users/*/Documents/**"
+      - kind: DRIVE_READ
+        pattern: "*"
+      - kind: PAGES_READ
+        pattern: "*"
+      - kind: NUMBERS_READ
+        pattern: "*"

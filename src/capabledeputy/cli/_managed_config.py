@@ -398,6 +398,7 @@ BUNDLED_SEARCH_BLOCK_BODY = """\
     tool_overrides:
       "search.web":
         capability_kind: WEB_FETCH
+        target_arg: query
     strict: true
 """
 

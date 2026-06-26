@@ -525,3 +525,33 @@ class TestRecoveryHints:
         assert "# Recovery Hints" in ctx.system_prompt
         assert "structural" in ctx.system_prompt.lower()
         assert "/spawn" in ctx.system_prompt
+
+    def test_gui_surface_omits_f_key_recovery_bindings(
+        self,
+        empty_session: Session,
+    ) -> None:
+        gui_session = Session.new(
+            owner="CapDepMac",
+            intent="chat",
+            purpose_handle="general",
+        )
+        tools: list = []
+        registry: dict = {}
+        events: list = []
+
+        ctx = build_llm_context(gui_session, tools, registry, events)
+
+        assert "Press F1 / F2 / F3 to run them." not in ctx.system_prompt
+        assert "CapDep Console" in ctx.system_prompt
+
+    def test_repl_surface_keeps_f_key_recovery_bindings(
+        self,
+        empty_session: Session,
+    ) -> None:
+        tools: list = []
+        registry: dict = {}
+        events: list = []
+
+        ctx = build_llm_context(empty_session, tools, registry, events)
+
+        assert "Press F1 / F2 / F3 to run them." in ctx.system_prompt

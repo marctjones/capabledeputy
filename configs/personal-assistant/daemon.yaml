@@ -67,6 +67,7 @@ upstream_servers:
     tool_overrides:
       "search.web":
         capability_kind: WEB_FETCH
+        target_arg: query
 
   - name: bundled-memory
     command: ["capdep", "mcp-server-memory"]

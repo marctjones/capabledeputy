@@ -25,6 +25,7 @@ from capabledeputy.policy.labels import (
     LabelState,
     ProvenanceLevel,
 )
+from capabledeputy.session.foreground_defaults import FOREGROUND_CHAT_OWNERS
 from capabledeputy.session.model import Session
 from capabledeputy.tools.registry import ToolDefinition
 
@@ -81,6 +82,70 @@ def _session_profile_str(session: Session) -> str:
 def _session_dial_str(session: Session) -> str:
     """Format session's risk preference dial."""
     return session.risk_preference_at_spawn
+
+
+def _is_foreground_chat_surface(session: Session) -> bool:
+    """True for Swift GUI and other interactive chat clients (not REPL/TUI)."""
+    return (session.owner or "").strip() in FOREGROUND_CHAT_OWNERS
+
+
+def _recovery_hints_section(session: Session) -> str:
+    """Recovery guidance tailored to the client surface."""
+    if _is_foreground_chat_surface(session):
+        fkey_line = (
+            "Do NOT mention function-key shortcuts — those bindings exist "
+            "only in the terminal REPL."
+        )
+        surface_line = (
+            "Tell the user recovery slash commands can be run from the "
+            "CapDep Console window."
+        )
+        surfacing_suffix = ""
+    else:
+        fkey_line = (
+            "The user has F1 / F2 / F3 keypresses that execute the first "
+            "three steps directly, so quoting accurately matters."
+        )
+        surface_line = ""
+        surfacing_suffix = "\n>\n> Press F1 / F2 / F3 to run them."
+
+    return f"""# Recovery Hints
+
+When a tool is denied, the runtime computes the exact slash commands
+that would unblock the action. They arrive on each tool outcome's
+`recovery_steps` field (and on `policy.preview`'s output dict when
+you preview before calling).
+
+**IMPORTANT — quote-only rule:** when telling the user how to
+recover, you MUST quote those commands verbatim. Never invent or
+paraphrase. {fkey_line}
+{surface_line}
+
+If `recovery_steps` is empty, say so explicitly: "The runtime
+suggests no slash-command recovery for this denial — the operator
+will need to look at the daemon config." Don't fabricate.
+
+**Surfacing format:** when recovery_steps are present, say:
+
+> The runtime suggests:
+> 1. `<command from steps[0]>` — <rationale from steps[0]>
+> 2. `<command from steps[1]>` — <rationale from steps[1]>
+> 3. `<command from steps[2]>` — <rationale from steps[2]>{surfacing_suffix}
+
+Recovery commands always come from this fixed runtime vocabulary:
+`/grant`, `/spawn`, `/override`, `/extract`. If you find yourself
+typing a command name that isn't in `recovery_steps`, stop — that
+command doesn't exist or isn't available right now.
+
+Other rules:
+- Don't retry a denied call; the deny is structural.
+- A `recovery_steps` list with multiple entries means there are
+  alternative paths. The first is the primary (simplest). Mention
+  alternatives if the user pushes back on the first.
+- Never reference `capdep override request` (not a real command),
+  `/override grant` (not a real command), or other commands you
+  don't see in `recovery_steps`. Real commands only.
+"""
 
 
 def _session_caps_str(session: Session) -> str:
@@ -243,6 +308,7 @@ def build_llm_context(
     max_recent_decisions: int = 10,
     sandbox_summary: str | None = None,
     tool_call_instructions: str | None = None,
+    chat_only: bool = False,
 ) -> LLMContext:
     """Build deterministic LLM context given session + tools + audit events.
 
@@ -252,10 +318,27 @@ def build_llm_context(
         tool_registry: Mapping of tool name -> ToolDefinition for hints.
         recent_events: Recent audit events (typically from tail()).
         max_recent_decisions: Max recent policy decisions to include.
+        chat_only: Lightweight prompt for conversational turns with no tools.
 
     Returns:
         LLMContext with system_prompt, context_hash, n_tools, n_recent_decisions.
     """
+    if chat_only:
+        session_id_short = str(session.id)[:8]
+        system_prompt = (
+            "You are CapDep, a helpful assistant running inside CapableDeputy.\n"
+            "This turn is conversational only — no tools are available. "
+            "Answer directly and concisely.\n"
+            f"Session: {session_id_short}. "
+            f"Purpose: {session.purpose_handle or 'general'}."
+        )
+        return LLMContext(
+            system_prompt=system_prompt,
+            context_hash=hashlib.sha256(system_prompt.encode()).hexdigest()[:16],
+            n_tools=0,
+            n_recent_decisions=0,
+        )
+
     # --- Session state section ---
     session_id_short = str(session.id)[:8]
     labels_str = _session_labels_str(session)
@@ -359,6 +442,12 @@ useful, accurate answers.
   `/grant SEND_EMAIL recipient@example.com --one-shot`)." Do not pretend.
 - After calling a tool, the runtime returns a real result. Report that
   result accurately. Do not fabricate decisions or outputs.
+- When the user asks for a web search, headlines, or to look something
+  up online and `web.search` or `bundled-search.search.web` is in your
+  tool list, call it immediately with their query. Do not ask what to
+  search for when they already gave a topic. Summarize the results for
+  the user — `untrusted.external` labels constrain outbound egress, not
+  reporting search results back to the user in chat.
 
 How the policy works (high-level):
 
@@ -416,44 +505,7 @@ When a tool call comes back REQUIRE_APPROVAL:
 
 {decisions_section}
 
-# Recovery Hints
-
-When a tool is denied, the runtime computes the exact slash commands
-that would unblock the action. They arrive on each tool outcome's
-`recovery_steps` field (and on `policy.preview`'s output dict when
-you preview before calling).
-
-**IMPORTANT — quote-only rule:** when telling the user how to
-recover, you MUST quote those commands verbatim. Never invent or
-paraphrase. The user has F1 / F2 / F3 keypresses that execute
-the first three steps directly, so quoting accurately matters.
-
-If `recovery_steps` is empty, say so explicitly: "The runtime
-suggests no slash-command recovery for this denial — the operator
-will need to look at the daemon config." Don't fabricate.
-
-**Surfacing format:** when recovery_steps are present, say:
-
-> The runtime suggests:
-> 1. `<command from steps[0]>` — <rationale from steps[0]>
-> 2. `<command from steps[1]>` — <rationale from steps[1]>
-> 3. `<command from steps[2]>` — <rationale from steps[2]>
->
-> Press F1 / F2 / F3 to run them.
-
-Recovery commands always come from this fixed runtime vocabulary:
-`/grant`, `/spawn`, `/override`, `/extract`. If you find yourself
-typing a command name that isn't in `recovery_steps`, stop — that
-command doesn't exist or isn't available right now.
-
-Other rules:
-- Don't retry a denied call; the deny is structural.
-- A `recovery_steps` list with multiple entries means there are
-  alternative paths. The first is the primary (simplest). Mention
-  alternatives if the user pushes back on the first.
-- Never reference `capdep override request` (not a real command),
-  `/override grant` (not a real command), or other commands you
-  don't see in `recovery_steps`. Real commands only.
+{_recovery_hints_section(session)}
 
 When you have completed the task, respond with a final answer and no
 tool calls. Be concise and honest about what you did and didn't do.
