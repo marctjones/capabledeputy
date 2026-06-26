@@ -6,6 +6,10 @@ breaking changes).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-06-26
+
+macOS chat, inline media, MCP control enrichment, and client parity release.
+
 ### Security
 
 - Hardened stdio upstream MCP process spawning so long-lived upstream servers
@@ -99,6 +103,24 @@ breaking changes).
   `format_session_history()`.
 - Stripped leaked MLX `{"tool_calls":…}` prefixes from finalized assistant
   text before it is persisted or displayed.
+- Added auto-opening **Allow Access** and **Approval** prompt windows in
+  CapDepMac, with **Allow & try again** for capability grants and widened
+  session-scoped `READ_FS` patterns from the GUI.
+- Added rich chat rendering in CapDepMac: fenced code blocks with copy,
+  markdown images (`AsyncImage`), and full-document markdown prose blocks.
+
+### Inline media (terminal + MCP)
+
+- Added `terminal_graphics` and `markdown_media` so `capdep chat`, the
+  Textual console, and the inline TUI render trusted agent markdown images
+  inline on Ghostty/kitty/iTerm2 via the kitty or iTerm graphics protocols.
+- Added `mcp_server/media_results` so the MCP control client attaches
+  `ImageContent` blocks and an optional `--- CapDep terminal view ---` text
+  section to session/turn/tool results; graphics work on piped MCP subprocesses
+  that inherit Ghostty/kitty `TERM_PROGRAM`.
+- Documented that MCP hosts such as Grok/Codex do not currently forward
+  terminal graphics escapes to the outer terminal — use CapDepMac or
+  `capdep chat` for reliable inline images.
 
 ### Practical setup and daemon-owned settings
 
@@ -908,6 +930,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.25.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.25.0
 [0.24.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.24.0
 [0.23.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.23.0
 [0.22.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.22.0

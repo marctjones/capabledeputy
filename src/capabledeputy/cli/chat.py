@@ -795,54 +795,12 @@ def _render_turn(result: dict[str, Any]) -> None:
 
 
 def _render_markdown(content: str):
-    """Build a Rich Markdown renderer with settings tuned for the
-    operator's terminal. Modern terminals (Ghostty, kitty, iTerm2,
-    WezTerm, Alacritty) get a truecolor-rich code theme + explicit
-    hyperlinks; basic terminals get the conservative monokai fallback.
+    """Render trusted agent markdown with terminal-aware code themes,
+    OSC 8 hyperlinks, and inline images on kitty/Ghostty/iTerm2 when
+    ``![alt](path-or-url)`` references resolve to a local image."""
+    from capabledeputy.cli.markdown_media import render_trusted_markdown
 
-    Returns a `rich.markdown.Markdown` object ready to console.print().
-
-    What this actually buys you (in Ghostty specifically):
-    - **Code theme**: switches from 256-color monokai to a truecolor
-      theme (`one-dark`) that uses the full 24-bit gamut. Visible on
-      syntax-highlighted code blocks.
-    - **Inline code highlighting**: enabled by default in Rich for
-      ```python (etc.) but inline `code` was unstyled. Now uses the
-      same theme.
-    - **Hyperlinks**: forced ON. The default is auto-detect, which
-      Rich sometimes downgrades on stdout buffers. Ghostty supports
-      OSC 8 (per terminal_caps detection); now we always emit it.
-    - **Tables**: not directly controlled here — Rich's markdown
-      table renderer uses console width auto-detect. Already good
-      on Ghostty.
-
-    What it DOESN'T do (intentional):
-    - Render markdown image links as inline graphics via kitty
-      protocol. Possible (Ghostty supports it), but the agent
-      rarely produces image-bearing markdown today. Filed as a
-      follow-on under #19's scope.
-    """
-    from rich.markdown import Markdown
-
-    from capabledeputy.cli.terminal_caps import caps as _caps
-
-    c = _caps()
-    # Modern truecolor families get a richer code theme. Both
-    # "one-dark" and "monokai" exist in pygments; one-dark looks
-    # better on Ghostty/kitty/iterm where truecolor + good font
-    # rendering shine.
-    if c.truecolor and c.family in ("ghostty", "kitty", "iterm2", "wezterm", "alacritty"):
-        code_theme = "one-dark"
-    else:
-        code_theme = "monokai"
-
-    return Markdown(
-        content,
-        code_theme=code_theme,
-        hyperlinks=c.hyperlinks,
-        inline_code_lexer="python",  # best-guess for inline `code` spans
-        inline_code_theme=code_theme,
-    )
+    return render_trusted_markdown(content)
 
 
 def _list_approvals(status: str = "pending") -> list[dict[str, Any]]:

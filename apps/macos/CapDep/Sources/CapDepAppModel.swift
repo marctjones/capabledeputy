@@ -13,6 +13,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var setupChecks: [SetupCheck] = []
     @Published private(set) var setupPlan = SetupPlan(dictionary: [:])
     @Published var approvalWindowID: Int?
+    @Published var grantPromptPresented = false
     @Published private(set) var turnStatusLine = ""
     @Published private(set) var gmailOAuthStatus = GmailOAuthStatus.empty
     @Published private(set) var googleOAuthStatuses: [String: GoogleOAuthStatus] = [:]
@@ -44,6 +45,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var isRunningTurn = false
     @Published private(set) var currentTurnID: String?
     @Published private(set) var turnPendingApprovalIDs: [Int] = []
+    @Published private(set) var pendingGrantRetryMessage: String?
     @Published private(set) var isRecoveringDaemon = false
     @Published private(set) var isConfiguringGoogleOAuth = false
     @Published var selectedSection: DashboardSection = .today
@@ -461,8 +463,24 @@ final class CapDepAppModel: ObservableObject {
     }
 
     func send(message: String, sessionID: String) async {
+        pendingGrantRetryMessage = nil
+        grantPromptPresented = false
+        await runTurn(message: message, sessionID: sessionID, appendUserMessage: true)
+    }
+
+    private func runTurn(
+        message: String,
+        sessionID: String,
+        appendUserMessage: Bool,
+    ) async {
         isRunningTurn = true
-        beginTurn(userMessage: message)
+        if appendUserMessage {
+            beginTurn(userMessage: message)
+        } else {
+            let assistant = ChatMessage(role: .assistant, content: "", isStreaming: true)
+            chatMessages.append(assistant)
+            streamingAssistantMessageID = assistant.id
+        }
         currentToolOutcomes = []
         turnPendingApprovalIDs = []
         turnStatusLine = "Starting turn…"
@@ -473,12 +491,15 @@ final class CapDepAppModel: ObservableObject {
             metadata: [
                 "session_id": sessionID,
                 "message_len": String(message.count),
+                "append_user_message": String(appendUserMessage),
             ],
         )
         defer {
             isRunningTurn = false
             turnStatusLine = ""
             currentTurnID = nil
+            noteGrantRetryIfNeeded()
+            presentPolicyPromptsAfterTurn()
             ChatDebugLog.log(
                 "turn_send_end",
                 metadata: [
@@ -569,11 +590,6 @@ final class CapDepAppModel: ObservableObject {
                 ChatDebugLog.log("subscribe_fallback_poll", metadata: ["turn_id": turnID])
                 try await pollTurnUntilFinished(turnID: turnID)
             }
-            if let firstApproval = turnPendingApprovalIDs.first {
-                focusedApprovalID = firstApproval
-                approvalWindowID = firstApproval
-                selectedSection = .approvals
-            }
         } catch {
             lastError = error.localizedDescription
             ChatDebugLog.log(
@@ -591,6 +607,7 @@ final class CapDepAppModel: ObservableObject {
         for outcome in outcomes where outcome.decision == "require_approval" {
             if let approvalID = outcome.approvalID, !turnPendingApprovalIDs.contains(approvalID) {
                 turnPendingApprovalIDs.append(approvalID)
+                presentApprovalPromptIfNeeded(approvalID: approvalID)
             }
         }
     }
@@ -603,11 +620,13 @@ final class CapDepAppModel: ObservableObject {
         if let rawID = outcome["approval_id"] as? Int {
             if !turnPendingApprovalIDs.contains(rawID) {
                 turnPendingApprovalIDs.append(rawID)
+                presentApprovalPromptIfNeeded(approvalID: rawID)
             }
         } else if let rawID = outcome["approval_id"] as? NSNumber {
             let approvalID = rawID.intValue
             if !turnPendingApprovalIDs.contains(approvalID) {
                 turnPendingApprovalIDs.append(approvalID)
+                presentApprovalPromptIfNeeded(approvalID: approvalID)
             }
         }
     }
@@ -1269,16 +1288,70 @@ final class CapDepAppModel: ObservableObject {
             .grantRecoveryStep
     }
 
+    var pendingDeniedGrantOutcome: ToolOutcome? {
+        currentToolOutcomes.first { outcome in
+            outcome.decision.lowercased() == "deny" && outcome.grantRecoveryStep != nil
+        }
+    }
+
+    func dismissGrantPrompt() {
+        grantPromptPresented = false
+    }
+
+    private func presentApprovalPromptIfNeeded(approvalID: Int) {
+        focusedApprovalID = approvalID
+        approvalWindowID = approvalID
+        selectedSection = .approvals
+        grantPromptPresented = false
+    }
+
+    private func presentPolicyPromptsAfterTurn() {
+        if let firstApproval = turnPendingApprovalIDs.first {
+            presentApprovalPromptIfNeeded(approvalID: firstApproval)
+            return
+        }
+        grantPromptPresented = pendingGrantRecovery != nil
+    }
+
+    private func noteGrantRetryIfNeeded() {
+        guard pendingGrantRecovery != nil else {
+            pendingGrantRetryMessage = nil
+            return
+        }
+        if let lastUser = chatMessages.last(where: { $0.role == .user })?.content,
+           !lastUser.isEmpty {
+            pendingGrantRetryMessage = lastUser
+        }
+    }
+
     func grantCapability(from step: RecoveryStep, sessionID: String) async {
-        guard let kind = step.grantKind, let pattern = step.grantPattern else {
+        await grantCapability(from: step, sessionID: sessionID, retryMessage: nil)
+    }
+
+    func grantCapabilityAndRetry(from step: RecoveryStep, sessionID: String) async {
+        await grantCapability(from: step, sessionID: sessionID, retryMessage: pendingGrantRetryMessage)
+    }
+
+    private func grantCapability(
+        from step: RecoveryStep,
+        sessionID: String,
+        retryMessage: String?,
+    ) async {
+        guard let kind = step.grantKind, let pattern = step.guiGrantPattern() else {
             lastError = "This recovery step cannot be granted from the GUI."
             return
         }
         let allowsDestructive = step.args.contains("--destructive")
+        let expiry: String
+        if step.prefersSessionGrantFromGUI {
+            expiry = "session"
+        } else {
+            expiry = step.isOneShot ? "one_shot" : "session"
+        }
         let capability: [String: Any] = [
             "kind": kind,
             "pattern": pattern,
-            "expiry": step.isOneShot ? "one_shot" : "session",
+            "expiry": expiry,
             "origin": "user_approved",
             "audit_id": UUID().uuidString,
             "allows_destructive": allowsDestructive,
@@ -1293,7 +1366,17 @@ final class CapDepAppModel: ObservableObject {
                 ],
             )
             lastError = nil
-            await refresh()
+            currentToolOutcomes = []
+            pendingGrantRetryMessage = nil
+            grantPromptPresented = false
+            if let retryMessage, !retryMessage.isEmpty {
+                if chatMessages.last?.role == .assistant {
+                    chatMessages.removeLast()
+                }
+                await runTurn(message: retryMessage, sessionID: sessionID, appendUserMessage: false)
+            } else {
+                await refresh()
+            }
         } catch {
             lastError = error.localizedDescription
         }

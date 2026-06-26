@@ -59,6 +59,7 @@ from mcp.server.stdio import stdio_server
 
 from capabledeputy.ipc.client import DaemonClient
 from capabledeputy.ipc.socket_path import default_socket_path
+from capabledeputy.mcp_server.media_results import build_mcp_result
 from capabledeputy.presentation import DENY_RECOVERY
 
 SERVER_NAME = "capdep"
@@ -324,12 +325,16 @@ async def dispatch_tool(
         )
 
     output = result.get("output") or {}
-    structured: dict[str, Any] | None = output if isinstance(output, dict) else None
-    text_payload = json.dumps(output, indent=2) if isinstance(output, dict | list) else str(output)
+    media_payload: dict[str, Any] = dict(result)
     if result.get("labels_added"):
-        text_payload += (
-            "\n\n[capdep: session labels expanded with " + ", ".join(result["labels_added"]) + "]"
-        )
+        media_payload = {
+            **media_payload,
+            "labels_added_note": (
+                "[capdep: session labels expanded with "
+                + ", ".join(result["labels_added"])
+                + "]"
+            ),
+        }
 
     call_meta: dict[str, Any] = {
         "io.capabledeputy/labels_added": result.get("labels_added", []),
@@ -342,12 +347,16 @@ async def dispatch_tool(
             f"tool {name} succeeded; labels expanded with " + ", ".join(result["labels_added"]),
         )
 
-    return mcp_types.CallToolResult(
-        content=[mcp_types.TextContent(type="text", text=text_payload)],
-        structuredContent=structured,
-        isError=False,
-        **{"_meta": call_meta},
-    )
+    built = build_mcp_result(media_payload, meta=call_meta, is_error=False)
+    if result.get("labels_added") and built.content:
+        first = built.content[0]
+        if isinstance(first, mcp_types.TextContent):
+            first.text += (
+                "\n\n[capdep: session labels expanded with "
+                + ", ".join(result["labels_added"])
+                + "]"
+            )
+    return built
 
 
 async def build_server(client: DaemonClient, session_id: UUID) -> Server:

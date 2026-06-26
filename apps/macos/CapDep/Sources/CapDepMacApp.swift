@@ -78,6 +78,16 @@ struct CapDepMacApp: App {
         }
         .windowResizability(.contentSize)
 
+        Window("Allow Access", id: "capability-grant-card") {
+            GrantCardWindow()
+                .environmentObject(model)
+                .frame(minWidth: 640, minHeight: 520)
+                .task {
+                    await model.start()
+                }
+        }
+        .windowResizability(.contentSize)
+
         Window("Google Account Setup", id: "google-oauth-wizard") {
             GoogleOAuthWizardView()
                 .environmentObject(model)

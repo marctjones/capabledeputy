@@ -181,6 +181,40 @@ struct RecoveryStep: Identifiable, Hashable {
     var isOneShot: Bool {
         args.contains("--one-shot")
     }
+
+    /// Widen one-shot engine recovery patterns so a GUI grant covers the
+    /// directory subtree, not only a single file path.
+    func guiGrantPattern() -> String? {
+        guard let kind = grantKind, let pattern = grantPattern else {
+            return nil
+        }
+        return RecoveryStep.widenedGrantPattern(kind: kind, pattern: pattern)
+    }
+
+    static func widenedGrantPattern(kind: String, pattern: String) -> String {
+        guard kind == "READ_FS" else {
+            return pattern
+        }
+        if pattern == "*" || pattern.hasSuffix("/*") || pattern.hasSuffix("/**") {
+            return pattern
+        }
+        var path = pattern
+        if path.hasSuffix("/") {
+            path = String(path.dropLast())
+        }
+        let basename = (path as NSString).lastPathComponent
+        if basename.contains("."), !basename.hasPrefix(".") {
+            let parent = (path as NSString).deletingLastPathComponent
+            if !parent.isEmpty {
+                path = parent
+            }
+        }
+        return path + "/*"
+    }
+
+    var prefersSessionGrantFromGUI: Bool {
+        grantKind == "READ_FS" && !args.contains("--destructive")
+    }
 }
 
 struct ToolOutcome: Identifiable, Hashable {

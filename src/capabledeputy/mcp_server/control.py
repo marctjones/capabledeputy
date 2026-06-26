@@ -19,6 +19,7 @@ from mcp.server.stdio import stdio_server
 
 from capabledeputy.ipc.client import DaemonClient
 from capabledeputy.ipc.socket_path import default_socket_path
+from capabledeputy.mcp_server.media_results import build_mcp_result
 
 SERVER_NAME = "capdep-control"
 
@@ -2116,14 +2117,7 @@ def _copy(args: dict[str, Any], *names: str) -> dict[str, Any]:
 
 
 def _ok_result(result: Any) -> mcp_types.CallToolResult:
-    structured = result if isinstance(result, dict) else None
-    text = json.dumps(result, indent=2) if isinstance(result, dict | list) else str(result)
-    return mcp_types.CallToolResult(
-        content=[mcp_types.TextContent(type="text", text=text)],
-        structuredContent=structured,
-        isError=False,
-        **{"_meta": _CONTROL_META},
-    )
+    return build_mcp_result(result, meta=_CONTROL_META, is_error=False)
 
 
 def _error_result(message: str) -> mcp_types.CallToolResult:

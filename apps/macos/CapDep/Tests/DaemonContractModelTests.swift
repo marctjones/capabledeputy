@@ -67,6 +67,25 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(outcome.grantRecoveryStep?.grantKind, "READ_FS")
         XCTAssertEqual(outcome.grantRecoveryStep?.grantPattern, "/tmp/foo")
         XCTAssertTrue(outcome.grantRecoveryStep?.isOneShot == true)
+        XCTAssertEqual(
+            outcome.grantRecoveryStep?.guiGrantPattern(),
+            "/tmp/foo/*",
+        )
+    }
+
+    func testRecoveryStepWidensFilePathToParentDirectory() {
+        XCTAssertEqual(
+            RecoveryStep.widenedGrantPattern(kind: "READ_FS", pattern: "/tmp/foo/bar.txt"),
+            "/tmp/foo/*",
+        )
+        XCTAssertEqual(
+            RecoveryStep.widenedGrantPattern(kind: "READ_FS", pattern: "/Volumes/External/"),
+            "/Volumes/External/*",
+        )
+        XCTAssertEqual(
+            RecoveryStep.widenedGrantPattern(kind: "SEND_EMAIL", pattern: "dad@example.com"),
+            "dad@example.com",
+        )
     }
 
     func testOnguardDaemonModelsParseCoordinationState() {

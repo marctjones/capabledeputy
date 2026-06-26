@@ -9,13 +9,13 @@ enum ChatContentFormatter {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    static func attributedMarkdown(from raw: String) -> AttributedString {
+    static func attributedMarkdown(from raw: String, fullDocument: Bool = false) -> AttributedString {
         let cleaned = displayText(raw)
         guard !cleaned.isEmpty else {
             return AttributedString("")
         }
         var options = AttributedString.MarkdownParsingOptions()
-        options.interpretedSyntax = .inlineOnlyPreservingWhitespace
+        options.interpretedSyntax = fullDocument ? .full : .inlineOnlyPreservingWhitespace
         if let parsed = try? AttributedString(markdown: cleaned, options: options) {
             return parsed
         }

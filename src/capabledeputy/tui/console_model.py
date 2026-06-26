@@ -15,6 +15,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from rich.console import RenderableType
+
+from capabledeputy.cli.markdown_media import render_trusted_markdown
 from capabledeputy.presentation import (
     DENY_RECOVERY,
     capability_line,
@@ -41,8 +44,8 @@ def outcome_line(o: dict[str, Any]) -> str:
     return f"  [{color}]{glyph} {decision}[/{color}] [bold]{tool}[/bold]{tail}"
 
 
-def format_history_turn(turn: dict[str, Any]) -> list[str]:
-    """Rich-markup lines for one persisted session-history turn."""
+def format_history_turn(turn: dict[str, Any]) -> list[str | RenderableType]:
+    """Rich lines/renderables for one persisted session-history turn."""
     role = str(turn.get("role") or "?")
     content = str(turn.get("content") or "")
     if role == "user":
@@ -51,29 +54,35 @@ def format_history_turn(turn: dict[str, Any]) -> list[str]:
         header = "[bold green]agent[/bold green]"
     else:
         header = f"[bold]{role}[/bold]"
-    lines = [header]
-    for content_line in content.split("\n"):
-        lines.append(f"  {content_line}")
+    lines: list[str | RenderableType] = [header]
+    if role == "agent" and content.strip():
+        lines.append(render_trusted_markdown(content))
+    else:
+        for content_line in content.split("\n"):
+            lines.append(f"  {content_line}")
     lines.append("")
     return lines
 
 
-def format_session_history(history: list[dict[str, Any]]) -> list[str]:
+def format_session_history(history: list[dict[str, Any]]) -> list[str | RenderableType]:
     """Full scrollable transcript for a session's persisted history."""
-    lines: list[str] = []
+    lines: list[str | RenderableType] = []
     for turn in history:
         lines.extend(format_history_turn(turn))
     return lines
 
 
-def format_turn(result: dict[str, Any]) -> list[str]:
-    """Rich-markup lines for one agent turn: the reply, each tool
-    outcome, and — for a denial — the deterministic recovery hint
+def format_turn(result: dict[str, Any]) -> list[str | RenderableType]:
+    """Rich lines/renderables for one agent turn: markdown reply, each
+    tool outcome, and — for a denial — the deterministic recovery hint
     (same one the REPL and monitor TUI show)."""
-    lines: list[str] = [
-        f"[bold cyan]agent[/bold cyan] {result.get('content', '')}",
+    content = str(result.get("content") or "")
+    lines: list[str | RenderableType] = ["[bold cyan]agent[/bold cyan]"]
+    if content.strip():
+        lines.append(render_trusted_markdown(content))
+    lines.append(
         f"[dim](iterations={result.get('iterations')}, finish={result.get('finish_reason')})[/dim]",
-    ]
+    )
     for o in result.get("tool_outcomes", []):
         lines.append(outcome_line(o))
         if o.get("decision") == "deny":

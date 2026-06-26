@@ -55,6 +55,16 @@ struct ChatView: View {
                 openWindow(id: "google-oauth-wizard")
             }
         }
+        .onChange(of: model.approvalWindowID) { _, approvalID in
+            if approvalID != nil {
+                openWindow(id: "approval-card")
+            }
+        }
+        .onChange(of: model.grantPromptPresented) { _, presented in
+            if presented {
+                openWindow(id: "capability-grant-card")
+            }
+        }
     }
 
     private var conversationArea: some View {
@@ -173,15 +183,20 @@ struct ChatView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Approval required")
                     .font(.headline)
-                Text(
-                    "Turn paused on: "
-                        + model.turnPendingApprovalIDs.map { "#\($0)" }.joined(separator: ", "),
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text("CapDep paused before a sensitive action. Review what will happen, then approve or deny.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if !model.turnPendingApprovalIDs.isEmpty {
+                    Text(
+                        "Pending: "
+                            + model.turnPendingApprovalIDs.map { "#\($0)" }.joined(separator: ", "),
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
             }
             Spacer()
-            Button("Review") {
+            Button("Review approval") {
                 if let first = model.turnPendingApprovalIDs.first {
                     model.presentApproval(id: first)
                     openWindow(id: "approval-card")
@@ -194,12 +209,14 @@ struct ChatView: View {
     }
 
     private func capabilityGrantBanner(step: RecoveryStep, sessionID: String) -> some View {
-        HStack(alignment: .top) {
+        let grantPattern = step.guiGrantPattern() ?? step.grantPattern
+        let canRetry = model.pendingGrantRetryMessage != nil
+        return HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Capability needed")
+                Text("Allow access to this location?")
                     .font(.headline)
-                if let kind = step.grantKind, let pattern = step.grantPattern {
-                    Text("Grant \(kind) access to \(pattern) for this session.")
+                if let kind = step.grantKind, let grantPattern {
+                    Text("CapDep needs \(kind) permission for \(grantPattern) before it can continue.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -208,15 +225,18 @@ struct ChatView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-                Text("This is not an approval queue item — CapDep needs a capability grant before it can read files.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Text(
+                    canRetry
+                        ? "This is a capability grant, not an approval. Tap below to allow access and retry your request."
+                        : "This is a capability grant, not an approval. Grant access, then ask again.",
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Grant access") {
-                Task {
-                    await model.grantCapability(from: step, sessionID: sessionID)
-                }
+            Button(canRetry ? "Open access prompt" : "Review access request") {
+                model.grantPromptPresented = true
+                openWindow(id: "capability-grant-card")
             }
             .buttonStyle(.borderedProminent)
         }
@@ -358,9 +378,7 @@ private struct UserMessageBubble: View {
     var body: some View {
         HStack {
             Spacer(minLength: 48)
-            Text(text)
-                .font(.body)
-                .textSelection(.enabled)
+            ChatRichMessageBody(text: text)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: 16))
@@ -372,26 +390,12 @@ private struct AssistantMessageBubble: View {
     let text: String
     var isStreaming: Bool = false
 
-    private var rendered: AttributedString {
-        ChatContentFormatter.attributedMarkdown(from: text)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("CapDep")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            if isStreaming, text.isEmpty {
-                Text("…")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(rendered)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .tint(.accentColor)
-            }
+            ChatRichMessageBody(text: text, isStreaming: isStreaming)
         }
         .padding(14)
         .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))

@@ -13,9 +13,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from rich.console import RenderableType
-from rich.markdown import Markdown
 from rich.text import Text
 
+from capabledeputy.cli.markdown_media import render_trusted_markdown
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.engine import PolicyDecision
 from capabledeputy.tui.inline.decision import (
@@ -100,7 +100,7 @@ def render_entry(entry: Entry, *, marker: SessionMarker) -> RenderableType:
         line.append(entry.text)
         return line
     if isinstance(entry, AgentMessage):
-        return Markdown(entry.markdown)
+        return render_trusted_markdown(entry.markdown)
     if isinstance(entry, UntrustedBlock):
         return quarantine(entry.raw)
     if isinstance(entry, ToolDecision):

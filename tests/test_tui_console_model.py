@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rich.console import Console
 from rich.text import Text
 
 from capabledeputy.tui.console_model import (
@@ -14,10 +15,18 @@ from capabledeputy.tui.console_model import (
 )
 
 
-def _plain(lines: list[str]) -> str:
+def _render_item(item: str | object) -> str:
+    if isinstance(item, str):
+        return Text.from_markup(item).plain
+    console = Console(width=120, record=True, force_terminal=False)
+    console.print(item)
+    return console.export_text().strip()
+
+
+def _plain(lines: list[str | object]) -> str:
     """Markup-stripped join — assert on what the human reads, not the
     Rich tag soup."""
-    return "\n".join(Text.from_markup(ln).plain for ln in lines)
+    return "\n".join(_render_item(line) for line in lines)
 
 
 def test_outcome_line_allow_and_deny() -> None:
@@ -58,8 +67,13 @@ def test_format_turn_includes_reply_and_recovery_hint() -> None:
         ],
     }
     lines = format_turn(result)
-    blob = _plain(lines)
-    assert "agent" in blob and "I can't do that." in blob
+    blob = _plain([line for line in lines if isinstance(line, str)])
+    assert "agent" in blob
+    from capabledeputy.cli.markdown_media import render_trusted_markdown
+
+    md_console = Console(width=80, record=True, force_terminal=False)
+    md_console.print(render_trusted_markdown(result["content"]))
+    assert "I can't do that." in md_console.export_text()
     assert "✗ deny" in blob
     assert "rule fired" in blob
     assert "↳ recover:" in blob  # deterministic hint surfaced
