@@ -83,37 +83,27 @@ struct ChatCodeBlockView: View {
 }
 
 struct ChatImageBlockView: View {
+    @EnvironmentObject private var model: CapDepAppModel
+
     let alt: String
     let urlString: String
     var onContentSizeChange: (() -> Void)?
 
-    @State private var resolvedURL: URL?
-    @State private var loadFailed = false
+    @State private var resolvedImage: ChatImageURLResolver.ResolvedImage?
+    @State private var resolveFailure: ChatImageURLResolver.Failure?
+    @State private var renderFailed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let resolvedURL {
-                AsyncImage(url: resolvedURL) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView()
-                            .frame(maxWidth: .infinity, minHeight: 120)
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity, maxHeight: 360, alignment: .leading)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .onAppear {
-                                onContentSizeChange?()
-                            }
-                    case .failure:
-                        imageFallback
-                    @unknown default:
-                        imageFallback
-                    }
-                }
-            } else if loadFailed {
+            if let resolvedImage, !renderFailed {
+                ChatLocalImageView(
+                    resolved: resolvedImage,
+                    onContentSizeChange: onContentSizeChange,
+                    onLoadFailed: {
+                        renderFailed = true
+                    },
+                )
+            } else if resolveFailure != nil || renderFailed {
                 imageFallback
             } else {
                 ProgressView()
@@ -126,43 +116,68 @@ struct ChatImageBlockView: View {
             }
         }
         .task(id: urlString) {
-            resolvedURL = ChatImageURLResolver.resolve(urlString)
-            loadFailed = resolvedURL == nil
+            renderFailed = false
+            switch ChatImageURLResolver.resolve(urlString) {
+            case .success(let resolved):
+                resolvedImage = resolved
+                resolveFailure = nil
+            case .failure(let failure):
+                resolvedImage = nil
+                resolveFailure = failure
+            }
         }
     }
 
     private var imageFallback: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label("Image unavailable", systemImage: "photo")
+        VStack(alignment: .leading, spacing: 8) {
+            Label(failureTitle, systemImage: "photo")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(urlString)
                 .font(.caption2.monospaced())
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+            if let grantStep = matchingGrantRecoveryStep {
+                Button("Allow access to view image") {
+                    model.grantPromptPresented = true
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                Text("CapDep needs \(grantStep.grantKind ?? "READ_FS") permission for this file location.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
     }
-}
 
-enum ChatImageURLResolver {
-    static func resolve(_ raw: String) -> URL? {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+    private var failureTitle: String {
+        switch resolveFailure {
+        case .tooLarge:
+            return "Image too large to display"
+        case .unsupportedFormat:
+            return "Unsupported image format"
+        case .notFound:
+            return "Image not found"
+        case .unreadable:
+            return "Image unavailable (access denied)"
+        default:
+            return "Image unavailable"
+        }
+    }
+
+    private var matchingGrantRecoveryStep: RecoveryStep? {
+        guard let step = model.pendingGrantRecovery,
+              step.grantKind == "READ_FS",
+              let pattern = step.guiGrantPattern() ?? step.grantPattern else {
             return nil
         }
-        if trimmed.hasPrefix("https://") {
-            return URL(string: trimmed)
+        let expanded = NSString(string: urlString).expandingTildeInPath
+        guard ChatImageURLResolver.matchesGrantPattern(path: expanded, pattern: pattern) else {
+            return nil
         }
-        if trimmed.hasPrefix("file://") {
-            return URL(string: trimmed)
-        }
-        let expanded = NSString(string: trimmed).expandingTildeInPath
-        if expanded.hasPrefix("/") {
-            return URL(fileURLWithPath: expanded)
-        }
-        return nil
+        return step
     }
 }
