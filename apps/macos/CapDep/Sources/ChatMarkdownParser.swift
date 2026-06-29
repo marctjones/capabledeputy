@@ -18,7 +18,7 @@ enum ChatBlock: Identifiable, Equatable {
 }
 
 enum ChatMarkdownParser {
-    static func blocks(from raw: String) -> [ChatBlock] {
+    static func blocks(from raw: String, isStreaming: Bool = false) -> [ChatBlock] {
         let cleaned = ChatContentFormatter.displayText(raw)
         guard !cleaned.isEmpty else {
             return []
@@ -28,7 +28,11 @@ enum ChatMarkdownParser {
         var cursor = cleaned.startIndex
         while let match = cleaned[cursor...].firstMatch(of: fencePattern) {
             if match.range.lowerBound > cursor {
-                appendProse(String(cleaned[cursor..<match.range.lowerBound]), to: &result)
+                appendProse(
+                    String(cleaned[cursor..<match.range.lowerBound]),
+                    isStreaming: isStreaming,
+                    to: &result,
+                )
             }
             let language = String(match.1).trimmingCharacters(in: .whitespacesAndNewlines)
             let body = String(match.2).trimmingCharacters(in: .newlines)
@@ -36,26 +40,51 @@ enum ChatMarkdownParser {
             cursor = match.range.upperBound
         }
         if cursor < cleaned.endIndex {
-            appendProse(String(cleaned[cursor...]), to: &result)
+            appendProse(String(cleaned[cursor...]), isStreaming: isStreaming, to: &result)
         }
         if result.isEmpty {
-            appendProse(cleaned, to: &result)
+            appendProse(cleaned, isStreaming: isStreaming, to: &result)
         }
         return result
     }
 
-    private static func appendProse(_ text: String, to result: inout [ChatBlock]) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// While streaming, hold a trailing incomplete `![alt](url` fragment as prose
+    /// so the UI does not flicker between raw markdown and an image block.
+    static func trailingIncompleteImageSuffix(in text: String) -> String? {
+        guard let match = text.firstMatch(of: /(?s)(!\[[^\]]*(\]\([^)]*)?)$/) else {
+            return nil
+        }
+        let suffix = String(match.1)
+        return suffix.isEmpty ? nil : suffix
+    }
+
+    private static func appendProse(_ text: String, isStreaming: Bool, to result: inout [ChatBlock]) {
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return
         }
+
+        var holdTail = ""
+        if isStreaming, let suffix = trailingIncompleteImageSuffix(in: trimmed) {
+            holdTail = suffix
+            trimmed = String(trimmed.dropLast(suffix.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                if !holdTail.isEmpty {
+                    result.append(.prose(holdTail))
+                }
+                return
+            }
+        }
+
         let imagePattern = /!\[(?<alt>[^\]]*)\]\((?<url>[^)]+)\)/
         var cursor = trimmed.startIndex
         var foundImage = false
         while let match = trimmed[cursor...].firstMatch(of: imagePattern) {
             foundImage = true
             if match.range.lowerBound > cursor {
-                let prose = String(trimmed[cursor..<match.range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let prose = String(trimmed[cursor..<match.range.lowerBound])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
                 if !prose.isEmpty {
                     result.append(.prose(prose))
                 }
@@ -72,6 +101,14 @@ enum ChatMarkdownParser {
             }
         } else {
             result.append(.prose(trimmed))
+        }
+
+        if !holdTail.isEmpty {
+            if case .prose(let existing)? = result.last {
+                result[result.count - 1] = .prose(existing + holdTail)
+            } else {
+                result.append(.prose(holdTail))
+            }
         }
     }
 }

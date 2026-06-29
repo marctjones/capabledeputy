@@ -85,6 +85,9 @@ struct ChatView: View {
                             AssistantMessageBubble(
                                 text: message.content,
                                 isStreaming: message.isStreaming,
+                                onContentSizeChange: {
+                                    scrollToLatest(proxy: proxy)
+                                },
                             )
                             .id(message.id)
                         }
@@ -128,6 +131,9 @@ struct ChatView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .onChange(of: model.chatMessages.count) { _, _ in
+                scrollToLatest(proxy: proxy)
+            }
+            .onChange(of: model.chatScrollAnchor) { _, _ in
                 scrollToLatest(proxy: proxy)
             }
             .onChange(of: model.isRunningTurn) { _, running in
@@ -389,13 +395,18 @@ private struct UserMessageBubble: View {
 private struct AssistantMessageBubble: View {
     let text: String
     var isStreaming: Bool = false
+    var onContentSizeChange: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("CapDep")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            ChatRichMessageBody(text: text, isStreaming: isStreaming)
+            ChatRichMessageBody(
+                text: text,
+                isStreaming: isStreaming,
+                onContentSizeChange: onContentSizeChange,
+            )
         }
         .padding(14)
         .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))

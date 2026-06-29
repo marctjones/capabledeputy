@@ -4,9 +4,10 @@ import SwiftUI
 struct ChatRichMessageBody: View {
     let text: String
     var isStreaming: Bool = false
+    var onContentSizeChange: (() -> Void)?
 
     private var blocks: [ChatBlock] {
-        ChatMarkdownParser.blocks(from: text)
+        ChatMarkdownParser.blocks(from: text, isStreaming: isStreaming)
     }
 
     var body: some View {
@@ -33,7 +34,11 @@ struct ChatRichMessageBody: View {
                     case .code(let language, let body):
                         ChatCodeBlockView(language: language, code: body)
                     case .image(let alt, let urlString):
-                        ChatImageBlockView(alt: alt, urlString: urlString)
+                        ChatImageBlockView(
+                            alt: alt,
+                            urlString: urlString,
+                            onContentSizeChange: onContentSizeChange,
+                        )
                     }
                 }
             }
@@ -80,6 +85,7 @@ struct ChatCodeBlockView: View {
 struct ChatImageBlockView: View {
     let alt: String
     let urlString: String
+    var onContentSizeChange: (() -> Void)?
 
     @State private var resolvedURL: URL?
     @State private var loadFailed = false
@@ -98,6 +104,9 @@ struct ChatImageBlockView: View {
                             .scaledToFit()
                             .frame(maxWidth: .infinity, maxHeight: 360, alignment: .leading)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .onAppear {
+                                onContentSizeChange?()
+                            }
                     case .failure:
                         imageFallback
                     @unknown default:

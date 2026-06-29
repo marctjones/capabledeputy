@@ -67,9 +67,18 @@ final class CapDepAppModel: ObservableObject {
     private var lastPendingApprovalCount = 0
     private var lastNotifiedApprovalID: Int?
     private var streamingAssistantMessageID: String?
+    private var didSeedDemoImage = false
 
     var currentAssistantOutput: String {
         chatMessages.last(where: { $0.role == .assistant })?.content ?? ""
+    }
+
+    /// Changes when streaming text grows so chat can follow newly rendered blocks.
+    var chatScrollAnchor: String {
+        guard let last = chatMessages.last else {
+            return ""
+        }
+        return "\(last.id)-\(last.content.count)-\(last.isStreaming)"
     }
 
     init() {
@@ -86,12 +95,42 @@ final class CapDepAppModel: ObservableObject {
         await notifications.requestAuthorizationIfNeeded()
         await ensureDaemonRunning()
         await refresh()
+        seedDemoImageIfNeeded()
         Task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 await refresh()
             }
         }
+    }
+
+    private func seedDemoImageIfNeeded() {
+        guard !didSeedDemoImage else {
+            return
+        }
+        guard let imagePath = ProcessInfo.processInfo.environment["CAPDEP_DEMO_IMAGE"],
+              !imagePath.isEmpty,
+              FileManager.default.fileExists(atPath: imagePath) else {
+            return
+        }
+        didSeedDemoImage = true
+        guard chatMessages.isEmpty else {
+            return
+        }
+        chatMessages = [
+            ChatMessage(
+                role: .user,
+                content: "Show me the demo image inline.",
+            ),
+            ChatMessage(
+                role: .assistant,
+                content: """
+                Here is the rendered picture:
+
+                ![Cartoon cat](\(imagePath))
+                """,
+            ),
+        ]
     }
 
     func refresh() async {
