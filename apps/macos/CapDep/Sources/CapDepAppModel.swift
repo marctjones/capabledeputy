@@ -514,7 +514,30 @@ final class CapDepAppModel: ObservableObject {
     func send(message: String, sessionID: String) async {
         pendingGrantRetryMessage = nil
         grantPromptPresented = false
+        if let demoResponse = localDemoImageResponse(for: message) {
+            beginTurn(userMessage: message)
+            finalizeStreamingAssistant(demoResponse)
+            return
+        }
         await runTurn(message: message, sessionID: sessionID, appendUserMessage: true)
+    }
+
+    private func localDemoImageResponse(for message: String) -> String? {
+        guard let imagePath = ProcessInfo.processInfo.environment["CAPDEP_DEMO_IMAGE"],
+              !imagePath.isEmpty,
+              FileManager.default.fileExists(atPath: imagePath) else {
+            return nil
+        }
+        let lower = message.lowercased()
+        guard lower.contains("demo"),
+              lower.contains("cat") || lower.contains("image") else {
+            return nil
+        }
+        return """
+        Here is the demo cat inline:
+
+        ![Cartoon cat](\(imagePath))
+        """
     }
 
     private func runTurn(

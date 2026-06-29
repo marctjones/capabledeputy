@@ -93,7 +93,17 @@ def _gui_inline_media_section(session: Session) -> str:
     """Tell foreground GUI clients how to show images inline in chat."""
     if not _is_foreground_chat_surface(session):
         return ""
-    return """
+    import os
+
+    demo_path = (os.environ.get("CAPDEP_DEMO_IMAGE") or "").strip()
+    demo_line = ""
+    if demo_path:
+        demo_line = (
+            f"\nKnown demo cat image (use this exact path when asked for the "
+            f"demo cat): `{demo_path}`\n"
+            f"Example: ![Cartoon cat]({demo_path})\n"
+        )
+    return f"""
 # Inline images in CapDepMac
 
 The CapDepMac chat UI renders trusted assistant markdown inline, including
@@ -103,9 +113,9 @@ local and remote image files. To show a picture, include standard markdown:
 
 Supported formats: PNG, JPEG, GIF, TIFF, WebP, HEIC. Do NOT say you are
 unable to display images — the GUI handles rendering when you emit this
-syntax with a real path or https URL. For demo/local files you already
-know about, cite the absolute path directly.
-"""
+syntax with a real path or https URL. Never use placeholder paths like
+`/absolute/path/to/...` — always cite a real filesystem path or URL.
+{demo_line}"""
 
 
 def _recovery_hints_section(session: Session) -> str:

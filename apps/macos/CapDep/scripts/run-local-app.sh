@@ -70,19 +70,26 @@ pkill -f "CapDepMac.app/Contents/MacOS/CapDepMac" 2>/dev/null || true
 sleep 0.5
 
 if [[ -x "$CAPDEP" ]]; then
+  start_gui_daemon() {
+    if [[ -n "${DEMO_EXPORT:-}" ]]; then
+      eval "$DEMO_EXPORT"
+    fi
+    (cd "$REPO_ROOT" && "$CAPDEP" daemon start >"$DAEMON_LOG" 2>&1) &
+    for _ in {1..150}; do
+      if (cd "$REPO_ROOT" && "$CAPDEP" daemon status >/dev/null 2>&1); then
+        return 0
+      fi
+      sleep 0.2
+    done
+    return 1
+  }
   if [[ "$FORCE_DAEMON_RESTART" == "1" ]]; then
     echo "[capdep-gui] restarting daemon from $CAPDEP"
     (cd "$REPO_ROOT" && "$CAPDEP" daemon stop >/dev/null 2>&1) || true
     sleep 0.5
-  fi
-  if ! (cd "$REPO_ROOT" && "$CAPDEP" daemon status >/dev/null 2>&1); then
-    (cd "$REPO_ROOT" && "$CAPDEP" daemon start >"$DAEMON_LOG" 2>&1) &
-    for _ in {1..150}; do
-      if (cd "$REPO_ROOT" && "$CAPDEP" daemon status >/dev/null 2>&1); then
-        break
-      fi
-      sleep 0.2
-    done
+    start_gui_daemon || true
+  elif ! (cd "$REPO_ROOT" && "$CAPDEP" daemon status >/dev/null 2>&1); then
+    start_gui_daemon || true
   fi
   if [[ -f "$REPO_ROOT/scripts/verify-gui-parity.py" ]]; then
     echo "[capdep-gui] verifying daemon RPC parity"
