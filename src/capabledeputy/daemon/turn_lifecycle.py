@@ -24,6 +24,7 @@ from capabledeputy.agent.events import (
     event_to_dict,
 )
 from capabledeputy.agent.loop import run_turn_streaming
+from capabledeputy.daemon.image_attachments import image_attachment_payloads_from_outcome
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.mode.dispatcher import ExecutionMode
 from capabledeputy.policy.labels import legacy_labels_present
@@ -116,6 +117,7 @@ class TurnLifecycleManager:
         self._active_by_session: dict[UUID, str] = {}
         self._lock = anyio.Lock()
         self._max_events_per_turn = max_events_per_turn
+        self._emitted_image_paths: dict[str, set[str]] = {}
 
     async def start(
         self,
@@ -454,6 +456,13 @@ class TurnLifecycleManager:
         elif isinstance(event, ToolReturned):
             payload["outcome"] = _outcome_to_dict(event.outcome)
             await self._merge_partial_outcome(turn_id, payload["outcome"])
+            for attachment in image_attachment_payloads_from_outcome(payload["outcome"]):
+                path = attachment["path"]
+                seen = self._emitted_image_paths.setdefault(turn_id, set())
+                if path in seen:
+                    continue
+                seen.add(path)
+                await self._emit(turn_id, "image_attachment", attachment)
         elif isinstance(event, TurnCompleted):
             result = event.result
             payload["result"] = {
@@ -513,6 +522,7 @@ class TurnLifecycleManager:
             self._turns[turn_id] = replace(turn, status=status, updated_at=datetime.now(UTC))
 
     async def _finish_completed(self, turn_id: str, result: dict[str, Any]) -> None:
+        self._emitted_image_paths.pop(turn_id, None)
         async with self._lock:
             turn = self._turns[turn_id]
             self._turns[turn_id] = replace(

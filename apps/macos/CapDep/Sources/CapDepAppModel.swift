@@ -368,6 +368,17 @@ final class CapDepAppModel: ObservableObject {
         chatMessages[index] = message
     }
 
+    func appendImageAttachmentToStreamingAssistant(alt: String, path: String) {
+        guard let snippet = ChatImageAttachment.markdownSnippet(alt: alt, path: path) else {
+            return
+        }
+        let current = chatMessages.last(where: { $0.id == streamingAssistantMessageID })?.content ?? ""
+        guard let merged = ChatImageAttachment.appendSnippet(snippet, to: current) else {
+            return
+        }
+        setStreamingAssistantContent(merged)
+    }
+
     private func resolvedAssistantContent(
         partial: String?,
         fallback: String = "",
@@ -696,6 +707,10 @@ final class CapDepAppModel: ObservableObject {
                     "partial_tail": String(streamed.suffix(80)),
                 ],
             )
+        } else if type == "image_attachment" {
+            let path = payload["path"] as? String ?? ""
+            let alt = payload["alt"] as? String ?? "image"
+            appendImageAttachmentToStreamingAssistant(alt: alt, path: path)
         } else {
             ChatDebugLog.log(
                 "turn_event",
@@ -822,6 +837,8 @@ final class CapDepAppModel: ObservableObject {
                 return "\(toolName) needs approval #\(approvalID)"
             }
             return "\(toolName) returned (\(decision))"
+        case "image_attachment":
+            return "Rendering image attachment…"
         case "completed":
             return "Turn completed."
         case "interrupted":

@@ -7,18 +7,22 @@ struct ChatLocalImageView: View {
     var onLoadFailed: (() -> Void)?
 
     @State private var staticImage: NSImage?
+    @State private var animatedFileURL: URL?
     @State private var loadFailed = false
 
     var body: some View {
         Group {
-            if resolved.isAnimatedGIF, resolved.url.isFileURL {
-                AnimatedGIFFileView(url: resolved.url, onContentSizeChange: onContentSizeChange)
+            if resolved.isAnimatedGIF, let animatedFileURL {
+                AnimatedGIFFileView(url: animatedFileURL, onContentSizeChange: onContentSizeChange)
+                    .frame(maxWidth: .infinity, maxHeight: 360, alignment: .leading)
+                    .chatImageInteractions(for: animatedFileURL)
             } else if let staticImage {
                 Image(nsImage: staticImage)
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: 360, alignment: .leading)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .chatImageInteractions(for: interactionURL)
                     .onAppear {
                         onContentSizeChange?()
                     }
@@ -34,13 +38,37 @@ struct ChatLocalImageView: View {
         }
     }
 
+    private var interactionURL: URL {
+        animatedFileURL ?? resolved.url
+    }
+
     @MainActor
     private func loadImage() async {
         staticImage = nil
+        animatedFileURL = nil
         loadFailed = false
-        if resolved.isAnimatedGIF, resolved.url.isFileURL {
+
+        if resolved.isAnimatedGIF {
+            if resolved.url.isFileURL {
+                animatedFileURL = resolved.url
+                return
+            }
+            do {
+                let (data, _) = try await URLSession.shared.data(from: resolved.url)
+                guard data.count <= ChatImageURLResolver.maxBytes else {
+                    markLoadFailed()
+                    return
+                }
+                let temp = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("capdep-gif-\(UUID().uuidString).gif")
+                try data.write(to: temp)
+                animatedFileURL = temp
+            } catch {
+                markLoadFailed()
+            }
             return
         }
+
         if resolved.isRemote {
             do {
                 let (data, _) = try await URLSession.shared.data(from: resolved.url)

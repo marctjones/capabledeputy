@@ -1,0 +1,18 @@
+import XCTest
+@testable import CapDepMac
+
+final class ChatImageAttachmentTests: XCTestCase {
+    func testAppendSnippetAddsMarkdownImage() {
+        let merged = ChatImageAttachment.appendSnippet(
+            "![plot](/tmp/plot.png)",
+            to: "Here is the result:",
+        )
+        XCTAssertEqual(merged, "Here is the result:\n\n![plot](/tmp/plot.png)")
+    }
+
+    func testAppendSnippetSkipsDuplicatePath() {
+        let existing = "Done.\n\n![plot](/tmp/plot.png)"
+        let merged = ChatImageAttachment.appendSnippet("![again](/tmp/plot.png)", to: existing)
+        XCTAssertNil(merged)
+    }
+}
