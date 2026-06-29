@@ -89,6 +89,25 @@ def _is_foreground_chat_surface(session: Session) -> bool:
     return (session.owner or "").strip() in FOREGROUND_CHAT_OWNERS
 
 
+def _gui_inline_media_section(session: Session) -> str:
+    """Tell foreground GUI clients how to show images inline in chat."""
+    if not _is_foreground_chat_surface(session):
+        return ""
+    return """
+# Inline images in CapDepMac
+
+The CapDepMac chat UI renders trusted assistant markdown inline, including
+local and remote image files. To show a picture, include standard markdown:
+
+  ![short description](/absolute/path/to/file.png)
+
+Supported formats: PNG, JPEG, GIF, TIFF, WebP, HEIC. Do NOT say you are
+unable to display images — the GUI handles rendering when you emit this
+syntax with a real path or https URL. For demo/local files you already
+know about, cite the absolute path directly.
+"""
+
+
 def _recovery_hints_section(session: Session) -> str:
     """Recovery guidance tailored to the client surface."""
     if _is_foreground_chat_surface(session):
@@ -331,6 +350,7 @@ def build_llm_context(
             "Answer directly and concisely.\n"
             f"Session: {session_id_short}. "
             f"Purpose: {session.purpose_handle or 'general'}."
+            f"{_gui_inline_media_section(session)}"
         )
         return LLMContext(
             system_prompt=system_prompt,
@@ -521,6 +541,7 @@ When a tool call comes back REQUIRE_APPROVAL:
 {decisions_section}
 
 {_recovery_hints_section(session)}
+{_gui_inline_media_section(session)}
 
 When you have completed the task, respond with a final answer and no
 tool calls. Be concise and honest about what you did and didn't do.

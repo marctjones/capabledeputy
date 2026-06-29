@@ -67,7 +67,7 @@ final class CapDepAppModel: ObservableObject {
     private var lastPendingApprovalCount = 0
     private var lastNotifiedApprovalID: Int?
     private var streamingAssistantMessageID: String?
-    private var didSeedDemoImage = false
+
 
     var currentAssistantOutput: String {
         chatMessages.last(where: { $0.role == .assistant })?.content ?? ""
@@ -105,16 +105,12 @@ final class CapDepAppModel: ObservableObject {
     }
 
     private func seedDemoImageIfNeeded() {
-        guard !didSeedDemoImage else {
+        guard chatMessages.isEmpty else {
             return
         }
         guard let imagePath = ProcessInfo.processInfo.environment["CAPDEP_DEMO_IMAGE"],
               !imagePath.isEmpty,
               FileManager.default.fileExists(atPath: imagePath) else {
-            return
-        }
-        didSeedDemoImage = true
-        guard chatMessages.isEmpty else {
             return
         }
         chatMessages = [
@@ -344,6 +340,9 @@ final class CapDepAppModel: ObservableObject {
             let history = result?["history"] as? [[String: Any]] ?? []
             chatMessages = ChatMessage.fromHistory(history)
             streamingAssistantMessageID = nil
+            if chatMessages.isEmpty {
+                seedDemoImageIfNeeded()
+            }
         } catch {
             lastError = error.localizedDescription
         }

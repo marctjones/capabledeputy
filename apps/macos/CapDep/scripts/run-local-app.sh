@@ -23,9 +23,19 @@ swift build
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$EXEC" "$APP/Contents/MacOS/CapDepMac.bin"
+DEMO_IMAGE="${CAPDEP_DEMO_IMAGE:-$ROOT/.build/demo-cat.jpg}"
+if [[ "${CAPDEP_DEMO_IMAGE:-1}" != "0" && -f "$DEMO_IMAGE" ]]; then
+  chmod 644 "$DEMO_IMAGE" 2>/dev/null || true
+  echo "[capdep-gui] demo image: $DEMO_IMAGE"
+  DEMO_EXPORT="export CAPDEP_DEMO_IMAGE=\"$DEMO_IMAGE\""
+else
+  DEMO_EXPORT=""
+fi
+
 cat > "$APP/Contents/MacOS/CapDepMac" <<SCRIPT
 #!/usr/bin/env bash
 export CAPDEP_REPO_ROOT="$REPO_ROOT"
+$DEMO_EXPORT
 exec "\$(dirname "\$0")/CapDepMac.bin"
 SCRIPT
 chmod +x "$APP/Contents/MacOS/CapDepMac"

@@ -38,3 +38,8 @@ def test_web_search_phrases_are_not_conversational() -> None:
 
 def test_chat_max_tokens_is_reasonable() -> None:
     assert CHAT_MAX_TOKENS == 512
+
+
+def test_image_requests_are_not_conversational() -> None:
+    assert not is_conversational_turn("Show me the demo cat image inline")
+    assert not is_conversational_turn("render the screenshot.png")

@@ -22,7 +22,9 @@ _TOOL_INTENT_RE = re.compile(
     r"headlines?|news|internet|online|website|wikipedia|kagi|"
     r"git|repo|commit|branch|memory|note|draft|send|delete|"
     r"approve|grant|tool|workflow|summar(?:y|ize)|triage|"
-    r"download|upload|export|import|open|list|find|look up|lookup"
+    r"download|upload|export|import|open|list|find|look up|lookup|"
+    r"image|images|picture|pictures|photo|photos|screenshot|plot|chart|"
+    r"render|inline|demo"
     r")\b",
     re.IGNORECASE,
 )
