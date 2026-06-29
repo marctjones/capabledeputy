@@ -124,7 +124,7 @@ final class CapDepAppModel: ObservableObject {
                 Here is the rendered picture:
 
                 ![Cartoon cat](\(imagePath))
-                """,
+                """.trimmingCharacters(in: .whitespacesAndNewlines),
             ),
         ]
     }
@@ -537,7 +537,7 @@ final class CapDepAppModel: ObservableObject {
         Here is the demo cat inline:
 
         ![Cartoon cat](\(imagePath))
-        """
+        """.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func runTurn(

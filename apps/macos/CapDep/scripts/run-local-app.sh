@@ -98,6 +98,14 @@ if [[ -x "$CAPDEP" ]]; then
       exit 1
     }
   fi
+  if [[ -n "${DEMO_EXPORT:-}" && -f "$REPO_ROOT/scripts/test-gui-inline-image.py" ]]; then
+    echo "[capdep-gui] verifying inline image daemon→client contract"
+    eval "$DEMO_EXPORT"
+    (cd "$REPO_ROOT" && "$REPO_ROOT/.venv/bin/python" scripts/test-gui-inline-image.py) || {
+      echo "[capdep-gui] inline image test failed; see output above" >&2
+      exit 1
+    }
+  fi
 fi
 
 echo "[capdep-gui] opening $APP"
