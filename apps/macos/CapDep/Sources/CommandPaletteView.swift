@@ -7,15 +7,22 @@ struct CommandPaletteView: View {
     @FocusState private var inputFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Ask CapDep")
-                        .font(.largeTitle.weight(.bold))
-                    Text("Attach context deliberately. The daemon decides what is allowed.")
+                        .font(.title2.weight(.semibold))
+                    Text(model.contextChips.isEmpty ? "No app context attached yet." : "\(model.contextChips.count) context item\(model.contextChips.count == 1 ? "" : "s") ready")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button {
+                    Task { await model.refreshFrontmostContext() }
+                } label: {
+                    Label("Current App", systemImage: "scope")
+                }
+                .controlSize(.small)
                 Picker("Purpose", selection: $model.selectedPurpose) {
                     ForEach(Purpose.allCases) { purpose in
                         Text(purpose.rawValue.capitalized).tag(purpose)
@@ -28,10 +35,10 @@ struct CommandPaletteView: View {
             VStack(alignment: .leading, spacing: 10) {
                 TextField("Ask about the current app, selected files, inbox, calendar, or web research...", text: $model.commandText, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(.title3)
-                    .lineLimit(3...5)
-                    .padding(14)
-                    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
+                    .font(.body)
+                    .lineLimit(2...4)
+                    .padding(12)
+                    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
                     .focused($inputFocused)
                     .onSubmit {
                         Task {
@@ -47,10 +54,11 @@ struct CommandPaletteView: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                Text("Suggested Workflows")
-                    .font(.headline)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], spacing: 12) {
-                    ForEach(model.workflows) { workflow in
+                Text("Suggested")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 10)], spacing: 10) {
+                    ForEach(model.workflows.prefix(6)) { workflow in
                         Button {
                             Task {
                                 await model.launchWorkflow(workflow)
@@ -88,6 +96,9 @@ struct CommandPaletteView: View {
         .padding(24)
         .onAppear {
             inputFocused = true
+            if model.contextChips.isEmpty {
+                Task { await model.refreshFrontmostContext() }
+            }
         }
     }
 }
@@ -138,10 +149,10 @@ struct WorkflowTile: View {
     let workflow: WorkflowTemplate
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: workflow.systemImage)
-                    .font(.title2)
+                    .font(.headline)
                 Spacer()
                 if workflow.requiresForegroundReview {
                     Image(systemName: "hand.raised")
@@ -149,22 +160,22 @@ struct WorkflowTile: View {
                 }
             }
             Text(workflow.title)
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
             Text(workflow.subtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(3)
+                .lineLimit(2)
             Text(workflow.purpose.rawValue.capitalized)
                 .font(.caption2.weight(.semibold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(.quaternary, in: Capsule())
         }
-        .padding()
-        .frame(maxWidth: .infinity, minHeight: 138, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 116, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 8)
                 .stroke(.quaternary),
         )
     }

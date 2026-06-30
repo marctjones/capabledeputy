@@ -45,6 +45,11 @@ Thumbs.db
 state.db
 audit.jsonl
 *.sock
+*.log
+.capdep/
+work/images/
+generated-images/
+generated/
 
 # Agent-local config (machine-specific; speckit skills + local settings)
 .claude/

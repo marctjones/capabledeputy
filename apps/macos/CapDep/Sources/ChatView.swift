@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Primary CapDep surface — conversational assistant first; operator console is secondary.
+/// Primary CapDep surface — durable chat workspace; operator console is secondary.
 struct ChatView: View {
     @EnvironmentObject private var model: CapDepAppModel
     @Environment(\.openWindow) private var openWindow
@@ -85,6 +85,8 @@ struct ChatView: View {
                             AssistantMessageBubble(
                                 text: message.content,
                                 isStreaming: message.isStreaming,
+                                authorizedImagePaths: model.authorizedStreamingImagePaths,
+                                holdUnverifiedGeneratedImages: message.isStreaming && model.isRunningTurn,
                                 onContentSizeChange: {
                                     scrollToLatest(proxy: proxy)
                                 },
@@ -127,8 +129,10 @@ struct ChatView: View {
                             .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                     }
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
+                .frame(maxWidth: 980, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
             }
             .onChange(of: model.chatMessages.count) { _, _ in
                 scrollToLatest(proxy: proxy)
@@ -157,7 +161,7 @@ struct ChatView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("What can I help with?")
                 .font(.title.weight(.semibold))
-            Text("Ask about mail, calendar, files, or research. CapDep runs every action through the policy gate.")
+            Text("Ask about the current app, mail, calendar, files, or research. CapDep will pause when it needs your approval.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -251,7 +255,7 @@ struct ChatView: View {
     }
 
     private var composerArea: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 9) {
             if !model.contextChips.isEmpty {
                 ContextChipRow(chips: model.contextChips) { chip in
                     model.removeContextChip(chip)
@@ -299,19 +303,44 @@ struct ChatView: View {
                 }
             }
 
-            HStack(spacing: 12) {
-                if let sessionID = model.currentSessionID {
-                    Text("Session \(sessionID.prefix(8))")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Attach frontmost app") {
+            HStack(spacing: 10) {
+                Button {
                     Task { await model.refreshFrontmostContext() }
+                } label: {
+                    Label(model.contextChips.isEmpty ? "Use Current App" : "Refresh Context", systemImage: "scope")
                 }
                 .font(.caption)
-                .buttonStyle(.link)
-                Button("New session") {
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Text(modelModeHelperText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 12)
+
+                Menu {
+                    Picker("Model", selection: $model.selectedChatModelMode) {
+                        ForEach(ChatModelMode.allCases) { mode in
+                            Label(mode.title, systemImage: mode.systemImage)
+                                .tag(mode)
+                        }
+                    }
+                    Divider()
+                    Text(model.selectedChatModelMode.helpText)
+                    if let sessionID = model.currentSessionID {
+                        Divider()
+                        Text("Session \(sessionID.prefix(8))")
+                    }
+                } label: {
+                    Label(model.selectedChatModelMode.title, systemImage: model.selectedChatModelMode.systemImage)
+                }
+                .font(.caption)
+                .menuStyle(.button)
+                .controlSize(.small)
+
+                Button {
                     Task {
                         await model.createSession(
                             intent: "New chat",
@@ -319,9 +348,12 @@ struct ChatView: View {
                         )
                         inputFocused = true
                     }
+                } label: {
+                    Label("New Session", systemImage: "plus.bubble")
                 }
                 .font(.caption)
-                .buttonStyle(.link)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
         .padding(16)
@@ -372,6 +404,25 @@ struct ChatView: View {
         model.chatMessages.isEmpty && !model.isRunningTurn
     }
 
+    private var modelModeHelperText: String {
+        guard model.isRunningTurn, !model.currentResolvedModelRole.isEmpty else {
+            return model.contextChips.isEmpty ? model.selectedChatModelMode.helpText : "\(model.contextChips.count) context item\(model.contextChips.count == 1 ? "" : "s") attached"
+        }
+        let title: String
+        switch model.currentResolvedModelRole {
+        case "planner.fast":
+            title = "Fast"
+        case "planner.tools":
+            title = "Tools"
+        case "planner.quality":
+            title = "Quality"
+        default:
+            title = model.currentResolvedModelRole
+        }
+        let reason = model.currentResolvedModelReason
+        return reason.isEmpty ? "Using \(title)" : "Using \(title) (\(reason))"
+    }
+
     private func submitMessage() async {
         await model.submitCommand()
         inputFocused = true
@@ -385,9 +436,12 @@ private struct UserMessageBubble: View {
         HStack {
             Spacer(minLength: 48)
             ChatRichMessageBody(text: text)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: 16))
+                .font(.system(size: 14, design: .default))
+                .lineSpacing(3)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 9)
+                .frame(maxWidth: 680, alignment: .leading)
+                .background(.quaternary.opacity(0.42), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 }
@@ -395,21 +449,31 @@ private struct UserMessageBubble: View {
 private struct AssistantMessageBubble: View {
     let text: String
     var isStreaming: Bool = false
+    var authorizedImagePaths: Set<String> = []
+    var holdUnverifiedGeneratedImages: Bool = false
     var onContentSizeChange: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("CapDep")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Image(systemName: "shield")
+                    .font(.caption)
+                Text("CapDep")
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(.secondary)
             ChatRichMessageBody(
                 text: text,
                 isStreaming: isStreaming,
+                authorizedImagePaths: authorizedImagePaths,
+                holdUnverifiedGeneratedImages: holdUnverifiedGeneratedImages,
                 onContentSizeChange: onContentSizeChange,
             )
+            .font(.system(size: 14, design: .default))
+            .lineSpacing(4)
         }
-        .padding(14)
-        .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+        .padding(.vertical, 2)
+        .frame(maxWidth: 760, alignment: .leading)
     }
 }
 

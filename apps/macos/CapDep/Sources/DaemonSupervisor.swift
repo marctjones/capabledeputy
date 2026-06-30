@@ -96,6 +96,10 @@ final class DaemonSupervisor {
         let command = commandPrefix()
         let args = arguments.map(shellQuote).joined(separator: " ")
         let process = Process()
+        var environment = ProcessInfo.processInfo.environment
+        environment["CAPDEP_REPO_ROOT"] = repoRoot
+        environment["CAPDEP_IDLE_SHUTDOWN_SECONDS"] = environment["CAPDEP_IDLE_SHUTDOWN_SECONDS"] ?? "off"
+        process.environment = environment
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory(repoRoot: repoRoot))
         process.arguments = [

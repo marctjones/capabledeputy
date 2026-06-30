@@ -13,9 +13,9 @@ struct ApprovalDetailView: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Approval #\(approval.id)")
-                            .font(.largeTitle.weight(.bold))
+                            .font(.title.weight(.semibold))
                         Text(approval.action)
-                            .font(.title2)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -24,11 +24,7 @@ struct ApprovalDetailView: View {
 
                 RiskExplanation(approval: approval, detail: detail)
 
-                DetailSection(title: "Target") {
-                    Text(approval.target.isEmpty ? "(none)" : approval.target)
-                        .font(.body.monospaced())
-                        .textSelection(.enabled)
-                }
+                ApprovalFlowSummary(approval: approval)
 
                 DetailSection(title: "Justification") {
                     Text(approval.justification.isEmpty ? "(none supplied)" : approval.justification)
@@ -138,6 +134,7 @@ struct ApprovalDetailView: View {
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                 }
+                .controlSize(.large)
             }
             .padding(28)
         }
@@ -157,13 +154,13 @@ private struct RiskExplanation: View {
                 .font(.headline)
             Text(detail?.effectText ?? fallbackEffectText)
                 .foregroundStyle(.secondary)
-            Text("This app does not soften policy. Approving relays your explicit decision to the daemon, which performs any declassification or one-shot execution path.")
+            Text("Approving sends your explicit decision to the daemon. Deny or defer if the source, action, destination, or payload is not what you expect.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding()
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+        .background(.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var fallbackEffectText: String {
@@ -177,6 +174,80 @@ private struct RiskExplanation: View {
         default:
             return "The daemon will mark this approval as approved. Review the payload exactly before approving."
         }
+    }
+}
+
+private struct ApprovalFlowSummary: View {
+    let approval: Approval
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Review Flow")
+                .font(.headline)
+            HStack(alignment: .top, spacing: 10) {
+                FlowStep(
+                    title: "Source",
+                    value: approval.fromSession.isEmpty ? "Current session" : "Session \(approval.fromSession.prefix(8))",
+                    systemImage: "tray.and.arrow.down",
+                )
+                FlowArrow()
+                FlowStep(
+                    title: "Action",
+                    value: approval.action.isEmpty ? "Approve requested action" : approval.action.replacingOccurrences(of: "_", with: " "),
+                    systemImage: "gearshape",
+                )
+                FlowArrow()
+                FlowStep(
+                    title: "Destination",
+                    value: approval.target.isEmpty ? "No explicit target" : approval.target,
+                    systemImage: destinationIcon,
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var destinationIcon: String {
+        switch approval.action {
+        case "SEND_EMAIL":
+            return "envelope"
+        case "QUEUE_PURCHASE":
+            return "cart"
+        case "EXECUTE_DESTRUCTIVE":
+            return "exclamationmark.triangle"
+        default:
+            return "arrow.up.right"
+        }
+    }
+}
+
+private struct FlowStep: View {
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.subheadline)
+                .lineLimit(3)
+                .textSelection(.enabled)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 86, alignment: .topLeading)
+        .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct FlowArrow: View {
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.tertiary)
+            .frame(width: 12, height: 86)
     }
 }
 

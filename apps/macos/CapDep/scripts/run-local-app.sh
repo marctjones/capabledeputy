@@ -13,6 +13,15 @@ CLEAN_BUILD="${CLEAN_BUILD:-1}"
 FORCE_DAEMON_RESTART="${FORCE_DAEMON_RESTART:-1}"
 
 cd "$ROOT"
+
+DEMO_DIR="${HOME}/Library/Application Support/CapDep/media"
+DEMO_DEST="$DEMO_DIR/demo-cat.jpg"
+DEMO_SOURCE="${CAPDEP_DEMO_IMAGE_SOURCE:-$ROOT/.build/demo-cat.jpg}"
+if [[ -f "$DEMO_SOURCE" ]]; then
+  mkdir -p "$DEMO_DIR"
+  cp -f "$DEMO_SOURCE" "$DEMO_DEST"
+fi
+
 if [[ "$CLEAN_BUILD" == "1" ]]; then
   echo "[capdep-gui] swift package clean"
   swift package clean
@@ -23,11 +32,12 @@ swift build
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$EXEC" "$APP/Contents/MacOS/CapDepMac.bin"
-DEMO_IMAGE="${CAPDEP_DEMO_IMAGE:-$ROOT/.build/demo-cat.jpg}"
-if [[ "${CAPDEP_DEMO_IMAGE:-1}" != "0" && -f "$DEMO_IMAGE" ]]; then
-  chmod 644 "$DEMO_IMAGE" 2>/dev/null || true
-  echo "[capdep-gui] demo image: $DEMO_IMAGE"
-  DEMO_EXPORT="export CAPDEP_DEMO_IMAGE=\"$DEMO_IMAGE\""
+# Demo cat is opt-in (CAPDEP_ENABLE_DEMO_IMAGE=1). Leaving it on leaks a
+# fixed path into the system prompt and encourages the model to reuse it.
+if [[ "${CAPDEP_ENABLE_DEMO_IMAGE:-0}" == "1" && -f "$DEMO_DEST" ]]; then
+  chmod 644 "$DEMO_DEST" 2>/dev/null || true
+  echo "[capdep-gui] demo image: $DEMO_DEST"
+  DEMO_EXPORT="export CAPDEP_DEMO_IMAGE=\"$DEMO_DEST\""
 else
   DEMO_EXPORT=""
 fi
@@ -35,6 +45,8 @@ fi
 cat > "$APP/Contents/MacOS/CapDepMac" <<SCRIPT
 #!/usr/bin/env bash
 export CAPDEP_REPO_ROOT="$REPO_ROOT"
+export CAPDEP_GUI_DAEMON_COMMAND="$CAPDEP"
+export CAPDEP_IDLE_SHUTDOWN_SECONDS="\${CAPDEP_IDLE_SHUTDOWN_SECONDS:-off}"
 $DEMO_EXPORT
 exec "\$(dirname "\$0")/CapDepMac.bin"
 SCRIPT
@@ -74,7 +86,7 @@ if [[ -x "$CAPDEP" ]]; then
     if [[ -n "${DEMO_EXPORT:-}" ]]; then
       eval "$DEMO_EXPORT"
     fi
-    (cd "$REPO_ROOT" && "$CAPDEP" daemon start >"$DAEMON_LOG" 2>&1) &
+    (cd "$REPO_ROOT" && CAPDEP_IDLE_SHUTDOWN_SECONDS="${CAPDEP_IDLE_SHUTDOWN_SECONDS:-off}" "$CAPDEP" daemon start >"$DAEMON_LOG" 2>&1) &
     for _ in {1..150}; do
       if (cd "$REPO_ROOT" && "$CAPDEP" daemon status >/dev/null 2>&1); then
         return 0
