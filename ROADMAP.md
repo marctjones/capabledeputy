@@ -9,10 +9,12 @@ historical backlog snapshots, not the current roadmap.
 **Last refreshed:** 2026-07-01 — GitHub milestones and issues were
 rationalized into one live product ladder plus explicit supporting tracks.
 Spec 004 work is merged into v0.36/v0.37 instead of displacing the desktop,
-memory, onguard, and code workspace roadmap. v0.35 and v0.36 are implemented
-locally and v0.37 is the next active product focus. Milestone names carry
+memory, onguard, and code workspace roadmap. v0.35 through v0.37 are closed in
+GitHub, and v0.38 is the next active product focus. Milestone names carry
 ordered prefixes, all open issues are milestone-scoped, and v1.0 remains
-unscheduled.
+unscheduled. Async rich-media chat reliability follow-up from v0.34 has been
+merged into v0.38 because it depends on durable conversation state and tolerant
+client rendering.
 
 ## Product Ladder — v0.35 → v0.40
 
@@ -21,7 +23,7 @@ flowchart LR
   v35[v0.35 Desktop context + visual review]
   v36[v0.36 MCP admission + workflows]
   v37[v0.37 Execution substrate + compliance]
-  v38[v0.38 Memory + compaction]
+  v38[v0.38 Memory + compaction + async media]
   v39[v0.39 Background automation + onguard UX]
   v40[v0.40 Code workspaces]
   v35 --> v36 --> v37 --> v38 --> v39 --> v40
@@ -31,8 +33,8 @@ flowchart LR
 |---|---|---|
 | **01 Product — v0.35.0 — Desktop context, SourcePorts, and visual review** | Desktop context, SourcePorts, and visual review | #146–#152 |
 | **02 Product — v0.36.0 — MCP admission, provider mappings, and workflow templates** | MCP admission, provider mappings, and workflow templates | #153–#159, #184–#186 |
-| **03 Product — v0.37.0 — Execution substrate, isolation, and compliance evidence** (now) | Execution substrate, isolation, and compliance evidence | #44, #9, #14, #55–#57, #187–#189 |
-| **04 Product — v0.38.0 — Memory, retention, and compaction** | Memory, retention, and compaction | #160–#165 |
+| **03 Product — v0.37.0 — Execution substrate, isolation, and compliance evidence** | Execution substrate, isolation, and compliance evidence | #44, #9, #14, #55–#57, #187–#189 |
+| **04 Product — v0.38.0 — Memory, retention, compaction, and async media reliability** (now) | Memory, retention, compaction, and async media reliability | #160–#165, #190–#192, #194–#195 |
 | **05 Product — v0.39.0 — Background automation and onguard UX** | Background automation and onguard UX | #166–#171 |
 | **06 Product — v0.40.0 — Safe code workspace workflows** | Safe code workspace workflows | #172–#177 |
 
@@ -201,7 +203,7 @@ provider mappings, and client parity.
   policy before clients can launch them.
 - HTTP MCP OAuth state is daemon-owned and scoped rather than ambient.
 
-## Current Focus — v0.37.0 Execution Substrate, Isolation, and Compliance Evidence
+## Completed Focus — v0.37.0 Execution Substrate, Isolation, and Compliance Evidence
 
 **Depends on:** v0.36 MCP/template admission. Once external tools are admitted
 deliberately, v0.37 hardens their execution substrate and evidence pipeline.
@@ -247,11 +249,58 @@ deliberately, v0.37 hardens their execution substrate and evidence pipeline.
 - Modal/Firecracker and VersionedWritePort providers extend the same substrate
   ports without weakening daemon policy.
 
+## Current Focus — v0.38.0 Memory, Retention, Compaction, and Async Media Reliability
+
+**Depends on:** v0.37 substrate/compliance closure. v0.38 makes long-running
+conversation state durable and auditable, then folds rich-media follow-up into
+the same work so CapDepMac no longer depends on model-authored markdown or
+happy-path event ordering.
+
+| Issue | Work | Status |
+|---|---|---|
+| #160 | EPIC: Mature retention, memory controls, and context compaction | Open |
+| #161 | Research: retention, session storage, compaction, and memory controls in peer agents | Open |
+| #162 | Daemon retention policy and maintenance RPCs | Open |
+| #163 | Memory trust classes and user-visible memory controls | Open |
+| #164 | Context compaction as labeled summary artifacts | Open |
+| #165 | Retention and memory management client surfaces | Open |
+| #190 | EPIC: Reliable async rich-media chat attachments in CapDepMac | Open |
+| #191 | Codify verified CapDepMac daemon launch and post-open parity checks | Open |
+| #192 | Fail closed when generated-image tools are unavailable | Open |
+| #194 | Render daemon `image_attachment` events as durable CapDepMac chat parts | Open |
+| #195 | Retry pending local image resolution before permanent CapDepMac fallback | Open |
+
+### v0.38.0 implementation notes
+
+- Conversation memory and compaction work should preserve source labels,
+  approval provenance, and audit evidence instead of flattening history into
+  untrusted summaries.
+- Rich-media follow-up is not a new product pillar; it is a hardening pass on
+  v0.34 media now that traces show model-authored image markdown can race or
+  hallucinate when tools are unavailable.
+- CapDepMac launch success must mean the app is open and daemon parity still
+  passes after launch, not merely that Swift built or the app process exists.
+- Generated/fetched images should become durable daemon-backed chat parts keyed
+  by turn/session, with markdown treated as display sugar only when backed by a
+  real tool result.
+
+### v0.38.0 done-when
+
+- Retention policies and maintenance RPCs let users inspect, compact, and prune
+  daemon-owned state without bypassing labels or audit.
+- Compaction emits labeled summary artifacts with reviewable provenance.
+- Memory controls are visible in CLI/TUI/CapDepMac where appropriate.
+- CapDepMac displays generated/fetched images from structured daemon attachment
+  events and preserves them across finalization and reload.
+- Generated-image intent fails closed when the image tool is unavailable, rather
+  than letting the model invent local paths.
+- Local image resolution tolerates short file-visibility delays without hiding
+  real missing-file errors.
+
 ## Later Product Milestones
 
 | Milestone | Work | Issues |
 |---|---|---|
-| v0.38 | Memory, retention, and compaction | #160–#165 |
 | v0.39 | Background automation and onguard UX | #166–#171 |
 | v0.40 | Safe code workspace workflows | #172–#177 |
 
