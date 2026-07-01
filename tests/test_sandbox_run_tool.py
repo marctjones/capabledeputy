@@ -40,13 +40,17 @@ def test_make_sandbox_tools_returns_empty_when_no_actuator() -> None:
     assert make_sandbox_tools(_FakePolicyContext(None)) == []
 
 
-def test_make_sandbox_tools_returns_single_tool_when_wired() -> None:
+def _tool_by_name(name: str, actuator):
+    return {tool.name: tool for tool in make_sandbox_tools(_FakePolicyContext(actuator))}[name]
+
+
+def test_make_sandbox_tools_returns_sandbox_and_code_tools_when_wired() -> None:
     from capabledeputy.policy.capabilities import CapabilityKind
 
     actuator = _make_actuator()
     tools = make_sandbox_tools(_FakePolicyContext(actuator))
-    assert len(tools) == 1
-    t = tools[0]
+    assert {tool.name for tool in tools} == {"sandbox.run", "code.execute"}
+    t = _tool_by_name("sandbox.run", actuator)
     assert t.name == "sandbox.run"
     assert t.effect_class == "EXECUTE.sandbox"
     # capability_kind can be CapabilityKind enum or str
@@ -96,7 +100,7 @@ def test_sandbox_run_happy_path() -> None:
 
 def test_sandbox_run_rejects_missing_spec_id() -> None:
     actuator = _make_actuator()
-    tool = make_sandbox_tools(_FakePolicyContext(actuator))[0]
+    tool = _tool_by_name("sandbox.run", actuator)
     result = asyncio.run(
         tool.handler({"argv": ["echo", "hi"]}, _ctx()),  # type: ignore[arg-type]
     )
@@ -106,7 +110,7 @@ def test_sandbox_run_rejects_missing_spec_id() -> None:
 
 def test_sandbox_run_rejects_missing_argv() -> None:
     actuator = _make_actuator()
-    tool = make_sandbox_tools(_FakePolicyContext(actuator))[0]
+    tool = _tool_by_name("sandbox.run", actuator)
     result = asyncio.run(
         tool.handler({"spec_id": "scratch"}, _ctx()),  # type: ignore[arg-type]
     )
@@ -115,7 +119,7 @@ def test_sandbox_run_rejects_missing_argv() -> None:
 
 def test_sandbox_run_rejects_invalid_argv_type() -> None:
     actuator = _make_actuator()
-    tool = make_sandbox_tools(_FakePolicyContext(actuator))[0]
+    tool = _tool_by_name("sandbox.run", actuator)
     result = asyncio.run(
         tool.handler({"spec_id": "scratch", "argv": "echo hi"}, _ctx()),  # type: ignore[arg-type]
     )
@@ -124,7 +128,7 @@ def test_sandbox_run_rejects_invalid_argv_type() -> None:
 
 def test_sandbox_run_clamps_timeout() -> None:
     actuator = _make_actuator()
-    tool = make_sandbox_tools(_FakePolicyContext(actuator))[0]
+    tool = _tool_by_name("sandbox.run", actuator)
     result = asyncio.run(
         tool.handler(  # type: ignore[arg-type]
             {"spec_id": "scratch", "argv": ["true"], "timeout_seconds": 9999},
@@ -143,7 +147,7 @@ def test_sandbox_run_clamps_timeout() -> None:
 
 def test_sandbox_run_inputs_text() -> None:
     actuator = _make_actuator()
-    tool = make_sandbox_tools(_FakePolicyContext(actuator))[0]
+    tool = _tool_by_name("sandbox.run", actuator)
     asyncio.run(
         tool.handler(  # type: ignore[arg-type]
             {
@@ -160,7 +164,7 @@ def test_sandbox_run_inputs_text() -> None:
 
 def test_sandbox_run_inputs_base64() -> None:
     actuator = _make_actuator()
-    tool = make_sandbox_tools(_FakePolicyContext(actuator))[0]
+    tool = _tool_by_name("sandbox.run", actuator)
     import base64
 
     payload = b"\x00\x01\x02binary"
@@ -180,7 +184,7 @@ def test_sandbox_run_inputs_base64() -> None:
 
 def test_sandbox_run_inputs_invalid_value() -> None:
     actuator = _make_actuator()
-    tool = make_sandbox_tools(_FakePolicyContext(actuator))[0]
+    tool = _tool_by_name("sandbox.run", actuator)
     result = asyncio.run(
         tool.handler(  # type: ignore[arg-type]
             {
@@ -196,7 +200,7 @@ def test_sandbox_run_inputs_invalid_value() -> None:
 
 def test_sandbox_run_passes_stdin() -> None:
     actuator = _make_actuator()
-    tool = make_sandbox_tools(_FakePolicyContext(actuator))[0]
+    tool = _tool_by_name("sandbox.run", actuator)
     asyncio.run(
         tool.handler(  # type: ignore[arg-type]
             {
@@ -215,7 +219,7 @@ def test_sandbox_run_discards_region_on_execute_error() -> None:
     """Even if execute() throws, the region must be discarded."""
     actuator = _make_actuator()
     actuator.execute.side_effect = RuntimeError("boom")
-    tool = make_sandbox_tools(_FakePolicyContext(actuator))[0]
+    tool = _tool_by_name("sandbox.run", actuator)
     result = asyncio.run(
         tool.handler({"spec_id": "scratch", "argv": ["true"]}, _ctx()),  # type: ignore[arg-type]
     )
@@ -239,3 +243,36 @@ def test_sandbox_run_propagates_cancellation_flags() -> None:
     )
     assert result.output["cancelled"] is True
     assert result.output["exit_code"] == 137
+
+
+def test_code_execute_stages_python_snippet() -> None:
+    actuator = _make_actuator()
+    tool = _tool_by_name("code.execute", actuator)
+    result = asyncio.run(
+        tool.handler(  # type: ignore[arg-type]
+            {
+                "spec_id": "scratch",
+                "language": "python",
+                "code": "print('ok')",
+                "argv": ["--flag"],
+            },
+            _ctx(),
+        ),
+    )
+    assert result.output["exit_code"] == 0
+    kwargs = actuator.execute.call_args.kwargs
+    assert kwargs["argv"] == ("python", "/in/main.py", "--flag")
+    assert kwargs["inputs"] == {"main.py": b"print('ok')"}
+
+
+def test_code_execute_rejects_unknown_language() -> None:
+    actuator = _make_actuator()
+    tool = _tool_by_name("code.execute", actuator)
+    result = asyncio.run(
+        tool.handler(  # type: ignore[arg-type]
+            {"spec_id": "scratch", "language": "ruby", "code": "puts :ok"},
+            _ctx(),
+        ),
+    )
+    assert "language must be" in result.output["error"]
+    actuator.create_region.assert_not_called()

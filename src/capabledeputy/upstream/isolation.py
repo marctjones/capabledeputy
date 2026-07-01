@@ -64,6 +64,17 @@ class ContainerIsolation:
     user: str = "1500:1500"
     runtime: Literal["podman", "docker"] = "podman"
 
+    def __post_init__(self) -> None:
+        if self.network == "bridge" and not self.allowed_hosts:
+            raise ValueError(
+                "isolation.network='bridge' requires a non-empty allowed_hosts list",
+            )
+        if self.network == "host":
+            raise ValueError(
+                "isolation.network='host' bypasses the per-upstream allowlist; "
+                "use 'none' or 'bridge' with allowed_hosts",
+            )
+
     def to_argv_prefix(self) -> tuple[str, ...]:
         """Build the `podman run` (or `docker run`) argv prefix that
         wraps the upstream server command. The caller appends the
@@ -83,6 +94,9 @@ class ContainerIsolation:
             f"--network={self.network}",
         ]
         if self.network == "bridge":
+            # Disable container DNS resolution so only operator-pinned
+            # --add-host names are resolvable inside the upstream.
+            argv.append("--dns=none")
             for host in self.allowed_hosts:
                 argv.append(f"--add-host={host}")
         if self.memory:

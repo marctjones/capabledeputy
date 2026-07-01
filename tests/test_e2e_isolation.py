@@ -71,6 +71,7 @@ def test_bridge_network_with_allowed_hosts_only() -> None:
     )
     argv = iso.to_argv_prefix()
     assert "--network=bridge" in argv
+    assert "--dns=none" in argv
     assert "--add-host=api.example.com:127.0.0.1" in argv
 
 

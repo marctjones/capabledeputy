@@ -70,6 +70,104 @@ def make_sandbox_tools(policy_context, audit=None) -> list[ToolDefinition]:
 
     actuator = policy_context.sandbox_actuator
 
+    async def _execute_region(
+        *,
+        spec_id: str,
+        argv: tuple[str, ...],
+        timeout_seconds: int,
+        inputs: dict[str, bytes],
+        stdin_bytes: bytes | None,
+        ctx: ToolContext,
+        subtype: str,
+    ) -> ToolResult:
+        # Create + run + harvest + discard.
+        try:
+            region_id = actuator.create_region(spec_id=spec_id)
+        except TypeError:
+            # Actuator stub doesn't accept spec_id kwarg
+            region_id = actuator.create_region()
+        except Exception as e:
+            return ToolResult(output={"error": f"create_region failed: {e}"})
+
+        # FR-040 — emit ISOLATION_REGION_CREATED so audit/replay can
+        # reconstruct the region lifecycle for SC-017 / SC-021.
+        await _emit_region_event(
+            audit,
+            EventType.ISOLATION_REGION_CREATED,
+            session_id=ctx.session_id,
+            payload={
+                "region_id": region_id,
+                "spec_id": spec_id,
+                "argv": list(argv),
+                "timeout_seconds": timeout_seconds,
+                "subtype": subtype,
+            },
+        )
+
+        try:
+            result = actuator.execute(
+                region_id=region_id,
+                argv=argv,
+                env={},
+                timeout_seconds=timeout_seconds,
+                stdin_bytes=stdin_bytes,
+                inputs=inputs or None,
+            )
+        except Exception as e:
+            with contextlib.suppress(Exception):
+                actuator.discard_region(region_id)
+            await _emit_region_event(
+                audit,
+                EventType.ISOLATION_REGION_DISCARDED,
+                session_id=ctx.session_id,
+                payload={
+                    "region_id": region_id,
+                    "spec_id": spec_id,
+                    "reason": "execute_failed",
+                    "error": str(e)[:200],
+                    "subtype": subtype,
+                },
+            )
+            return ToolResult(output={"error": f"execute failed: {e}"})
+
+        output_payload = {
+            "spec_id": spec_id,
+            "exit_code": result.exit_code,
+            "output_digest": result.output_digest,
+            "cancelled": result.cancelled,
+            "timed_out": result.timed_out,
+            "outputs": [
+                {
+                    "name": o.name,
+                    "size": o.size,
+                    "sha256": o.sha256,
+                    "preview": o.preview,
+                    "truncated": o.truncated,
+                }
+                for o in result.outputs
+            ],
+        }
+
+        with contextlib.suppress(Exception):
+            actuator.discard_region(region_id)
+
+        await _emit_region_event(
+            audit,
+            EventType.ISOLATION_REGION_DISCARDED,
+            session_id=ctx.session_id,
+            payload={
+                "region_id": region_id,
+                "spec_id": spec_id,
+                "reason": "run_completed",
+                "exit_code": result.exit_code,
+                "cancelled": result.cancelled,
+                "timed_out": result.timed_out,
+                "subtype": subtype,
+            },
+        )
+
+        return ToolResult(output=output_payload)
+
     async def run_sandbox(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         spec_id = str(args.get("spec_id", "")).strip()
         if not spec_id:
@@ -117,91 +215,55 @@ def make_sandbox_tools(policy_context, audit=None) -> list[ToolDefinition]:
         if isinstance(stdin_raw, str):
             stdin_bytes = stdin_raw.encode("utf-8")
 
-        # Create + run + harvest + discard.
-        try:
-            region_id = actuator.create_region(spec_id=spec_id)
-        except TypeError:
-            # Actuator stub doesn't accept spec_id kwarg
-            region_id = actuator.create_region()
-        except Exception as e:
-            return ToolResult(output={"error": f"create_region failed: {e}"})
-
-        # FR-040 — emit ISOLATION_REGION_CREATED so audit/replay can
-        # reconstruct the region lifecycle for SC-017 / SC-021.
-        # Closes the "events defined but never emitted" gap.
-        await _emit_region_event(
-            audit,
-            EventType.ISOLATION_REGION_CREATED,
-            session_id=ctx.session_id,
-            payload={
-                "region_id": region_id,
-                "spec_id": spec_id,
-                "argv": list(argv),
-                "timeout_seconds": timeout_seconds,
-            },
+        return await _execute_region(
+            spec_id=spec_id,
+            argv=argv,
+            timeout_seconds=timeout_seconds,
+            inputs=inputs,
+            stdin_bytes=stdin_bytes,
+            ctx=ctx,
+            subtype="sandbox.run",
         )
 
-        try:
-            result = actuator.execute(
-                region_id=region_id,
-                argv=argv,
-                env={},
-                timeout_seconds=timeout_seconds,
-                stdin_bytes=stdin_bytes,
-                inputs=inputs or None,
-            )
-        except Exception as e:
-            with contextlib.suppress(Exception):
-                actuator.discard_region(region_id)
-            await _emit_region_event(
-                audit,
-                EventType.ISOLATION_REGION_DISCARDED,
-                session_id=ctx.session_id,
-                payload={
-                    "region_id": region_id,
-                    "spec_id": spec_id,
-                    "reason": "execute_failed",
-                    "error": str(e)[:200],
-                },
-            )
-            return ToolResult(output={"error": f"execute failed: {e}"})
+    async def execute_code(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
+        spec_id = str(args.get("spec_id", "")).strip()
+        if not spec_id:
+            return ToolResult(output={"error": "spec_id is required"})
+        language = str(args.get("language") or "python").strip().lower()
+        code = args.get("code")
+        if not isinstance(code, str) or not code.strip():
+            return ToolResult(output={"error": "code must be a non-empty string"})
+        timeout_raw = args.get("timeout_seconds")
+        timeout_seconds = int(timeout_raw) if timeout_raw is not None else 30
+        if timeout_seconds < 1 or timeout_seconds > 600:
+            return ToolResult(output={"error": "timeout_seconds must be in [1, 600]"})
 
-        output_payload = {
-            "spec_id": spec_id,
-            "exit_code": result.exit_code,
-            "output_digest": result.output_digest,
-            "cancelled": result.cancelled,
-            "timed_out": result.timed_out,
-            "outputs": [
-                {
-                    "name": o.name,
-                    "size": o.size,
-                    "sha256": o.sha256,
-                    "preview": o.preview,
-                    "truncated": o.truncated,
-                }
-                for o in result.outputs
-            ],
-        }
+        argv_extra_raw = args.get("argv") or []
+        if not isinstance(argv_extra_raw, list):
+            return ToolResult(output={"error": "argv must be a list of strings when provided"})
+        argv_extra = tuple(str(a) for a in argv_extra_raw)
 
-        with contextlib.suppress(Exception):
-            actuator.discard_region(region_id)
+        if language == "python":
+            filename = "main.py"
+            argv = ("python", "/in/main.py", *argv_extra)
+        elif language in {"sh", "shell"}:
+            filename = "main.sh"
+            argv = ("sh", "/in/main.sh", *argv_extra)
+        elif language == "node":
+            filename = "main.js"
+            argv = ("node", "/in/main.js", *argv_extra)
+        else:
+            return ToolResult(output={"error": "language must be one of: python, sh, node"})
 
-        await _emit_region_event(
-            audit,
-            EventType.ISOLATION_REGION_DISCARDED,
-            session_id=ctx.session_id,
-            payload={
-                "region_id": region_id,
-                "spec_id": spec_id,
-                "reason": "run_completed",
-                "exit_code": result.exit_code,
-                "cancelled": result.cancelled,
-                "timed_out": result.timed_out,
-            },
+        return await _execute_region(
+            spec_id=spec_id,
+            argv=argv,
+            timeout_seconds=timeout_seconds,
+            inputs={filename: code.encode("utf-8")},
+            stdin_bytes=None,
+            ctx=ctx,
+            subtype="code.execute",
         )
-
-        return ToolResult(output=output_payload)
 
     return [
         ToolDefinition(
@@ -272,6 +334,55 @@ def make_sandbox_tools(policy_context, audit=None) -> list[ToolDefinition]:
                     },
                 },
                 "required": ["spec_id", "argv"],
+            },
+        ),
+        ToolDefinition(
+            name="code.execute",
+            effect_class="EXECUTE.sandbox",
+            operations=(Operation(EffectClass.EXECUTE_SANDBOX, subtype="code.execute"),),
+            risk_ids=("RISK-UNSAFE-CODE-EXEC",),
+            surfaces_destination_id=True,
+            default_reversibility={"degree": "reversible", "agent": "system"},
+            tool_provenance="operator-curated",
+            description=(
+                "Run a short code snippet inside a fresh disposable sandbox "
+                "region. `language` selects python, sh, or node; `spec_id` "
+                "must name an operator-declared sandbox region. The snippet "
+                "is staged under /in and any files written to /out are "
+                "returned as bounded output metadata."
+            ),
+            capability_kind=CapabilityKind.EXECUTE_SANDBOX,
+            handler=execute_code,
+            target_arg="spec_id",
+            accepts_handles=True,
+            handle_arg_names=("code",),
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "spec_id": {
+                        "type": "string",
+                        "description": "Operator-declared sandbox region template id.",
+                    },
+                    "language": {
+                        "type": "string",
+                        "enum": ["python", "sh", "node"],
+                        "description": "Snippet runtime inside the selected sandbox image.",
+                    },
+                    "code": {
+                        "type": "string",
+                        "description": "Source code to execute inside the sandbox.",
+                    },
+                    "argv": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional arguments appended after the snippet path.",
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "description": "Max run time (default 30, max 600).",
+                    },
+                },
+                "required": ["spec_id", "code"],
             },
         ),
     ]

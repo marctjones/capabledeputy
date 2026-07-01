@@ -224,6 +224,7 @@ def _parse_auth(raw: Any) -> UpstreamAuthConfig | None:
 
 def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
     servers_raw = raw.get("upstream_servers") or []
+    default_isolation = _parse_default_stdio_isolation(raw.get("upstream_isolation_defaults"))
     out: list[UpstreamServerConfig] = []
     for entry in servers_raw:
         name = str(entry["name"])
@@ -258,7 +259,10 @@ def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
                 ),
                 amount_arg=str(ov["amount_arg"]) if ov.get("amount_arg") is not None else None,
             )
-        isolation = _parse_isolation(entry.get("isolation"))
+        isolation = _entry_isolation(
+            entry,
+            default_isolation=default_isolation if transport == "stdio" else None,
+        )
         env_raw = entry.get("env") or {}
         env = {str(k): expand_env_value(str(v)) for k, v in env_raw.items()}
         disabled_tools = frozenset(str(t) for t in (entry.get("disabled_tools") or []))
@@ -284,6 +288,48 @@ def parse_config(raw: dict[str, Any]) -> list[UpstreamServerConfig]:
             ),
         )
     return out
+
+
+def _parse_default_stdio_isolation(raw: Any) -> ContainerIsolation | None:
+    """Parse the top-level stdio upstream isolation default.
+
+    Operators can write:
+
+        upstream_isolation_defaults:
+          enabled: true
+          image: ghcr.io/acme/capdep-upstream-runner:latest
+          network: none
+
+    Any stdio server without its own ``isolation:`` block inherits this
+    profile. ``isolation: false`` on an individual server is an explicit
+    trusted-local opt-out.
+    """
+    if not raw:
+        return None
+    if raw is True:
+        raise ValueError("upstream_isolation_defaults=true requires an image")
+    if not isinstance(raw, dict):
+        raise ValueError("upstream_isolation_defaults must be a mapping or omitted")
+    if raw.get("enabled", True) is False:
+        return None
+    if "image" not in raw:
+        raise ValueError("upstream_isolation_defaults.enabled requires image")
+    return _parse_isolation(raw)
+
+
+def _entry_isolation(
+    entry: dict[str, Any],
+    *,
+    default_isolation: ContainerIsolation | None,
+) -> ContainerIsolation | None:
+    if "isolation" not in entry:
+        return default_isolation
+    raw = entry.get("isolation")
+    if raw in (None, False, "none", "off", "disabled"):
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(f"{entry.get('name', '<unknown>')}: isolation must be a mapping or false")
+    return _parse_isolation(raw)
 
 
 def _parse_isolation(raw: dict[str, Any] | None) -> ContainerIsolation | None:

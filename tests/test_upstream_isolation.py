@@ -42,6 +42,7 @@ def test_argv_prefix_with_volumes_and_limits() -> None:
     )
     argv = iso.to_argv_prefix()
     assert "--network=bridge" in argv
+    assert "--dns=none" in argv
     assert "--add-host=api.openai.com:127.0.0.1" in argv
     assert "--volume=/h/data:/data:ro" in argv
     assert "--memory=256m" in argv
@@ -113,6 +114,52 @@ def test_parse_config_with_isolation() -> None:
     assert cfg.isolation.volumes[0].host == "/h/notes"
     # Check that the personal category tag is present
     assert any(tag.category == "personal" for tag in cfg.inherent_tags.a)
+
+
+def test_parse_config_applies_default_stdio_isolation() -> None:
+    raw = {
+        "upstream_isolation_defaults": {
+            "enabled": True,
+            "image": "ghcr.io/acme/capdep-upstream:latest",
+            "network": "none",
+            "memory": "512m",
+        },
+        "upstream_servers": [
+            {"name": "fetch", "command": ["uvx", "mcp-server-fetch"]},
+            {
+                "name": "remote",
+                "transport": "streamable_http",
+                "url": "https://example.com/mcp",
+            },
+        ],
+    }
+    stdio, remote = parse_config(raw)
+    assert stdio.isolation is not None
+    assert stdio.isolation.image == "ghcr.io/acme/capdep-upstream:latest"
+    assert stdio.isolation.memory == "512m"
+    assert "--network=none" in stdio.effective_command()
+    assert remote.isolation is None
+
+
+def test_parse_config_default_isolation_can_be_opted_out_per_server() -> None:
+    raw = {
+        "upstream_isolation_defaults": {
+            "image": "ghcr.io/acme/capdep-upstream:latest",
+            "network": "none",
+        },
+        "upstream_servers": [
+            {
+                "name": "trusted-local",
+                "command": ["capdep", "mcp-server-fs"],
+                "isolation": False,
+            },
+        ],
+    }
+    [cfg] = parse_config(raw)
+    assert cfg.isolation is None
+    eff = cfg.effective_command()
+    assert "--network=none" not in eff
+    assert eff[-1] == "mcp-server-fs"
 
 
 def test_parse_config_without_isolation_leaves_field_none() -> None:
@@ -258,6 +305,20 @@ def test_parse_config_invalid_network_errors() -> None:
     }
     with _p.raises(ValueError, match="network"):
         parse_config(raw)
+
+
+def test_bridge_network_requires_allowed_hosts() -> None:
+    import pytest as _p
+
+    with _p.raises(ValueError, match="allowed_hosts"):
+        ContainerIsolation(image="alpine", network="bridge")
+
+
+def test_host_network_rejected_for_upstream_isolation() -> None:
+    import pytest as _p
+
+    with _p.raises(ValueError, match="host"):
+        ContainerIsolation(image="alpine", network="host")
 
 
 def test_yaml_round_trip_with_isolation(tmp_path) -> None:
