@@ -946,6 +946,28 @@ struct OnguardEventViewData: Identifiable, Hashable {
     }
 }
 
+struct OnguardNotificationViewData: Identifiable, Hashable {
+    let id: String
+    let notificationClass: String
+    let urgency: String
+    let title: String
+    let body: String
+    let deepLink: String
+    let artifactRef: String?
+    let approvalID: Int?
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["id"] as? String ?? UUID().uuidString
+        self.notificationClass = dictionary["class"] as? String ?? ""
+        self.urgency = dictionary["urgency"] as? String ?? ""
+        self.title = dictionary["title"] as? String ?? ""
+        self.body = dictionary["body"] as? String ?? ""
+        self.deepLink = dictionary["deep_link"] as? String ?? ""
+        self.artifactRef = dictionary["artifact_ref"] as? String
+        self.approvalID = dictionary["approval_id"] as? Int
+    }
+}
+
 struct OnguardConfigViewData: Identifiable, Hashable {
     let id: String
     let clientID: String

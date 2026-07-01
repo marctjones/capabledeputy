@@ -39,6 +39,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var onguardArtifacts: [OnguardArtifactViewData] = []
     @Published private(set) var onguardEvents: [OnguardEventViewData] = []
     @Published private(set) var onguardConfigs: [OnguardConfigViewData] = []
+    @Published private(set) var onguardNotifications: [OnguardNotificationViewData] = []
     @Published private(set) var currentSessionID: String?
     @Published private(set) var chatMessages: [ChatMessage] = []
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
@@ -189,6 +190,10 @@ final class CapDepAppModel: ObservableObject {
                 params: ["limit": 100],
             )
             async let onguardConfigsResult = client.call(method: "client.config.list")
+            async let onguardNotificationsResult = client.call(
+                method: "onguard.notifications.list",
+                params: ["limit": 50],
+            )
 
             let approvalsObject = try await approvalsResult as? [String: Any]
             let sessionsObject = try await sessionsResult as? [String: Any]
@@ -215,6 +220,7 @@ final class CapDepAppModel: ObservableObject {
             let onguardArtifactsObject = try await onguardArtifactsResult as? [String: Any]
             let onguardEventsObject = try await onguardEventsResult as? [String: Any]
             let onguardConfigsObject = try await onguardConfigsResult as? [String: Any]
+            let onguardNotificationsObject = try await onguardNotificationsResult as? [String: Any]
 
             let approvals = (approvalsObject?["approvals"] as? [[String: Any]] ?? [])
                 .map(Approval.init(dictionary:))
@@ -281,8 +287,16 @@ final class CapDepAppModel: ObservableObject {
                 .map(OnguardEventViewData.init(dictionary:))
             onguardConfigs = (onguardConfigsObject?["configs"] as? [[String: Any]] ?? [])
                 .map(OnguardConfigViewData.init(dictionary:))
+            let daemonNotifications = (
+                onguardNotificationsObject?["notifications"] as? [[String: Any]] ?? []
+            )
+            .map(OnguardNotificationViewData.init(dictionary:))
+            onguardNotifications = daemonNotifications
             connected = true
             lastError = nil
+            for notification in daemonNotifications where notification.urgency == "high" {
+                await notifications.notifyOnguard(notification)
+            }
             if approvals.count > lastPendingApprovalCount, let first = approvals.first {
                 await notifications.notifyPendingApproval(
                     count: approvals.count,

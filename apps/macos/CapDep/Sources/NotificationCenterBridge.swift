@@ -44,6 +44,39 @@ final class NotificationCenterBridge {
         try? await UNUserNotificationCenter.current().add(request)
     }
 
+    func notifyOnguard(_ notification: OnguardNotificationViewData) async {
+        guard canUseUserNotifications else {
+            return
+        }
+        guard !notification.id.isEmpty else {
+            return
+        }
+        let content = UNMutableNotificationContent()
+        content.title = notification.title.isEmpty ? "CapDep onguard update" : notification.title
+        content.body = notification.body.isEmpty
+            ? notification.deepLink
+            : notification.body
+        content.sound = notification.urgency == "high" ? .defaultCritical : .default
+        var userInfo: [String: Any] = [
+            "onguard_notification_id": notification.id,
+            "notification_class": notification.notificationClass,
+            "deep_link": notification.deepLink,
+        ]
+        if let artifactRef = notification.artifactRef {
+            userInfo["artifact_ref"] = artifactRef
+        }
+        if let approvalID = notification.approvalID {
+            userInfo["approval_id"] = approvalID
+        }
+        content.userInfo = userInfo
+        let request = UNNotificationRequest(
+            identifier: "capdep.onguard.\(notification.id)",
+            content: content,
+            trigger: nil,
+        )
+        try? await UNUserNotificationCenter.current().add(request)
+    }
+
     private var canUseUserNotifications: Bool {
         Bundle.main.bundleURL.pathExtension == "app"
     }

@@ -168,4 +168,24 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(config.schemaName, "finance_guard")
         XCTAssertEqual(config.status, "approved")
     }
+
+    func testOnguardNotificationModelParsesDaemonContract() {
+        let notification = OnguardNotificationViewData(dictionary: [
+            "id": "event-approval-needed",
+            "class": "approval_needed",
+            "urgency": "high",
+            "title": "Approval needed",
+            "body": "A queued action is waiting.",
+            "deep_link": "capdep://onguard/event-approval-needed",
+            "artifact_ref": "artifact:digest",
+            "approval_id": 42,
+        ])
+
+        XCTAssertEqual(notification.id, "event-approval-needed")
+        XCTAssertEqual(notification.notificationClass, "approval_needed")
+        XCTAssertEqual(notification.urgency, "high")
+        XCTAssertEqual(notification.deepLink, "capdep://onguard/event-approval-needed")
+        XCTAssertEqual(notification.artifactRef, "artifact:digest")
+        XCTAssertEqual(notification.approvalID, 42)
+    }
 }

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from capabledeputy.app import App
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.daemon.handlers import Handler
+from capabledeputy.session.model import Turn
 
 
 async def _audit(app: App, event_type: EventType, payload: dict[str, Any]) -> None:
@@ -441,6 +444,149 @@ def make_onguard_handlers(app: App) -> dict[str, Handler]:
             )
         }
 
+    async def notifications_contract(params: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "classes": [
+                {
+                    "class": "result",
+                    "urgency": "normal",
+                    "ttl_seconds": 86_400,
+                    "requires_operator_action": False,
+                    "client_behavior": "render summary and deep-link to daemon artifact/event",
+                },
+                {
+                    "class": "approval_needed",
+                    "urgency": "high",
+                    "ttl_seconds": 3_600,
+                    "requires_operator_action": True,
+                    "client_behavior": "open approval card; never approve from notification body",
+                },
+                {
+                    "class": "failure",
+                    "urgency": "high",
+                    "ttl_seconds": 86_400,
+                    "requires_operator_action": False,
+                    "client_behavior": "open event details and linked artifact if present",
+                },
+            ],
+            "deep_link_scheme": "capdep://onguard/{event_id}",
+            "dedupe_key": "event_id",
+        }
+
+    async def notifications_list(params: dict[str, Any]) -> dict[str, Any]:
+        events = await app.onguard.list_events(
+            client_id=params.get("client_id"),
+            limit=int(params.get("limit", 100)),
+        )
+        include_acknowledged = bool(params.get("include_acknowledged", False))
+        notifications = []
+        seen: set[str] = set()
+        for event in events:
+            if event.get("acknowledged_at") and not include_acknowledged:
+                continue
+            key = str(event.get("event_id"))
+            if key in seen:
+                continue
+            seen.add(key)
+            notifications.append(_notification_from_event(event))
+        return {
+            "notifications": notifications,
+            "suppressed_duplicates": max(0, len(events) - len(notifications)),
+            "contract": (await notifications_contract({})),
+        }
+
+    async def approval_digest(params: dict[str, Any]) -> dict[str, Any]:
+        from capabledeputy.approval.model import ApprovalStatus
+        from capabledeputy.approval.strong_auth import approval_to_client_dict
+        from capabledeputy.daemon.settings_store import load_settings
+
+        settings = load_settings()
+        pending = [
+            approval_to_client_dict(
+                approval,
+                touch_id_policy_enabled=settings.require_touch_id_for_high_risk,
+            )
+            for approval in app.approval_queue.list(status=ApprovalStatus.PENDING)
+        ]
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for item in pending:
+            group = str(item.get("sibling_group_id") or f"solo:{item.get('id')}")
+            groups.setdefault(group, []).append(item)
+        return {
+            "groups": [
+                _approval_group_digest(group_id, items)
+                for group_id, items in sorted(groups.items())
+            ],
+            "pending_count": len(pending),
+            "bulk_approval_rule": (
+                "Bulk approval is available only through approval.approve_group "
+                "and still evaluates each exact pending approval payload."
+            ),
+        }
+
+    async def artifact_handoff(params: dict[str, Any]) -> dict[str, Any]:
+        artifact = await app.onguard.read_artifact(artifact_id=str(params["artifact_id"]))
+        intent = str(
+            params.get("intent")
+            or f"Review onguard artifact {artifact['artifact_id']}",
+        )
+        session = await app.graph.new(
+            owner=str(params.get("owner", "interactive-client")),
+            intent=intent,
+            origin={
+                "kind": "onguard_handoff",
+                "client_id": artifact["client_id"],
+                "command_id": artifact.get("command_id"),
+                "schedule_id": artifact.get("schedule_id"),
+                "metadata": {"artifact_id": artifact["artifact_id"]},
+            },
+        )
+        if artifact.get("labels"):
+            from capabledeputy.policy.labels import tags_for_labels_strings
+
+            session = await app.graph.add_tags(
+                session.id,
+                tags_for_labels_strings(frozenset(str(v) for v in artifact["labels"])),
+            )
+        await app.graph.add_turn(
+            session.id,
+            Turn(
+                turn_id=len(session.history),
+                role="user",
+                content=f"Review onguard artifact {artifact['artifact_id']}",
+            ),
+        )
+        await app.graph.add_turn(
+            session.id,
+            Turn(
+                turn_id=len(session.history) + 1,
+                role="agent",
+                content=json.dumps(
+                    {
+                        "artifact_id": artifact["artifact_id"],
+                        "artifact_type": artifact["artifact_type"],
+                        "payload": artifact["payload"],
+                        "labels": artifact["labels"],
+                        "provenance": artifact["provenance"],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+            ),
+        )
+        session = app.graph.get(session.id)
+        await _audit(
+            app,
+            EventType.ONGUARD_ARTIFACT_CHANGED,
+            {
+                "artifact_id": artifact["artifact_id"],
+                "client_id": artifact["client_id"],
+                "status": artifact["status"],
+                "handoff_session_id": str(session.id),
+            },
+        )
+        return {"artifact": artifact, "session": session.to_dict()}
+
     return {
         "client.registry.register": client_register,
         "client.registry.list": client_list,
@@ -469,4 +615,65 @@ def make_onguard_handlers(app: App) -> dict[str, Handler]:
         "schedule.complete_run": schedule_complete_run,
         "schedule.fail_run": schedule_fail_run,
         "schedule.history": schedule_history,
+        "onguard.notifications.contract": notifications_contract,
+        "onguard.notifications.list": notifications_list,
+        "onguard.approval_digest": approval_digest,
+        "artifact.handoff": artifact_handoff,
+    }
+
+
+def _notification_from_event(event: dict[str, Any]) -> dict[str, Any]:
+    event_type = str(event.get("event_type") or "")
+    payload = dict(event.get("payload") or {})
+    notification_class = "result"
+    urgency = "normal"
+    ttl_seconds = 86_400
+    if "approval" in event_type or payload.get("approval_id"):
+        notification_class = "approval_needed"
+        urgency = "high"
+        ttl_seconds = 3_600
+    elif "fail" in event_type or "error" in payload:
+        notification_class = "failure"
+        urgency = "high"
+    title = str(payload.get("title") or event_type.replace(".", " ").title())
+    body = str(payload.get("summary") or payload.get("reason") or payload.get("error") or "")
+    return {
+        "id": event["event_id"],
+        "class": notification_class,
+        "urgency": urgency,
+        "ttl_seconds": ttl_seconds,
+        "title": title,
+        "body": body,
+        "client_id": event["client_id"],
+        "event_type": event_type,
+        "labels": event.get("labels", []),
+        "deep_link": f"capdep://onguard/{event['event_id']}",
+        "artifact_ref": payload.get("artifact_ref"),
+        "approval_id": payload.get("approval_id"),
+        "acknowledged_at": event.get("acknowledged_at"),
+        "created_at": event.get("created_at"),
+    }
+
+
+def _approval_group_digest(group_id: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+    action_set = sorted({str(item.get("action") or "") for item in items})
+    return {
+        "group_id": group_id,
+        "count": len(items),
+        "actions": action_set,
+        "requires_strong_auth": any(bool(item.get("requires_strong_auth")) for item in items),
+        "items": [
+            {
+                "id": item.get("id"),
+                "action": item.get("action"),
+                "target": item.get("target"),
+                "payload_sha256": hashlib.sha256(
+                    str(item.get("payload") or "").encode("utf-8"),
+                ).hexdigest(),
+                "labels_in": item.get("labels_in", []),
+                "labels_out": item.get("labels_out", []),
+                "expires_at": item.get("expires_at"),
+            }
+            for item in items
+        ],
     }

@@ -253,6 +253,109 @@ def onguard_artifacts_command(
         )
 
 
+@onguard_app.command("notifications")
+def onguard_notifications_command(
+    client_id: Annotated[
+        str | None,
+        typer.Option("--client-id", help="Filter by onguard client ID."),
+    ] = None,
+    include_acknowledged: Annotated[
+        bool,
+        typer.Option("--include-acknowledged", help="Include acknowledged notifications."),
+    ] = False,
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a summary."),
+    ] = False,
+) -> None:
+    """List daemon-owned onguard notification summaries."""
+    params = {
+        "include_acknowledged": include_acknowledged,
+        **({"client_id": client_id} if client_id else {}),
+    }
+    try:
+        result = anyio.run(
+            lambda: _onguard_call("onguard.notifications.list", params, socket_path=socket_path)
+        )
+    except DaemonNotRunningError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2) from e
+    if json_output:
+        console.print_json(data=result)
+        return
+    for item in result.get("notifications", []):
+        console.print(
+            f"{item.get('id')} "
+            f"[{item.get('urgency')}] "
+            f"{item.get('title')} -> {item.get('deep_link')}"
+        )
+
+
+@onguard_app.command("approval-digest")
+def onguard_approval_digest_command(
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a summary."),
+    ] = False,
+) -> None:
+    """Show grouped pending approval digest for background work."""
+    try:
+        result = anyio.run(
+            lambda: _onguard_call("onguard.approval_digest", {}, socket_path=socket_path)
+        )
+    except DaemonNotRunningError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2) from e
+    if json_output:
+        console.print_json(data=result)
+        return
+    console.print(f"[bold]pending approvals:[/bold] {result.get('pending_count', 0)}")
+    for group in result.get("groups", []):
+        console.print(
+            f"{group.get('group_id')} count={group.get('count')} "
+            f"actions={','.join(group.get('actions', []))}",
+        )
+
+
+@onguard_app.command("handoff")
+def onguard_handoff_command(
+    artifact_id: Annotated[str, typer.Argument(help="Onguard artifact id.")],
+    socket_path: Annotated[
+        str | None,
+        typer.Option("--socket", help="Override daemon socket path."),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a summary."),
+    ] = False,
+) -> None:
+    """Create an interactive session from a daemon-owned onguard artifact."""
+    try:
+        result = anyio.run(
+            lambda: _onguard_call(
+                "artifact.handoff",
+                {"artifact_id": artifact_id, "owner": "cli"},
+                socket_path=socket_path,
+            )
+        )
+    except DaemonNotRunningError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2) from e
+    if json_output:
+        console.print_json(data=result)
+        return
+    session = result.get("session", {})
+    console.print(f"[green]handoff session:[/green] {session.get('id')}")
+
+
 @google_oauth_app.command("status")
 def google_oauth_status_command(
     service_id: Annotated[
