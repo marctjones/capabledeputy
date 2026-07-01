@@ -8,12 +8,20 @@ default_backend: mlx
 # Conversational chat turns cap completion at CHAT_MAX_TOKENS (512) in
 # capabledeputy.agent.chat_turn — independent of role max_tokens below.
 roles:
+  # 8B follows tool/image instructions better than 4B; still fast on Apple Silicon.
   planner.fast:
-    mlx: Qwen/Qwen3-4B-MLX-4bit
+    mlx: mlx-community/Qwen3-8B-4bit
     max_tokens: 2048
 
+  # Tool-heavy and image-generation turns (see loop.py image_intent override).
   planner.tools:
     mlx: mlx-community/Qwen3-14B-4bit
+    max_tokens: 4096
+
+  # Manual quality mode for slower, more deliberate chat/research turns.
+  # Keep this opt-in until it is benchmarked on the operator's specific Mac.
+  planner.quality:
+    mlx: mlx-community/Qwen3.6-35B-A3B-4bit
     max_tokens: 4096
 
   extractor:
@@ -21,6 +29,12 @@ roles:
     max_tokens: 1024
 
 routing:
+  - when:
+      purpose_handle: [research, writing]
+      user_message_chars_gte: 900
+    role: planner.quality
+    reason: long_quality_purpose
+
   - when:
       purpose_handle: [research, writing]
     role: planner.tools
@@ -32,13 +46,18 @@ routing:
     reason: programmatic_mode
 
   - when:
-      n_visible_tools_gte: 16
+      n_visible_tools_gte: 10
     role: planner.tools
     reason: large_tool_surface
 
+  - when:
+      n_selected_tools_gte: 4
+    role: planner.tools
+    reason: multi_tool_turn
+
   - default:
-    role: planner.fast
-    reason: default_fast
+      role: planner.fast
+      reason: default_fast
 
 tool_selection:
   mode: retrieve

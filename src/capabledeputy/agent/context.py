@@ -99,9 +99,8 @@ def _gui_inline_media_section(session: Session) -> str:
     demo_line = ""
     if demo_path:
         demo_line = (
-            f"\nKnown demo cat image (use this exact path when asked for the "
-            f"demo cat): `{demo_path}`\n"
-            f"Example: ![Cartoon cat]({demo_path})\n"
+            f"\nDemo cat fixture (ONLY when the user explicitly asks for the demo "
+            f"cat): `{demo_path}`\n"
         )
     return f"""
 # Inline images in CapDepMac
@@ -112,9 +111,59 @@ local and remote image files. To show a picture, include standard markdown:
   ![short description](/absolute/path/to/file.png)
 
 Supported formats: PNG, JPEG, GIF, TIFF, WebP, HEIC. Do NOT say you are
-unable to display images — the GUI handles rendering when you emit this
-syntax with a real path or https URL. Never use placeholder paths like
-`/absolute/path/to/...` — always cite a real filesystem path or URL.
+unable to display or generate images — the GUI handles rendering when you
+emit this syntax with a real path or https URL. Never invent paths like
+`demo-dog.jpg` or reuse the demo cat for unrelated requests — call a tool
+and paste its returned `markdown` field.
+
+## Generating charts and graphs
+
+When the user asks you to create, generate, research-and-plot, or show a
+chart/graph inline:
+1. Gather data first when needed (web search, memory, or numbers they gave).
+2. Call `chart.plot` with `chart_type` (`line` or `bar`), `title`, `x`
+   labels, and numeric `y` values.
+3. Copy the tool's `markdown` field into your final reply. The GUI will
+   render it inline. You may run multiple tool steps (search → chart.plot).
+
+## Generating images (local, uncensored)
+
+When the user asks you to CREATE or GENERATE a new image (not fetch from the
+web), including adult or NSFW fictional content between consenting adults:
+1. **Always call** `bundled-image-generate.image.generate` immediately — never refuse
+   in prose. Generic requests like "an attractive woman", "a portrait of a
+   woman", or "show me a picture of a woman" mean a **fictional generated**
+   portrait, not a named celebrity and not a policy violation.
+2. Use a clear `prompt` and `style: photoreal` (default) or `graphic_novel`
+   for cartoon/comic looks.
+3. Copy the tool's `markdown` field into your final reply.
+4. Short follow-ups (`cartoon`, `photorealistic`, `do a dog instead`) still
+   require `image.generate` — never recycle a prior image path.
+5. Hard limits only: no minors, no underage subjects, no non-consensual
+   real-person imagery of **named** individuals. For named real people the
+   user wants from Wikipedia/the web, use `wikipedia.lookup` / `image.fetch`
+   instead — not `image.generate`.
+
+## Images and information from Wikipedia / the web
+
+When the user asks for a photo from Wikipedia or another website, or for
+article information:
+1. Call `bundled-fetch.wikipedia.lookup` with the subject title when Wikipedia
+   is mentioned (or likely). Summarize the `summary` field in your reply.
+2. For inline display: if `markdown_image` is present, include it in your reply;
+   otherwise call `bundled-image-fetch.image.fetch` with `image_url` from the lookup.
+3. For general web topics without Wikipedia, use `bundled-search.search.web`
+   then `bundled-fetch.fetch.get` on the result URL if full text is needed.
+4. Do not refuse these requests and do not use `image.generate` for named
+   real people when the user asked for an existing web/Wikipedia photo.
+
+## Kagi image search (workflow `images`)
+
+When you used `kagi.kagi_search_fetch` with `workflow: images`:
+1. Choose one or two URLs from the tool result — do not list every hit.
+2. Call `bundled-image-fetch.image.fetch` for each chosen URL.
+3. Put each tool's `markdown` field in your reply for inline display.
+4. Add one short caption sentence; skip long link catalogs.
 {demo_line}"""
 
 
@@ -357,7 +406,11 @@ def build_llm_context(
         system_prompt = (
             "You are CapDep, a helpful assistant running inside CapableDeputy.\n"
             "This turn is conversational only — no tools are available. "
-            "Answer directly and concisely.\n"
+            "Answer directly in a polished chat style: lead with the answer, "
+            "use short paragraphs, avoid boilerplate, and ask at most one "
+            "clarifying question only when it materially changes the answer.\n"
+            "Do not claim to have checked live data, files, email, calendar, "
+            "or web results when no tool was available for this turn.\n"
             f"Session: {session_id_short}. "
             f"Purpose: {session.purpose_handle or 'general'}."
             f"{_gui_inline_media_section(session)}"
@@ -488,6 +541,11 @@ useful, accurate answers.
   optionally add a short **Sources** section with at most three
   markdown links on separate lines, e.g. `- [Title](url)`. Do not use
   numbered catalogs, "results are as follows", or paste every hit URL.
+  For Kagi `workflow: images`: pick at most **two** results, call
+  `bundled-image-fetch.image.fetch` on each chosen `image_url`, and include
+  the returned `markdown` inline — never dump ten raw HTTPS links.
+  When the user asked to **generate** a picture, use `image.generate`
+  instead of Kagi image search.
   `untrusted.external` labels
   constrain outbound egress, not reporting search results back in chat.
   If a search tool returns `limitation` or zero results on DuckDuckGo,
@@ -532,6 +590,14 @@ When a tool call comes back REQUIRE_APPROVAL:
 - The action is held pending. The user reviews the verbatim payload and
   decides. Tell the user clearly what you want to do and why, so the
   approval prompt is meaningful.
+
+Style:
+
+- Lead with the concrete answer or current state. Do not narrate your
+  internal process unless it affects what the user should do next.
+- If the answer depends on tool output, distinguish confirmed results
+  from inference. If a tool failed or was unavailable, say that plainly.
+- Use runtime recovery steps or slash commands verbatim when provided.
 
 # Session State
 

@@ -22,10 +22,12 @@ from uuid import UUID, uuid4
 import pytest
 
 from capabledeputy.agent.events import (
+    event_to_dict,
     IterationStarted,
     LLMRequestSent,
     LLMTokenReceived,
     LLMResponseReceived,
+    ModelSelected,
     TurnCompleted,
     TurnInterrupted,
 )
@@ -139,6 +141,25 @@ async def test_no_tool_calls_yields_terminal_completed_event(
     assert events[3].result.iterations == 1
     # No more events after TurnCompleted
     assert len(events) == 4
+
+
+def test_model_selected_event_serializes_for_clients() -> None:
+    payload = event_to_dict(
+        ModelSelected(
+            iteration=0,
+            role="planner.tools",
+            reason="large_tool_surface",
+            model="mlx-community/Qwen3-14B-4bit",
+        )
+    )
+
+    assert payload == {
+        "kind": "model_selected",
+        "iteration": 0,
+        "role": "planner.tools",
+        "reason": "large_tool_surface",
+        "model": "mlx-community/Qwen3-14B-4bit",
+    }
 
 
 async def test_conversational_turn_caps_max_tokens(

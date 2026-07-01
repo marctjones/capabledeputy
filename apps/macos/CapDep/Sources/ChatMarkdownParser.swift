@@ -18,7 +18,12 @@ enum ChatBlock: Identifiable, Equatable {
 }
 
 enum ChatMarkdownParser {
-    static func blocks(from raw: String, isStreaming: Bool = false) -> [ChatBlock] {
+    static func blocks(
+        from raw: String,
+        isStreaming: Bool = false,
+        authorizedImagePaths: Set<String> = [],
+        holdUnverifiedGeneratedImages: Bool = false,
+    ) -> [ChatBlock] {
         let cleaned = ChatContentFormatter.displayText(raw)
         guard !cleaned.isEmpty else {
             return []
@@ -31,6 +36,8 @@ enum ChatMarkdownParser {
                 appendProse(
                     String(cleaned[cursor..<match.range.lowerBound]),
                     isStreaming: isStreaming,
+                    authorizedImagePaths: authorizedImagePaths,
+                    holdUnverifiedGeneratedImages: holdUnverifiedGeneratedImages,
                     to: &result,
                 )
             }
@@ -40,12 +47,65 @@ enum ChatMarkdownParser {
             cursor = match.range.upperBound
         }
         if cursor < cleaned.endIndex {
-            appendProse(String(cleaned[cursor...]), isStreaming: isStreaming, to: &result)
+            appendProse(
+                String(cleaned[cursor...]),
+                isStreaming: isStreaming,
+                authorizedImagePaths: authorizedImagePaths,
+                holdUnverifiedGeneratedImages: holdUnverifiedGeneratedImages,
+                to: &result,
+            )
         }
         if result.isEmpty {
-            appendProse(cleaned, isStreaming: isStreaming, to: &result)
+            appendProse(
+                cleaned,
+                isStreaming: isStreaming,
+                authorizedImagePaths: authorizedImagePaths,
+                holdUnverifiedGeneratedImages: holdUnverifiedGeneratedImages,
+                to: &result,
+            )
         }
         return result
+    }
+
+    static func isGeneratedWorkImagePath(_ path: String) -> Bool {
+        let expanded = NSString(string: path).expandingTildeInPath
+        return expanded.contains("/.capdep/work/images/")
+    }
+
+    static func shouldHoldGeneratedImage(
+        _ path: String,
+        authorizedImagePaths: Set<String>,
+        holdUnverifiedGeneratedImages: Bool,
+    ) -> Bool {
+        guard holdUnverifiedGeneratedImages, isGeneratedWorkImagePath(path) else {
+            return false
+        }
+        let expanded = NSString(string: path).expandingTildeInPath
+        return !authorizedImagePaths.contains(expanded)
+    }
+
+    static func extractMarkdownImagePaths(from text: String) -> [String] {
+        let pattern = /!\[[^\]]*\]\(([^)]+)\)/
+        return text.matches(of: pattern).map { String($0.1) }
+    }
+
+    static func stripUnverifiedGeneratedImageMarkdown(
+        from text: String,
+        authorizedImagePaths: Set<String>,
+    ) -> String {
+        let pattern = /!\[[^\]]*\]\(([^)]+)\)/
+        var cleaned = text
+        for match in text.matches(of: pattern) {
+            let path = String(match.1)
+            if shouldHoldGeneratedImage(
+                path,
+                authorizedImagePaths: authorizedImagePaths,
+                holdUnverifiedGeneratedImages: true,
+            ) {
+                cleaned = cleaned.replacingOccurrences(of: String(match.0), with: "")
+            }
+        }
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// While streaming, hold a trailing incomplete `![alt](url` fragment as prose
@@ -58,7 +118,13 @@ enum ChatMarkdownParser {
         return suffix.isEmpty ? nil : suffix
     }
 
-    private static func appendProse(_ text: String, isStreaming: Bool, to result: inout [ChatBlock]) {
+    private static func appendProse(
+        _ text: String,
+        isStreaming: Bool,
+        authorizedImagePaths: Set<String>,
+        holdUnverifiedGeneratedImages: Bool,
+        to result: inout [ChatBlock],
+    ) {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return
@@ -89,7 +155,17 @@ enum ChatMarkdownParser {
                     result.append(.prose(prose))
                 }
             }
-            result.append(.image(alt: String(match.alt), urlString: String(match.url)))
+            let urlString = String(match.url)
+            if shouldHoldGeneratedImage(
+                urlString,
+                authorizedImagePaths: authorizedImagePaths,
+                holdUnverifiedGeneratedImages: holdUnverifiedGeneratedImages,
+            ) {
+                let placeholder = isStreaming ? "_Generating image…_" : "_Image pending…_"
+                result.append(.prose(placeholder))
+            } else {
+                result.append(.image(alt: String(match.alt), urlString: urlString))
+            }
             cursor = match.range.upperBound
         }
         if foundImage {

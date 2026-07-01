@@ -96,6 +96,11 @@ class CapabilityKind(StrEnum):
     CHAT_READ = "CHAT_READ"
     PEOPLE_READ = "PEOPLE_READ"
 
+    # Semantic media kinds — disk cache paths are implementation details inside
+    # the images MCP server, not what operators grant.
+    GENERATE_IMAGE = "GENERATE_IMAGE"
+    FETCH_IMAGE = "FETCH_IMAGE"
+
 
 # Action kinds the policy engine treats as "destructive" — modifying or
 # deleting existing state. New tools opt into stricter gating by setting

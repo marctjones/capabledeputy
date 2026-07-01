@@ -140,9 +140,12 @@ class UpstreamServerConfig:
         container. Otherwise the bare command runs directly."""
         if self.transport != "stdio":
             return ()
+        from capabledeputy.cli._managed_config import resolve_upstream_spawn_command
+
+        cmd = resolve_upstream_spawn_command(self.command)
         if self.isolation is None:
-            return self.command
-        return self.isolation.to_argv_prefix() + self.command
+            return cmd
+        return self.isolation.to_argv_prefix() + cmd
 
     @property
     def endpoint(self) -> str:

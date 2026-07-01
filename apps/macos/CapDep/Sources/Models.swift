@@ -95,6 +95,55 @@ struct ChatMessage: Identifiable, Hashable {
     }
 }
 
+enum ChatModelMode: String, CaseIterable, Identifiable {
+    case automatic
+    case fast
+    case tools
+    case quality
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .automatic: "Auto"
+        case .fast: "Fast"
+        case .tools: "Tools"
+        case .quality: "Quality"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .automatic: "wand.and.stars"
+        case .fast: "bolt.fill"
+        case .tools: "wrench.and.screwdriver"
+        case .quality: "sparkles"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .automatic: "Let CapDep choose the model for this turn"
+        case .fast: "Prefer the snappy local chat model"
+        case .tools: "Prefer the stronger tool-use model"
+        case .quality: "Prefer the highest-quality local model"
+        }
+    }
+
+    func daemonMessage(for text: String) -> String {
+        switch self {
+        case .automatic:
+            return text
+        case .fast:
+            return "/fast \(text)"
+        case .tools:
+            return "/model tools \(text)"
+        case .quality:
+            return "/quality \(text)"
+        }
+    }
+}
+
 struct CapDepSession: Identifiable, Hashable {
     let id: String
     let status: String

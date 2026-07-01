@@ -4,10 +4,17 @@ import SwiftUI
 struct ChatRichMessageBody: View {
     let text: String
     var isStreaming: Bool = false
+    var authorizedImagePaths: Set<String> = []
+    var holdUnverifiedGeneratedImages: Bool = false
     var onContentSizeChange: (() -> Void)?
 
     private var blocks: [ChatBlock] {
-        ChatMarkdownParser.blocks(from: text, isStreaming: isStreaming)
+        ChatMarkdownParser.blocks(
+            from: text,
+            isStreaming: isStreaming,
+            authorizedImagePaths: authorizedImagePaths,
+            holdUnverifiedGeneratedImages: holdUnverifiedGeneratedImages,
+        )
     }
 
     var body: some View {
@@ -121,9 +128,34 @@ struct ChatImageBlockView: View {
             case .success(let resolved):
                 resolvedImage = resolved
                 resolveFailure = nil
+                ChatDebugLog.log(
+                    "image_resolve_ok",
+                    metadata: [
+                        "path": resolved.url.path,
+                        "remote": String(resolved.isRemote),
+                    ],
+                )
             case .failure(let failure):
                 resolvedImage = nil
                 resolveFailure = failure
+                ChatDebugLog.log(
+                    "image_resolve_fail",
+                    metadata: [
+                        "url": urlString,
+                        "reason": String(describing: failure),
+                    ],
+                )
+            }
+        }
+        .onChange(of: renderFailed) { _, failed in
+            if failed {
+                ChatDebugLog.log(
+                    "image_render_fail",
+                    metadata: [
+                        "url": urlString,
+                        "resolved": resolvedImage?.url.path ?? "",
+                    ],
+                )
             }
         }
     }

@@ -77,4 +77,53 @@ final class ChatMarkdownParserTests: XCTestCase {
             ChatMarkdownParser.trailingIncompleteImageSuffix(in: "![alt](/path.png)"),
         )
     }
+
+    func testHoldsUnverifiedGeneratedWorkImageDuringStreaming() {
+        let dog = "~/.capdep/work/images/dog.png"
+        let markdown = "Here:\n\n![dog](\(dog))"
+        let blocks = ChatMarkdownParser.blocks(
+            from: markdown,
+            isStreaming: true,
+            authorizedImagePaths: [],
+            holdUnverifiedGeneratedImages: true,
+        )
+        XCTAssertEqual(blocks.count, 2)
+        if case .prose(let placeholder) = blocks[1] {
+            XCTAssertTrue(placeholder.contains("Generating image"))
+        } else {
+            XCTFail("expected generating placeholder")
+        }
+    }
+
+    func testShowsAuthorizedGeneratedWorkImageDuringStreaming() {
+        let woman = "~/.capdep/work/images/woman.png"
+        let expanded = NSString(string: woman).expandingTildeInPath
+        let markdown = "![woman](\(woman))"
+        let blocks = ChatMarkdownParser.blocks(
+            from: markdown,
+            isStreaming: true,
+            authorizedImagePaths: [expanded],
+            holdUnverifiedGeneratedImages: true,
+        )
+        XCTAssertEqual(blocks.count, 1)
+        if case .image(let alt, let url) = blocks[0] {
+            XCTAssertEqual(alt, "woman")
+            XCTAssertEqual(url, woman)
+        } else {
+            XCTFail("expected image block")
+        }
+    }
+
+    func testStripUnverifiedGeneratedImageMarkdown() {
+        let dog = "~/.capdep/work/images/dog.png"
+        let woman = "~/.capdep/work/images/woman.png"
+        let expandedWoman = NSString(string: woman).expandingTildeInPath
+        let markdown = "See:\n\n![dog](\(dog))\n\n![woman](\(woman))"
+        let cleaned = ChatMarkdownParser.stripUnverifiedGeneratedImageMarkdown(
+            from: markdown,
+            authorizedImagePaths: [expandedWoman],
+        )
+        XCTAssertFalse(cleaned.contains(dog))
+        XCTAssertTrue(cleaned.contains(woman))
+    }
 }

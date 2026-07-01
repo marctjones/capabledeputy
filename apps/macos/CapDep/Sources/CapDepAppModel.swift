@@ -44,12 +44,22 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
     @Published private(set) var isRunningTurn = false
     @Published private(set) var currentTurnID: String?
+    @Published private(set) var currentResolvedModelRole = ""
+    @Published private(set) var currentResolvedModelReason = ""
+    @Published private(set) var currentResolvedModelID = ""
+    /// `work/images` paths authorized for the in-flight assistant stream (from tool results).
+    @Published private(set) var authorizedStreamingImagePaths: Set<String> = []
     @Published private(set) var turnPendingApprovalIDs: [Int] = []
     @Published private(set) var pendingGrantRetryMessage: String?
     @Published private(set) var isRecoveringDaemon = false
     @Published private(set) var isConfiguringGoogleOAuth = false
     @Published var selectedSection: DashboardSection = .today
     @Published var selectedPurpose: Purpose = .general
+    @Published var selectedChatModelMode: ChatModelMode = CapDepAppModel.storedChatModelMode() {
+        didSet {
+            UserDefaults.standard.set(selectedChatModelMode.rawValue, forKey: Self.chatModelModeKey)
+        }
+    }
     @Published var focusedApprovalID: Int?
     @Published var focusedSessionID: String?
     @Published var commandText = ""
@@ -67,6 +77,7 @@ final class CapDepAppModel: ObservableObject {
     private var lastPendingApprovalCount = 0
     private var lastNotifiedApprovalID: Int?
     private var streamingAssistantMessageID: String?
+    private static let chatModelModeKey = "CapDep.chatModelMode"
 
 
     var currentAssistantOutput: String {
@@ -85,6 +96,11 @@ final class CapDepAppModel: ObservableObject {
         Task {
             await start()
         }
+    }
+
+    private static func storedChatModelMode() -> ChatModelMode {
+        let raw = UserDefaults.standard.string(forKey: chatModelModeKey) ?? ""
+        return ChatModelMode(rawValue: raw) ?? .automatic
     }
 
     func start() async {
@@ -340,6 +356,7 @@ final class CapDepAppModel: ObservableObject {
             let history = result?["history"] as? [[String: Any]] ?? []
             chatMessages = ChatMessage.fromHistory(history)
             streamingAssistantMessageID = nil
+            authorizedStreamingImagePaths = []
             if chatMessages.isEmpty {
                 seedDemoImageIfNeeded()
             }
@@ -349,10 +366,69 @@ final class CapDepAppModel: ObservableObject {
     }
 
     private func beginTurn(userMessage: String) {
+        authorizedStreamingImagePaths = []
+        currentResolvedModelRole = ""
+        currentResolvedModelReason = ""
+        currentResolvedModelID = ""
         chatMessages.append(ChatMessage(role: .user, content: userMessage))
         let assistant = ChatMessage(role: .assistant, content: "", isStreaming: true)
         chatMessages.append(assistant)
         streamingAssistantMessageID = assistant.id
+    }
+
+    private func isImageGenerateToolName(_ name: String) -> Bool {
+        name == "image.generate"
+            || name == "bundled-image-generate.image.generate"
+            || name == "bundled-images.image.generate"
+    }
+
+    private func authorizeStreamingImagePath(_ path: String) {
+        let expanded = NSString(string: path).expandingTildeInPath
+        guard ChatMarkdownParser.isGeneratedWorkImagePath(expanded) else {
+            return
+        }
+        authorizedStreamingImagePaths.insert(expanded)
+    }
+
+    private func authorizeStreamingImagePaths(fromToolOutcome outcome: [String: Any]) {
+        guard outcome["decision"] as? String == "allow" else {
+            return
+        }
+        let toolName = outcome["tool_name"] as? String ?? ""
+        guard isImageGenerateToolName(toolName) else {
+            return
+        }
+        guard let output = outcome["output"] as? [String: Any] else {
+            return
+        }
+        if let imagePath = output["image_path"] as? String {
+            authorizeStreamingImagePath(imagePath)
+        }
+        if let markdown = output["markdown"] as? String {
+            for path in ChatMarkdownParser.extractMarkdownImagePaths(from: markdown) {
+                authorizeStreamingImagePath(path)
+            }
+        }
+    }
+
+    private func stripUnverifiedGeneratedImagesFromStreamingAssistant() {
+        guard
+            let messageID = streamingAssistantMessageID,
+            let index = chatMessages.firstIndex(where: { $0.id == messageID })
+        else {
+            return
+        }
+        let current = chatMessages[index].content
+        let cleaned = ChatMarkdownParser.stripUnverifiedGeneratedImageMarkdown(
+            from: current,
+            authorizedImagePaths: authorizedStreamingImagePaths,
+        )
+        guard cleaned != current else {
+            return
+        }
+        var message = chatMessages[index]
+        message.content = cleaned
+        chatMessages[index] = message
     }
 
     private func setStreamingAssistantContent(_ content: String) {
@@ -404,6 +480,7 @@ final class CapDepAppModel: ObservableObject {
         message.isStreaming = false
         chatMessages[index] = message
         streamingAssistantMessageID = nil
+        authorizedStreamingImagePaths = []
     }
 
     func deny(_ approval: Approval) async {
@@ -447,10 +524,12 @@ final class CapDepAppModel: ObservableObject {
         }
         commandText = ""
         let chosenPurpose = purpose ?? selectedPurpose
+        let daemonMessage = selectedChatModelMode.daemonMessage(for: trimmed)
         ChatDebugLog.log(
             "submit",
             metadata: [
                 "purpose": chosenPurpose.rawValue,
+                "model_mode": selectedChatModelMode.rawValue,
                 "message_len": String(trimmed.count),
                 "message_preview": String(trimmed.prefix(200)),
             ],
@@ -470,7 +549,7 @@ final class CapDepAppModel: ObservableObject {
                 "purpose": session.purpose,
             ],
         )
-        await send(message: trimmed, sessionID: session.id)
+        await send(message: daemonMessage, displayMessage: trimmed, sessionID: session.id)
     }
 
     func ensureSession(
@@ -511,15 +590,31 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
-    func send(message: String, sessionID: String) async {
+    func send(message: String, displayMessage: String? = nil, sessionID: String) async {
+        let visibleMessage = displayMessage ?? message
         pendingGrantRetryMessage = nil
         grantPromptPresented = false
-        if let demoResponse = localDemoImageResponse(for: message) {
-            beginTurn(userMessage: message)
+        if let demoResponse = localDemoImageResponse(for: visibleMessage) {
+            ChatDebugLog.log(
+                "local_demo_image_shortcut",
+                metadata: [
+                    "session_id": sessionID,
+                    "path": ProcessInfo.processInfo.environment["CAPDEP_DEMO_IMAGE"] ?? "",
+                ],
+            )
+            beginTurn(userMessage: visibleMessage)
+            for path in ChatMarkdownParser.extractMarkdownImagePaths(from: demoResponse) {
+                authorizeStreamingImagePath(path)
+            }
             finalizeStreamingAssistant(demoResponse)
             return
         }
-        await runTurn(message: message, sessionID: sessionID, appendUserMessage: true)
+        await runTurn(
+            message: message,
+            displayMessage: visibleMessage,
+            sessionID: sessionID,
+            appendUserMessage: true,
+        )
     }
 
     private func localDemoImageResponse(for message: String) -> String? {
@@ -542,12 +637,13 @@ final class CapDepAppModel: ObservableObject {
 
     private func runTurn(
         message: String,
+        displayMessage: String? = nil,
         sessionID: String,
         appendUserMessage: Bool,
     ) async {
         isRunningTurn = true
         if appendUserMessage {
-            beginTurn(userMessage: message)
+            beginTurn(userMessage: displayMessage ?? message)
         } else {
             let assistant = ChatMessage(role: .assistant, content: "", isStreaming: true)
             chatMessages.append(assistant)
@@ -589,7 +685,7 @@ final class CapDepAppModel: ObservableObject {
                     "session_id": sessionID,
                     "message": message,
                     "client_id": "CapDepMac",
-                    "heartbeat_timeout_seconds": 120,
+                    "heartbeat_timeout_seconds": 300,
                 ],
             ) as? [String: Any]
             let turn = start?["turn"] as? [String: Any] ?? [:]
@@ -712,6 +808,10 @@ final class CapDepAppModel: ObservableObject {
             if toolCalls > 0 {
                 setStreamingAssistantContent("")
             }
+        } else if type == "model_selected" {
+            currentResolvedModelRole = payload["role"] as? String ?? ""
+            currentResolvedModelReason = payload["reason"] as? String ?? ""
+            currentResolvedModelID = payload["model"] as? String ?? ""
         } else if type == "llm_token" {
             if let partial = payload["partial_content"] as? String, !partial.isEmpty {
                 setStreamingAssistantContent(partial)
@@ -729,9 +829,26 @@ final class CapDepAppModel: ObservableObject {
                     "partial_tail": String(streamed.suffix(80)),
                 ],
             )
+        } else if type == "tool_dispatched" {
+            let toolName = payload["tool_name"] as? String ?? ""
+            if isImageGenerateToolName(toolName) {
+                stripUnverifiedGeneratedImagesFromStreamingAssistant()
+            }
+        } else if type == "tool_returned" {
+            let outcome = payload["outcome"] as? [String: Any] ?? [:]
+            authorizeStreamingImagePaths(fromToolOutcome: outcome)
         } else if type == "image_attachment" {
             let path = payload["path"] as? String ?? ""
             let alt = payload["alt"] as? String ?? "image"
+            authorizeStreamingImagePath(path)
+            ChatDebugLog.log(
+                "image_attachment",
+                metadata: [
+                    "turn_id": currentTurnID ?? "",
+                    "path": path,
+                    "alt": alt,
+                ],
+            )
             appendImageAttachmentToStreamingAssistant(alt: alt, path: path)
         } else {
             ChatDebugLog.log(
@@ -841,9 +958,16 @@ final class CapDepAppModel: ObservableObject {
         let type = event["type"] as? String ?? ""
         let payload = event["payload"] as? [String: Any] ?? [:]
         switch type {
+        case "model_selected":
+            let role = payload["role"] as? String ?? ""
+            let reason = payload["reason"] as? String ?? ""
+            return "Selected \(modelRoleTitle(role)) model\(reason.isEmpty ? "" : " (\(reason))")…"
         case "llm_request_sent":
             let tools = payload["n_tools"] as? Int ?? 0
-            return "Asking model (\(tools) tools available)…"
+            if !currentResolvedModelRole.isEmpty {
+                return "Asking \(modelRoleTitle(currentResolvedModelRole)) model (\(tools) tools available)…"
+            }
+            return "Asking \(selectedChatModelMode.title) model (\(tools) tools available)…"
         case "llm_token":
             return "Writing response…"
         case "llm_response_received":
@@ -869,6 +993,19 @@ final class CapDepAppModel: ObservableObject {
             return payload["message"] as? String ?? "Turn error."
         default:
             return type.isEmpty ? "Working…" : type
+        }
+    }
+
+    private func modelRoleTitle(_ role: String) -> String {
+        switch role {
+        case "planner.fast":
+            return "Fast"
+        case "planner.tools":
+            return "Tools"
+        case "planner.quality":
+            return "Quality"
+        default:
+            return role.isEmpty ? "Auto" : role
         }
     }
 

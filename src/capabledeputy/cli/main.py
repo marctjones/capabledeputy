@@ -1721,6 +1721,9 @@ app.command("mcp-server-keynote")(_make_bundled_mcp_command("keynote"))
 app.command("mcp-server-pages")(_make_bundled_mcp_command("pages"))
 app.command("mcp-server-numbers")(_make_bundled_mcp_command("numbers"))
 app.command("mcp-server-macos")(_make_bundled_mcp_command("macos"))
+app.command("mcp-server-image-generate")(_make_bundled_mcp_command("image_generate"))
+app.command("mcp-server-image-fetch")(_make_bundled_mcp_command("image_fetch"))
+app.command("mcp-server-images")(_make_bundled_mcp_command("images"))
 
 
 @app.command("setup")

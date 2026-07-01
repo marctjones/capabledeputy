@@ -6,7 +6,16 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
-from capabledeputy.agent.chat_turn import has_web_search_intent
+from capabledeputy.agent.chat_turn import (
+    _image_fetch_tool_names,
+    _image_generate_tool_names,
+    _wikipedia_lookup_tool_names,
+    has_chart_generation_intent,
+    has_image_fetch_intent,
+    has_image_generation_intent,
+    has_web_search_intent,
+    has_wikipedia_lookup_intent,
+)
 from capabledeputy.agent.tool_families import (
     ToolFamiliesConfig,
     family_for_purpose,
@@ -194,13 +203,32 @@ def select_tools_for_turn(
 
     mandatory_names: set[str] = set(families_cfg.mandatory_always)
     mandatory_names.update(_mode_required_tools(visible, mode))
-    if has_web_search_intent(user_message):
+    if has_web_search_intent(user_message) and not has_image_generation_intent(user_message):
         if _kagi_search_available(visible):
             mandatory_names.add(_KAGI_SEARCH_TOOL)
         else:
             for name in _LEGACY_DDG_SEARCH_TOOLS:
                 if any(t.name == name for t in visible):
                     mandatory_names.add(name)
+    visible_names = {t.name for t in visible}
+    if has_image_fetch_intent(user_message) or has_wikipedia_lookup_intent(user_message):
+        for tool_name in _wikipedia_lookup_tool_names():
+            if tool_name in visible_names:
+                mandatory_names.add(tool_name)
+                break
+        if has_image_fetch_intent(user_message):
+            for tool_name in _image_fetch_tool_names():
+                if tool_name in visible_names:
+                    mandatory_names.add(tool_name)
+                    break
+    elif has_image_generation_intent(user_message):
+        for tool_name in _image_generate_tool_names():
+            if tool_name in visible_names:
+                mandatory_names.add(tool_name)
+                break
+    if has_chart_generation_intent(user_message):
+        if any(t.name == "chart.plot" for t in visible):
+            mandatory_names.add("chart.plot")
     for name in mandatory_names:
         if any(t.name == name for t in visible):
             candidate_names.add(name)

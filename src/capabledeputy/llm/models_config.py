@@ -24,6 +24,8 @@ class RoutingRule:
     purpose_handle: frozenset[str] = field(default_factory=frozenset)
     execution_mode: str | None = None
     n_visible_tools_gte: int | None = None
+    n_selected_tools_gte: int | None = None
+    user_message_chars_gte: int | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,16 @@ def _parse_routing(raw_rules: list[Any]) -> tuple[RoutingRule, ...]:
                     if when.get("n_visible_tools_gte") is not None
                     else None
                 ),
+                n_selected_tools_gte=(
+                    int(when["n_selected_tools_gte"])
+                    if when.get("n_selected_tools_gte") is not None
+                    else None
+                ),
+                user_message_chars_gte=(
+                    int(when["user_message_chars_gte"])
+                    if when.get("user_message_chars_gte") is not None
+                    else None
+                ),
             ),
         )
     if not rules:
@@ -147,12 +159,22 @@ def _builtin_defaults() -> ModelsConfig:
                 mlx="mlx-community/Qwen3-14B-4bit",
                 max_tokens=4096,
             ),
+            "planner.quality": ModelRoleSpec(
+                mlx="mlx-community/Qwen3.6-35B-A3B-4bit",
+                max_tokens=4096,
+            ),
             "extractor": ModelRoleSpec(
                 mlx="mlx-community/Phi-3.5-mini-instruct-4bit",
                 max_tokens=1024,
             ),
         },
         routing=(
+            RoutingRule(
+                role="planner.quality",
+                reason="long_quality_purpose",
+                purpose_handle=frozenset({"research", "writing"}),
+                user_message_chars_gte=900,
+            ),
             RoutingRule(
                 role="planner.tools",
                 reason="purpose_handle_tier",
@@ -166,7 +188,12 @@ def _builtin_defaults() -> ModelsConfig:
             RoutingRule(
                 role="planner.tools",
                 reason="large_tool_surface",
-                n_visible_tools_gte=20,
+                n_visible_tools_gte=10,
+            ),
+            RoutingRule(
+                role="planner.tools",
+                reason="multi_tool_turn",
+                n_selected_tools_gte=4,
             ),
             RoutingRule(role="planner.fast", reason="default_fast"),
         ),

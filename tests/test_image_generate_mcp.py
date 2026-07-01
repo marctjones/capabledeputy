@@ -1,0 +1,312 @@
+"""Tests for bundled images MCP server and routing."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from capabledeputy.agent.chat_turn import (
+    allowed_image_generate_paths,
+    collect_prior_work_image_paths,
+    has_chart_generation_intent,
+    has_image_fetch_intent,
+    has_image_generation_intent,
+    has_probable_image_generation_intent,
+    has_wikipedia_lookup_intent,
+    is_conversational_turn,
+    looks_like_hallucinated_image_markdown,
+    looks_like_image_generation_refusal,
+    normalize_image_path,
+    repair_hallucinated_image_markdown,
+    should_force_image_generate_tool,
+)
+from capabledeputy.policy.rules import Decision
+from capabledeputy.tools.client import ToolCallOutcome
+from capabledeputy.mcp_servers import fetch as fetch_server
+from capabledeputy.mcp_servers import image_fetch as image_fetch_server
+from capabledeputy.mcp_servers import image_generate as image_generate_server
+from capabledeputy.mcp_servers import images as images_server
+from capabledeputy.mcp_servers._image_fetch import extract_og_image_url, fetch_image
+from capabledeputy.mcp_servers._wikipedia import wikipedia_lookup
+from capabledeputy.daemon.image_attachments import image_attachment_payloads_from_outcome
+from capabledeputy.mcp_servers._image_pipeline import (
+    ImageGenConfig,
+    clear_pipeline_cache,
+    generate_image,
+    validate_prompt,
+    wrap_prompt_for_style,
+)
+
+
+def _handler(server, name: str):
+    for tool in server.tools():
+        if tool.name == name:
+            return tool.handler
+    raise KeyError(name)
+
+
+def test_split_servers_expose_single_tools() -> None:
+    gen_names = {t.name for t in image_generate_server.tools()}
+    fetch_names = {t.name for t in image_fetch_server.tools()}
+    legacy_names = {t.name for t in images_server.tools()}
+    assert gen_names == {"image.generate"}
+    assert fetch_names == {"image.fetch"}
+    assert legacy_names == {"image.generate", "image.fetch"}
+
+
+def test_has_image_generation_intent_detects_scene_requests() -> None:
+    assert has_image_generation_intent("generate a photoreal portrait of a blonde woman")
+    assert has_image_generation_intent("create an explicit nsfw illustration")
+    assert not has_image_generation_intent("generate a line graph of population by decade")
+
+
+def test_chart_intent_does_not_steal_pure_image_requests() -> None:
+    assert has_chart_generation_intent("generate a line graph of sales")
+    assert not has_chart_generation_intent("generate an image of a blonde woman")
+    assert has_image_generation_intent("generate an image of a blonde woman")
+
+
+def test_image_intent_disables_conversational_short_circuit() -> None:
+    assert not is_conversational_turn("draw a naked woman in a studio")
+
+
+def test_image_fetch_intent_detects_wikipedia_photo_requests() -> None:
+    assert has_image_fetch_intent("show jia lissa image from wikipedia")
+    assert not has_image_generation_intent("show jia lissa image from wikipedia")
+
+
+def test_wikipedia_lookup_intent_detects_info_requests() -> None:
+    assert has_wikipedia_lookup_intent("show me information on jia lissa")
+    assert has_wikipedia_lookup_intent("who is Ada Lovelace")
+
+
+def test_style_followups_are_generation_not_conversational() -> None:
+    assert has_image_generation_intent("cartoon")
+    assert has_image_generation_intent("photorealistic")
+    assert not is_conversational_turn("cartoon")
+    assert has_image_generation_intent("do a dog instead of a cat")
+
+
+def test_attractive_woman_inline_phrasing_is_generation_intent() -> None:
+    message = "Show me the image of an attractive women inline"
+    assert has_image_generation_intent(message)
+    assert should_force_image_generate_tool(message)
+    assert not is_conversational_turn(message)
+
+
+def test_show_me_visual_subject_is_generation_intent() -> None:
+    message = "show me a black cock"
+    assert has_image_generation_intent(message)
+    assert should_force_image_generate_tool(message)
+    assert has_probable_image_generation_intent(message)
+    assert not is_conversational_turn(message)
+
+
+def test_show_me_info_query_is_not_generation_intent() -> None:
+    message = "show me information about Ada Lovelace"
+    assert has_wikipedia_lookup_intent(message)
+    assert not has_image_generation_intent(message)
+    assert not has_probable_image_generation_intent(message)
+
+
+def test_probable_intent_retries_after_model_refusal() -> None:
+    refusal = "I cannot generate or display explicit adult content."
+    assert looks_like_image_generation_refusal(refusal)
+    assert has_probable_image_generation_intent("show me a black cock")
+
+
+def test_hallucinated_image_reuses_prior_work_path() -> None:
+    dog = "~/.capdep/work/images/dog.png"
+    prior = collect_prior_work_image_paths(f"![dog]({dog})")
+    woman_md = f"![attractive woman]({dog})"
+    assert looks_like_hallucinated_image_markdown(
+        woman_md,
+        prior_paths=prior,
+        allowed_paths=frozenset(),
+    )
+
+
+def test_allowed_work_image_path_is_not_hallucination() -> None:
+    dog = "~/.capdep/work/images/dog.png"
+    woman = "~/.capdep/work/images/woman.png"
+    prior = collect_prior_work_image_paths(f"![dog]({dog})")
+    woman_md = f"![woman]({woman})"
+    allowed = frozenset({normalize_image_path(woman)})
+    assert not looks_like_hallucinated_image_markdown(
+        woman_md,
+        prior_paths=prior,
+        allowed_paths=allowed,
+    )
+
+
+def test_repair_hallucinated_markdown_uses_tool_output() -> None:
+    dog = "~/.capdep/work/images/dog.png"
+    woman = "~/.capdep/work/images/woman.png"
+    tool_md = f"![attractive woman]({woman})"
+    prior = collect_prior_work_image_paths(f"![dog]({dog})")
+    hallucinated = f"![attractive woman]({dog})"
+    outcome = ToolCallOutcome(
+        decision=Decision.ALLOW,
+        tool_name="bundled-image-generate.image.generate",
+        output={
+            "image_path": woman,
+            "markdown": tool_md,
+        },
+    )
+    allowed = allowed_image_generate_paths([outcome])
+    repaired = repair_hallucinated_image_markdown(
+        hallucinated,
+        prior_paths=prior,
+        allowed_paths=allowed,
+        outcomes=[outcome],
+    )
+    assert repaired == tool_md
+    assert dog not in repaired
+
+
+def test_looks_like_image_generation_refusal_detects_prose_decline() -> None:
+    text = (
+        "I cannot generate or display images of real people, including "
+        "attractive women, as it may involve non-consensual content."
+    )
+    assert looks_like_image_generation_refusal(text)
+    assert not looks_like_image_generation_refusal(
+        '{"tool_calls": [{"name": "bundled-images.image.generate"}]}',
+    )
+
+
+def test_extract_og_image_url_parses_meta_tag() -> None:
+    html = '<meta property="og:image" content="https://example.com/p.jpg">'
+    assert extract_og_image_url(html) == "https://example.com/p.jpg"
+
+
+@pytest.mark.asyncio
+async def test_image_fetch_handler_returns_markdown(tmp_path: Path) -> None:
+    fake = {
+        "ok": True,
+        "markdown": "![alt](https://example.com/p.jpg)",
+        "final_url": "https://example.com/p.jpg",
+        "content": "Fetched image.",
+    }
+    with patch(
+        "capabledeputy.mcp_servers.image_fetch.fetch_image",
+        new_callable=AsyncMock,
+        return_value=fake,
+    ):
+        result = await _handler(image_fetch_server, "image.fetch")(
+            {"url": "https://example.com/p.jpg"},
+        )
+    assert result["ok"] is True
+    assert "markdown" in result
+
+
+@pytest.mark.asyncio
+async def test_wikipedia_lookup_handler_returns_summary() -> None:
+    fake = {
+        "ok": True,
+        "title": "Cat",
+        "summary": "Small carnivorous mammal.",
+        "page_url": "https://en.wikipedia.org/wiki/Cat",
+        "image_url": "https://upload.wikimedia.org/cat.jpg",
+        "markdown_image": "![Cat](https://upload.wikimedia.org/cat.jpg)",
+        "content": "Cat summary",
+    }
+    fetch_handler = next(t.handler for t in fetch_server.tools() if t.name == "wikipedia.lookup")
+    with patch(
+        "capabledeputy.mcp_servers.fetch.wikipedia_lookup",
+        return_value=fake,
+    ):
+        result = await fetch_handler({"title": "Cat"})
+    assert result["ok"] is True
+    assert result["summary"]
+
+
+def test_validate_prompt_refuses_minors() -> None:
+    assert validate_prompt("a child in a park") is not None
+    assert validate_prompt("consenting adult woman portrait") is None
+
+
+def test_wrap_prompt_for_graphic_novel_adds_pony_tags() -> None:
+    wrapped = wrap_prompt_for_style("1girl, blonde hair", "graphic_novel")
+    assert wrapped.startswith("score_9")
+    assert "1girl" in wrapped
+
+
+@pytest.mark.asyncio
+async def test_image_generate_handler_returns_markdown(tmp_path: Path) -> None:
+    fake_out = {
+        "ok": True,
+        "style": "photoreal",
+        "image_path": str(tmp_path / "out.png"),
+        "markdown": f"![alt]({tmp_path / 'out.png'})",
+        "content": "Generated photoreal image.",
+    }
+    with patch(
+        "capabledeputy.mcp_servers.image_generate.generate_image",
+        return_value=fake_out,
+    ):
+        result = await _handler(image_generate_server, "image.generate")(
+            {"prompt": "studio portrait"},
+        )
+    assert result["ok"] is True
+    assert "markdown" in result
+
+
+@pytest.mark.asyncio
+async def test_image_generate_handler_requires_prompt() -> None:
+    with pytest.raises(ValueError, match="prompt is required"):
+        await _handler(image_generate_server, "image.generate")({})
+
+
+def test_generate_image_mocked_pipeline(tmp_path: Path) -> None:
+    clear_pipeline_cache()
+    config = ImageGenConfig(
+        output_dir=tmp_path,
+        default_style="photoreal",
+        device="cpu",
+        default_width=512,
+        default_height=512,
+        default_steps=4,
+        safety_enabled=False,
+        checkpoints={
+            "photoreal": {
+                "repo": "RunDiffusion/Juggernaut-XL-v9",
+                "filename": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+            },
+            "graphic_novel": {
+                "repo": "LyliaEngine/Pony_Diffusion_V6_XL",
+                "filename": "ponyDiffusionV6XL_v6StartWithThisOne.safetensors",
+            },
+        },
+    )
+
+    fake_image = MagicMock()
+    fake_pipe = MagicMock()
+    fake_pipe.return_value.images = [fake_image]
+
+    mock_torch = MagicMock()
+    mock_torch.Generator.return_value.manual_seed.return_value = "gen"
+    with (
+        patch(
+            "capabledeputy.mcp_servers._image_pipeline._load_pipeline",
+            return_value=fake_pipe,
+        ),
+        patch.dict(sys.modules, {"torch": mock_torch}),
+    ):
+        out = generate_image(
+            prompt="consenting adult portrait",
+            config=config,
+            filename="test.png",
+        )
+
+    assert out["ok"] is True
+    assert out["image_path"].endswith("test.png")
+    assert "![consenting adult portrait]" in out["markdown"]
+    fake_image.save.assert_called_once()
+
+    payloads = image_attachment_payloads_from_outcome({"output": out})
+    assert payloads and payloads[0]["path"] == out["image_path"]
+    clear_pipeline_cache()

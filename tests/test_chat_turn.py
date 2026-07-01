@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from capabledeputy.agent.chat_turn import (
     CHAT_MAX_TOKENS,
+    has_chart_generation_intent,
     has_web_search_intent,
     is_conversational_turn,
 )
@@ -43,3 +44,20 @@ def test_chat_max_tokens_is_reasonable() -> None:
 def test_image_requests_are_not_conversational() -> None:
     assert not is_conversational_turn("Show me the demo cat image inline")
     assert not is_conversational_turn("render the screenshot.png")
+    assert not is_conversational_turn("Show me a picture of an attractive woman")
+
+
+def test_line_graph_requests_are_not_conversational() -> None:
+    message = (
+        "REsearch and then show me a line graph of the population growth "
+        "of the united states decade by decade"
+    )
+    assert not is_conversational_turn(message)
+    assert has_chart_generation_intent(message)
+    assert has_web_search_intent(message)
+
+
+def test_chart_generation_intent_detects_graph_phrases() -> None:
+    assert has_chart_generation_intent("make a bar chart of sales by quarter")
+    assert has_chart_generation_intent("generate a line graph from this data")
+    assert not has_chart_generation_intent("what is the capital of france")

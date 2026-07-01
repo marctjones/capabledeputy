@@ -143,6 +143,46 @@ When you have completed the task, respond with a final answer and no
 tool calls. Be concise and honest about what you did and didn't do.
 """
 
+MODEL_ROLE_ALIASES: dict[str, str | None] = {
+    "auto": None,
+    "default": None,
+    "fast": "planner.fast",
+    "snappy": "planner.fast",
+    "tools": "planner.tools",
+    "tool": "planner.tools",
+    "quality": "planner.quality",
+    "better": "planner.quality",
+}
+
+
+def _extract_model_role_directive(user_message: str) -> tuple[str, str | None]:
+    """Return message text and optional per-turn planner role override.
+
+    Operator-facing clients can prefix a turn with `/fast`, `/quality`, or
+    `/model <mode>`. The directive is stripped before the message is stored in
+    session history so chat remains readable and future context is not polluted
+    by UI control syntax.
+    """
+    stripped = user_message.lstrip()
+    leading_ws = user_message[: len(user_message) - len(stripped)]
+    lowered = stripped.lower()
+    for alias, role in MODEL_ROLE_ALIASES.items():
+        marker = f"/{alias}"
+        if lowered == marker:
+            return "", role
+        if lowered.startswith(marker + " "):
+            return leading_ws + stripped[len(marker) :].lstrip(), role
+    if lowered.startswith("/model "):
+        rest = stripped[len("/model ") :].lstrip()
+        if not rest:
+            return user_message, None
+        parts = rest.split(maxsplit=1)
+        role = MODEL_ROLE_ALIASES.get(parts[0].lower())
+        if parts[0].lower() not in MODEL_ROLE_ALIASES:
+            return user_message, None
+        return (parts[1] if len(parts) > 1 else ""), role
+    return user_message, None
+
 
 class AgentLoopExceededError(RuntimeError):
     pass
@@ -559,12 +599,27 @@ async def run_turn_streaming(
         LLMRequestSent,
         LLMTokenReceived,
         LLMResponseReceived,
+        ModelSelected,
         ToolDispatched,
         ToolReturned,
         TurnCompleted,
         TurnInterrupted,
     )
-    from capabledeputy.agent.chat_turn import CHAT_MAX_TOKENS, is_conversational_turn
+    from capabledeputy.agent.chat_turn import (
+        CHAT_MAX_TOKENS,
+        IMAGE_GENERATION_RETRY_NOTICE,
+        IMAGE_PATH_HALLUCINATION_RETRY_NOTICE,
+        allowed_image_generate_paths,
+        collect_prior_work_image_paths,
+        has_image_generation_intent,
+        has_probable_image_generation_intent,
+        image_generate_tool_names_in,
+        is_conversational_turn,
+        looks_like_hallucinated_image_markdown,
+        looks_like_image_generation_refusal,
+        repair_hallucinated_image_markdown,
+        should_force_image_generate_tool,
+    )
     from capabledeputy.llm.mlx_client import MLXLLMClient, finalize_mlx_text
     from capabledeputy.agent.tool_families import load_tool_families
     from capabledeputy.agent.tool_selection import (
@@ -573,7 +628,11 @@ async def run_turn_streaming(
         widen_tool_surface,
     )
     from capabledeputy.llm.models_config import ToolSelectionConfig
-    from capabledeputy.llm.routing import ModelRoutingContext
+    from capabledeputy.llm.routing import ModelRoutingContext, ModelRoutingResult
+
+    user_message, model_role_override = _extract_model_role_directive(user_message)
+    if not user_message.strip():
+        user_message = "Use the selected model mode for this turn."
 
     session = graph.get(session_id)
     if session.is_terminal:
@@ -645,6 +704,9 @@ async def run_turn_streaming(
                     purpose_handle=session.purpose_handle,
                     execution_mode=mode,
                     n_visible_tools=len(visible_for_route),
+                    n_selected_tools=len(visible_for_route),
+                    user_message_chars=len(user_message),
+                    model_role_override=model_role_override,
                 ),
             )
             await audit.write(
@@ -659,6 +721,12 @@ async def run_turn_streaming(
                         "n_visible_tools": len(visible_for_route),
                     },
                 ),
+            )
+            yield ModelSelected(
+                iteration=0,
+                role=routing.role,
+                reason=routing.reason,
+                model=routing.mlx_model,
             )
         prog_result = await run_programmatic_turn(
             session_id=session_id,
@@ -721,13 +789,24 @@ async def run_turn_streaming(
 
     effective_llm = llm
     if model_pool is not None:
-        effective_llm, routing = model_pool.resolve_planner(
-            ModelRoutingContext(
-                purpose_handle=session.purpose_handle,
-                execution_mode=mode,
-                n_visible_tools=len(tool_surface.selected),
-            ),
-        )
+        if should_force_image_generate_tool(user_message) and model_role_override is None:
+            routing = ModelRoutingResult(
+                role="planner.tools",
+                reason="image_generation_intent",
+                mlx_model=model_pool.config.role_spec("planner.tools").mlx,
+            )
+            effective_llm = model_pool.client("planner.tools")
+        else:
+            effective_llm, routing = model_pool.resolve_planner(
+                ModelRoutingContext(
+                    purpose_handle=session.purpose_handle,
+                    execution_mode=mode,
+                    n_visible_tools=len(visible_all),
+                    n_selected_tools=len(tool_surface.selected),
+                    user_message_chars=len(user_message),
+                    model_role_override=model_role_override,
+                ),
+            )
         await audit.write(
             Event(
                 event_type=EventType.LLM_MODEL_SELECTED,
@@ -742,6 +821,12 @@ async def run_turn_streaming(
                     "conversational": conversational,
                 },
             ),
+        )
+        yield ModelSelected(
+            iteration=0,
+            role=routing.role,
+            reason=routing.reason,
+            model=routing.mlx_model,
         )
     await audit.write(
         Event(
@@ -837,6 +922,10 @@ async def run_turn_streaming(
     iteration = 0
     last_response: LLMResponse | None = None
     parse_retry_used = False
+    image_gen_retry_used = False
+    force_image_generate = should_force_image_generate_tool(user_message)
+    probable_image_request = has_probable_image_generation_intent(user_message)
+    selected_tool_names = {t.name for t in tool_surface.selected}
     # Issue #36 — context-window guardrail.
     # We learn the model name on the first response; until then we
     # use a conservative default. The soft warning fires at 80%, the
@@ -1126,17 +1215,83 @@ async def run_turn_streaming(
             messages.append(Message(role=Role.SYSTEM, content=_PARSE_RETRY_NOTICE))
             continue
 
+        prior_image_paths = collect_prior_work_image_paths(
+            *(
+                message.content
+                for message in messages
+                if message.content and message.role != Role.TOOL
+            ),
+        )
+        allowed_image_paths = allowed_image_generate_paths(tool_outcomes)
+        image_gen_refusal = looks_like_image_generation_refusal(response.content or "")
+        image_path_hallucination = looks_like_hallucinated_image_markdown(
+            response.content or "",
+            prior_paths=prior_image_paths,
+            allowed_paths=allowed_image_paths,
+        )
+        image_gen_mandatory = force_image_generate or (
+            probable_image_request and image_gen_refusal
+        )
+        if (
+            not response.tool_calls
+            and tool_descriptions
+            and not image_gen_retry_used
+            and image_generate_tool_names_in(selected_tool_names)
+            and planner_uses_json_tools(effective_llm)
+            and (
+                (not tool_outcomes and image_gen_mandatory)
+                or (force_image_generate and image_path_hallucination)
+            )
+        ):
+            image_gen_retry_used = True
+            retry_reason = (
+                "image_path_hallucination"
+                if image_path_hallucination
+                else "image_generation_mandatory"
+            )
+            retry_notice = (
+                IMAGE_PATH_HALLUCINATION_RETRY_NOTICE
+                if image_path_hallucination
+                else IMAGE_GENERATION_RETRY_NOTICE
+            )
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_PARSE_RETRY,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    step_id=iteration,
+                    payload={
+                        "iteration": iteration,
+                        "reason": retry_reason,
+                        "content_length": len(response.content),
+                    },
+                ),
+            )
+            messages.append(
+                Message(role=Role.ASSISTANT, content=response.content or ""),
+            )
+            messages.append(Message(role=Role.SYSTEM, content=retry_notice))
+            continue
+
         if not response.tool_calls:
+            final_content = response.content or ""
+            if force_image_generate or probable_image_request:
+                final_content = repair_hallucinated_image_markdown(
+                    final_content,
+                    prior_paths=prior_image_paths,
+                    allowed_paths=allowed_image_paths,
+                    outcomes=tool_outcomes,
+                )
             agent_turn = Turn(
                 turn_id=len(session.history),
                 role="agent",
-                content=response.content,
+                content=final_content,
             )
             await graph.add_turn(session_id, agent_turn)
             yield TurnCompleted(
                 iteration=iteration,
                 result=AgentTurnResult(
-                    content=response.content,
+                    content=final_content,
                     iterations=iteration,
                     finish_reason=response.finish_reason,
                     tool_outcomes=tuple(tool_outcomes),

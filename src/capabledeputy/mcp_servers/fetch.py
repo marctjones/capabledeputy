@@ -1,10 +1,12 @@
-"""Standalone MCP server: HTTP fetch.
+"""Standalone MCP server: HTTP fetch and Wikipedia lookup.
 
 Tools exposed:
   - fetch.get(url, timeout_seconds=10)
       GET an HTTP/HTTPS URL; returns status, headers (subset),
       content-type, body (text, truncated to 256KB).
       Refuses non-http(s) schemes.
+  - wikipedia.lookup(title)
+      Wikipedia summary, page URL, and lead image URL via MediaWiki API.
 
 Designed for use behind CapableDeputy's chokepoint: every response
 is labeled untrusted.external by the binding+adapter layer, so the
@@ -24,6 +26,7 @@ from urllib.parse import urlparse
 import httpx
 
 from capabledeputy.mcp_servers._common import ToolDescriptor, serve_tools
+from capabledeputy.mcp_servers._wikipedia import wikipedia_lookup
 
 SERVER_NAME = "capdep-fetch"
 DEFAULT_TIMEOUT = 10.0
@@ -70,6 +73,15 @@ async def _fetch_get(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _wikipedia_lookup(args: dict[str, Any]) -> dict[str, Any]:
+    title = str(args.get("title") or "").strip()
+    if not title:
+        raise ValueError("title is required")
+    timeout_raw = args.get("timeout_seconds")
+    timeout = float(timeout_raw) if timeout_raw is not None else 15.0
+    return await wikipedia_lookup(title, timeout_seconds=timeout)
+
+
 def tools() -> list[ToolDescriptor]:
     return [
         ToolDescriptor(
@@ -89,6 +101,34 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["url"],
             },
             handler=_fetch_get,
+            annotations={"readOnlyHint": True, "openWorldHint": True, "idempotentHint": True},
+        ),
+        ToolDescriptor(
+            name="wikipedia.lookup",
+            description=(
+                "Look up a Wikipedia article by title. Returns summary text, "
+                "page_url, image_url (lead thumbnail when available), and "
+                "markdown_image for inline display.\n\n"
+                "USE THIS WHEN: the user asks for information or a photo from "
+                "Wikipedia. For inline images, call this then bundled-image-fetch.image.fetch "
+                "with image_url (or include markdown_image when cache=false fetch is "
+                "not needed — https URLs render inline in CapDepMac)."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Wikipedia article title or subject name.",
+                    },
+                    "timeout_seconds": {
+                        "type": "number",
+                        "description": "HTTP timeout (default 15).",
+                    },
+                },
+                "required": ["title"],
+            },
+            handler=_wikipedia_lookup,
             annotations={"readOnlyHint": True, "openWorldHint": True, "idempotentHint": True},
         ),
     ]

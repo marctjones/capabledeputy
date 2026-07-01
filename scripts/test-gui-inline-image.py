@@ -9,7 +9,10 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-DEMO_PATH = REPO / "apps/macos/CapDep/.build/demo-cat.jpg"
+DEMO_PATH = (
+    Path.home() / "Library/Application Support/CapDep/media/demo-cat.jpg"
+)
+DEMO_FALLBACK = REPO / "apps/macos/CapDep/.build/demo-cat.jpg"
 MESSAGE = "Show me the demo cat image inline"
 
 
@@ -22,18 +25,26 @@ def ok(msg: str) -> None:
     print(f"OK  {msg}")
 
 
+def resolved_demo_path() -> Path:
+    if DEMO_PATH.is_file():
+        return DEMO_PATH
+    if DEMO_FALLBACK.is_file():
+        return DEMO_FALLBACK
+    fail(f"demo image missing: {DEMO_PATH} (also checked {DEMO_FALLBACK})")
+    raise AssertionError("unreachable")
+
+
 async def main() -> None:
-    if not DEMO_PATH.is_file():
-        fail(f"demo image missing: {DEMO_PATH}")
-    if DEMO_PATH.stat().st_size < 1000:
-        fail(f"demo image too small: {DEMO_PATH.stat().st_size}")
-    ok(f"demo image exists ({DEMO_PATH.stat().st_size} bytes, JPEG)")
+    demo = resolved_demo_path()
+    if demo.stat().st_size < 1000:
+        fail(f"demo image too small: {demo.stat().st_size}")
+    ok(f"demo image exists ({demo.stat().st_size} bytes, JPEG)")
 
     demo_env = os.environ.get("CAPDEP_DEMO_IMAGE", "").strip()
-    if demo_env and demo_env != str(DEMO_PATH):
-        print(f"WARN CAPDEP_DEMO_IMAGE={demo_env!r} (expected {DEMO_PATH})")
+    if demo_env and demo_env != str(demo):
+        print(f"WARN CAPDEP_DEMO_IMAGE={demo_env!r} (expected {demo})")
     elif not demo_env:
-        os.environ["CAPDEP_DEMO_IMAGE"] = str(DEMO_PATH)
+        os.environ["CAPDEP_DEMO_IMAGE"] = str(demo)
         print(f"NOTE set CAPDEP_DEMO_IMAGE for this test run")
 
     from capabledeputy.ipc.client import DaemonClient
@@ -110,7 +121,7 @@ async def main() -> None:
         if tools_seen == 0:
             fail("image request routed as conversational (0 tools)")
 
-    real = str(DEMO_PATH)
+    real = str(demo)
     if "![" not in content or "](" not in content:
         fail(f"assistant content lacks markdown image syntax: {content[:200]!r}")
     if real not in content:

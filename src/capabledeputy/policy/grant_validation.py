@@ -263,4 +263,6 @@ _CHECK_FOR_KIND: dict[CapabilityKind, callable] = {  # type: ignore[type-arg]
     CapabilityKind.DRIVE_READ: _check_external_read,
     CapabilityKind.CHAT_READ: _check_external_read,
     CapabilityKind.PEOPLE_READ: _check_external_read,
+    CapabilityKind.GENERATE_IMAGE: _check_web_fetch,
+    CapabilityKind.FETCH_IMAGE: _check_web_fetch,
 }

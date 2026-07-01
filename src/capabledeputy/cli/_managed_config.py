@@ -50,29 +50,135 @@ def user_default_daemon_config_path() -> Path:
     return user_config_dir() / "daemon.yaml"
 
 
+def _capdep_executable() -> str | None:
+    capdep = shutil.which("capdep")
+    if capdep is None and sys.argv:
+        candidate = Path(sys.argv[0]).resolve()
+        if candidate.is_file():
+            capdep = str(candidate)
+    return capdep
+
+
 def capdep_spawn_command(mcp_subcommand: str) -> list[str]:
     """Resolve the capdep CLI used to spawn bundled MCP subprocesses.
 
     The daemon often starts without the operator's venv on PATH, so
     managed blocks must record an absolute executable when possible.
     """
-    capdep = shutil.which("capdep")
-    if capdep is None and sys.argv:
-        candidate = Path(sys.argv[0]).resolve()
-        if candidate.is_file():
-            capdep = str(candidate)
+    capdep = _capdep_executable()
     if capdep:
         return [capdep, mcp_subcommand]
     return [sys.executable, "-m", "capabledeputy.cli.main", mcp_subcommand]
 
 
-def materialize_capdep_commands(block_body: str) -> str:
-    """Replace placeholder `["capdep", "..."]` with a resolved command."""
+def image_generate_mcp_module() -> str:
+    return "capabledeputy.mcp_servers.image_generate"
 
-    def _replace(match: re.Match[str]) -> str:
+
+def image_fetch_mcp_module() -> str:
+    return "capabledeputy.mcp_servers.image_fetch"
+
+
+def images_mcp_module() -> str:
+    return "capabledeputy.mcp_servers.images"
+
+
+def _images_venv_python() -> Path | None:
+    capdep = _capdep_executable()
+    if not capdep:
+        return None
+    bin_dir = Path(capdep).resolve().parent
+    venv_dir = bin_dir.parent
+    repo_root = venv_dir.parent if venv_dir.name == ".venv" else bin_dir.parent
+    venv_python = repo_root / ".venv-images" / "bin" / "python"
+    return venv_python if venv_python.is_file() else None
+
+
+def image_generate_spawn_command(mcp_subcommand: str = "mcp-server-image-generate") -> list[str]:
+    """Python for image generation — isolated venv with torch/diffusers."""
+    _ = mcp_subcommand
+    module = image_generate_mcp_module()
+    explicit = os.environ.get("CAPDEP_IMAGE_PYTHON", "").strip()
+    if explicit:
+        return [explicit, "-m", module]
+    venv_python = _images_venv_python()
+    if venv_python is not None:
+        return [str(venv_python), "-m", module]
+    return [sys.executable, "-m", module]
+
+
+def image_fetch_spawn_command(mcp_subcommand: str = "mcp-server-image-fetch") -> list[str]:
+    """Python for image fetch — lightweight; uses main CapDep venv by default."""
+    _ = mcp_subcommand
+    module = image_fetch_mcp_module()
+    explicit = os.environ.get("CAPDEP_IMAGE_FETCH_PYTHON", "").strip()
+    if explicit:
+        return [explicit, "-m", module]
+    capdep = _capdep_executable()
+    if capdep:
+        return [capdep, "mcp-server-image-fetch"]
+    return [sys.executable, "-m", module]
+
+
+def images_spawn_command(mcp_subcommand: str = "mcp-server-images") -> list[str]:
+    """Legacy combined images MCP (generate + fetch in one process)."""
+    _ = mcp_subcommand
+    module = images_mcp_module()
+    explicit = os.environ.get("CAPDEP_IMAGE_PYTHON", "").strip()
+    if explicit:
+        return [explicit, "-m", module]
+    venv_python = _images_venv_python()
+    if venv_python is not None:
+        return [str(venv_python), "-m", module]
+    return [sys.executable, "-m", module]
+
+
+def resolve_upstream_spawn_command(command: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    """Resolve placeholder spawn commands at daemon runtime."""
+    if not command:
+        return ()
+    head = command[0]
+    if head == "capdep-image-generate":
+        sub = command[1] if len(command) > 1 else "mcp-server-image-generate"
+        return tuple(image_generate_spawn_command(sub))
+    if head == "capdep-image-fetch":
+        sub = command[1] if len(command) > 1 else "mcp-server-image-fetch"
+        return tuple(image_fetch_spawn_command(sub))
+    if head == "capdep-images":
+        sub = command[1] if len(command) > 1 else "mcp-server-images"
+        return tuple(images_spawn_command(sub))
+    if head == "capdep" and len(command) > 1:
+        return tuple(capdep_spawn_command(command[1]))
+    return tuple(command)
+
+
+def materialize_capdep_commands(block_body: str) -> str:
+    """Replace placeholder spawn commands with resolved absolute paths."""
+
+    def _replace_capdep(match: re.Match[str]) -> str:
         return json.dumps(capdep_spawn_command(match.group(1)))
 
-    return re.sub(r'\["capdep", "([^"]+)"\]', _replace, block_body)
+    def _replace_image_generate(match: re.Match[str]) -> str:
+        return json.dumps(image_generate_spawn_command(match.group(1)))
+
+    def _replace_image_fetch(match: re.Match[str]) -> str:
+        return json.dumps(image_fetch_spawn_command(match.group(1)))
+
+    def _replace_images(match: re.Match[str]) -> str:
+        return json.dumps(images_spawn_command(match.group(1)))
+
+    body = re.sub(r'\["capdep", "([^"]+)"\]', _replace_capdep, block_body)
+    body = re.sub(
+        r'\["capdep-image-generate", "([^"]+)"\]',
+        _replace_image_generate,
+        body,
+    )
+    body = re.sub(
+        r'\["capdep-image-fetch", "([^"]+)"\]',
+        _replace_image_fetch,
+        body,
+    )
+    return re.sub(r'\["capdep-images", "([^"]+)"\]', _replace_images, body)
 
 
 def resolve_daemon_config_with_source(
@@ -387,6 +493,65 @@ BUNDLED_FETCH_BLOCK_BODY = """\
     tool_overrides:
       "fetch.get":
         capability_kind: WEB_FETCH
+      "wikipedia.lookup":
+        capability_kind: WEB_FETCH
+        target_template: "wikipedia://{title}"
+    strict: true
+"""
+
+BUNDLED_IMAGE_GENERATE_BLOCK_ID = "bundled-image-generate"
+BUNDLED_IMAGE_GENERATE_BLOCK_BODY = """\
+  - name: bundled-image-generate
+    command: ["capdep-image-generate", "mcp-server-image-generate"]
+    inherent_labels: []
+    env:
+      CAPDEP_IMAGE_SAFETY: "off"
+      CAPDEP_IMAGE_STYLE: "photoreal"
+      CAPDEP_IMAGE_DEVICE: "auto"
+      CAPDEP_IMAGE_WIDTH: "768"
+      CAPDEP_IMAGE_HEIGHT: "768"
+      CAPDEP_IMAGE_STEPS: "20"
+    tool_overrides:
+      "image.generate":
+        capability_kind: GENERATE_IMAGE
+        target_template: "*"
+    strict: true
+"""
+
+BUNDLED_IMAGE_FETCH_BLOCK_ID = "bundled-image-fetch"
+BUNDLED_IMAGE_FETCH_BLOCK_BODY = """\
+  - name: bundled-image-fetch
+    command: ["capdep", "mcp-server-image-fetch"]
+    inherent_labels: ["untrusted.external"]
+    env:
+      CAPDEP_IMAGE_OUTPUT_DIR: "~/.capdep/work/images"
+    tool_overrides:
+      "image.fetch":
+        capability_kind: FETCH_IMAGE
+        target_arg: url
+    strict: true
+"""
+
+# Legacy combined server (generate + fetch). Kept for reference / manual overrides.
+BUNDLED_IMAGES_BLOCK_ID = "bundled-images"
+BUNDLED_IMAGES_BLOCK_BODY = """\
+  - name: bundled-images
+    command: ["capdep-images", "mcp-server-images"]
+    inherent_labels: []
+    env:
+      CAPDEP_IMAGE_SAFETY: "off"
+      CAPDEP_IMAGE_STYLE: "photoreal"
+      CAPDEP_IMAGE_DEVICE: "auto"
+      CAPDEP_IMAGE_WIDTH: "768"
+      CAPDEP_IMAGE_HEIGHT: "768"
+      CAPDEP_IMAGE_STEPS: "20"
+    tool_overrides:
+      "image.generate":
+        capability_kind: GENERATE_IMAGE
+        target_template: "*"
+      "image.fetch":
+        capability_kind: FETCH_IMAGE
+        target_arg: url
     strict: true
 """
 
@@ -466,6 +631,8 @@ DEFAULT_ASSISTANT_BUNDLED_BLOCKS: tuple[tuple[str, str], ...] = (
     (BUNDLED_GIT_BLOCK_ID, BUNDLED_GIT_BLOCK_BODY),
     (BUNDLED_FETCH_BLOCK_ID, BUNDLED_FETCH_BLOCK_BODY),
     (BUNDLED_SEARCH_BLOCK_ID, BUNDLED_SEARCH_BLOCK_BODY),
+    (BUNDLED_IMAGE_FETCH_BLOCK_ID, BUNDLED_IMAGE_FETCH_BLOCK_BODY),
+    (BUNDLED_IMAGE_GENERATE_BLOCK_ID, BUNDLED_IMAGE_GENERATE_BLOCK_BODY),
 )
 
 

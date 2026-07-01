@@ -44,6 +44,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+charts = ["matplotlib>=3.8"]
+images = [
+    "torch>=2.2",
+    "diffusers>=0.30",
+    "transformers>=4.44,<5",
+    "accelerate>=0.33",
+    "safetensors>=0.4",
+]
 # Sandboxed policy-script runtime (spec-004 P3). Optional: only operators
 # who author Starlark policy scripts need it. `StarlarkScriptHost` lazily
 # imports it and raises a clear error when the extra is absent, so the

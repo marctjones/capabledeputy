@@ -47,6 +47,12 @@ purposes:
         pattern: "*"
       - kind: MACOS_NOTIFICATION
         pattern: "*"
+      - kind: GENERATE_IMAGE
+        pattern: "*"
+      - kind: FETCH_IMAGE
+        pattern: "*"
+      - kind: CREATE_FS
+        pattern: "/Users/*/.capdep/work/**"
     bindings:
       - scope_pattern_canonical: "file:///Users/*/notes/scratch/**"
         category: scratch

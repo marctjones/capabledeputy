@@ -67,6 +67,8 @@ def foreground_chat_default_capabilities(
             _make_cap(CapabilityKind.PEOPLE_READ, "*"),
             _make_cap(CapabilityKind.CALENDAR_READ, "*"),
             _make_cap(CapabilityKind.WEB_FETCH, "*"),
+            _make_cap(CapabilityKind.GENERATE_IMAGE, "*"),
+            _make_cap(CapabilityKind.FETCH_IMAGE, "*"),
             _make_cap(CapabilityKind.APPLE_MAIL_READ, "*"),
             _make_cap(CapabilityKind.EXECUTE_SANDBOX, "scratch"),
         ),
@@ -74,18 +76,45 @@ def foreground_chat_default_capabilities(
     return tuple(caps)
 
 
+def _missing_foreground_image_caps(capability_set: frozenset[Capability]) -> bool:
+    kinds = {cap.kind for cap in capability_set}
+    return (
+        CapabilityKind.GENERATE_IMAGE not in kinds
+        or CapabilityKind.FETCH_IMAGE not in kinds
+    )
+
+
 def should_apply_foreground_defaults(
     *,
     owner: str | None,
     purpose_handle: str,
     capability_count: int,
+    capability_set: frozenset[Capability] | None = None,
 ) -> bool:
-    if capability_count > 0:
-        return False
     owner_key = (owner or "").strip()
-    if owner_key in FOREGROUND_CHAT_OWNERS:
+    foreground_owner = owner_key in FOREGROUND_CHAT_OWNERS
+    foreground_purpose = purpose_handle in FOREGROUND_PURPOSE_HANDLES
+    if not foreground_owner and not foreground_purpose:
+        return False
+    if capability_count == 0:
         return True
-    return purpose_handle in FOREGROUND_PURPOSE_HANDLES
+    if capability_set is not None and _missing_foreground_image_caps(capability_set):
+        return True
+    return False
+
+
+def supplement_foreground_capabilities(
+    capability_set: frozenset[Capability],
+    *,
+    home: str | None = None,
+) -> tuple[Capability, ...]:
+    """Grant only foreground caps missing from an existing purpose-born set."""
+    existing_kinds = {cap.kind for cap in capability_set}
+    return tuple(
+        cap
+        for cap in foreground_chat_default_capabilities(home=home)
+        if cap.kind not in existing_kinds
+    )
 
 
 def _make_cap(kind: CapabilityKind, pattern: str) -> Capability:

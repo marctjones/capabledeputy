@@ -11,6 +11,7 @@ from typing import Any
 import anyio
 
 from capabledeputy.app import App
+from capabledeputy.daemon.lifecycle import build_policy_context_from_configs
 from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.daemon.audit_handlers import make_audit_handlers
@@ -92,7 +93,16 @@ def build_test_handlers(app: App, paths: DaemonTestPaths) -> dict[str, Any]:
 
 
 async def build_test_daemon(paths: DaemonTestPaths) -> tuple[Daemon, App]:
-    app = App(state_db_path=paths.state_db, audit_log_path=paths.audit_log)
+    policy_context, purposes = build_policy_context_from_configs(
+        state_db_path=paths.state_db,
+    )
+    app = App(
+        state_db_path=paths.state_db,
+        audit_log_path=paths.audit_log,
+        policy_context=policy_context,
+        purposes=purposes,
+        enable_policy_preview=False,
+    )
     await app.startup()
     daemon = Daemon(paths.socket, handlers=build_test_handlers(app, paths))
     setattr(app, "daemon_server", daemon)

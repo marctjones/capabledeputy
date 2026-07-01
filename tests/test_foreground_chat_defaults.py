@@ -7,9 +7,11 @@ from pathlib import Path
 import pytest
 
 from capabledeputy.policy.purposes import load as load_purposes
+from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.session.foreground_defaults import (
     foreground_chat_default_capabilities,
     should_apply_foreground_defaults,
+    supplement_foreground_capabilities,
 )
 from capabledeputy.session.graph import SessionGraph
 
@@ -40,11 +42,30 @@ def test_should_apply_foreground_defaults_for_gui_owner() -> None:
         purpose_handle="general",
         capability_count=0,
     )
-    assert not should_apply_foreground_defaults(
+    caps = foreground_chat_default_capabilities()
+    assert should_apply_foreground_defaults(
         owner="CapDepMac",
         purpose_handle="general",
         capability_count=3,
+        capability_set=frozenset(caps[:3]),
     )
+    assert not should_apply_foreground_defaults(
+        owner="CapDepMac",
+        purpose_handle="general",
+        capability_count=len(caps),
+        capability_set=frozenset(caps),
+    )
+
+
+def test_supplement_foreground_capabilities_adds_missing_image_caps() -> None:
+    caps = foreground_chat_default_capabilities()
+    without_image = frozenset(
+        cap for cap in caps if cap.kind not in {CapabilityKind.GENERATE_IMAGE, CapabilityKind.FETCH_IMAGE}
+    )
+    added = supplement_foreground_capabilities(without_image)
+    kinds = {cap.kind for cap in added}
+    assert CapabilityKind.GENERATE_IMAGE in kinds
+    assert CapabilityKind.FETCH_IMAGE in kinds
 
 
 @pytest.mark.asyncio

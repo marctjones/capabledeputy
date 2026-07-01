@@ -18,6 +18,7 @@ from capabledeputy.session.coordination import WorkstreamOwnershipError
 from capabledeputy.session.foreground_defaults import (
     foreground_chat_default_capabilities,
     should_apply_foreground_defaults,
+    supplement_foreground_capabilities,
 )
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import SessionStatus
@@ -52,8 +53,14 @@ def make_session_handlers(
             owner=owner,
             purpose_handle=purpose_handle,
             capability_count=len(s.capability_set),
+            capability_set=s.capability_set,
         ):
-            for cap in foreground_chat_default_capabilities():
+            caps = (
+                supplement_foreground_capabilities(s.capability_set)
+                if s.capability_set
+                else foreground_chat_default_capabilities()
+            )
+            for cap in caps:
                 await graph.grant_capability(s.id, cap)
             s = graph.get(s.id)
         return s.to_dict()

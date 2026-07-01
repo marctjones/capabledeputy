@@ -22,6 +22,7 @@ from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.store import SessionStore
 from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.native.calendar import CalendarStore, make_calendar_tools
+from capabledeputy.tools.native.chart import make_chart_tools
 from capabledeputy.tools.native.email import DraftBox, EmailOutbox, make_email_tools
 from capabledeputy.tools.native.extract import make_extract_tools
 from capabledeputy.tools.native.fs import make_fs_tools
@@ -153,6 +154,8 @@ class App:
         for tool in make_tasks_tools(self.tasks):
             self.registry.register(tool)
         for tool in make_fs_tools(self._fs_labeler):
+            self.registry.register(tool)
+        for tool in make_chart_tools():
             self.registry.register(tool)
         for tool in make_resources_tools(self.resources):
             self.registry.register(tool)

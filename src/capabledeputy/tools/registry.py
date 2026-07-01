@@ -302,6 +302,8 @@ _KIND_TO_EFFECT: dict[str, EffectClass] = {
     "NUMBERS_EXPORT": EffectClass.MUTATE_LOCAL,
     "EXECUTE_SANDBOX": EffectClass.EXECUTE_SANDBOX,
     "EXECUTE_DEVBOX": EffectClass.EXECUTE_SANDBOX,
+    "GENERATE_IMAGE": EffectClass.MUTATE_LOCAL,
+    "FETCH_IMAGE": EffectClass.FETCH,
 }
 _EFFECT_DEFAULT_RISK: dict[EffectClass, tuple[str, ...]] = {
     EffectClass.OBSERVE: ("RISK-EXCESSIVE-AGENCY",),

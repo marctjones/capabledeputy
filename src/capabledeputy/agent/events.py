@@ -62,6 +62,16 @@ class LLMRequestSent(TurnEventBase):
 
 
 @dataclass(frozen=True)
+class ModelSelected(TurnEventBase):
+    """Planner model role selected for this turn."""
+
+    role: str
+    reason: str
+    model: str
+    kind: str = "model_selected"
+
+
+@dataclass(frozen=True)
 class LLMTokenReceived(TurnEventBase):
     """Partial LLM token / content chunk. Only emitted when the
     underlying LLM client supports streaming. Consumers concatenate
@@ -141,6 +151,7 @@ class TurnErrored(TurnEventBase):
 # Tagged union for type-safe consumers
 TurnEvent = (
     IterationStarted
+    | ModelSelected
     | LLMRequestSent
     | LLMTokenReceived
     | LLMResponseReceived
@@ -157,7 +168,11 @@ def event_to_dict(evt: TurnEvent) -> dict[str, Any]:
     Used by the daemon's streaming RPC to ship events to remote
     clients (chat REPL, rich surface)."""
     base: dict[str, Any] = {"kind": evt.kind, "iteration": evt.iteration}
-    if isinstance(evt, LLMRequestSent):
+    if isinstance(evt, ModelSelected):
+        base["role"] = evt.role
+        base["reason"] = evt.reason
+        base["model"] = evt.model
+    elif isinstance(evt, LLMRequestSent):
         base["n_messages"] = evt.n_messages
         base["n_tools"] = evt.n_tools
     elif isinstance(evt, LLMTokenReceived):

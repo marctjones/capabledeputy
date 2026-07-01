@@ -174,6 +174,8 @@ def test_register_default_assistant_surface_writes_all_blocks(xdg_tmp: Path) -> 
         BUNDLED_FETCH_BLOCK_ID,
         BUNDLED_FS_BLOCK_ID,
         BUNDLED_GIT_BLOCK_ID,
+        BUNDLED_IMAGE_FETCH_BLOCK_ID,
+        BUNDLED_IMAGE_GENERATE_BLOCK_ID,
         BUNDLED_MEMORY_BLOCK_ID,
         BUNDLED_SEARCH_BLOCK_ID,
         register_default_assistant_surface,
@@ -189,6 +191,8 @@ def test_register_default_assistant_surface_writes_all_blocks(xdg_tmp: Path) -> 
         BUNDLED_GIT_BLOCK_ID,
         BUNDLED_FETCH_BLOCK_ID,
         BUNDLED_SEARCH_BLOCK_ID,
+        BUNDLED_IMAGE_FETCH_BLOCK_ID,
+        BUNDLED_IMAGE_GENERATE_BLOCK_ID,
     ):
         assert f"# BEGIN capdep-managed: {block_id}" in text
         assert f"# END capdep-managed: {block_id}" in text
@@ -201,6 +205,8 @@ def test_register_default_assistant_surface_writes_all_blocks(xdg_tmp: Path) -> 
         "bundled-git",
         "bundled-fetch",
         "bundled-search",
+        "bundled-image-fetch",
+        "bundled-image-generate",
     }.issubset(names)
     # status messages report one line per block + a sandbox-skipped message
     assert any("bundled-fs" in m for m in msgs)
@@ -384,3 +390,22 @@ def test_gws_cli_available_returns_false_when_missing(
 
     monkeypatch.setattr(shutil, "which", lambda name: None)
     assert gws_cli_available() is False
+
+
+def test_resolve_upstream_spawn_command_splits_image_servers() -> None:
+    from capabledeputy.cli._managed_config import (
+        _capdep_executable,
+        resolve_upstream_spawn_command,
+    )
+
+    gen = resolve_upstream_spawn_command(
+        ("capdep-image-generate", "mcp-server-image-generate"),
+    )
+    fetch = resolve_upstream_spawn_command(
+        ("capdep-image-fetch", "mcp-server-image-fetch"),
+    )
+    assert gen[-1] == "capabledeputy.mcp_servers.image_generate"
+    if _capdep_executable():
+        assert fetch == (_capdep_executable(), "mcp-server-image-fetch")
+    else:
+        assert fetch[-1] == "capabledeputy.mcp_servers.image_fetch"

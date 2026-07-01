@@ -35,6 +35,9 @@ upstream_servers:
     tool_overrides:
       "fetch.get":
         capability_kind: WEB_FETCH
+      "wikipedia.lookup":
+        capability_kind: WEB_FETCH
+        target_template: "wikipedia://{title}"
 
   - name: bundled-search
     command: ["capdep", "mcp-server-search"]
@@ -221,3 +224,36 @@ upstream_servers:
       "macos.show_notification":
         capability_kind: MACOS_NOTIFICATION
         target_template: "macos://notification"
+
+  - name: bundled-image-fetch
+    # Lightweight HTTP fetch; runs in main CapDep venv (no torch).
+    command: ["capdep", "mcp-server-image-fetch"]
+    inherent_labels: ["untrusted.external"]
+    env:
+      CAPDEP_IMAGE_OUTPUT_DIR: "~/.capdep/work/images"
+    tool_overrides:
+      "image.fetch":
+        capability_kind: FETCH_IMAGE
+        target_arg: url
+
+  - name: bundled-image-generate
+    # Prefer repo .venv-images (scripts/setup-images-venv.sh) or set
+    # CAPDEP_IMAGE_PYTHON in env to avoid mlx-lm vs diffusers conflict.
+    command: ["capdep-image-generate", "mcp-server-image-generate"]
+    inherent_labels: []
+    env:
+      CAPDEP_IMAGE_SAFETY: "off"
+      CAPDEP_IMAGE_STYLE: "photoreal"
+      CAPDEP_IMAGE_DEVICE: "auto"
+      CAPDEP_IMAGE_WIDTH: "768"
+      CAPDEP_IMAGE_HEIGHT: "768"
+      CAPDEP_IMAGE_STEPS: "20"
+      # Override checkpoints after prefetching weights into $AI_MODELS_DIR or HF cache:
+      # CAPDEP_IMAGE_CHECKPOINT: "RunDiffusion/Juggernaut-XL-v9"
+      # CAPDEP_IMAGE_CHECKPOINT_FILE: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
+      # CAPDEP_IMAGE_GRAPHIC_NOVEL_CHECKPOINT: "LyliaEngine/Pony_Diffusion_V6_XL"
+      # CAPDEP_IMAGE_GRAPHIC_NOVEL_CHECKPOINT_FILE: "ponyDiffusionV6XL_v6StartWithThisOne.safetensors"
+    tool_overrides:
+      "image.generate":
+        capability_kind: GENERATE_IMAGE
+        target_template: "*"

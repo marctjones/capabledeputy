@@ -13,6 +13,8 @@ class ModelRoutingContext:
     purpose_handle: str
     execution_mode: ExecutionMode
     n_visible_tools: int
+    n_selected_tools: int = 0
+    user_message_chars: int = 0
     model_role_override: str | None = None
 
 
@@ -33,6 +35,12 @@ def _rule_matches(rule: RoutingRule, ctx: ModelRoutingContext) -> bool:
     if rule.n_visible_tools_gte is not None:
         if ctx.n_visible_tools < rule.n_visible_tools_gte:
             return False
+    if rule.n_selected_tools_gte is not None:
+        if ctx.n_selected_tools < rule.n_selected_tools_gte:
+            return False
+    if rule.user_message_chars_gte is not None:
+        if ctx.user_message_chars < rule.user_message_chars_gte:
+            return False
     return True
 
 
@@ -43,7 +51,14 @@ def resolve_model_role(config: ModelsConfig, ctx: ModelRoutingContext) -> ModelR
         return ModelRoutingResult(role=role, reason="session_override", mlx_model=spec.mlx)
 
     for rule in config.routing:
-        if rule.purpose_handle or rule.execution_mode or rule.n_visible_tools_gte is not None:
+        has_condition = (
+            rule.purpose_handle
+            or rule.execution_mode
+            or rule.n_visible_tools_gte is not None
+            or rule.n_selected_tools_gte is not None
+            or rule.user_message_chars_gte is not None
+        )
+        if has_condition:
             if _rule_matches(rule, ctx):
                 spec = config.role_spec(rule.role)
                 return ModelRoutingResult(

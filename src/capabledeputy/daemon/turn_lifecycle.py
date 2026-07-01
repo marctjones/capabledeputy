@@ -18,6 +18,7 @@ import anyio
 from capabledeputy.agent.events import (
     LLMRequestSent,
     LLMTokenReceived,
+    ToolDispatched,
     ToolReturned,
     TurnCompleted,
     TurnInterrupted,
@@ -118,6 +119,7 @@ class TurnLifecycleManager:
         self._lock = anyio.Lock()
         self._max_events_per_turn = max_events_per_turn
         self._emitted_image_paths: dict[str, set[str]] = {}
+        self._tools_in_flight: dict[str, int] = {}
 
     async def start(
         self,
@@ -389,8 +391,20 @@ class TurnLifecycleManager:
                 if turn is None or turn.status not in {"queued", "running"}:
                     return
                 assert turn.last_heartbeat_at is not None
-                elapsed = (datetime.now(UTC) - turn.last_heartbeat_at).total_seconds()
-                if elapsed >= turn.heartbeat_timeout_seconds:
+                if self._tools_in_flight.get(turn_id, 0) > 0:
+                    now = datetime.now(UTC)
+                    self._turns[turn_id] = replace(
+                        turn,
+                        last_heartbeat_at=now,
+                        updated_at=now,
+                    )
+                    should_cancel = False
+                else:
+                    elapsed = (
+                        datetime.now(UTC) - turn.last_heartbeat_at
+                    ).total_seconds()
+                    should_cancel = elapsed >= turn.heartbeat_timeout_seconds
+                if should_cancel:
                     self._cancel_reasons[turn_id] = "heartbeat_timeout"
                     self._turns[turn_id] = replace(
                         turn,
@@ -398,7 +412,6 @@ class TurnLifecycleManager:
                         cancel_reason="heartbeat_timeout",
                         updated_at=datetime.now(UTC),
                     )
-                    should_cancel = True
             await self._emit(
                 turn_id,
                 "heartbeat",
@@ -453,7 +466,14 @@ class TurnLifecycleManager:
                 )
             except Exception:
                 pass
+        elif isinstance(event, ToolDispatched):
+            self._tools_in_flight[turn_id] = self._tools_in_flight.get(turn_id, 0) + 1
         elif isinstance(event, ToolReturned):
+            in_flight = max(0, self._tools_in_flight.get(turn_id, 0) - 1)
+            if in_flight:
+                self._tools_in_flight[turn_id] = in_flight
+            else:
+                self._tools_in_flight.pop(turn_id, None)
             payload["outcome"] = _outcome_to_dict(event.outcome)
             await self._merge_partial_outcome(turn_id, payload["outcome"])
             for attachment in image_attachment_payloads_from_outcome(payload["outcome"]):

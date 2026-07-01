@@ -45,6 +45,12 @@ class ModelPool:
         fast = os.environ.get("CAPDEP_LLM_MODEL", "").strip()
         if fast:
             overrides["planner.fast"] = fast.removeprefix("mlx/")
+        tools = os.environ.get("CAPDEP_LLM_TOOLS_MODEL", "").strip()
+        if tools:
+            overrides["planner.tools"] = tools.removeprefix("mlx/")
+        quality = os.environ.get("CAPDEP_LLM_QUALITY_MODEL", "").strip()
+        if quality:
+            overrides["planner.quality"] = quality.removeprefix("mlx/")
         quarantined = os.environ.get("CAPDEP_QUARANTINED_LLM_MODEL", "").strip()
         if quarantined:
             overrides["extractor"] = quarantined.removeprefix("mlx/")
@@ -76,6 +82,18 @@ class ModelPool:
             return client
 
     def resolve_planner(self, ctx: ModelRoutingContext) -> tuple[LLMClient, ModelRoutingResult]:
+        if ctx.model_role_override is None:
+            role = os.environ.get("CAPDEP_MODEL_ROLE", "").strip()
+            if role:
+                normalized = role if role.startswith("planner.") else f"planner.{role}"
+                ctx = ModelRoutingContext(
+                    purpose_handle=ctx.purpose_handle,
+                    execution_mode=ctx.execution_mode,
+                    n_visible_tools=ctx.n_visible_tools,
+                    n_selected_tools=ctx.n_selected_tools,
+                    user_message_chars=ctx.user_message_chars,
+                    model_role_override=normalized,
+                )
         result = resolve_model_role(self.config, ctx)
         client = self.client(result.role)
         self._maybe_unload_tools_model()

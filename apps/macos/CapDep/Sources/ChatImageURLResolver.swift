@@ -89,20 +89,24 @@ enum ChatImageURLResolver {
         guard supportedExtension(for: url) != nil else {
             return .failure(.unsupportedFormat)
         }
-        do {
-            let values = try url.resourceValues(forKeys: [.fileSizeKey, .isReadableKey])
-            if values.isReadable == false {
-                return .failure(.unreadable)
-            }
-            if let size = values.fileSize, Int64(size) > maxBytes {
-                return .failure(.tooLarge)
-            }
-        } catch {
-            return .failure(.unreadable)
+        if let size = localFileSize(at: url), size > maxBytes {
+            return .failure(.tooLarge)
         }
         return .success(
             ResolvedImage(url: url, isAnimatedGIF: isGIF(url), isRemote: false),
         )
+    }
+
+    private static func localFileSize(at url: URL) -> Int64? {
+        if let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+           let size = values.fileSize {
+            return Int64(size)
+        }
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let size = attrs[.size] as? NSNumber {
+            return size.int64Value
+        }
+        return nil
     }
 
     private static func workingDirectory() -> URL {
