@@ -6,15 +6,10 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-07-01 — GitHub milestones and issues were
-rationalized into one live product ladder plus explicit supporting tracks.
-Spec 004 work is merged into v0.36/v0.37 instead of displacing the desktop,
-memory, onguard, and code workspace roadmap. v0.35 through v0.37 are closed in
-GitHub, and v0.38 is the next active product focus. Milestone names carry
-ordered prefixes, all open issues are milestone-scoped, and v1.0 remains
-unscheduled. Async rich-media chat reliability follow-up from v0.34 has been
-merged into v0.38 because it depends on durable conversation state and tolerant
-client rendering.
+**Last refreshed:** 2026-07-01 — v0.38 and v0.39 implementation work is
+complete locally, supporting tracks 07-10 have closeout evidence, and v0.40 is
+the next product milestone. Milestone names carry ordered prefixes, open work is
+milestone-scoped, and v1.0 remains unscheduled.
 
 ## Product Ladder — v0.35 → v0.40
 
@@ -34,9 +29,9 @@ flowchart LR
 | **01 Product — v0.35.0 — Desktop context, SourcePorts, and visual review** | Desktop context, SourcePorts, and visual review | #146–#152 |
 | **02 Product — v0.36.0 — MCP admission, provider mappings, and workflow templates** | MCP admission, provider mappings, and workflow templates | #153–#159, #184–#186 |
 | **03 Product — v0.37.0 — Execution substrate, isolation, and compliance evidence** | Execution substrate, isolation, and compliance evidence | #44, #9, #14, #55–#57, #187–#189 |
-| **04 Product — v0.38.0 — Memory, retention, compaction, and async media reliability** (now) | Memory, retention, compaction, and async media reliability | #160–#165, #190–#192, #194–#195 |
+| **04 Product — v0.38.0 — Memory, retention, compaction, and async media reliability** | Memory, retention, compaction, and async media reliability | #160–#165, #190–#192, #194–#195 |
 | **05 Product — v0.39.0 — Background automation and onguard UX** | Background automation and onguard UX | #166–#171 |
-| **06 Product — v0.40.0 — Safe code workspace workflows** | Safe code workspace workflows | #172–#177 |
+| **06 Product — v0.40.0 — Safe code workspace workflows** (next) | Safe code workspace workflows | #172–#177 |
 
 ## Planned Work Coverage
 
@@ -45,10 +40,10 @@ The planned work is now grouped as:
 
 | GitHub milestone | Issues | Why it is outside the product ladder |
 |---|---|---|
-| **07 Support — Source identity and labeling correctness** | #42, #51, #139 | Cross-cutting safety correctness that should be pulled into v0.35/v0.36 work when it blocks SourcePorts or connector labeling. |
-| **08 Support — Terminal UX and approval polish** | #16, #17, #19, #27, #29 | Useful client polish, but not the primary desktop-agent path and not daemon safety substrate. |
-| **09 Research — Non-goals and safe alternatives** | #178–#181 | Keeps deliberately deferred product directions visible without treating them as implementation commitments. |
-| **10 Backlog — Formal models and deferred breadth** | #45, #58, #59 | Valuable but lower-priority formal/provider breadth once the practical product ladder is healthier. |
+| **07 Support — Source identity and labeling correctness** | #42, #51, #139 | Complete; see `docs/support-track-closeout-2026-07-01.md`. |
+| **08 Support — Terminal UX and approval polish** | #16, #17, #19, #27, #29 | Complete for the terminal support track; see `docs/support-track-closeout-2026-07-01.md`. |
+| **09 Research — Non-goals and safe alternatives** | #178–#181 | Complete as research decisions; see `docs/support-track-closeout-2026-07-01.md`. |
+| **10 Backlog — Formal models and deferred breadth** | #45, #58, #59 | Complete; see `docs/support-track-closeout-2026-07-01.md`. |
 
 ### Completed Milestone Names
 
@@ -249,7 +244,7 @@ deliberately, v0.37 hardens their execution substrate and evidence pipeline.
 - Modal/Firecracker and VersionedWritePort providers extend the same substrate
   ports without weakening daemon policy.
 
-## Current Focus — v0.38.0 Memory, Retention, Compaction, and Async Media Reliability
+## Completed Focus — v0.38.0 Memory, Retention, Compaction, and Async Media Reliability
 
 **Depends on:** v0.37 substrate/compliance closure. v0.38 makes long-running
 conversation state durable and auditable, then folds rich-media follow-up into
@@ -258,17 +253,26 @@ happy-path event ordering.
 
 | Issue | Work | Status |
 |---|---|---|
-| #160 | EPIC: Mature retention, memory controls, and context compaction | Open |
-| #161 | Research: retention, session storage, compaction, and memory controls in peer agents | Open |
-| #162 | Daemon retention policy and maintenance RPCs | Open |
-| #163 | Memory trust classes and user-visible memory controls | Open |
-| #164 | Context compaction as labeled summary artifacts | Open |
-| #165 | Retention and memory management client surfaces | Open |
-| #190 | EPIC: Reliable async rich-media chat attachments in CapDepMac | Open |
-| #191 | Codify verified CapDepMac daemon launch and post-open parity checks | Open |
-| #192 | Fail closed when generated-image tools are unavailable | Open |
-| #194 | Render daemon `image_attachment` events as durable CapDepMac chat parts | Open |
-| #195 | Retry pending local image resolution before permanent CapDepMac fallback | Open |
+| #160 | EPIC: Mature retention, memory controls, and context compaction | Done locally |
+| #161 | Research: retention, session storage, compaction, and memory controls in peer agents | Done locally |
+| #162 | Daemon retention policy and maintenance RPCs | Done locally |
+| #163 | Memory trust classes and user-visible memory controls | Done locally |
+| #164 | Context compaction as labeled summary artifacts | Done locally |
+| #165 | Retention and memory management client surfaces | Done locally |
+| #190 | EPIC: Reliable async rich-media chat attachments in CapDepMac | Done locally |
+| #191 | Codify verified CapDepMac daemon launch and post-open parity checks | Done locally |
+| #192 | Fail closed when generated-image tools are unavailable | Done locally |
+| #194 | Render daemon `image_attachment` events as durable CapDepMac chat parts | Done locally |
+| #195 | Retry pending local image resolution before permanent CapDepMac fallback | Done locally |
+
+**Closeout evidence:** `memory.policy`, `memory.prune`, and
+`memory.compact_session` expose daemon-owned retention/compaction controls.
+Memory entries carry timestamps and trust classes, and compaction stores a
+labeled derived-summary artifact. Generated-image intent now fails closed when
+no visible generated-image tool exists. Turn lifecycle results expose
+`image_attachments`, terminal event ordering preserves attachment events, and
+CapDepMac preserves structured image snippets during final response
+finalization. Local launch scripts now verify daemon parity after app open.
 
 ### v0.38.0 implementation notes
 
@@ -296,6 +300,24 @@ happy-path event ordering.
   than letting the model invent local paths.
 - Local image resolution tolerates short file-visibility delays without hiding
   real missing-file errors.
+
+## Completed Focus — v0.39.0 Background Automation and Onguard UX
+
+| Issue | Work | Status |
+|---|---|---|
+| #166 | EPIC: Background automation UX for onguard clients | Done locally |
+| #167 | Research background agent notifications, approval queues, and low-fatigue UX | Done locally |
+| #168 | Daemon notification/event contract for onguard results and approval-needed states | Done locally |
+| #169 | Swift/macOS notification integration as a thin client | Done locally |
+| #170 | Approval digest and timeout UX for queued background actions | Done locally |
+| #171 | Onguard result handoff to interactive sessions | Done locally |
+
+**Closeout evidence:** daemon RPCs now expose `onguard.notifications.contract`,
+`onguard.notifications.list`, `onguard.approval_digest`, and `artifact.handoff`.
+The CLI has `capdep onguard notifications`, `approval-digest`, and `handoff`.
+CapDepMac parses daemon notification summaries and schedules local
+notifications using daemon event IDs as dedupe identifiers. Handoff sessions
+preserve origin metadata, artifact ID, labels, provenance, and payload content.
 
 ## Later Product Milestones
 
@@ -364,9 +386,9 @@ boundaries.
 
 | Issue | Work | Status |
 |---|---|---|
-| #42 | EPIC: Strengthen the labeling oracle | Open |
-| #51 | Gmail / Drive / Calendar SourcePort canonical-id providers | Open |
-| #139 | Email labeler implementation — rule file plus per-message hook | Open |
+| #42 | EPIC: Strengthen the labeling oracle | Done locally |
+| #51 | Gmail / Drive / Calendar SourcePort canonical-id providers | Done locally |
+| #139 | Email labeler implementation — rule file plus per-message hook | Done locally |
 
 ### 08 Support — Terminal UX and Approval Polish
 
@@ -377,11 +399,11 @@ authority.
 
 | Issue | Work | Status |
 |---|---|---|
-| #16 | REPL feature parity with Claude Code | Open; streaming part depends on v0.33 |
-| #17 | Split-pane / tabbed viewer for significant content alongside chat | Open |
-| #19 | Inline graphics via sixel / kitty graphics protocol | Open |
-| #27 | Inline approval as non-blocking banner | Open |
-| #29 | Unicode width safety in bottom toolbar + 80x24 minimum size | Open |
+| #16 | REPL feature parity with Claude Code | Done locally |
+| #17 | Split-pane / tabbed viewer for significant content alongside chat | Done locally as support-track scope; full terminal workspace is not a product-ladder blocker |
+| #19 | Inline graphics via sixel / kitty graphics protocol | Done locally |
+| #27 | Inline approval as non-blocking banner | Done locally |
+| #29 | Unicode width safety in bottom toolbar + 80x24 minimum size | Done locally |
 
 ### 09 Research — Non-Goals and Safe Alternatives
 
@@ -390,10 +412,10 @@ them into immediate implementation commitments.
 
 | Issue | Work | Status |
 |---|---|---|
-| #178 | Alternatives to remote/mobile daemon control without opening network listeners | Open |
-| #179 | Alternatives to broad always-on autonomous action modes | Open |
-| #180 | Safe community template/extension sharing without marketplace trust collapse | Open |
-| #181 | Web UI or cross-platform GUI alternatives without duplicating daemon functionality | Open |
+| #178 | Alternatives to remote/mobile daemon control without opening network listeners | Done locally |
+| #179 | Alternatives to broad always-on autonomous action modes | Done locally |
+| #180 | Safe community template/extension sharing without marketplace trust collapse | Done locally |
+| #181 | Web UI or cross-platform GUI alternatives without duplicating daemon functionality | Done locally |
 
 ### 10 Backlog — Formal Models and Deferred Breadth
 
@@ -402,7 +424,7 @@ ladder and the source-identity/labeling track. It is grouped by why it is
 deferred:
 
 - Formal-model completeness beyond current practical enforcement: #45, #58,
-  #59.
+  #59 are done locally; see `docs/support-track-closeout-2026-07-01.md`.
 - Any remaining provider or federation breadth not explicitly pulled into
   v0.36/v0.37.
 
