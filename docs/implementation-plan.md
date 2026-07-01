@@ -4,25 +4,30 @@ Living plan that organizes the open GitHub issues into sequenced
 milestones with dependencies. Authoritative status is GitHub; this doc is
 the *sequencing rationale*. Last refreshed 2026-07-01 — active arc is
 **v0.35 → v0.40** plus explicit source-labeling, terminal-UX, research, and
-formal-model tracks. The live GitHub tracker has no unmilestoned open issues.
+formal-model tracks. The live GitHub tracker has no unmilestoned open issues,
+and every GitHub milestone title now carries an ordered prefix.
 
-Milestones (GitHub): **v0.35.0** Desktop context, SourcePorts, and visual
-review · **v0.36.0** MCP admission, provider mappings, and workflow templates ·
-**v0.37.0** Execution substrate, isolation, and compliance evidence ·
-**v0.38.0** Memory, retention, and compaction · **v0.39.0** Background
-automation and onguard UX · **v0.40.0** Safe code workspace workflows ·
-**Track: Source identity and labeling correctness** · **Track: Terminal UX and
-approval polish** · **Research: Non-goals and safe alternatives** ·
-**Backlog: Formal models and deferred breadth**.
+Milestones (GitHub): **01 Product — v0.35.0 — Desktop context, SourcePorts,
+and visual review** · **02 Product — v0.36.0 — MCP admission, provider
+mappings, and workflow templates** · **03 Product — v0.37.0 — Execution
+substrate, isolation, and compliance evidence** · **04 Product — v0.38.0 —
+Memory, retention, and compaction** · **05 Product — v0.39.0 — Background
+automation and onguard UX** · **06 Product — v0.40.0 — Safe code workspace
+workflows** · **07 Support — Source identity and labeling correctness** ·
+**08 Support — Terminal UX and approval polish** · **09 Research — Non-goals
+and safe alternatives** · **10 Backlog — Formal models and deferred breadth**.
 Recently closed:
-**v0.34.0** First-run, connectors, and rich chat readiness · **v0.33.0**
-Streaming turn lifecycle and liveness · **v0.32.0** Interactive workstream
-coordination · **v0.17** Gap hardening & explainability ·
-**v0.27.0** Practical setup + daemon-owned settings ·
-**v0.28.0** Onguard clients + daemon coordination · **v0.29.0** MCP security
-conformance + external server labeling · **v0.30.0** Client integration test
-parity · **v0.31.0** Multi-session security context observability ·
-**v0.25.0** MCP compatibility and security integration.
+**00.11 Done — v0.34.0 — First-run, connectors, and rich chat readiness** ·
+**00.10 Done — v0.33.0 — Streaming turn lifecycle and liveness** ·
+**00.09 Done — v0.32.0 — Interactive workstream coordination** ·
+**00.08 Done — v0.31.0 — Multi-session security context observability** ·
+**00.07 Done — v0.30.0 — Client integration test parity** · **00.06 Done —
+v0.29.0 — MCP security conformance and external server labeling** ·
+**00.05 Done — v0.28.0 — Onguard clients and daemon coordination** ·
+**00.04 Done — v0.27.0 — Practical setup and daemon-owned settings** ·
+**00.03 Done — v0.26.0 — Client parity over daemon RPC** · **00.02 Done —
+v0.25.0 — MCP compatibility and security integration** · **00.01 Done —
+v0.17 — Gap hardening and explainability**.
 
 `ROADMAP.md` is the canonical product roadmap. This file explains sequencing,
 dependencies, and why the next pull should focus on one milestone over another.
@@ -307,7 +312,7 @@ disconnect/heartbeat cancellation and Rich Live streaming.
   per-dispatch stdio secrets require per-call isolation or a server-specific
   auth channel.
 
-## Track: Source identity and labeling correctness
+## 07 Support — Source identity and labeling correctness
 
 The old v0.16 milestone has been redesigned around the remaining correctness
 gap: accurate labels at source boundaries. The decision-refinement/Starlark
@@ -330,7 +335,7 @@ layer is already live, so new work here should not be generic policy plumbing.
 
 ---
 
-## Track: Terminal UX and approval polish
+## 08 Support — Terminal UX and approval polish
 
 The old v0.5 milestone is now terminal-client quality work. It should improve
 practical terminal use without duplicating daemon safety enforcement. Streaming
@@ -355,7 +360,7 @@ events.
 
 ---
 
-## Research: Non-goals and safe alternatives
+## 09 Research — Non-goals and safe alternatives
 
 These issues keep product-pressure topics visible without committing CapDep to
 unsafe or strategically wrong directions.
@@ -370,7 +375,7 @@ unsafe or strategically wrong directions.
 
 ---
 
-## Backlog: Formal models and deferred breadth
+## 10 Backlog — Formal models and deferred breadth
 
 Backlog remains valid but explicitly lower priority than the v0.35-v0.40
 product ladder and source-identity/labeling track:
@@ -730,7 +735,7 @@ Current implementation notes:
 
 ---
 
-## Track: Source identity and labeling correctness
+## 07 Support — Source identity and labeling correctness
 
 The highest-leverage supporting track: the refinement layer is on, and the
 remaining work makes source identity and labels reliable.
@@ -788,7 +793,7 @@ in `workflow-plan.md`. #55 now rides with v0.37 substrate/compliance.
 
 ---
 
-## Track: Terminal UX and approval polish
+## 08 Support — Terminal UX and approval polish
 
 This milestone is now terminal-client quality work, not the whole product UX
 strategy. CapDep has multiple clients: CLI/chat for terminal work, TUI for
@@ -807,7 +812,7 @@ all UX into the REPL.
 
 ---
 
-## Research: Non-goals and safe alternatives
+## 09 Research — Non-goals and safe alternatives
 
 Research tracks intentionally deferred product pressures without turning them
 into implementation commitments: remote/mobile daemon control (#178), broad
@@ -816,7 +821,7 @@ GUI alternatives (#181).
 
 ---
 
-## Backlog: Formal models and deferred breadth
+## 10 Backlog — Formal models and deferred breadth
 
 Deferred formal work and any provider breadth not explicitly scheduled in
 v0.36/v0.37. Pull forward on demand.

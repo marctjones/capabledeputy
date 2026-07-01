@@ -10,8 +10,8 @@ historical backlog snapshots, not the current roadmap.
 rationalized into one live product ladder plus explicit supporting tracks.
 Spec 004 work is merged into v0.36/v0.37 instead of displacing the desktop,
 memory, onguard, and code workspace roadmap. v0.34 is closed, v0.35 is the
-active product focus, all open GitHub issues are milestone-scoped, and v1.0
-remains unscheduled.
+active product focus, all open GitHub issues are milestone-scoped, milestone
+names now carry ordered prefixes, and v1.0 remains unscheduled.
 
 ## Product Ladder — v0.35 → v0.40
 
@@ -26,26 +26,44 @@ flowchart LR
   v35 --> v36 --> v37 --> v38 --> v39 --> v40
 ```
 
-| Milestone | Goal | Spec / tracker |
+| GitHub milestone | Goal | Spec / tracker |
 |---|---|---|
-| **v0.35** (now) | Desktop context, SourcePorts, and visual review | #146–#152 |
-| **v0.36** | MCP admission, provider mappings, and workflow templates | #153–#159, #184–#186 |
-| **v0.37** | Execution substrate, isolation, and compliance evidence | #44, #9, #14, #55–#57, #187–#189 |
-| **v0.38** | Memory, retention, and compaction | #160–#165 |
-| **v0.39** | Background automation and onguard UX | #166–#171 |
-| **v0.40** | Safe code workspace workflows | #172–#177 |
+| **01 Product — v0.35.0 — Desktop context, SourcePorts, and visual review** (now) | Desktop context, SourcePorts, and visual review | #146–#152 |
+| **02 Product — v0.36.0 — MCP admission, provider mappings, and workflow templates** | MCP admission, provider mappings, and workflow templates | #153–#159, #184–#186 |
+| **03 Product — v0.37.0 — Execution substrate, isolation, and compliance evidence** | Execution substrate, isolation, and compliance evidence | #44, #9, #14, #55–#57, #187–#189 |
+| **04 Product — v0.38.0 — Memory, retention, and compaction** | Memory, retention, and compaction | #160–#165 |
+| **05 Product — v0.39.0 — Background automation and onguard UX** | Background automation and onguard UX | #166–#171 |
+| **06 Product — v0.40.0 — Safe code workspace workflows** | Safe code workspace workflows | #172–#177 |
 
 ## Planned Work Coverage
 
 This pass audited the live GitHub tracker: no open issue is unmilestoned.
 The planned work is now grouped as:
 
-| Track | Issues | Why it is outside the product ladder |
+| GitHub milestone | Issues | Why it is outside the product ladder |
 |---|---|---|
-| **Source identity and labeling correctness** | #42, #51, #139 | Cross-cutting safety correctness that should be pulled into v0.35/v0.36 work when it blocks SourcePorts or connector labeling. |
-| **Terminal UX and approval polish** | #16, #17, #19, #27, #29 | Useful client polish, but not the primary desktop-agent path and not daemon safety substrate. |
-| **Research: non-goals and safe alternatives** | #178–#181 | Keeps deliberately deferred product directions visible without treating them as implementation commitments. |
-| **Backlog: formal models and deferred breadth** | #45, #58, #59 | Valuable but lower-priority formal/provider breadth once the practical product ladder is healthier. |
+| **07 Support — Source identity and labeling correctness** | #42, #51, #139 | Cross-cutting safety correctness that should be pulled into v0.35/v0.36 work when it blocks SourcePorts or connector labeling. |
+| **08 Support — Terminal UX and approval polish** | #16, #17, #19, #27, #29 | Useful client polish, but not the primary desktop-agent path and not daemon safety substrate. |
+| **09 Research — Non-goals and safe alternatives** | #178–#181 | Keeps deliberately deferred product directions visible without treating them as implementation commitments. |
+| **10 Backlog — Formal models and deferred breadth** | #45, #58, #59 | Valuable but lower-priority formal/provider breadth once the practical product ladder is healthier. |
+
+### Completed Milestone Names
+
+Closed GitHub milestones use the same ordered-prefix convention:
+
+| GitHub milestone | Status |
+|---|---|
+| **00.01 Done — v0.17 — Gap hardening and explainability** | Closed |
+| **00.02 Done — v0.25.0 — MCP compatibility and security integration** | Closed |
+| **00.03 Done — v0.26.0 — Client parity over daemon RPC** | Closed |
+| **00.04 Done — v0.27.0 — Practical setup and daemon-owned settings** | Closed |
+| **00.05 Done — v0.28.0 — Onguard clients and daemon coordination** | Closed |
+| **00.06 Done — v0.29.0 — MCP security conformance and external server labeling** | Closed |
+| **00.07 Done — v0.30.0 — Client integration test parity** | Closed |
+| **00.08 Done — v0.31.0 — Multi-session security context observability** | Closed |
+| **00.09 Done — v0.32.0 — Interactive workstream coordination** | Closed |
+| **00.10 Done — v0.33.0 — Streaming turn lifecycle and liveness** | Closed |
+| **00.11 Done — v0.34.0 — First-run, connectors, and rich chat readiness** | Closed |
 
 ## Completed Focus — v0.34.0 First-run, Connectors, and Rich Chat Readiness
 
@@ -272,7 +290,7 @@ ordinary RPC call.
 are not backlog. The tracks below remain planned work, but they are
 cross-cutting, supporting, research, or deliberately deferred.)
 
-### Source Identity and Labeling Correctness
+### 07 Support — Source Identity and Labeling Correctness
 
 The old v0.16 policy-expressiveness milestone is now narrowed to the labeling
 oracle. The DecisionInspector/Starlark layer is live and its old parent issue
@@ -285,7 +303,7 @@ boundaries.
 | #51 | Gmail / Drive / Calendar SourcePort canonical-id providers | Open |
 | #139 | Email labeler implementation — rule file plus per-message hook | Open |
 
-### Terminal UX and Approval Polish
+### 08 Support — Terminal UX and Approval Polish
 
 The old v0.5 UX milestone is now terminal-client polish, not the whole product
 UX strategy and not daemon safety substrate. Streaming moved to v0.33. The
@@ -300,7 +318,7 @@ authority.
 | #27 | Inline approval as non-blocking banner | Open |
 | #29 | Unicode width safety in bottom toolbar + 80x24 minimum size | Open |
 
-### Research: Non-Goals and Safe Alternatives
+### 09 Research — Non-Goals and Safe Alternatives
 
 These issues keep important product-pressure topics visible without turning
 them into immediate implementation commitments.
@@ -312,7 +330,7 @@ them into immediate implementation commitments.
 | #180 | Safe community template/extension sharing without marketplace trust collapse | Open |
 | #181 | Web UI or cross-platform GUI alternatives without duplicating daemon functionality | Open |
 
-### Backlog: Formal Models and Deferred Breadth
+### 10 Backlog — Formal Models and Deferred Breadth
 
 Backlog remains intentionally lower priority than the v0.35-v0.40 product
 ladder and the source-identity/labeling track. It is grouped by why it is
