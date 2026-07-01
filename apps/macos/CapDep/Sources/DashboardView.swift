@@ -746,7 +746,7 @@ private struct SetupRow: View {
                     openWindow(id: "google-oauth-wizard")
                 }
             } else if let action = actions.first {
-                Button(ok ? action.label : "Fix") {
+                Button(action.displayLabel) {
                     Task {
                         await model.runSetupAction(action)
                     }

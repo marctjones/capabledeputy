@@ -477,6 +477,10 @@ struct SetupAction: Identifiable, Hashable {
         self.kind = dictionary["kind"] as? String ?? ""
         self.enabled = dictionary["enabled"] as? Bool ?? true
     }
+
+    var displayLabel: String {
+        label.isEmpty ? "Run Action" : label
+    }
 }
 
 struct ConnectorStatus: Identifiable, Hashable {

@@ -9,7 +9,8 @@ historical backlog snapshots, not the current roadmap.
 **Last refreshed:** 2026-07-01 — GitHub milestones and issues were
 rationalized into one live product ladder. Spec 004 work is merged into
 v0.36/v0.37 instead of displacing the desktop, memory, onguard, and code
-workspace roadmap. v1.0 remains unscheduled.
+workspace roadmap. v0.34 closeout evidence is landed locally and v0.35 is now
+the active product focus. v1.0 remains unscheduled.
 
 ## Milestone arc — v0.34 → v0.40
 
@@ -27,8 +28,8 @@ flowchart LR
 
 | Milestone | Goal | Spec / tracker |
 |---|---|---|
-| **v0.34** (now) | First-run setup, connectors, rich chat media, local model routing | #140–#145, #182, #183 |
-| **v0.35** (next) | Desktop context SourcePorts, typed artifacts, signed visual review | #146–#152 |
+| **v0.34** | First-run setup, connectors, rich chat media, local model routing | #140–#145, #182, #183 |
+| **v0.35** (now) | Desktop context SourcePorts, typed artifacts, signed visual review | #146–#152 |
 | **v0.36** | MCP adapter, extension admission, bounded workflow templates | #153–#159, #184–#186 |
 | **v0.37** | Substrate isolation, sandboxed execution, compliance replay | #44, #9, #14, #55–#57, #187–#189 |
 | **v0.38** | Memory, retention, and labeled context compaction | #160–#165 |
@@ -39,7 +40,7 @@ Supporting tracks remain active but outside the main product ladder: v0.16
 labeling oracle, v0.5 terminal UX polish, research/non-goals, and backlog
 formal-model completeness.
 
-## Current Focus — v0.34.0 First-run, Connectors, and Rich Chat Readiness
+## Completed Focus — v0.34.0 First-run, Connectors, and Rich Chat Readiness
 
 Goal: make a fresh CapDep install practical without YAML handholding while
 preserving daemon-owned authority, then make the primary chat surface useful
@@ -56,14 +57,14 @@ selection, and turn cancellation.
 
 | Issue | Work | Local status |
 |---|---|---|
-| #140 | EPIC: First-run, connector, rich chat, and local-model readiness without client-side authority | In progress |
-| #141 | Research onboarding flows in Claude Code, Codex, Goose, OpenHands, and desktop agents | Open |
-| #142 | Daemon setup plan/check RPCs for first-run readiness | Landed locally; issue open |
-| #143 | Connector OAuth readiness tests and guided recovery actions | Landed locally; issue open |
-| #144 | First useful workflow smoke: setup to safe morning briefing | Landed locally; issue open |
-| #145 | Client setup surfaces consume daemon setup plan | In progress |
-| #182 | Rich chat media tools: generated images, fetched images, Wikipedia lead images, and chart artifacts | Landed locally; issue open |
-| #183 | Local model routing and CapDepMac model-mode controls | Landed locally; issue open |
+| #140 | EPIC: First-run, connector, rich chat, and local-model readiness without client-side authority | Done locally |
+| #141 | Research onboarding flows in Claude Code, Codex, Goose, OpenHands, and desktop agents | Done locally |
+| #142 | Daemon setup plan/check RPCs for first-run readiness | Done locally |
+| #143 | Connector OAuth readiness tests and guided recovery actions | Done locally |
+| #144 | First useful workflow smoke: setup to safe morning briefing | Done locally |
+| #145 | Client setup surfaces consume daemon setup plan | Done locally |
+| #182 | Rich chat media tools: generated images, fetched images, Wikipedia lead images, and chart artifacts | Done locally |
+| #183 | Local model routing and CapDepMac model-mode controls | Done locally |
 
 **Landed so far:** `setup.plan` / `setup.check` / `setup.status` /
 `setup.run_action` (`daemon/setup_plan.py`); `connector.status` OAuth
@@ -75,12 +76,11 @@ generated-image rendering guards. Focused tests cover setup, OAuth recovery,
 morning briefing, media policy, image generation/fetch routing, chart output,
 model routing, streaming events, and Swift chat image parsing/rendering.
 
-**Remaining for v0.34 close-out:**
-- #141 — short research note on peer onboarding patterns (daemon-authority
-  preserved).
-- #145 — finish any client gaps and parity drift in setup actions.
-- #182/#183 — finish review, docs, and tracker closure after the local changes
-  are committed and full validation has run.
+**Closeout evidence:** #141 is captured in
+`docs/first-run-onboarding-research.md`; #145 is covered by the client parity
+manifest, source-level setup action label checks, and CLI/TUI/Swift/MCP-control
+setup surfaces. #182/#183 remain backed by focused media/model-routing tests
+and CapDepMac rendering/model-mode safeguards.
 
 ### v0.34.0 done-when
 
@@ -97,7 +97,7 @@ model routing, streaming events, and Swift chat image parsing/rendering.
   policy-gated, test-covered, and visible in CapDepMac without trusting
   hallucinated file paths.
 
-## Next Focus — v0.35.0 Desktop Context SourcePorts and Visual Review
+## Current Focus — v0.35.0 Desktop Context SourcePorts and Visual Review
 
 **Depends on:** v0.34 chat/setup readiness. Once the app can guide setup and
 produce useful policy-gated turns, the next table-stakes desktop-agent gap is

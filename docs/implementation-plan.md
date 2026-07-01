@@ -3,8 +3,9 @@
 Living plan that organizes the open GitHub issues into sequenced
 milestones with dependencies. Authoritative status is GitHub; this doc is
 the *sequencing rationale*. Last refreshed 2026-07-01 — active arc is
-**v0.34 → v0.40** after merging the local spec-004/substrate plan with the
-live GitHub product milestones.
+**v0.35 → v0.40** after closing the v0.34 first-run/rich-chat milestone and
+merging the local spec-004/substrate plan with the live GitHub product
+milestones.
 
 Milestones (GitHub): **v0.34.0** First-run, connectors, and rich chat
 readiness · **v0.35.0** Desktop context SourcePorts and visual review ·
@@ -15,8 +16,9 @@ Onguard notifications and background automation UX · **v0.40.0** Safe code
 workspace workflows · **v0.16** Policy expressiveness & labeling · **v0.5**
 terminal UX polish · **Backlog** Formal models and deferred provider breadth.
 Recently closed:
-**v0.33.0** Streaming turn lifecycle and liveness · **v0.32.0** Interactive
-workstream coordination · **v0.17** Gap hardening & explainability ·
+**v0.34.0** First-run, connectors, and rich chat readiness · **v0.33.0**
+Streaming turn lifecycle and liveness · **v0.32.0** Interactive workstream
+coordination · **v0.17** Gap hardening & explainability ·
 **v0.27.0** Practical setup + daemon-owned settings ·
 **v0.28.0** Onguard clients + daemon coordination · **v0.29.0** MCP security
 conformance + external server labeling · **v0.30.0** Client integration test
@@ -27,40 +29,37 @@ parity · **v0.31.0** Multi-session security context observability ·
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **v0.34 first-run + rich chat readiness** — finish setup-plan parity,
-   onboarding research, rich media tool review, and local model-routing
-   closure (#140-#145, #182, #183).
-2. **v0.35 desktop context and signed review** — SourcePorts, typed
+1. **v0.35 desktop context and signed review** — SourcePorts, typed
    artifacts, visual review cards, and exact-hash approval payloads (#146-#152).
-3. **v0.36 MCP adapter + templates** — generic adapter mapping audit, tier-1
+2. **v0.36 MCP adapter + templates** — generic adapter mapping audit, tier-1
    MCP mappings, HTTP OAuth mediation, extension admission, and bounded
    workflow templates (#153-#159, #184-#186).
-4. **v0.37 substrate and evidence** — upstream isolation, sandboxed
+3. **v0.37 substrate and evidence** — upstream isolation, sandboxed
    `code.execute`, versioned writes, cross-host approval envelope, OTLP/OSCAL,
    and adversarial substrate demos (#44, #9, #14, #55-#57, #187-#189).
-5. **v0.38 memory and compaction** — retention policy, memory controls, and
+4. **v0.38 memory and compaction** — retention policy, memory controls, and
    labeled summary artifacts (#160-#165).
-6. **v0.39 onguard extensibility** — background clients should be normal daemon
+5. **v0.39 onguard extensibility** — background clients should be normal daemon
    clients, not privileged sidecars or daemon-embedded product workflows.
-7. **v0.40 safe code workspace workflows** — repository labels, sandboxed
+6. **v0.40 safe code workspace workflows** — repository labels, sandboxed
    build/test artifacts, typed diffs/commits/PRs, and violation tests.
-8. **MCP security integration** — MCP must remain an integration substrate, not
+7. **MCP security integration** — MCP must remain an integration substrate, not
    a second authority path. v0.29 turns the current targeted tests into a
    security conformance suite before CapDep relies heavily on external MCP
    servers and headless clients.
-9. **Client proof, not just parity claims** — v0.30 replaces source/manifest
+8. **Client proof, not just parity claims** — v0.30 replaces source/manifest
    checks with live daemon integration coverage for CLI, TUI, Swift GUI, and
    MCP-control.
    Coverage is ratcheted independently for daemon files, clients, MCP
    surfaces, bundled MCP servers, and tools; the near-term target is 85% per
    group and the stretch target is 90%, but CI first enforces non-regression
    from the checked-in baseline.
-10. **Multi-session explainability** — v0.31 made labels, flow patterns,
+9. **Multi-session explainability** — v0.31 made labels, flow patterns,
    external actors, approvals, policy rules, provenance, and audit inspectable
    across turns and clients.
-11. **The labeling oracle** — IFC guarantees ride on correct labels. v0.16 is
+10. **The labeling oracle** — IFC guarantees ride on correct labels. v0.16 is
    now narrowed to canonical source identity and per-message email labeling.
-12. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
+11. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
    human oversight. The decision-refinement layer is live; future work should
    add concrete inspectors or policy scripts, not revive the old epic.
 
@@ -74,6 +73,7 @@ The policy themes come from `docs/security-alignment-assessment.md`:
 |---|---|---|
 | #137/#136/#134/#133/#138 | Daemon-enforced workstream ownership, daemon state views, client parity, MCP-control workstream tools, and multi-client tests | v0.32.0 |
 | #31/#32/#22/#13 | Daemon-owned turn lifecycle, heartbeat/disconnect cancellation, CLI Rich Live turn streaming, and stdio upstream no-broad-env hardening | v0.33.0 |
+| #140-#145/#182/#183 | First-run setup plan/check/status/actions, OAuth recovery, morning-briefing smoke, peer onboarding research, rich chat media, and local model routing | v0.34.0 |
 | #11/#54 | Quarantined forwardable/public-facts schemas and purpose-contamination residual audit | v0.17 |
 | #28 | Shared CLI semantic style palette | v0.5 |
 | #113-#132 | New tracker plan for MCP conformance, client integration test parity, and multi-session security context observability | v0.29.0-v0.31.0 |
@@ -105,22 +105,22 @@ moved to the milestone where implementation belongs.
 
 ## v0.34.0 — First-run, connectors, and rich chat readiness
 
-This is the active milestone. v0.33 made long-running turns observable and
-cancellable; v0.34 should make a first install usable and make the primary
-chat surface useful enough to validate that setup under real policy.
+Closed locally on 2026-07-01. v0.33 made long-running turns observable and
+cancellable; v0.34 makes a first install usable and makes the primary chat
+surface useful enough to validate setup under real policy.
 
 ### Scope
 
 | Issue | Work | Status |
 |---|---|---|
-| #140 | EPIC: first-run, connector, rich chat, and local-model readiness | In progress |
-| #141 | Research peer onboarding flows | Open |
+| #140 | EPIC: first-run, connector, rich chat, and local-model readiness | **Done** |
+| #141 | Research peer onboarding flows | **Done** |
 | #142 | `setup.plan` / `setup.check` RPCs | **Done** |
 | #143 | OAuth recovery tests + `connector.status` actions | **Done** |
 | #144 | Morning-briefing workflow smoke | **Done** |
-| #145 | Clients consume daemon setup plan | In progress |
-| #182 | Rich chat media tools: generated/fetched images, Wikipedia lead images, chart artifacts | Local implementation in review |
-| #183 | Local model routing and CapDepMac model-mode controls | Local implementation in review |
+| #145 | Clients consume daemon setup plan | **Done** |
+| #182 | Rich chat media tools: generated/fetched images, Wikipedia lead images, chart artifacts | **Done** |
+| #183 | Local model routing and CapDepMac model-mode controls | **Done** |
 
 ### Sequencing
 
@@ -128,10 +128,11 @@ chat surface useful enough to validate that setup under real policy.
 2. ~~OAuth recovery descriptors~~ (**done** — `test_setup_oauth_recovery.py`).
 3. ~~Morning-briefing smoke~~ (**done locally** —
    `test_setup_morning_briefing_smoke.py`).
-4. Review and close the rich media/model-routing local work (#182, #183).
-5. Close #145 client setup parity gaps and write #141 onboarding note.
-6. Tag v0.34.0 when done-when criteria pass and GitHub issues match shipped
-   evidence.
+4. ~~Review and close the rich media/model-routing local work~~ (#182, #183).
+5. ~~Close #145 client setup parity gaps and write #141 onboarding note~~
+   (`docs/first-run-onboarding-research.md`).
+6. Close the GitHub milestone when done-when criteria pass and GitHub issues
+   match shipped evidence.
 
 ### Done-when
 

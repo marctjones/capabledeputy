@@ -45,6 +45,8 @@ the LLM — controls capability dispatch.
   Podman quadlet, and the rootless deployment story.
 - **[Local-model planner](local-model-planner.md)** — local-first model
   planning; Apple Silicon uses the MLX backend by default.
+- **[First-run onboarding research](first-run-onboarding-research.md)** —
+  peer-agent setup patterns and the v0.34 daemon-owned onboarding contract.
 - **[TLA+ spec](../spec/CapableDeputy.tla)** — formal model of the session
   graph operations and policy decision function, with safety properties
   checked by TLC.

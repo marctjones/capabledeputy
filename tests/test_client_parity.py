@@ -165,6 +165,26 @@ def test_tui_implements_setup_and_workflow_manifested_methods() -> None:
         assert f'"{method}"' in tui_text, f"TUI missing {method}"
 
 
+def test_setup_surfaces_preserve_daemon_action_labels() -> None:
+    cli_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "src" / "capabledeputy" / "cli").glob("*.py")
+    )
+    tui_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "src" / "capabledeputy" / "tui").glob("*.py")
+    )
+    swift_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "apps" / "macos" / "CapDep" / "Sources").glob("*.swift")
+    )
+
+    assert 'action.get("label", "")' in cli_text
+    assert 'action.get("label", "")' in tui_text
+    assert "Button(action.displayLabel)" in swift_text
+    assert 'Button(ok ? action.label : "Fix")' not in swift_text
+
+
 def test_tui_has_generic_daemon_rpc_workbench() -> None:
     tui_text = "\n".join(
         path.read_text(encoding="utf-8")
