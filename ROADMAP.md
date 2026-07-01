@@ -208,15 +208,33 @@ deliberately, v0.37 hardens their execution substrate and evidence pipeline.
 
 | Issue | Work | Status |
 |---|---|---|
-| #44 | EPIC: Substrate isolation, execution, and compliance replay | Open |
-| #9 | Run upstream MCP servers inside Podman by default | Open |
-| #14 | Per-upstream network egress allowlist for stdio upstreams | Open |
-| #55 | Cross-host RemoteApprovalEnvelope structured four-axis wire format | Open |
-| #56 | More VersionedWritePort backends | Open |
-| #57 | Modal + Firecracker SandboxActuators for heavier isolation providers | Open |
-| #187 | `EXECUTE.sandbox` `code.execute` native tool over Podman `SandboxActuator` | Open |
-| #188 | OTLP exporter, OSCAL assessment plan, and compliance audit-replay pipeline | Open |
-| #189 | Meta-director and ToxicSkills regression scenarios for MCP/substrate safety | Open |
+| #44 | EPIC: Substrate isolation, execution, and compliance replay | Done |
+| #9 | Run upstream MCP servers inside Podman by default | Done |
+| #14 | Per-upstream network egress allowlist for stdio upstreams | Done |
+| #55 | Cross-host RemoteApprovalEnvelope structured four-axis wire format | Done |
+| #56 | More VersionedWritePort backends | Done |
+| #57 | Modal + Firecracker SandboxActuators for heavier isolation providers | Done |
+| #187 | `EXECUTE.sandbox` `code.execute` native tool over Podman `SandboxActuator` | Done |
+| #188 | OTLP exporter, OSCAL assessment plan, and compliance audit-replay pipeline | Done |
+| #189 | Meta-director and ToxicSkills regression scenarios for MCP/substrate safety | Done |
+
+### v0.37.0 implementation notes
+
+- `upstream_isolation_defaults` now applies Podman isolation to stdio upstreams
+  unless an entry declares its own profile or explicitly opts out; bridge mode
+  requires `allowed_hosts` and disables container DNS resolution.
+- `sandbox.run` is joined by `code.execute`, both on the same
+  `SandboxActuator` lifecycle/audit path.
+- `VersionedWritePort` has S3 Object Lock and Google Drive revision providers
+  alongside git.
+- Remote approvals carry `capdep.remote-approval.v1` plus structured four-axis
+  wire fields covered by the signature.
+- Compliance now emits OSCAL assessment plans, OTLP trace JSON, and replay
+  reports that flag unmapped policy decisions and undiscarded sandbox regions.
+- Modal and Firecracker command-runner actuators implement the same port as
+  Podman without introducing a second policy authority.
+- Adversarial MCP regressions cover meta-director prompt injection and
+  ToxicSkills metadata smuggling.
 
 ### v0.37.0 done-when
 

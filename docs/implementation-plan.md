@@ -240,15 +240,15 @@ roadmap text and backlog.
 
 | Issue | Work |
 |---|---|
-| #44 | EPIC: Substrate isolation, execution, and compliance replay |
-| #9 | Run upstream MCP servers inside Podman by default |
-| #14 | Per-upstream network egress allowlist for stdio upstreams |
-| #55 | Cross-host RemoteApprovalEnvelope structured four-axis wire format |
-| #56 | More VersionedWritePort backends |
-| #57 | Modal + Firecracker SandboxActuators for heavier isolation providers |
-| #187 | `EXECUTE.sandbox` `code.execute` native tool over Podman `SandboxActuator` |
-| #188 | OTLP exporter, OSCAL assessment plan, and compliance audit-replay pipeline |
-| #189 | Meta-director and ToxicSkills regression scenarios for MCP/substrate safety |
+| #44 | EPIC: Substrate isolation, execution, and compliance replay — implemented |
+| #9 | Run upstream MCP servers inside Podman by default — implemented |
+| #14 | Per-upstream network egress allowlist for stdio upstreams — implemented |
+| #55 | Cross-host RemoteApprovalEnvelope structured four-axis wire format — implemented |
+| #56 | More VersionedWritePort backends — implemented |
+| #57 | Modal + Firecracker SandboxActuators for heavier isolation providers — implemented |
+| #187 | `EXECUTE.sandbox` `code.execute` native tool over Podman `SandboxActuator` — implemented |
+| #188 | OTLP exporter, OSCAL assessment plan, and compliance audit-replay pipeline — implemented |
+| #189 | Meta-director and ToxicSkills regression scenarios for MCP/substrate safety — implemented |
 
 ### Sequencing
 
@@ -263,6 +263,22 @@ roadmap text and backlog.
 Operators can enable sandboxed execution, upstream isolation, versioned writes,
 compliance replay, and heavier isolation providers without a second policy
 authority path.
+
+### Completion evidence
+
+- `upstream_isolation_defaults` covers inherited Podman stdio isolation; bridge
+  mode requires `allowed_hosts` and emits DNS-disabled host pinning.
+- `code.execute` uses the same `EXECUTE.sandbox` capability and
+  `SandboxActuator` lifecycle/audit path as `sandbox.run`.
+- S3 Object Lock and Google Drive revisions are registered
+  `VersionedWritePort` providers.
+- `RemoteApprovalEnvelope` signs the v1 schema, destination, structured label
+  state, Axis C effect class, Axis D decision context, and nonce.
+- Compliance commands emit OSCAL assessment plans, OTLP trace JSON, and audit
+  replay reports.
+- Modal and Firecracker command-runner actuators extend the substrate port.
+- Meta-director and ToxicSkills tests verify malicious MCP descriptions/metadata
+  cannot bypass strict classification or operator capability overrides.
 
 ## v0.38.0 — Memory, retention, and compaction
 
