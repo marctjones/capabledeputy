@@ -45,7 +45,6 @@ from capabledeputy.tools.registry import ToolDefinition, ToolNotFoundError, Tool
 
 if TYPE_CHECKING:
     from capabledeputy.agent.tool_families import ToolFamiliesConfig
-    from capabledeputy.agent.tool_selection import ToolSelectionResult
     from capabledeputy.llm.pool import ModelPool
 
 _TOOL_CALL_INSTRUCTIONS_NATIVE = """CRITICAL — how you call tools:
@@ -230,9 +229,7 @@ def _looks_like_failed_tool_parse(content: str) -> bool:
     lowered = content.lower()
     if "tool_calls" in content or "```json" in lowered:
         return True
-    if "{" in content and ("tool_call" in lowered or '"name"' in content):
-        return True
-    return False
+    return "{" in content and ("tool_call" in lowered or '"name"' in content)
 
 
 def _call_signature(tool_name: str, args: dict) -> str:
@@ -594,24 +591,12 @@ async def run_turn_streaming(
     Token-level streaming (`LLMTokenReceived`) is emitted when the
     active LLM client exposes `respond_streaming` (MLX on macOS).
     """
-    from capabledeputy.agent.events import (
-        IterationStarted,
-        LLMRequestSent,
-        LLMTokenReceived,
-        LLMResponseReceived,
-        ModelSelected,
-        ToolDispatched,
-        ToolReturned,
-        TurnCompleted,
-        TurnInterrupted,
-    )
     from capabledeputy.agent.chat_turn import (
         CHAT_MAX_TOKENS,
         IMAGE_GENERATION_RETRY_NOTICE,
         IMAGE_PATH_HALLUCINATION_RETRY_NOTICE,
         allowed_image_generate_paths,
         collect_prior_work_image_paths,
-        has_image_generation_intent,
         has_probable_image_generation_intent,
         image_generate_tool_names_in,
         is_conversational_turn,
@@ -620,13 +605,24 @@ async def run_turn_streaming(
         repair_hallucinated_image_markdown,
         should_force_image_generate_tool,
     )
-    from capabledeputy.llm.mlx_client import MLXLLMClient, finalize_mlx_text
+    from capabledeputy.agent.events import (
+        IterationStarted,
+        LLMRequestSent,
+        LLMResponseReceived,
+        LLMTokenReceived,
+        ModelSelected,
+        ToolDispatched,
+        ToolReturned,
+        TurnCompleted,
+        TurnInterrupted,
+    )
     from capabledeputy.agent.tool_families import load_tool_families
     from capabledeputy.agent.tool_selection import (
         ToolSelectionResult,
         select_tools_for_turn_async,
         widen_tool_surface,
     )
+    from capabledeputy.llm.mlx_client import MLXLLMClient, finalize_mlx_text
     from capabledeputy.llm.models_config import ToolSelectionConfig
     from capabledeputy.llm.routing import ModelRoutingContext, ModelRoutingResult
 
@@ -926,6 +922,47 @@ async def run_turn_streaming(
     force_image_generate = should_force_image_generate_tool(user_message)
     probable_image_request = has_probable_image_generation_intent(user_message)
     selected_tool_names = {t.name for t in tool_surface.selected}
+    visible_tool_names_all = {t.name for t in visible_all}
+    if (
+        (force_image_generate or probable_image_request)
+        and not image_generate_tool_names_in(visible_tool_names_all)
+    ):
+        final_content = (
+            "I cannot generate an image in this session because no generated-image "
+            "tool is registered or visible to the daemon. I will not invent a local "
+            "image path; enable an admitted image generation tool and retry."
+        )
+        await audit.write(
+            Event(
+                event_type=EventType.LLM_ERROR,
+                session_id=session_id,
+                turn_id=len(session.history),
+                step_id=0,
+                payload={
+                    "error_type": "ImageGenerationToolUnavailable",
+                    "message": final_content,
+                    "image_generation_intent": True,
+                    "n_visible_tools": len(visible_all),
+                    "selected_tools": list(selected_tool_names),
+                },
+            ),
+        )
+        agent_turn = Turn(
+            turn_id=len(session.history),
+            role="agent",
+            content=final_content,
+        )
+        await graph.add_turn(session_id, agent_turn)
+        yield TurnCompleted(
+            iteration=0,
+            result=AgentTurnResult(
+                content=final_content,
+                iterations=0,
+                finish_reason=FinishReason.STOP,
+                tool_outcomes=(),
+            ),
+        )
+        return
     # Issue #36 — context-window guardrail.
     # We learn the model name on the first response; until then we
     # use a conservative default. The soft warning fires at 80%, the

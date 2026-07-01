@@ -13,7 +13,7 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import RLock
 from typing import Any
@@ -37,6 +37,22 @@ _DESTRUCTIVE_ROUTE = ApprovalRoute(
 class _MemoryEntry:
     value: Any
     label_state: LabelState
+    created_at: str | None = None
+    updated_at: str | None = None
+    trust_class: str = "session"
+
+    def to_dict(self, key: str) -> dict[str, Any]:
+        from capabledeputy.policy.labels import legacy_labels_present
+
+        return {
+            "key": key,
+            "value": self.value,
+            "label_state": self.label_state.to_dict(),
+            "labels": sorted(legacy_labels_present(self.label_state)),
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "trust_class": self.trust_class,
+        }
 
 
 class LabeledMemoryStore:
@@ -50,10 +66,24 @@ class LabeledMemoryStore:
     def durable(self) -> bool:
         return self._db_path is not None
 
-    def write(self, key: str, value: Any, label_state: LabelState | frozenset[Any]) -> None:
+    def write(
+        self,
+        key: str,
+        value: Any,
+        label_state: LabelState | frozenset[Any],
+        *,
+        trust_class: str = "session",
+    ) -> None:
         normalized_label_state = _normalize_label_state(label_state)
         if self._db_path is None:
-            self._data[key] = _MemoryEntry(value=value, label_state=normalized_label_state)
+            now = _utcnow_iso()
+            self._data[key] = _MemoryEntry(
+                value=value,
+                label_state=normalized_label_state,
+                created_at=now,
+                updated_at=now,
+                trust_class=trust_class,
+            )
             return
         self._ensure_initialized()
         now = _utcnow_iso()
@@ -62,14 +92,17 @@ class LabeledMemoryStore:
         with self._connection() as conn:
             conn.execute(
                 """
-                INSERT INTO memory_entries (key, value_json, label_state, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO memory_entries (
+                    key, value_json, label_state, trust_class, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(key) DO UPDATE SET
                     value_json = excluded.value_json,
                     label_state = excluded.label_state,
+                    trust_class = excluded.trust_class,
                     updated_at = excluded.updated_at
                 """,
-                (key, encoded_value, encoded_labels, now, now),
+                (key, encoded_value, encoded_labels, trust_class, now, now),
             )
 
     def read(self, key: str) -> _MemoryEntry | None:
@@ -78,7 +111,10 @@ class LabeledMemoryStore:
         self._ensure_initialized()
         with self._connection() as conn:
             row = conn.execute(
-                "SELECT value_json, label_state FROM memory_entries WHERE key = ?",
+                """
+                SELECT value_json, label_state, trust_class, created_at, updated_at
+                FROM memory_entries WHERE key = ?
+                """,
                 (key,),
             ).fetchone()
         if row is None:
@@ -86,6 +122,9 @@ class LabeledMemoryStore:
         return _MemoryEntry(
             value=json.loads(row["value_json"]),
             label_state=LabelState.from_dict(json.loads(row["label_state"])),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            trust_class=row["trust_class"] or "session",
         )
 
     def keys(self) -> list[str]:
@@ -105,7 +144,8 @@ class LabeledMemoryStore:
         return self.label_state_of(key)
 
     def snapshot(self) -> dict[str, Any]:
-        keys = self.keys()
+        entries = self.entries(include_values=False)
+        keys = [entry["key"] for entry in entries]
         return {
             "durable": self.durable,
             "path": str(self._db_path) if self._db_path is not None else None,
@@ -114,6 +154,66 @@ class LabeledMemoryStore:
             "labels_by_key": {
                 key: self.label_state_of(key).to_dict() for key in keys
             },
+            "trust_classes": _count_by(entry["trust_class"] for entry in entries),
+        }
+
+    def entries(self, *, include_values: bool = False) -> list[dict[str, Any]]:
+        if self._db_path is None:
+            out = [entry.to_dict(key) for key, entry in sorted(self._data.items())]
+        else:
+            self._ensure_initialized()
+            with self._connection() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT key, value_json, label_state, trust_class, created_at, updated_at
+                    FROM memory_entries ORDER BY key
+                    """,
+                ).fetchall()
+            out = [
+                _MemoryEntry(
+                    value=json.loads(row["value_json"]),
+                    label_state=LabelState.from_dict(json.loads(row["label_state"])),
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"],
+                    trust_class=row["trust_class"] or "session",
+                ).to_dict(str(row["key"]))
+                for row in rows
+            ]
+        if not include_values:
+            for entry in out:
+                entry.pop("value", None)
+        return out
+
+    def prune(
+        self,
+        *,
+        older_than_days: int | None = None,
+        trust_class: str | None = None,
+        dry_run: bool = True,
+    ) -> dict[str, Any]:
+        cutoff = None
+        if older_than_days is not None:
+            cutoff = (datetime.now(UTC) - timedelta(days=max(0, older_than_days))).isoformat()
+        candidates = []
+        for entry in self.entries(include_values=False):
+            if trust_class and entry["trust_class"] != trust_class:
+                continue
+            if cutoff is not None and str(entry.get("updated_at") or "") >= cutoff:
+                continue
+            candidates.append(entry)
+        deleted: list[str] = []
+        if not dry_run:
+            for entry in candidates:
+                if self.delete(str(entry["key"])):
+                    deleted.append(str(entry["key"]))
+        return {
+            "dry_run": dry_run,
+            "older_than_days": older_than_days,
+            "trust_class": trust_class,
+            "candidate_count": len(candidates),
+            "deleted_count": len(deleted),
+            "candidates": candidates,
+            "deleted_keys": deleted,
         }
 
     def delete(self, key: str) -> bool:
@@ -138,11 +238,21 @@ class LabeledMemoryStore:
                         key TEXT PRIMARY KEY,
                         value_json TEXT NOT NULL,
                         label_state TEXT NOT NULL,
+                        trust_class TEXT NOT NULL DEFAULT 'session',
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL
                     )
                     """,
                 )
+                columns = {
+                    str(row["name"])
+                    for row in conn.execute("PRAGMA table_info(memory_entries)").fetchall()
+                }
+                if "trust_class" not in columns:
+                    conn.execute(
+                        "ALTER TABLE memory_entries "
+                        "ADD COLUMN trust_class TEXT NOT NULL DEFAULT 'session'",
+                    )
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_memory_entries_updated "
                     "ON memory_entries(updated_at)",
@@ -171,6 +281,14 @@ def _resolved_labels_from_state(label_state: LabelState) -> ResolvedLabels:
     )
     axis_b = tuple(tag.level.value for tag in sorted(label_state.b, key=lambda t: t.level.value))
     return ResolvedLabels(axis_a=axis_a, axis_b=axis_b)
+
+
+def _count_by(values: Any) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        key = str(value or "unset")
+        counts[key] = counts.get(key, 0) + 1
+    return counts
 
 
 def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:

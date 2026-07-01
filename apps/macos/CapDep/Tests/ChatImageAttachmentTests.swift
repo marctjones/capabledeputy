@@ -15,4 +15,19 @@ final class ChatImageAttachmentTests: XCTestCase {
         let merged = ChatImageAttachment.appendSnippet("![again](/tmp/plot.png)", to: existing)
         XCTAssertNil(merged)
     }
+
+    func testPreserveImageSnippetsKeepsStructuredAttachmentOnFinalText() {
+        let streamed = "Rendering...\n\n![generated](/tmp/generated.png)"
+        let merged = ChatImageAttachment.preserveImageSnippets(
+            from: streamed,
+            in: "Here is the image.",
+        )
+        XCTAssertEqual(merged, "Here is the image.\n\n![generated](/tmp/generated.png)")
+    }
+
+    func testPreserveImageSnippetsDoesNotDuplicateFinalMarkdown() {
+        let streamed = "Rendering...\n\n![generated](/tmp/generated.png)"
+        let final = "Done.\n\n![generated](/tmp/generated.png)"
+        XCTAssertEqual(ChatImageAttachment.preserveImageSnippets(from: streamed, in: final), final)
+    }
 }

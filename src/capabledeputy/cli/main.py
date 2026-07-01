@@ -1233,10 +1233,86 @@ def config_log_locations_command(
 
 @app.command("memory")
 def memory_command(
+    policy: Annotated[
+        bool,
+        typer.Option("--policy", help="Show daemon memory policy summary."),
+    ] = False,
+    compact_session: Annotated[
+        str | None,
+        typer.Option(
+            "--compact-session",
+            help="Create a labeled compaction artifact for a session.",
+        ),
+    ] = None,
+    keep_last: Annotated[
+        int,
+        typer.Option("--keep-last", help="Recent turns to leave out of the compaction artifact."),
+    ] = 8,
+    prune_days: Annotated[
+        int | None,
+        typer.Option("--prune-days", help="Prune memory entries older than this many days."),
+    ] = None,
+    trust_class: Annotated[
+        str | None,
+        typer.Option("--trust-class", help="Filter memory/prune by trust class."),
+    ] = None,
+    apply: Annotated[
+        bool,
+        typer.Option("--apply", help="Apply a prune. Without this, pruning is a dry run."),
+    ] = False,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    """List daemon memory entries and labels."""
-    result = anyio.run(DaemonClient(default_socket_path()).call, "memory.entries", {})
+    """Inspect daemon memory entries, retention policy, pruning, and compaction."""
+    client = DaemonClient(default_socket_path())
+    if policy:
+        result = anyio.run(client.call, "memory.policy", {})
+        if json_output:
+            console.print_json(data=result)
+            return
+        console.print("[bold]memory policy[/bold]")
+        console.print(f"durable: {result.get('durable', False)}")
+        console.print(f"path: {result.get('path') or '(memory-only)'}")
+        console.print(f"entries: {result.get('entry_count', 0)}")
+        console.print(f"trust classes: {result.get('trust_classes', {})}")
+        return
+    if compact_session:
+        result = anyio.run(
+            client.call,
+            "memory.compact_session",
+            {"session_id": compact_session, "keep_last": keep_last},
+        )
+        if json_output:
+            console.print_json(data=result)
+            return
+        if result.get("compacted"):
+            console.print(f"[green]compaction artifact:[/green] {result.get('key')}")
+        else:
+            console.print(f"[yellow]not compacted:[/yellow] {result.get('reason')}")
+        return
+    if prune_days is not None or trust_class is not None:
+        result = anyio.run(
+            client.call,
+            "memory.prune",
+            {
+                "older_than_days": prune_days,
+                "trust_class": trust_class,
+                "apply": apply,
+            },
+        )
+        if json_output:
+            console.print_json(data=result)
+            return
+        mode = "deleted" if apply else "would delete"
+        count_key = "deleted_count" if apply else "candidate_count"
+        console.print(
+            f"[bold]memory prune[/bold] {mode} "
+            f"{result.get(count_key, 0)} entrie(s)",
+        )
+        for entry in result.get("candidates", []):
+            console.print(f"  - {entry.get('key')} [{entry.get('trust_class')}]")
+        return
+
+    result = anyio.run(client.call, "memory.entries", {})
     if json_output:
         console.print_json(data=result)
         return
@@ -1245,9 +1321,16 @@ def memory_command(
     entries = result.get("entries", [])
     table = Table(title=f"Memory entries ({len(entries)})")
     table.add_column("Key")
+    table.add_column("Trust")
     table.add_column("Labels")
+    table.add_column("Updated")
     for entry in entries:
-        table.add_row(entry.get("key", ""), ", ".join(entry.get("labels", [])))
+        table.add_row(
+            entry.get("key", ""),
+            entry.get("trust_class", ""),
+            ", ".join(entry.get("labels", [])),
+            entry.get("updated_at", "") or "",
+        )
     console.print(table)
 
 

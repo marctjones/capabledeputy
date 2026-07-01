@@ -25,8 +25,8 @@ from capabledeputy.agent.events import (
     event_to_dict,
 )
 from capabledeputy.agent.loop import run_turn_streaming
-from capabledeputy.daemon.image_attachments import image_attachment_payloads_from_outcome
 from capabledeputy.audit.events import Event, EventType
+from capabledeputy.daemon.image_attachments import image_attachment_payloads_from_outcome
 from capabledeputy.mode.dispatcher import ExecutionMode
 from capabledeputy.policy.labels import legacy_labels_present
 from capabledeputy.session.coordination import WorkstreamOwnershipError
@@ -119,6 +119,7 @@ class TurnLifecycleManager:
         self._lock = anyio.Lock()
         self._max_events_per_turn = max_events_per_turn
         self._emitted_image_paths: dict[str, set[str]] = {}
+        self._image_attachments: dict[str, list[dict[str, str]]] = {}
         self._tools_in_flight: dict[str, int] = {}
 
     async def start(
@@ -482,6 +483,7 @@ class TurnLifecycleManager:
                 if path in seen:
                     continue
                 seen.add(path)
+                self._image_attachments.setdefault(turn_id, []).append(attachment)
                 await self._emit(turn_id, "image_attachment", attachment)
         elif isinstance(event, TurnCompleted):
             result = event.result
@@ -490,6 +492,7 @@ class TurnLifecycleManager:
                 "iterations": result.iterations,
                 "finish_reason": result.finish_reason.value,
                 "tool_outcomes": [_outcome_to_dict(o) for o in result.tool_outcomes],
+                "image_attachments": list(self._image_attachments.get(turn_id, [])),
             }
             try:
                 from capabledeputy.debug.chat_trace import log
@@ -505,7 +508,9 @@ class TurnLifecycleManager:
                 )
             except Exception:
                 pass
+            await self._emit(turn_id, event.kind, payload)
             await self._finish_completed(turn_id, payload["result"])
+            return
         elif isinstance(event, TurnInterrupted):
             payload["partial_outcomes"] = [_outcome_to_dict(o) for o in event.partial_outcomes]
             await self._finish_interrupted(
@@ -514,6 +519,7 @@ class TurnLifecycleManager:
                 partial_content=event.partial_content,
                 partial_outcomes=tuple(payload["partial_outcomes"]),
             )
+            return
         await self._emit(turn_id, event.kind, payload)
 
     async def _append_partial_content(self, turn_id: str, text: str) -> str:
@@ -543,6 +549,7 @@ class TurnLifecycleManager:
 
     async def _finish_completed(self, turn_id: str, result: dict[str, Any]) -> None:
         self._emitted_image_paths.pop(turn_id, None)
+        self._image_attachments.pop(turn_id, None)
         async with self._lock:
             turn = self._turns[turn_id]
             self._turns[turn_id] = replace(
@@ -567,18 +574,11 @@ class TurnLifecycleManager:
                 return
             outcomes = partial_outcomes or turn.partial_outcomes
             merged_partial = partial_content or turn.partial_content
-            self._turns[turn_id] = replace(
-                turn,
-                status="interrupted",
-                cancel_reason=reason,
-                partial_content=merged_partial,
-                partial_outcomes=outcomes,
-                updated_at=datetime.now(UTC),
-            )
+            session_id = turn.session_id
         await self._app.audit.write(
             Event(
                 event_type=EventType.TURN_INTERRUPTED,
-                session_id=self._turns[turn_id].session_id,
+                session_id=session_id,
                 payload={"turn_id": turn_id, "reason": reason},
             ),
         )
@@ -591,6 +591,18 @@ class TurnLifecycleManager:
                 "partial_outcomes": list(outcomes),
             },
         )
+        async with self._lock:
+            turn = self._turns[turn_id]
+            if turn.status in {"completed", "interrupted", "error"}:
+                return
+            self._turns[turn_id] = replace(
+                turn,
+                status="interrupted",
+                cancel_reason=reason,
+                partial_content=merged_partial,
+                partial_outcomes=outcomes,
+                updated_at=datetime.now(UTC),
+            )
 
     async def _finish_error(self, turn_id: str, exc: BaseException) -> None:
         async with self._lock:

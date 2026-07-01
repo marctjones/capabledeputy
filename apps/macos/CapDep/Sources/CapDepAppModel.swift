@@ -880,9 +880,14 @@ final class CapDepAppModel: ObservableObject {
         switch type {
         case "completed":
             let result = payload["result"] as? [String: Any] ?? [:]
-            let content = result["content"] as? String
+            let streamed = chatMessages.last(where: { $0.id == streamingAssistantMessageID })?.content ?? ""
+            let finalText = result["content"] as? String
                 ?? chatMessages.last(where: { $0.id == streamingAssistantMessageID })?.content
                 ?? ""
+            let content = ChatImageAttachment.preserveImageSnippets(
+                from: streamed,
+                in: finalText,
+            )
             finalizeStreamingAssistant(content)
             currentToolOutcomes = (result["tool_outcomes"] as? [[String: Any]] ?? [])
                 .map(ToolOutcome.init(dictionary:))
