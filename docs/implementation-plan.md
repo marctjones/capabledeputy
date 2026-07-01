@@ -3,18 +3,17 @@
 Living plan that organizes the open GitHub issues into sequenced
 milestones with dependencies. Authoritative status is GitHub; this doc is
 the *sequencing rationale*. Last refreshed 2026-07-01 — active arc is
-**v0.35 → v0.40** after closing the v0.34 first-run/rich-chat milestone and
-merging the local spec-004/substrate plan with the live GitHub product
-milestones.
+**v0.35 → v0.40** plus explicit source-labeling, terminal-UX, research, and
+formal-model tracks. The live GitHub tracker has no unmilestoned open issues.
 
-Milestones (GitHub): **v0.34.0** First-run, connectors, and rich chat
-readiness · **v0.35.0** Desktop context SourcePorts and visual review ·
-**v0.36.0** MCP adapter, extension admission, and workflow templates ·
-**v0.37.0** Substrate isolation, execution, and compliance replay ·
-**v0.38.0** Memory, retention, and context compaction · **v0.39.0**
-Onguard notifications and background automation UX · **v0.40.0** Safe code
-workspace workflows · **v0.16** Policy expressiveness & labeling · **v0.5**
-terminal UX polish · **Backlog** Formal models and deferred provider breadth.
+Milestones (GitHub): **v0.35.0** Desktop context, SourcePorts, and visual
+review · **v0.36.0** MCP admission, provider mappings, and workflow templates ·
+**v0.37.0** Execution substrate, isolation, and compliance evidence ·
+**v0.38.0** Memory, retention, and compaction · **v0.39.0** Background
+automation and onguard UX · **v0.40.0** Safe code workspace workflows ·
+**Track: Source identity and labeling correctness** · **Track: Terminal UX and
+approval polish** · **Research: Non-goals and safe alternatives** ·
+**Backlog: Formal models and deferred breadth**.
 Recently closed:
 **v0.34.0** First-run, connectors, and rich chat readiness · **v0.33.0**
 Streaming turn lifecycle and liveness · **v0.32.0** Interactive workstream
@@ -31,16 +30,18 @@ dependencies, and why the next pull should focus on one milestone over another.
 Themes currently driving priority:
 1. **v0.35 desktop context and signed review** — SourcePorts, typed
    artifacts, visual review cards, and exact-hash approval payloads (#146-#152).
-2. **v0.36 MCP adapter + templates** — generic adapter mapping audit, tier-1
-   MCP mappings, HTTP OAuth mediation, extension admission, and bounded
-   workflow templates (#153-#159, #184-#186).
-3. **v0.37 substrate and evidence** — upstream isolation, sandboxed
-   `code.execute`, versioned writes, cross-host approval envelope, OTLP/OSCAL,
-   and adversarial substrate demos (#44, #9, #14, #55-#57, #187-#189).
-4. **v0.38 memory and compaction** — retention policy, memory controls, and
-   labeled summary artifacts (#160-#165).
-5. **v0.39 onguard extensibility** — background clients should be normal daemon
-   clients, not privileged sidecars or daemon-embedded product workflows.
+2. **v0.36 MCP admission, provider mappings, and templates** — generic adapter
+   mapping audit, tier-1 MCP mappings, HTTP OAuth mediation, extension
+   admission, and bounded workflow templates (#153-#159, #184-#186).
+3. **v0.37 execution substrate, isolation, and evidence** — upstream
+   isolation, sandboxed `code.execute`, versioned writes, cross-host approval
+   envelope, OTLP/OSCAL, and adversarial substrate demos (#44, #9, #14,
+   #55-#57, #187-#189).
+4. **v0.38 memory, retention, and compaction** — retention policy, memory
+   controls, and labeled summary artifacts (#160-#165).
+5. **v0.39 background automation and onguard UX** — background clients should
+   be normal daemon clients, not privileged sidecars or daemon-embedded product
+   workflows.
 6. **v0.40 safe code workspace workflows** — repository labels, sandboxed
    build/test artifacts, typed diffs/commits/PRs, and violation tests.
 7. **MCP security integration** — MCP must remain an integration substrate, not
@@ -57,9 +58,16 @@ Themes currently driving priority:
 9. **Multi-session explainability** — v0.31 made labels, flow patterns,
    external actors, approvals, policy rules, provenance, and audit inspectable
    across turns and clients.
-10. **The labeling oracle** — IFC guarantees ride on correct labels. v0.16 is
-   now narrowed to canonical source identity and per-message email labeling.
-11. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
+10. **Source identity and labeling correctness** — IFC guarantees ride on
+   correct labels. The old v0.16 track is now narrowed to canonical source
+   identity and per-message email labeling.
+11. **Terminal UX and approval polish** — remaining terminal work is useful,
+   but it is not the primary desktop-agent path and should not duplicate daemon
+   authority.
+12. **Research/non-goals** — keep remote/mobile control, always-on autonomy,
+   community sharing, and web/cross-platform alternatives explicit without
+   promoting them to immediate implementation.
+13. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
    human oversight. The decision-refinement layer is live; future work should
    add concrete inspectors or policy scripts, not revive the old epic.
 
@@ -179,7 +187,7 @@ Active desktop/browser context enters through labeled SourcePorts, proposed
 changes are typed artifacts, and approval cards bind the exact artifact and
 destination being approved.
 
-## v0.36.0 — MCP adapter, extension admission, and workflow templates
+## v0.36.0 — MCP admission, provider mappings, and workflow templates
 
 **Starts after:** v0.35 provides typed artifacts and review surfaces for safer
 operator review of new tools/templates.
@@ -217,7 +225,7 @@ New upstream MCP tools are admitted only through daemon-owned classification,
 mapping, tests, and approval; unmapped tools fail closed; clients can review
 and launch workflow templates without gaining setup or policy authority.
 
-## v0.37.0 — Substrate isolation, execution, and compliance replay
+## v0.37.0 — Execution substrate, isolation, and compliance evidence
 
 **Starts after:** v0.36 MCP/template admission. This milestone is the
 spec-004 production-substrate work that was previously floating between local
@@ -251,12 +259,12 @@ Operators can enable sandboxed execution, upstream isolation, versioned writes,
 compliance replay, and heavier isolation providers without a second policy
 authority path.
 
-## v0.38.0 — Memory, retention, and context compaction
+## v0.38.0 — Memory, retention, and compaction
 
 **Scope:** #160-#165. Starts after the substrate baseline because retained
 memory and compaction artifacts need stable labeled artifact/audit behavior.
 
-## v0.39.0 — Onguard notifications and background automation UX
+## v0.39.0 — Background automation and onguard UX
 
 **Scope:** #166-#171. Background clients remain normal daemon clients and
 surface notifications, queued approvals, summaries, and result handoff without
@@ -299,11 +307,11 @@ disconnect/heartbeat cancellation and Rich Live streaming.
   per-dispatch stdio secrets require per-call isolation or a server-specific
   auth channel.
 
-## v0.16 — Labeling oracle remainder
+## Track: Source identity and labeling correctness
 
-v0.16 has been redesigned around the remaining correctness gap: accurate labels
-at source boundaries. The decision-refinement/Starlark layer is already live,
-so new work here should not be generic policy plumbing.
+The old v0.16 milestone has been redesigned around the remaining correctness
+gap: accurate labels at source boundaries. The decision-refinement/Starlark
+layer is already live, so new work here should not be generic policy plumbing.
 
 ### Scope
 
@@ -322,16 +330,19 @@ so new work here should not be generic policy plumbing.
 
 ---
 
-## v0.5 — Terminal UX polish remainder
+## Track: Terminal UX and approval polish
 
-v0.5 remains lower priority than v0.33 and v0.16. It should improve practical
-terminal use without duplicating daemon safety enforcement. Streaming moved to
-v0.33 because the correct implementation depends on daemon turn events.
+The old v0.5 milestone is now terminal-client quality work. It should improve
+practical terminal use without duplicating daemon safety enforcement. Streaming
+moved to v0.33 because the correct implementation depends on daemon turn
+events.
 
 ### Scope
 
 - **#16** REPL feature parity with Claude Code: markdown, multiline input, and
   expandable tool detail; streaming depends on #22/v0.33.
+- **#17** split-pane / tabbed viewer for significant content alongside chat.
+- **#19** inline graphics via sixel / kitty graphics protocol.
 - **#27** Inline approval as a non-blocking banner that does not steal focus.
 - **#29** Unicode width safety in the bottom toolbar plus 80x24 minimum-size
   behavior.
@@ -344,13 +355,27 @@ v0.33 because the correct implementation depends on daemon turn events.
 
 ---
 
-## Backlog reassessment
+## Research: Non-goals and safe alternatives
 
-Backlog remains valid but explicitly lower priority than the v0.34-v0.40
-product ladder and v0.16 labeling track:
+These issues keep product-pressure topics visible without committing CapDep to
+unsafe or strategically wrong directions.
+
+- **#178** alternatives to remote/mobile daemon control without opening network
+  listeners.
+- **#179** alternatives to broad always-on autonomous action modes.
+- **#180** safe community template/extension sharing without marketplace trust
+  collapse.
+- **#181** web UI or cross-platform GUI alternatives without duplicating daemon
+  functionality.
+
+---
+
+## Backlog: Formal models and deferred breadth
+
+Backlog remains valid but explicitly lower priority than the v0.35-v0.40
+product ladder and source-identity/labeling track:
 
 - **Formal-model completeness:** #45, #58, #59.
-- **Terminal media/navigation polish:** #17, #19.
 - Any remaining provider or federation breadth not explicitly pulled into
   v0.36/v0.37.
 
@@ -705,10 +730,10 @@ Current implementation notes:
 
 ---
 
-## v0.16 — Policy expressiveness & labeling
+## Track: Source identity and labeling correctness
 
-The highest-leverage milestone: turn the refinement layer on (done) and
-make labels real.
+The highest-leverage supporting track: the refinement layer is on, and the
+remaining work makes source identity and labels reliable.
 
 ### EPIC #41 — Activate the decision-refinement layer
 - ✅ **#46** wire the loader (done — layer is live)
@@ -730,8 +755,8 @@ make labels real.
   identity layer both #33 and #34 depend on for external-recipient and
   message-id binding.
 
-**Sequencing within v0.16:** #48 → finish #47 ; email labeler (uses #5
-shape) ; then #51 unlocks the identity-dependent parts of #33/#34.
+**Sequencing within this track:** email labeler (uses #5 shape), then #51
+unlocks the identity-dependent parts of #33/#34.
 
 ---
 
@@ -763,7 +788,7 @@ in `workflow-plan.md`. #55 now rides with v0.37 substrate/compliance.
 
 ---
 
-## v0.5 — Terminal UX polish (parallel track)
+## Track: Terminal UX and approval polish
 
 This milestone is now terminal-client quality work, not the whole product UX
 strategy. CapDep has multiple clients: CLI/chat for terminal work, TUI for
@@ -772,24 +797,31 @@ MCP-control for automation. Rich desktop inspection and coordination should be
 daemon-backed and surfaced through the appropriate client instead of forcing
 all UX into the REPL.
 
-- Active terminal UX: **#16** REPL polish, **#22** Rich Live streaming,
-  **#27** inline approval banner, **#28** semantic CLI styles, and **#29**
-  unicode/minimum-size safety.
+- Active terminal UX: **#16** REPL polish, **#17** split-pane/tabbed viewer,
+  **#19** terminal graphics, **#27** inline approval banner, **#28** semantic
+  CLI styles, and **#29** unicode/minimum-size safety.
 - Moved to v0.32: **#31** disconnect cancellation and **#32** heartbeat
   cancellation, because these are daemon/client coordination guarantees.
-- Moved to backlog: **#17** split-pane terminal viewer and **#19** terminal
-  graphics, because the Swift GUI is the preferred rich workspace and terminal
-  versions are optional fallback polish.
+- These remain secondary to the Swift GUI desktop workspace, but they are
+  planned terminal polish rather than generic backlog.
 
 ---
 
-## Backlog — Formal models and deferred provider breadth
+## Research: Non-goals and safe alternatives
+
+Research tracks intentionally deferred product pressures without turning them
+into implementation commitments: remote/mobile daemon control (#178), broad
+always-on action modes (#179), community sharing (#180), and web/cross-platform
+GUI alternatives (#181).
+
+---
+
+## Backlog: Formal models and deferred breadth
 
 Deferred formal work and any provider breadth not explicitly scheduled in
 v0.36/v0.37. Pull forward on demand.
 - Formal: **#58** lattice join/dominance operator, **#59** ocap
   cascade-revocation eager teardown, **#45** formal-model completeness.
-- Terminal media/navigation polish remains backlog under **#17** and **#19**.
 
 ---
 
