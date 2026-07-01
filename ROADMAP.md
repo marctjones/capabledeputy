@@ -9,9 +9,10 @@ historical backlog snapshots, not the current roadmap.
 **Last refreshed:** 2026-07-01 — GitHub milestones and issues were
 rationalized into one live product ladder plus explicit supporting tracks.
 Spec 004 work is merged into v0.36/v0.37 instead of displacing the desktop,
-memory, onguard, and code workspace roadmap. v0.34 is closed, v0.35 is the
-active product focus, all open GitHub issues are milestone-scoped, milestone
-names now carry ordered prefixes, and v1.0 remains unscheduled.
+memory, onguard, and code workspace roadmap. v0.35 and v0.36 are implemented
+locally and v0.37 is the next active product focus. Milestone names carry
+ordered prefixes, all open issues are milestone-scoped, and v1.0 remains
+unscheduled.
 
 ## Product Ladder — v0.35 → v0.40
 
@@ -28,9 +29,9 @@ flowchart LR
 
 | GitHub milestone | Goal | Spec / tracker |
 |---|---|---|
-| **01 Product — v0.35.0 — Desktop context, SourcePorts, and visual review** (now) | Desktop context, SourcePorts, and visual review | #146–#152 |
+| **01 Product — v0.35.0 — Desktop context, SourcePorts, and visual review** | Desktop context, SourcePorts, and visual review | #146–#152 |
 | **02 Product — v0.36.0 — MCP admission, provider mappings, and workflow templates** | MCP admission, provider mappings, and workflow templates | #153–#159, #184–#186 |
-| **03 Product — v0.37.0 — Execution substrate, isolation, and compliance evidence** | Execution substrate, isolation, and compliance evidence | #44, #9, #14, #55–#57, #187–#189 |
+| **03 Product — v0.37.0 — Execution substrate, isolation, and compliance evidence** (now) | Execution substrate, isolation, and compliance evidence | #44, #9, #14, #55–#57, #187–#189 |
 | **04 Product — v0.38.0 — Memory, retention, and compaction** | Memory, retention, and compaction | #160–#165 |
 | **05 Product — v0.39.0 — Background automation and onguard UX** | Background automation and onguard UX | #166–#171 |
 | **06 Product — v0.40.0 — Safe code workspace workflows** | Safe code workspace workflows | #172–#177 |
@@ -122,7 +123,7 @@ and CapDepMac rendering/model-mode safeguards.
   policy-gated, test-covered, and visible in CapDepMac without trusting
   hallucinated file paths.
 
-## Current Focus — v0.35.0 Desktop Context SourcePorts and Visual Review
+## Completed Focus — v0.35.0 Desktop Context SourcePorts and Visual Review
 
 **Depends on:** v0.34 chat/setup readiness. Once the app can guide setup and
 produce useful policy-gated turns, the next table-stakes desktop-agent gap is
@@ -130,26 +131,24 @@ safe active-context capture and signed reviewable artifacts.
 
 | Issue | Work | Status |
 |---|---|---|
-| #146 | EPIC: Desktop context SourcePorts and signed visual review | In progress |
-| #147 | Research desktop agent UX for context capture, review cards, and approval fatigue | Open |
-| #148 | Define active-context SourcePort contract with labels and canonical IDs | Landed locally; issue open |
-| #149 | Browser current-page SourcePort with untrusted-content labeling | Landed locally; issue open |
-| #150 | macOS app SourcePorts for Mail, Finder, Pages, Numbers, Keynote, and Calendar context | Partial local primitive; issue open |
-| #151 | Typed artifact model for drafts, diffs, calendar mutations, document patches, and research memos | Landed locally; issue open |
-| #152 | Signed approval payloads bind exact artifact hash and destination | Landed locally; issue open |
+| #146 | EPIC: Desktop context SourcePorts and signed visual review | Done locally |
+| #147 | Research desktop agent UX for context capture, review cards, and approval fatigue | Done locally |
+| #148 | Define active-context SourcePort contract with labels and canonical IDs | Done locally |
+| #149 | Browser current-page SourcePort with untrusted-content labeling | Done locally |
+| #150 | macOS app SourcePorts for Mail, Finder, Pages, Numbers, Keynote, and Calendar context | Done locally |
+| #151 | Typed artifact model for drafts, diffs, calendar mutations, document patches, and research memos | Done locally |
+| #152 | Signed approval payloads bind exact artifact hash and destination | Done locally |
 
-**Landed locally:** active-context SourcePorts for browser current page and
-frontmost macOS app context (`source_context.import` /
-`source_context.canonicalize`); canonical IDs and stale-context refusal;
-browser content labeled `external-untrusted`; macOS active context labeled
-`system-internal`; typed review artifacts with stable hashes; artifact-bound
-approval payload bytes that include exact artifact hash and destination id.
-Focused tests cover canonicalization, stale-context failure, daemon handlers,
-artifact hashing, and signed approval tamper detection.
-
-**Remaining for v0.35 close-out:** desktop UX research (#147), app-specific
-capture clients for Mail/Finder/iWork/Calendar (#150), Swift visual review
-cards, and tracker/docs closure for the local primitives.
+**Closeout evidence:** `docs/desktop-agent-ux-rpc-plan.md` captures the
+desktop-agent UX/RPC review (#147). Active-context SourcePorts cover browser
+current page, frontmost macOS app context, Apple Mail, Finder, Pages, Numbers,
+Keynote, and Calendar; they canonicalize stable IDs, label untrusted/browser
+and system/app context, and refuse stale or ambiguous inputs. Typed review
+artifacts now produce `review_artifact` cards through `artifact.prepare` and
+`approval.detail`, and CapDepMac parses/renders those cards. Focused Python and
+Swift tests cover SourcePort canonicalization, stale-context failure, daemon
+handlers, artifact hashing, signed approval tamper detection, review-card
+payloads, and Swift model parsing.
 
 ### v0.35.0 done-when
 
@@ -159,39 +158,38 @@ cards, and tracker/docs closure for the local primitives.
 - Approval/review cards bind the exact artifact and recipient/action being
   approved.
 
-## Follow-On Focus — v0.36.0 MCP Admission, Provider Mappings, and Workflow Templates
+## Completed Focus — v0.36.0 MCP Admission, Provider Mappings, and Workflow Templates
 
 **Depends on:** v0.35 typed artifacts and review surfaces for safer operator
 review of new tools/templates.
 
 | Issue | Work | Status |
 |---|---|---|
-| #153 | EPIC: MCP adapter, extension admission, and bounded workflow templates | In progress |
-| #154 | Research safe extension managers and skill/template systems in peer agents | Open |
-| #155 | Daemon MCP extension admission workflow with classify/test/approve/disable | Partial local admission preview; issue open |
-| #156 | Workflow template manifest schema with capabilities, labels, flow pattern, and approval policy | Landed locally; issue open |
-| #157 | Implement starter workflow templates for briefing, inbox triage, meeting prep, and research memo | Partial local starter manifests; issue open |
-| #158 | Client workflow-template review and launch surfaces | Open |
-| #159 | MCP extension and workflow-template conformance tests | Partial tests landed; issue open |
-| #184 | Generic MCP adapter polish and fail-closed mapping audit | Partial local admission audit; issue open |
-| #185 | Tier-1 MCP mappings: GitHub, Google Workspace, Microsoft 365, and Notion | Open |
-| #186 | HTTP MCP OAuth flow-pattern sessions and credential mediation | Open |
+| #153 | EPIC: MCP adapter, extension admission, and bounded workflow templates | Done locally |
+| #154 | Research safe extension managers and skill/template systems in peer agents | Done locally |
+| #155 | Daemon MCP extension admission workflow with classify/test/approve/disable | Done locally |
+| #156 | Workflow template manifest schema with capabilities, labels, flow pattern, and approval policy | Done locally |
+| #157 | Implement starter workflow templates for briefing, inbox triage, meeting prep, and research memo | Done locally |
+| #158 | Client workflow-template review and launch surfaces | Done locally |
+| #159 | MCP extension and workflow-template conformance tests | Done locally |
+| #184 | Generic MCP adapter polish and fail-closed mapping audit | Done locally |
+| #185 | Tier-1 MCP mappings: GitHub, Google Workspace, Microsoft 365, and Notion | Done locally |
+| #186 | HTTP MCP OAuth flow-pattern sessions and credential mediation | Done locally |
 
-**Landed locally:** workflow templates are now validated manifests with
-schema version, capabilities, source ports, artifact types, flow pattern,
-approval policy, retention, and public launch text; the shipped workflow
-catalog declares those fields. MCP admission preview code classifies tools
-through the same capability inference/override model as the adapter, refuses
-disabled or unclassifiable tools under strict mode, and warns when effectful
-tools lack explicit target mapping. Focused tests cover manifest fail-closed
-behavior, unknown capability rejection, admission refusal, disabled kinds, and
-effectful-target warnings.
-
-**Remaining for v0.36 close-out:** peer extension-system research (#154), a
-persisted daemon approve/disable admission state (#155), meeting-prep/research
-memo template completion and client review surfaces (#157/#158), tier-1
-provider mapping fixtures (#185), and HTTP MCP OAuth credential mediation
-(#186).
+**Closeout evidence:** `docs/mcp-extension-admission-research.md` captures the
+extension/template admission model (#154). Workflow templates are validated
+manifests with schema version, capabilities, source ports, artifact types, flow
+pattern, approval policy, retention, and launch text, including briefing,
+inbox triage, meeting prep, and research memo starters. `workflow.launch`
+centralizes template review/launch across CLI, TUI, CapDepMac, and MCP-control.
+MCP admission now persists preview, approval, disable, list, audit, mapping
+fingerprints, and reapproval state in the daemon state database; MCP-control
+exposes those operator RPCs. Curated tier-1 mappings cover GitHub, Google
+Workspace, Microsoft 365, and Notion with strict fail-closed overrides. HTTP
+OAuth helpers now expose redacted credential status and enforce requested
+scopes before returning bearer tokens. Focused tests cover manifests, launch,
+admission persistence, MCP-control dispatch, OAuth credential mediation,
+provider mappings, and client parity.
 
 ### v0.36.0 done-when
 
@@ -203,7 +201,7 @@ provider mapping fixtures (#185), and HTTP MCP OAuth credential mediation
   policy before clients can launch them.
 - HTTP MCP OAuth state is daemon-owned and scoped rather than ambient.
 
-## Follow-On Focus — v0.37.0 Execution Substrate, Isolation, and Compliance Evidence
+## Current Focus — v0.37.0 Execution Substrate, Isolation, and Compliance Evidence
 
 **Depends on:** v0.36 MCP/template admission. Once external tools are admitted
 deliberately, v0.37 hardens their execution substrate and evidence pipeline.

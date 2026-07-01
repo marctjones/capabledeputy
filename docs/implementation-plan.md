@@ -166,25 +166,25 @@ desktop-agent table-stakes gap is safe context capture and exact visual review.
 
 ### Scope
 
-| Issue | Work |
-|---|---|
-| #146 | EPIC: Desktop context SourcePorts and signed visual review | In progress |
-| #147 | Research desktop agent UX for context capture, review cards, and approval fatigue | Open |
+| Issue | Work | Status |
+|---|---|---|
+| #146 | EPIC: Desktop context SourcePorts and signed visual review | **Done locally** |
+| #147 | Research desktop agent UX for context capture, review cards, and approval fatigue | **Done locally** |
 | #148 | Active-context SourcePort contract with labels and canonical IDs | **Done locally** |
 | #149 | Browser current-page SourcePort with untrusted-content labeling | **Done locally** |
-| #150 | macOS app SourcePorts for Mail, Finder, Pages, Numbers, Keynote, and Calendar | Partial local primitive |
+| #150 | macOS app SourcePorts for Mail, Finder, Pages, Numbers, Keynote, and Calendar | **Done locally** |
 | #151 | Typed artifact model for drafts, diffs, calendar mutations, document patches, and research memos | **Done locally** |
 | #152 | Signed approval payloads bind exact artifact hash and destination | **Done locally** |
 
 ### Sequencing
 
-1. Research UX and approval-fatigue patterns (#147).
+1. ~~Research UX and approval-fatigue patterns~~ (#147 done locally).
 2. ~~Define SourcePort contract first~~ (#148 done locally).
 3. ~~Add browser SourcePort~~ (#149 done locally).
-4. Finish app-specific capture clients for Mail/Finder/iWork/Calendar (#150).
+4. ~~Finish app-specific capture clients for Mail/Finder/iWork/Calendar~~ (#150 done locally).
 5. ~~Add typed artifact model~~ (#151 done locally).
 6. ~~Bind signed approvals to artifact hash/destination~~ (#152 done locally).
-7. Add Swift visual review cards and close tracker/docs after full validation.
+7. ~~Add Swift visual review cards and close tracker/docs after full validation~~ (done locally).
 
 ### Done-when
 
@@ -199,30 +199,30 @@ operator review of new tools/templates.
 
 ### Scope
 
-| Issue | Work |
-|---|---|
-| #153 | EPIC: MCP adapter, extension admission, and bounded workflow templates | In progress |
-| #154 | Research safe extension managers and skill/template systems in peer agents | Open |
-| #155 | Daemon MCP extension admission workflow with classify/test/approve/disable | Partial admission preview |
+| Issue | Work | Status |
+|---|---|---|
+| #153 | EPIC: MCP adapter, extension admission, and bounded workflow templates | **Done locally** |
+| #154 | Research safe extension managers and skill/template systems in peer agents | **Done locally** |
+| #155 | Daemon MCP extension admission workflow with classify/test/approve/disable | **Done locally** |
 | #156 | Workflow template manifest schema with capabilities, labels, flow pattern, and approval policy | **Done locally** |
-| #157 | Starter workflow templates for briefing, inbox triage, meeting prep, and research memo | Partial local manifests |
-| #158 | Client workflow-template review and launch surfaces | Open |
-| #159 | MCP extension and workflow-template conformance tests | Partial tests landed |
-| #184 | Generic MCP adapter polish and fail-closed mapping audit | Partial admission audit |
-| #185 | Tier-1 MCP mappings: GitHub, Google Workspace, Microsoft 365, and Notion | Open |
-| #186 | HTTP MCP OAuth flow-pattern sessions and credential mediation | Open |
+| #157 | Starter workflow templates for briefing, inbox triage, meeting prep, and research memo | **Done locally** |
+| #158 | Client workflow-template review and launch surfaces | **Done locally** |
+| #159 | MCP extension and workflow-template conformance tests | **Done locally** |
+| #184 | Generic MCP adapter polish and fail-closed mapping audit | **Done locally** |
+| #185 | Tier-1 MCP mappings: GitHub, Google Workspace, Microsoft 365, and Notion | **Done locally** |
+| #186 | HTTP MCP OAuth flow-pattern sessions and credential mediation | **Done locally** |
 
 ### Sequencing
 
-1. Research safe extension/template systems (#154).
+1. ~~Research safe extension/template systems~~ (#154 done locally).
 2. ~~Define workflow template manifest schema~~ (#156 done locally).
-3. Continue generic MCP adapter mapping audit from admission preview to
-   persisted admission state (#184, #155).
-4. Add tier-1 mappings and fixture tests (#185).
-5. Add HTTP OAuth credential mediation (#186).
-6. Complete starter templates, including meeting prep and research memo
-   variants (#157).
-7. Add client review/launch surfaces and conformance tests (#158, #159).
+3. ~~Continue generic MCP adapter mapping audit from admission preview to
+   persisted admission state~~ (#184, #155 done locally).
+4. ~~Add tier-1 mappings and fixture tests~~ (#185 done locally).
+5. ~~Add HTTP OAuth credential mediation~~ (#186 done locally).
+6. ~~Complete starter templates, including meeting prep and research memo
+   variants~~ (#157 done locally).
+7. ~~Add client review/launch surfaces and conformance tests~~ (#158, #159 done locally).
 
 ### Done-when
 
