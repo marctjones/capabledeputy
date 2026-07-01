@@ -32,12 +32,14 @@ from capabledeputy.federation.export import (
 )
 from capabledeputy.federation.host import HostId, load_or_create_host_id
 from capabledeputy.federation.remote_approval import (
+    REMOTE_APPROVAL_SCHEMA_VERSION,
     RemoteApprovalEnvelope,
     pack_remote_approval,
     unpack_remote_approval,
 )
 
 __all__ = [
+    "REMOTE_APPROVAL_SCHEMA_VERSION",
     "HostId",
     "RemoteApprovalEnvelope",
     "SessionExport",

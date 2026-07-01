@@ -2156,6 +2156,102 @@ def compliance_emit_evidence(
     )
 
 
+@app.command("compliance-emit-assessment-plan")
+def compliance_emit_assessment_plan(
+    output: Annotated[
+        str,
+        typer.Option("--output", "-o", help="Where to write the OSCAL Assessment Plan JSON"),
+    ] = "./capdep-assessment-plan.json",
+    ssp_href: Annotated[
+        str,
+        typer.Option("--ssp-href", help="Href to the OSCAL SSP artifact"),
+    ] = "./capdep-ssp.json",
+    evidence_href: Annotated[
+        str,
+        typer.Option("--evidence-href", help="Href to the evidence bundle artifact"),
+    ] = "./capdep-evidence.json",
+    replay_href: Annotated[
+        str,
+        typer.Option("--replay-href", help="Href to the audit replay artifact"),
+    ] = "./capdep-audit-replay.json",
+) -> None:
+    """Emit an OSCAL Assessment Plan tying SSP, evidence, and replay."""
+    from pathlib import Path
+
+    from capabledeputy.compliance.assessment import emit_assessment_plan
+    from capabledeputy.version import __version__
+
+    out_path = Path(output)
+    emit_assessment_plan(
+        out_path,
+        system_security_plan_href=ssp_href,
+        evidence_bundle_href=evidence_href,
+        audit_replay_href=replay_href,
+        capdep_version=__version__,
+    )
+    console.print(f"[green]wrote assessment plan to {out_path}[/green]")
+
+
+@app.command("compliance-audit-replay")
+def compliance_audit_replay(
+    audit_log: Annotated[
+        str,
+        typer.Option("--audit-log", help="Path to audit.jsonl to replay"),
+    ],
+    output: Annotated[
+        str,
+        typer.Option("--output", "-o", help="Where to write the replay report JSON"),
+    ] = "./capdep-audit-replay.json",
+) -> None:
+    """Replay audit events into a compliance summary artifact."""
+    from pathlib import Path
+
+    from capabledeputy.compliance.replay import (
+        emit_audit_replay_report,
+        load_audit_events,
+    )
+
+    audit_path = Path(audit_log)
+    if not audit_path.is_file():
+        err_console.print(f"[red]audit log not found: {audit_path}[/red]")
+        raise typer.Exit(code=2)
+    events = load_audit_events(audit_path)
+    out_path = Path(output)
+    emit_audit_replay_report(out_path, events)
+    console.print(f"[green]wrote audit replay for {len(events)} events to {out_path}[/green]")
+
+
+@app.command("compliance-emit-otlp")
+def compliance_emit_otlp(
+    audit_log: Annotated[
+        str,
+        typer.Option("--audit-log", help="Path to audit.jsonl to export"),
+    ],
+    output: Annotated[
+        str,
+        typer.Option("--output", "-o", help="Where to write OTLP traces JSON"),
+    ] = "./capdep-otlp-traces.json",
+    service_name: Annotated[
+        str,
+        typer.Option("--service-name", help="OTLP resource service.name"),
+    ] = "capabledeputy",
+) -> None:
+    """Export audit events as OTLP-compatible traces JSON."""
+    from pathlib import Path
+
+    from capabledeputy.compliance.otlp import emit_otlp_traces_json
+    from capabledeputy.compliance.replay import load_audit_events
+
+    audit_path = Path(audit_log)
+    if not audit_path.is_file():
+        err_console.print(f"[red]audit log not found: {audit_path}[/red]")
+        raise typer.Exit(code=2)
+    events = load_audit_events(audit_path)
+    out_path = Path(output)
+    emit_otlp_traces_json(out_path, events, service_name=service_name)
+    console.print(f"[green]wrote OTLP traces for {len(events)} events to {out_path}[/green]")
+
+
 @app.command("compliance-emit-oscal")
 def compliance_emit_oscal(
     output: Annotated[

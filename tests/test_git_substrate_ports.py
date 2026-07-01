@@ -128,6 +128,6 @@ def test_registries_construct_and_fail_closed(repo: Path) -> None:
     assert isinstance(get_versioned_write_port("git", repo_root=repo), GitVersionedWritePort)
     assert isinstance(get_source_port("git", repo_root=repo), GitSourcePort)
     with pytest.raises(ValueError, match="unknown versioned-write provider"):
-        get_versioned_write_port("s3", repo_root=repo)
+        get_versioned_write_port("unknown", repo_root=repo)
     with pytest.raises(ValueError, match="unknown source-port provider"):
         get_source_port("s3", repo_root=repo)

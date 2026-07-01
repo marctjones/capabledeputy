@@ -19,10 +19,23 @@ artifacts on demand. Compliance teams consume the standard JSON
 without re-mapping CapableDeputy's internal vocabulary.
 """
 
+from capabledeputy.compliance.assessment import (
+    build_assessment_plan,
+    emit_assessment_plan,
+)
 from capabledeputy.compliance.oscal import (
     build_component_definition,
     build_control_mapping,
     emit_oscal_bundle,
+)
+from capabledeputy.compliance.otlp import (
+    audit_events_to_otlp_traces,
+    emit_otlp_traces_json,
+)
+from capabledeputy.compliance.replay import (
+    build_audit_replay_report,
+    emit_audit_replay_report,
+    load_audit_events,
 )
 from capabledeputy.compliance.ssp import (
     build_evidence_bundle,
@@ -32,11 +45,18 @@ from capabledeputy.compliance.ssp import (
 )
 
 __all__ = [
+    "audit_events_to_otlp_traces",
+    "build_assessment_plan",
+    "build_audit_replay_report",
     "build_component_definition",
     "build_control_mapping",
     "build_evidence_bundle",
     "build_system_security_plan",
+    "emit_assessment_plan",
+    "emit_audit_replay_report",
     "emit_evidence_bundle",
     "emit_oscal_bundle",
+    "emit_otlp_traces_json",
     "emit_system_security_plan",
+    "load_audit_events",
 ]

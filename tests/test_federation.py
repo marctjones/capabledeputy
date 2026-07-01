@@ -11,6 +11,7 @@ from capabledeputy.approval.signer import (
     load_or_create_software_key,
 )
 from capabledeputy.federation import (
+    REMOTE_APPROVAL_SCHEMA_VERSION,
     SessionExportError,
     export_session,
     import_session_export,
@@ -136,3 +137,77 @@ def test_remote_approval_payload_tamper(tmp_path: Path) -> None:
         signature=envelope.signature,
     )
     assert unpack_remote_approval(tampered, verifier=signer) is False
+
+
+def test_remote_approval_structured_four_axis_wire_round_trips(tmp_path: Path) -> None:
+    from capabledeputy.policy.axis_d import DecisionContext
+    from capabledeputy.policy.labels import CategoryTag, LabelState, ProvenanceLevel, ProvenanceTag
+    from capabledeputy.policy.tiers import Tier
+
+    signer = load_or_create_software_key(tmp_path / "key")
+    labels = LabelState(
+        a=frozenset(
+            {
+                CategoryTag(
+                    category="financial",
+                    tier=Tier.REGULATED,
+                    risk_ids=("RISK-FINANCE",),
+                    assignment_provenance="operator-declared",
+                ),
+            },
+        ),
+        b=frozenset({ProvenanceTag(level=ProvenanceLevel.PRINCIPAL_DIRECT)}),
+    )
+    ctx = DecisionContext(
+        initiator="marc",
+        counterparty="bank.example",
+        expectedness="expected",
+        reversibility_degree="irreversible",
+        reversibility_agent="external",
+    )
+    envelope = pack_remote_approval(
+        origin_host_id="host:phone-abc",
+        destination_host_id="host:laptop-xyz",
+        approval_id=42,
+        action="QUEUE_PURCHASE",
+        target="bank.example",
+        payload="wire funds",
+        labels_in=["confidential.financial"],
+        labels_in_state=labels,
+        axis_c_effect_class="TRANSACT",
+        axis_d_context=ctx,
+        protocol_nonce="nonce-1",
+        signer=signer,
+    )
+    assert envelope.schema_version == REMOTE_APPROVAL_SCHEMA_VERSION
+    wire = envelope.four_axis_wire()
+    assert wire["axis_c_effect_class"] == "TRANSACT"
+    assert wire["axis_d_context"]["counterparty"] == "bank.example"
+    assert wire["axis_a_b_labels"]["a"][0]["category"] == "financial"
+    assert unpack_remote_approval(envelope, verifier=signer) is True
+    rebound = type(envelope).from_dict(envelope.to_dict())
+    assert unpack_remote_approval(rebound, verifier=signer) is True
+
+
+def test_remote_approval_schema_downgrade_rejected(tmp_path: Path) -> None:
+    signer = load_or_create_software_key(tmp_path / "key")
+    envelope = pack_remote_approval(
+        origin_host_id="host:phone-abc",
+        approval_id=42,
+        action="SEND_EMAIL",
+        target="alice@example.com",
+        payload="hi",
+        labels_in=[],
+        signer=signer,
+    )
+    downgraded = type(envelope)(
+        origin_host_id=envelope.origin_host_id,
+        approval_id=envelope.approval_id,
+        action=envelope.action,
+        target=envelope.target,
+        payload=envelope.payload,
+        labels_in=envelope.labels_in,
+        signature=envelope.signature,
+        schema_version="capdep.remote-approval.v0",
+    )
+    assert unpack_remote_approval(downgraded, verifier=signer) is False
