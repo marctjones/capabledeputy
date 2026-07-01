@@ -21,6 +21,7 @@ from capabledeputy.daemon.devbox_handlers import make_devbox_handlers
 from capabledeputy.daemon.extract_handlers import make_extract_handlers
 from capabledeputy.daemon.gui_handlers import make_gui_handlers
 from capabledeputy.daemon.handlers import default_handlers
+from capabledeputy.daemon.mcp_admission_handlers import make_mcp_admission_handlers
 from capabledeputy.daemon.memory_handlers import make_memory_handlers
 from capabledeputy.daemon.onguard_handlers import make_onguard_handlers
 from capabledeputy.daemon.pattern_handlers import make_pattern_handlers
@@ -28,16 +29,16 @@ from capabledeputy.daemon.policy_handlers import make_policy_handlers
 from capabledeputy.daemon.programmatic_handlers import make_programmatic_handlers
 from capabledeputy.daemon.relationship_handlers import make_relationship_handlers
 from capabledeputy.daemon.security_context_handlers import make_security_context_handlers
-from capabledeputy.daemon.source_context_handlers import make_source_context_handlers
-from capabledeputy.daemon.state_handlers import make_state_handlers
-from capabledeputy.daemon.workstream_handlers import make_workstream_handlers
 from capabledeputy.daemon.server import Daemon
 from capabledeputy.daemon.session_handlers import make_session_handlers
+from capabledeputy.daemon.settings_store import load_settings
 from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
+from capabledeputy.daemon.source_context_handlers import make_source_context_handlers
+from capabledeputy.daemon.state_handlers import make_state_handlers
 from capabledeputy.daemon.tool_handlers import make_tool_handlers
+from capabledeputy.daemon.workstream_handlers import make_workstream_handlers
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
-from capabledeputy.daemon.settings_store import load_settings
 from capabledeputy.llm.factory import (
     default_llm_model_spec,
     make_llm_client,
@@ -595,6 +596,7 @@ async def run_daemon(
     handlers.update(make_bundle_handlers(app))
     handlers.update(make_source_context_handlers())
     handlers.update(make_artifact_handlers())
+    handlers.update(make_mcp_admission_handlers(app))
     handlers.update(make_gui_handlers(app))
     handlers.update(make_onguard_handlers(app))
     handlers.update(
@@ -628,7 +630,7 @@ async def run_daemon(
         verbose=verbose,
         idle_shutdown_seconds=idle_shutdown_seconds(),
     )
-    setattr(app, "daemon_server", daemon)
+    app.daemon_server = daemon
 
     async def _relay_audit(event) -> None:
         await daemon.publish("audit", event.to_dict())

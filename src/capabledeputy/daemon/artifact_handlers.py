@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from capabledeputy.artifacts import TypedArtifact, artifact_approval_payload
+from capabledeputy.artifacts import TypedArtifact, artifact_approval_payload, artifact_review_card
 from capabledeputy.daemon.handlers import Handler
 
 
@@ -15,7 +15,7 @@ def make_artifact_handlers() -> dict[str, Handler]:
         if not isinstance(payload, dict):
             raise ValueError("artifact.prepare payload must be a mapping")
         artifact = TypedArtifact.from_dict(payload)
-        return {"artifact": artifact.to_dict()}
+        return {"artifact": artifact.to_dict(), "review_artifact": artifact_review_card(artifact)}
 
     async def approval_payload(params: dict[str, Any]) -> dict[str, Any]:
         payload = params.get("artifact") or {}

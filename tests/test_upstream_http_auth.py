@@ -15,6 +15,7 @@ from capabledeputy.upstream.http_auth import (
     discover_oauth2_endpoints,
     httpx_auth_from_config,
     oauth2_authorization_url,
+    oauth2_credential_status,
 )
 
 
@@ -71,6 +72,35 @@ def test_oauth2_auth_reads_access_token_from_cache(tmp_path) -> None:
     assert authed.headers["Authorization"] == "Bearer cached-token"
 
 
+def test_oauth2_auth_rejects_mis_scoped_cached_token(tmp_path) -> None:
+    cache = tmp_path / "token.json"
+    cache.write_text(
+        json.dumps(
+            {
+                "access_token": "cached-token",
+                "expires_at": time.time() + 3600,
+                "scope": "read:items",
+            }
+        ),
+        encoding="utf-8",
+    )
+    auth = httpx_auth_from_config(
+        UpstreamAuthConfig(
+            type="oauth2",
+            client_id="client",
+            authorization_url="https://auth.example/authorize",
+            token_url="https://auth.example/token",
+            token_cache=str(cache),
+        ),
+        server_name="notion",
+        requested_scopes=("read:items", "write:items"),
+    )
+    assert isinstance(auth, OAuth2TokenAuth)
+
+    with pytest.raises(RuntimeError, match=r"missing required scopes.*write:items"):
+        next(auth.sync_auth_flow(httpx.Request("GET", "https://example.test/mcp")))
+
+
 def test_oauth2_auth_missing_cache_tells_operator_to_login(tmp_path) -> None:
     auth = httpx_auth_from_config(
         UpstreamAuthConfig(
@@ -86,6 +116,89 @@ def test_oauth2_auth_missing_cache_tells_operator_to_login(tmp_path) -> None:
 
     with pytest.raises(RuntimeError, match="capdep oauth login --server github"):
         next(auth.sync_auth_flow(httpx.Request("GET", "https://example.test/mcp")))
+
+
+def test_oauth2_credential_status_connected_and_redacted(tmp_path) -> None:
+    cache = tmp_path / "token.json"
+    cache.write_text(
+        json.dumps(
+            {
+                "access_token": "cached-token",
+                "refresh_token": "refresh-token",
+                "expires_at": time.time() + 3600,
+                "scope": "read:items write:items",
+            }
+        ),
+        encoding="utf-8",
+    )
+    status = oauth2_credential_status(
+        UpstreamAuthConfig(type="oauth2", token_cache=str(cache)),
+        server_name="notion",
+        requested_scopes=("read:items",),
+    )
+
+    assert status["status"] == "connected"
+    assert status["connected"] is True
+    assert status["granted_scopes"] == ["read:items", "write:items"]
+    assert status["requested_scopes"] == ["read:items"]
+    assert "access_token" not in status
+    assert "refresh_token" not in status
+
+
+def test_oauth2_credential_status_missing_expired_refreshable_and_mis_scoped(tmp_path) -> None:
+    missing = oauth2_credential_status(
+        UpstreamAuthConfig(type="oauth2", token_cache=str(tmp_path / "missing.json")),
+        server_name="github",
+    )
+    assert missing["status"] == "missing"
+    assert missing["recovery"] == "capdep oauth login --server github"
+
+    expired_cache = tmp_path / "expired.json"
+    expired_cache.write_text(
+        json.dumps({"access_token": "old", "expires_at": time.time() - 10}),
+        encoding="utf-8",
+    )
+    expired = oauth2_credential_status(
+        UpstreamAuthConfig(type="oauth2", token_cache=str(expired_cache)),
+        server_name="m365",
+    )
+    assert expired["status"] == "expired"
+
+    refreshable_cache = tmp_path / "refreshable.json"
+    refreshable_cache.write_text(
+        json.dumps(
+            {
+                "access_token": "old",
+                "refresh_token": "refresh",
+                "expires_at": time.time() - 10,
+            }
+        ),
+        encoding="utf-8",
+    )
+    refreshable = oauth2_credential_status(
+        UpstreamAuthConfig(type="oauth2", token_cache=str(refreshable_cache)),
+        server_name="m365",
+    )
+    assert refreshable["status"] == "refreshable"
+
+    scoped_cache = tmp_path / "scoped.json"
+    scoped_cache.write_text(
+        json.dumps(
+            {
+                "access_token": "token",
+                "expires_at": time.time() + 3600,
+                "scope": "read:items",
+            }
+        ),
+        encoding="utf-8",
+    )
+    mis_scoped = oauth2_credential_status(
+        UpstreamAuthConfig(type="oauth2", token_cache=str(scoped_cache)),
+        server_name="notion",
+        requested_scopes=("read:items", "write:items"),
+    )
+    assert mis_scoped["status"] == "mis_scoped"
+    assert mis_scoped["missing_scopes"] == ["write:items"]
 
 
 def test_oauth2_authorization_url_uses_pkce_scope_and_extra_params() -> None:

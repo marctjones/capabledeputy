@@ -1,0 +1,51 @@
+# Curated upstream config -- Notion MCP mapping fixture.
+#
+# Producer: Notion MCP-compatible remote server.
+# Transport: streamable HTTP with OAuth bearer tokens from CapDep's native
+# browser PKCE flow.
+#
+# Endpoint note: replace `url` with Notion's current MCP endpoint before
+# loading this config. This file is intentionally a strict security mapping:
+# new/unmapped tools are refused until reviewed and pinned here.
+#
+#   export NOTION_MCP_CLIENT_ID=...
+#   export NOTION_MCP_CLIENT_SECRET=...
+#   capdep oauth login --config configs/curated/notion.yaml --server notion
+
+upstream_servers:
+  - name: notion
+    transport: streamable_http
+    url: "https://mcp.notion.example/mcp"
+    auth:
+      type: oauth2
+      client_id_env: NOTION_MCP_CLIENT_ID
+      client_secret_env: NOTION_MCP_CLIENT_SECRET
+      authorization_url: "https://api.notion.com/v1/oauth/authorize"
+      token_url: "https://api.notion.com/v1/oauth/token"
+      scopes:
+        - read_content
+        - insert_content
+        - update_content
+    inherent_labels: ["confidential.personal", "untrusted.user_input"]
+    strict: true
+    tool_overrides:
+      # Workspace/page/database reads.
+      search: {capability_kind: READ_FS, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      list_pages: {capability_kind: READ_FS, additional_labels: ["confidential.personal"]}
+      get_page: {capability_kind: READ_FS, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      get_page_content: {capability_kind: READ_FS, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      list_databases: {capability_kind: READ_FS, additional_labels: ["confidential.personal"]}
+      query_database: {capability_kind: READ_FS, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      get_database: {capability_kind: READ_FS, additional_labels: ["confidential.personal"]}
+      get_block: {capability_kind: READ_FS, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      list_block_children: {capability_kind: READ_FS, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+
+      # Workspace/page/database writes.
+      create_page: {capability_kind: CREATE_FS, additional_labels: ["confidential.personal"], target_template: "notion://workspace/pages"}
+      update_page: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"], target_template: "notion://page/{page_id}"}
+      archive_page: {capability_kind: DELETE_FS, additional_labels: ["confidential.personal"], target_template: "notion://page/{page_id}"}
+      append_block_children: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"], target_template: "notion://block/{block_id}/children"}
+      update_block: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"], target_template: "notion://block/{block_id}"}
+      delete_block: {capability_kind: DELETE_FS, additional_labels: ["confidential.personal"], target_template: "notion://block/{block_id}"}
+      create_database: {capability_kind: CREATE_FS, additional_labels: ["confidential.personal"], target_template: "notion://workspace/databases"}
+      update_database: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"], target_template: "notion://database/{database_id}"}

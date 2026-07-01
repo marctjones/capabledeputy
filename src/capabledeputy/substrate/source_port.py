@@ -72,6 +72,19 @@ def get_source_port(kind: str, **kwargs: object) -> SourcePort:
         from capabledeputy.substrate.active_context import MacOSAppContextSourcePort
 
         return MacOSAppContextSourcePort()
+    if kind in {
+        "apple-mail",
+        "mail",
+        "finder",
+        "pages",
+        "numbers",
+        "keynote",
+        "calendar",
+        "apple-calendar",
+    }:
+        from capabledeputy.substrate.active_context import source_port_for_active_context
+
+        return source_port_for_active_context(kind)
     known = [
         "git",
         "gmail",
@@ -79,5 +92,11 @@ def get_source_port(kind: str, **kwargs: object) -> SourcePort:
         "google-calendar",
         "browser.current-page",
         "macos.frontmost-app",
+        "apple-mail",
+        "finder",
+        "pages",
+        "numbers",
+        "keynote",
+        "calendar",
     ]
     raise ValueError(f"unknown source-port provider {kind!r}; known: {known}")

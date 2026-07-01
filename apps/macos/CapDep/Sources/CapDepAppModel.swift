@@ -512,9 +512,25 @@ final class CapDepAppModel: ObservableObject {
     }
 
     func launchWorkflow(_ workflow: WorkflowTemplate) async {
-        selectedPurpose = workflow.purpose
-        commandText = workflow.turnMessage
-        await submitCommand(purpose: workflow.purpose, forceNewSession: false)
+        do {
+            selectedPurpose = workflow.purpose
+            let result = try await client.call(
+                method: "workflow.launch",
+                params: [
+                    "template_id": workflow.id,
+                    "client_id": "capdep-mac",
+                ],
+            ) as? [String: Any]
+            let session = CapDepSession(dictionary: result?["session"] as? [String: Any] ?? [:])
+            if !session.id.isEmpty {
+                currentSessionID = session.id
+                selectedSection = .sessions
+                await loadChatHistory(sessionID: session.id)
+            }
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
     }
 
     func submitCommand(purpose: Purpose? = nil, forceNewSession: Bool = false) async {

@@ -14,6 +14,9 @@ from capabledeputy.daemon.workflow_templates import (
     workflow_template_by_id,
     workflow_turn_message,
 )
+from capabledeputy.llm.fake import FakeLLMClient
+from capabledeputy.llm.types import FinishReason, LLMResponse
+from tests.daemon_integration import running_daemon
 
 
 @pytest.fixture
@@ -60,6 +63,27 @@ def test_workflow_turn_message_omits_blank_guidance() -> None:
     assert message == "hello"
 
 
+async def test_workflow_launch_starts_daemon_owned_turn(tmp_path: Path) -> None:
+    async with running_daemon(tmp_path) as running:
+        running.app.llm_client = FakeLLMClient(
+            [LLMResponse(content="briefing ready", finish_reason=FinishReason.STOP)],
+        )
+
+        launched = await running.client.call(
+            "workflow.launch",
+            {
+                "template_id": "morning-briefing",
+                "client_id": "test-workflow",
+                "heartbeat_enabled": False,
+            },
+        )
+
+        assert launched["template"]["id"] == "morning-briefing"
+        assert launched["session"]["purpose_handle"] == "general"
+        assert launched["turn"]["client_id"] == "test-workflow"
+        assert launched["turn"]["status"] in {"queued", "running", "completed"}
+
+
 def test_workflow_catalog_loads_from_configs_yaml() -> None:
     from capabledeputy.daemon.workflow_templates import _resolve_configs_dir
 
@@ -81,6 +105,14 @@ def test_workflow_templates_include_v036_manifest_schema() -> None:
         assert template["artifact_types"]
         assert template["approval_policy"]["mutating_actions"]
         assert template["retention"]["audit"] == "durable"
+
+
+def test_workflow_templates_include_v036_starter_set() -> None:
+    templates = {template["id"]: template for template in build_workflow_templates()["templates"]}
+
+    assert {"morning-briefing", "inbox-triage", "meeting-prep", "research-memo"} <= set(templates)
+    assert templates["meeting-prep"]["flow_pattern"] == "foreground_context_review"
+    assert templates["research-memo"]["artifact_types"] == ["chart", "image", "research"]
 
 
 def test_workflow_manifest_validation_fails_closed_for_missing_schema_fields() -> None:

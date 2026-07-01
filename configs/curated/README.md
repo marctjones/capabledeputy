@@ -12,6 +12,8 @@ locked-down" path for demonstrating actual workflows.
 | `official-reference.yaml` | filesystem, fetch, git, time, memory | doc drafting, web research, dev/work, reminders |
 | `google-workspace.yaml` | official Gmail, Drive, Calendar, Chat, People MCP | email triage, Drive research, calendar, chat, contacts |
 | `github.yaml` | GitHub official remote MCP | repository, issue, PR, and code review workflows |
+| `microsoft-365.yaml` | Microsoft 365 / Graph MCP mapping fixture | Outlook, OneDrive/SharePoint, and calendar workflows |
+| `notion.yaml` | Notion MCP mapping fixture | workspace research, page drafting, and database notes |
 | `slack.yaml` | Slack official remote MCP | team communication |
 | `kagi.yaml` | Kagi official MCP | web/news/search and page extraction |
 | `playwright.yaml` | Playwright official MCP | browser automation and web workflow validation |
@@ -57,6 +59,10 @@ scope decision, not a gap.
 - **Official / low risk:** the `modelcontextprotocol` reference servers
   (`official-reference.yaml`), Google Workspace remote MCP, GitHub remote
   MCP, Slack remote MCP, Kagi MCP, and Playwright MCP.
+- **Tier-1 mapping fixtures:** `microsoft-365.yaml` and `notion.yaml`
+  pin CapDep's tool capability policy for those providers, but keep endpoint
+  hostnames as operator-reviewed placeholders until the current producer MCP
+  endpoint is confirmed for the deployment.
 - **Community / compatibility:** `google-workspace-community.yaml` uses
   `gws-mcp-server`. Treat package upgrades as an admission event: re-review
   `rejected_tools` and the override map.

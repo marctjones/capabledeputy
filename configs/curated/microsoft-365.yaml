@@ -1,0 +1,65 @@
+# Curated upstream config -- Microsoft 365 / Microsoft Graph MCP mapping fixture.
+#
+# Producer: Microsoft 365 / Microsoft Graph MCP-compatible remote server.
+# Transport: streamable HTTP with OAuth bearer tokens from CapDep's native
+# browser PKCE flow.
+#
+# Endpoint note: replace `url` with the current Microsoft-hosted or
+# organization-hosted MCP endpoint before loading this config. This file is a
+# strict capability-mapping fixture: it pins known Microsoft 365 workflow tools
+# to CapDep capability kinds so new/unmapped upstream tools are refused during
+# admission.
+#
+#   export MICROSOFT_MCP_CLIENT_ID=...
+#   export MICROSOFT_MCP_CLIENT_SECRET=...
+#   capdep oauth login --config configs/curated/microsoft-365.yaml --server microsoft-365
+
+upstream_servers:
+  - name: microsoft-365
+    transport: streamable_http
+    url: "https://mcp.microsoft.example/mcp"
+    auth:
+      type: oauth2
+      client_id_env: MICROSOFT_MCP_CLIENT_ID
+      client_secret_env: MICROSOFT_MCP_CLIENT_SECRET
+      authorization_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+      token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+      scopes:
+        - "offline_access"
+        - "openid"
+        - "profile"
+        - "User.Read"
+        - "Mail.Read"
+        - "Mail.ReadWrite"
+        - "Mail.Send"
+        - "Calendars.Read"
+        - "Calendars.ReadWrite"
+        - "Files.Read"
+        - "Files.ReadWrite"
+      extra_authorize_params:
+        prompt: consent
+    inherent_labels: ["confidential.personal", "untrusted.user_input"]
+    strict: true
+    tool_overrides:
+      # Outlook mail.
+      list_messages: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      get_message: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      search_messages: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      create_mail_draft: {capability_kind: GMAIL_DRAFT, additional_labels: ["confidential.personal"], target_arg: to}
+      send_mail: {capability_kind: SEND_EMAIL, additional_labels: ["confidential.personal"], target_arg: to}
+
+      # Outlook calendar.
+      list_calendars: {capability_kind: CALENDAR_READ, additional_labels: ["confidential.personal"]}
+      list_events: {capability_kind: CALENDAR_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      get_event: {capability_kind: CALENDAR_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      create_event: {capability_kind: CREATE_CAL, additional_labels: ["confidential.personal"], target_template: "msgraph://calendar/{calendar_id}/events/attendees/{attendees}"}
+      update_event: {capability_kind: MODIFY_CAL, additional_labels: ["confidential.personal"], target_template: "msgraph://calendar/{calendar_id}/event/{event_id}/attendees/{attendees}"}
+      delete_event: {capability_kind: DELETE_CAL, additional_labels: ["confidential.personal"], target_template: "msgraph://calendar/{calendar_id}/event/{event_id}"}
+
+      # OneDrive / SharePoint files.
+      list_files: {capability_kind: DRIVE_READ, additional_labels: ["confidential.personal"]}
+      search_files: {capability_kind: DRIVE_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      read_file: {capability_kind: DRIVE_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      create_file: {capability_kind: CREATE_FS, additional_labels: ["confidential.personal"], target_template: "msgraph://drive/items"}
+      update_file: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"], target_template: "msgraph://drive/items/{item_id}"}
+      delete_file: {capability_kind: DELETE_FS, additional_labels: ["confidential.personal"], target_template: "msgraph://drive/items/{item_id}"}

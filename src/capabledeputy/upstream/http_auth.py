@@ -97,11 +97,18 @@ class OAuth2Endpoints:
 class OAuth2TokenAuth(httpx.Auth):
     """OAuth2 bearer auth backed by CapDep's local token cache."""
 
-    def __init__(self, config: UpstreamAuthConfig, *, server_name: str = "default") -> None:
+    def __init__(
+        self,
+        config: UpstreamAuthConfig,
+        *,
+        server_name: str = "default",
+        requested_scopes: tuple[str, ...] = (),
+    ) -> None:
         if config.type != "oauth2":
             raise ValueError("OAuth2TokenAuth requires auth.type oauth2")
         self._config = config
         self._server_name = server_name
+        self._requested_scopes = _requested_scopes(config, requested_scopes)
         self._token_cache = oauth_token_cache_path(config, server_name)
         self._lock = threading.Lock()
 
@@ -118,6 +125,12 @@ class OAuth2TokenAuth(httpx.Auth):
         with self._lock:
             token_data = _read_token_cache(self._token_cache)
             if token_data and _token_is_valid(token_data):
+                _ensure_scope_subset(
+                    token_data,
+                    self._config,
+                    self._requested_scopes,
+                    server_name=self._server_name,
+                )
                 return str(token_data["access_token"])
             if token_data and token_data.get("refresh_token"):
                 token_data = refresh_oauth2_token(
@@ -125,11 +138,80 @@ class OAuth2TokenAuth(httpx.Auth):
                     token_data,
                     server_name=self._server_name,
                 )
+                _ensure_scope_subset(
+                    token_data,
+                    self._config,
+                    self._requested_scopes,
+                    server_name=self._server_name,
+                )
                 return str(token_data["access_token"])
         raise RuntimeError(
             "oauth2 token is missing or expired; run "
             f"`capdep oauth login --server {self._server_name}`",
         )
+
+
+def oauth2_credential_status(
+    config: UpstreamAuthConfig | None,
+    *,
+    server_name: str = "default",
+    requested_scopes: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Return a redacted operator-facing OAuth credential status."""
+    if config is None or config.type != "oauth2":
+        return {
+            "server": server_name,
+            "auth_type": "none" if config is None else config.type,
+            "status": "not_oauth2",
+            "connected": False,
+        }
+
+    token_cache = oauth_token_cache_path(config, server_name)
+    requested = _requested_scopes(config, requested_scopes)
+    base: dict[str, Any] = {
+        "server": server_name,
+        "auth_type": "oauth2",
+        "token_cache": str(token_cache),
+        "requested_scopes": list(requested),
+        "connected": False,
+    }
+    login_action = f"capdep oauth login --server {server_name}"
+
+    token_data = _read_token_cache(token_cache)
+    if token_data is None:
+        return base | {
+            "status": "missing",
+            "recovery": login_action,
+        }
+
+    granted = _granted_scopes(token_data, config)
+    expires_at = token_data.get("expires_at")
+    base |= {
+        "granted_scopes": list(granted),
+        "expires_at": expires_at,
+        "has_refresh_token": bool(token_data.get("refresh_token")),
+    }
+    missing_scopes = _missing_scopes(requested, granted)
+    if missing_scopes:
+        return base | {
+            "status": "mis_scoped",
+            "missing_scopes": list(missing_scopes),
+            "recovery": login_action,
+        }
+    if _token_is_valid(token_data):
+        return base | {
+            "status": "connected",
+            "connected": True,
+        }
+    if token_data.get("refresh_token"):
+        return base | {
+            "status": "refreshable",
+            "recovery": "token will refresh on next upstream connection",
+        }
+    return base | {
+        "status": "expired",
+        "recovery": login_action,
+    }
 
 
 def oauth_token_cache_path(config: UpstreamAuthConfig, server_name: str) -> Path:
@@ -145,6 +227,7 @@ def httpx_auth_from_config(
     config: UpstreamAuthConfig | None,
     *,
     server_name: str = "default",
+    requested_scopes: tuple[str, ...] = (),
 ) -> httpx.Auth | None:
     """Build an httpx auth object from an upstream auth config."""
     if config is None or config.type == "none":
@@ -157,7 +240,11 @@ def httpx_auth_from_config(
     if config.type == "google_adc":
         return GoogleAdcAuth(scopes=config.scopes, quota_project_id=config.quota_project_id)
     if config.type == "oauth2":
-        return OAuth2TokenAuth(config, server_name=server_name)
+        return OAuth2TokenAuth(
+            config,
+            server_name=server_name,
+            requested_scopes=requested_scopes,
+        )
     raise ValueError(f"unsupported auth.type: {config.type}")
 
 
@@ -513,6 +600,60 @@ def _token_is_valid(token_data: dict[str, Any]) -> bool:
     if expires_at is None:
         return True
     return float(expires_at) > time.time() + 60
+
+
+def _requested_scopes(
+    config: UpstreamAuthConfig,
+    requested_scopes: tuple[str, ...],
+) -> tuple[str, ...]:
+    return _normalize_scope_values(requested_scopes or config.scopes)
+
+
+def _granted_scopes(token_data: dict[str, Any], config: UpstreamAuthConfig) -> tuple[str, ...]:
+    raw = (
+        token_data.get("scope")
+        or token_data.get("scopes")
+        or token_data.get("granted_scopes")
+        or config.scopes
+    )
+    return _normalize_scope_values(raw)
+
+
+def _normalize_scope_values(raw: Any) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        values = re.split(r"[\s,]+", raw.strip())
+    elif isinstance(raw, list | tuple | set | frozenset):
+        values = [str(value).strip() for value in raw]
+    else:
+        values = [str(raw).strip()]
+    return tuple(dict.fromkeys(value for value in values if value))
+
+
+def _missing_scopes(
+    requested_scopes: tuple[str, ...],
+    granted_scopes: tuple[str, ...],
+) -> tuple[str, ...]:
+    granted = set(granted_scopes)
+    return tuple(scope for scope in requested_scopes if scope not in granted)
+
+
+def _ensure_scope_subset(
+    token_data: dict[str, Any],
+    config: UpstreamAuthConfig,
+    requested_scopes: tuple[str, ...],
+    *,
+    server_name: str,
+) -> None:
+    missing = _missing_scopes(requested_scopes, _granted_scopes(token_data, config))
+    if missing:
+        missing_text = ", ".join(missing)
+        raise RuntimeError(
+            "oauth2 token is missing required scopes "
+            f"for {server_name}: {missing_text}; run "
+            f"`capdep oauth login --server {server_name}`",
+        )
 
 
 def _read_token_cache(path: Path) -> dict[str, Any] | None:

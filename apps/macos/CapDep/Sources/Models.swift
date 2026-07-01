@@ -302,6 +302,7 @@ struct ToolOutcome: Identifiable, Hashable {
 
 struct ApprovalDetail: Hashable {
     let approval: Approval
+    let reviewArtifact: ReviewArtifact?
     let effectText: String
     let plainPolicyReason: String
     let siblingGroupID: String
@@ -311,6 +312,11 @@ struct ApprovalDetail: Hashable {
 
     init(dictionary: [String: Any]) {
         self.approval = Approval(dictionary: dictionary["approval"] as? [String: Any] ?? [:])
+        if let artifactDictionary = dictionary["review_artifact"] as? [String: Any] {
+            self.reviewArtifact = ReviewArtifact(dictionary: artifactDictionary)
+        } else {
+            self.reviewArtifact = nil
+        }
         self.effectText = dictionary["effect_text"] as? String ?? ""
         self.plainPolicyReason = dictionary["plain_policy_reason"] as? String ?? ""
         let sibling = dictionary["sibling_group"] as? [String: Any] ?? [:]
@@ -319,6 +325,42 @@ struct ApprovalDetail: Hashable {
         self.siblingApprovable = sibling["approvable"] as? Bool ?? false
         self.suggestedActions = (dictionary["suggested_actions"] as? [[String: Any]] ?? [])
             .map(SuggestedApprovalAction.init(dictionary:))
+    }
+}
+
+struct ReviewArtifact: Identifiable, Hashable {
+    let id: String
+    let artifactType: String
+    let title: String
+    let target: String
+    let destinationID: String
+    let effect: String
+    let contentType: String
+    let sha256: String
+    let labels: [String]
+    let preview: String
+    let previewTruncated: Bool
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["artifact_id"] as? String ?? dictionary["sha256"] as? String ?? UUID().uuidString
+        self.artifactType = dictionary["artifact_type"] as? String ?? ""
+        self.title = dictionary["title"] as? String ?? ""
+        self.target = dictionary["target"] as? String ?? ""
+        self.destinationID = dictionary["destination_id"] as? String ?? ""
+        self.effect = dictionary["effect"] as? String ?? ""
+        self.contentType = dictionary["content_type"] as? String ?? ""
+        self.sha256 = dictionary["sha256"] as? String ?? ""
+        if let labelState = dictionary["labels"] as? [String: Any] {
+            self.labels = CapDepSession.flattenLabels(labelState)
+        } else {
+            self.labels = []
+        }
+        self.preview = dictionary["preview"] as? String ?? ""
+        self.previewTruncated = dictionary["preview_truncated"] as? Bool ?? false
+    }
+
+    var shortHash: String {
+        sha256.isEmpty ? "" : String(sha256.prefix(12))
     }
 }
 

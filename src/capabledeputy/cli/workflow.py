@@ -9,7 +9,6 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from capabledeputy.daemon.workflow_templates import workflow_turn_message
 from capabledeputy.ipc.client import DaemonClient
 from capabledeputy.ipc.socket_path import default_socket_path
 
@@ -54,51 +53,38 @@ def workflow_list(
 @workflow_app.command("run")
 def workflow_run(
     template_id: Annotated[str, typer.Argument(help="Workflow template id")],
-    client_id: Annotated[str, typer.Option("--client-id", help="Client id for turn tracking")] = "capdep-cli",
+    client_id: Annotated[
+        str, typer.Option("--client-id", help="Client id for turn tracking")
+    ] = "capdep-cli",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    """Create a session and start the workflow prompt via session.turn.start."""
-    result = _call("workflow.templates", {})
-    template = next(
-        (item for item in result.get("templates", []) if item.get("id") == template_id),
-        None,
-    )
-    if template is None:
-        err_console.print(f"[red]unknown workflow template:[/red] {template_id}")
-        raise typer.Exit(code=1)
-
-    turn_message = template.get("turn_message") or workflow_turn_message(template)
-    session = _call(
-        "session.new",
-        {
-            "intent": turn_message,
-            "owner": client_id,
-            "purpose_handle": template.get("purpose_handle", "general"),
-        },
-    )
-    session_id = session.get("id", "")
-    turn_result = _call(
-        "session.turn.start",
-        {
-            "session_id": session_id,
-            "message": turn_message,
-            "client_id": client_id,
-        },
-    )
+    """Ask the daemon to validate, create, and start a workflow template."""
+    try:
+        launched = _call(
+            "workflow.launch",
+            {"template_id": template_id, "client_id": client_id},
+        )
+    except Exception as e:
+        err_console.print(f"[red]workflow launch failed:[/red] {e}")
+        raise typer.Exit(code=1) from e
+    template = launched.get("template", {})
+    session = launched.get("session", {})
+    turn = launched.get("turn", {})
     if json_output:
         console.print_json(
             data={
                 "template": template,
                 "session": session,
-                "turn": turn_result.get("turn", {}),
+                "turn": turn,
             },
         )
         return
-    turn = turn_result.get("turn", {})
+    session_id = session.get("id", "")
     console.print(
         f"[green]started workflow[/green] {template.get('title', template_id)} "
         f"session={session_id[:8]} turn={turn.get('id', '')[:8]}",
     )
     console.print(
-        "[dim]Use `capdep session turn events <turn_id>` or `capdep chat` to follow progress.[/dim]",
+        "[dim]Use `capdep session turn events <turn_id>` "
+        "or `capdep chat` to follow progress.[/dim]",
     )

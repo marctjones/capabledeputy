@@ -7,11 +7,13 @@ do not have to scrape CLI-oriented endpoints.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction, ApprovalStatus
 from capabledeputy.approval.strong_auth import approval_to_client_dict
+from capabledeputy.artifacts import ArtifactError, TypedArtifact, artifact_review_card
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.daemon.google_gmail_setup import (
     GOOGLE_GMAIL_SERVER,
@@ -29,8 +31,18 @@ from capabledeputy.daemon.google_gmail_setup import (
 )
 from capabledeputy.daemon.handlers import Handler
 from capabledeputy.daemon.settings_store import load_settings
-from capabledeputy.daemon.setup_plan import build_setup_checks, build_setup_check, build_setup_plan
-from capabledeputy.daemon.workflow_templates import build_workflow_templates
+from capabledeputy.daemon.setup_plan import build_setup_check, build_setup_checks, build_setup_plan
+from capabledeputy.daemon.workflow_templates import (
+    build_workflow_templates,
+    workflow_template_by_id,
+    workflow_turn_message,
+)
+from capabledeputy.mode.dispatcher import ExecutionMode
+from capabledeputy.session.foreground_defaults import (
+    foreground_chat_default_capabilities,
+    should_apply_foreground_defaults,
+    supplement_foreground_capabilities,
+)
 from capabledeputy.version import __version__
 
 
@@ -57,9 +69,7 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
                 ),
                 "local_available": _has_mlx(),
                 "pool": (
-                    app.model_pool.status()
-                    if getattr(app, "model_pool", None) is not None
-                    else {}
+                    app.model_pool.status() if getattr(app, "model_pool", None) is not None else {}
                 ),
             },
             "upstream_servers": upstream,
@@ -77,6 +87,56 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
 
     async def workflow_templates(params: dict[str, Any]) -> dict[str, Any]:
         return build_workflow_templates()
+
+    async def workflow_launch(params: dict[str, Any]) -> dict[str, Any]:
+        template_id = str(params.get("template_id") or params.get("id") or "").strip()
+        if not template_id:
+            raise ValueError("workflow.launch requires template_id")
+        template = workflow_template_by_id(template_id)
+        if template is None:
+            raise ValueError(f"unknown workflow template: {template_id}")
+
+        client_id = str(params.get("client_id") or "workflow-launcher")
+        message = str(params.get("message") or "").strip() or workflow_turn_message(template)
+        suffix = str(params.get("message_suffix") or "").strip()
+        if suffix:
+            message = f"{message}\n\nOperator context:\n{suffix}"
+        purpose_handle = str(
+            params.get("purpose_handle") or template.get("purpose_handle") or "general"
+        )
+        session = await app.graph.new(
+            owner=client_id,
+            intent=message,
+            purpose_handle=purpose_handle,
+            origin={
+                "kind": "workflow_template",
+                "template_id": template_id,
+                "client_id": client_id,
+            },
+        )
+        session = await _apply_foreground_defaults(app, session, owner=client_id)
+        force_mode = ExecutionMode(str(params["mode"])) if params.get("mode") else None
+        turn = await app.turns.start(
+            session_id=session.id,
+            message=message,
+            client_id=client_id,
+            force_mode=force_mode,
+            max_iterations=(
+                int(params["max_iterations"]) if params.get("max_iterations") else None
+            ),
+            lease_token=str(params["lease_token"]) if params.get("lease_token") else None,
+            lease_seconds=int(params.get("lease_seconds") or 300),
+            heartbeat_interval_seconds=float(params.get("heartbeat_interval_seconds") or 5.0),
+            heartbeat_timeout_seconds=float(params.get("heartbeat_timeout_seconds") or 30.0),
+            heartbeat_enabled=bool(params.get("heartbeat_enabled", True)),
+            admin_override=bool(params.get("admin_override", False)),
+        )
+        return {
+            "template": template,
+            "session": session.to_dict(),
+            "turn": turn["turn"],
+            "message": message,
+        }
 
     async def policy_explain(params: dict[str, Any]) -> dict[str, Any]:
         events = await app.audit.read_all()
@@ -123,6 +183,7 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
                 approval,
                 touch_id_policy_enabled=settings.require_touch_id_for_high_risk,
             ),
+            "review_artifact": _review_artifact_from_approval_payload(approval.payload),
             "effect_text": _approval_effect_text(approval.action),
             "plain_policy_reason": _plain_policy_explanation(
                 "require_approval",
@@ -279,6 +340,7 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
         "setup.plan": setup_plan,
         "setup.check": setup_check,
         "workflow.templates": workflow_templates,
+        "workflow.launch": workflow_launch,
         "setup.google.oauth_status": google_oauth_status_handler,
         "setup.google.configure_oauth": google_configure_oauth,
         "setup.google.oauth_login": google_oauth_login,
@@ -291,6 +353,37 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
         "provenance.graph": provenance_graph,
         "macos.frontmost_context": macos_frontmost_context,
     }
+
+
+def _review_artifact_from_approval_payload(payload: str) -> dict[str, Any] | None:
+    try:
+        raw = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return artifact_review_card(TypedArtifact.from_dict(raw))
+    except ArtifactError:
+        return None
+
+
+async def _apply_foreground_defaults(app: App, session: Any, *, owner: str) -> Any:
+    if should_apply_foreground_defaults(
+        owner=owner,
+        purpose_handle=session.purpose_handle,
+        capability_count=len(session.capability_set),
+        capability_set=session.capability_set,
+    ):
+        caps = (
+            supplement_foreground_capabilities(session.capability_set)
+            if session.capability_set
+            else foreground_chat_default_capabilities()
+        )
+        for cap in caps:
+            await app.graph.grant_capability(session.id, cap)
+        return app.graph.get(session.id)
+    return session
 
 
 def _tools_by_kind(tools: list[Any]) -> dict[str, int]:

@@ -73,6 +73,33 @@ final class DaemonContractModelTests: XCTestCase {
         )
     }
 
+    func testApprovalDetailParsesReviewArtifact() {
+        let detail = ApprovalDetail(dictionary: [
+            "approval": ["id": 7, "action": "SEND_EMAIL", "target": "gmail:recipient:a@example.com"],
+            "review_artifact": [
+                "artifact_id": "artifact-1",
+                "artifact_type": "email_draft",
+                "title": "Reply draft",
+                "target": "a@example.com",
+                "destination_id": "gmail:recipient:a@example.com",
+                "effect": "send",
+                "content_type": "text/plain",
+                "sha256": "abcdef1234567890",
+                "labels": ["b": [["level": "external-untrusted"]]],
+                "preview": "Hello",
+                "preview_truncated": false,
+            ],
+            "effect_text": "Send an email",
+            "plain_policy_reason": "requires approval",
+        ])
+
+        XCTAssertEqual(detail.reviewArtifact?.artifactType, "email_draft")
+        XCTAssertEqual(detail.reviewArtifact?.destinationID, "gmail:recipient:a@example.com")
+        XCTAssertEqual(detail.reviewArtifact?.shortHash, "abcdef123456")
+        XCTAssertEqual(detail.reviewArtifact?.labels, ["external-untrusted"])
+        XCTAssertEqual(detail.reviewArtifact?.preview, "Hello")
+    }
+
     func testRecoveryStepWidensFilePathToParentDirectory() {
         XCTAssertEqual(
             RecoveryStep.widenedGrantPattern(kind: "READ_FS", pattern: "/tmp/foo/bar.txt"),

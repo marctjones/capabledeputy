@@ -9,8 +9,14 @@ from capabledeputy.daemon.source_context_handlers import make_source_context_han
 from capabledeputy.substrate.active_context import (
     ActiveContextError,
     ActiveContextRecord,
+    AppleMailContextSourcePort,
     BrowserCurrentPageSourcePort,
+    CalendarContextSourcePort,
+    FinderContextSourcePort,
+    KeynoteContextSourcePort,
     MacOSAppContextSourcePort,
+    NumbersContextSourcePort,
+    PagesContextSourcePort,
     active_context_from_payload,
 )
 from capabledeputy.substrate.source_port import get_source_port
@@ -62,6 +68,52 @@ def test_macos_context_rejects_ambiguous_plain_path() -> None:
         MacOSAppContextSourcePort().canonicalize_resource("Documents/Draft.pages")
 
 
+def test_apple_mail_context_uses_message_ids_and_untrusted_label() -> None:
+    record = active_context_from_payload(
+        "apple-mail",
+        {"uri": "message://%3Cabc@example.com%3E", "title": "Invoice"},
+    )
+
+    assert record.canonical_id == "macos:apple-mail:message:%3Cabc@example.com%3E"
+    assert record.source_kind == "apple-mail"
+    assert any(tag.level.value == "external-untrusted" for tag in record.labels.b)
+
+
+def test_apple_mail_context_rejects_subject_only() -> None:
+    with pytest.raises(ActiveContextError):
+        AppleMailContextSourcePort().canonicalize_resource("subject:Invoice")
+
+
+def test_finder_context_requires_file_uri(tmp_path: Path) -> None:
+    doc = tmp_path / "Notes.txt"
+    record = active_context_from_payload("finder", {"uri": doc.as_uri(), "title": "Notes.txt"})
+
+    assert record.canonical_id == f"macos:finder:file:{doc.as_uri()}"
+    assert any(tag.level.value == "system-internal" for tag in record.labels.b)
+    with pytest.raises(ActiveContextError):
+        FinderContextSourcePort().canonicalize_resource(str(doc))
+
+
+def test_iwork_context_ports_canonicalize_file_and_document_ids(tmp_path: Path) -> None:
+    doc = tmp_path / "Pitch.key"
+
+    assert PagesContextSourcePort().canonicalize_resource("pages:document:doc-123") == (
+        "macos:pages:document:doc-123"
+    )
+    assert KeynoteContextSourcePort().canonicalize_resource(doc.as_uri()) == (
+        f"macos:keynote:file:{doc.as_uri()}"
+    )
+    assert isinstance(get_source_port("numbers"), NumbersContextSourcePort)
+
+
+def test_calendar_context_requires_stable_event_id() -> None:
+    assert CalendarContextSourcePort().canonicalize_resource("calendar:event:evt-123") == (
+        "macos:calendar:event:evt-123"
+    )
+    with pytest.raises(ActiveContextError):
+        CalendarContextSourcePort().canonicalize_resource("calendar://")
+
+
 def test_active_context_stale_records_fail_closed() -> None:
     captured = datetime.now(UTC) - timedelta(minutes=10)
     record = ActiveContextRecord(
@@ -80,6 +132,11 @@ def test_active_context_stale_records_fail_closed() -> None:
 def test_active_context_source_ports_are_registry_accessible() -> None:
     assert isinstance(get_source_port("browser.current-page"), BrowserCurrentPageSourcePort)
     assert isinstance(get_source_port("macos.frontmost-app"), MacOSAppContextSourcePort)
+    assert isinstance(get_source_port("apple-mail"), AppleMailContextSourcePort)
+    assert isinstance(get_source_port("finder"), FinderContextSourcePort)
+    assert isinstance(get_source_port("pages"), PagesContextSourcePort)
+    assert isinstance(get_source_port("numbers"), NumbersContextSourcePort)
+    assert isinstance(get_source_port("keynote"), KeynoteContextSourcePort)
 
 
 async def test_source_context_handlers_import_and_canonicalize() -> None:

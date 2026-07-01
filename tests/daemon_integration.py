@@ -11,7 +11,6 @@ from typing import Any
 import anyio
 
 from capabledeputy.app import App
-from capabledeputy.daemon.lifecycle import build_policy_context_from_configs
 from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.daemon.audit_handlers import make_audit_handlers
@@ -21,6 +20,8 @@ from capabledeputy.daemon.devbox_handlers import make_devbox_handlers
 from capabledeputy.daemon.extract_handlers import make_extract_handlers
 from capabledeputy.daemon.gui_handlers import make_gui_handlers
 from capabledeputy.daemon.handlers import default_handlers, make_info_handler
+from capabledeputy.daemon.lifecycle import build_policy_context_from_configs
+from capabledeputy.daemon.mcp_admission_handlers import make_mcp_admission_handlers
 from capabledeputy.daemon.memory_handlers import make_memory_handlers
 from capabledeputy.daemon.onguard_handlers import make_onguard_handlers
 from capabledeputy.daemon.pattern_handlers import make_pattern_handlers
@@ -28,13 +29,13 @@ from capabledeputy.daemon.policy_handlers import make_policy_handlers
 from capabledeputy.daemon.programmatic_handlers import make_programmatic_handlers
 from capabledeputy.daemon.relationship_handlers import make_relationship_handlers
 from capabledeputy.daemon.security_context_handlers import make_security_context_handlers
-from capabledeputy.daemon.state_handlers import make_state_handlers
 from capabledeputy.daemon.server import Daemon
 from capabledeputy.daemon.session_handlers import make_session_handlers
-from capabledeputy.daemon.workstream_handlers import make_workstream_handlers
 from capabledeputy.daemon.settings_handlers import make_settings_handlers
 from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
+from capabledeputy.daemon.state_handlers import make_state_handlers
 from capabledeputy.daemon.tool_handlers import make_tool_handlers
+from capabledeputy.daemon.workstream_handlers import make_workstream_handlers
 from capabledeputy.ipc.client import DaemonClient
 from tests._socket_helpers import short_socket_path
 
@@ -83,6 +84,12 @@ def build_test_handlers(app: App, paths: DaemonTestPaths) -> dict[str, Any]:
     handlers.update(make_workstream_handlers(app))
     handlers.update(make_programmatic_handlers(app))
     handlers.update(make_bundle_handlers(app))
+    from capabledeputy.daemon.artifact_handlers import make_artifact_handlers
+    from capabledeputy.daemon.source_context_handlers import make_source_context_handlers
+
+    handlers.update(make_source_context_handlers())
+    handlers.update(make_artifact_handlers())
+    handlers.update(make_mcp_admission_handlers(app))
     handlers.update(make_gui_handlers(app))
     handlers.update(make_onguard_handlers(app))
     handlers.update(make_setup_control_handlers(app, source_bindings_path=paths.source_bindings))
@@ -105,7 +112,7 @@ async def build_test_daemon(paths: DaemonTestPaths) -> tuple[Daemon, App]:
     )
     await app.startup()
     daemon = Daemon(paths.socket, handlers=build_test_handlers(app, paths))
-    setattr(app, "daemon_server", daemon)
+    app.daemon_server = daemon
     return daemon, app
 
 

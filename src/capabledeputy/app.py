@@ -34,6 +34,7 @@ from capabledeputy.tools.native.resources import make_resources_tools
 from capabledeputy.tools.native.tasks import TaskStore, make_tasks_tools
 from capabledeputy.tools.native.web import WebMock, make_web_tools
 from capabledeputy.tools.registry import ToolRegistry
+from capabledeputy.upstream.admission_store import McpAdmissionStore
 
 
 class App:
@@ -59,6 +60,7 @@ class App:
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(resolved_state_db_path)
         self.onguard = OnguardStore(resolved_state_db_path)
+        self.mcp_admissions = McpAdmissionStore(resolved_state_db_path)
         from capabledeputy.llm.pool import ModelPool as _ModelPool
 
         self.model_pool: _ModelPool | None = model_pool
@@ -210,6 +212,7 @@ class App:
     async def startup(self) -> None:
         await self.store.initialize()
         await self.onguard.initialize()
+        await self.mcp_admissions.initialize()
         await self.graph.load()
         self._maybe_start_devbox_reaper()
 

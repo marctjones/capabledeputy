@@ -53,6 +53,12 @@ struct ApprovalDetailView: View {
                     }
                 }
 
+                if let artifact = detail?.reviewArtifact {
+                    DetailSection(title: "Reviewed Artifact") {
+                        VisualReviewArtifactCard(artifact: artifact)
+                    }
+                }
+
                 DetailSection(title: "Payload") {
                     Text(approval.payload.isEmpty ? "(empty)" : approval.payload)
                         .font(.body.monospaced())
@@ -140,6 +146,73 @@ struct ApprovalDetailView: View {
         }
         .task(id: approval.id) {
             await model.refreshApprovalDetail(approval)
+        }
+    }
+}
+
+private struct VisualReviewArtifactCard: View {
+    let artifact: ReviewArtifact
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(artifact.title.isEmpty ? artifact.artifactType : artifact.title, systemImage: icon)
+                    .font(.headline)
+                Spacer()
+                Text(artifact.effect.replacingOccurrences(of: "_", with: " ").uppercased())
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(alignment: .top, spacing: 10) {
+                FlowStep(
+                    title: "Destination",
+                    value: artifact.destinationID.isEmpty ? artifact.target : artifact.destinationID,
+                    systemImage: "scope",
+                )
+                FlowStep(
+                    title: "Hash",
+                    value: artifact.shortHash.isEmpty ? "(missing)" : artifact.shortHash,
+                    systemImage: "number",
+                )
+                FlowStep(
+                    title: "Type",
+                    value: artifact.artifactType,
+                    systemImage: "doc.text",
+                )
+            }
+
+            if !artifact.labels.isEmpty {
+                LabelList(labels: artifact.labels)
+            }
+
+            Text(artifact.preview.isEmpty ? "(empty artifact preview)" : artifact.preview)
+                .font(.body.monospaced())
+                .textSelection(.enabled)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+
+            if artifact.previewTruncated {
+                Label("Preview truncated; hash still binds the full artifact.", systemImage: "scissors")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
+    }
+
+    private var icon: String {
+        switch artifact.artifactType {
+        case "email_draft": "envelope"
+        case "calendar_event": "calendar"
+        case "diff": "plus.forwardslash.minus"
+        case "document": "doc.text"
+        case "research": "doc.text.magnifyingglass"
+        default: "doc.richtext"
         }
     }
 }

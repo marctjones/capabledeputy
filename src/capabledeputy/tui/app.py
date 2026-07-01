@@ -33,8 +33,9 @@ from __future__ import annotations
 
 import json
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from rich.text import Text
 from textual import on, work
@@ -494,8 +495,7 @@ class SetupAssistantScreen(ModalScreen[None]):
             actions = ", ".join(action.get("label", "") for action in check.get("actions", []))
             lines.append(
                 f"{marker} [{check.get('status', '')}] {check.get('title', '')}\n"
-                f"    {check.get('detail', '')}"
-                + (f"\n    actions: {actions}" if actions else ""),
+                f"    {check.get('detail', '')}" + (f"\n    actions: {actions}" if actions else ""),
             )
         self.query_one("#setup-checks", Static).update(
             "\n\n".join(lines) if lines else "[dim]No setup checks returned.[/dim]",
@@ -618,35 +618,22 @@ class WorkflowLibraryScreen(ModalScreen[None]):
             )
 
     async def _run_template(self, template: dict[str, Any]) -> None:
-        message = str(template.get("turn_message") or template.get("prompt", ""))
         try:
-            session = await self._client.call(
-                "session.new",
-                {
-                    "intent": message or template.get("title", ""),
-                    "owner": "capdep-tui",
-                    "purpose_handle": template.get("purpose_handle", "general"),
-                },
-            )
-            turn_result = await self._client.call(
-                "session.turn.start",
-                {
-                    "session_id": session["id"],
-                    "message": message,
-                    "client_id": "capdep-tui",
-                },
+            launched = await self._client.call(
+                "workflow.launch",
+                {"template_id": template.get("id", ""), "client_id": "capdep-tui"},
             )
         except Exception as e:
             self.notify(f"workflow run failed: {e}", severity="error")
             return
-        turn = turn_result.get("turn", {})
+        session = launched.get("session", {})
+        turn = launched.get("turn", {})
         turn_id = str(turn.get("id", ""))
-        session_id = str(session["id"])
+        session_id = str(session.get("id", ""))
         if self._on_turn_started and turn_id:
             self._on_turn_started(session_id, turn_id)
         self.notify(
-            f"started {template.get('title', '')} "
-            f"session={session_id[:8]} turn={turn_id[:8]}",
+            f"started {template.get('title', '')} session={session_id[:8]} turn={turn_id[:8]}",
             timeout=8,
         )
         self.dismiss(None)
@@ -1138,9 +1125,7 @@ class CapDepTUI(App[None]):
             labels = s.get("label_set", [])
             word, style = compartment_summary(labels)
             workstream = (
-                self._daemon_state.get("workstreams", {})
-                .get("by_session", {})
-                .get(s.get("id"), {})
+                self._daemon_state.get("workstreams", {}).get("by_session", {}).get(s.get("id"), {})
             )
             workstream_text = ""
             if workstream:
@@ -1193,9 +1178,7 @@ class CapDepTUI(App[None]):
         convo_lines = format_session_history(history)
 
         workstream = (
-            self._daemon_state.get("workstreams", {})
-            .get("by_session", {})
-            .get(session_id, {})
+            self._daemon_state.get("workstreams", {}).get("by_session", {}).get(session_id, {})
         )
         if workstream:
             lease = str(workstream.get("lease_until") or "")
@@ -1206,7 +1189,7 @@ class CapDepTUI(App[None]):
                 f"status={workstream.get('status') or ''} "
                 f"lease_until={lease}"
             )
-            convo_lines = [header, ""] + convo_lines
+            convo_lines = [header, "", *convo_lines]
 
         convo_log = self.query_one("#conversation", RichLog)
         convo_log.clear()
@@ -1434,9 +1417,7 @@ class CapDepTUI(App[None]):
         turn_approval_part = ""
         if self._turn_pending_approval_ids:
             ids = ", ".join(f"#{aid}" for aid in self._turn_pending_approval_ids[:3])
-            turn_approval_part = (
-                f"  ·  [bold yellow]turn approvals {ids}[/bold yellow]"
-            )
+            turn_approval_part = f"  ·  [bold yellow]turn approvals {ids}[/bold yellow]"
         active_workstreams = (
             self._daemon_state.get("workstreams", {}).get("active_count", 0)
             if self._daemon_state

@@ -8,7 +8,6 @@ provenance, memory, and audit behavior.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -270,6 +269,85 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
         "workflow.templates",
         _EMPTY_INPUT,
         _annotations("Workflow templates", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "workflow_launch",
+        "Launch workflow",
+        "Validate and launch a daemon-owned workflow template.",
+        "workflow.launch",
+        _schema(
+            {
+                "template_id": {"type": "string"},
+                "client_id": {"type": "string", "default": "mcp-control"},
+                "message_suffix": {"type": "string"},
+                "mode": {"type": "string"},
+                "max_iterations": {"type": "integer", "minimum": 1},
+            },
+            required=["template_id"],
+        ),
+        _annotations("Launch workflow", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "mcp_admission_preview",
+        "Preview MCP admission",
+        "Classify upstream MCP tools and persist daemon-owned admission preview state.",
+        "mcp.admission.preview",
+        _schema(
+            {
+                "server": {"type": "string"},
+                "config": _JSON_OBJECT_SCHEMA,
+                "tools": {"type": "array", "items": _JSON_OBJECT_SCHEMA},
+                "actor": {"type": "string", "default": "mcp-control"},
+            },
+            required=["tools"],
+        ),
+        _annotations("Preview MCP admission", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "mcp_admission_approve",
+        "Approve MCP tools",
+        "Approve previously previewed MCP tools in daemon-owned admission state.",
+        "mcp.admission.approve",
+        _schema(
+            {
+                "server": {"type": "string"},
+                "tools": {"type": "array", "items": {"type": "string"}},
+                "approved_by": {"type": "string", "default": "mcp-control"},
+            },
+            required=["server", "tools"],
+        ),
+        _annotations("Approve MCP tools", read_only=False, idempotent=False),
+    ),
+    ControlToolSpec(
+        "mcp_admission_disable",
+        "Disable MCP tools",
+        "Disable MCP tools in daemon-owned admission state.",
+        "mcp.admission.disable",
+        _schema(
+            {
+                "server": {"type": "string"},
+                "tools": {"type": "array", "items": {"type": "string"}},
+                "disabled_by": {"type": "string", "default": "mcp-control"},
+            },
+            required=["server", "tools"],
+        ),
+        _annotations("Disable MCP tools", read_only=False, idempotent=True),
+    ),
+    ControlToolSpec(
+        "mcp_admission_list",
+        "List MCP admission",
+        "List daemon-owned MCP admission decisions.",
+        "mcp.admission.list",
+        _schema({"server": {"type": "string"}}),
+        _annotations("List MCP admission", read_only=True, idempotent=True),
+    ),
+    ControlToolSpec(
+        "mcp_admission_audit",
+        "Audit MCP admission",
+        "List daemon-owned MCP admission audit events.",
+        "mcp.admission.audit",
+        _schema({"server": {"type": "string"}, "limit": {"type": "integer", "minimum": 1}}),
+        _annotations("Audit MCP admission", read_only=True, idempotent=True),
     ),
     ControlToolSpec(
         "setup_run_action",
@@ -1829,6 +1907,15 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
         return {"service_id": str(args.get("service_id") or "")}
     if name == "setup_run_action":
         return {"action_id": str(args.get("action_id") or "")}
+    if name == "workflow_launch":
+        return _copy(
+            args,
+            "template_id",
+            "client_id",
+            "message_suffix",
+            "mode",
+            "max_iterations",
+        )
     if name == "runtime_automation_pause":
         return {"paused": bool(args.get("paused"))}
     if name == "runtime_screen_control_request":
@@ -2058,6 +2145,15 @@ def _params_for_continued(name: str, args: dict[str, Any]) -> dict[str, Any] | N
         return params
     if name.startswith("approval_pattern_"):
         return dict(args)
+    if name.startswith("mcp_admission_"):
+        params = dict(args)
+        if name == "mcp_admission_preview" and "actor" not in params:
+            params["actor"] = "mcp-control"
+        if name == "mcp_admission_approve" and "approved_by" not in params:
+            params["approved_by"] = "mcp-control"
+        if name == "mcp_admission_disable" and "disabled_by" not in params:
+            params["disabled_by"] = "mcp-control"
+        return params
     if name.startswith("override_"):
         return dict(args)
     if name.startswith("relationship_group_"):

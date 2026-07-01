@@ -37,6 +37,12 @@ def test_control_tools_include_daemon_client_surface() -> None:
     assert "workstream_sweep_expired" in names
     assert "approval_approve" in names
     assert "setup_status" in names
+    assert "workflow_launch" in names
+    assert "mcp_admission_preview" in names
+    assert "mcp_admission_approve" in names
+    assert "mcp_admission_disable" in names
+    assert "mcp_admission_list" in names
+    assert "mcp_admission_audit" in names
     assert "google_oauth_status" in names
     assert "gmail_oauth_login" in names
     assert "provenance_graph" in names
@@ -248,6 +254,62 @@ async def test_control_gmail_oauth_login_dispatches(fake_daemon) -> None:
         (
             "setup.google_gmail.oauth_login",
             {"open_browser": True, "timeout_seconds": 90},
+        ),
+    ]
+
+
+async def test_control_workflow_launch_dispatches(fake_daemon) -> None:
+    client = fake_daemon({"workflow.launch": {"turn": {"id": "t1"}}})
+
+    result = await dispatch_control_tool(
+        client,
+        "workflow_launch",
+        {"template_id": "meeting-prep", "client_id": "codex"},
+    )
+
+    assert result.isError is False
+    assert client.calls == [
+        ("workflow.launch", {"template_id": "meeting-prep", "client_id": "codex"}),
+    ]
+
+
+async def test_control_mcp_admission_dispatches_actor_defaults(fake_daemon) -> None:
+    client = fake_daemon(
+        {
+            "mcp.admission.preview": {"server": "github"},
+            "mcp.admission.approve": {"server": "github"},
+        }
+    )
+
+    preview = await dispatch_control_tool(
+        client,
+        "mcp_admission_preview",
+        {"server": "github", "tools": [{"name": "list_issues"}]},
+    )
+    approve = await dispatch_control_tool(
+        client,
+        "mcp_admission_approve",
+        {"server": "github", "tools": ["list_issues"]},
+    )
+
+    assert preview.isError is False
+    assert approve.isError is False
+    assert client.calls == [
+        (
+            "mcp.admission.preview",
+            {
+                "server": "github",
+                "tools": [{"name": "list_issues"}],
+                "actor": "mcp-control",
+            },
+        ),
+        (
+            "mcp.admission.approve",
+            {
+                "server": "github",
+                "tools": ["list_issues"],
+                "approved_by": "mcp-control",
+            },
         ),
     ]
 

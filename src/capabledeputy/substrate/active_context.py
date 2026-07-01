@@ -7,6 +7,7 @@ clients can present the failure and ask the operator to re-select context.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -37,6 +38,10 @@ def _labels_for_browser() -> LabelState:
 
 def _labels_for_macos_app() -> LabelState:
     return LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.SYSTEM_INTERNAL)}))
+
+
+def _labels_for_untrusted_app_content() -> LabelState:
+    return LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}))
 
 
 @dataclass(frozen=True)
@@ -187,6 +192,123 @@ class MacOSAppContextSourcePort(SourcePort):
         return record
 
 
+class _MacOSSpecificAppSourcePort(SourcePort):
+    """Narrow SourcePort base for app-specific macOS active context."""
+
+    source_kind: str = ""
+    labels: LabelState = LabelState()
+
+    def canonical_destination_id(self, target: str) -> str:
+        return self.canonicalize_resource(target)
+
+    def context_from_payload(self, payload: dict[str, Any]) -> ActiveContextRecord:
+        uri = str(payload.get("uri") or payload.get("url") or payload.get("resource") or "").strip()
+        if not uri:
+            raise ActiveContextError(f"{self.source_kind} context missing uri")
+        captured = _coerce_captured_at(payload.get("captured_at"))
+        record = ActiveContextRecord(
+            source_kind=self.source_kind,
+            uri=uri,
+            canonical_id=self.canonicalize_resource(uri),
+            title=str(payload.get("title") or payload.get("name") or "").strip(),
+            labels=self.labels,
+            captured_at=captured,
+            stale_after_seconds=int(payload.get("stale_after_seconds") or 300),
+            metadata=_metadata_without(
+                payload,
+                {"uri", "url", "resource", "title", "name", "captured_at", "stale_after_seconds"},
+            ),
+        )
+        record.ensure_fresh()
+        return record
+
+
+class AppleMailContextSourcePort(_MacOSSpecificAppSourcePort):
+    """Canonical Apple Mail message/thread context."""
+
+    source_kind = "apple-mail"
+    labels = _labels_for_untrusted_app_content()
+
+    def canonicalize_resource(self, uri: str) -> str:
+        raw = str(uri or "").strip()
+        if raw.startswith(("message://", "apple-mail://message/")):
+            parsed = urlparse(raw)
+            token = (parsed.netloc + parsed.path).strip("/")
+            return f"macos:apple-mail:message:{_stable_token(token, kind='Apple Mail message')}"
+        if raw.startswith("mailto:"):
+            parsed = urlparse(raw)
+            recipient = _stable_token(parsed.path, kind="Mail recipient").lower()
+            return f"macos:apple-mail:recipient:{recipient}"
+        if raw.startswith("<") and raw.endswith(">"):
+            return f"macos:apple-mail:message:{_stable_token(raw, kind='RFC822 Message-ID')}"
+        if raw.startswith("apple-mail:message:"):
+            token = raw.removeprefix("apple-mail:message:")
+            return f"macos:apple-mail:message:{_stable_token(token, kind='Apple Mail message')}"
+        raise ActiveContextError(
+            "Apple Mail context requires message://, apple-mail://message/, "
+            "mailto:, or RFC822 Message-ID",
+        )
+
+
+class FinderContextSourcePort(_MacOSSpecificAppSourcePort):
+    """Canonical Finder file or folder selection context."""
+
+    source_kind = "finder"
+    labels = _labels_for_macos_app()
+
+    def canonicalize_resource(self, uri: str) -> str:
+        raw = str(uri or "").strip()
+        if not raw.startswith("file:"):
+            raise ActiveContextError("Finder context requires an absolute file:// URI")
+        return f"macos:finder:file:{_canonical_file_uri(raw)}"
+
+
+class PagesContextSourcePort(_MacOSSpecificAppSourcePort):
+    source_kind = "pages"
+    labels = _labels_for_macos_app()
+
+    def canonicalize_resource(self, uri: str) -> str:
+        return _canonical_iwork_resource("pages", uri)
+
+
+class NumbersContextSourcePort(_MacOSSpecificAppSourcePort):
+    source_kind = "numbers"
+    labels = _labels_for_macos_app()
+
+    def canonicalize_resource(self, uri: str) -> str:
+        return _canonical_iwork_resource("numbers", uri)
+
+
+class KeynoteContextSourcePort(_MacOSSpecificAppSourcePort):
+    source_kind = "keynote"
+    labels = _labels_for_macos_app()
+
+    def canonicalize_resource(self, uri: str) -> str:
+        return _canonical_iwork_resource("keynote", uri)
+
+
+class CalendarContextSourcePort(_MacOSSpecificAppSourcePort):
+    source_kind = "calendar"
+    labels = _labels_for_macos_app()
+
+    def canonicalize_resource(self, uri: str) -> str:
+        raw = str(uri or "").strip()
+        if raw.startswith("calendar:event:"):
+            token = raw.removeprefix("calendar:event:")
+            return f"macos:calendar:event:{_stable_token(token, kind='Calendar event')}"
+        parsed = urlparse(raw)
+        scheme = parsed.scheme.lower()
+        if scheme in {"calendar", "x-apple-calevent", "ical"}:
+            token = (parsed.netloc + parsed.path).strip("/")
+            if not token:
+                query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+                token = query.get("event_id") or query.get("uid") or ""
+            return f"macos:calendar:event:{_stable_token(token, kind='Calendar event')}"
+        raise ActiveContextError(
+            "Calendar context requires calendar:, x-apple-calevent:, ical:, or calendar:event: URI",
+        )
+
+
 def active_context_from_payload(kind: str, payload: dict[str, Any]) -> ActiveContextRecord:
     """Import active context from a client payload, fail-closed on ambiguity."""
 
@@ -195,6 +317,9 @@ def active_context_from_payload(kind: str, payload: dict[str, Any]) -> ActiveCon
         return BrowserCurrentPageSourcePort().context_from_payload(payload)
     if normalized in {"macos", "macos.frontmost-app", "macos-frontmost-app"}:
         return MacOSAppContextSourcePort().context_from_payload(payload)
+    specific = _specific_macos_port(normalized)
+    if specific is not None:
+        return specific.context_from_payload(payload)
     raise ActiveContextError(f"unknown active-context source kind: {kind!r}")
 
 
@@ -204,6 +329,9 @@ def source_port_for_active_context(kind: str) -> SourcePort:
         return BrowserCurrentPageSourcePort()
     if normalized in {"macos", "macos.frontmost-app", "macos-frontmost-app"}:
         return MacOSAppContextSourcePort()
+    specific = _specific_macos_port(normalized)
+    if specific is not None:
+        return specific
     raise ActiveContextError(f"unknown active-context source kind: {kind!r}")
 
 
@@ -250,6 +378,47 @@ def _stable_scheme_payload(parsed: Any) -> str:
     if not payload:
         raise ActiveContextError(f"active-context URI lacks stable payload: {parsed.geturl()!r}")
     return payload
+
+
+_STABLE_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.@<>=:+%/-]{1,512}$")
+
+
+def _stable_token(value: str, *, kind: str) -> str:
+    token = str(value or "").strip()
+    if not token or not _STABLE_TOKEN_RE.match(token):
+        raise ActiveContextError(f"cannot canonicalize {kind} id from {value!r}")
+    return token
+
+
+def _canonical_iwork_resource(app: str, uri: str) -> str:
+    raw = str(uri or "").strip()
+    if raw.startswith(f"{app}:document:"):
+        token = raw.removeprefix(f"{app}:document:")
+        return f"macos:{app}:document:{_stable_token(token, kind=f'{app} document')}"
+    parsed = urlparse(raw)
+    scheme = parsed.scheme.lower()
+    if scheme == "file":
+        return f"macos:{app}:file:{_canonical_file_uri(raw)}"
+    if scheme == app:
+        token = _stable_scheme_payload(parsed)
+        return f"macos:{app}:document:{_stable_token(token, kind=f'{app} document')}"
+    raise ActiveContextError(f"{app} context requires file://, {app}:, or {app}:document: URI")
+
+
+def _specific_macos_port(kind: str) -> _MacOSSpecificAppSourcePort | None:
+    if kind in {"apple-mail", "mail", "macos.apple-mail"}:
+        return AppleMailContextSourcePort()
+    if kind in {"finder", "macos.finder"}:
+        return FinderContextSourcePort()
+    if kind in {"pages", "macos.pages"}:
+        return PagesContextSourcePort()
+    if kind in {"numbers", "macos.numbers"}:
+        return NumbersContextSourcePort()
+    if kind in {"keynote", "macos.keynote"}:
+        return KeynoteContextSourcePort()
+    if kind in {"calendar", "apple-calendar", "macos.calendar"}:
+        return CalendarContextSourcePort()
+    return None
 
 
 def _coerce_captured_at(value: Any) -> datetime:

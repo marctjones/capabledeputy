@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -5,6 +6,7 @@ import pytest
 
 from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction
+from capabledeputy.artifacts import ArtifactEffect, ArtifactType, TypedArtifact
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.daemon.gui_handlers import make_gui_handlers
 
@@ -132,6 +134,34 @@ async def test_approval_detail_reports_daemon_action_guidance(app: App) -> None:
     assert {"deny", "defer", "narrow-pattern"} <= {
         action["id"] for action in result["suggested_actions"]
     }
+
+
+async def test_approval_detail_includes_typed_review_artifact(app: App) -> None:
+    handlers = make_gui_handlers(app)
+    session = await app.graph.new(intent="artifact approval")
+    artifact = TypedArtifact(
+        artifact_type=ArtifactType.EMAIL_DRAFT,
+        title="Reply draft",
+        content="Hello from the reviewed draft.",
+        target="friend@example.com",
+        destination_id="gmail:recipient:friend@example.com",
+        effect=ArtifactEffect.SEND,
+    )
+    approval = await app.approval_queue.submit(
+        from_session=session.id,
+        action=ApprovalAction.SEND_EMAIL,
+        payload=json.dumps(artifact.to_dict()),
+        target=artifact.destination_id,
+        justification="review exact draft",
+    )
+
+    result = await handlers["approval.detail"]({"id": approval.id})
+
+    review = result["review_artifact"]
+    assert review["artifact_type"] == "email_draft"
+    assert review["destination_id"] == "gmail:recipient:friend@example.com"
+    assert review["sha256"] == artifact.sha256
+    assert review["preview"] == "Hello from the reviewed draft."
 
 
 @pytest.mark.parametrize(

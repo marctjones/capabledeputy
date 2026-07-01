@@ -142,6 +142,7 @@ def test_cli_implements_setup_and_workflow_manifested_methods() -> None:
     )
     for method in (
         "setup.run_action",
+        "workflow.launch",
         "workflow.templates",
     ):
         assert manifest[method]["cli"] == "implemented"
@@ -159,6 +160,7 @@ def test_tui_implements_setup_and_workflow_manifested_methods() -> None:
         "setup.check",
         "setup.status",
         "setup.run_action",
+        "workflow.launch",
         "workflow.templates",
     ):
         assert manifest[method]["tui"] == "implemented"

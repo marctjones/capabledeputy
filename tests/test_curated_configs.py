@@ -90,6 +90,45 @@ def test_legacy_github_config_replaced_by_official_remote() -> None:
     assert config.tool_overrides["merge_pull_request"].capability_kind is not None
 
 
+def test_tier1_curated_mappings_cover_core_providers() -> None:
+    assert {
+        "github.yaml",
+        "google-workspace.yaml",
+        "microsoft-365.yaml",
+        "notion.yaml",
+    } <= {path.name for path in _FILES}
+
+
+@pytest.mark.parametrize(
+    ("filename", "server_name", "client_env", "write_tool"),
+    [
+        (
+            "microsoft-365.yaml",
+            "microsoft-365",
+            "MICROSOFT_MCP_CLIENT_ID",
+            "update_event",
+        ),
+        ("notion.yaml", "notion", "NOTION_MCP_CLIENT_ID", "update_page"),
+    ],
+)
+def test_tier1_mapping_fixtures_are_strict_oauth_configs(
+    filename: str,
+    server_name: str,
+    client_env: str,
+    write_tool: str,
+) -> None:
+    [config] = load_config_file(_CURATED / filename)
+
+    assert config.name == server_name
+    assert config.transport == "streamable_http"
+    assert config.strict is True
+    assert config.auth is not None
+    assert config.auth.type == "oauth2"
+    assert config.auth.client_id_env == client_env
+    assert config.tool_overrides
+    assert config.tool_overrides[write_tool].capability_kind is not None
+
+
 def test_slack_uses_official_remote_mcp() -> None:
     [config] = load_config_file(_CURATED / "slack.yaml")
 

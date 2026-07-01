@@ -157,6 +157,25 @@ def artifact_approval_payload(
     )
 
 
+def artifact_review_card(artifact: TypedArtifact) -> dict[str, Any]:
+    """Client-safe visual-review summary for typed artifacts."""
+
+    return {
+        "artifact_id": artifact.artifact_id or artifact.sha256[:16],
+        "artifact_type": artifact.artifact_type.value,
+        "title": artifact.title,
+        "target": artifact.target,
+        "destination_id": artifact.destination_id,
+        "effect": artifact.effect.value,
+        "content_type": artifact.content_type,
+        "sha256": artifact.sha256,
+        "labels": artifact.labels.to_dict(),
+        "metadata": _jsonable(artifact.metadata),
+        "preview": artifact.content[:4000],
+        "preview_truncated": len(artifact.content) > 4000,
+    }
+
+
 def _jsonable(value: Any) -> Any:
     try:
         json.dumps(value, sort_keys=True)
