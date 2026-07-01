@@ -8,7 +8,8 @@ historical backlog snapshots, not the current roadmap.
 
 **Last refreshed:** 2026-07-01 — v0.38 and v0.39 implementation work is
 complete locally, supporting tracks 07-10 have closeout evidence, and v0.40 is
-the next product milestone. Milestone names carry ordered prefixes, open work is
+the next product milestone: a safe practical scripting assistant for
+non-programmers. Milestone names carry ordered prefixes, open work is
 milestone-scoped, and v1.0 remains unscheduled.
 
 ## Product Ladder — v0.35 → v0.40
@@ -20,7 +21,7 @@ flowchart LR
   v37[v0.37 Execution substrate + compliance]
   v38[v0.38 Memory + compaction + async media]
   v39[v0.39 Background automation + onguard UX]
-  v40[v0.40 Code workspaces]
+  v40[v0.40 Safe scripting assistant]
   v35 --> v36 --> v37 --> v38 --> v39 --> v40
 ```
 
@@ -31,7 +32,7 @@ flowchart LR
 | **03 Product — v0.37.0 — Execution substrate, isolation, and compliance evidence** | Execution substrate, isolation, and compliance evidence | #44, #9, #14, #55–#57, #187–#189 |
 | **04 Product — v0.38.0 — Memory, retention, compaction, and async media reliability** | Memory, retention, compaction, and async media reliability | #160–#165, #190–#192, #194–#195 |
 | **05 Product — v0.39.0 — Background automation and onguard UX** | Background automation and onguard UX | #166–#171 |
-| **06 Product — v0.40.0 — Safe code workspace workflows** (next) | Safe code workspace workflows | #172–#177 |
+| **06 Product — v0.40.0 — Safe practical scripting assistant** (next) | Safe practical scripting for non-programmers | #172–#177 |
 
 ## Planned Work Coverage
 
@@ -324,7 +325,7 @@ preserve origin metadata, artifact ID, labels, provenance, and payload content.
 | Milestone | Work | Issues |
 |---|---|---|
 | v0.39 | Background automation and onguard UX | #166–#171 |
-| v0.40 | Safe code workspace workflows | #172–#177 |
+| v0.40 | Safe practical scripting assistant | #172–#177 |
 
 ## Completed Focus — v0.33.0 Streaming Turn Lifecycle and Liveness
 

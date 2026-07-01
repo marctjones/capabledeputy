@@ -52,6 +52,10 @@ def get_source_port(kind: str, **kwargs: object) -> SourcePort:
         from capabledeputy.substrate.git_source import GitSourcePort
 
         return GitSourcePort(**kwargs)  # type: ignore[arg-type]
+    if kind in {"script-workspace", "safe-scripting", "code-workspace"}:
+        from capabledeputy.substrate.script_workspace import ScriptWorkspaceSourcePort
+
+        return ScriptWorkspaceSourcePort(**kwargs)  # type: ignore[arg-type]
     if kind in {"gmail", "google_gmail", "google-gmail"}:
         from capabledeputy.substrate.google_source import GmailSourcePort
 
@@ -87,6 +91,7 @@ def get_source_port(kind: str, **kwargs: object) -> SourcePort:
         return source_port_for_active_context(kind)
     known = [
         "git",
+        "script-workspace",
         "gmail",
         "google-drive",
         "google-calendar",

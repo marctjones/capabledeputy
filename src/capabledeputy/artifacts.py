@@ -31,6 +31,9 @@ class ArtifactType(StrEnum):
     RESEARCH = "research"
     IMAGE = "image"
     CHART = "chart"
+    SCRIPT = "script"
+    SCRIPT_RUN = "script_run"
+    FILE_EXPORT = "file_export"
 
 
 class ArtifactEffect(StrEnum):
