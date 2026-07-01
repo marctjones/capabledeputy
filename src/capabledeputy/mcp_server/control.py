@@ -911,6 +911,7 @@ _CONTROL_TOOL_SPECS: tuple[ControlToolSpec, ...] = (
                 "session_id": {"type": "string"},
                 "audit_id": {"type": "string"},
                 "trigger": {"type": "string"},
+                "eager_teardown": {"type": "boolean"},
             },
             required=["session_id", "audit_id"],
         ),

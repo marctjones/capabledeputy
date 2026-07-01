@@ -345,13 +345,16 @@ def session_revoke(
         str,
         typer.Option("--trigger", help="Why this revocation (audited)"),
     ] = "operator-revoke",
+    eager_teardown: Annotated[
+        bool,
+        typer.Option("--eager-teardown", help="Remove current descendants immediately."),
+    ] = False,
 ) -> None:
     """002 US2 — revoke a capability by audit_id within a session.
 
-    The cascade is computed lazily at the next decide(); any descendant
-    that traces back to this audit_id via parent_audit_id will be
-    denied with `capability-cascaded` and pending approvals authorized
-    by that descendant will be invalidated at approve-time.
+    The cascade is computed lazily at the next decide(); optionally
+    remove current descendants immediately with --eager-teardown.
+    Descendants reintroduced later still deny via revoked_audit_ids.
 
     Operator-only; the AI cannot invoke this.
     """
@@ -359,10 +362,12 @@ def session_revoke(
         "session_id": session_id,
         "audit_id": audit_id,
         "trigger": trigger,
+        "eager_teardown": eager_teardown,
     }
     s = _call("capability.revoke", params)
     console.print(
-        f"[green]revoked[/green] audit_id={audit_id} in session={session_id[:8]} trigger={trigger}",
+        f"[green]revoked[/green] audit_id={audit_id} in session={session_id[:8]} "
+        f"trigger={trigger} eager_teardown={eager_teardown}",
     )
     _render_session(s)
 

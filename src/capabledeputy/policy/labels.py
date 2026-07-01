@@ -216,6 +216,35 @@ def most_restrictive_inherit(*states: LabelState) -> LabelState:
     return LabelState(a=a, b=b)
 
 
+def label_join(*states: LabelState) -> LabelState:
+    """Formal lattice join for propagating label state.
+
+    `most_restrictive_inherit` remains as the historical implementation
+    name. `label_join` is the model-facing API: the least upper bound
+    across Axis A categories and Axis B provenance levels.
+    """
+    return most_restrictive_inherit(*states)
+
+
+def label_dominates(left: LabelState, right: LabelState) -> bool:
+    """Return True iff ``left`` is at least as restrictive as ``right``.
+
+    Axis A dominance is per category: every category in ``right`` must
+    exist in ``left`` at the same or a stricter tier. Axis B dominance
+    requires preserving every provenance level present in ``right``.
+    """
+    left_join = label_join(left)
+    right_join = label_join(right)
+    left_by_cat = {t.category: t for t in left_join.a}
+    for tag in right_join.a:
+        candidate = left_by_cat.get(tag.category)
+        if candidate is None:
+            return False
+        if max_of(candidate.tier, tag.tier) != candidate.tier:
+            return False
+    return {t.level for t in right_join.b} <= {t.level for t in left_join.b}
+
+
 def inherit(parent: LabelState, child: LabelState) -> LabelState:
     """**Directional** parent→child inheritance (delegation / fork /
     derivation) — distinct from the symmetric `most_restrictive_inherit`

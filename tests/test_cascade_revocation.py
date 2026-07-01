@@ -139,6 +139,41 @@ def test_distinct_from_expired_and_rate_rules() -> None:
     assert d.rule != CAPABILITY_CASCADED_RULE
 
 
+@pytest.mark.asyncio
+async def test_eager_teardown_removes_current_descendant_capabilities(
+    tmp_path: Path,
+) -> None:
+    """US2 eager teardown: revoke can immediately remove the revoked cap
+    and current descendants, while still recording the ancestor as revoked."""
+    writer = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(audit=writer)
+    session = await graph.new()
+    parent = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    child = _delegated_cap(parent)
+    sibling = Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*@example.com")
+    session = await graph.grant_capability(session.id, parent)
+    session = await graph.grant_capability(session.id, child)
+    session = await graph.grant_capability(session.id, sibling)
+
+    updated = await graph.revoke_capability(
+        session.id,
+        parent.audit_id,
+        eager_teardown=True,
+    )
+
+    remaining_ids = {cap.audit_id for cap in updated.capability_set}
+    assert parent.audit_id not in remaining_ids
+    assert child.audit_id not in remaining_ids
+    assert sibling.audit_id in remaining_ids
+    assert parent.audit_id in updated.revoked_audit_ids
+    events = await writer.read_all()
+    payload = events[-1].payload
+    assert payload["eager_teardown"] is True
+    assert sorted(payload["removed_audit_ids"]) == sorted(
+        [str(parent.audit_id), str(child.audit_id)],
+    )
+
+
 def test_unit_inert_helper() -> None:
     """Spot-check the inert() helper directly."""
     p = Capability(kind=CapabilityKind.READ_FS, pattern="*")

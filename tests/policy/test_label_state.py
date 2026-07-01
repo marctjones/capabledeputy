@@ -25,6 +25,8 @@ from capabledeputy.policy.labels import (
     TagTransfer,
     apply_transfer,
     inherit,
+    label_dominates,
+    label_join,
     meets_required_floor,
     most_restrictive_inherit,
     tags_for_labels_strings,
@@ -74,6 +76,27 @@ def test_compose_idempotent(x: LabelState) -> None:
     once = most_restrictive_inherit(x)
     assert most_restrictive_inherit(x, x) == once
     assert most_restrictive_inherit(once, once) == once
+
+
+@given(_label_states, _label_states)
+def test_label_join_aliases_composition_and_dominates_inputs(
+    x: LabelState,
+    y: LabelState,
+) -> None:
+    joined = label_join(x, y)
+    assert joined == most_restrictive_inherit(x, y)
+    assert label_dominates(joined, x)
+    assert label_dominates(joined, y)
+
+
+def test_label_dominates_requires_category_and_tier() -> None:
+    restricted = LabelState(a=frozenset({CategoryTag("financial", Tier.RESTRICTED)}))
+    regulated = LabelState(a=frozenset({CategoryTag("financial", Tier.REGULATED)}))
+    unrelated = LabelState(a=frozenset({CategoryTag("personal", Tier.REGULATED)}))
+
+    assert label_dominates(restricted, regulated)
+    assert not label_dominates(regulated, restricted)
+    assert not label_dominates(unrelated, regulated)
 
 
 # --- monotonicity (never lowers protection) --------------------------

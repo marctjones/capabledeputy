@@ -84,6 +84,29 @@ class QuarantinedLLMUnavailableError(RuntimeError):
         self.purpose_handle = purpose_handle
 
 
+def _capability_descendant_ids(
+    capabilities: frozenset[Capability],
+    root_audit_id: UUID,
+) -> frozenset[UUID]:
+    """Return root + all current descendants in a single-parent cap tree."""
+    present = {cap.audit_id for cap in capabilities}
+    if root_audit_id not in present:
+        return frozenset()
+    by_parent: dict[UUID, list[Capability]] = {}
+    for cap in capabilities:
+        if cap.parent_audit_id is not None:
+            by_parent.setdefault(cap.parent_audit_id, []).append(cap)
+    removed: set[UUID] = set()
+    stack = [root_audit_id]
+    while stack:
+        audit_id = stack.pop()
+        if audit_id in removed:
+            continue
+        removed.add(audit_id)
+        stack.extend(child.audit_id for child in by_parent.get(audit_id, ()))
+    return frozenset(removed)
+
+
 class SessionGraph:
     def __init__(
         self,
@@ -593,11 +616,18 @@ class SessionGraph:
         capability_audit_id: UUID,
         *,
         trigger: str = "operator-revoke",
+        eager_teardown: bool = False,
     ) -> Session:
         """Mark a capability revoked by adding its audit_id to the
-        session's revoked_audit_ids set. The cascade is computed
-        lazily at the next decide() — any descendant matching this
-        ancestor at decision time fails with capability-cascaded.
+        session's revoked_audit_ids set.
+
+        By default the cascade is computed lazily at the next decide()
+        — any descendant matching this ancestor at decision time fails
+        with capability-cascaded. When ``eager_teardown`` is true, the
+        revoked capability and all current descendant capabilities are
+        also removed from the session immediately. The revoked id set is
+        still retained so persisted or reintroduced descendants remain
+        inert under the lazy check.
 
         Idempotent — re-revoking is a no-op (just returns the session).
         Operator/control-plane only; the AI cannot invoke this.
@@ -610,8 +640,20 @@ class SessionGraph:
         if capability_audit_id in session.revoked_audit_ids:
             return session
         new_revoked = session.revoked_audit_ids | {capability_audit_id}
+        removed_audit_ids: frozenset[UUID] = frozenset()
+        new_caps = session.capability_set
+        if eager_teardown:
+            removed_audit_ids = _capability_descendant_ids(
+                session.capability_set,
+                capability_audit_id,
+            )
+            if removed_audit_ids:
+                new_caps = frozenset(
+                    cap for cap in session.capability_set if cap.audit_id not in removed_audit_ids
+                )
         updated = replace(
             session,
+            capability_set=new_caps,
             revoked_audit_ids=new_revoked,
             updated_at=datetime.now(UTC),
         )
@@ -625,6 +667,8 @@ class SessionGraph:
                     payload={
                         "audit_id": str(capability_audit_id),
                         "trigger": trigger,
+                        "eager_teardown": eager_teardown,
+                        "removed_audit_ids": sorted(str(aid) for aid in removed_audit_ids),
                     },
                 ),
             )

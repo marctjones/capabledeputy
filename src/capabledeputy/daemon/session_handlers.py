@@ -173,10 +173,9 @@ def make_session_handlers(
         """002 US2 — revoke a capability by audit_id within a session.
 
         Adds the audit_id to the session's revoked_audit_ids set.
-        Cascade computed lazily at next decide(); any descendant
-        across the spawn graph that traces back to this ancestor is
-        denied at that point with capability-cascaded. Operator-only;
-        the AI cannot invoke this.
+        Cascade computed lazily at next decide(); optional eager_teardown
+        also removes current descendant capabilities immediately.
+        Operator-only; the AI cannot invoke this.
         """
         session_id = UUID(params["session_id"])
         audit_id = UUID(params["audit_id"])
@@ -185,6 +184,7 @@ def make_session_handlers(
             session_id,
             audit_id,
             trigger=trigger,
+            eager_teardown=bool(params.get("eager_teardown", False)),
         )
         return s.to_dict()
 

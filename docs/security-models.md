@@ -42,7 +42,7 @@ remain the detail.
 | Human-in-the-loop approval state machine | **Clark-Wilson** (sep. of duty) | V | The authorizer is a human; the model (LLM) is structurally excluded — an added constraint beyond CW. |
 | Ratification Authorization state machine (003 Q3, FR-014/036) | **Clark-Wilson** (sep. of duty) | V | Per-severity `{single-authorized \| dual-control}` for label/profile/rule changes via the suggest→ratify→apply path. Reuses the Override Policy FSM shape but is distinct: ratifications are persistent (no expires_at), overrides are time-boxed. AI principals are structurally refused at request time (case-insensitive `ai-` prefix). |
 | Time-bound / rate-limited / prior-use revocation | **Object-capability attenuation** | IV | Attenuation extended to *temporal* and *usage* dimensions; evaluated at decide(), not capability rebind. |
-| Capability delegation chains (v0.8, partial) | **Object-capability attenuation**; monotone lattice | IV, VI | **Single-parent tree, not a DAG** (auditability over generality); cascade **computed at decide()**, not eager teardown. US1 attenuated derivation + US3 depth-limit shipped; US2 cascade revocation deferred. |
+| Capability delegation chains (v0.8) | **Object-capability attenuation**; monotone lattice | IV, VI | **Single-parent tree, not a DAG** (auditability over generality); cascade is fail-safe at decide(), with opt-in eager teardown removing current descendants immediately while retaining the revoked ancestor id for persisted/reintroduced descendants. |
 | Dual-LLM quarantined extraction | **Noninterference declassification** | I, II | Schema validation *is* the declassifier — a structural, certified downgrade rather than an operator decision. |
 | Per-tenant label spaces | **Lattice compartments** | II | Additive scoping of the same conflict engine; no cross-tenant lattice join. |
 | Container isolation / federation signing / append-only audit | Defense-in-depth & **Reference-Monitor assurance** | Sec. Constraints | Supporting assurance, not a confidentiality/integrity model; audit gives the "verifiable" leg of the reference monitor. |
@@ -208,9 +208,11 @@ above) — no multistep trick changes this.
    refusal (FR-004): `policy/engine.py` + `policy/resolution.py`
    (`IntegrityFloorError`); tested (`tests/policy/test_integrity_floor.py`).
    The scoped one-direction Biba is enforced.
-4. **Formal lattice dominance/join in the engine** (replace ad-hoc
-   conflict-rule pairs) → still pending; `most_restrictive_inherit` is the
-   current composition. Makes *Denning* fully faithful when added.
+4. **Formal lattice dominance/join in the engine** → implemented as
+   `label_join` / `label_dominates` in `policy/labels.py`, with
+   `most_restrictive_inherit` retained as the compatibility name for the
+   same join operation. The remaining conflict-rule pairs are policy
+   decisions layered on top of that lattice, not the lattice operator.
 
 ## How this is tracked
 
