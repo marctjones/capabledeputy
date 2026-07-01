@@ -666,7 +666,7 @@ unreleased 0.15.2 items.
   behind the same ports). (Clarification: the Podman `SandboxActuator`
   was already implemented; it is the ephemeral `EXECUTE.sandbox` runtime,
   complementary to `PodmanDevbox`'s persistent `EXECUTE.devbox`, not a
-  replacement. Modal/Firecracker actuators remain deferred to v1.1+.)
+  replacement. Modal/Firecracker actuators remain deferred to v0.37+.)
 - **Docs**: `specs/004-mcp-and-substrate/substrate-provider-candidates.md`
   — candidate providers behind each substrate port (Gmail/Drive/SharePoint/
   S3 source + versioned-write, gVisor/Firecracker/Modal actuators, …),

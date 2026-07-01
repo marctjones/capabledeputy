@@ -2,12 +2,19 @@
 
 Living plan that organizes the open GitHub issues into sequenced
 milestones with dependencies. Authoritative status is GitHub; this doc is
-the *sequencing rationale*. Last refreshed 2026-06-22 after v0.33 completed
-and v0.34 opened as the product-onboarding/connectors milestone.
+the *sequencing rationale*. Last refreshed 2026-07-01 — active arc is
+**v0.34 → v0.40** after merging the local spec-004/substrate plan with the
+live GitHub product milestones.
 
-Milestones (GitHub): **v0.34.0** Product onboarding and connector readiness ·
-**v0.16** Policy expressiveness & labeling · **v0.5** terminal UX polish ·
-**Backlog** Substrate breadth & formal models. Recently closed:
+Milestones (GitHub): **v0.34.0** First-run, connectors, and rich chat
+readiness · **v0.35.0** Desktop context SourcePorts and visual review ·
+**v0.36.0** MCP adapter, extension admission, and workflow templates ·
+**v0.37.0** Substrate isolation, execution, and compliance replay ·
+**v0.38.0** Memory, retention, and context compaction · **v0.39.0**
+Onguard notifications and background automation UX · **v0.40.0** Safe code
+workspace workflows · **v0.16** Policy expressiveness & labeling · **v0.5**
+terminal UX polish · **Backlog** Formal models and deferred provider breadth.
+Recently closed:
 **v0.33.0** Streaming turn lifecycle and liveness · **v0.32.0** Interactive
 workstream coordination · **v0.17** Gap hardening & explainability ·
 **v0.27.0** Practical setup + daemon-owned settings ·
@@ -20,29 +27,40 @@ parity · **v0.31.0** Multi-session security context observability ·
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **Product onboarding and connector readiness** — the daemon now needs a
-   first-run setup/check surface that lets every client guide OAuth,
-   connector, model, and first-workflow readiness without moving authority into
-   the client.
-2. **Onguard extensibility** — background clients should be normal daemon
+1. **v0.34 first-run + rich chat readiness** — finish setup-plan parity,
+   onboarding research, rich media tool review, and local model-routing
+   closure (#140-#145, #182, #183).
+2. **v0.35 desktop context and signed review** — SourcePorts, typed
+   artifacts, visual review cards, and exact-hash approval payloads (#146-#152).
+3. **v0.36 MCP adapter + templates** — generic adapter mapping audit, tier-1
+   MCP mappings, HTTP OAuth mediation, extension admission, and bounded
+   workflow templates (#153-#159, #184-#186).
+4. **v0.37 substrate and evidence** — upstream isolation, sandboxed
+   `code.execute`, versioned writes, cross-host approval envelope, OTLP/OSCAL,
+   and adversarial substrate demos (#44, #9, #14, #55-#57, #187-#189).
+5. **v0.38 memory and compaction** — retention policy, memory controls, and
+   labeled summary artifacts (#160-#165).
+6. **v0.39 onguard extensibility** — background clients should be normal daemon
    clients, not privileged sidecars or daemon-embedded product workflows.
-3. **MCP security integration** — MCP must remain an integration substrate, not
+7. **v0.40 safe code workspace workflows** — repository labels, sandboxed
+   build/test artifacts, typed diffs/commits/PRs, and violation tests.
+8. **MCP security integration** — MCP must remain an integration substrate, not
    a second authority path. v0.29 turns the current targeted tests into a
    security conformance suite before CapDep relies heavily on external MCP
    servers and headless clients.
-4. **Client proof, not just parity claims** — v0.30 replaces source/manifest
+9. **Client proof, not just parity claims** — v0.30 replaces source/manifest
    checks with live daemon integration coverage for CLI, TUI, Swift GUI, and
    MCP-control.
    Coverage is ratcheted independently for daemon files, clients, MCP
    surfaces, bundled MCP servers, and tools; the near-term target is 85% per
    group and the stretch target is 90%, but CI first enforces non-regression
    from the checked-in baseline.
-5. **Multi-session explainability** — v0.31 made labels, flow patterns,
+10. **Multi-session explainability** — v0.31 made labels, flow patterns,
    external actors, approvals, policy rules, provenance, and audit inspectable
    across turns and clients.
-6. **The labeling oracle** — IFC guarantees ride on correct labels. v0.16 is
+11. **The labeling oracle** — IFC guarantees ride on correct labels. v0.16 is
    now narrowed to canonical source identity and per-message email labeling.
-7. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
+12. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
    human oversight. The decision-refinement layer is live; future work should
    add concrete inspectors or policy scripts, not revive the old epic.
 
@@ -85,34 +103,35 @@ moved to the milestone where implementation belongs.
 
 ---
 
-## v0.34.0 — Product onboarding and connector readiness
+## v0.34.0 — First-run, connectors, and rich chat readiness
 
 This is the active milestone. v0.33 made long-running turns observable and
-cancellable; v0.34 should make a first install usable by exposing daemon-owned
-setup checks and guided remediation to all clients.
+cancellable; v0.34 should make a first install usable and make the primary
+chat surface useful enough to validate that setup under real policy.
 
 ### Scope
 
-- **#140** EPIC: Product onboarding and connector readiness without
-  client-side authority.
-- **#141** research onboarding flows in Claude Code, Codex, Goose, OpenHands,
-  and desktop agents.
-- **#142** daemon setup plan/check RPCs for first-run readiness.
-- **#143** connector OAuth readiness tests and guided recovery actions.
-- **#144** first useful workflow smoke: setup to safe morning briefing.
-- **#145** client setup surfaces consume daemon setup plan.
+| Issue | Work | Status |
+|---|---|---|
+| #140 | EPIC: first-run, connector, rich chat, and local-model readiness | In progress |
+| #141 | Research peer onboarding flows | Open |
+| #142 | `setup.plan` / `setup.check` RPCs | **Done** |
+| #143 | OAuth recovery tests + `connector.status` actions | **Done** |
+| #144 | Morning-briefing workflow smoke | **Done** |
+| #145 | Clients consume daemon setup plan | In progress |
+| #182 | Rich chat media tools: generated/fetched images, Wikipedia lead images, chart artifacts | Local implementation in review |
+| #183 | Local model routing and CapDepMac model-mode controls | Local implementation in review |
 
 ### Sequencing
 
-1. Research peer onboarding only far enough to identify practical setup
-   patterns worth adopting without weakening daemon authority.
-2. Add daemon setup/check RPCs that report connector, OAuth, model, policy,
-   and first-workflow readiness with remediation descriptors.
-3. Harden Google Workspace/Gmail OAuth readiness tests and recovery paths.
-4. Add one first-use workflow smoke that exercises the setup path through a
-   safe morning briefing.
-5. Update CLI, TUI, Swift GUI, and MCP-control surfaces to consume the same
-   daemon setup plan.
+1. ~~Add daemon setup/check RPCs~~ (**done** — `daemon/setup_plan.py`).
+2. ~~OAuth recovery descriptors~~ (**done** — `test_setup_oauth_recovery.py`).
+3. ~~Morning-briefing smoke~~ (**done locally** —
+   `test_setup_morning_briefing_smoke.py`).
+4. Review and close the rich media/model-routing local work (#182, #183).
+5. Close #145 client setup parity gaps and write #141 onboarding note.
+6. Tag v0.34.0 when done-when criteria pass and GitHub issues match shipped
+   evidence.
 
 ### Done-when
 
@@ -121,8 +140,132 @@ setup checks and guided remediation to all clients.
 - OAuth/connector failures are classified with actionable recovery steps.
 - A new user can move from setup to a useful safe workflow without editing YAML
   directly for the common macOS + Google Workspace case.
+- Rich media artifacts and local model routing work through daemon events,
+  policy capabilities, and CapDepMac rendering safeguards.
 - Setup helpers remain daemon-mediated and do not bypass labels, policy,
   approvals, provenance, or audit.
+
+## v0.35.0 — Desktop context SourcePorts and visual review
+
+**Starts after:** v0.34 close-out. Once setup and chat are usable, the next
+desktop-agent table-stakes gap is safe context capture and exact visual review.
+
+### Scope
+
+| Issue | Work |
+|---|---|
+| #146 | EPIC: Desktop context SourcePorts and signed visual review | In progress |
+| #147 | Research desktop agent UX for context capture, review cards, and approval fatigue | Open |
+| #148 | Active-context SourcePort contract with labels and canonical IDs | **Done locally** |
+| #149 | Browser current-page SourcePort with untrusted-content labeling | **Done locally** |
+| #150 | macOS app SourcePorts for Mail, Finder, Pages, Numbers, Keynote, and Calendar | Partial local primitive |
+| #151 | Typed artifact model for drafts, diffs, calendar mutations, document patches, and research memos | **Done locally** |
+| #152 | Signed approval payloads bind exact artifact hash and destination | **Done locally** |
+
+### Sequencing
+
+1. Research UX and approval-fatigue patterns (#147).
+2. ~~Define SourcePort contract first~~ (#148 done locally).
+3. ~~Add browser SourcePort~~ (#149 done locally).
+4. Finish app-specific capture clients for Mail/Finder/iWork/Calendar (#150).
+5. ~~Add typed artifact model~~ (#151 done locally).
+6. ~~Bind signed approvals to artifact hash/destination~~ (#152 done locally).
+7. Add Swift visual review cards and close tracker/docs after full validation.
+
+### Done-when
+
+Active desktop/browser context enters through labeled SourcePorts, proposed
+changes are typed artifacts, and approval cards bind the exact artifact and
+destination being approved.
+
+## v0.36.0 — MCP adapter, extension admission, and workflow templates
+
+**Starts after:** v0.35 provides typed artifacts and review surfaces for safer
+operator review of new tools/templates.
+
+### Scope
+
+| Issue | Work |
+|---|---|
+| #153 | EPIC: MCP adapter, extension admission, and bounded workflow templates | In progress |
+| #154 | Research safe extension managers and skill/template systems in peer agents | Open |
+| #155 | Daemon MCP extension admission workflow with classify/test/approve/disable | Partial admission preview |
+| #156 | Workflow template manifest schema with capabilities, labels, flow pattern, and approval policy | **Done locally** |
+| #157 | Starter workflow templates for briefing, inbox triage, meeting prep, and research memo | Partial local manifests |
+| #158 | Client workflow-template review and launch surfaces | Open |
+| #159 | MCP extension and workflow-template conformance tests | Partial tests landed |
+| #184 | Generic MCP adapter polish and fail-closed mapping audit | Partial admission audit |
+| #185 | Tier-1 MCP mappings: GitHub, Google Workspace, Microsoft 365, and Notion | Open |
+| #186 | HTTP MCP OAuth flow-pattern sessions and credential mediation | Open |
+
+### Sequencing
+
+1. Research safe extension/template systems (#154).
+2. ~~Define workflow template manifest schema~~ (#156 done locally).
+3. Continue generic MCP adapter mapping audit from admission preview to
+   persisted admission state (#184, #155).
+4. Add tier-1 mappings and fixture tests (#185).
+5. Add HTTP OAuth credential mediation (#186).
+6. Complete starter templates, including meeting prep and research memo
+   variants (#157).
+7. Add client review/launch surfaces and conformance tests (#158, #159).
+
+### Done-when
+
+New upstream MCP tools are admitted only through daemon-owned classification,
+mapping, tests, and approval; unmapped tools fail closed; clients can review
+and launch workflow templates without gaining setup or policy authority.
+
+## v0.37.0 — Substrate isolation, execution, and compliance replay
+
+**Starts after:** v0.36 MCP/template admission. This milestone is the
+spec-004 production-substrate work that was previously floating between local
+roadmap text and backlog.
+
+### Scope
+
+| Issue | Work |
+|---|---|
+| #44 | EPIC: Substrate isolation, execution, and compliance replay |
+| #9 | Run upstream MCP servers inside Podman by default |
+| #14 | Per-upstream network egress allowlist for stdio upstreams |
+| #55 | Cross-host RemoteApprovalEnvelope structured four-axis wire format |
+| #56 | More VersionedWritePort backends |
+| #57 | Modal + Firecracker SandboxActuators for heavier isolation providers |
+| #187 | `EXECUTE.sandbox` `code.execute` native tool over Podman `SandboxActuator` |
+| #188 | OTLP exporter, OSCAL assessment plan, and compliance audit-replay pipeline |
+| #189 | Meta-director and ToxicSkills regression scenarios for MCP/substrate safety |
+
+### Sequencing
+
+1. Wire Podman upstream isolation and allowed-host enforcement (#9, #14).
+2. Expose native sandboxed execution over the existing actuator port (#187).
+3. Add versioned writes and cross-host approval wire format (#56, #55).
+4. Add OTLP/OSCAL/audit-replay evidence pipeline (#188).
+5. Add heavier sandbox providers and adversarial scenario coverage (#57, #189).
+
+### Done-when
+
+Operators can enable sandboxed execution, upstream isolation, versioned writes,
+compliance replay, and heavier isolation providers without a second policy
+authority path.
+
+## v0.38.0 — Memory, retention, and context compaction
+
+**Scope:** #160-#165. Starts after the substrate baseline because retained
+memory and compaction artifacts need stable labeled artifact/audit behavior.
+
+## v0.39.0 — Onguard notifications and background automation UX
+
+**Scope:** #166-#171. Background clients remain normal daemon clients and
+surface notifications, queued approvals, summaries, and result handoff without
+privileged sidecar authority.
+
+## v0.40.0 — Safe code workspace workflows
+
+**Scope:** #172-#177. Repository labels, sandboxed build/test artifacts,
+typed diffs/commits/PRs, and violation tests turn coding-agent workflows into
+CapDep-governed artifacts rather than a generic coding-agent clone.
 
 ## v0.33.0 — Streaming turn lifecycle and liveness
 
@@ -202,12 +345,13 @@ v0.33 because the correct implementation depends on daemon turn events.
 
 ## Backlog reassessment
 
-Backlog remains valid but explicitly lower priority than v0.33 and v0.16:
+Backlog remains valid but explicitly lower priority than the v0.34-v0.40
+product ladder and v0.16 labeling track:
 
-- **Upstream isolation breadth:** #9, #14, #44.
 - **Formal-model completeness:** #45, #58, #59.
-- **Provider/federation breadth:** #55, #56, #57.
 - **Terminal media/navigation polish:** #17, #19.
+- Any remaining provider or federation breadth not explicitly pulled into
+  v0.36/v0.37.
 
 ---
 
@@ -602,8 +746,8 @@ Close/guard the documented gaps; improve operator trust.
   purpose-scoped spawn/grant/delegation refuse inadmissible categories.
   The remaining model-reasoning contamination case is an explicit non-goal,
   not a hidden implementation gap.
-- ▶ **#55** cross-host RemoteApprovalEnvelope four-axis wire format (P2) —
-  signed-protocol versioning for federation.
+- → **#55** cross-host RemoteApprovalEnvelope four-axis wire format — moved
+  into v0.37 with the substrate/compliance replay milestone.
 
 ### Standalone v0.17
 - **#13** credential vault (P1) — inject secrets at the chokepoint, never
@@ -613,8 +757,8 @@ Close/guard the documented gaps; improve operator trust.
   WebPagePublicFacts; complements the email labeler.
 
 **Sequencing:** #13 (independent, high value) ‖ #51 (serves both
-milestones) → #55 (federation) plus the labeling-oracle / real-substrate
-assurance work tracked in `workflow-plan.md`.
+milestones) plus the labeling-oracle / real-substrate assurance work tracked
+in `workflow-plan.md`. #55 now rides with v0.37 substrate/compliance.
 
 ---
 
@@ -638,15 +782,13 @@ all UX into the REPL.
 
 ---
 
-## Backlog — Substrate breadth & formal models (v1.x / on-demand)
+## Backlog — Formal models and deferred provider breadth
 
-Deferred provider backends + formal work. Pull forward on demand.
-- Isolation: **#9** Podman-by-default for upstream MCP, **#14** per-upstream
-  egress allowlist (stdio path).
-- Providers: **#56** more VersionedWritePort backends (Drive/S3),
-  **#57** Modal/Firecracker actuators, **#51** also lands providers here.
+Deferred formal work and any provider breadth not explicitly scheduled in
+v0.36/v0.37. Pull forward on demand.
 - Formal: **#58** lattice join/dominance operator, **#59** ocap
   cascade-revocation eager teardown, **#45** formal-model completeness.
+- Terminal media/navigation polish remains backlog under **#17** and **#19**.
 
 ---
 

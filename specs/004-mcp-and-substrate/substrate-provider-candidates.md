@@ -69,8 +69,8 @@ reads/writes their **files, email, calendar, notes, cloud docs**, makes
 | **Podman** ✅ | rootless `podman run --rm`, egress-free | host-free disposable execution, no daemon | agent runs code/data-analysis disposably; nothing touches the host or network |
 | **Docker** | same UX via Docker | environments without rootless Podman | drop-in where Podman isn't installed |
 | **gVisor (`runsc`)** | container UX + syscall interception | stronger kernel-attack-surface reduction than vanilla containers | running *genuinely* untrusted code (e.g. something fetched from the web) with a harder boundary |
-| **Firecracker microVM** *(deferred, v1.1+)* | VM-level isolation per run | hardware-grade isolation for high-risk execution | the strongest tier when the user runs something they really don't trust |
-| **Modal (cloud serverless)** *(deferred, v1.1+)* | remote sandbox with scale/GPUs | the user's laptop can't run heavy/long/GPU jobs | "analyze this big dataset / fine-tune this" runs off-device, still contained + egress-controlled |
+| **Firecracker microVM** *(scheduled, v0.37+)* | VM-level isolation per run | hardware-grade isolation for high-risk execution | the strongest tier when the user runs something they really don't trust |
+| **Modal (cloud serverless)** *(scheduled, v0.37+)* | remote sandbox with scale/GPUs | the user's laptop can't run heavy/long/GPU jobs | "analyze this big dataset / fine-tune this" runs off-device, still contained + egress-controlled |
 
 ## `PolicyScriptHost` candidates
 

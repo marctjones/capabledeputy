@@ -6,33 +6,81 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-06-22, after completing v0.33 and opening the
-product-onboarding/connectors milestone as the current focus.
+**Last refreshed:** 2026-07-01 — GitHub milestones and issues were
+rationalized into one live product ladder. Spec 004 work is merged into
+v0.36/v0.37 instead of displacing the desktop, memory, onguard, and code
+workspace roadmap. v1.0 remains unscheduled.
 
-## Current Focus — v0.34.0 Product Onboarding and Connector Readiness
+## Milestone arc — v0.34 → v0.40
+
+```mermaid
+flowchart LR
+  v34[v0.34 First-run + rich chat]
+  v35[v0.35 Desktop context + visual review]
+  v36[v0.36 MCP adapter + templates]
+  v37[v0.37 Substrate + compliance]
+  v38[v0.38 Memory + compaction]
+  v39[v0.39 Onguard UX]
+  v40[v0.40 Code workspaces]
+  v34 --> v35 --> v36 --> v37 --> v38 --> v39 --> v40
+```
+
+| Milestone | Goal | Spec / tracker |
+|---|---|---|
+| **v0.34** (now) | First-run setup, connectors, rich chat media, local model routing | #140–#145, #182, #183 |
+| **v0.35** (next) | Desktop context SourcePorts, typed artifacts, signed visual review | #146–#152 |
+| **v0.36** | MCP adapter, extension admission, bounded workflow templates | #153–#159, #184–#186 |
+| **v0.37** | Substrate isolation, sandboxed execution, compliance replay | #44, #9, #14, #55–#57, #187–#189 |
+| **v0.38** | Memory, retention, and labeled context compaction | #160–#165 |
+| **v0.39** | Onguard notifications and background automation UX | #166–#171 |
+| **v0.40** | Safe code workspace workflows | #172–#177 |
+
+Supporting tracks remain active but outside the main product ladder: v0.16
+labeling oracle, v0.5 terminal UX polish, research/non-goals, and backlog
+formal-model completeness.
+
+## Current Focus — v0.34.0 First-run, Connectors, and Rich Chat Readiness
 
 Goal: make a fresh CapDep install practical without YAML handholding while
-preserving daemon-owned authority. The next product gap is not another client
-surface; it is a daemon-backed setup plan that tells each client what is
-missing, guides OAuth/connector readiness, and proves a first useful workflow
-works end-to-end under policy.
+preserving daemon-owned authority, then make the primary chat surface useful
+enough to validate that setup: rich media artifacts, policy-gated image/chart
+tools, and explicit local model routing.
 
 The important design constraint stays unchanged: clients may render, request,
 configure through approved RPCs, and launch user-visible setup flows, but the
 daemon remains the only authority for connector settings, OAuth state,
-ownership, labels, policy, approvals, provenance, audit, tool dispatch, and
-turn cancellation.
+ownership, labels, policy, approvals, provenance, audit, tool dispatch, model
+selection, and turn cancellation.
 
 ### v0.34.0 scope
 
-| Issue | Work | Status |
+| Issue | Work | Local status |
 |---|---|---|
-| #140 | EPIC: Product onboarding and connector readiness without client-side authority | Open |
+| #140 | EPIC: First-run, connector, rich chat, and local-model readiness without client-side authority | In progress |
 | #141 | Research onboarding flows in Claude Code, Codex, Goose, OpenHands, and desktop agents | Open |
-| #142 | Daemon setup plan/check RPCs for first-run readiness | Open |
-| #143 | Connector OAuth readiness tests and guided recovery actions | Open |
-| #144 | First useful workflow smoke: setup to safe morning briefing | Open |
-| #145 | Client setup surfaces consume daemon setup plan | Open |
+| #142 | Daemon setup plan/check RPCs for first-run readiness | Landed locally; issue open |
+| #143 | Connector OAuth readiness tests and guided recovery actions | Landed locally; issue open |
+| #144 | First useful workflow smoke: setup to safe morning briefing | Landed locally; issue open |
+| #145 | Client setup surfaces consume daemon setup plan | In progress |
+| #182 | Rich chat media tools: generated images, fetched images, Wikipedia lead images, and chart artifacts | Landed locally; issue open |
+| #183 | Local model routing and CapDepMac model-mode controls | Landed locally; issue open |
+
+**Landed so far:** `setup.plan` / `setup.check` / `setup.status` /
+`setup.run_action` (`daemon/setup_plan.py`); `connector.status` OAuth
+recovery descriptors; CLI `capdep setup plan|check|status`; TUI setup
+surface; Swift `SetupAssistantView` + dashboard rows; MCP-control
+passthrough; bundled image fetch/generate, Wikipedia lookup, chart artifacts,
+semantic media capability kinds, model-selected turn events, and CapDepMac
+generated-image rendering guards. Focused tests cover setup, OAuth recovery,
+morning briefing, media policy, image generation/fetch routing, chart output,
+model routing, streaming events, and Swift chat image parsing/rendering.
+
+**Remaining for v0.34 close-out:**
+- #141 — short research note on peer onboarding patterns (daemon-authority
+  preserved).
+- #145 — finish any client gaps and parity drift in setup actions.
+- #182/#183 — finish review, docs, and tracker closure after the local changes
+  are committed and full validation has run.
 
 ### v0.34.0 done-when
 
@@ -45,6 +93,126 @@ turn cancellation.
   tests for connected, missing, expired, and misconfigured states.
 - A first useful workflow smoke test proves a user can get from setup to a
   safe morning briefing without bypassing policy or daemon ownership.
+- Rich chat media artifacts and local model routing are daemon-mediated,
+  policy-gated, test-covered, and visible in CapDepMac without trusting
+  hallucinated file paths.
+
+## Next Focus — v0.35.0 Desktop Context SourcePorts and Visual Review
+
+**Depends on:** v0.34 chat/setup readiness. Once the app can guide setup and
+produce useful policy-gated turns, the next table-stakes desktop-agent gap is
+safe active-context capture and signed reviewable artifacts.
+
+| Issue | Work | Status |
+|---|---|---|
+| #146 | EPIC: Desktop context SourcePorts and signed visual review | In progress |
+| #147 | Research desktop agent UX for context capture, review cards, and approval fatigue | Open |
+| #148 | Define active-context SourcePort contract with labels and canonical IDs | Landed locally; issue open |
+| #149 | Browser current-page SourcePort with untrusted-content labeling | Landed locally; issue open |
+| #150 | macOS app SourcePorts for Mail, Finder, Pages, Numbers, Keynote, and Calendar context | Partial local primitive; issue open |
+| #151 | Typed artifact model for drafts, diffs, calendar mutations, document patches, and research memos | Landed locally; issue open |
+| #152 | Signed approval payloads bind exact artifact hash and destination | Landed locally; issue open |
+
+**Landed locally:** active-context SourcePorts for browser current page and
+frontmost macOS app context (`source_context.import` /
+`source_context.canonicalize`); canonical IDs and stale-context refusal;
+browser content labeled `external-untrusted`; macOS active context labeled
+`system-internal`; typed review artifacts with stable hashes; artifact-bound
+approval payload bytes that include exact artifact hash and destination id.
+Focused tests cover canonicalization, stale-context failure, daemon handlers,
+artifact hashing, and signed approval tamper detection.
+
+**Remaining for v0.35 close-out:** desktop UX research (#147), app-specific
+capture clients for Mail/Finder/iWork/Calendar (#150), Swift visual review
+cards, and tracker/docs closure for the local primitives.
+
+### v0.35.0 done-when
+
+- Active desktop/browser context enters the daemon through labeled SourcePorts,
+  not client-local scraping that bypasses policy.
+- Proposed changes are typed artifacts with stable hashes and destinations.
+- Approval/review cards bind the exact artifact and recipient/action being
+  approved.
+
+## Follow-On Focus — v0.36.0 MCP Adapter, Extension Admission, and Workflow Templates
+
+**Depends on:** v0.35 typed artifacts and review surfaces for safer operator
+review of new tools/templates.
+
+| Issue | Work | Status |
+|---|---|---|
+| #153 | EPIC: MCP adapter, extension admission, and bounded workflow templates | In progress |
+| #154 | Research safe extension managers and skill/template systems in peer agents | Open |
+| #155 | Daemon MCP extension admission workflow with classify/test/approve/disable | Partial local admission preview; issue open |
+| #156 | Workflow template manifest schema with capabilities, labels, flow pattern, and approval policy | Landed locally; issue open |
+| #157 | Implement starter workflow templates for briefing, inbox triage, meeting prep, and research memo | Partial local starter manifests; issue open |
+| #158 | Client workflow-template review and launch surfaces | Open |
+| #159 | MCP extension and workflow-template conformance tests | Partial tests landed; issue open |
+| #184 | Generic MCP adapter polish and fail-closed mapping audit | Partial local admission audit; issue open |
+| #185 | Tier-1 MCP mappings: GitHub, Google Workspace, Microsoft 365, and Notion | Open |
+| #186 | HTTP MCP OAuth flow-pattern sessions and credential mediation | Open |
+
+**Landed locally:** workflow templates are now validated manifests with
+schema version, capabilities, source ports, artifact types, flow pattern,
+approval policy, retention, and public launch text; the shipped workflow
+catalog declares those fields. MCP admission preview code classifies tools
+through the same capability inference/override model as the adapter, refuses
+disabled or unclassifiable tools under strict mode, and warns when effectful
+tools lack explicit target mapping. Focused tests cover manifest fail-closed
+behavior, unknown capability rejection, admission refusal, disabled kinds, and
+effectful-target warnings.
+
+**Remaining for v0.36 close-out:** peer extension-system research (#154), a
+persisted daemon approve/disable admission state (#155), meeting-prep/research
+memo template completion and client review surfaces (#157/#158), tier-1
+provider mapping fixtures (#185), and HTTP MCP OAuth credential mediation
+(#186).
+
+### v0.36.0 done-when
+
+- New upstream MCP tools are admitted only after explicit mapping,
+  classification, conformance tests, and daemon approval.
+- Tier-1 MCP mappings cover GitHub, Google Workspace, Microsoft 365, and
+  Notion with fail-closed behavior for unmapped tools.
+- Workflow templates declare capabilities, labels, flow pattern, and approval
+  policy before clients can launch them.
+- HTTP MCP OAuth state is daemon-owned and scoped rather than ambient.
+
+## Follow-On Focus — v0.37.0 Substrate Isolation, Execution, and Compliance Replay
+
+**Depends on:** v0.36 MCP/template admission. Once external tools are admitted
+deliberately, v0.37 hardens their execution substrate and evidence pipeline.
+
+| Issue | Work | Status |
+|---|---|---|
+| #44 | EPIC: Substrate isolation, execution, and compliance replay | Open |
+| #9 | Run upstream MCP servers inside Podman by default | Open |
+| #14 | Per-upstream network egress allowlist for stdio upstreams | Open |
+| #55 | Cross-host RemoteApprovalEnvelope structured four-axis wire format | Open |
+| #56 | More VersionedWritePort backends | Open |
+| #57 | Modal + Firecracker SandboxActuators for heavier isolation providers | Open |
+| #187 | `EXECUTE.sandbox` `code.execute` native tool over Podman `SandboxActuator` | Open |
+| #188 | OTLP exporter, OSCAL assessment plan, and compliance audit-replay pipeline | Open |
+| #189 | Meta-director and ToxicSkills regression scenarios for MCP/substrate safety | Open |
+
+### v0.37.0 done-when
+
+- Upstream MCP stdio servers can run with Podman isolation and declared network
+  egress allowlists.
+- `EXECUTE.sandbox` exposes useful bounded execution without treating
+  containment as declassification.
+- OTLP export, OSCAL assessment artifacts, and audit replay are
+  operator-runnable.
+- Modal/Firecracker and VersionedWritePort providers extend the same substrate
+  ports without weakening daemon policy.
+
+## Later Product Milestones
+
+| Milestone | Work | Issues |
+|---|---|---|
+| v0.38 | Memory, retention, and context compaction | #160–#165 |
+| v0.39 | Onguard notifications and background automation UX | #166–#171 |
+| v0.40 | Safe code workspace workflows | #172–#177 |
 
 ## Completed Focus — v0.33.0 Streaming Turn Lifecycle and Liveness
 
@@ -93,6 +261,9 @@ ordinary RPC call.
 
 ## Active Supporting Work — v0.16, v0.5, and Backlog
 
+(v0.34 through v0.40 are sequenced above as the active product ladder; they
+are not backlog.)
+
 ### v0.16 Policy Expressiveness and Labeling
 
 v0.16 is now narrowed to the labeling oracle. The DecisionInspector/Starlark
@@ -119,14 +290,14 @@ practical and should not duplicate daemon authority.
 
 ### Backlog Reassessment
 
-Backlog remains intentionally lower priority than v0.33/v0.16. It is grouped
-by why it is deferred:
+Backlog remains intentionally lower priority than the v0.34-v0.40 product
+ladder and the v0.16 labeling track. It is grouped by why it is deferred:
 
-- Upstream isolation breadth: #9, #14, #44.
 - Formal-model completeness beyond current practical enforcement: #45, #58,
   #59.
-- Additional provider/federation backends: #55, #56, #57.
 - Rich terminal media/navigation polish: #17, #19.
+- Any remaining provider or federation breadth not explicitly pulled into
+  v0.36/v0.37.
 
 ## Completed Focus — v0.26.0 Client Parity Over Daemon RPC
 
@@ -724,10 +895,10 @@ Biba.
 | Policy-language gap closures (multi-category predicates, time-of-day, AssignmentProvenance, raise-only-inspector hook, Pattern (5) demo actuator) | DONE | `v0.9.0-rc.5` |
 | Runtime activation (daemon wires PolicyContext from configs; SessionGraph spawn-refusal; CLI ↔ daemon override IPC; profile-derived BLP/Biba) | DONE | `v0.9.0-rc.6` |
 
-## v0.9 → v1.0 (spec 004) — MCP + substrate integration  ·  **FOUNDATIONS LANDED**
+## Spec 004 foundations already shipped (P0–P3)
 
-Spec `specs/004-mcp-and-substrate/`. Foundation phases (P0/P1/P2/P3
-substrate ports + builtins + tests) are now shipped:
+Foundation phases (P0/P1/P2/P3 substrate ports + builtins + tests) landed
+before the active product ladder was rationalized into v0.34-v0.40:
 
 | Phase | Items | Status |
 |---|---|---|
@@ -748,9 +919,12 @@ Operator-visible new surfaces:
 - Per-purpose `default_capabilities` + `bindings` in `configs/purposes.yaml`
 - Operator-published resources via `configs/resources.yaml` + `resources.list`/`resources.read` tools
 
-### Spec 004 v1.0 scope (post 2026-05-21 trim)
+### Spec 004 active scope mapping
 
-**To finish v1.0** (~80 days remaining):
+The remaining spec-004 work is now split across **v0.36** (MCP adapter,
+extension admission, templates) and **v0.37** (substrate isolation, execution,
+and compliance replay). The effort estimates below are historical planning
+anchors, not a standalone v0.35 release plan.
 
 | Phase | Item | Effort |
 |---|---|---|
@@ -767,13 +941,11 @@ Operator-visible new surfaces:
 | P3 | ~~starlark-rust + PyO3 policy-host runtime~~ **DONE** (`StarlarkScriptHost`, optional extra `capabledeputy[starlark]`); remaining: OAuth flow-pattern-session for MCP credentials | ~8d |
 | Polish | Documentation + tasks.md housekeeping + integration tests | ~5d |
 
-**Explicitly out of v1.0 scope (deferred to v1.1+ or operator-on-demand):**
-
-- **DefenseClaw + NemoClaw integration plugins** — wait for those products' surfaces to stabilize before integrating
-- **WebAssembly host** — REMOVED; Starlark covers the same operator need at lower complexity
-- **Modal + Firecracker SandboxActuators** — Podman is enough for v1.0; cloud-tier actuators when an enterprise asks
-- **Splunk forwarder** — OTLP exporter is the standard; Splunk via OTLP→Splunk-HEC if needed downstream
-- **Identity provider stack** (WebAuthn / Duo / OAuth for human attesters) — env-var-based credentials (already shipped) suffice for v1.0. The richer identity flows wait for an operator with a specific compliance need driving them
+**Scheduled now:** Modal/Firecracker actuators are v0.37 (#57); OTLP/OSCAL and
+audit replay are v0.37 (#188); generic adapter/mapping/OAuth work is v0.36
+(#184-#186). **Deferred/on-demand:** Splunk-specific forwarding, richer
+identity attesters, and DefenseClaw/NemoClaw product integrations. **Removed:**
+WebAssembly host (Starlark covers the operator need).
 
 See `specs/004-mcp-and-substrate/research.md` for the competitive
 landscape research that motivated the integration target list, and

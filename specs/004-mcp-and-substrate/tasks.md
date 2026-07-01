@@ -145,7 +145,7 @@ DefenseClaw and NemoClaw integrate at two distinct layers:
 - [ ] **U058G** [P] **CD MCP adapter reuses DefenseClaw catalog ingestion** — delegates `clawhub` / `smithery` / `skills.sh` / `git` / `HTTPS YAML` / `file` catalog fetches to DefenseClaw's SSRF-guarded fetcher when DefenseClaw is wired; CD-internal fallback otherwise.
 - [ ] **U058H** [P] Tests `tests/test_defenseclaw_directions.py` — one test per direction (U058 / U058A / U058D / U058E / U058F / U058G) against a recorded DefenseClaw fixture.
 - [ ] **U059** [P] Update `ROADMAP.md` with spec-004 progress markers.
-- [ ] **U060** Final sweep: `uv run ruff check && uv run ruff format --check && uv run pyright && uv run pytest`; tag `v1.0.0-rc.1`.
+- [ ] **U060** Final sweep: `uv run ruff check && uv run ruff format --check && uv run pyright && uv run pytest`; tag the relevant scoped RC (`v0.36.0-rc.1` for MCP/template work or `v0.37.0-rc.1` for substrate/compliance work).
 
 ---
 

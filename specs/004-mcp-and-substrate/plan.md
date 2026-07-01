@@ -4,6 +4,10 @@ description: "Spec 004 implementation plan — high-level approach + sequencing"
 
 # Plan: Spec 004 MCP + Substrate Integration
 
+**Target product milestones:** v0.36 for MCP adapter/admission/template work
+and v0.37 for substrate isolation/execution/compliance. Tag those release
+lines, not `v1.0.0`.
+
 ## Technical context
 
 - Language: Python 3.12 (matches 003)

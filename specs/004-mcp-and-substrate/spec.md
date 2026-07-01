@@ -4,6 +4,10 @@ description: "Spec 004 — MCP + substrate integration, container runtime, obser
 
 # Spec 004: MCP + Substrate Integration
 
+**Target product milestones:** v0.36 covers MCP adapter/admission/template
+work; v0.37 covers substrate isolation, sandboxed execution, and compliance
+replay. Completing this spec does not imply a v1.0 product release.
+
 ## Goal
 
 Close the production-substrate gap identified in `research.md`: ship the
