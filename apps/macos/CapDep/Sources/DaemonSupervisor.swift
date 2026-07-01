@@ -2,12 +2,15 @@ import Foundation
 
 enum DaemonSupervisorError: Error, LocalizedError {
     case commandFailed(String)
+    case launcherOwnedDaemonUnavailable
     case startTimedOut(String)
 
     var errorDescription: String? {
         switch self {
         case .commandFailed(let message):
             return message
+        case .launcherOwnedDaemonUnavailable:
+            return "daemon is not reachable; this app was launched in launcher-owned daemon mode, so restart it with scripts/run-local-app.sh"
         case .startTimedOut(let logPath):
             return "daemon failed to start; log: \(logPath)"
         }
@@ -33,10 +36,17 @@ final class DaemonSupervisor {
             return
         }
 
+        guard ownsDaemonLifecycle() else {
+            throw DaemonSupervisorError.launcherOwnedDaemonUnavailable
+        }
+
         try await restart(client: client)
     }
 
     func restart(client: DaemonClient) async throws {
+        guard ownsDaemonLifecycle() else {
+            throw DaemonSupervisorError.launcherOwnedDaemonUnavailable
+        }
         _ = try? await runLifecycleCommand(["daemon", "stop"], wait: true)
         try await startDaemon()
         try await waitForDaemon(client: client)
@@ -145,6 +155,12 @@ final class DaemonSupervisor {
     private func daemonLogPath() -> String {
         let temp = NSTemporaryDirectory().trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         return "/\(temp)/capdep-gui-daemon.log"
+    }
+
+    private func ownsDaemonLifecycle() -> Bool {
+        let raw = ProcessInfo.processInfo.environment["CAPDEP_GUI_OWNS_DAEMON"] ?? "1"
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return !["0", "false", "no", "off"].contains(normalized)
     }
 
     private func repositoryRoot() -> String {

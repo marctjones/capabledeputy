@@ -32,6 +32,29 @@ succeeds. Set `CAPDEP_GUI_DAEMON_COMMAND` to a shell command prefix to override
 the lifecycle command; by default the app uses the repo-local `.venv/bin/capdep`
 when present, otherwise `capdep` from `PATH`.
 
+For local source launches, `scripts/run-local-app.sh` owns daemon startup and
+exports `CAPDEP_GUI_OWNS_DAEMON=0` into the app bundle. This avoids macOS
+GUI-process permission failures when Python tries to inspect the repo `.venv`.
+The default local daemon mode is a dedicated tmux server via
+`scripts/run-local-daemon-tmux.sh`, which keeps stdout/stderr visible while
+surviving the app launch. The script verifies daemon parity before opening the
+app and then verifies again that the opened `CapDepMac` process is still
+connected. A local launch is not considered successful until that post-open
+check prints `[capdep-gui] app connected to daemon`.
+
+Useful daemon helpers:
+
+```bash
+scripts/run-local-daemon-tmux.sh restart
+scripts/run-local-daemon-tmux.sh logs
+scripts/run-local-daemon-tmux.sh stop
+```
+
+`CAPDEP_DAEMON_MODE=launchd` is also available through
+`scripts/run-local-daemon-launchd.sh` for normal per-user LaunchAgent testing.
+When launched from sandboxed automation, launchd can inherit the automation
+sandbox and fail to read the repo venv; use the tmux helper in that case.
+
 Only one `CapDepMac` instance may run at a time. A second launch exits before
 opening another menu bar item or touching daemon lifecycle state.
 
