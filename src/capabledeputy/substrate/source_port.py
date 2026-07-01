@@ -64,5 +64,20 @@ def get_source_port(kind: str, **kwargs: object) -> SourcePort:
         from capabledeputy.substrate.google_source import GoogleCalendarSourcePort
 
         return GoogleCalendarSourcePort(**kwargs)  # type: ignore[arg-type]
-    known = ["git", "gmail", "google-drive", "google-calendar"]
+    if kind in {"browser", "browser.current-page", "browser-current-page"}:
+        from capabledeputy.substrate.active_context import BrowserCurrentPageSourcePort
+
+        return BrowserCurrentPageSourcePort()
+    if kind in {"macos", "macos.frontmost-app", "macos-frontmost-app"}:
+        from capabledeputy.substrate.active_context import MacOSAppContextSourcePort
+
+        return MacOSAppContextSourcePort()
+    known = [
+        "git",
+        "gmail",
+        "google-drive",
+        "google-calendar",
+        "browser.current-page",
+        "macos.frontmost-app",
+    ]
     raise ValueError(f"unknown source-port provider {kind!r}; known: {known}")

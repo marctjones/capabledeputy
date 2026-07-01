@@ -13,6 +13,7 @@ from capabledeputy.app import App
 from capabledeputy.config.manifest import RuntimeManifest
 from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
+from capabledeputy.daemon.artifact_handlers import make_artifact_handlers
 from capabledeputy.daemon.audit_handlers import make_audit_handlers
 from capabledeputy.daemon.bundle_handlers import make_bundle_handlers
 from capabledeputy.daemon.demo_handlers import make_demo_handlers
@@ -27,6 +28,7 @@ from capabledeputy.daemon.policy_handlers import make_policy_handlers
 from capabledeputy.daemon.programmatic_handlers import make_programmatic_handlers
 from capabledeputy.daemon.relationship_handlers import make_relationship_handlers
 from capabledeputy.daemon.security_context_handlers import make_security_context_handlers
+from capabledeputy.daemon.source_context_handlers import make_source_context_handlers
 from capabledeputy.daemon.state_handlers import make_state_handlers
 from capabledeputy.daemon.workstream_handlers import make_workstream_handlers
 from capabledeputy.daemon.server import Daemon
@@ -591,6 +593,8 @@ async def run_daemon(
     handlers.update(make_workstream_handlers(app))
     handlers.update(make_programmatic_handlers(app))
     handlers.update(make_bundle_handlers(app))
+    handlers.update(make_source_context_handlers())
+    handlers.update(make_artifact_handlers())
     handlers.update(make_gui_handlers(app))
     handlers.update(make_onguard_handlers(app))
     handlers.update(

@@ -75,23 +75,26 @@ def canonical_payload(
     target: str,
     payload: str,
     labels_in: frozenset[str] | list[str],
+    artifact_hash: str | None = None,
+    destination_id: str | None = None,
 ) -> bytes:
     """Build a deterministic byte string covering everything that must
     be signed. Any field that affects the security decision must be in
     here; ordering and JSON formatting are pinned so independent signers
     produce byte-identical payloads.
     """
-    canon = json.dumps(
-        {
-            "approval_id": approval_id,
-            "action": action,
-            "target": target,
-            "payload": payload,
-            "labels_in": sorted(labels_in),
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+    body = {
+        "approval_id": approval_id,
+        "action": action,
+        "target": target,
+        "payload": payload,
+        "labels_in": sorted(labels_in),
+    }
+    if artifact_hash is not None:
+        body["artifact_hash"] = artifact_hash
+    if destination_id is not None:
+        body["destination_id"] = destination_id
+    canon = json.dumps(body, sort_keys=True, separators=(",", ":"))
     return canon.encode("utf-8")
 
 

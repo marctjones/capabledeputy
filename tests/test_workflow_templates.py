@@ -8,7 +8,9 @@ from capabledeputy.app import App
 from capabledeputy.daemon.gui_handlers import make_gui_handlers
 from capabledeputy.daemon.workflow_templates import (
     FIRST_WORKFLOW_TEMPLATE_ID,
+    WorkflowConfigError,
     build_workflow_templates,
+    validate_workflow_manifest,
     workflow_template_by_id,
     workflow_turn_message,
 )
@@ -66,3 +68,50 @@ def test_workflow_catalog_loads_from_configs_yaml() -> None:
     template = workflow_template_by_id("calendar-planning")
     assert template is not None
     assert template["requires_foreground_review"] is True
+
+
+def test_workflow_templates_include_v036_manifest_schema() -> None:
+    templates = build_workflow_templates()["templates"]
+
+    for template in templates:
+        assert template["schema_version"] == 1
+        assert template["capabilities"]
+        assert template["flow_pattern"]
+        assert template["source_ports"]
+        assert template["artifact_types"]
+        assert template["approval_policy"]["mutating_actions"]
+        assert template["retention"]["audit"] == "durable"
+
+
+def test_workflow_manifest_validation_fails_closed_for_missing_schema_fields() -> None:
+    with pytest.raises(WorkflowConfigError, match="missing schema fields"):
+        validate_workflow_manifest(
+            {
+                "id": "legacy",
+                "title": "Legacy",
+                "prompt": "Do a thing.",
+            },
+            strict_schema=True,
+        )
+
+
+def test_workflow_manifest_validation_rejects_unknown_capability() -> None:
+    with pytest.raises(WorkflowConfigError, match="unknown capability"):
+        validate_workflow_manifest(
+            {
+                "id": "bad-kind",
+                "title": "Bad",
+                "prompt": "Do a thing.",
+                "capabilities": ["BOGUS_KIND"],
+                "flow_pattern": "background_read_review",
+                "source_ports": ["gmail"],
+                "artifact_types": ["research"],
+                "approval_policy": {
+                    "mutating_actions": "require_foreground_review",
+                    "egress": "require_approval",
+                    "foreground_review": "operator_visible",
+                },
+                "retention": {"source_context": "session", "artifacts": "session"},
+            },
+            strict_schema=True,
+        )

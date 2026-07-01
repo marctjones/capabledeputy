@@ -28,6 +28,25 @@ workflows:
          confidence in the answer.
     system_image: sunrise
     requires_foreground_review: false
+    capabilities:
+      - GMAIL_READ
+      - IMAP_READ
+      - CALENDAR_READ
+    flow_pattern: background_read_review
+    source_ports:
+      - gmail
+      - imap
+      - google-calendar
+    artifact_types:
+      - research
+    approval_policy:
+      mutating_actions: require_foreground_review
+      egress: require_approval
+      foreground_review: operator_visible
+    retention:
+      source_context: session
+      artifacts: session
+      audit: durable
 
   - id: inbox-triage
     title: Inbox Triage
@@ -47,6 +66,24 @@ workflows:
          Search before reading bodies. State search scope and confidence in the answer.
     system_image: tray.full
     requires_foreground_review: false
+    capabilities:
+      - GMAIL_READ
+      - IMAP_READ
+    flow_pattern: background_read_review
+    source_ports:
+      - gmail
+      - imap
+    artifact_types:
+      - email_draft
+      - research
+    approval_policy:
+      mutating_actions: require_foreground_review
+      egress: require_approval
+      foreground_review: operator_visible
+    retention:
+      source_context: session
+      artifacts: session
+      audit: durable
 
   - id: calendar-planning
     title: Calendar Planning
@@ -56,6 +93,23 @@ workflows:
       Review my calendar, find scheduling conflicts, and propose safe calendar changes.
     system_image: calendar.badge.clock
     requires_foreground_review: true
+    capabilities:
+      - CALENDAR_READ
+      - CREATE_CAL
+      - MODIFY_CAL
+    flow_pattern: foreground_artifact_review
+    source_ports:
+      - google-calendar
+    artifact_types:
+      - calendar_event
+    approval_policy:
+      mutating_actions: require_foreground_review
+      egress: require_approval
+      foreground_review: required
+    retention:
+      source_context: session
+      artifacts: session
+      audit: durable
 
   - id: web-research
     title: Web Research
@@ -66,6 +120,24 @@ workflows:
       and produce a cited summary.
     system_image: safari
     requires_foreground_review: false
+    capabilities:
+      - WEB_FETCH
+    flow_pattern: research_synthesis
+    source_ports:
+      - web
+      - browser.current-page
+    artifact_types:
+      - research
+      - image
+      - chart
+    approval_policy:
+      mutating_actions: require_foreground_review
+      egress: require_approval
+      foreground_review: operator_visible
+    retention:
+      source_context: session
+      artifacts: session
+      audit: durable
 
   - id: summarize-selection
     title: Summarize Selection
@@ -74,6 +146,32 @@ workflows:
     prompt: Summarize the current selection and list any action items.
     system_image: selection.pin.in.out
     requires_foreground_review: false
+    capabilities:
+      - BROWSER_READ
+      - MACOS_CLIPBOARD_READ
+      - APPLE_MAIL_READ
+      - PAGES_READ
+      - NUMBERS_READ
+      - KEYNOTE_READ
+    flow_pattern: foreground_context_review
+    source_ports:
+      - browser.current-page
+      - macos.frontmost-app
+      - apple-mail
+      - pages
+      - numbers
+      - keynote
+    artifact_types:
+      - research
+      - document
+    approval_policy:
+      mutating_actions: require_foreground_review
+      egress: require_approval
+      foreground_review: operator_visible
+    retention:
+      source_context: session
+      artifacts: session
+      audit: durable
 
   - id: revise-document
     title: Revise Frontmost Document
@@ -83,3 +181,26 @@ workflows:
       Review the frontmost document and suggest bounded edits before applying anything.
     system_image: doc.text.magnifyingglass
     requires_foreground_review: true
+    capabilities:
+      - PAGES_READ
+      - PAGES_EDIT
+      - NUMBERS_READ
+      - NUMBERS_EDIT
+      - KEYNOTE_READ
+    flow_pattern: foreground_artifact_review
+    source_ports:
+      - macos.frontmost-app
+      - pages
+      - numbers
+      - keynote
+    artifact_types:
+      - document
+      - diff
+    approval_policy:
+      mutating_actions: require_foreground_review
+      egress: require_approval
+      foreground_review: required
+    retention:
+      source_context: session
+      artifacts: session
+      audit: durable
