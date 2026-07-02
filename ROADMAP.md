@@ -6,13 +6,12 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-07-01 — v0.38 and v0.39 implementation work is
-complete locally, supporting tracks 07-10 have closeout evidence, and v0.40 is
-the next product milestone: a safe practical scripting assistant for
-non-programmers. Milestone names carry ordered prefixes, open work is
-milestone-scoped, and v1.0 remains unscheduled.
+**Last refreshed:** 2026-07-02 — v0.40 is complete as the safe practical
+scripting substrate. The next product milestone is v0.41: user-facing safe
+scripting UX and end-to-end automation workflows. Milestone names carry ordered
+prefixes, open work is milestone-scoped, and v1.0 remains unscheduled.
 
-## Product Ladder — v0.35 → v0.40
+## Product Ladder — v0.35 → v0.41
 
 ```mermaid
 flowchart LR
@@ -22,7 +21,8 @@ flowchart LR
   v38[v0.38 Memory + compaction + async media]
   v39[v0.39 Background automation + onguard UX]
   v40[v0.40 Safe scripting assistant]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40
+  v41[v0.41 Safe scripting UX + workflows]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -32,15 +32,16 @@ flowchart LR
 | **03 Product — v0.37.0 — Execution substrate, isolation, and compliance evidence** | Execution substrate, isolation, and compliance evidence | #44, #9, #14, #55–#57, #187–#189 |
 | **04 Product — v0.38.0 — Memory, retention, compaction, and async media reliability** | Memory, retention, compaction, and async media reliability | #160–#165, #190–#192, #194–#195 |
 | **05 Product — v0.39.0 — Background automation and onguard UX** | Background automation and onguard UX | #166–#171 |
-| **06 Product — v0.40.0 — Safe practical scripting assistant** (next) | Safe practical scripting for non-programmers | #172–#177 |
+| **06 Product — v0.40.0 — Safe practical scripting assistant** | Safe practical scripting substrate for non-programmers | #172–#177 |
+| **11 Product — v0.41.0 — Safe scripting UX and workflows** (next) | User-facing safe scripting flows across daemon and clients | #196–#200 |
 
 ## Planned Work Coverage
 
-This pass audited the live GitHub tracker: no open issue is unmilestoned.
-The planned work is now grouped as:
+This pass audited the live GitHub tracker. Open work is now grouped as:
 
-| GitHub milestone | Issues | Why it is outside the product ladder |
+| GitHub milestone | Issues | Status / role |
 |---|---|---|
+| **11 Product — v0.41.0 — Safe scripting UX and workflows** | #196–#200 | Active product-ladder work: expose the v0.40 substrate as usable daemon/client workflows. |
 | **07 Support — Source identity and labeling correctness** | #42, #51, #139 | Complete; see `docs/support-track-closeout-2026-07-01.md`. |
 | **08 Support — Terminal UX and approval polish** | #16, #17, #19, #27, #29 | Complete for the terminal support track; see `docs/support-track-closeout-2026-07-01.md`. |
 | **09 Research — Non-goals and safe alternatives** | #178–#181 | Complete as research decisions; see `docs/support-track-closeout-2026-07-01.md`. |
@@ -63,6 +64,43 @@ Closed GitHub milestones use the same ordered-prefix convention:
 | **00.09 Done — v0.32.0 — Interactive workstream coordination** | Closed |
 | **00.10 Done — v0.33.0 — Streaming turn lifecycle and liveness** | Closed |
 | **00.11 Done — v0.34.0 — First-run, connectors, and rich chat readiness** | Closed |
+
+## Active Focus — v0.41.0 Safe Scripting UX and Workflows
+
+Goal: turn the v0.40 scripting substrate into a practical, user-facing
+assistant for non-programmers. A user should be able to ask for a concrete
+automation task, review a generated script, run it in isolation, inspect the
+evidence and proposed outputs, and approve an exact export without learning a
+developer workflow.
+
+The product boundary stays narrow: CapDep may help create and run small
+scripts, but daemon-owned policy, sandboxing, labels, typed artifacts, audit,
+and exact approvals remain mandatory. Git commit and PR workflows stay
+advanced/export options, not the core experience.
+
+### v0.41.0 scope
+
+| Issue | Work | Local status |
+|---|---|---|
+| #196 | EPIC: Safe scripting UX and end-to-end workflows | Planned |
+| #197 | Daemon scripting workflow RPCs for plan, run, evidence, and export | Planned |
+| #198 | CLI/TUI/CapDepMac scripting surfaces consume daemon artifacts | Planned |
+| #199 | Practical automation demos for batch files, photos, and document transforms | Planned |
+| #200 | Safety and regression tests for approval, sandbox, labels, and async UI state | Planned |
+
+### v0.41.0 done-when
+
+- The daemon exposes a safe scripting workflow that prepares scripts, invokes
+  sandboxed runs, records evidence, and proposes file exports as typed
+  artifacts.
+- CLI, TUI, and CapDepMac can render the same script/run/export artifacts and
+  drive approvals without duplicating authority in clients.
+- At least three practical non-programmer workflows are demoed end-to-end:
+  batch file cleanup, batch photo processing, and document or spreadsheet
+  transformation.
+- Regression tests cover root escapes, restricted credential labels,
+  unavailable sandbox behavior, exact approval binding, and async client state
+  while a script run is pending.
 
 ## Completed Focus — v0.34.0 First-run, Connectors, and Rich Chat Readiness
 
