@@ -138,6 +138,8 @@ markers = [
     "invariant: 003 security-model invariant tests (Principle III).",
     "perf: latency or throughput benchmark (skip with -m 'not perf' on slow CI).",
     "external_mcp: opt-in real upstream MCP server smoke tests.",
+    "real_model: opt-in real AI model smoke tests.",
+    "real_image: opt-in real image generation backend smoke tests.",
 ]
 
 [tool.coverage.run]

@@ -119,3 +119,103 @@ async def test_image_job_start_fails_before_queue_when_background_unavailable(
 
     listed = await handlers["image.jobs.list"]({})
     assert listed["jobs"] == []
+
+
+async def test_image_job_cancel_marks_completed_generation_canceled(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+
+    def slow_generate_image(**kwargs: Any) -> dict[str, Any]:
+        import time
+
+        time.sleep(0.08)
+        return {
+            "ok": True,
+            "backend": "mflux",
+            "model": "z-image-turbo",
+            "image_path": str(tmp_path / "canceled.png"),
+            "markdown": "![generated](canceled.png)",
+        }
+
+    monkeypatch.setattr(
+        "capabledeputy.daemon.image_ops_handlers.generate_image",
+        slow_generate_image,
+    )
+
+    async with anyio.create_task_group() as tg:
+        daemon = FakeDaemon(tg)
+        app = FakeApp(daemon_server=daemon)
+        handlers = make_image_ops_handlers(app)  # type: ignore[arg-type]
+
+        started = await handlers["image.jobs.start"]({"prompt": "cancel this image"})
+        job_id = started["job"]["id"]
+
+        with anyio.fail_after(2):
+            while True:
+                current = await handlers["image.jobs.get"]({"job_id": job_id})
+                if current["job"]["status"] == "running":
+                    break
+                await anyio.sleep(0.01)
+
+        cancel_result = await handlers["image.jobs.cancel"]({"job_id": job_id})
+        assert cancel_result["job"]["status"] == "canceling"
+        assert cancel_result["job"]["cancel_requested"] is True
+
+        with anyio.fail_after(2):
+            while True:
+                current = await handlers["image.jobs.get"]({"job_id": job_id})
+                if current["job"]["status"] == "canceled":
+                    break
+                await anyio.sleep(0.01)
+        tg.cancel_scope.cancel()
+
+    assert current["job"]["cancel_requested"] is True
+    assert current["job"]["result"]["ok"] is True
+    events = await handlers["image.jobs.events"]({"job_id": job_id})
+    statuses = [event["event_type"] for event in events["events"]]
+    assert "canceling" in statuses
+    assert statuses[-1] == "canceled"
+
+
+async def test_image_job_failed_result_surfaces_actionable_error(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+
+    def fake_generate_image(**kwargs: Any) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "backend": "mflux",
+            "model": "z-image-turbo",
+            "error": "model weights missing",
+        }
+
+    monkeypatch.setattr(
+        "capabledeputy.daemon.image_ops_handlers.generate_image",
+        fake_generate_image,
+    )
+
+    async with anyio.create_task_group() as tg:
+        daemon = FakeDaemon(tg)
+        app = FakeApp(daemon_server=daemon)
+        handlers = make_image_ops_handlers(app)  # type: ignore[arg-type]
+
+        started = await handlers["image.jobs.start"]({"prompt": "will fail"})
+        job_id = started["job"]["id"]
+
+        with anyio.fail_after(2):
+            while True:
+                current = await handlers["image.jobs.get"]({"job_id": job_id})
+                if current["job"]["status"] == "failed":
+                    break
+                await anyio.sleep(0.01)
+        tg.cancel_scope.cancel()
+
+    assert current["job"]["error"] == "model weights missing"
+    assert current["job"]["result"]["ok"] is False
+    events = await handlers["image.jobs.events"]({"job_id": job_id})
+    statuses = [event["event_type"] for event in events["events"]]
+    assert statuses[-1] == "failed"

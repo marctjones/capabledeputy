@@ -850,6 +850,7 @@ async def stop_daemon(socket_path: Path | None = None) -> bool:
         wait_for_exit,
     )
 
+    explicit_socket = socket_path is not None
     client = DaemonClient(socket_path or default_socket_path())
     target_pid = read_pidfile()
 
@@ -861,8 +862,14 @@ async def stop_daemon(socket_path: Path | None = None) -> bool:
     except DaemonNotRunningError:
         # Socket gone — either no daemon, or daemon is wedged with a
         # stale socket. If the pidfile points at a live process, the
-        # signal-fallback below will handle it.
+        # signal-fallback below will handle it for the default daemon
+        # socket. For explicit sockets, a global pidfile is not enough
+        # evidence to terminate a process that may belong to another
+        # daemon instance.
         pass
+
+    if explicit_socket and not rpc_sent:
+        return False
 
     # 2. If RPC succeeded and we know the PID, give the daemon a brief
     #    moment to exit cleanly. If we don't have a PID, trust the RPC

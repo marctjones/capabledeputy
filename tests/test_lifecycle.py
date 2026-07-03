@@ -53,6 +53,22 @@ async def test_stop_returns_false_when_no_daemon(tmp_path: Path) -> None:
     assert await stop_daemon(socket_path) is False
 
 
+async def test_stop_explicit_missing_socket_ignores_global_pidfile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from capabledeputy.ipc import pidfile
+
+    socket_path = short_socket_path("no-daemon-with-pidfile.sock")
+    monkeypatch.setattr(pidfile, "read_pidfile", lambda: 12345)
+
+    def fail_if_called(pid: int) -> str:
+        raise AssertionError(f"must not terminate pid from unrelated pidfile: {pid}")
+
+    monkeypatch.setattr(pidfile, "terminate_with_escalation", fail_if_called)
+
+    assert await stop_daemon(socket_path) is False
+
+
 def test_idle_shutdown_seconds_defaults_to_one_minute(monkeypatch) -> None:
     monkeypatch.delenv("CAPDEP_IDLE_SHUTDOWN_SECONDS", raising=False)
 
