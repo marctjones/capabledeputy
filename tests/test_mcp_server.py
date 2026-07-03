@@ -6,6 +6,8 @@ directly since they hold the proxy logic.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from pathlib import Path
 
@@ -74,14 +76,25 @@ async def _wait_for_socket(path: Path, timeout: float = 2.0) -> None:
     raise TimeoutError(f"socket {path} did not become available within {timeout}s")
 
 
+@asynccontextmanager
+async def _running_daemon(daemon: Daemon, socket_path: Path) -> AsyncIterator[DaemonClient]:
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(daemon.serve)
+        await _wait_for_socket(socket_path)
+        client = DaemonClient(socket_path)
+        try:
+            yield client
+        finally:
+            with anyio.move_on_after(2, shield=True):
+                with suppress(Exception):
+                    await client.call("shutdown")
+            tg.cancel_scope.cancel()
+
+
 async def test_discover_tools_finds_native_tools(paths: dict[str, Path]) -> None:
     daemon, _app = await _build_daemon(paths)
 
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(daemon.serve)
-        await _wait_for_socket(paths["socket"])
-
-        client = DaemonClient(paths["socket"])
+    async with _running_daemon(daemon, paths["socket"]) as client:
         tools = await discover_tools(client)
         names = {t.name for t in tools}
         assert "memory.read" in names
@@ -103,8 +116,6 @@ async def test_discover_tools_finds_native_tools(paths: dict[str, Path]) -> None
         assert purchase.annotations is not None
         assert purchase.annotations.destructiveHint is True
 
-        await client.call("shutdown")
-
 
 async def test_dispatch_tool_allow_returns_output(paths: dict[str, Path]) -> None:
     daemon, app = await _build_daemon(paths)
@@ -112,11 +123,7 @@ async def test_dispatch_tool_allow_returns_output(paths: dict[str, Path]) -> Non
     cap = Capability(kind=CapabilityKind.WRITE_FS, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
 
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(daemon.serve)
-        await _wait_for_socket(paths["socket"])
-
-        client = DaemonClient(paths["socket"])
+    async with _running_daemon(daemon, paths["socket"]) as client:
         result = await dispatch_tool(
             client,
             s.id,
@@ -128,20 +135,16 @@ async def test_dispatch_tool_allow_returns_output(paths: dict[str, Path]) -> Non
         text = _text(result)
         assert "ok" in text.lower()
         assert result.structuredContent is not None
-        assert result.structuredContent.get("ok") is True
-
-        await client.call("shutdown")
+        output = result.structuredContent.get("output")
+        assert isinstance(output, dict)
+        assert output.get("ok") is True
 
 
 async def test_dispatch_tool_deny_returns_policy_message(paths: dict[str, Path]) -> None:
     daemon, app = await _build_daemon(paths)
     s = await app.graph.new()
 
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(daemon.serve)
-        await _wait_for_socket(paths["socket"])
-
-        client = DaemonClient(paths["socket"])
+    async with _running_daemon(daemon, paths["socket"]) as client:
         result = await dispatch_tool(
             client,
             s.id,
@@ -156,8 +159,6 @@ async def test_dispatch_tool_deny_returns_policy_message(paths: dict[str, Path])
         assert result.meta.get("io.capabledeputy/decision") == "deny"
         assert "io.capabledeputy/approval_id" in result.meta
 
-        await client.call("shutdown")
-
 
 async def test_dispatch_tool_includes_labels_added_in_response(paths: dict[str, Path]) -> None:
     daemon, app = await _build_daemon(paths)
@@ -171,11 +172,7 @@ async def test_dispatch_tool_includes_labels_added_in_response(paths: dict[str, 
     cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
 
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(daemon.serve)
-        await _wait_for_socket(paths["socket"])
-
-        client = DaemonClient(paths["socket"])
+    async with _running_daemon(daemon, paths["socket"]) as client:
         result = await dispatch_tool(
             client,
             s.id,
@@ -190,8 +187,6 @@ async def test_dispatch_tool_includes_labels_added_in_response(paths: dict[str, 
             "io.capabledeputy/labels_added",
             [],
         )
-
-        await client.call("shutdown")
 
 
 async def test_full_mcp_scenario_blocks_egress_after_health_read(
@@ -219,12 +214,7 @@ async def test_full_mcp_scenario_blocks_egress_after_health_read(
         capability_set=frozenset({read_cap, purchase_cap}),
     )
 
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(daemon.serve)
-        await _wait_for_socket(paths["socket"])
-
-        client = DaemonClient(paths["socket"])
-
+    async with _running_daemon(daemon, paths["socket"]) as client:
         read_result = await dispatch_tool(client, s.id, "memory.read", {"key": "rx"})
         assert read_result.isError is False
         assert "confidential.health" in _text(read_result)
@@ -238,8 +228,6 @@ async def test_full_mcp_scenario_blocks_egress_after_health_read(
         assert purchase_result.isError is True
         assert "health-meets-egress" in _text(purchase_result)
 
-        await client.call("shutdown")
-
 
 async def test_build_server_constructs_a_server(paths: dict[str, Path]) -> None:
     from uuid import uuid4
@@ -248,15 +236,9 @@ async def test_build_server_constructs_a_server(paths: dict[str, Path]) -> None:
 
     daemon, _app = await _build_daemon(paths)
 
-    async with anyio.create_task_group() as tg:
-        tg.start_soon(daemon.serve)
-        await _wait_for_socket(paths["socket"])
-
-        client = DaemonClient(paths["socket"])
+    async with _running_daemon(daemon, paths["socket"]) as client:
         server = await build_server(client, uuid4())
         assert server.name == "capdep"
-
-        await client.call("shutdown")
 
 
 # --- regression: elicitation call contract (pyright caught a real bug) ---
