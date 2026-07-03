@@ -23,15 +23,13 @@ from capabledeputy.agent.chat_turn import (
     repair_hallucinated_image_markdown,
     should_force_image_generate_tool,
 )
-from capabledeputy.policy.rules import Decision
-from capabledeputy.tools.client import ToolCallOutcome
+from capabledeputy.agent.loop import _generated_image_artifacts_from_outcomes
+from capabledeputy.daemon.image_attachments import image_attachment_payloads_from_outcome
 from capabledeputy.mcp_servers import fetch as fetch_server
 from capabledeputy.mcp_servers import image_fetch as image_fetch_server
 from capabledeputy.mcp_servers import image_generate as image_generate_server
 from capabledeputy.mcp_servers import images as images_server
-from capabledeputy.mcp_servers._image_fetch import extract_og_image_url, fetch_image
-from capabledeputy.mcp_servers._wikipedia import wikipedia_lookup
-from capabledeputy.daemon.image_attachments import image_attachment_payloads_from_outcome
+from capabledeputy.mcp_servers._image_fetch import extract_og_image_url
 from capabledeputy.mcp_servers._image_pipeline import (
     ImageGenConfig,
     clear_pipeline_cache,
@@ -39,6 +37,8 @@ from capabledeputy.mcp_servers._image_pipeline import (
     validate_prompt,
     wrap_prompt_for_style,
 )
+from capabledeputy.policy.rules import Decision
+from capabledeputy.tools.client import ToolCallOutcome
 
 
 def _handler(server, name: str):
@@ -165,6 +165,31 @@ def test_repair_hallucinated_markdown_uses_tool_output() -> None:
     )
     assert repaired == tool_md
     assert dog not in repaired
+
+
+def test_generated_image_outcome_becomes_session_artifact(tmp_path: Path) -> None:
+    image_path = tmp_path / ".capdep" / "work" / "images" / "woman.png"
+    image_path.parent.mkdir(parents=True)
+    image_path.write_bytes(b"image-bytes")
+    outcome = ToolCallOutcome(
+        decision=Decision.ALLOW,
+        tool_name="bundled-image-generate.image.generate",
+        tool_args={"prompt": "make a portrait"},
+        output={
+            "image_path": str(image_path),
+            "markdown": f"![portrait]({image_path})",
+        },
+    )
+
+    artifacts = _generated_image_artifacts_from_outcomes([outcome], origin_turn_id=3)
+
+    assert len(artifacts) == 1
+    assert artifacts[0]["kind"] == "generated_image"
+    assert artifacts[0]["path"] == str(image_path)
+    assert artifacts[0]["alt"] == "portrait"
+    assert artifacts[0]["prompt"] == "make a portrait"
+    assert artifacts[0]["origin_turn_id"] == 3
+    assert artifacts[0]["sha256"]
 
 
 def test_looks_like_image_generation_refusal_detects_prose_decline() -> None:

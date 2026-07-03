@@ -32,7 +32,13 @@ from capabledeputy.policy.purposes import (
     categories_of_capability,
 )
 from capabledeputy.provenance import ProvenanceRecorder, capability_node_id
-from capabledeputy.session.model import OriginMetadata, Session, SessionStatus, Turn
+from capabledeputy.session.model import (
+    OriginMetadata,
+    Session,
+    SessionStatus,
+    Turn,
+    merge_session_artifacts,
+)
 from capabledeputy.session.store import SessionStore
 
 
@@ -532,6 +538,24 @@ class SessionGraph:
         session = self.get(session_id)
         new_history = (*session.history, turn)
         updated = replace(session, history=new_history, updated_at=datetime.now(UTC))
+        await self._save(updated)
+        self._sessions[session_id] = updated
+        return updated
+
+    async def add_session_artifacts(
+        self,
+        session_id: UUID,
+        artifacts: tuple[dict[str, Any], ...] | list[dict[str, Any]],
+    ) -> Session:
+        if not artifacts:
+            return self.get(session_id)
+        session = self.get(session_id)
+        updated_handles = merge_session_artifacts(session.reference_handles, artifacts)
+        updated = replace(
+            session,
+            reference_handles=updated_handles,
+            updated_at=datetime.now(UTC),
+        )
         await self._save(updated)
         self._sessions[session_id] = updated
         return updated

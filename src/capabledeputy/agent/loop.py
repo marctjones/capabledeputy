@@ -15,7 +15,7 @@ import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from capabledeputy.agent.context import build_llm_context
@@ -38,7 +38,7 @@ from capabledeputy.mode.dispatcher import (
 )
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph, SessionStateError
-from capabledeputy.session.model import Session, Turn
+from capabledeputy.session.model import Session, Turn, make_generated_image_artifact
 from capabledeputy.tools.aliasing import build_alias_map, build_reverse_map
 from capabledeputy.tools.client import LabeledToolClient, ToolCallOutcome
 from capabledeputy.tools.registry import ToolDefinition, ToolNotFoundError, ToolRegistry
@@ -419,6 +419,42 @@ def _format_outcome(outcome: ToolCallOutcome) -> str:
         return f"APPROVAL REQUIRED by rule '{rule_part}'{reason_part}{recovery_hint}"
     output = outcome.output if outcome.output is not None else {}
     return str(output)
+
+
+def _generated_image_artifacts_from_outcomes(
+    outcomes: list[ToolCallOutcome] | tuple[ToolCallOutcome, ...],
+    *,
+    origin_turn_id: int,
+) -> tuple[dict[str, Any], ...]:
+    from capabledeputy.agent.chat_turn import image_paths_from_tool_outcome, normalize_image_path
+    from capabledeputy.mcp_server.media_results import iter_image_sources_in_value
+
+    artifacts: list[dict[str, Any]] = []
+    for outcome in outcomes:
+        allowed_paths = image_paths_from_tool_outcome(outcome)
+        if not allowed_paths:
+            continue
+        alt_by_path = {
+            normalize_image_path(source): alt
+            for source, alt in iter_image_sources_in_value(outcome.output or {})
+            if normalize_image_path(source) in allowed_paths
+        }
+        prompt = None
+        if outcome.tool_args:
+            raw_prompt = outcome.tool_args.get("prompt")
+            if isinstance(raw_prompt, str) and raw_prompt.strip():
+                prompt = raw_prompt.strip()
+        for path in sorted(allowed_paths):
+            artifacts.append(
+                make_generated_image_artifact(
+                    path=path,
+                    alt=alt_by_path.get(path),
+                    prompt=prompt,
+                    origin_turn_id=origin_turn_id,
+                    origin_tool_name=outcome.tool_name,
+                ),
+            )
+    return tuple(artifacts)
 
 
 def _no_tools_notice_message() -> Message:
@@ -1325,6 +1361,13 @@ async def run_turn_streaming(
                 content=final_content,
             )
             await graph.add_turn(session_id, agent_turn)
+            await graph.add_session_artifacts(
+                session_id,
+                _generated_image_artifacts_from_outcomes(
+                    tool_outcomes,
+                    origin_turn_id=agent_turn.turn_id,
+                ),
+            )
             yield TurnCompleted(
                 iteration=iteration,
                 result=AgentTurnResult(

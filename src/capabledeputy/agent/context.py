@@ -26,7 +26,7 @@ from capabledeputy.policy.labels import (
     ProvenanceLevel,
 )
 from capabledeputy.session.foreground_defaults import FOREGROUND_CHAT_OWNERS
-from capabledeputy.session.model import Session
+from capabledeputy.session.model import Session, session_artifacts_from_handles
 from capabledeputy.tools.registry import ToolDefinition
 
 
@@ -165,6 +165,35 @@ When you used `kagi.kagi_search_fetch` with `workflow: images`:
 3. Put each tool's `markdown` field in your reply for inline display.
 4. Add one short caption sentence; skip long link catalogs.
 {demo_line}"""
+
+
+def _session_artifacts_section(session: Session, *, max_count: int = 8) -> str:
+    artifacts = [
+        artifact
+        for artifact in session_artifacts_from_handles(session.reference_handles)
+        if artifact.get("kind") == "generated_image" and artifact.get("path")
+    ][-max_count:]
+    if not artifacts:
+        return ""
+
+    lines = [
+        "# Session Artifacts",
+        "",
+        "Recent generated images available in this session. Refer to these by",
+        "artifact id or path when the user says things like \"that image\",",
+        "\"the image you made\", or asks to revise/use a prior generated image.",
+        "Do not invent paths. Do not claim you inspected pixels unless a",
+        "vision-capable tool/model actually inspected the file.",
+        "",
+    ]
+    for artifact in artifacts:
+        artifact_id = str(artifact.get("artifact_id") or "unknown")
+        path = str(artifact["path"])
+        alt = str(artifact.get("alt") or "generated image")
+        sha = str(artifact.get("sha256") or "")
+        sha_part = f" sha256={sha[:12]}" if sha else ""
+        lines.append(f"- generated_image id={artifact_id} path={path}{sha_part} alt={alt}")
+    return "\n".join(lines)
 
 
 def _recovery_hints_section(session: Session) -> str:
@@ -413,6 +442,7 @@ def build_llm_context(
             "or web results when no tool was available for this turn.\n"
             f"Session: {session_id_short}. "
             f"Purpose: {session.purpose_handle or 'general'}."
+            f"\n\n{_session_artifacts_section(session)}"
             f"{_gui_inline_media_section(session)}"
         )
         return LLMContext(
@@ -537,7 +567,7 @@ useful, accurate answers.
   never invent values like `headlines`.
   Do not ask what to search for when they already gave a topic.
   After a search tool returns, reply in **chat style** (not a report):
-  open with 2–4 sentences answering the question in plain prose, then
+  open with 2-4 sentences answering the question in plain prose, then
   optionally add a short **Sources** section with at most three
   markdown links on separate lines, e.g. `- [Title](url)`. Do not use
   numbered catalogs, "results are as follows", or paste every hit URL.
@@ -617,6 +647,7 @@ Style:
 {decisions_section}
 
 {_recovery_hints_section(session)}
+{_session_artifacts_section(session)}
 {_gui_inline_media_section(session)}
 
 When you have completed the task, respond with a final answer and no

@@ -6,6 +6,8 @@ composition and security reasoning.
 
 from __future__ import annotations
 
+import hashlib
+import os
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -14,6 +16,9 @@ from uuid import UUID, uuid4
 
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import AxisD, LabelState
+
+SESSION_ARTIFACTS_HANDLE = "session_artifacts"
+SESSION_ARTIFACTS_SCHEMA_VERSION = 1
 
 
 class SessionStatus(StrEnum):
@@ -48,6 +53,105 @@ class EnforcementMode(StrEnum):
 
     STRICT = "strict"
     SHADOW = "shadow"
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+def _normalize_artifact_path(path: str) -> str:
+    return os.path.abspath(os.path.expanduser(path.strip()))
+
+
+def _artifact_id_for_path(path: str) -> str:
+    digest = hashlib.sha256(_normalize_artifact_path(path).encode("utf-8")).hexdigest()
+    return f"artifact_{digest[:16]}"
+
+
+def _sha256_file(path: str) -> str | None:
+    try:
+        digest = hashlib.sha256()
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
+def make_generated_image_artifact(
+    *,
+    path: str,
+    alt: str | None = None,
+    prompt: str | None = None,
+    origin_turn_id: int | None = None,
+    origin_tool_name: str | None = None,
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Create a compact persisted reference to a generated image.
+
+    The artifact intentionally stores metadata and a filesystem path, not
+    image bytes. The LLM can refer to the artifact on later turns without
+    bloating prompt context or pretending it has re-inspected pixels.
+    """
+    normalized_path = _normalize_artifact_path(path)
+    artifact: dict[str, Any] = {
+        "artifact_id": _artifact_id_for_path(normalized_path),
+        "kind": "generated_image",
+        "mime_type": "image/png",
+        "path": normalized_path,
+        "created_at": (created_at or _utcnow()).isoformat(),
+        "source": "tool_output",
+    }
+    if alt:
+        artifact["alt"] = str(alt)
+    if prompt:
+        artifact["prompt"] = str(prompt)
+    if origin_turn_id is not None:
+        artifact["origin_turn_id"] = origin_turn_id
+    if origin_tool_name:
+        artifact["origin_tool_name"] = origin_tool_name
+    sha256 = _sha256_file(normalized_path)
+    if sha256:
+        artifact["sha256"] = sha256
+    return artifact
+
+
+def session_artifacts_from_handles(
+    reference_handles: dict[str, dict[str, Any]] | None,
+) -> tuple[dict[str, Any], ...]:
+    raw = (reference_handles or {}).get(SESSION_ARTIFACTS_HANDLE) or {}
+    items = raw.get("items") if isinstance(raw, dict) else None
+    if not isinstance(items, list):
+        return ()
+    return tuple(item for item in items if isinstance(item, dict))
+
+
+def merge_session_artifacts(
+    reference_handles: dict[str, dict[str, Any]] | None,
+    artifacts: tuple[dict[str, Any], ...] | list[dict[str, Any]],
+    *,
+    max_items: int = 50,
+) -> dict[str, dict[str, Any]]:
+    """Return reference_handles with session artifacts merged by path/id."""
+    updated: dict[str, dict[str, Any]] = dict(reference_handles or {})
+    existing = list(session_artifacts_from_handles(updated))
+    merged_by_key: dict[str, dict[str, Any]] = {}
+
+    for item in (*existing, *tuple(artifacts)):
+        path = item.get("path")
+        artifact_id = item.get("artifact_id")
+        key = str(path or artifact_id or "")
+        if not key:
+            continue
+        merged_by_key[key] = dict(item)
+
+    merged = list(merged_by_key.values())[-max_items:]
+    updated[SESSION_ARTIFACTS_HANDLE] = {
+        "schema_version": SESSION_ARTIFACTS_SCHEMA_VERSION,
+        "items": merged,
+    }
+    return updated
 
 
 @dataclass(frozen=True)
@@ -96,10 +200,6 @@ class OriginMetadata:
 _TERMINAL_STATUSES: frozenset[SessionStatus] = frozenset(
     {SessionStatus.DONE, SessionStatus.ABORTED},
 )
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 @dataclass(frozen=True)

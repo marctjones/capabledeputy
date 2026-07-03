@@ -4,7 +4,15 @@ from uuid import uuid4
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import CategoryTag, LabelState, ProvenanceLevel, ProvenanceTag
 from capabledeputy.policy.tiers import Tier
-from capabledeputy.session.model import DeclassEvent, Session, SessionStatus, Turn
+from capabledeputy.session.model import (
+    DeclassEvent,
+    Session,
+    SessionStatus,
+    Turn,
+    make_generated_image_artifact,
+    merge_session_artifacts,
+    session_artifacts_from_handles,
+)
 
 
 def test_new_creates_active_session_with_distinct_id() -> None:
@@ -77,6 +85,30 @@ def test_session_round_trip_through_dict() -> None:
     )
     decoded = Session.from_dict(s.to_dict())
     assert decoded == s
+
+
+def test_session_artifacts_persist_in_reference_handles(tmp_path) -> None:
+    image_path = tmp_path / ".capdep" / "work" / "images" / "out.png"
+    image_path.parent.mkdir(parents=True)
+    image_path.write_bytes(b"not really a png")
+    artifact = make_generated_image_artifact(
+        path=str(image_path),
+        alt="generated chart",
+        prompt="make an image",
+        origin_turn_id=2,
+        origin_tool_name="bundled-image-generate.image.generate",
+    )
+
+    handles = merge_session_artifacts({}, [artifact])
+    session = Session.new(reference_handles=handles)
+    decoded = Session.from_dict(session.to_dict())
+    artifacts = session_artifacts_from_handles(decoded.reference_handles)
+
+    assert len(artifacts) == 1
+    assert artifacts[0]["path"] == str(image_path)
+    assert artifacts[0]["alt"] == "generated chart"
+    assert artifacts[0]["origin_turn_id"] == 2
+    assert artifacts[0]["sha256"]
 
 
 def test_session_dict_serializes_label_set_sorted() -> None:

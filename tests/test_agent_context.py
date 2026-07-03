@@ -18,7 +18,7 @@ from capabledeputy.policy.labels import (
     ProvenanceTag,
 )
 from capabledeputy.policy.tiers import Tier
-from capabledeputy.session.model import Session
+from capabledeputy.session.model import Session, merge_session_artifacts
 from capabledeputy.tools.registry import ToolDefinition, ToolResult
 
 
@@ -112,6 +112,26 @@ class TestLLMContextDeterminism:
 
         assert ctx1.context_hash == ctx2.context_hash
         assert ctx1.system_prompt == ctx2.system_prompt
+
+    def test_generated_image_artifacts_are_in_context(self) -> None:
+        path = "/tmp/.capdep/work/images/out.png"
+        artifact = {
+            "artifact_id": "artifact_123",
+            "kind": "generated_image",
+            "mime_type": "image/png",
+            "path": path,
+            "alt": "prior generated image",
+            "sha256": "a" * 64,
+        }
+        session = Session.new(reference_handles=merge_session_artifacts({}, [artifact]))
+
+        ctx = build_llm_context(session, [], {}, [])
+
+        assert "# Session Artifacts" in ctx.system_prompt
+        assert "artifact_123" in ctx.system_prompt
+        assert path in ctx.system_prompt
+        assert "prior generated image" in ctx.system_prompt
+        assert "base64" not in ctx.system_prompt
 
     def test_context_hash_changes_with_different_session_labels(
         self,
