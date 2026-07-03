@@ -5,6 +5,7 @@ import LocalAuthentication
 @MainActor
 final class CapDepAppModel: ObservableObject {
     @Published private(set) var connected = false
+    @Published private(set) var daemonConnection = DaemonConnectionHealth.empty
     @Published private(set) var isRefreshing = false
     @Published private(set) var pendingApprovals: [Approval] = []
     @Published private(set) var sessions: [CapDepSession] = []
@@ -81,6 +82,22 @@ final class CapDepAppModel: ObservableObject {
     private var lastNotifiedApprovalID: Int?
     private var streamingAssistantMessageID: String?
     private static let chatModelModeKey = "CapDep.chatModelMode"
+    private static let promptRunsStorageKey = "CapDep.pendingPromptRuns.v1"
+    private static let requiredDaemonMethods = [
+        "app.status",
+        "approval.list",
+        "audit.tail",
+        "daemon.methods",
+        "ping",
+        "session.get",
+        "session.list",
+        "session.new",
+        "session.turn.ack",
+        "session.turn.events",
+        "session.turn.get",
+        "session.turn.start",
+        "version",
+    ]
 
 
     var currentAssistantOutput: String {
@@ -104,6 +121,7 @@ final class CapDepAppModel: ObservableObject {
     }
 
     init() {
+        restorePendingPromptRuns()
         Task {
             await start()
         }
@@ -114,11 +132,90 @@ final class CapDepAppModel: ObservableObject {
         return ChatModelMode(rawValue: raw) ?? .automatic
     }
 
+    private func setDaemonConnection(
+        _ phase: DaemonConnectionPhase,
+        version: String? = nil,
+        missingMethods: [String] = [],
+        detail: String = "",
+    ) {
+        daemonConnection = DaemonConnectionHealth(
+            phase: phase,
+            version: version ?? daemonConnection.version,
+            socketPath: client.socketPath,
+            missingMethods: missingMethods,
+            detail: detail,
+        )
+        connected = daemonConnection.isUsable
+    }
+
+    private func restorePendingPromptRuns() {
+        guard let data = UserDefaults.standard.data(forKey: Self.promptRunsStorageKey) else {
+            return
+        }
+        guard let restored = try? JSONDecoder().decode([ChatPromptRun].self, from: data) else {
+            UserDefaults.standard.removeObject(forKey: Self.promptRunsStorageKey)
+            return
+        }
+        promptRuns = restored
+            .filter { !$0.isTerminal }
+            .map { run in
+                var recovered = run
+                recovered.status = .failed
+                recovered.error = "Recovered after app restart. Please resend if this turn did not finish."
+                return recovered
+            }
+        persistPendingPromptRuns()
+    }
+
+    private func persistPendingPromptRuns() {
+        let pending = promptRuns.filter { !$0.isTerminal }
+        guard !pending.isEmpty else {
+            UserDefaults.standard.removeObject(forKey: Self.promptRunsStorageKey)
+            return
+        }
+        if let data = try? JSONEncoder().encode(pending) {
+            UserDefaults.standard.set(data, forKey: Self.promptRunsStorageKey)
+        }
+    }
+
+    @discardableResult
+    private func verifyDaemonHandshake() async -> Bool {
+        do {
+            _ = try await client.call(method: "ping")
+            let versionResult = try await client.call(method: "version") as? [String: Any]
+            let version = versionResult?["version"] as? String ?? ""
+            let methodsResult = try await client.call(method: "daemon.methods") as? [String: Any]
+            let methods = Set(methodsResult?["methods"] as? [String] ?? [])
+            let missing = DaemonConnectionHealth.missingRequiredMethods(
+                available: methods,
+                required: Self.requiredDaemonMethods,
+            )
+            guard missing.isEmpty else {
+                setDaemonConnection(
+                    .incompatible,
+                    version: version,
+                    missingMethods: missing,
+                    detail: "Daemon is missing required RPCs: \(missing.joined(separator: ", "))",
+                )
+                lastError = daemonConnection.detail
+                return false
+            }
+            setDaemonConnection(.connected, version: version)
+            lastError = nil
+            return true
+        } catch {
+            setDaemonConnection(.unhealthy, detail: error.localizedDescription)
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
     func start() async {
         guard !didStart else {
             return
         }
         didStart = true
+        setDaemonConnection(.starting)
         await notifications.requestAuthorizationIfNeeded()
         await ensureDaemonRunning()
         await refresh()
@@ -166,6 +263,14 @@ final class CapDepAppModel: ObservableObject {
         }
 
         do {
+            guard await verifyDaemonHandshake() else {
+                if daemonConnection.phase == .unhealthy, !isRecoveringDaemon {
+                    Task {
+                        await ensureDaemonRunning()
+                    }
+                }
+                return
+            }
             async let approvalsResult = client.call(
                 method: "approval.list",
                 params: ["status": "pending"],
@@ -302,7 +407,7 @@ final class CapDepAppModel: ObservableObject {
             )
             .map(OnguardNotificationViewData.init(dictionary:))
             onguardNotifications = daemonNotifications
-            connected = true
+            setDaemonConnection(.connected, version: appStatus.version)
             lastError = nil
             for notification in daemonNotifications where notification.urgency == "high" {
                 await notifications.notifyOnguard(notification)
@@ -316,10 +421,11 @@ final class CapDepAppModel: ObservableObject {
             }
             lastPendingApprovalCount = approvals.count
         } catch {
-            connected = false
+            setDaemonConnection(.disconnected, detail: error.localizedDescription)
             lastError = error.localizedDescription
             if shouldRecoverDaemon(after: error) {
                 Task {
+                    setDaemonConnection(.reconnecting, detail: error.localizedDescription)
                     await ensureDaemonRunning()
                     await refresh()
                 }
@@ -332,15 +438,15 @@ final class CapDepAppModel: ObservableObject {
             return
         }
         isRecoveringDaemon = true
+        setDaemonConnection(.reconnecting)
         defer {
             isRecoveringDaemon = false
         }
         do {
             try await daemonSupervisor.ensureRunning(client: client)
-            connected = true
-            lastError = nil
+            _ = await verifyDaemonHandshake()
         } catch {
-            connected = false
+            setDaemonConnection(.disconnected, detail: error.localizedDescription)
             lastError = error.localizedDescription
         }
     }
@@ -382,6 +488,7 @@ final class CapDepAppModel: ObservableObject {
             streamingAssistantMessageID = nil
             authorizedStreamingImagePaths = []
             promptRuns.removeAll { $0.isTerminal }
+            persistPendingPromptRuns()
             if chatMessages.isEmpty {
                 seedDemoImageIfNeeded()
             }
@@ -572,6 +679,7 @@ final class CapDepAppModel: ObservableObject {
             purpose: chosenPurpose,
         )
         promptRuns.append(run)
+        persistPendingPromptRuns()
         ChatDebugLog.log(
             "submit_queued",
             metadata: [
@@ -587,6 +695,13 @@ final class CapDepAppModel: ObservableObject {
 
     private func processPromptQueue(forceNewFirstSession: Bool = false) async {
         guard !isProcessingPromptQueue else {
+            return
+        }
+        guard daemonConnection.isUsable else {
+            lastError = daemonConnection.detail.isEmpty
+                ? "Daemon is not ready for chat turns."
+                : daemonConnection.detail
+            persistPendingPromptRuns()
             return
         }
         isProcessingPromptQueue = true
@@ -637,6 +752,7 @@ final class CapDepAppModel: ObservableObject {
             return
         }
         promptRuns[index] = run
+        persistPendingPromptRuns()
     }
 
     private func markPromptRun(
@@ -655,6 +771,7 @@ final class CapDepAppModel: ObservableObject {
         }
         run.error = error
         promptRuns[index] = run
+        persistPendingPromptRuns()
     }
 
     func ensureSession(
@@ -1045,7 +1162,17 @@ final class CapDepAppModel: ObservableObject {
 
     private func pollTurnUntilFinished(turnID: String) async throws {
         var cursor = 0
+        let deadline = Date().addingTimeInterval(300)
         while true {
+            if Date() > deadline {
+                throw NSError(
+                    domain: "CapDepMac",
+                    code: 3,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "Turn did not finish within 5 minutes.",
+                    ],
+                )
+            }
             let observed = try await client.call(
                 method: "session.turn.get",
                 params: ["turn_id": turnID],
@@ -1097,6 +1224,9 @@ final class CapDepAppModel: ObservableObject {
                             ?? "Turn failed.",
                     ],
                 )
+            }
+            if !turnStatusLine.hasPrefix("Waiting for daemon") {
+                turnStatusLine = "Waiting for daemon turn result…"
             }
             try await Task.sleep(for: .milliseconds(80))
         }
@@ -1342,16 +1472,16 @@ final class CapDepAppModel: ObservableObject {
             return
         }
         isRecoveringDaemon = true
+        setDaemonConnection(.reconnecting)
         defer {
             isRecoveringDaemon = false
         }
         do {
             try await daemonSupervisor.restart(client: client)
-            connected = true
-            lastError = nil
+            _ = await verifyDaemonHandshake()
             await refresh()
         } catch {
-            connected = false
+            setDaemonConnection(.disconnected, detail: error.localizedDescription)
             lastError = error.localizedDescription
         }
     }

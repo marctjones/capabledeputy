@@ -7,7 +7,7 @@ struct MenuBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                Image(systemName: model.connected ? "checkmark.shield" : "xmark.octagon")
+                Image(systemName: model.daemonConnection.phase.systemImage)
                     .foregroundStyle(model.connected ? .green : .red)
                     .font(.title3)
                 VStack(alignment: .leading) {
@@ -143,9 +143,9 @@ struct MenuBarView: View {
     }
 
     private var statusTitle: String {
-        if model.isRecoveringDaemon {
-            return "Starting daemon"
+        if model.connected {
+            return "CapDep protected"
         }
-        return model.connected ? "CapDep protected" : "Daemon offline"
+        return model.daemonConnection.statusTitle
     }
 }

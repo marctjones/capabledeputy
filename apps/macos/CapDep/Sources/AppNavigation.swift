@@ -32,7 +32,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
     }
 }
 
-enum Purpose: String, CaseIterable, Identifiable {
+enum Purpose: String, CaseIterable, Identifiable, Codable {
     case general
     case inbox
     case calendar
@@ -74,5 +74,4 @@ struct ContextChip: Identifiable, Hashable {
     let isSensitive: Bool
     let isUntrusted: Bool
 }
-
 

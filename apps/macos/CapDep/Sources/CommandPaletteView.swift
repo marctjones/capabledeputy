@@ -76,7 +76,7 @@ struct CommandPaletteView: View {
             Spacer()
 
             HStack {
-                Label(model.connected ? "Daemon connected" : "Daemon offline", systemImage: model.connected ? "checkmark.circle" : "xmark.octagon")
+                Label(model.daemonConnection.statusTitle, systemImage: model.daemonConnection.phase.systemImage)
                     .foregroundStyle(model.connected ? .green : .red)
                 Spacer()
                 Button("Open Chat") {

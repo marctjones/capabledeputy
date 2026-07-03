@@ -162,6 +162,47 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(run.error, "daemon disconnected")
     }
 
+    func testDaemonConnectionHealthFindsMissingRequiredMethods() {
+        let missing = DaemonConnectionHealth.missingRequiredMethods(
+            available: ["ping", "version", "app.status"],
+            required: ["app.status", "daemon.methods", "ping", "version"],
+        )
+
+        XCTAssertEqual(missing, ["daemon.methods"])
+
+        let health = DaemonConnectionHealth(
+            phase: .incompatible,
+            version: "0.41.0",
+            socketPath: "/tmp/capdep.sock",
+            missingMethods: missing,
+            detail: "missing daemon.methods",
+        )
+        XCTAssertFalse(health.isUsable)
+        XCTAssertEqual(health.statusTitle, "Contract mismatch")
+        XCTAssertEqual(health.phase.systemImage, "exclamationmark.shield.fill")
+    }
+
+    func testChatPromptRunCodablePreservesRecoveryFields() throws {
+        let run = ChatPromptRun(
+            id: "prompt-1",
+            displayMessage: "Create a script",
+            daemonMessage: "/tools Create a script",
+            purpose: .research,
+            sessionID: "session-1",
+            turnID: "turn-1",
+            status: .running,
+            error: nil,
+        )
+
+        let data = try JSONEncoder().encode([run])
+        let restored = try JSONDecoder().decode([ChatPromptRun].self, from: data)
+
+        XCTAssertEqual(restored.first?.id, "prompt-1")
+        XCTAssertEqual(restored.first?.purpose, .research)
+        XCTAssertEqual(restored.first?.turnID, "turn-1")
+        XCTAssertEqual(restored.first?.status, .running)
+    }
+
     func testRecoveryStepWidensFilePathToParentDirectory() {
         XCTAssertEqual(
             RecoveryStep.widenedGrantPattern(kind: "READ_FS", pattern: "/tmp/foo/bar.txt"),

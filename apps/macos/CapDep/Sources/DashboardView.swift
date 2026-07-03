@@ -32,7 +32,7 @@ struct DashboardView: View {
         }
         .toolbar {
             ToolbarItemGroup {
-                Label(model.connected ? "Connected" : "Offline", systemImage: model.connected ? "checkmark.circle" : "xmark.octagon")
+                Label(model.daemonConnection.statusTitle, systemImage: model.daemonConnection.phase.systemImage)
                     .foregroundStyle(model.connected ? .green : .red)
                 Picker("Purpose", selection: $model.selectedPurpose) {
                     ForEach(Purpose.allCases) { purpose in
@@ -984,7 +984,7 @@ private struct StatusFooter: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Label(model.connected ? "Connected" : "Offline", systemImage: model.connected ? "checkmark.circle" : "xmark.octagon")
+            Label(model.daemonConnection.statusTitle, systemImage: model.daemonConnection.phase.systemImage)
                 .foregroundStyle(model.connected ? .green : .red)
             if let error = model.lastError {
                 Text(error)

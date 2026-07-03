@@ -626,6 +626,11 @@ async def run_daemon(
     handlers.update(make_demo_handlers(app))
     handlers.update(make_extract_handlers(app))
 
+    async def daemon_methods(params: dict[str, Any]) -> dict[str, Any]:
+        return {"methods": sorted(handlers)}
+
+    handlers["daemon.methods"] = daemon_methods
+
     daemon = Daemon(
         socket_path or default_socket_path(),
         handlers=handlers,

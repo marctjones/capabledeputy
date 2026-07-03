@@ -95,7 +95,76 @@ struct ChatMessage: Identifiable, Hashable {
     }
 }
 
-enum ChatPromptStatus: String, Hashable {
+enum DaemonConnectionPhase: String, Hashable {
+    case starting
+    case connected
+    case disconnected
+    case reconnecting
+    case unhealthy
+    case incompatible
+
+    var title: String {
+        switch self {
+        case .starting: "Starting"
+        case .connected: "Connected"
+        case .disconnected: "Disconnected"
+        case .reconnecting: "Reconnecting"
+        case .unhealthy: "Unhealthy"
+        case .incompatible: "Contract mismatch"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .starting: "clock"
+        case .connected: "checkmark.circle.fill"
+        case .disconnected: "xmark.octagon.fill"
+        case .reconnecting: "arrow.triangle.2.circlepath"
+        case .unhealthy: "exclamationmark.triangle.fill"
+        case .incompatible: "exclamationmark.shield.fill"
+        }
+    }
+
+    var isUsable: Bool {
+        self == .connected
+    }
+}
+
+struct DaemonConnectionHealth: Hashable {
+    let phase: DaemonConnectionPhase
+    let version: String
+    let socketPath: String
+    let missingMethods: [String]
+    let detail: String
+
+    var isUsable: Bool {
+        phase.isUsable && missingMethods.isEmpty
+    }
+
+    var statusTitle: String {
+        if phase == .connected, !version.isEmpty {
+            return "Connected \(version)"
+        }
+        return phase.title
+    }
+
+    static let empty = DaemonConnectionHealth(
+        phase: .disconnected,
+        version: "",
+        socketPath: "",
+        missingMethods: [],
+        detail: "",
+    )
+
+    static func missingRequiredMethods(
+        available: Set<String>,
+        required: [String],
+    ) -> [String] {
+        required.filter { !available.contains($0) }.sorted()
+    }
+}
+
+enum ChatPromptStatus: String, Hashable, Codable {
     case queued
     case running
     case completed
@@ -111,7 +180,7 @@ enum ChatPromptStatus: String, Hashable {
     }
 }
 
-struct ChatPromptRun: Identifiable, Hashable {
+struct ChatPromptRun: Identifiable, Hashable, Codable {
     let id: String
     let displayMessage: String
     let daemonMessage: String

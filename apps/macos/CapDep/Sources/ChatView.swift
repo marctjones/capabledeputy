@@ -396,8 +396,8 @@ struct ChatView: View {
 
     private var connectionBadge: some View {
         Label(
-            model.connected ? "Connected" : "Offline",
-            systemImage: model.connected ? "checkmark.circle.fill" : "xmark.octagon.fill",
+            model.daemonConnection.statusTitle,
+            systemImage: model.daemonConnection.phase.systemImage,
         )
         .font(.caption)
         .foregroundStyle(model.connected ? .green : .red)
