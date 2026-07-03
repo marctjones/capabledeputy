@@ -289,6 +289,21 @@ final class CapDepAppModel: ObservableObject {
                 metadata: ["message_preview": String(message.prefix(200))],
             )
             await submitCommand()
+        case "queue_prompt":
+            let message = raw["message"] as? String ?? ""
+            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                ChatDebugLog.log("gui_test_hook_empty_prompt")
+                return
+            }
+            ChatDebugLog.log(
+                "gui_test_hook_queue_prompt",
+                metadata: ["message_preview": String(trimmed.prefix(200))],
+            )
+            appendPromptRun(message: trimmed, purpose: selectedPurpose)
+            Task {
+                await processPromptQueue()
+            }
         default:
             ChatDebugLog.log("gui_test_hook_unknown_command", metadata: ["command": command])
         }
@@ -745,6 +760,12 @@ final class CapDepAppModel: ObservableObject {
         }
         commandText = ""
         let chosenPurpose = purpose ?? selectedPurpose
+        appendPromptRun(message: trimmed, purpose: chosenPurpose)
+        await processPromptQueue(forceNewFirstSession: forceNewSession)
+    }
+
+    @discardableResult
+    private func appendPromptRun(message trimmed: String, purpose chosenPurpose: Purpose) -> ChatPromptRun {
         let daemonMessage = selectedChatModelMode.daemonMessage(for: trimmed)
         let run = ChatPromptRun(
             displayMessage: trimmed,
@@ -763,7 +784,7 @@ final class CapDepAppModel: ObservableObject {
                 "message_preview": String(trimmed.prefix(200)),
             ],
         )
-        await processPromptQueue(forceNewFirstSession: forceNewSession)
+        return run
     }
 
     private func processPromptQueue(forceNewFirstSession: Bool = false) async {
@@ -981,6 +1002,9 @@ final class CapDepAppModel: ObservableObject {
                     "session_id": sessionID,
                     "turn_id": observedTurnID,
                     "output_len": String(currentAssistantOutput.count),
+                    "output_has_image_markdown": String(
+                        currentAssistantOutput.contains("![") && currentAssistantOutput.contains("](")
+                    ),
                     "output_preview": String(currentAssistantOutput.prefix(200)),
                 ],
             )

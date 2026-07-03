@@ -9,9 +9,10 @@ smokes.
 
 - **Swift GUI app-process wiring:** no-focus `CAPDEP_GUI_TEST_COMMAND_FILE`
   hook, prompt submission through the real app model, stable chat accessibility
-  hook declarations, and Swift source coverage reporting.
+  hook declarations, failure artifacts, and Swift source coverage reporting.
 - **Prompt status UX contracts:** queued, running, completed, failed, and
-  recovered prompt-run state in Swift model tests and no-focus GUI smoke.
+  recovered prompt-run state in Swift model tests and no-focus GUI smoke,
+  including multi-prompt queueing before earlier results return.
 - **Daemon image jobs:** profile/readiness, queued/loading/running/finalizing,
   completed, failed, canceled, event cursors, job listing, and actionable
   failure messages.
@@ -36,7 +37,8 @@ smokes.
   daemon policy classifies it, the tool result returns, and labels/provenance are
   attached.
 - **Real image smoke:** selected image backend reports readiness, generates a
-  file, emits status/progress events, and CapDepMac can render the result.
+  file, emits status/progress events, and CapDepMac can render or at least
+  trace a completed image-markdown result.
 
 ## Data Rules
 

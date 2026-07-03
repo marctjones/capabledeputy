@@ -67,8 +67,28 @@ for the terminal/Codex host:
 By default this smoke launches CapDepMac through the supported local launcher in
 background mode, injects a prompt through the app's opt-in
 `CAPDEP_GUI_TEST_COMMAND_FILE` hook, and verifies that the real app process
-submitted the prompt by reading `~/Library/Logs/CapDep/chat-trace.log`. This
-does not require the app to take keyboard focus.
+submitted the prompt and completed a daemon turn by reading
+`~/Library/Logs/CapDep/chat-trace.log`. This does not require the app to take
+keyboard focus. On failure it writes text artifacts under
+`/tmp/capdepmac-gui-smoke-artifacts/`, including the command file, recent chat
+trace tail, process list, and error detail.
+
+Run the queueing smoke to prove prompts entered before earlier results return
+are accepted and completed through the app process:
+
+```bash
+.venv/bin/python scripts/test_capdepmac_gui_interactions.py --multi-prompt
+```
+
+Run the generated-image GUI smoke when the local image backend is ready and you
+want to prove the completed GUI trace contains image markdown:
+
+```bash
+.venv/bin/python scripts/test_capdepmac_gui_interactions.py --generated-image
+```
+
+Use `--no-wait-response` for a faster launch/submit-only diagnostic when you
+are debugging app startup rather than turn completion.
 
 Use the keyboard driver for a focus-taking human-input smoke:
 
