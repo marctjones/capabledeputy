@@ -6,13 +6,12 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-07-03 — v0.41 is complete as the CapDepMac reliability
-and safe scripting UX closeout. The live GitHub tracker has no open issues, all
-v0.35-v0.41 product-ladder milestones are closed, and v1.0 remains unscheduled.
-The next milestone should be opened only when the next product slice is ready
-to track as concrete issues rather than speculative backlog.
+**Last refreshed:** 2026-07-03 — v0.41.1 is the current stable release. v0.42
+is now open as the local media/model operations reliability milestone. The live
+GitHub tracker has one open product milestone, v1.0 remains unscheduled, and
+all v0.35-v0.41 product-ladder milestones are closed.
 
-## Completed Product Ladder — v0.35 → v0.41
+## Product Ladder — v0.35 → v0.42
 
 ```mermaid
 flowchart LR
@@ -23,7 +22,8 @@ flowchart LR
   v39[v0.39 Background automation + onguard UX]
   v40[v0.40 Safe scripting assistant]
   v41[v0.41 GUI reliability + scripting UX]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41
+  v42[v0.42 Local media/model reliability]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -35,14 +35,15 @@ flowchart LR
 | **05 Product — v0.39.0 — Background automation and onguard UX** | Background automation and onguard UX | #166–#171 |
 | **06 Product — v0.40.0 — Safe practical scripting assistant** | Safe practical scripting substrate for non-programmers | #172–#177 |
 | **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | Reliable Swift GUI interaction handling plus safe scripting flows | #196–#201 |
+| **12 Product — v0.42.0 — Local media and model operations reliability** (active) | Productionize local media/model operations | #202–#208 |
 
 ## Tracker Coverage
 
-This pass audited the live GitHub tracker. No issues are currently open; closed
-work is grouped as:
+This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
+| **12 Product — v0.42.0 — Local media and model operations reliability** | #202–#208 | Active product work: profile selection, model/account readiness, benchmark-informed defaults, progress/status, queue recovery, and setup/release docs for local media/model operations. |
 | **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | #196–#201 | Complete product-ladder work: CapDepMac queueing/recovery plus daemon-owned scripting workflows are implemented and closed. |
 | **07 Support — Source identity and labeling correctness** | #42, #51, #139 | Complete; see `docs/support-track-closeout-2026-07-01.md`. |
 | **08 Support — Terminal UX and approval polish** | #16, #17, #19, #27, #29 | Complete for the terminal support track; see `docs/support-track-closeout-2026-07-01.md`. |
@@ -67,6 +68,47 @@ Closed GitHub milestones use the same ordered-prefix convention:
 | **00.10 Done — v0.33.0 — Streaming turn lifecycle and liveness** | Closed |
 | **00.11 Done — v0.34.0 — First-run, connectors, and rich chat readiness** | Closed |
 | **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | Closed |
+
+## Active Focus — v0.42.0 Local Media and Model Operations Reliability
+
+Goal: make local media/model work dependable enough for normal users. Image
+generation should no longer depend on expert-only environment variables, hidden
+model-account state, or vague progress guesses. The daemon remains the owner of
+profile selection, model readiness, queue state, progress events, cancellation,
+and artifact persistence; clients render those states and request changes
+through daemon RPCs.
+
+### v0.42.0 scope
+
+| Issue | Work | Local status |
+|---|---|---|
+| #202 | EPIC: Local media and model operations reliability | Open |
+| #206 | Daemon image profile selection and persisted defaults | Open |
+| #207 | Model and account readiness checks for local media backends | Open |
+| #203 | Benchmark-informed image generation defaults | Open |
+| #204 | Live progress and status for long-running local model work | Open |
+| #205 | Cancellation, queue recovery, and failure handling for image jobs | Open |
+| #208 | Local media/model setup documentation and release tests | Open |
+
+### v0.42.0 done-when
+
+- The daemon exposes validated image-generation profile metadata, profile
+  selection, and persisted defaults.
+- Readiness checks cover Hugging Face access, local checkpoint paths, image
+  venv state, backend importability, and gated/misconfigured model states.
+- CapDepMac and CLI render actionable readiness failures without reading
+  secrets or duplicating daemon authority.
+- Benchmark results produce documented fast/balanced/high-quality defaults, and
+  slow profiles are explicit rather than surprising.
+- Long-running local model work reports real queued/loading/running/finalizing/
+  completed/failed/canceled states with backend, model/profile, and elapsed
+  time.
+- Image job cancellation, timeout, backend crash recovery, lock release, and
+  retry-safe failure paths are test-covered.
+- README/docs explain image extras, MFLUX/MLX setup, model gates, local
+  checkpoint paths, storage, troubleshooting, and platform boundaries.
+- The release gate includes uv lock/sync checks, daemon readiness checks,
+  focused Python tests, and CapDepMac Swift tests.
 
 ## Completed Focus — v0.41.0 CapDepMac Reliability and Safe Scripting UX
 
@@ -118,15 +160,6 @@ advanced/export options, not the core experience.
   daemon events, reconnect during pending turns, long conversation scrollback,
   root escapes, restricted credential labels, unavailable sandbox behavior,
   exact approval binding, and async client state while a script run is pending.
-
-## Next Roadmap Intake
-
-No product milestone is currently open. The next sensible milestone candidate
-is a focused v0.42 slice around productionizing local media/model operations:
-image-generation profile selection, model-download/account readiness,
-benchmark-informed defaults, and user-visible progress/status for long-running
-local model work. Open it only after the desired scope is reduced to concrete
-issues with acceptance criteria.
 
 ## Completed Focus — v0.34.0 First-run, Connectors, and Rich Chat Readiness
 

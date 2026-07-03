@@ -1,21 +1,23 @@
 # Implementation plan & milestones
 
-Living plan that organizes the open GitHub issues into sequenced
-milestones with dependencies. Authoritative status is GitHub; this doc is
-the *sequencing rationale*. Last refreshed 2026-07-01 — active arc is
-**v0.35 → v0.40** plus explicit source-labeling, terminal-UX, research, and
-formal-model tracks. The live GitHub tracker has no unmilestoned open issues,
-and every GitHub milestone title now carries an ordered prefix.
+Living plan that organizes the open GitHub issues into sequenced milestones
+with dependencies. Authoritative status is GitHub; this doc is the *sequencing
+rationale*. Last refreshed 2026-07-03 — active work is **v0.42 local
+media/model operations reliability** after the v0.41.1 stable patch release.
+The live GitHub tracker has no unmilestoned open issues, and every GitHub
+milestone title now carries an ordered prefix.
 
-Milestones (GitHub): **01 Product — v0.35.0 — Desktop context, SourcePorts,
-and visual review** · **02 Product — v0.36.0 — MCP admission, provider
-mappings, and workflow templates** · **03 Product — v0.37.0 — Execution
-substrate, isolation, and compliance evidence** · **04 Product — v0.38.0 —
-Memory, retention, and compaction** · **05 Product — v0.39.0 — Background
-automation and onguard UX** · **06 Product — v0.40.0 — Safe code workspace
-workflows** · **07 Support — Source identity and labeling correctness** ·
-**08 Support — Terminal UX and approval polish** · **09 Research — Non-goals
-and safe alternatives** · **10 Backlog — Formal models and deferred breadth**.
+Active milestone (GitHub): **12 Product — v0.42.0 — Local media and model
+operations reliability**.
+
+Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
+reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical
+scripting assistant** · **05 Product — v0.39.0 — Background automation and
+onguard UX** · **04 Product — v0.38.0 — Memory, retention, compaction, and
+async media reliability** · **03 Product — v0.37.0 — Execution substrate,
+isolation, and compliance evidence** · **02 Product — v0.36.0 — MCP admission,
+provider mappings, and workflow templates** · **01 Product — v0.35.0 —
+Desktop context, SourcePorts, and visual review**.
 Recently closed:
 **00.11 Done — v0.34.0 — First-run, connectors, and rich chat readiness** ·
 **00.10 Done — v0.33.0 — Streaming turn lifecycle and liveness** ·
@@ -33,46 +35,33 @@ v0.17 — Gap hardening and explainability**.
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **v0.35 desktop context and signed review** — SourcePorts, typed
-   artifacts, visual review cards, and exact-hash approval payloads (#146-#152).
-2. **v0.36 MCP admission, provider mappings, and templates** — generic adapter
-   mapping audit, tier-1 MCP mappings, HTTP OAuth mediation, extension
-   admission, and bounded workflow templates (#153-#159, #184-#186).
-3. **v0.37 execution substrate, isolation, and evidence** — upstream
-   isolation, sandboxed `code.execute`, versioned writes, cross-host approval
-   envelope, OTLP/OSCAL, and adversarial substrate demos (#44, #9, #14,
-   #55-#57, #187-#189).
-4. **v0.38 memory, retention, and compaction** — retention policy, memory
-   controls, and labeled summary artifacts (#160-#165).
-5. **v0.39 background automation and onguard UX** — background clients should
-   be normal daemon clients, not privileged sidecars or daemon-embedded product
-   workflows.
-6. **v0.40 safe code workspace workflows** — repository labels, sandboxed
-   build/test artifacts, typed diffs/commits/PRs, and violation tests.
-7. **MCP security integration** — MCP must remain an integration substrate, not
+1. **v0.42 local media/model operations reliability** — profile selection,
+   model/account readiness, benchmark-informed defaults, real progress/status,
+   cancellation/recovery, and setup/release docs (#202-#208).
+2. **MCP security integration** — MCP must remain an integration substrate, not
    a second authority path. v0.29 turns the current targeted tests into a
    security conformance suite before CapDep relies heavily on external MCP
    servers and headless clients.
-8. **Client proof, not just parity claims** — v0.30 replaces source/manifest
+3. **Client proof, not just parity claims** — v0.30 replaces source/manifest
    checks with live daemon integration coverage for CLI, TUI, Swift GUI, and
    MCP-control.
    Coverage is ratcheted independently for daemon files, clients, MCP
    surfaces, bundled MCP servers, and tools; the near-term target is 85% per
    group and the stretch target is 90%, but CI first enforces non-regression
    from the checked-in baseline.
-9. **Multi-session explainability** — v0.31 made labels, flow patterns,
+4. **Multi-session explainability** — v0.31 made labels, flow patterns,
    external actors, approvals, policy rules, provenance, and audit inspectable
    across turns and clients.
-10. **Source identity and labeling correctness** — IFC guarantees ride on
+5. **Source identity and labeling correctness** — IFC guarantees ride on
    correct labels. The old v0.16 track is now narrowed to canonical source
    identity and per-message email labeling.
-11. **Terminal UX and approval polish** — remaining terminal work is useful,
+6. **Terminal UX and approval polish** — remaining terminal work is useful,
    but it is not the primary desktop-agent path and should not duplicate daemon
    authority.
-12. **Research/non-goals** — keep remote/mobile control, always-on autonomy,
+7. **Research/non-goals** — keep remote/mobile control, always-on autonomy,
    community sharing, and web/cross-platform alternatives explicit without
    promoting them to immediate implementation.
-13. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
+8. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
    human oversight. The decision-refinement layer is live; future work should
    add concrete inspectors or policy scripts, not revive the old epic.
 
@@ -108,9 +97,53 @@ The policy themes come from `docs/security-alignment-assessment.md`:
 | #34 | Email labeling — design + content-rule impl (raise-only labeler) | v0.16 / #42 |
 | #13 | Credential vault and stdio upstream no-broad-env hardening | v0.33.0 |
 
+## v0.42.0 — Local media and model operations reliability
+
+Open on 2026-07-03. v0.41 made CapDepMac and safe scripting resilient enough
+for normal use; v0.42 focuses that reliability lens on local media/model work,
+especially image generation on Apple Silicon.
+
+### Scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #202 | EPIC: local media and model operations reliability | Open |
+| #206 | Daemon image profile selection and persisted defaults | Open |
+| #207 | Model and account readiness checks for local media backends | Open |
+| #203 | Benchmark-informed image generation defaults | Open |
+| #204 | Live progress and status for long-running local model work | Open |
+| #205 | Cancellation, queue recovery, and failure handling for image jobs | Open |
+| #208 | Local media/model setup documentation and release tests | Open |
+
+### Sequencing
+
+1. Add daemon-owned image profile metadata, selection, validation, and
+   persisted defaults (#206).
+2. Add daemon readiness checks for local models, account gates, backend imports,
+   image venv state, and local checkpoint paths (#207).
+3. Convert benchmark results into documented fast/balanced/high-quality defaults
+   and keep slow profiles explicit (#203).
+4. Emit real queued/loading/running/finalizing/completed/failed/canceled states
+   for long-running local model work (#204).
+5. Harden cancellation, timeouts, lock release, backend crash recovery, and
+   retry-safe failure paths (#205).
+6. Close with setup docs and a release gate that includes uv lock/sync, daemon
+   readiness checks, focused Python tests, and CapDepMac Swift tests (#208).
+
+### Done-when
+
+- Local image/model work is configurable through daemon-owned profile settings,
+  not hidden environment tweaks.
+- Readiness failures are actionable in CLI and CapDepMac without clients reading
+  secrets or duplicating daemon authority.
+- Long-running jobs show real daemon/model-runner state and can be canceled or
+  recovered without corrupting chat history.
+- Documentation and release tests cover the supported Apple Silicon MLX/MFLUX
+  path and clearly state platform boundaries.
+
 **EPIC #41 is closed** (layer live, frequency policy, `capdep why`).
-**EPIC #42 is still open but narrowed** to #51 canonical IDs and #139
-per-message email labeling.
+**EPIC #42 is closed** with source identity and labeling correctness captured
+in `docs/support-track-closeout-2026-07-01.md`.
 **v0.17 is closed/reorganized**: its concrete hardening issues are done or
 moved to the milestone where implementation belongs.
 
@@ -291,11 +324,11 @@ memory and compaction artifacts need stable labeled artifact/audit behavior.
 surface notifications, queued approvals, summaries, and result handoff without
 privileged sidecar authority.
 
-## v0.40.0 — Safe code workspace workflows
+## v0.40.0 — Safe practical scripting assistant
 
-**Scope:** #172-#177. Repository labels, sandboxed build/test artifacts,
-typed diffs/commits/PRs, and violation tests turn coding-agent workflows into
-CapDep-governed artifacts rather than a generic coding-agent clone.
+**Scope:** #172-#177. Safe practical scripting workflows for non-programmers
+produce daemon-governed plans, script artifacts, sandbox evidence, and exact
+export approvals rather than a generic coding-agent clone.
 
 ## v0.33.0 — Streaming turn lifecycle and liveness
 
