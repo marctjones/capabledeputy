@@ -2,17 +2,17 @@
 
 Living plan that organizes the open GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
-rationale*. Last refreshed 2026-07-03 — active work is **v0.42 local
-media/model operations reliability** after the v0.41.1 stable patch release,
-with **v0.43 CommonMark rendering across client surfaces** open as the next
-planned product milestone. The live GitHub tracker has no unmilestoned open
-issues, and every GitHub milestone title now carries an ordered prefix.
+rationale*. Last refreshed 2026-07-03 — **v0.42 local media/model operations
+reliability** is closed and **v0.43 CommonMark rendering across client
+surfaces** is implemented locally for tracker closeout. The live GitHub tracker
+has no unmilestoned open issues, and every GitHub milestone title now carries
+an ordered prefix.
 
-Active milestone (GitHub): **12 Product — v0.42.0 — Local media and model
-operations reliability**.
+Recently completed milestone (GitHub): **12 Product — v0.42.0 — Local media
+and model operations reliability**.
 
-Next planned milestone (GitHub): **13 Product — v0.43.0 — CommonMark rendering
-across client surfaces**.
+Current closeout milestone (GitHub): **13 Product — v0.43.0 — CommonMark
+rendering across client surfaces**.
 
 Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
 reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical
@@ -39,13 +39,13 @@ v0.17 — Gap hardening and explainability**.
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **v0.42 local media/model operations reliability** — profile selection,
-   model/account readiness, benchmark-informed defaults, real progress/status,
-   cancellation/recovery, and setup/release docs (#202-#208).
-2. **v0.43 CommonMark client rendering** — shared CommonMark contract,
+1. **v0.43 CommonMark client rendering** — shared CommonMark contract,
    parser/sanitizer fixtures, CapDepMac rich rendering, terminal-safe CLI/TUI
    rendering, MCP-control fallback behavior, and release parity evidence
    (#209-#215).
+2. **v0.42 local media/model operations reliability** — profile selection,
+   model/account readiness, benchmark-informed defaults, real progress/status,
+   cancellation/recovery, and setup/release docs (#202-#208).
 3. **MCP security integration** — MCP must remain an integration substrate, not
    a second authority path. v0.29 turns the current targeted tests into a
    security conformance suite before CapDep relies heavily on external MCP
@@ -107,7 +107,7 @@ The policy themes come from `docs/security-alignment-assessment.md`:
 
 ## v0.42.0 — Local media and model operations reliability
 
-Open on 2026-07-03. v0.41 made CapDepMac and safe scripting resilient enough
+Closed on 2026-07-03. v0.41 made CapDepMac and safe scripting resilient enough
 for normal use; v0.42 focuses that reliability lens on local media/model work,
 especially image generation on Apple Silicon.
 
@@ -157,7 +157,7 @@ the supported MFLUX/MLX plus fallback profile paths.
 
 ## v0.43.0 — CommonMark rendering across client surfaces
 
-Planned after v0.42. CapDep responses increasingly include structured prose,
+Implemented locally on 2026-07-03. CapDep responses increasingly include structured prose,
 links, code, media references, and tables. v0.43 makes CommonMark a deliberate
 client contract instead of an accidental formatting side effect, while still
 respecting each interface's natural rendering limits.
@@ -166,13 +166,13 @@ respecting each interface's natural rendering limits.
 
 | Issue | Work | Status |
 |---|---|---|
-| #210 | EPIC: CommonMark rendering across client interfaces | Open |
-| #209 | Define CommonMark client capability matrix and rendering contract | Open |
-| #211 | Add shared CommonMark parser, sanitizer, and fixture corpus | Open |
-| #212 | Implement CapDepMac CommonMark rendering and regression tests | Open |
-| #213 | Implement terminal-safe CommonMark rendering for CLI and TUI clients | Open |
-| #214 | Handle CommonMark in MCP-control and lower-capability client surfaces | Open |
-| #215 | Document and smoke-test CommonMark parity across clients | Open |
+| #210 | EPIC: CommonMark rendering across client interfaces | Done locally |
+| #209 | Define CommonMark client capability matrix and rendering contract | Done locally |
+| #211 | Add shared CommonMark parser, sanitizer, and fixture corpus | Done locally |
+| #212 | Implement CapDepMac CommonMark rendering and regression tests | Done locally |
+| #213 | Implement terminal-safe CommonMark rendering for CLI and TUI clients | Done locally |
+| #214 | Handle CommonMark in MCP-control and lower-capability client surfaces | Done locally |
+| #215 | Document and smoke-test CommonMark parity across clients | Done locally |
 
 ### Sequencing
 
@@ -187,6 +187,14 @@ respecting each interface's natural rendering limits.
    capability clients without unsafe rendering assumptions (#214).
 6. Close with README/roadmap docs and release smoke coverage across client
    surfaces (#215).
+
+Local closeout evidence: `capabledeputy.commonmark` declares the per-client
+capability matrix, sanitizer, and plain fallback; shared fixtures cover basic
+and unsafe CommonMark; CLI/TUI Rich rendering sanitizes input before rendering;
+MCP-control responses attach CommonMark capability metadata and sanitized text;
+CapDepMac sanitizes chat content before native Markdown parsing; README links
+the client capability contract. Focused Ruff checks, focused Python tests, and
+the CapDepMac Swift package tests pass.
 
 ### Done-when
 

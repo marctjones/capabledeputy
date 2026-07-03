@@ -101,6 +101,7 @@ read — strengths, weaknesses, and prioritized fixes — is in
 - [docs/macos-desktop-ux-strategy.md](docs/macos-desktop-ux-strategy.md) — **macOS desktop UX strategy** — native menu-bar/command-palette/approval/dashboard design guidance for CapDep's supervised desktop assistant shell
 - [docs/safe-scripting-assistant-v040.md](docs/safe-scripting-assistant-v040.md) — **safe practical scripting assistant** — daemon-owned script planning, sandboxed execution, evidence, and exact export approvals for non-programmer automation tasks
 - [docs/image-generation-adult-model-notes.md](docs/image-generation-adult-model-notes.md) — local image-generation backend/model capability notes and deferred model-download findings
+- [docs/commonmark-client-capabilities.md](docs/commonmark-client-capabilities.md) — CommonMark rendering and fallback matrix for CapDepMac, CLI/TUI, MCP-control, and plain/log clients
 
 - [docs/SURFACES.md](docs/SURFACES.md) — **which command do I use?** (chat vs console vs tui vs demo vs …) — start here
 - [DESIGN.md](DESIGN.md) — full design specification

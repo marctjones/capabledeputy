@@ -30,4 +30,32 @@ final class ChatContentFormatterTests: XCTestCase {
         )
         XCTAssertFalse(String(rendered.characters).isEmpty)
     }
+
+    func testSanitizeCommonMarkRemovesHTMLControlsAndBadLinks() {
+        let raw = """
+        <script>alert("x")</script>
+        Click [bad](javascript:alert(1)).
+        \u{001B}[31mred\u{001B}[0m
+        """
+
+        let rendered = ChatContentFormatter.displayText(raw)
+
+        XCTAssertFalse(rendered.contains("<script>"))
+        XCTAssertFalse(rendered.contains("javascript:alert"))
+        XCTAssertFalse(rendered.contains("\u{001B}"))
+        XCTAssertTrue(rendered.contains("unsafe-link"))
+        XCTAssertTrue(rendered.contains("red"))
+    }
+
+    func testSanitizeCommonMarkPreservesHTMLInsideCodeFence() {
+        let raw = """
+        ```html
+        <strong>kept</strong>
+        ```
+        """
+
+        let rendered = ChatContentFormatter.displayText(raw)
+
+        XCTAssertTrue(rendered.contains("<strong>kept</strong>"))
+    }
 }

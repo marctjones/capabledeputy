@@ -27,6 +27,7 @@ from capabledeputy.cli.terminal_graphics import (
     inline_graphics_enabled,
     resolve_trusted_image_source,
 )
+from capabledeputy.commonmark import capability_matrix, sanitize_commonmark_source
 
 _IMAGE_EXTENSIONS = frozenset(
     {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".heic"},
@@ -53,6 +54,7 @@ def terminal_media_enabled() -> bool:
 
 def format_terminal_agent_markdown(content: str) -> str:
     """Render trusted markdown to terminal text, including inline graphics."""
+    content = sanitize_commonmark_source(content)
     if not content.strip():
         return ""
     parts: list[str] = []
@@ -209,7 +211,7 @@ def build_mcp_result(
     if isinstance(result, dict | list):
         text = json.dumps(result, indent=2)
     else:
-        text = str(result)
+        text = sanitize_commonmark_source(str(result))
 
     content: list[mcp_types.TextContent | mcp_types.ImageContent] = [
         mcp_types.TextContent(type="text", text=text),
@@ -228,6 +230,11 @@ def build_mcp_result(
         call_meta["io.capabledeputy/image_blocks"] = sum(
             1 for block in content if isinstance(block, mcp_types.ImageContent)
         )
+    if not is_error:
+        call_meta["io.capabledeputy/commonmark"] = {
+            "sanitized": True,
+            "capabilities": capability_matrix(),
+        }
 
     return mcp_types.CallToolResult(
         content=content,

@@ -17,6 +17,7 @@ from capabledeputy.cli.terminal_graphics import (
     inline_graphics_enabled,
     resolve_trusted_image_source,
 )
+from capabledeputy.commonmark import sanitize_commonmark_source
 
 _IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 
@@ -30,22 +31,23 @@ class MarkdownSegment:
 
 def split_markdown_segments(content: str) -> list[MarkdownSegment]:
     """Split markdown into prose chunks and image references, in order."""
-    if not content:
+    sanitized = sanitize_commonmark_source(content)
+    if not sanitized:
         return []
     segments: list[MarkdownSegment] = []
     cursor = 0
-    for match in _IMAGE_RE.finditer(content):
+    for match in _IMAGE_RE.finditer(sanitized):
         if match.start() > cursor:
-            prose = content[cursor : match.start()].strip()
+            prose = sanitized[cursor : match.start()].strip()
             if prose:
                 segments.append(MarkdownSegment("markdown", prose))
         segments.append(MarkdownSegment("image", match.group(2).strip(), alt=match.group(1)))
         cursor = match.end()
-    tail = content[cursor:].strip()
+    tail = sanitized[cursor:].strip()
     if tail:
         segments.append(MarkdownSegment("markdown", tail))
     if not segments:
-        segments.append(MarkdownSegment("markdown", content))
+        segments.append(MarkdownSegment("markdown", sanitized))
     return segments
 
 
@@ -60,7 +62,7 @@ def render_markdown_chunk(text: str) -> Markdown:
     theme = markdown_code_theme()
     c = caps()
     return Markdown(
-        text,
+        sanitize_commonmark_source(text),
         code_theme=theme,
         hyperlinks=c.hyperlinks,
         inline_code_lexer="python",

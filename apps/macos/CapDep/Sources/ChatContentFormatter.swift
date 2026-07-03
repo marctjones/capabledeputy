@@ -5,6 +5,7 @@ import Foundation
 enum ChatContentFormatter {
     static func displayText(_ raw: String) -> String {
         var text = stripMLXArtifacts(raw)
+        text = sanitizeCommonMark(text)
         text = condenseVerboseSearchCatalog(text)
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -43,6 +44,41 @@ enum ChatContentFormatter {
             }
         }
         return trimmed
+    }
+
+    static func sanitizeCommonMark(_ text: String) -> String {
+        var sanitized = text
+        sanitized = sanitized.replacing(/\u{001B}\[[0-?]*[ -\/]*[@-~]/, with: "")
+        sanitized = sanitized.replacing(/\u{001B}\][^\u{0007}]*(\u{0007})/, with: "")
+        sanitized = sanitized.replacing(/[\u{0000}-\u{0008}\u{000B}\u{000C}\u{000E}-\u{001F}\u{007F}]/, with: "")
+        sanitized = stripHTMLOutsideCodeFences(sanitized)
+        sanitized = sanitized.replacing(/\]\((?i:javascript|data|vbscript):[^)]*\)/) { _ in
+            "](unsafe-link)"
+        }
+        return sanitized
+    }
+
+    private static func stripHTMLOutsideCodeFences(_ text: String) -> String {
+        var inFence = false
+        var fenceMarker = ""
+        return text.components(separatedBy: .newlines).map { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                let marker = String(trimmed.prefix(3))
+                if !inFence {
+                    inFence = true
+                    fenceMarker = marker
+                } else if marker == fenceMarker {
+                    inFence = false
+                    fenceMarker = ""
+                }
+                return line
+            }
+            guard !inFence else {
+                return line
+            }
+            return line.replacing(/<\/?[A-Za-z][^>\n]*>/, with: "")
+        }.joined(separator: "\n")
     }
 
     /// Turn long numbered link catalogs into a compact bullet list for chat.
