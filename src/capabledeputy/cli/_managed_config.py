@@ -505,12 +505,23 @@ BUNDLED_IMAGE_GENERATE_BLOCK_BODY = """\
     command: ["capdep-image-generate", "mcp-server-image-generate"]
     inherent_labels: []
     env:
+      CAPDEP_IMAGE_PROFILE: "default"
+      CAPDEP_IMAGE_BACKEND: "auto"
+      CAPDEP_IMAGE_MODEL: "z-image-turbo"
+      CAPDEP_IMAGE_MODEL_PATH: "filipstrand/Z-Image-Turbo-mflux-4bit"
+      CAPDEP_IMAGE_QUANTIZE: "8"
+      CAPDEP_IMAGE_PROMPT_FILTER: "off"
       CAPDEP_IMAGE_SAFETY: "off"
       CAPDEP_IMAGE_STYLE: "photoreal"
       CAPDEP_IMAGE_DEVICE: "auto"
       CAPDEP_IMAGE_WIDTH: "768"
       CAPDEP_IMAGE_HEIGHT: "768"
-      CAPDEP_IMAGE_STEPS: "20"
+      CAPDEP_IMAGE_STEPS: "9"
+      # Profiles: default, flux-nsfw, flux2-nsfw, sdxl-nsfw, pony-nsfw.
+      # Flux profiles use CAPDEP_IMAGE_LORAS / CAPDEP_IMAGE_LORA_SCALES.
+      # SDXL/Pony profiles use the checkpoint env overrides below.
+      # CAPDEP_IMAGE_CHECKPOINT_PATH: "/path/to/photoreal-or-sdxl.safetensors"
+      # CAPDEP_IMAGE_GRAPHIC_NOVEL_CHECKPOINT_PATH: "/path/to/pony-or-illustrious.safetensors"
     tool_overrides:
       "image.generate":
         capability_kind: GENERATE_IMAGE
@@ -539,12 +550,23 @@ BUNDLED_IMAGES_BLOCK_BODY = """\
     command: ["capdep-images", "mcp-server-images"]
     inherent_labels: []
     env:
+      CAPDEP_IMAGE_PROFILE: "default"
+      CAPDEP_IMAGE_BACKEND: "auto"
+      CAPDEP_IMAGE_MODEL: "z-image-turbo"
+      CAPDEP_IMAGE_MODEL_PATH: "filipstrand/Z-Image-Turbo-mflux-4bit"
+      CAPDEP_IMAGE_QUANTIZE: "8"
+      CAPDEP_IMAGE_PROMPT_FILTER: "off"
       CAPDEP_IMAGE_SAFETY: "off"
       CAPDEP_IMAGE_STYLE: "photoreal"
       CAPDEP_IMAGE_DEVICE: "auto"
       CAPDEP_IMAGE_WIDTH: "768"
       CAPDEP_IMAGE_HEIGHT: "768"
-      CAPDEP_IMAGE_STEPS: "20"
+      CAPDEP_IMAGE_STEPS: "9"
+      # Profiles: default, flux-nsfw, flux2-nsfw, sdxl-nsfw, pony-nsfw.
+      # Flux profiles use CAPDEP_IMAGE_LORAS / CAPDEP_IMAGE_LORA_SCALES.
+      # SDXL/Pony profiles use the checkpoint env overrides below.
+      # CAPDEP_IMAGE_CHECKPOINT_PATH: "/path/to/photoreal-or-sdxl.safetensors"
+      # CAPDEP_IMAGE_GRAPHIC_NOVEL_CHECKPOINT_PATH: "/path/to/pony-or-illustrious.safetensors"
     tool_overrides:
       "image.generate":
         capability_kind: GENERATE_IMAGE

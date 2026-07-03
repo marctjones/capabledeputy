@@ -50,6 +50,7 @@ audit.jsonl
 work/images/
 generated-images/
 generated/
+benchmark-results/
 
 # Agent-local config (machine-specific; speckit skills + local settings)
 .claude/

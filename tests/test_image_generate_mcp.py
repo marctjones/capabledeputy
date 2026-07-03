@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
+import threading
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -34,6 +37,7 @@ from capabledeputy.mcp_servers._image_pipeline import (
     ImageGenConfig,
     clear_pipeline_cache,
     generate_image,
+    load_image_gen_config,
     validate_prompt,
     wrap_prompt_for_style,
 )
@@ -249,8 +253,9 @@ async def test_wikipedia_lookup_handler_returns_summary() -> None:
     assert result["summary"]
 
 
-def test_validate_prompt_refuses_minors() -> None:
-    assert validate_prompt("a child in a park") is not None
+def test_validate_prompt_filter_is_operator_controlled() -> None:
+    assert validate_prompt("a child in a park") is None
+    assert validate_prompt("a child in a park", enabled=True) is not None
     assert validate_prompt("consenting adult woman portrait") is None
 
 
@@ -258,6 +263,50 @@ def test_wrap_prompt_for_graphic_novel_adds_pony_tags() -> None:
     wrapped = wrap_prompt_for_style("1girl, blonde hair", "graphic_novel")
     assert wrapped.startswith("score_9")
     assert "1girl" in wrapped
+
+
+def test_image_profile_flux_nsfw_selects_mflux(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CAPDEP_IMAGE_PROFILE", "flux-nsfw")
+    monkeypatch.delenv("CAPDEP_IMAGE_BACKEND", raising=False)
+    monkeypatch.delenv("CAPDEP_IMAGE_MODEL", raising=False)
+    monkeypatch.delenv("CAPDEP_IMAGE_GUIDANCE", raising=False)
+
+    config = load_image_gen_config()
+
+    assert config.backend == "mflux"
+    assert config.model == "schnell"
+    assert config.guidance == 1.0
+    assert config.quantize == 8
+
+
+def test_image_profile_pony_nsfw_selects_diffusers_graphic_novel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CAPDEP_IMAGE_PROFILE", "pony-nsfw")
+    monkeypatch.delenv("CAPDEP_IMAGE_BACKEND", raising=False)
+    monkeypatch.delenv("CAPDEP_IMAGE_STYLE", raising=False)
+    monkeypatch.delenv("CAPDEP_IMAGE_STEPS", raising=False)
+
+    config = load_image_gen_config()
+
+    assert config.backend == "diffusers"
+    assert config.default_style == "graphic_novel"
+    assert config.default_steps == 24
+
+
+def test_image_profile_fallback_accepts_local_checkpoint_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "adult-fallback.safetensors"
+    monkeypatch.setenv("CAPDEP_IMAGE_PROFILE", "sdxl-nsfw")
+    monkeypatch.setenv("CAPDEP_IMAGE_CHECKPOINT_PATH", str(checkpoint))
+    monkeypatch.delenv("CAPDEP_IMAGE_BACKEND", raising=False)
+
+    config = load_image_gen_config()
+
+    assert config.backend == "diffusers"
+    assert config.checkpoints["photoreal"]["path"] == str(checkpoint)
 
 
 @pytest.mark.asyncio
@@ -281,6 +330,43 @@ async def test_image_generate_handler_returns_markdown(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_image_generate_handler_serializes_concurrent_requests(tmp_path: Path) -> None:
+    active = 0
+    max_active = 0
+    guard = threading.Lock()
+
+    def fake_generate_image(*, prompt: str, **_: object) -> dict[str, object]:
+        nonlocal active, max_active
+        with guard:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.05)
+        with guard:
+            active -= 1
+        return {
+            "ok": True,
+            "style": "photoreal",
+            "image_path": str(tmp_path / f"{prompt}.png"),
+            "markdown": f"![{prompt}]({tmp_path / f'{prompt}.png'})",
+            "content": "Generated photoreal image.",
+        }
+
+    handler = _handler(image_generate_server, "image.generate")
+    with patch(
+        "capabledeputy.mcp_servers.image_generate.generate_image",
+        side_effect=fake_generate_image,
+    ):
+        first, second = await asyncio.gather(
+            handler({"prompt": "first"}),
+            handler({"prompt": "second"}),
+        )
+
+    assert first["ok"] is True
+    assert second["ok"] is True
+    assert max_active == 1
+
+
+@pytest.mark.asyncio
 async def test_image_generate_handler_requires_prompt() -> None:
     with pytest.raises(ValueError, match="prompt is required"):
         await _handler(image_generate_server, "image.generate")({})
@@ -290,12 +376,20 @@ def test_generate_image_mocked_pipeline(tmp_path: Path) -> None:
     clear_pipeline_cache()
     config = ImageGenConfig(
         output_dir=tmp_path,
+        backend="diffusers",
         default_style="photoreal",
+        model="z-image-turbo",
+        model_path=None,
+        quantize=None,
+        lora_paths=(),
+        lora_scales=(),
+        guidance=None,
         device="cpu",
         default_width=512,
         default_height=512,
         default_steps=4,
         safety_enabled=False,
+        prompt_filter_enabled=False,
         checkpoints={
             "photoreal": {
                 "repo": "RunDiffusion/Juggernaut-XL-v9",
@@ -334,4 +428,48 @@ def test_generate_image_mocked_pipeline(tmp_path: Path) -> None:
 
     payloads = image_attachment_payloads_from_outcome({"output": out})
     assert payloads and payloads[0]["path"] == out["image_path"]
+    clear_pipeline_cache()
+
+
+def test_generate_image_mocked_mflux_backend(tmp_path: Path) -> None:
+    clear_pipeline_cache()
+    config = ImageGenConfig(
+        output_dir=tmp_path,
+        backend="mflux",
+        default_style="photoreal",
+        model="z-image-turbo",
+        model_path="filipstrand/Z-Image-Turbo-mflux-4bit",
+        quantize=8,
+        lora_paths=(),
+        lora_scales=(),
+        guidance=None,
+        device="mps",
+        default_width=512,
+        default_height=512,
+        default_steps=9,
+        safety_enabled=False,
+        prompt_filter_enabled=False,
+        checkpoints={},
+    )
+
+    fake_image = MagicMock()
+    fake_model = MagicMock()
+    fake_model.generate_image.return_value = fake_image
+
+    with patch(
+        "capabledeputy.mcp_servers._image_pipeline._load_mflux_model",
+        return_value=fake_model,
+    ):
+        out = generate_image(
+            prompt="operator selected local image prompt",
+            config=config,
+            filename="mlx.png",
+        )
+
+    assert out["ok"] is True
+    assert out["backend"] == "mflux"
+    assert out["model"] == "z-image-turbo"
+    assert out["quantize"] == 8
+    fake_model.generate_image.assert_called_once()
+    fake_image.save.assert_called_once()
     clear_pipeline_cache()

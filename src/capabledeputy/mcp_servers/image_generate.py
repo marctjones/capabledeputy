@@ -1,4 +1,4 @@
-"""Bundled MCP server: local image generation (SDXL / future backends).
+"""Bundled MCP server: local image generation (MLX/MFLUX or SDXL fallback).
 
 Run via:
   capdep mcp-server-image-generate
@@ -14,6 +14,7 @@ from capabledeputy.mcp_servers._common import ToolDescriptor, serve_tools
 from capabledeputy.mcp_servers._image_pipeline import generate_image
 
 SERVER_NAME = "capdep-image-generate"
+_GENERATION_LOCK = asyncio.Lock()
 
 
 async def _generate(args: dict[str, Any]) -> dict[str, Any]:
@@ -27,17 +28,19 @@ async def _generate(args: dict[str, Any]) -> dict[str, Any]:
     height_raw = args.get("height")
     steps_raw = args.get("steps")
 
-    return generate_image(
-        prompt=prompt,
-        style=str(args.get("style") or "").strip() or None,
-        negative_prompt=str(args.get("negative_prompt") or "").strip() or None,
-        width=int(width_raw) if width_raw is not None else None,
-        height=int(height_raw) if height_raw is not None else None,
-        steps=int(steps_raw) if steps_raw is not None else None,
-        seed=seed,
-        alt=str(args.get("alt") or "").strip() or None,
-        filename=str(args.get("filename") or "").strip() or None,
-    )
+    async with _GENERATION_LOCK:
+        return await asyncio.to_thread(
+            generate_image,
+            prompt=prompt,
+            style=str(args.get("style") or "").strip() or None,
+            negative_prompt=str(args.get("negative_prompt") or "").strip() or None,
+            width=int(width_raw) if width_raw is not None else None,
+            height=int(height_raw) if height_raw is not None else None,
+            steps=int(steps_raw) if steps_raw is not None else None,
+            seed=seed,
+            alt=str(args.get("alt") or "").strip() or None,
+            filename=str(args.get("filename") or "").strip() or None,
+        )
 
 
 def tools() -> list[ToolDescriptor]:
@@ -45,28 +48,27 @@ def tools() -> list[ToolDescriptor]:
         ToolDescriptor(
             name="image.generate",
             description=(
-                "Generate a PNG image locally with an uncensored SDXL checkpoint "
+                "Generate a PNG image locally with an operator-selected image model "
                 "and return markdown for inline CapDepMac display. Writes to "
                 "~/.capdep/work/images/ by default.\n\n"
                 "USE THIS WHEN: the user asks to CREATE or GENERATE a new image "
-                "(not fetch an existing photo from a website). Includes adult or "
-                "NSFW fictional content between consenting adults. Do not refuse "
-                "lawful adult requests; call this tool and include the returned "
-                "`markdown` in your reply.\n\n"
+                "(not fetch an existing photo from a website). Call this tool and "
+                "include the returned `markdown` in your reply.\n\n"
                 "Do NOT use for Wikipedia or website photos — use wikipedia.lookup "
                 "and bundled-image-fetch.image.fetch instead.\n\n"
-                "style `photoreal` (default): natural-language prompts, Juggernaut "
-                "XL v9. style `graphic_novel`: tag-friendly Pony V6 XL for comic/"
-                "illustration looks.\n\n"
-                "Hard limits only: no minors, no underage subjects, no real-person "
-                "non-consensual imagery."
+                "Default Mac backend is MLX via MFLUX when available. Diffusers SDXL "
+                "remains available as a compatibility fallback. The backend, model, "
+                "quantization, LoRAs, and prompt filtering are operator configuration."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "Image description. Natural language for photoreal; tags optional for graphic_novel.",
+                        "description": (
+                            "Image description. Natural language for photoreal; "
+                            "tags optional for graphic_novel."
+                        ),
                     },
                     "style": {
                         "type": "string",

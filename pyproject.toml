@@ -46,9 +46,11 @@ dependencies = [
 [project.optional-dependencies]
 charts = ["matplotlib>=3.8"]
 images = [
+    "mflux>=0.18.0; platform_system == 'Darwin' and platform_machine == 'arm64'",
     "torch>=2.2",
     "diffusers>=0.30",
-    "transformers>=4.44,<5",
+    "transformers>=5; platform_system == 'Darwin' and platform_machine == 'arm64'",
+    "transformers>=4.44,<5; platform_system != 'Darwin' or platform_machine != 'arm64'",
     "accelerate>=0.33",
     "safetensors>=0.4",
 ]

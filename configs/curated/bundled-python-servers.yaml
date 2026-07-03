@@ -238,19 +238,34 @@ upstream_servers:
 
   - name: bundled-image-generate
     # Prefer repo .venv-images (scripts/setup-images-venv.sh) or set
-    # CAPDEP_IMAGE_PYTHON in env to avoid mlx-lm vs diffusers conflict.
+    # CAPDEP_IMAGE_PYTHON in env. On Apple Silicon, auto uses MFLUX/MLX
+    # when installed, with Diffusers SDXL as the compatibility fallback.
     command: ["capdep-image-generate", "mcp-server-image-generate"]
     inherent_labels: []
     env:
+      CAPDEP_IMAGE_PROFILE: "default"
+      CAPDEP_IMAGE_BACKEND: "auto"
+      CAPDEP_IMAGE_MODEL: "z-image-turbo"
+      CAPDEP_IMAGE_MODEL_PATH: "filipstrand/Z-Image-Turbo-mflux-4bit"
+      CAPDEP_IMAGE_QUANTIZE: "8"
+      CAPDEP_IMAGE_PROMPT_FILTER: "off"
       CAPDEP_IMAGE_SAFETY: "off"
       CAPDEP_IMAGE_STYLE: "photoreal"
       CAPDEP_IMAGE_DEVICE: "auto"
       CAPDEP_IMAGE_WIDTH: "768"
       CAPDEP_IMAGE_HEIGHT: "768"
-      CAPDEP_IMAGE_STEPS: "20"
+      CAPDEP_IMAGE_STEPS: "9"
+      # Profiles:
+      #   default    = fast MFLUX/MLX Z-Image-Turbo when available
+      #   flux-nsfw  = MFLUX FLUX.1 LoRA profile; set CAPDEP_IMAGE_LORAS
+      #   flux2-nsfw = MFLUX FLUX.2 Klein 9B LoRA profile; slower but targeted
+      #   sdxl-nsfw  = Diffusers SDXL fallback; set photoreal checkpoint below
+      #   pony-nsfw  = Diffusers Pony/Illustrious fallback; set graphic_novel checkpoint below
       # Override checkpoints after prefetching weights into $AI_MODELS_DIR or HF cache:
+      # CAPDEP_IMAGE_CHECKPOINT_PATH: "/path/to/photoreal-or-sdxl.safetensors"
       # CAPDEP_IMAGE_CHECKPOINT: "RunDiffusion/Juggernaut-XL-v9"
       # CAPDEP_IMAGE_CHECKPOINT_FILE: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
+      # CAPDEP_IMAGE_GRAPHIC_NOVEL_CHECKPOINT_PATH: "/path/to/pony-or-illustrious.safetensors"
       # CAPDEP_IMAGE_GRAPHIC_NOVEL_CHECKPOINT: "LyliaEngine/Pony_Diffusion_V6_XL"
       # CAPDEP_IMAGE_GRAPHIC_NOVEL_CHECKPOINT_FILE: "ponyDiffusionV6XL_v6StartWithThisOne.safetensors"
     tool_overrides:
