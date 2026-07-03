@@ -7,7 +7,13 @@ from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import CategoryTag
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.graph import SessionGraph
-from capabledeputy.session.model import Session, SessionStatus, Turn
+from capabledeputy.session.model import (
+    Session,
+    SessionStatus,
+    Turn,
+    make_generated_image_artifact,
+    session_artifacts_from_handles,
+)
 from capabledeputy.session.store import SCHEMA_VERSION, SessionStore
 
 
@@ -136,6 +142,33 @@ async def test_graph_persists_sessions_through_store(store_path: Path) -> None:
     assert child.id in g2
     assert g2.get(child.id).status == SessionStatus.PAUSED
     assert g2.get(child.id).parent == parent.id
+
+
+async def test_graph_session_artifacts_survive_store_reload(
+    store_path: Path,
+    tmp_path: Path,
+) -> None:
+    store = SessionStore(store_path)
+    g1 = SessionGraph(store=store)
+    session = await g1.new(intent="image-session")
+    image_path = tmp_path / ".capdep" / "work" / "images" / "out.png"
+    image_path.parent.mkdir(parents=True)
+    image_path.write_bytes(b"image")
+    artifact = make_generated_image_artifact(
+        path=str(image_path),
+        alt="prior generated image",
+        origin_turn_id=1,
+        origin_tool_name="bundled-image-generate.image.generate",
+    )
+
+    await g1.add_session_artifacts(session.id, [artifact])
+
+    g2 = SessionGraph(store=SessionStore(store_path))
+    await g2.load()
+    artifacts = session_artifacts_from_handles(g2.get(session.id).reference_handles)
+    assert len(artifacts) == 1
+    assert artifacts[0]["path"] == str(image_path)
+    assert artifacts[0]["alt"] == "prior generated image"
 
 
 async def test_load_without_store_is_noop(store_path: Path) -> None:
