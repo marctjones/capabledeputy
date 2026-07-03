@@ -64,17 +64,25 @@ for the terminal/Codex host:
 .venv/bin/python scripts/test_capdepmac_gui_interactions.py
 ```
 
-This smoke launches CapDepMac through the supported local launcher, verifies
-daemon connectivity through that launcher, finds the primary chat controls by
-stable accessibility identifiers, submits a prompt through the GUI, and checks
-that the prompt appears in chat history. It is a macOS-sensitive smoke, not a
-default CI gate.
+By default this smoke launches CapDepMac through the supported local launcher in
+background mode, injects a prompt through the app's opt-in
+`CAPDEP_GUI_TEST_COMMAND_FILE` hook, and verifies that the real app process
+submitted the prompt by reading `~/Library/Logs/CapDep/chat-trace.log`. This
+does not require the app to take keyboard focus.
+
+Use the keyboard driver for a focus-taking human-input smoke:
+
+```bash
+.venv/bin/python scripts/test_capdepmac_gui_interactions.py --driver keyboard
+```
+
+Both modes are macOS-sensitive smokes, not default CI gates.
 
 On some SwiftUI/macOS combinations, System Events can see the CapDepMac window
 but not child control identifiers. In that case the smoke warns about AX hooks,
 uses keyboard input against the focused chat window, and verifies the prompt via
 `~/Library/Logs/CapDep/chat-trace.log`. Use `--require-ax-hooks` when explicitly
-testing AX selector visibility.
+testing AX selector visibility with `--driver keyboard`.
 
 ## External MCP smoke tier
 

@@ -10,9 +10,11 @@ submitted through the GUI.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -76,14 +78,32 @@ end tell
     osascript(script)
 
 
-def launch_app(*, clean_build: bool, skip_launch: bool, timeout: float) -> None:
+def launch_app(
+    *,
+    clean_build: bool,
+    skip_launch: bool,
+    timeout: float,
+    command_file: Path | None = None,
+    background: bool = False,
+) -> None:
     if skip_launch:
         return
     env = os.environ.copy()
     env.setdefault("CLEAN_BUILD", "0" if not clean_build else "1")
     env.setdefault("VERIFY_APP_CONNECTION", "1")
     env.setdefault("CAPDEP_DAEMON_MODE", "tmux")
+    if command_file is not None:
+        env["CAPDEP_GUI_TEST_COMMAND_FILE"] = str(command_file)
+    if background:
+        env["CAPDEP_GUI_BACKGROUND_OPEN"] = "1"
     run([str(LAUNCHER)], cwd=APP_ROOT, env=env, timeout=timeout)
+
+
+def write_test_hook_prompt(command_file: Path, message: str) -> None:
+    command_file.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"command": "submit_prompt", "message": message}
+    with command_file.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
 def wait_for_chat_window(timeout: float) -> None:
@@ -281,18 +301,38 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--launch-timeout", type=float, default=120.0)
     parser.add_argument("--require-ax-hooks", action="store_true")
     parser.add_argument(
+        "--driver",
+        choices=["test-hook", "keyboard"],
+        default="test-hook",
+        help="test-hook drives the app without focus; keyboard uses System Events typing.",
+    )
+    parser.add_argument(
+        "--command-file",
+        type=Path,
+        default=Path(tempfile.gettempdir()) / "capdepmac-gui-test-commands.jsonl",
+    )
+    parser.add_argument(
         "--message",
         default="GUI automation smoke: confirm typed prompt reaches chat history",
     )
     args = parser.parse_args(argv)
 
     try:
-        require_accessibility()
+        if args.driver == "keyboard":
+            require_accessibility()
         launch_app(
             clean_build=args.clean_build,
             skip_launch=args.skip_launch,
             timeout=args.launch_timeout,
+            command_file=args.command_file if args.driver == "test-hook" else None,
+            background=args.driver == "test-hook",
         )
+        if args.driver == "test-hook":
+            write_test_hook_prompt(args.command_file, args.message)
+            wait_for_chat_trace(args.message, args.timeout)
+            print("PASS capdepmac gui interaction smoke")
+            return 0
+
         wait_for_chat_window(args.timeout)
         for identifier in (
             "capdep.chat.input",

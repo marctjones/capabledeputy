@@ -60,19 +60,24 @@ cd ../../..
 .venv/bin/python scripts/swift_coverage_summary.py --limit 20
 ```
 
-The opt-in GUI interaction smoke uses macOS Accessibility automation to verify
-that the packaged app opens, remains daemon-connected, exposes stable chat
-controls, accepts a typed prompt, and renders that prompt in chat history:
+The opt-in GUI interaction smoke verifies that the packaged app opens, remains
+daemon-connected, accepts a prompt inside the real app process, and records that
+prompt in chat history:
 
 ```bash
 cd ../../..
 .venv/bin/python scripts/test_capdepmac_gui_interactions.py
 ```
 
-If this fails with an Accessibility error, grant Accessibility permission to
-the terminal/Codex host in System Settings > Privacy & Security > Accessibility
-and rerun it. Keep policy assertions in daemon tests; GUI automation should
-only prove launch, rendering, input, and platform interaction paths.
+The default smoke uses an opt-in `CAPDEP_GUI_TEST_COMMAND_FILE` hook inside the
+real app process and opens the app with `open -g`, so it can run without taking
+keyboard focus from your current window. Keep policy assertions in daemon tests;
+GUI automation should only prove launch, rendering, input, and platform
+interaction paths.
+
+Use `--driver keyboard` for a focus-taking human-input smoke. If that mode fails
+with an Accessibility error, grant Accessibility permission to the terminal/Codex
+host in System Settings > Privacy & Security > Accessibility and rerun it.
 
 The smoke falls back to keyboard input plus `~/Library/Logs/CapDep/chat-trace.log`
 verification when System Events can see the app window but not SwiftUI child

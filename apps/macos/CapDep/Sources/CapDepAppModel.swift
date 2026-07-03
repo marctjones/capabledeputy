@@ -80,6 +80,8 @@ final class CapDepAppModel: ObservableObject {
     private let daemonSupervisor = DaemonSupervisor()
     private var didStart = false
     private var isProcessingPromptQueue = false
+    private var didStartGuiTestCommandHook = false
+    private var guiTestCommandLineCount = 0
     private var lastPendingApprovalCount = 0
     private var lastNotifiedApprovalID: Int?
     private var streamingAssistantMessageID: String?
@@ -226,11 +228,69 @@ final class CapDepAppModel: ObservableObject {
         await ensureDaemonRunning()
         await refresh()
         seedDemoImageIfNeeded()
+        startGuiTestCommandHookIfNeeded()
         Task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 await refresh()
             }
+        }
+    }
+
+    private func startGuiTestCommandHookIfNeeded() {
+        guard !didStartGuiTestCommandHook else {
+            return
+        }
+        guard let commandPath = ProcessInfo.processInfo.environment["CAPDEP_GUI_TEST_COMMAND_FILE"],
+              !commandPath.isEmpty else {
+            return
+        }
+        didStartGuiTestCommandHook = true
+        ChatDebugLog.log("gui_test_hook_started", metadata: ["command_file": commandPath])
+        Task {
+            while !Task.isCancelled {
+                await processGuiTestCommands(commandPath: commandPath)
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+        }
+    }
+
+    private func processGuiTestCommands(commandPath: String) async {
+        guard let text = try? String(contentsOfFile: commandPath, encoding: .utf8) else {
+            return
+        }
+        let lines = text.split(whereSeparator: \.isNewline).map(String.init)
+        guard lines.count > guiTestCommandLineCount else {
+            return
+        }
+        for line in lines.dropFirst(guiTestCommandLineCount) {
+            await handleGuiTestCommand(line)
+        }
+        guiTestCommandLineCount = lines.count
+    }
+
+    private func handleGuiTestCommand(_ line: String) async {
+        guard let data = line.data(using: .utf8),
+              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            ChatDebugLog.log("gui_test_hook_invalid_command")
+            return
+        }
+        let command = raw["command"] as? String ?? ""
+        switch command {
+        case "submit_prompt":
+            let message = raw["message"] as? String ?? ""
+            guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                ChatDebugLog.log("gui_test_hook_empty_prompt")
+                return
+            }
+            commandText = message
+            ChatDebugLog.log(
+                "gui_test_hook_submit_prompt",
+                metadata: ["message_preview": String(message.prefix(200))],
+            )
+            await submitCommand()
+        default:
+            ChatDebugLog.log("gui_test_hook_unknown_command", metadata: ["command": command])
         }
     }
 

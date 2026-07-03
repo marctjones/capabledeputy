@@ -44,6 +44,11 @@ if [[ "${CAPDEP_ENABLE_DEMO_IMAGE:-0}" == "1" && -f "$DEMO_DEST" ]]; then
 else
   DEMO_EXPORT=""
 fi
+if [[ -n "${CAPDEP_GUI_TEST_COMMAND_FILE:-}" ]]; then
+  GUI_TEST_EXPORT="export CAPDEP_GUI_TEST_COMMAND_FILE=\"$CAPDEP_GUI_TEST_COMMAND_FILE\""
+else
+  GUI_TEST_EXPORT=""
+fi
 
 cat > "$APP/Contents/MacOS/CapDepMac" <<SCRIPT
 #!/usr/bin/env bash
@@ -52,6 +57,7 @@ export CAPDEP_GUI_DAEMON_COMMAND="$CAPDEP"
 export CAPDEP_GUI_OWNS_DAEMON="\${CAPDEP_GUI_OWNS_DAEMON:-0}"
 export CAPDEP_IDLE_SHUTDOWN_SECONDS="\${CAPDEP_IDLE_SHUTDOWN_SECONDS:-off}"
 $DEMO_EXPORT
+$GUI_TEST_EXPORT
 exec "\$(dirname "\$0")/CapDepMac.bin"
 SCRIPT
 chmod +x "$APP/Contents/MacOS/CapDepMac"
@@ -144,7 +150,11 @@ if [[ -x "$CAPDEP" ]]; then
 fi
 
 echo "[capdep-gui] opening $APP"
-open -n "$APP"
+if [[ "${CAPDEP_GUI_BACKGROUND_OPEN:-0}" == "1" ]]; then
+  open -g -n "$APP"
+else
+  open -n "$APP"
+fi
 
 if [[ "${VERIFY_APP_CONNECTION:-1}" == "1" ]]; then
   echo "[capdep-gui] verifying opened app remains connected"
