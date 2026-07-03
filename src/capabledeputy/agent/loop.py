@@ -795,6 +795,11 @@ async def run_turn_streaming(
     selection_cfg = (
         model_pool.config.tool_selection if model_pool is not None else ToolSelectionConfig()
     )
+    router_llm = (
+        model_pool.default_planner_client()
+        if model_pool is not None and selection_cfg.mode == "retrieve+ai"
+        else None
+    )
     if conversational:
         tool_surface = ToolSelectionResult(
             selected=(),
@@ -803,11 +808,6 @@ async def run_turn_streaming(
             method="conversational",
         )
     else:
-        router_llm = (
-            model_pool.default_planner_client()
-            if model_pool is not None and selection_cfg.mode == "retrieve+ai"
-            else None
-        )
         tool_surface = await select_tools_for_turn_async(
             registry,
             session,
@@ -1387,6 +1387,9 @@ async def run_turn_streaming(
             ),
         )
 
+        response_tool_names = {
+            reverse_map.get(tool_call.name, tool_call.name) for tool_call in response.tool_calls
+        }
         for tool_call in response.tool_calls:
             # Reverse-map alias → canonical name. If the LLM produces a
             # token that doesn't match any visible tool's alias, the
@@ -1461,16 +1464,36 @@ async def run_turn_streaming(
                 )
             else:
                 if real_name not in visible_tool_names:
-                    outcome = ToolCallOutcome(
-                        decision=Decision.DENY,
-                        rule="tool-not-visible-in-current-mode",
-                        reason=(
-                            f"tool {real_name!r} is not visible in "
-                            f"{mode.value} mode for this session"
-                        ),
-                        tool_name=real_name,
-                        tool_args=tool_call.args,
-                    )
+                    visible_by_name = {tool.name: tool for tool in visible_all}
+                    if real_name in visible_by_name:
+                        tool_surface = widen_tool_surface(
+                            tool_surface,
+                            visible_all,
+                            missing_tool_name=real_name,
+                        )
+                        tool_descriptions = build_tool_descriptions(
+                            registry,
+                            mode,
+                            session,
+                            selected_tools=tool_surface.selected,
+                        )
+                        visible_tool_names = {tool.name for tool in tool_surface.selected}
+                        outcome = await tool_client.call_tool(
+                            session_id,
+                            real_name,
+                            tool_call.args,
+                        )
+                    else:
+                        outcome = ToolCallOutcome(
+                            decision=Decision.DENY,
+                            rule="tool-not-visible-in-current-mode",
+                            reason=(
+                                f"tool {real_name!r} is not visible in "
+                                f"{mode.value} mode for this session"
+                            ),
+                            tool_name=real_name,
+                            tool_args=tool_call.args,
+                        )
                 else:
                     outcome = await tool_client.call_tool(
                         session_id,
@@ -1533,6 +1556,8 @@ async def run_turn_streaming(
                     ),
                 )
 
+                prior_selected_names = {tool.name for tool in tool_surface.selected}
+                prior_selected_names.update(response_tool_names)
                 visible_all = visible_tools(registry, session, mode)
                 tool_surface = await select_tools_for_turn_async(
                     registry,
@@ -1544,6 +1569,24 @@ async def run_turn_streaming(
                     families=families_cfg,
                     selection_config=selection_cfg,
                 )
+                if prior_selected_names:
+                    visible_by_name = {tool.name: tool for tool in visible_all}
+                    selected_by_name = {tool.name: tool for tool in tool_surface.selected}
+                    for name in prior_selected_names:
+                        tool = visible_by_name.get(name)
+                        if tool is not None:
+                            selected_by_name[name] = tool
+                    if set(selected_by_name) != {tool.name for tool in tool_surface.selected}:
+                        tool_surface = ToolSelectionResult(
+                            selected=tuple(
+                                sorted(selected_by_name.values(), key=lambda tool: tool.name),
+                            ),
+                            candidates=tool_surface.candidates,
+                            n_visible=tool_surface.n_visible,
+                            method=f"{tool_surface.method}+retained",
+                            mandatory_added=tool_surface.mandatory_added,
+                            scores=tool_surface.scores,
+                        )
                 tool_descriptions = build_tool_descriptions(
                     registry,
                     mode,

@@ -135,7 +135,7 @@ class TestSystemPromptReplacement:
 
         await run_turn(
             session_id=s.id,
-            user_message="test",
+            user_message="read memory context",
             llm=llm,
             tool_client=client,
             registry=registry,
@@ -202,7 +202,7 @@ class TestSystemPromptReplacement:
 
         await run_turn(
             session_id=s.id,
-            user_message="test",
+            user_message="review the calendar context",
             llm=llm,
             tool_client=client,
             registry=registry,
@@ -362,7 +362,7 @@ class TestContextWithRecentDecisions:
 
         await run_turn(
             session_id=s.id,
-            user_message="try again",
+            user_message="send email about the denied purchase",
             llm=llm2,
             tool_client=client,
             registry=registry,

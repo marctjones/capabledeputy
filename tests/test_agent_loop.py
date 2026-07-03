@@ -472,7 +472,7 @@ async def test_audit_emits_llm_events(writer: AuditWriter) -> None:
 
     await run_turn(
         session_id=s.id,
-        user_message="hi",
+        user_message="read a file",
         llm=llm,
         tool_client=client,
         registry=registry,
@@ -563,7 +563,7 @@ async def test_no_tools_notice_absent_when_caps_present(
 
     await run_turn(
         session_id=s.id,
-        user_message="hi",
+        user_message="read a file",
         llm=llm,
         tool_client=client,
         registry=registry,

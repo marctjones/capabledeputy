@@ -35,6 +35,8 @@ _GLOB_CAPABILITIES: frozenset[Capability] = frozenset(
         Capability(kind=CapabilityKind.BROWSER_AUTOMATION, pattern="*"),
         Capability(kind=CapabilityKind.MACOS_AUTOMATION, pattern="*", allows_destructive=True),
         Capability(kind=CapabilityKind.WEB_FETCH, pattern="*"),
+        Capability(kind=CapabilityKind.GENERATE_IMAGE, pattern="*"),
+        Capability(kind=CapabilityKind.FETCH_IMAGE, pattern="*"),
         Capability(kind=CapabilityKind.CALENDAR_READ, pattern="*"),
         Capability(
             kind=CapabilityKind.CALENDAR_WRITE,
