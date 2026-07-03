@@ -17,7 +17,7 @@ from capabledeputy.audit.events import EventType
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.substrate.in_process_sandbox import InProcessSandboxActuator
 from capabledeputy.tools.native.sandbox import make_sandbox_tools
-from capabledeputy.tools.registry import ToolContext
+from capabledeputy.tools.registry import ToolContext, ToolDefinition
 
 
 def _read_events(audit_path: Path) -> list[dict]:
@@ -44,14 +44,18 @@ class _FakePolicyContext:
         self.sandbox_actuator = actuator
 
 
+def _sandbox_run_tool(tools: list[ToolDefinition]) -> ToolDefinition:
+    [tool] = [tool for tool in tools if tool.name == "sandbox.run"]
+    return tool
+
+
 async def test_successful_run_emits_created_then_discarded(tmp_path: Path) -> None:
     """A normal sandbox.run produces CREATED + DISCARDED in order."""
     audit_path = tmp_path / "audit.jsonl"
     audit = AuditWriter(audit_path)
     actuator = InProcessSandboxActuator()
     tools = make_sandbox_tools(_FakePolicyContext(actuator), audit=audit)
-    assert len(tools) == 1
-    handler = tools[0].handler
+    handler = _sandbox_run_tool(tools).handler
 
     from capabledeputy.policy.labels import LabelState
 
@@ -86,7 +90,7 @@ async def test_failed_execute_still_emits_discarded(tmp_path: Path) -> None:
 
     actuator = _RaisingActuator()
     tools = make_sandbox_tools(_FakePolicyContext(actuator), audit=audit)
-    handler = tools[0].handler
+    handler = _sandbox_run_tool(tools).handler
 
     from capabledeputy.policy.labels import LabelState
 
@@ -113,7 +117,7 @@ async def test_audit_none_emits_nothing(tmp_path: Path) -> None:
 
     actuator = InProcessSandboxActuator()
     tools = make_sandbox_tools(_FakePolicyContext(actuator), audit=None)
-    handler = tools[0].handler
+    handler = _sandbox_run_tool(tools).handler
 
     ctx = ToolContext(session_id=uuid4(), label_state=LabelState())
     result = await handler(
