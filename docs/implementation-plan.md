@@ -3,12 +3,16 @@
 Living plan that organizes the open GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
 rationale*. Last refreshed 2026-07-03 — active work is **v0.42 local
-media/model operations reliability** after the v0.41.1 stable patch release.
-The live GitHub tracker has no unmilestoned open issues, and every GitHub
-milestone title now carries an ordered prefix.
+media/model operations reliability** after the v0.41.1 stable patch release,
+with **v0.43 CommonMark rendering across client surfaces** open as the next
+planned product milestone. The live GitHub tracker has no unmilestoned open
+issues, and every GitHub milestone title now carries an ordered prefix.
 
 Active milestone (GitHub): **12 Product — v0.42.0 — Local media and model
 operations reliability**.
+
+Next planned milestone (GitHub): **13 Product — v0.43.0 — CommonMark rendering
+across client surfaces**.
 
 Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
 reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical
@@ -38,30 +42,34 @@ Themes currently driving priority:
 1. **v0.42 local media/model operations reliability** — profile selection,
    model/account readiness, benchmark-informed defaults, real progress/status,
    cancellation/recovery, and setup/release docs (#202-#208).
-2. **MCP security integration** — MCP must remain an integration substrate, not
+2. **v0.43 CommonMark client rendering** — shared CommonMark contract,
+   parser/sanitizer fixtures, CapDepMac rich rendering, terminal-safe CLI/TUI
+   rendering, MCP-control fallback behavior, and release parity evidence
+   (#209-#215).
+3. **MCP security integration** — MCP must remain an integration substrate, not
    a second authority path. v0.29 turns the current targeted tests into a
    security conformance suite before CapDep relies heavily on external MCP
    servers and headless clients.
-3. **Client proof, not just parity claims** — v0.30 replaces source/manifest
+4. **Client proof, not just parity claims** — v0.30 replaces source/manifest
    checks with live daemon integration coverage for CLI, TUI, Swift GUI, and
    MCP-control.
    Coverage is ratcheted independently for daemon files, clients, MCP
    surfaces, bundled MCP servers, and tools; the near-term target is 85% per
    group and the stretch target is 90%, but CI first enforces non-regression
    from the checked-in baseline.
-4. **Multi-session explainability** — v0.31 made labels, flow patterns,
+5. **Multi-session explainability** — v0.31 made labels, flow patterns,
    external actors, approvals, policy rules, provenance, and audit inspectable
    across turns and clients.
-5. **Source identity and labeling correctness** — IFC guarantees ride on
+6. **Source identity and labeling correctness** — IFC guarantees ride on
    correct labels. The old v0.16 track is now narrowed to canonical source
    identity and per-message email labeling.
-6. **Terminal UX and approval polish** — remaining terminal work is useful,
+7. **Terminal UX and approval polish** — remaining terminal work is useful,
    but it is not the primary desktop-agent path and should not duplicate daemon
    authority.
-7. **Research/non-goals** — keep remote/mobile control, always-on autonomy,
+8. **Research/non-goals** — keep remote/mobile control, always-on autonomy,
    community sharing, and web/cross-platform alternatives explicit without
    promoting them to immediate implementation.
-8. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
+9. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
    human oversight. The decision-refinement layer is live; future work should
    add concrete inspectors or policy scripts, not revive the old epic.
 
@@ -140,6 +148,50 @@ especially image generation on Apple Silicon.
   recovered without corrupting chat history.
 - Documentation and release tests cover the supported Apple Silicon MLX/MFLUX
   path and clearly state platform boundaries.
+
+## v0.43.0 — CommonMark rendering across client surfaces
+
+Planned after v0.42. CapDep responses increasingly include structured prose,
+links, code, media references, and tables. v0.43 makes CommonMark a deliberate
+client contract instead of an accidental formatting side effect, while still
+respecting each interface's natural rendering limits.
+
+### Scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #210 | EPIC: CommonMark rendering across client interfaces | Open |
+| #209 | Define CommonMark client capability matrix and rendering contract | Open |
+| #211 | Add shared CommonMark parser, sanitizer, and fixture corpus | Open |
+| #212 | Implement CapDepMac CommonMark rendering and regression tests | Open |
+| #213 | Implement terminal-safe CommonMark rendering for CLI and TUI clients | Open |
+| #214 | Handle CommonMark in MCP-control and lower-capability client surfaces | Open |
+| #215 | Document and smoke-test CommonMark parity across clients | Open |
+
+### Sequencing
+
+1. Define the CommonMark capability matrix and safety contract first (#209).
+2. Add shared parser/sanitizer behavior and fixture corpus so client tests use
+   the same inputs (#211).
+3. Implement CapDepMac rich rendering with async chat/history/media regression
+   coverage (#212).
+4. Implement terminal-safe CLI/TUI rendering with deterministic plain fallback
+   for scripts and logs (#213).
+5. Preserve CommonMark/structured content through MCP-control and lower-
+   capability clients without unsafe rendering assumptions (#214).
+6. Close with README/roadmap docs and release smoke coverage across client
+   surfaces (#215).
+
+### Done-when
+
+- Each client declares which CommonMark features it renders, preserves, or
+  degrades.
+- Raw HTML, unsafe links, terminal escape sequences, huge code blocks, tables,
+  and image references have tested fallback behavior.
+- CapDepMac, CLI/TUI, and MCP-control pass the shared fixture corpus at their
+  supported capability levels.
+- Release documentation accurately describes supported CommonMark behavior and
+  known limits.
 
 **EPIC #41 is closed** (layer live, frequency policy, `capdep why`).
 **EPIC #42 is closed** with source identity and labeling correctness captured

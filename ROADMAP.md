@@ -7,11 +7,12 @@ maps this roadmap onto GitHub issues and dependencies. The older
 historical backlog snapshots, not the current roadmap.
 
 **Last refreshed:** 2026-07-03 — v0.41.1 is the current stable release. v0.42
-is now open as the local media/model operations reliability milestone. The live
-GitHub tracker has one open product milestone, v1.0 remains unscheduled, and
-all v0.35-v0.41 product-ladder milestones are closed.
+is the active local media/model operations reliability milestone. v0.43 is now
+open as the planned CommonMark rendering milestone. The live GitHub tracker has
+two open product milestones, v1.0 remains unscheduled, and all v0.35-v0.41
+product-ladder milestones are closed.
 
-## Product Ladder — v0.35 → v0.42
+## Product Ladder — v0.35 → v0.43
 
 ```mermaid
 flowchart LR
@@ -23,7 +24,8 @@ flowchart LR
   v40[v0.40 Safe scripting assistant]
   v41[v0.41 GUI reliability + scripting UX]
   v42[v0.42 Local media/model reliability]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42
+  v43[v0.43 CommonMark client rendering]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -36,6 +38,7 @@ flowchart LR
 | **06 Product — v0.40.0 — Safe practical scripting assistant** | Safe practical scripting substrate for non-programmers | #172–#177 |
 | **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | Reliable Swift GUI interaction handling plus safe scripting flows | #196–#201 |
 | **12 Product — v0.42.0 — Local media and model operations reliability** (active) | Productionize local media/model operations | #202–#208 |
+| **13 Product — v0.43.0 — CommonMark rendering across client surfaces** (planned) | CommonMark rendering and fallback parity across clients | #209–#215 |
 
 ## Tracker Coverage
 
@@ -44,6 +47,7 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
 | **12 Product — v0.42.0 — Local media and model operations reliability** | #202–#208 | Active product work: profile selection, model/account readiness, benchmark-informed defaults, progress/status, queue recovery, and setup/release docs for local media/model operations. |
+| **13 Product — v0.43.0 — CommonMark rendering across client surfaces** | #209–#215 | Planned product work: shared CommonMark contract, parser/sanitizer fixtures, CapDepMac rich rendering, terminal-safe CLI/TUI rendering, MCP-control fallback behavior, and release parity evidence. |
 | **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | #196–#201 | Complete product-ladder work: CapDepMac queueing/recovery plus daemon-owned scripting workflows are implemented and closed. |
 | **07 Support — Source identity and labeling correctness** | #42, #51, #139 | Complete; see `docs/support-track-closeout-2026-07-01.md`. |
 | **08 Support — Terminal UX and approval polish** | #16, #17, #19, #27, #29 | Complete for the terminal support track; see `docs/support-track-closeout-2026-07-01.md`. |
@@ -109,6 +113,42 @@ through daemon RPCs.
   checkpoint paths, storage, troubleshooting, and platform boundaries.
 - The release gate includes uv lock/sync checks, daemon readiness checks,
   focused Python tests, and CapDepMac Swift tests.
+
+## Planned Focus — v0.43.0 CommonMark Rendering Across Client Surfaces
+
+Goal: make model and daemon responses readable and consistent when they contain
+CommonMark, without forcing every client surface to pretend it supports the
+same rich rendering features. CapDepMac should render rich Markdown where the
+native UI can do so reliably; terminal clients should render terminal-safe
+Markdown; MCP-control and lower-capability clients should preserve structured
+or plain content with predictable fallback behavior.
+
+### v0.43.0 scope
+
+| Issue | Work | Local status |
+|---|---|---|
+| #210 | EPIC: CommonMark rendering across client interfaces | Open |
+| #209 | Define CommonMark client capability matrix and rendering contract | Open |
+| #211 | Add shared CommonMark parser, sanitizer, and fixture corpus | Open |
+| #212 | Implement CapDepMac CommonMark rendering and regression tests | Open |
+| #213 | Implement terminal-safe CommonMark rendering for CLI and TUI clients | Open |
+| #214 | Handle CommonMark in MCP-control and lower-capability client surfaces | Open |
+| #215 | Document and smoke-test CommonMark parity across clients | Open |
+
+### v0.43.0 done-when
+
+- The roadmap/docs define which CommonMark blocks and inline features each
+  client must render, preserve, or degrade.
+- Shared fixtures cover headings, lists, links, code fences, images, tables,
+  raw HTML, long lines, malformed Markdown, and terminal-control injection.
+- CapDepMac renders rich Markdown without destabilizing async chat, history
+  scrollback, or media artifacts.
+- CLI/TUI surfaces render terminal-safe Markdown within narrow and normal
+  widths, with deterministic plain-output fallback for scripting/logs.
+- MCP-control preserves CommonMark text and maps media/artifacts to structured
+  content where supported, with readable plain fallback where not.
+- README and release smoke coverage document the supported behavior and known
+  limitations without overstating client parity.
 
 ## Completed Focus — v0.41.0 CapDepMac Reliability and Safe Scripting UX
 
@@ -423,6 +463,7 @@ preserve origin metadata, artifact ID, labels, provenance, and payload content.
 |---|---|---|
 | v0.39 | Background automation and onguard UX | #166–#171 |
 | v0.40 | Safe practical scripting assistant | #172–#177 |
+| v0.43 | CommonMark rendering across client surfaces | #209–#215 |
 
 ## Completed Focus — v0.33.0 Streaming Turn Lifecycle and Liveness
 
