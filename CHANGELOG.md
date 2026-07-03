@@ -6,6 +6,48 @@ breaking changes).
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-07-03
+
+CapDepMac reliability and safe scripting UX release.
+
+### CapDepMac reliability
+
+- Added queued/running/completed/failed prompt state handling so users can
+  submit another prompt while an earlier turn is still pending.
+- Hardened daemon event correlation so delayed, duplicate, malformed, and
+  out-of-order events attach to the intended prompt/turn instead of corrupting
+  the visible chat state.
+- Improved conversation scrollback and recovered-session rendering so prior
+  prompts, assistant responses, pending turns, and generated artifacts remain
+  available after reconnects or unexpected daemon activity.
+
+### Safe scripting assistant
+
+- Added daemon-owned scripting workflow RPCs for practical plans, exact script
+  artifacts, sandbox run evidence, and reviewed export artifacts.
+- Added CLI, TUI, and CapDepMac surfaces that consume the shared daemon
+  artifacts without moving authority into the clients.
+- Added practical automation demos for batch file cleanup, batch photo
+  processing, and document/spreadsheet transformations.
+- Added regression coverage for sandbox availability, root escapes, restricted
+  credential labels, exact approval binding, and async client state while a
+  script run is pending.
+
+### Image generation and session artifacts
+
+- Persisted generated-image session artifacts so later turns in the same
+  session can refer to generated images instead of losing them after render.
+- Added a local MLX/MFLUX image-generation backend path with named profiles,
+  LoRA configuration, local checkpoint fallback support, and serialized
+  generation so concurrent requests do not compete for local GPU resources.
+- Added image model benchmarking helpers and recorded deferred adult-model
+  capability notes for future image-generation tuning.
+
+### Roadmap
+
+- Closed GitHub milestone `11 Product — v0.41.0 — CapDepMac reliability and
+  safe scripting UX`; no open issues remain in the repository at release time.
+
 ## [0.25.0] - 2026-06-26
 
 macOS chat, inline media, MCP control enrichment, and client parity release.

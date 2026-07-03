@@ -6,7 +6,7 @@ A structurally secure runtime for personal AI agents.
 
 CapableDeputy is an AI agent runtime built as a faithful implementation of recognized security models — a reference monitor, an information-flow lattice, and the object-capability model — with the LLM treated as an untrusted component *outside* the trusted computing base. Every action the agent takes flows through one deterministic capability and information-flow chokepoint, escalates to programmatic execution when stakes warrant, and surfaces every cross-compartment data flow through human-auditable approval gates.
 
-**Status:** Alpha — **v0.25.0 released** — macOS chat-first GUI (scrollable history, Kagi web search, markdown/code/image replies, grant and approval prompts, streamed-turn reliability), terminal inline media on Ghostty/kitty, and MCP control `ImageContent` enrichment. v0.24.0 adds daemon-owned connector setup, Gmail MCP OAuth configuration, durable daemon memory, and hardened local daemon lifecycle behavior for native macOS clients. v0.23.0 added the first native macOS desktop shell: a menu-bar assistant, command palette, approval queue, session dashboard, setup status, provenance view, and trust controls backed by daemon GUI RPCs. v0.22.0 made CapDep practical as a supervised macOS and Google Workspace personal assistant with official Google Workspace MCP servers, bounded Apple app automation, granular automation capability kinds, and macOS-first personal-assistant defaults. v0.21.0 aligned CapDep's flow-pattern enforcement with its security model. v0.20.0 made local Apple Silicon inference a first-class default with MLX and `Qwen/Qwen3-4B-MLX-4bit`. See [CHANGELOG.md](CHANGELOG.md) for released changes and [ROADMAP.md](ROADMAP.md) for longer-term planning.
+**Status:** Alpha — **v0.41.0 released** — CapDepMac reliability and safe scripting UX closeout: queued prompt handling, response correlation, scrollback/recovery hardening, daemon-owned safe scripting workflow RPCs, CLI/TUI/CapDepMac artifact surfaces, practical automation demos, and regression coverage for async GUI state, sandboxing, labels, approvals, and generated-image artifacts. Recent releases also added daemon-owned setup, connector admission, rich chat media, local model routing, background automation coordination, memory/retention/compaction, and MCP workflow templates. See [CHANGELOG.md](CHANGELOG.md) for released changes and [ROADMAP.md](ROADMAP.md) for longer-term planning.
 
 ## Why
 
@@ -99,6 +99,8 @@ read — strengths, weaknesses, and prioritized fixes — is in
 - [docs/security-alignment-assessment.md](docs/security-alignment-assessment.md) — **grounded alignment scorecard** — how the code actually lines up with each security model, flow pattern, and AI-safety principle, with strengths, live gaps, and prioritized fixes
 - [docs/gui-greenfield-design.md](docs/gui-greenfield-design.md) — **greenfield GUI product design** — primary users, desktop posture, workflows, automation model, screen-space rules, and integrated menu system
 - [docs/macos-desktop-ux-strategy.md](docs/macos-desktop-ux-strategy.md) — **macOS desktop UX strategy** — native menu-bar/command-palette/approval/dashboard design guidance for CapDep's supervised desktop assistant shell
+- [docs/safe-scripting-assistant-v040.md](docs/safe-scripting-assistant-v040.md) — **safe practical scripting assistant** — daemon-owned script planning, sandboxed execution, evidence, and exact export approvals for non-programmer automation tasks
+- [docs/image-generation-adult-model-notes.md](docs/image-generation-adult-model-notes.md) — local image-generation backend/model capability notes and deferred model-download findings
 
 - [docs/SURFACES.md](docs/SURFACES.md) — **which command do I use?** (chat vs console vs tui vs demo vs …) — start here
 - [DESIGN.md](DESIGN.md) — full design specification
@@ -153,6 +155,28 @@ paths (`~/Documents`, `~/Projects`, etc.). If a file tool is denied for a
 specific path, the chat shows a **Grant access** banner — that is a capability
 grant (`/grant`), not the approval queue used for outbound or destructive
 actions.
+
+CapDepMac now treats chat as an asynchronous work queue: prompts can be entered
+while earlier turns are still pending, daemon events are correlated back to the
+right turn, scrollback stays available across recovered sessions, and generated
+image/session artifacts are persisted so they remain visible to later turns in
+the same session.
+
+### Safe scripting assistant
+
+The v0.40/v0.41 scripting workflow is daemon-owned. Clients can ask for a plan,
+prepare a script artifact, run it in the sandbox, inspect captured evidence,
+and approve an exact export without gaining extra authority themselves.
+
+```bash
+# Ask the daemon for a practical scripting plan:
+capdep scripting plan "rename the photos in this folder by date" --workspace-root ~/Pictures
+
+# Prepare, run, and export reviewed artifacts through the same daemon RPCs:
+capdep scripting prepare-script ./script.py --workspace-root ~/Pictures --target-path safe-scripting/script.py
+capdep scripting run-artifact ./run-result.json --workspace-root ~/Pictures
+capdep scripting export-artifact ./output.txt --workspace-root ~/Pictures --target-path exports/output.txt
+```
 
 ## License
 

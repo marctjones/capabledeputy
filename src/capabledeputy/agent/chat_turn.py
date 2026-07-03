@@ -176,13 +176,11 @@ def has_image_generation_intent(message: str) -> bool:
         return True
     if _IMAGE_GENERATION_INTENT_RE.search(stripped):
         return True
-    if (
+    return bool(
         _IMAGE_SHOW_DISPLAY_RE.search(stripped)
         and _IMAGE_SCENE_RE.search(stripped)
         and not _IMAGE_INFO_QUERY_RE.search(stripped)
-    ):
-        return True
-    return False
+    )
 
 
 def has_probable_image_generation_intent(message: str) -> bool:
@@ -196,13 +194,14 @@ def has_probable_image_generation_intent(message: str) -> bool:
         return False
     if _IMAGE_INFO_QUERY_RE.search(stripped):
         return False
-    if re.search(
-        r"\b(?:show|display|draw|paint|render|generate|create|make)\b",
-        stripped,
-        re.IGNORECASE,
-    ) and _IMAGE_SCENE_RE.search(stripped):
-        return True
-    return False
+    return bool(
+        re.search(
+            r"\b(?:show|display|draw|paint|render|generate|create|make)\b",
+            stripped,
+            re.IGNORECASE,
+        )
+        and _IMAGE_SCENE_RE.search(stripped)
+    )
 
 
 def should_force_image_generate_tool(message: str) -> bool:
@@ -284,9 +283,7 @@ def looks_like_hallucinated_image_markdown(
     allowed_norm = {normalize_image_path(path) for path in allowed_paths}
     if any(path not in allowed_norm for path in cited):
         return True
-    if set(cited).issubset(prior_paths) and cited and allowed_norm - set(cited):
-        return True
-    return False
+    return bool(set(cited).issubset(prior_paths) and cited and allowed_norm - set(cited))
 
 
 def preferred_image_markdown_from_outcomes(outcomes: list[Any]) -> str | None:
@@ -345,9 +342,7 @@ def looks_like_image_generation_refusal(content: str) -> bool:
         return True
     if "real people" in lowered or "real person" in lowered:
         return True
-    if "inappropriate" in lowered or "non-consensual" in lowered:
-        return True
-    return False
+    return "inappropriate" in lowered or "non-consensual" in lowered
 
 
 def image_generate_tool_names_in(selected_names: set[str] | frozenset[str]) -> bool:
@@ -408,6 +403,4 @@ def is_conversational_turn(message: str) -> bool:
         or has_wikipedia_lookup_intent(stripped)
     ):
         return False
-    if _TOOL_INTENT_RE.search(stripped):
-        return False
-    return True
+    return not _TOOL_INTENT_RE.search(stripped)
