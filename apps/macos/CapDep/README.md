@@ -50,6 +50,35 @@ scripts/run-local-daemon-tmux.sh logs
 scripts/run-local-daemon-tmux.sh stop
 ```
 
+## GUI Smoke and Coverage
+
+Swift unit/model coverage is separate from Python coverage:
+
+```bash
+swift test --enable-code-coverage
+cd ../../..
+.venv/bin/python scripts/swift_coverage_summary.py --limit 20
+```
+
+The opt-in GUI interaction smoke uses macOS Accessibility automation to verify
+that the packaged app opens, remains daemon-connected, exposes stable chat
+controls, accepts a typed prompt, and renders that prompt in chat history:
+
+```bash
+cd ../../..
+.venv/bin/python scripts/test_capdepmac_gui_interactions.py
+```
+
+If this fails with an Accessibility error, grant Accessibility permission to
+the terminal/Codex host in System Settings > Privacy & Security > Accessibility
+and rerun it. Keep policy assertions in daemon tests; GUI automation should
+only prove launch, rendering, input, and platform interaction paths.
+
+The smoke falls back to keyboard input plus `~/Library/Logs/CapDep/chat-trace.log`
+verification when System Events can see the app window but not SwiftUI child
+control identifiers. Add `--require-ax-hooks` when the goal is to fail unless
+those selectors are visible to System Events.
+
 `CAPDEP_DAEMON_MODE=launchd` is also available through
 `scripts/run-local-daemon-launchd.sh` for normal per-user LaunchAgent testing.
 When launched from sandboxed automation, launchd can inherit the automation

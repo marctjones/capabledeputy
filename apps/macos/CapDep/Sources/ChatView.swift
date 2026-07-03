@@ -14,6 +14,7 @@ struct ChatView: View {
         }
         .frame(minWidth: 720, minHeight: 560)
         .navigationTitle("CapDep")
+        .accessibilityIdentifier("capdep.chat.window")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 sessionMenu
@@ -104,6 +105,7 @@ struct ChatView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .padding(.horizontal, 4)
+                        .accessibilityIdentifier("capdep.chat.turn-progress")
                         .id("turn-progress")
                     }
 
@@ -278,6 +280,8 @@ struct ChatView: View {
                 .padding(12)
                 .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
                 .focused($inputFocused)
+                .accessibilityIdentifier("capdep.chat.input")
+                .accessibilityLabel("CapDep chat input")
                 .onSubmit {
                     Task { await submitMessage() }
                 }
@@ -293,6 +297,8 @@ struct ChatView: View {
                     .disabled(
                         model.commandText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                     )
+                    .accessibilityIdentifier("capdep.chat.send")
+                    .accessibilityLabel("Send CapDep message")
 
                     if model.isRunningTurn {
                         Button {
@@ -302,6 +308,8 @@ struct ChatView: View {
                                 .foregroundStyle(.red)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("capdep.chat.cancel-turn")
+                        .accessibilityLabel("Cancel CapDep turn")
                     }
                 }
             }
@@ -315,6 +323,7 @@ struct ChatView: View {
                 .font(.caption)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .accessibilityIdentifier("capdep.chat.refresh-context")
 
                 Text(modelModeHelperText)
                     .font(.caption2)
@@ -342,6 +351,7 @@ struct ChatView: View {
                 .font(.caption)
                 .menuStyle(.button)
                 .controlSize(.small)
+                .accessibilityIdentifier("capdep.chat.model-mode")
 
                 Button {
                     Task {
@@ -357,10 +367,12 @@ struct ChatView: View {
                 .font(.caption)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .accessibilityIdentifier("capdep.chat.new-session")
             }
         }
         .padding(16)
         .background(.bar)
+        .accessibilityIdentifier("capdep.chat.composer")
     }
 
     private var sessionMenu: some View {
@@ -401,6 +413,8 @@ struct ChatView: View {
         )
         .font(.caption)
         .foregroundStyle(model.connected ? .green : .red)
+        .accessibilityIdentifier("capdep.chat.connection-status")
+        .accessibilityLabel("CapDep daemon connection \(model.daemonConnection.statusTitle)")
     }
 
     private var shouldShowWelcome: Bool {
@@ -445,6 +459,7 @@ private struct UserMessageBubble: View {
                 .padding(.vertical, 9)
                 .frame(maxWidth: 680, alignment: .leading)
                 .background(.quaternary.opacity(0.42), in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityIdentifier("capdep.chat.message.user")
         }
     }
 }
@@ -474,6 +489,7 @@ private struct AssistantMessageBubble: View {
             )
             .font(.system(size: 14, design: .default))
             .lineSpacing(4)
+            .accessibilityIdentifier("capdep.chat.message.assistant")
         }
         .padding(.vertical, 2)
         .frame(maxWidth: 760, alignment: .leading)
@@ -563,6 +579,7 @@ private struct PromptQueuePanel: View {
         }
         .padding(12)
         .background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityIdentifier("capdep.chat.prompt-activity")
     }
 
     private func icon(for status: ChatPromptStatus) -> String {

@@ -48,6 +48,34 @@ These tests should never carry core safety logic. If a GUI test needs to assert
 policy, approvals, labels, provenance, or settings persistence, assert the
 daemon RPC result and only use the GUI as a caller.
 
+Run the Swift package tests with source coverage:
+
+```bash
+cd apps/macos/CapDep
+swift test --enable-code-coverage
+cd ../../..
+.venv/bin/python scripts/swift_coverage_summary.py --limit 20
+```
+
+Run the opt-in GUI interaction smoke when Accessibility automation is available
+for the terminal/Codex host:
+
+```bash
+.venv/bin/python scripts/test_capdepmac_gui_interactions.py
+```
+
+This smoke launches CapDepMac through the supported local launcher, verifies
+daemon connectivity through that launcher, finds the primary chat controls by
+stable accessibility identifiers, submits a prompt through the GUI, and checks
+that the prompt appears in chat history. It is a macOS-sensitive smoke, not a
+default CI gate.
+
+On some SwiftUI/macOS combinations, System Events can see the CapDepMac window
+but not child control identifiers. In that case the smoke warns about AX hooks,
+uses keyboard input against the focused chat window, and verifies the prompt via
+`~/Library/Logs/CapDep/chat-trace.log`. Use `--require-ax-hooks` when explicitly
+testing AX selector visibility.
+
 ## External MCP smoke tier
 
 Real upstream MCP server tests are opt-in because they may require installed
