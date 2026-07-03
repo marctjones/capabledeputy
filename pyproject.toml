@@ -49,8 +49,7 @@ images = [
     "mflux>=0.18.0; platform_system == 'Darwin' and platform_machine == 'arm64'",
     "torch>=2.2",
     "diffusers>=0.30",
-    "transformers>=5; platform_system == 'Darwin' and platform_machine == 'arm64'",
-    "transformers>=4.44,<5; platform_system != 'Darwin' or platform_machine != 'arm64'",
+    "transformers>=5",
     "accelerate>=0.33",
     "safetensors>=0.4",
 ]
@@ -80,6 +79,11 @@ dev = [
     # so the StarlarkScriptHost tests run in CI/dev (the runtime dep
     # itself is an optional extra for end users).
     "starlark-pyo3>=2026.1",
+]
+
+[tool.uv]
+environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
 [tool.ruff]
