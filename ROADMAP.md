@@ -7,9 +7,10 @@ maps this roadmap onto GitHub issues and dependencies. The older
 historical backlog snapshots, not the current roadmap.
 
 **Last refreshed:** 2026-07-02 — v0.40 is complete as the safe practical
-scripting substrate. The next product milestone is v0.41: user-facing safe
-scripting UX and end-to-end automation workflows. Milestone names carry ordered
-prefixes, open work is milestone-scoped, and v1.0 remains unscheduled.
+scripting substrate. The next product milestone is v0.41: CapDepMac reliability
+and graceful interaction handling first, then user-facing safe scripting UX and
+end-to-end automation workflows. Milestone names carry ordered prefixes, open
+work is milestone-scoped, and v1.0 remains unscheduled.
 
 ## Product Ladder — v0.35 → v0.41
 
@@ -21,7 +22,7 @@ flowchart LR
   v38[v0.38 Memory + compaction + async media]
   v39[v0.39 Background automation + onguard UX]
   v40[v0.40 Safe scripting assistant]
-  v41[v0.41 Safe scripting UX + workflows]
+  v41[v0.41 GUI reliability + scripting UX]
   v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41
 ```
 
@@ -33,7 +34,7 @@ flowchart LR
 | **04 Product — v0.38.0 — Memory, retention, compaction, and async media reliability** | Memory, retention, compaction, and async media reliability | #160–#165, #190–#192, #194–#195 |
 | **05 Product — v0.39.0 — Background automation and onguard UX** | Background automation and onguard UX | #166–#171 |
 | **06 Product — v0.40.0 — Safe practical scripting assistant** | Safe practical scripting substrate for non-programmers | #172–#177 |
-| **11 Product — v0.41.0 — Safe scripting UX and workflows** (next) | User-facing safe scripting flows across daemon and clients | #196–#200 |
+| **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** (next) | Reliable Swift GUI interaction handling plus safe scripting flows | #196–#201 |
 
 ## Planned Work Coverage
 
@@ -41,7 +42,7 @@ This pass audited the live GitHub tracker. Open work is now grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
-| **11 Product — v0.41.0 — Safe scripting UX and workflows** | #196–#200 | Active product-ladder work: expose the v0.40 substrate as usable daemon/client workflows. |
+| **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | #196–#201 | Active product-ladder work: make CapDepMac robust for normal chat use before exposing the v0.40 substrate as usable daemon/client workflows. |
 | **07 Support — Source identity and labeling correctness** | #42, #51, #139 | Complete; see `docs/support-track-closeout-2026-07-01.md`. |
 | **08 Support — Terminal UX and approval polish** | #16, #17, #19, #27, #29 | Complete for the terminal support track; see `docs/support-track-closeout-2026-07-01.md`. |
 | **09 Research — Non-goals and safe alternatives** | #178–#181 | Complete as research decisions; see `docs/support-track-closeout-2026-07-01.md`. |
@@ -65,12 +66,17 @@ Closed GitHub milestones use the same ordered-prefix convention:
 | **00.10 Done — v0.33.0 — Streaming turn lifecycle and liveness** | Closed |
 | **00.11 Done — v0.34.0 — First-run, connectors, and rich chat readiness** | Closed |
 
-## Active Focus — v0.41.0 Safe Scripting UX and Workflows
+## Active Focus — v0.41.0 CapDepMac Reliability and Safe Scripting UX
 
-Goal: turn the v0.40 scripting substrate into a practical, user-facing
-assistant for non-programmers. A user should be able to ask for a concrete
-automation task, review a generated script, run it in isolation, inspect the
-evidence and proposed outputs, and approve an exact export without learning a
+Goal: make CapDepMac robust enough for normal users before adding richer
+scripting workflows, then turn the v0.40 scripting substrate into a practical,
+user-facing assistant for non-programmers. A user should be able to enter
+another prompt while an earlier turn is pending, see queued work clearly,
+receive responses for earlier prompts without losing later input, scroll back
+through prior prompts and responses, and recover gracefully from unexpected
+daemon events. After that baseline is stable, the same interaction model should
+support reviewing a generated script, running it in isolation, inspecting
+evidence and proposed outputs, and approving an exact export without learning a
 developer workflow.
 
 The product boundary stays narrow: CapDep may help create and run small
@@ -87,9 +93,17 @@ advanced/export options, not the core experience.
 | #198 | CLI/TUI/CapDepMac scripting surfaces consume daemon artifacts | Planned |
 | #199 | Practical automation demos for batch files, photos, and document transforms | Planned |
 | #200 | Safety and regression tests for approval, sandbox, labels, and async UI state | Planned |
+| #201 | CapDepMac prompt queueing, response correlation, and conversation history resilience | Planned |
 
 ### v0.41.0 done-when
 
+- CapDepMac exposes explicit queued/running/completed/failed prompt states so a
+  user can enter prompts before earlier results return without losing input or
+  confusing responses.
+- CapDepMac correlates daemon responses and events to the correct prompt/turn,
+  including delayed, duplicate, malformed, or out-of-order events.
+- Conversation history can be scrolled and navigated across prior prompts,
+  assistant responses, pending turns, and recovered sessions.
 - The daemon exposes a safe scripting workflow that prepares scripts, invokes
   sandboxed runs, records evidence, and proposes file exports as typed
   artifacts.
@@ -98,9 +112,10 @@ advanced/export options, not the core experience.
 - At least three practical non-programmer workflows are demoed end-to-end:
   batch file cleanup, batch photo processing, and document or spreadsheet
   transformation.
-- Regression tests cover root escapes, restricted credential labels,
-  unavailable sandbox behavior, exact approval binding, and async client state
-  while a script run is pending.
+- Regression tests cover queued prompts, out-of-order responses, unexpected
+  daemon events, reconnect during pending turns, long conversation scrollback,
+  root escapes, restricted credential labels, unavailable sandbox behavior,
+  exact approval binding, and async client state while a script run is pending.
 
 ## Completed Focus — v0.34.0 First-run, Connectors, and Rich Chat Readiness
 
