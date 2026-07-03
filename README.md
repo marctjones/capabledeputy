@@ -162,6 +162,37 @@ right turn, scrollback stays available across recovered sessions, and generated
 image/session artifacts are persisted so they remain visible to later turns in
 the same session.
 
+### Local image/model operations
+
+The v0.42 image workflow is daemon-owned. Profiles, readiness checks, job
+status, cancellation, and persisted defaults are exposed through daemon RPCs and
+the `capdep image` CLI; CapDepMac renders the same selected profile and
+readiness state in Settings > Assistant.
+
+```bash
+# Inspect benchmark-informed local profiles:
+capdep image profiles
+
+# Select the persisted daemon default:
+capdep image profile balanced
+
+# Check backend/model/account readiness without printing secret values:
+capdep image readiness --profile default
+
+# Start a daemon-owned image job and inspect/cancel it later:
+capdep image generate "a clean product photo of a brass desk lamp"
+capdep image jobs
+capdep image job <job-id>
+capdep image cancel <job-id>
+```
+
+Default, fast, and balanced profiles use the Apple Silicon MFLUX/MLX
+Z-Image-Turbo path. The quality profile uses the slower Flux2 Klein path.
+Diffusers SDXL/Pony profiles remain explicit fallback profiles for local
+checkpoint installs. Readiness checks cover backend imports, output paths,
+LoRA/checkpoint paths, Hugging Face token presence, and selected model metadata;
+they report token source names only, not token values.
+
 ### Safe scripting assistant
 
 The v0.40/v0.41 scripting workflow is daemon-owned. Clients can ask for a plan,

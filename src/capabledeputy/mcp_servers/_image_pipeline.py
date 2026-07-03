@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -83,8 +84,34 @@ _MFLUX_MODEL_ALIASES = {
 }
 
 _PROFILE_PRESETS: dict[str, dict[str, str]] = {
-    "default": {},
-    "fast": {},
+    "default": {
+        "backend": "mflux",
+        "model": "z-image-turbo",
+        "model_path": "filipstrand/Z-Image-Turbo-mflux-4bit",
+        "quantize": "8",
+        "steps": "9",
+    },
+    "fast": {
+        "backend": "mflux",
+        "model": "z-image-turbo",
+        "model_path": "filipstrand/Z-Image-Turbo-mflux-4bit",
+        "quantize": "8",
+        "steps": "9",
+    },
+    "balanced": {
+        "backend": "mflux",
+        "model": "z-image-turbo",
+        "model_path": "filipstrand/Z-Image-Turbo-mflux-4bit",
+        "quantize": "8",
+        "steps": "12",
+    },
+    "quality": {
+        "backend": "mflux",
+        "model": "flux2-klein-4b",
+        "quantize": "8",
+        "guidance": "1.0",
+        "steps": "8",
+    },
     "flux-nsfw": {
         "backend": "mflux",
         "model": "schnell",
@@ -108,6 +135,62 @@ _PROFILE_PRESETS: dict[str, dict[str, str]] = {
         "backend": "diffusers",
         "style": "graphic_novel",
         "steps": "24",
+    },
+}
+
+_PROFILE_METADATA: dict[str, dict[str, Any]] = {
+    "default": {
+        "title": "Default fast local image generation",
+        "tier": "fast",
+        "description": "Apple Silicon MFLUX Z-Image-Turbo default for interactive use.",
+        "benchmark_note": "Fastest usable local default from v0.42 benchmark work.",
+        "recommended": True,
+    },
+    "fast": {
+        "title": "Fast",
+        "tier": "fast",
+        "description": "MFLUX Z-Image-Turbo at low step count for short interactive turns.",
+        "benchmark_note": "Uses the same engine path as default.",
+    },
+    "balanced": {
+        "title": "Balanced",
+        "tier": "balanced",
+        "description": "MFLUX Z-Image-Turbo with a slightly higher step count.",
+        "benchmark_note": "Small quality bump without switching to slower models.",
+    },
+    "quality": {
+        "title": "High quality",
+        "tier": "quality",
+        "description": "MFLUX Flux2 Klein 4B for slower, higher quality generations.",
+        "benchmark_note": "Significantly slower than Z-Image-Turbo; keep explicit.",
+        "slow": True,
+    },
+    "flux-nsfw": {
+        "title": "Flux LoRA",
+        "tier": "adapter-test",
+        "description": "Flux.1 schnell profile intended for local LoRA testing.",
+        "benchmark_note": "Laptop-usable for LoRA probes; quality depends on adapter.",
+    },
+    "flux2-nsfw": {
+        "title": "Flux2 Klein LoRA",
+        "tier": "adapter-test",
+        "description": "Flux2 Klein 9B profile intended for newer Flux2 LoRA testing.",
+        "benchmark_note": "More capable but much slower; keep explicit.",
+        "slow": True,
+    },
+    "sdxl-nsfw": {
+        "title": "SDXL checkpoint fallback",
+        "tier": "fallback",
+        "description": "Diffusers SDXL local checkpoint fallback.",
+        "benchmark_note": "Use when local SDXL checkpoints are installed.",
+        "slow": True,
+    },
+    "pony-nsfw": {
+        "title": "Pony/Illustrious checkpoint fallback",
+        "tier": "fallback",
+        "description": "Diffusers graphic-novel checkpoint fallback.",
+        "benchmark_note": "Use when local Pony/Illustrious checkpoints are installed.",
+        "slow": True,
     },
 }
 
@@ -198,7 +281,11 @@ def _normalize_mflux_model(raw: str | None) -> str:
 
 
 def _profile_value(profile: dict[str, str], key: str, env_key: str) -> str | None:
-    return os.environ.get(env_key) or profile.get(key)
+    env_value = os.environ.get(env_key)
+    if env_value is not None and env_value.strip():
+        return env_value.strip()
+    value = profile.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def _resolve_device(requested: str | None) -> str:
@@ -215,14 +302,56 @@ def _resolve_device(requested: str | None) -> str:
     return "cpu"
 
 
-def load_image_gen_config() -> ImageGenConfig:
-    profile_name = (os.environ.get("CAPDEP_IMAGE_PROFILE") or "default").strip().lower()
+def available_image_profiles() -> list[dict[str, Any]]:
+    """Return daemon/client-safe image profile metadata."""
+    profiles: list[dict[str, Any]] = []
+    for profile_id, preset in _PROFILE_PRESETS.items():
+        metadata = dict(_PROFILE_METADATA.get(profile_id, {}))
+        backend = _normalize_backend(preset.get("backend"))
+        style = _normalize_style(preset.get("style"))
+        model = _normalize_mflux_model(preset.get("model")) if backend == "mflux" else style
+        profiles.append(
+            {
+                "id": profile_id,
+                "title": metadata.get("title") or profile_id,
+                "tier": metadata.get("tier") or "custom",
+                "description": metadata.get("description") or "",
+                "benchmark_note": metadata.get("benchmark_note") or "",
+                "recommended": bool(metadata.get("recommended", False)),
+                "slow": bool(metadata.get("slow", False)),
+                "backend": backend,
+                "model": model,
+                "style": style,
+                "steps": int(preset.get("steps") or 20),
+                "quantize": _optional_int(preset.get("quantize")),
+                "guidance": _optional_float(preset.get("guidance")),
+                "requires": _profile_requirements(preset),
+            },
+        )
+    return profiles
+
+
+def _profile_requirements(preset: dict[str, str]) -> list[str]:
+    backend = _normalize_backend(preset.get("backend"))
+    if backend == "mflux":
+        requirements = ["mflux", "mlx"]
+        if preset.get("model", "").startswith("flux"):
+            requirements.append("huggingface-model-access")
+        return requirements
+    if backend == "diffusers":
+        return ["torch", "diffusers", "local-or-huggingface-checkpoint"]
+    return ["mflux-or-diffusers"]
+
+
+def load_image_gen_config(*, profile_name: str | None = None) -> ImageGenConfig:
+    profile_name = (
+        (profile_name or os.environ.get("CAPDEP_IMAGE_PROFILE") or "default").strip().lower()
+    )
     if profile_name not in _PROFILE_PRESETS:
         raise ValueError(f"unknown image profile {profile_name!r}")
     profile = _PROFILE_PRESETS[profile_name]
     output_dir = Path(
-        os.environ.get("CAPDEP_IMAGE_OUTPUT_DIR")
-        or (Path.home() / ".capdep" / "work" / "images"),
+        os.environ.get("CAPDEP_IMAGE_OUTPUT_DIR") or (Path.home() / ".capdep" / "work" / "images"),
     )
     default_style = _normalize_style(_profile_value(profile, "style", "CAPDEP_IMAGE_STYLE"))
 
@@ -247,7 +376,7 @@ def load_image_gen_config() -> ImageGenConfig:
         backend=_normalize_backend(_profile_value(profile, "backend", "CAPDEP_IMAGE_BACKEND")),
         default_style=default_style,
         model=_normalize_mflux_model(_profile_value(profile, "model", "CAPDEP_IMAGE_MODEL")),
-        model_path=(os.environ.get("CAPDEP_IMAGE_MODEL_PATH") or "").strip() or None,
+        model_path=_profile_value(profile, "model_path", "CAPDEP_IMAGE_MODEL_PATH"),
         quantize=_optional_int(_profile_value(profile, "quantize", "CAPDEP_IMAGE_QUANTIZE")),
         lora_paths=_csv(os.environ.get("CAPDEP_IMAGE_LORAS")),
         lora_scales=_csv_floats(os.environ.get("CAPDEP_IMAGE_LORA_SCALES")),
@@ -260,6 +389,160 @@ def load_image_gen_config() -> ImageGenConfig:
         prompt_filter_enabled=_truthy(os.environ.get("CAPDEP_IMAGE_PROMPT_FILTER"), default=False),
         checkpoints=checkpoints,
     )
+
+
+def image_readiness(*, profile_name: str | None = None) -> dict[str, Any]:
+    """Return local image-generation readiness without reading secret values."""
+    checks: list[dict[str, Any]] = []
+    try:
+        config = load_image_gen_config(profile_name=profile_name)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "profile": profile_name or os.environ.get("CAPDEP_IMAGE_PROFILE") or "default",
+            "checks": [
+                {
+                    "id": "profile",
+                    "status": "error",
+                    "detail": str(exc),
+                    "recovery": "Select one of image.profiles list.",
+                },
+            ],
+        }
+
+    backend = config.backend
+    if backend == "auto":
+        backend = "mflux" if _mflux_available() else "diffusers"
+    checks.append(
+        {
+            "id": "profile",
+            "status": "ok",
+            "detail": f"{profile_name or os.environ.get('CAPDEP_IMAGE_PROFILE') or 'default'}",
+        },
+    )
+    checks.extend(_backend_readiness_checks(backend))
+    checks.extend(_path_readiness_checks(config))
+    checks.extend(_account_readiness_checks(config, backend))
+    ok = not any(check["status"] == "error" for check in checks)
+    return {
+        "ok": ok,
+        "profile": profile_name or os.environ.get("CAPDEP_IMAGE_PROFILE") or "default",
+        "backend": backend,
+        "model": config.model,
+        "model_path": config.model_path or _MFLUX_DEFAULT_MODEL_PATHS.get(config.model),
+        "device": config.device,
+        "checks": checks,
+    }
+
+
+def _backend_readiness_checks(backend: str) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    if backend == "mflux":
+        checks.append(_module_check("mflux", "mflux", "Install image extras in .venv-images."))
+        checks.append(_module_check("mlx", "mlx.core", "Install MLX/MFLUX on Apple Silicon."))
+    elif backend == "diffusers":
+        for module in ("torch", "diffusers", "huggingface_hub"):
+            checks.append(_module_check(module, module, "Install capabledeputy[images]."))
+    else:
+        checks.append(
+            {
+                "id": "backend",
+                "status": "error",
+                "detail": f"unsupported backend {backend}",
+                "recovery": "Use mflux, diffusers, or auto.",
+            },
+        )
+    return checks
+
+
+def _module_check(check_id: str, module_name: str, recovery: str) -> dict[str, Any]:
+    try:
+        import_module(module_name)
+        return {"id": check_id, "status": "ok", "detail": f"{module_name} importable"}
+    except Exception as exc:
+        return {
+            "id": check_id,
+            "status": "error",
+            "detail": f"{module_name} not importable: {exc}",
+            "recovery": recovery,
+        }
+
+
+def _path_readiness_checks(config: ImageGenConfig) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    output_parent = config.output_dir.expanduser().parent
+    checks.append(
+        {
+            "id": "output-dir",
+            "status": "ok" if output_parent.exists() else "warning",
+            "detail": str(config.output_dir.expanduser()),
+            "recovery": "Parent directory will be created on first generation.",
+        },
+    )
+    for path in config.lora_paths:
+        resolved = Path(path).expanduser()
+        checks.append(
+            {
+                "id": "lora-path",
+                "status": "ok" if resolved.is_file() else "error",
+                "detail": str(resolved),
+                "recovery": "Download the LoRA file or remove it from CAPDEP_IMAGE_LORAS.",
+            },
+        )
+    for style, checkpoint in config.checkpoints.items():
+        path = checkpoint.get("path")
+        if not path:
+            continue
+        resolved = Path(path).expanduser()
+        checks.append(
+            {
+                "id": f"{style}-checkpoint-path",
+                "status": "ok" if resolved.is_file() else "error",
+                "detail": str(resolved),
+                "recovery": "Download the checkpoint or clear the local checkpoint override.",
+            },
+        )
+    return checks
+
+
+def _account_readiness_checks(config: ImageGenConfig, backend: str) -> list[dict[str, Any]]:
+    needs_hf = backend == "diffusers" and any(
+        "path" not in cp for cp in config.checkpoints.values()
+    )
+    needs_hf = needs_hf or bool(config.model_path and "/" in config.model_path)
+    if not needs_hf:
+        return []
+    token_sources = _huggingface_token_sources()
+    return [
+        {
+            "id": "huggingface-token",
+            "status": "ok" if token_sources else "warning",
+            "detail": ", ".join(token_sources)
+            if token_sources
+            else "no local token file/env detected",
+            "recovery": "Run `hf auth login` or set HF_TOKEN if the selected model is gated.",
+        },
+    ]
+
+
+def _huggingface_token_sources() -> list[str]:
+    sources: list[str] = []
+    if os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN"):
+        sources.append("env")
+    home = Path.home()
+    for path in (
+        home / ".cache" / "huggingface" / "token",
+        home / ".huggingface" / "token",
+        home / ".config" / "huggingface" / "token",
+    ):
+        try:
+            if path.is_file():
+                sources.append(str(path))
+        except OSError:
+            pass
+    if shutil.which("hf"):
+        sources.append("hf-cli")
+    return sources
 
 
 def validate_prompt(prompt: str, *, enabled: bool = False) -> str | None:
@@ -329,9 +612,7 @@ def _load_mflux_model(config: ImageGenConfig) -> Any:
         from mflux.models.z_image import ZImage
 
         model_config = (
-            ModelConfig.z_image_turbo()
-            if model_name == "z-image-turbo"
-            else ModelConfig.z_image()
+            ModelConfig.z_image_turbo() if model_name == "z-image-turbo" else ModelConfig.z_image()
         )
         model = ZImage(
             model_config=model_config,

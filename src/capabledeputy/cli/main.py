@@ -13,6 +13,7 @@ from capabledeputy.cli.approval import approval_app
 from capabledeputy.cli.audit import audit_app, watch_command
 from capabledeputy.cli.audit_cmd import storage_shape_command
 from capabledeputy.cli.chat import chat_command, demo_app
+from capabledeputy.cli.image import image_app
 from capabledeputy.cli.init_cmd import init_command
 from capabledeputy.cli.maintenance import maintenance_app
 from capabledeputy.cli.override_cmd import override_app
@@ -55,6 +56,7 @@ oauth_app = typer.Typer(
 )
 app.add_typer(oauth_app, name="oauth")
 app.add_typer(workflow_app, name="workflow")
+app.add_typer(image_app, name="image")
 google_oauth_app = typer.Typer(
     help="Configure daemon-owned Google Workspace MCP OAuth.",
     no_args_is_help=True,
@@ -1410,8 +1412,7 @@ def memory_command(
         mode = "deleted" if apply else "would delete"
         count_key = "deleted_count" if apply else "candidate_count"
         console.print(
-            f"[bold]memory prune[/bold] {mode} "
-            f"{result.get(count_key, 0)} entrie(s)",
+            f"[bold]memory prune[/bold] {mode} {result.get(count_key, 0)} entrie(s)",
         )
         for entry in result.get("candidates", []):
             console.print(f"  - {entry.get('key')} [{entry.get('trust_class')}]")
@@ -2053,9 +2054,7 @@ def imap_setup(
         if not username:
             username = typer.prompt("Email address")
         password = (
-            _os.environ.get("CAPDEP_IMAP_PASSWORD")
-            or _os.environ.get("IMAP_APP_PASSWORD")
-            or ""
+            _os.environ.get("CAPDEP_IMAP_PASSWORD") or _os.environ.get("IMAP_APP_PASSWORD") or ""
         ).strip()
         if not password:
             password = typer.prompt(

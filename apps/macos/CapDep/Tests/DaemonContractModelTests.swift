@@ -182,6 +182,53 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(health.phase.systemImage, "exclamationmark.shield.fill")
     }
 
+    func testDaemonSettingsPreserveImageProfile() {
+        var settings = DaemonSettings(dictionary: [
+            "default_purpose": "research",
+            "image_profile": "balanced",
+            "prefer_local_mlx": false,
+        ])
+
+        XCTAssertEqual(settings.imageProfile, "balanced")
+        XCTAssertEqual(settings.rpcDictionary["image_profile"] as? String, "balanced")
+
+        settings.imageProfile = "quality"
+        XCTAssertEqual(settings.rpcDictionary["image_profile"] as? String, "quality")
+    }
+
+    func testImageProfileAndReadinessParseDaemonPayloads() {
+        let profile = ImageProfile(dictionary: [
+            "id": "default",
+            "title": "Default",
+            "tier": "fast",
+            "description": "Interactive default",
+            "backend": "mflux",
+            "model": "z-image-turbo",
+            "steps": 9,
+            "recommended": true,
+        ])
+        let readiness = ImageReadiness(dictionary: [
+            "ok": false,
+            "profile": "default",
+            "backend": "mflux",
+            "model": "z-image-turbo",
+            "model_path": "filipstrand/Z-Image-Turbo-mflux-4bit",
+            "device": "mps",
+            "checks": [[
+                "id": "mflux",
+                "status": "error",
+                "detail": "mflux not importable",
+                "recovery": "Install image extras.",
+            ]],
+        ])
+
+        XCTAssertEqual(profile.displayTitle, "Default (recommended)")
+        XCTAssertEqual(profile.backend, "mflux")
+        XCTAssertEqual(readiness.profile, "default")
+        XCTAssertEqual(readiness.checks.first?.id, "mflux")
+        XCTAssertEqual(readiness.checks.first?.recovery, "Install image extras.")
+    }
+
     func testChatPromptRunCodablePreservesRecoveryFields() throws {
         let run = ChatPromptRun(
             id: "prompt-1",

@@ -22,13 +22,15 @@ def test_settings_store_defaults_and_updates(tmp_path: Path) -> None:
         {
             "show_thinking_output": True,
             "enable_screen_control": True,
+            "image_profile": "BALANCED",
         },
         path=path,
     )
 
     assert settings.show_thinking_output is True
     assert settings.enable_screen_control is True
-    assert set(changed) == {"show_thinking_output", "enable_screen_control"}
+    assert settings.image_profile == "balanced"
+    assert set(changed) == {"show_thinking_output", "enable_screen_control", "image_profile"}
     assert load_settings(path).show_thinking_output is True
     assert path.stat().st_mode & 0o777 == 0o600
 
@@ -39,6 +41,9 @@ def test_settings_store_rejects_unknown_and_wrong_type(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="must be boolean"):
         update_settings({"notifications_enabled": "yes"}, path=tmp_path / "settings.json")
+
+    with pytest.raises(ValueError, match="image_profile must be non-empty"):
+        update_settings({"image_profile": "  "}, path=tmp_path / "settings.json")
 
 
 async def test_settings_handlers_update_and_audit(

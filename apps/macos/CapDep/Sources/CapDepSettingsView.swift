@@ -122,6 +122,30 @@ private struct AssistantSettingsView: View {
                 "Show thinking output when model supports it",
                 isOn: settingBinding(\.showThinkingOutput),
             )
+            Section("Local image generation") {
+                Picker("Image profile", selection: imageProfileBinding()) {
+                    if model.imageProfiles.isEmpty {
+                        Text(model.daemonSettings.imageProfile).tag(model.daemonSettings.imageProfile)
+                    }
+                    ForEach(model.imageProfiles) { profile in
+                        Text(profile.displayTitle).tag(profile.id)
+                    }
+                }
+                LabeledContent("Backend", value: model.imageReadiness.backend)
+                LabeledContent("Model", value: model.imageReadiness.model)
+                LabeledContent("Status", value: model.imageReadiness.ok ? "Ready" : "Needs attention")
+                ForEach(model.imageReadiness.checks.filter { $0.status != "ok" }) { check in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(check.id): \(check.detail)")
+                            .font(.caption)
+                        if !check.recovery.isEmpty {
+                            Text(check.recovery)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
     }
@@ -134,6 +158,16 @@ private struct AssistantSettingsView: View {
             updated[keyPath: keyPath] = value
             Task {
                 await model.updateSettings(updated)
+            }
+        }
+    }
+
+    private func imageProfileBinding() -> Binding<String> {
+        Binding {
+            model.daemonSettings.imageProfile
+        } set: { value in
+            Task {
+                await model.selectImageProfile(value)
             }
         }
     }

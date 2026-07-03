@@ -46,6 +46,90 @@ def test_onguard_builtins_lists_packaged_clients() -> None:
     assert "onguard.finance.guard" in result.stdout
 
 
+def test_image_profiles_cli_dispatches_to_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, dict, str | None]] = []
+
+    async def fake_call(rpc: str, params: dict, *, socket_path: str | None) -> dict:
+        calls.append((rpc, params, socket_path))
+        return {
+            "selected": "default",
+            "profiles": [
+                {
+                    "id": "default",
+                    "backend": "mflux",
+                    "model": "z-image-turbo",
+                    "steps": 9,
+                    "tier": "fast",
+                    "recommended": True,
+                    "benchmark_note": "fast default",
+                },
+            ],
+        }
+
+    monkeypatch.setattr("capabledeputy.cli.image._call", fake_call)
+
+    result = runner.invoke(app, ["image", "profiles", "--socket", "/tmp/capdep.sock"])
+
+    assert result.exit_code == 0
+    assert calls == [("image.profiles", {}, "/tmp/capdep.sock")]
+    assert "z-image-turbo" in result.stdout
+
+
+def test_image_profile_cli_sets_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, dict, str | None]] = []
+
+    async def fake_call(rpc: str, params: dict, *, socket_path: str | None) -> dict:
+        calls.append((rpc, params, socket_path))
+        return {
+            "selected": "balanced",
+            "changed": ["image_profile"],
+            "readiness": {
+                "ok": True,
+                "profile": "balanced",
+                "backend": "mflux",
+                "model": "z-image-turbo",
+                "checks": [],
+            },
+        }
+
+    monkeypatch.setattr("capabledeputy.cli.image._call", fake_call)
+
+    result = runner.invoke(app, ["image", "profile", "balanced"])
+
+    assert result.exit_code == 0
+    assert calls == [("image.profile.set", {"profile": "balanced"}, None)]
+    assert "selected image profile" in result.stdout
+
+
+def test_image_readiness_cli_dispatches_to_daemon(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, dict, str | None]] = []
+
+    async def fake_call(rpc: str, params: dict, *, socket_path: str | None) -> dict:
+        calls.append((rpc, params, socket_path))
+        return {
+            "ok": False,
+            "profile": "quality",
+            "backend": "mflux",
+            "model": "flux2-klein-4b",
+            "checks": [
+                {
+                    "id": "mflux",
+                    "status": "error",
+                    "detail": "mflux not importable",
+                    "recovery": "Install image extras.",
+                },
+            ],
+        }
+
+    monkeypatch.setattr("capabledeputy.cli.image._call", fake_call)
+
+    result = runner.invoke(app, ["image", "readiness", "--profile", "quality"])
+
+    assert result.exit_code == 0
+    assert calls == [("image.readiness", {"profile": "quality"}, None)]
+    assert "not ready" in result.stdout
+
+
 def test_daemon_help_runs() -> None:
     result = runner.invoke(app, ["daemon", "--help"])
     assert result.exit_code == 0

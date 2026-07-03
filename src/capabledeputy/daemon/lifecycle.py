@@ -21,6 +21,7 @@ from capabledeputy.daemon.devbox_handlers import make_devbox_handlers
 from capabledeputy.daemon.extract_handlers import make_extract_handlers
 from capabledeputy.daemon.gui_handlers import make_gui_handlers
 from capabledeputy.daemon.handlers import default_handlers
+from capabledeputy.daemon.image_ops_handlers import make_image_ops_handlers
 from capabledeputy.daemon.mcp_admission_handlers import make_mcp_admission_handlers
 from capabledeputy.daemon.memory_handlers import make_memory_handlers
 from capabledeputy.daemon.onguard_handlers import make_onguard_handlers
@@ -598,6 +599,7 @@ async def run_daemon(
     handlers.update(make_source_context_handlers())
     handlers.update(make_artifact_handlers())
     handlers.update(make_scripting_handlers())
+    handlers.update(make_image_ops_handlers(app))
     handlers.update(make_mcp_admission_handlers(app))
     handlers.update(make_gui_handlers(app))
     handlers.update(make_onguard_handlers(app))

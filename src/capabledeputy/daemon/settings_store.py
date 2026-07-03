@@ -18,6 +18,7 @@ from capabledeputy.cli._managed_config import user_config_dir
 class DaemonSettings:
     default_purpose: str = "general"
     global_shortcut: str = "Option-Space"
+    image_profile: str = "default"
     launch_at_login: bool = False
     notifications_enabled: bool = True
     prefer_local_mlx: bool = True
@@ -31,7 +32,8 @@ class DaemonSettings:
 
 
 _FIELDS = set(DaemonSettings.__dataclass_fields__)
-_BOOL_FIELDS = _FIELDS - {"default_purpose", "global_shortcut"}
+_STRING_FIELDS = {"default_purpose", "global_shortcut", "image_profile"}
+_BOOL_FIELDS = _FIELDS - _STRING_FIELDS
 
 
 def default_settings_path() -> Path:
@@ -94,6 +96,11 @@ def _coerce_value(key: str, value: Any) -> Any:
         if not shortcut:
             raise ValueError("global_shortcut must be non-empty")
         return shortcut
+    if key == "image_profile":
+        profile = str(value).strip().lower()
+        if not profile:
+            raise ValueError("image_profile must be non-empty")
+        return profile
     if key in _BOOL_FIELDS:
         if not isinstance(value, bool):
             raise ValueError(f"{key} must be boolean")

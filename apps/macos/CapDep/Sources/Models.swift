@@ -755,6 +755,7 @@ typealias GoogleOAuthStatus = GmailOAuthStatus
 struct DaemonSettings: Hashable {
     var defaultPurpose: String
     var globalShortcut: String
+    var imageProfile: String
     var launchAtLogin: Bool
     var notificationsEnabled: Bool
     var preferLocalMLX: Bool
@@ -766,6 +767,7 @@ struct DaemonSettings: Hashable {
     init(dictionary: [String: Any]) {
         self.defaultPurpose = dictionary["default_purpose"] as? String ?? "general"
         self.globalShortcut = dictionary["global_shortcut"] as? String ?? "Option-Space"
+        self.imageProfile = dictionary["image_profile"] as? String ?? "default"
         self.launchAtLogin = dictionary["launch_at_login"] as? Bool ?? false
         self.notificationsEnabled = dictionary["notifications_enabled"] as? Bool ?? true
         self.preferLocalMLX = dictionary["prefer_local_mlx"] as? Bool ?? true
@@ -779,6 +781,7 @@ struct DaemonSettings: Hashable {
         [
             "default_purpose": defaultPurpose,
             "global_shortcut": globalShortcut,
+            "image_profile": imageProfile,
             "launch_at_login": launchAtLogin,
             "notifications_enabled": notificationsEnabled,
             "prefer_local_mlx": preferLocalMLX,
@@ -790,6 +793,77 @@ struct DaemonSettings: Hashable {
     }
 
     static let empty = DaemonSettings(dictionary: [:])
+}
+
+struct ImageProfile: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let tier: String
+    let detail: String
+    let backend: String
+    let model: String
+    let steps: Int
+    let recommended: Bool
+    let slow: Bool
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["id"] as? String ?? ""
+        self.title = dictionary["title"] as? String ?? id
+        self.tier = dictionary["tier"] as? String ?? ""
+        self.detail = dictionary["description"] as? String ?? ""
+        self.backend = dictionary["backend"] as? String ?? ""
+        self.model = dictionary["model"] as? String ?? ""
+        self.steps = dictionary["steps"] as? Int ?? 0
+        self.recommended = dictionary["recommended"] as? Bool ?? false
+        self.slow = dictionary["slow"] as? Bool ?? false
+    }
+
+    var displayTitle: String {
+        if recommended {
+            return "\(title) (recommended)"
+        }
+        if slow {
+            return "\(title) (slow)"
+        }
+        return title
+    }
+}
+
+struct ImageReadinessCheck: Identifiable, Hashable {
+    let id: String
+    let status: String
+    let detail: String
+    let recovery: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["id"] as? String ?? UUID().uuidString
+        self.status = dictionary["status"] as? String ?? "unknown"
+        self.detail = dictionary["detail"] as? String ?? ""
+        self.recovery = dictionary["recovery"] as? String ?? ""
+    }
+}
+
+struct ImageReadiness: Hashable {
+    let ok: Bool
+    let profile: String
+    let backend: String
+    let model: String
+    let modelPath: String
+    let device: String
+    let checks: [ImageReadinessCheck]
+
+    init(dictionary: [String: Any]) {
+        self.ok = dictionary["ok"] as? Bool ?? false
+        self.profile = dictionary["profile"] as? String ?? ""
+        self.backend = dictionary["backend"] as? String ?? ""
+        self.model = dictionary["model"] as? String ?? ""
+        self.modelPath = dictionary["model_path"] as? String ?? ""
+        self.device = dictionary["device"] as? String ?? ""
+        self.checks = (dictionary["checks"] as? [[String: Any]] ?? [])
+            .map(ImageReadinessCheck.init(dictionary:))
+    }
+
+    static let empty = ImageReadiness(dictionary: [:])
 }
 
 struct ConfigValidation: Hashable {

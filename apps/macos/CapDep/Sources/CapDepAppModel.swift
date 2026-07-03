@@ -19,6 +19,8 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var gmailOAuthStatus = GmailOAuthStatus.empty
     @Published private(set) var googleOAuthStatuses: [String: GoogleOAuthStatus] = [:]
     @Published private(set) var daemonSettings = DaemonSettings.empty
+    @Published private(set) var imageProfiles: [ImageProfile] = []
+    @Published private(set) var imageReadiness = ImageReadiness.empty
     @Published private(set) var configValidation = ConfigValidation.empty
     @Published private(set) var logLocations: [LogLocation] = []
     @Published private(set) var connectorStatuses: [ConnectorStatus] = []
@@ -88,6 +90,10 @@ final class CapDepAppModel: ObservableObject {
         "approval.list",
         "audit.tail",
         "daemon.methods",
+        "image.profile.get",
+        "image.profile.set",
+        "image.profiles",
+        "image.readiness",
         "ping",
         "session.get",
         "session.list",
@@ -282,6 +288,8 @@ final class CapDepAppModel: ObservableObject {
             async let workflowsResult = client.call(method: "workflow.templates")
             async let googleOAuthResult = client.call(method: "setup.google.oauth_status")
             async let settingsResult = client.call(method: "settings.get")
+            async let imageProfilesResult = client.call(method: "image.profiles")
+            async let imageReadinessResult = client.call(method: "image.readiness")
             async let validationResult = client.call(method: "config.validate")
             async let logLocationsResult = client.call(method: "config.log_locations")
             async let connectorsResult = client.call(method: "connector.status")
@@ -318,6 +326,8 @@ final class CapDepAppModel: ObservableObject {
             let workflowsObject = try await workflowsResult as? [String: Any]
             let googleOAuthObject = try await googleOAuthResult as? [String: Any]
             let settingsObject = try await settingsResult as? [String: Any]
+            let imageProfilesObject = try await imageProfilesResult as? [String: Any]
+            let imageReadinessObject = try await imageReadinessResult as? [String: Any]
             let validationObject = try await validationResult as? [String: Any]
             let logLocationsObject = try await logLocationsResult as? [String: Any]
             let connectorsObject = try await connectorsResult as? [String: Any]
@@ -363,6 +373,9 @@ final class CapDepAppModel: ObservableObject {
             daemonSettings = DaemonSettings(
                 dictionary: settingsObject?["settings"] as? [String: Any] ?? [:],
             )
+            imageProfiles = (imageProfilesObject?["profiles"] as? [[String: Any]] ?? [])
+                .map(ImageProfile.init(dictionary:))
+            imageReadiness = ImageReadiness(dictionary: imageReadinessObject ?? [:])
             configValidation = ConfigValidation(dictionary: validationObject ?? [:])
             logLocations = (
                 (logLocationsObject?["logs"] as? [[String: Any]] ?? [])
@@ -1535,6 +1548,24 @@ final class CapDepAppModel: ObservableObject {
             daemonSettings = DaemonSettings(
                 dictionary: result?["settings"] as? [String: Any] ?? [:],
             )
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func selectImageProfile(_ profileID: String) async {
+        do {
+            let result = try await client.call(
+                method: "image.profile.set",
+                params: ["profile": profileID],
+            ) as? [String: Any]
+            imageReadiness = ImageReadiness(
+                dictionary: result?["readiness"] as? [String: Any] ?? [:],
+            )
+            var updated = daemonSettings
+            updated.imageProfile = result?["selected"] as? String ?? profileID
+            daemonSettings = updated
             await refresh()
         } catch {
             lastError = error.localizedDescription

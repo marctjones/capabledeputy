@@ -35,8 +35,10 @@ from capabledeputy.mcp_servers import images as images_server
 from capabledeputy.mcp_servers._image_fetch import extract_og_image_url
 from capabledeputy.mcp_servers._image_pipeline import (
     ImageGenConfig,
+    available_image_profiles,
     clear_pipeline_cache,
     generate_image,
+    image_readiness,
     load_image_gen_config,
     validate_prompt,
     wrap_prompt_for_style,
@@ -257,6 +259,38 @@ def test_validate_prompt_filter_is_operator_controlled() -> None:
     assert validate_prompt("a child in a park") is None
     assert validate_prompt("a child in a park", enabled=True) is not None
     assert validate_prompt("consenting adult woman portrait") is None
+
+
+def test_available_image_profiles_describe_benchmark_defaults() -> None:
+    profiles = {profile["id"]: profile for profile in available_image_profiles()}
+
+    assert profiles["default"]["recommended"] is True
+    assert profiles["default"]["backend"] == "mflux"
+    assert profiles["default"]["model"] == "z-image-turbo"
+    assert profiles["balanced"]["steps"] > profiles["fast"]["steps"]
+    assert profiles["quality"]["slow"] is True
+    assert profiles["sdxl-nsfw"]["backend"] == "diffusers"
+    assert profiles["sdxl-nsfw"]["model"] == "photoreal"
+
+
+def test_load_image_gen_config_uses_profile_and_ignores_empty_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CAPDEP_IMAGE_MODEL_PATH", "")
+
+    config = load_image_gen_config(profile_name="balanced")
+
+    assert config.backend == "mflux"
+    assert config.model == "z-image-turbo"
+    assert config.model_path == "filipstrand/Z-Image-Turbo-mflux-4bit"
+    assert config.default_steps == 12
+
+
+def test_image_readiness_reports_profile_errors() -> None:
+    readiness = image_readiness(profile_name="not-real")
+
+    assert readiness["ok"] is False
+    assert readiness["checks"][0]["id"] == "profile"
 
 
 def test_wrap_prompt_for_graphic_novel_adds_pony_tags() -> None:

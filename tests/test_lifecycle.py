@@ -20,6 +20,7 @@ from capabledeputy.daemon.lifecycle import (
     run_daemon,
     stop_daemon,
 )
+from capabledeputy.ipc.client import DaemonClient
 from capabledeputy.policy.capabilities import DEFAULT_MAX_DELEGATION_DEPTH
 from tests._socket_helpers import short_socket_path
 
@@ -198,5 +199,8 @@ async def test_run_status_stop_lifecycle(tmp_path: Path) -> None:
         status = await daemon_status(socket_path)
         assert status["running"] is True
         assert status["ping"] == {"ok": True}
+        methods = await DaemonClient(socket_path).call("daemon.methods", {})
+        assert "image.profiles" in methods["methods"]
+        assert "image.jobs.start" in methods["methods"]
 
         assert await stop_daemon(socket_path) is True

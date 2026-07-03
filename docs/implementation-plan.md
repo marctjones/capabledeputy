@@ -115,13 +115,13 @@ especially image generation on Apple Silicon.
 
 | Issue | Work | Status |
 |---|---|---|
-| #202 | EPIC: local media and model operations reliability | Open |
-| #206 | Daemon image profile selection and persisted defaults | Open |
-| #207 | Model and account readiness checks for local media backends | Open |
-| #203 | Benchmark-informed image generation defaults | Open |
-| #204 | Live progress and status for long-running local model work | Open |
-| #205 | Cancellation, queue recovery, and failure handling for image jobs | Open |
-| #208 | Local media/model setup documentation and release tests | Open |
+| #202 | EPIC: local media and model operations reliability | Done locally |
+| #206 | Daemon image profile selection and persisted defaults | Done locally |
+| #207 | Model and account readiness checks for local media backends | Done locally |
+| #203 | Benchmark-informed image generation defaults | Done locally |
+| #204 | Live progress and status for long-running local model work | Done locally |
+| #205 | Cancellation, queue recovery, and failure handling for image jobs | Done locally |
+| #208 | Local media/model setup documentation and release tests | Done locally |
 
 ### Sequencing
 
@@ -137,6 +137,12 @@ especially image generation on Apple Silicon.
    retry-safe failure paths (#205).
 6. Close with setup docs and a release gate that includes uv lock/sync, daemon
    readiness checks, focused Python tests, and CapDepMac Swift tests (#208).
+
+Local closeout evidence: daemon image RPCs are registered in lifecycle,
+profile/readiness/job handlers are test-covered without real model loads,
+`capdep image` exposes profile/readiness/job operations, CapDepMac Settings >
+Assistant reads the same daemon profile/readiness state, and README documents
+the supported MFLUX/MLX plus fallback profile paths.
 
 ### Done-when
 

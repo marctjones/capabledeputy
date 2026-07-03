@@ -86,13 +86,20 @@ through daemon RPCs.
 
 | Issue | Work | Local status |
 |---|---|---|
-| #202 | EPIC: Local media and model operations reliability | Open |
-| #206 | Daemon image profile selection and persisted defaults | Open |
-| #207 | Model and account readiness checks for local media backends | Open |
-| #203 | Benchmark-informed image generation defaults | Open |
-| #204 | Live progress and status for long-running local model work | Open |
-| #205 | Cancellation, queue recovery, and failure handling for image jobs | Open |
-| #208 | Local media/model setup documentation and release tests | Open |
+| #202 | EPIC: Local media and model operations reliability | Done locally |
+| #206 | Daemon image profile selection and persisted defaults | Done locally |
+| #207 | Model and account readiness checks for local media backends | Done locally |
+| #203 | Benchmark-informed image generation defaults | Done locally |
+| #204 | Live progress and status for long-running local model work | Done locally |
+| #205 | Cancellation, queue recovery, and failure handling for image jobs | Done locally |
+| #208 | Local media/model setup documentation and release tests | Done locally |
+
+Local implementation adds daemon RPCs for image profiles, profile selection,
+readiness, job start/get/list/cancel/events, CLI commands under `capdep image`,
+and CapDepMac Settings > Assistant image profile/readiness rendering. Focused
+Python tests cover daemon handlers, profile config/readiness, CLI dispatch,
+settings persistence, and daemon lifecycle registration; Swift tests cover the
+CapDepMac profile/readiness wire models and settings integration.
 
 ### v0.42.0 done-when
 
