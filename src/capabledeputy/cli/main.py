@@ -17,6 +17,7 @@ from capabledeputy.cli.init_cmd import init_command
 from capabledeputy.cli.maintenance import maintenance_app
 from capabledeputy.cli.override_cmd import override_app
 from capabledeputy.cli.policy import policy_app
+from capabledeputy.cli.scripting import scripting_app
 from capabledeputy.cli.session import session_app
 from capabledeputy.cli.tool import tool_app
 from capabledeputy.cli.workflow import workflow_app
@@ -38,6 +39,7 @@ onguard_app = typer.Typer(help="Run headless onguard clients.", no_args_is_help=
 app.add_typer(daemon_app, name="daemon")
 app.add_typer(onguard_app, name="onguard")
 app.add_typer(session_app, name="session")
+app.add_typer(scripting_app, name="scripting")
 app.add_typer(audit_app, name="audit")
 app.add_typer(policy_app, name="policy")
 app.add_typer(tool_app, name="tool")

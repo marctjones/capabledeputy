@@ -30,12 +30,25 @@ async def app(tmp_path: Path) -> App:
 
 
 def test_every_scenario_has_one_line_intro_and_intent() -> None:
-    assert len(SCENARIOS) >= 3
+    assert len(SCENARIOS) >= 6
     for s in SCENARIOS.values():
         assert s.one_line, f"{s.name} missing one_line"
         assert s.intro, f"{s.name} missing intro"
         assert s.intent, f"{s.name} missing intent"
         assert s.capabilities, f"{s.name} has no capabilities"
+
+
+def test_safe_scripting_demo_scenarios_cover_practical_workflows() -> None:
+    expected = {
+        "script-batch-files": "batch file cleanup",
+        "script-batch-photos": "batch photo processing",
+        "script-document-transform": "document transformation",
+    }
+    for name, phrase in expected.items():
+        scenario = get_scenario(name)
+        assert phrase in scenario.intent
+        assert "script" in " ".join(scenario.suggested_prompts).lower()
+        assert "artifact" in scenario.security_note.lower()
 
 
 def test_get_scenario_unknown_raises() -> None:

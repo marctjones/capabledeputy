@@ -28,6 +28,7 @@ from capabledeputy.daemon.pattern_handlers import make_pattern_handlers
 from capabledeputy.daemon.policy_handlers import make_policy_handlers
 from capabledeputy.daemon.programmatic_handlers import make_programmatic_handlers
 from capabledeputy.daemon.relationship_handlers import make_relationship_handlers
+from capabledeputy.daemon.scripting_handlers import make_scripting_handlers
 from capabledeputy.daemon.security_context_handlers import make_security_context_handlers
 from capabledeputy.daemon.server import Daemon
 from capabledeputy.daemon.session_handlers import make_session_handlers
@@ -89,6 +90,7 @@ def build_test_handlers(app: App, paths: DaemonTestPaths) -> dict[str, Any]:
 
     handlers.update(make_source_context_handlers())
     handlers.update(make_artifact_handlers())
+    handlers.update(make_scripting_handlers())
     handlers.update(make_mcp_admission_handlers(app))
     handlers.update(make_gui_handlers(app))
     handlers.update(make_onguard_handlers(app))

@@ -88,12 +88,12 @@ advanced/export options, not the core experience.
 
 | Issue | Work | Local status |
 |---|---|---|
-| #196 | EPIC: Safe scripting UX and end-to-end workflows | Planned |
-| #197 | Daemon scripting workflow RPCs for plan, run, evidence, and export | Planned |
-| #198 | CLI/TUI/CapDepMac scripting surfaces consume daemon artifacts | Planned |
-| #199 | Practical automation demos for batch files, photos, and document transforms | Planned |
-| #200 | Safety and regression tests for approval, sandbox, labels, and async UI state | Planned |
-| #201 | CapDepMac prompt queueing, response correlation, and conversation history resilience | Planned |
+| #196 | EPIC: CapDepMac reliability and safe scripting UX workflows | Implemented |
+| #197 | Daemon scripting workflow RPCs for plan, run, evidence, and export | Implemented |
+| #198 | CLI/TUI/CapDepMac scripting surfaces consume daemon artifacts | Implemented via CLI artifact commands, generic TUI/CapDepMac RPC workbenches, and shared artifact rendering |
+| #199 | Practical automation demos for batch files, photos, and document transforms | Implemented |
+| #200 | Safety and regression tests for approval, sandbox, labels, and async UI state | Implemented |
+| #201 | CapDepMac prompt queueing, response correlation, and conversation history resilience | Implemented |
 
 ### v0.41.0 done-when
 

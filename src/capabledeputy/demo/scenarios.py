@@ -254,12 +254,117 @@ _ACCOUNTANT = Scenario(
 )
 
 
+_SCRIPT_BATCH_FILES = Scenario(
+    name="script-batch-files",
+    one_line="Create a small script to clean up a folder of downloaded files.",
+    intro=(
+        "You have a messy downloads folder and want CapDep to propose a "
+        "small Python script that groups files by extension. The safe "
+        "scripting workflow should review the exact script, run it in an "
+        "isolated sandbox, then ask before exporting any file changes."
+    ),
+    intent="safe scripting — batch file cleanup",
+    capabilities=(
+        ScenarioCapability(kind=CapabilityKind.READ_FS, pattern="workspace/downloads/*"),
+        ScenarioCapability(kind=CapabilityKind.CREATE_FS, pattern="workspace/organized/*"),
+        ScenarioCapability(kind=CapabilityKind.EXECUTE_SANDBOX, pattern="safe-scripting/*"),
+    ),
+    memory=(
+        MemorySeed(
+            key="workspace.downloads.manifest",
+            value=(
+                "Downloads contains invoice-may.pdf, headshot.png, notes.txt, "
+                "invoice-june.pdf, and archive.zip."
+            ),
+        ),
+    ),
+    suggested_prompts=(
+        "Plan a safe script that organizes my downloads by file extension.",
+        "Show me the exact script before it runs.",
+        "Review the sandbox output and propose the export.",
+    ),
+    security_note=(
+        "The workflow should bind the reviewed script and proposed output to "
+        "typed artifacts before any file export is approved."
+    ),
+)
+
+
+_SCRIPT_BATCH_PHOTOS = Scenario(
+    name="script-batch-photos",
+    one_line="Prepare a photo batch script with reviewed outputs.",
+    intro=(
+        "You have a folder of photos and want a simple automation that "
+        "renames them consistently and prepares resized copies. CapDep "
+        "should keep the script/run/export sequence daemon-owned so normal "
+        "users can inspect the result without learning a developer workflow."
+    ),
+    intent="safe scripting — batch photo processing",
+    capabilities=(
+        ScenarioCapability(kind=CapabilityKind.READ_FS, pattern="photos/input/*"),
+        ScenarioCapability(kind=CapabilityKind.CREATE_FS, pattern="photos/output/*"),
+        ScenarioCapability(kind=CapabilityKind.EXECUTE_SANDBOX, pattern="safe-scripting/*"),
+    ),
+    memory=(
+        MemorySeed(
+            key="photos.input.manifest",
+            value="IMG_1040.JPG, IMG_1041.JPG, IMG_1042.JPG need event-based names.",
+        ),
+    ),
+    suggested_prompts=(
+        "Make a safe plan to rename these photos and create smaller copies.",
+        "Prepare the script artifact for review.",
+        "Summarize the run evidence before asking me to export anything.",
+    ),
+    security_note=(
+        "Photo writes stay as proposed file-export artifacts until the user "
+        "approves the exact destination and content hash."
+    ),
+)
+
+
+_SCRIPT_DOCUMENT_TRANSFORM = Scenario(
+    name="script-document-transform",
+    one_line="Transform a document or spreadsheet into a reviewed report.",
+    intro=(
+        "You have a small CSV-style project tracker and want a script to "
+        "produce a clean status report. The workflow should review generated "
+        "code, run it in isolation, capture evidence, and propose the report "
+        "as an exact file export."
+    ),
+    intent="safe scripting — document transformation",
+    capabilities=(
+        ScenarioCapability(kind=CapabilityKind.READ_FS, pattern="documents/source/*"),
+        ScenarioCapability(kind=CapabilityKind.CREATE_FS, pattern="documents/reports/*"),
+        ScenarioCapability(kind=CapabilityKind.EXECUTE_SANDBOX, pattern="safe-scripting/*"),
+    ),
+    memory=(
+        MemorySeed(
+            key="documents.project_tracker",
+            value="task,status\nIntake,done\nDraft,in progress\nReview,blocked\n",
+        ),
+    ),
+    suggested_prompts=(
+        "Plan a safe script that turns this tracker into a markdown status report.",
+        "Prepare the reviewed script artifact.",
+        "Prepare the reviewed report export after the sandbox run.",
+    ),
+    security_note=(
+        "The report export should be reviewable as a typed artifact with an "
+        "exact destination, content type, and digest."
+    ),
+)
+
+
 SCENARIOS: dict[str, Scenario] = {
     s.name: s
     for s in (
         _DAILY_BRIEFING,
         _UNTRUSTED_RESEARCH,
         _ACCOUNTANT,
+        _SCRIPT_BATCH_FILES,
+        _SCRIPT_BATCH_PHOTOS,
+        _SCRIPT_DOCUMENT_TRANSFORM,
     )
 }
 
