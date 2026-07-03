@@ -72,3 +72,23 @@ bundled MCP servers, and tools. The near-term target is 85% per group and the
 stretch target is 90%, but the enforced rule is non-regression from the
 checked-in baseline. New feature work should add tests in the narrowest group
 that owns the behavior.
+
+Use the ratchet after a full deterministic test run:
+
+```bash
+uv run pytest
+uv run python scripts/coverage_ratchet.py
+```
+
+Use the coverage matrix when deciding where to add tests next. It reports every
+Python package or module from `coverage.json`, so broad areas such as CLI, TUI,
+MCP, daemon, policy, and upstream code are not hidden by a repo-wide average:
+
+```bash
+uv run python scripts/coverage_matrix.py --scope package --fail-under 85
+uv run python scripts/coverage_matrix.py --scope module --fail-under 85 --limit 40
+```
+
+The matrix is diagnostic. The ratchet is the CI gate: update it only after a
+clean full run and only when the update preserves or raises the checked-in
+floor, unless an explicit release note explains a deliberate reset.
