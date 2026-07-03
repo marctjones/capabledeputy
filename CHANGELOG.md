@@ -6,6 +6,18 @@ breaking changes).
 
 ## [Unreleased]
 
+## [0.41.1] - 2026-07-03
+
+Patch release for reproducible local image-generation dependency locking.
+
+### Packaging
+
+- Resolved the uv universal-lock conflict for the Apple Silicon MLX/MFLUX image
+  stack by scoping supported uv lock environments to macOS arm64 and using a
+  consistent `transformers>=5` requirement for the `images` extra.
+- Regenerated `uv.lock` so the `charts` and `images` extras are represented in
+  the lockfile and `uv lock --check` passes.
+
 ## [0.41.0] - 2026-07-03
 
 CapDepMac reliability and safe scripting UX release.
