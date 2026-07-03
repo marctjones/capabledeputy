@@ -95,6 +95,57 @@ struct ChatMessage: Identifiable, Hashable {
     }
 }
 
+enum ChatPromptStatus: String, Hashable {
+    case queued
+    case running
+    case completed
+    case failed
+
+    var title: String {
+        switch self {
+        case .queued: "Queued"
+        case .running: "Running"
+        case .completed: "Completed"
+        case .failed: "Failed"
+        }
+    }
+}
+
+struct ChatPromptRun: Identifiable, Hashable {
+    let id: String
+    let displayMessage: String
+    let daemonMessage: String
+    let purpose: Purpose
+    var sessionID: String?
+    var turnID: String?
+    var status: ChatPromptStatus
+    var error: String?
+
+    init(
+        id: String = UUID().uuidString,
+        displayMessage: String,
+        daemonMessage: String,
+        purpose: Purpose,
+        sessionID: String? = nil,
+        turnID: String? = nil,
+        status: ChatPromptStatus = .queued,
+        error: String? = nil,
+    ) {
+        self.id = id
+        self.displayMessage = displayMessage
+        self.daemonMessage = daemonMessage
+        self.purpose = purpose
+        self.sessionID = sessionID
+        self.turnID = turnID
+        self.status = status
+        self.error = error
+    }
+
+    var isTerminal: Bool {
+        status == .completed || status == .failed
+    }
+}
+
 enum ChatModelMode: String, CaseIterable, Identifiable {
     case automatic
     case fast
@@ -361,6 +412,26 @@ struct ReviewArtifact: Identifiable, Hashable {
 
     var shortHash: String {
         sha256.isEmpty ? "" : String(sha256.prefix(12))
+    }
+
+    var displayKind: String {
+        artifactType.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    var systemImage: String {
+        switch artifactType {
+        case "email_draft": "envelope"
+        case "calendar_event": "calendar"
+        case "diff": "plus.forwardslash.minus"
+        case "document": "doc.text"
+        case "research": "doc.text.magnifyingglass"
+        case "image": "photo"
+        case "chart": "chart.xyaxis.line"
+        case "script": "chevron.left.forwardslash.chevron.right"
+        case "script_run": "terminal"
+        case "file_export": "doc.badge.arrow.up"
+        default: "doc.richtext"
+        }
     }
 }
 

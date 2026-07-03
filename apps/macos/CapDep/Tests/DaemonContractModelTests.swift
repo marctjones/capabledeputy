@@ -100,6 +100,68 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(detail.reviewArtifact?.preview, "Hello")
     }
 
+    func testReviewArtifactDisplaysSafeScriptingTypes() {
+        let script = ReviewArtifact(dictionary: [
+            "artifact_id": "script-1",
+            "artifact_type": "script",
+            "title": "Rename photos",
+            "target": "rename_photos.py",
+            "destination_id": "script-workspace:photos:rename_photos.py",
+            "effect": "create",
+            "content_type": "text/x-python",
+            "sha256": "abcdef1234567890",
+            "preview": "print('rename')",
+            "preview_truncated": false,
+        ])
+        let run = ReviewArtifact(dictionary: [
+            "artifact_id": "run-1",
+            "artifact_type": "script_run",
+            "title": "Run rename photos",
+            "destination_id": "script-workspace:photos:runs/run-1",
+            "effect": "review_only",
+            "content_type": "application/json",
+        ])
+        let export = ReviewArtifact(dictionary: [
+            "artifact_id": "export-1",
+            "artifact_type": "file_export",
+            "title": "Export report",
+            "destination_id": "script-workspace:photos:out/report.txt",
+            "effect": "create",
+        ])
+
+        XCTAssertEqual(script.displayKind, "Script")
+        XCTAssertEqual(script.systemImage, "chevron.left.forwardslash.chevron.right")
+        XCTAssertEqual(run.displayKind, "Script Run")
+        XCTAssertEqual(run.systemImage, "terminal")
+        XCTAssertEqual(export.displayKind, "File Export")
+        XCTAssertEqual(export.systemImage, "doc.badge.arrow.up")
+    }
+
+    func testChatPromptRunTracksQueuedRunningAndTerminalStates() {
+        var run = ChatPromptRun(
+            displayMessage: "Batch rename these files",
+            daemonMessage: "/quality Batch rename these files",
+            purpose: .general,
+        )
+
+        XCTAssertEqual(run.status, .queued)
+        XCTAssertFalse(run.isTerminal)
+
+        run.status = .running
+        run.sessionID = "session-1"
+        run.turnID = "turn-1"
+        XCTAssertEqual(run.turnID, "turn-1")
+        XCTAssertFalse(run.isTerminal)
+
+        run.status = .completed
+        XCTAssertTrue(run.isTerminal)
+
+        run.status = .failed
+        run.error = "daemon disconnected"
+        XCTAssertTrue(run.isTerminal)
+        XCTAssertEqual(run.error, "daemon disconnected")
+    }
+
     func testRecoveryStepWidensFilePathToParentDirectory() {
         XCTAssertEqual(
             RecoveryStep.widenedGrantPattern(kind: "READ_FS", pattern: "/tmp/foo/bar.txt"),

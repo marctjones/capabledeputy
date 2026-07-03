@@ -156,7 +156,10 @@ private struct VisualReviewArtifactCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Label(artifact.title.isEmpty ? artifact.artifactType : artifact.title, systemImage: icon)
+                Label(
+                    artifact.title.isEmpty ? artifact.displayKind : artifact.title,
+                    systemImage: artifact.systemImage,
+                )
                     .font(.headline)
                 Spacer()
                 Text(artifact.effect.replacingOccurrences(of: "_", with: " ").uppercased())
@@ -177,7 +180,7 @@ private struct VisualReviewArtifactCard: View {
                 )
                 FlowStep(
                     title: "Type",
-                    value: artifact.artifactType,
+                    value: artifact.displayKind,
                     systemImage: "doc.text",
                 )
             }
@@ -205,16 +208,6 @@ private struct VisualReviewArtifactCard: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
     }
 
-    private var icon: String {
-        switch artifact.artifactType {
-        case "email_draft": "envelope"
-        case "calendar_event": "calendar"
-        case "diff": "plus.forwardslash.minus"
-        case "document": "doc.text"
-        case "research": "doc.text.magnifyingglass"
-        default: "doc.richtext"
-        }
-    }
 }
 
 private struct RiskExplanation: View {

@@ -107,6 +107,10 @@ struct ChatView: View {
                         .id("turn-progress")
                     }
 
+                    if !model.promptRuns.isEmpty {
+                        PromptQueuePanel(runs: model.promptRuns)
+                    }
+
                     if !model.turnPendingApprovalIDs.isEmpty {
                         approvalBanner
                     }
@@ -287,8 +291,7 @@ struct ChatView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(
-                        model.commandText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || model.isRunningTurn,
+                        model.commandText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                     )
 
                     if model.isRunningTurn {
@@ -512,5 +515,71 @@ private struct ToolOutcomesPanel: View {
         }
         .padding(12)
         .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+private struct PromptQueuePanel: View {
+    let runs: [ChatPromptRun]
+
+    private var visibleRuns: [ChatPromptRun] {
+        Array(runs.suffix(8))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Prompt activity")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(visibleRuns) { run in
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: icon(for: run.status))
+                        .foregroundStyle(color(for: run.status))
+                        .font(.caption)
+                        .frame(width: 14)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(run.status.title)
+                                .font(.caption.weight(.semibold))
+                            if let turnID = run.turnID, !turnID.isEmpty {
+                                Text(String(turnID.prefix(8)))
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Text(run.displayMessage)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                        if let error = run.error, !error.isEmpty {
+                            Text(error)
+                                .font(.caption2)
+                                .foregroundStyle(.red)
+                                .lineLimit(2)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(12)
+        .background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func icon(for status: ChatPromptStatus) -> String {
+        switch status {
+        case .queued: "clock"
+        case .running: "arrow.triangle.2.circlepath"
+        case .completed: "checkmark.circle"
+        case .failed: "exclamationmark.triangle"
+        }
+    }
+
+    private func color(for status: ChatPromptStatus) -> Color {
+        switch status {
+        case .queued: .secondary
+        case .running: .blue
+        case .completed: .green
+        case .failed: .red
+        }
     }
 }

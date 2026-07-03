@@ -42,6 +42,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var onguardNotifications: [OnguardNotificationViewData] = []
     @Published private(set) var currentSessionID: String?
     @Published private(set) var chatMessages: [ChatMessage] = []
+    @Published private(set) var promptRuns: [ChatPromptRun] = []
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
     @Published private(set) var isRunningTurn = false
     @Published private(set) var currentTurnID: String?
@@ -75,6 +76,7 @@ final class CapDepAppModel: ObservableObject {
     private let notifications = NotificationCenterBridge()
     private let daemonSupervisor = DaemonSupervisor()
     private var didStart = false
+    private var isProcessingPromptQueue = false
     private var lastPendingApprovalCount = 0
     private var lastNotifiedApprovalID: Int?
     private var streamingAssistantMessageID: String?
@@ -83,6 +85,14 @@ final class CapDepAppModel: ObservableObject {
 
     var currentAssistantOutput: String {
         chatMessages.last(where: { $0.role == .assistant })?.content ?? ""
+    }
+
+    var queuedPromptRuns: [ChatPromptRun] {
+        promptRuns.filter { $0.status == .queued }
+    }
+
+    var activePromptRun: ChatPromptRun? {
+        promptRuns.last { $0.status == .running }
     }
 
     /// Changes when streaming text grows so chat can follow newly rendered blocks.
@@ -371,6 +381,7 @@ final class CapDepAppModel: ObservableObject {
             chatMessages = ChatMessage.fromHistory(history)
             streamingAssistantMessageID = nil
             authorizedStreamingImagePaths = []
+            promptRuns.removeAll { $0.isTerminal }
             if chatMessages.isEmpty {
                 seedDemoImageIfNeeded()
             }
@@ -555,31 +566,95 @@ final class CapDepAppModel: ObservableObject {
         commandText = ""
         let chosenPurpose = purpose ?? selectedPurpose
         let daemonMessage = selectedChatModelMode.daemonMessage(for: trimmed)
+        let run = ChatPromptRun(
+            displayMessage: trimmed,
+            daemonMessage: daemonMessage,
+            purpose: chosenPurpose,
+        )
+        promptRuns.append(run)
         ChatDebugLog.log(
-            "submit",
+            "submit_queued",
             metadata: [
+                "prompt_id": run.id,
                 "purpose": chosenPurpose.rawValue,
                 "model_mode": selectedChatModelMode.rawValue,
                 "message_len": String(trimmed.count),
                 "message_preview": String(trimmed.prefix(200)),
             ],
         )
-        guard let session = await ensureSession(
-            intent: trimmed,
-            purpose: chosenPurpose,
-            forceNew: forceNewSession,
-        ) else {
-            ChatDebugLog.log("submit_failed", metadata: ["reason": "ensureSession returned nil"])
+        await processPromptQueue(forceNewFirstSession: forceNewSession)
+    }
+
+    private func processPromptQueue(forceNewFirstSession: Bool = false) async {
+        guard !isProcessingPromptQueue else {
             return
         }
-        ChatDebugLog.log(
-            "session_ready",
-            metadata: [
-                "session_id": session.id,
-                "purpose": session.purpose,
-            ],
-        )
-        await send(message: daemonMessage, displayMessage: trimmed, sessionID: session.id)
+        isProcessingPromptQueue = true
+        defer {
+            isProcessingPromptQueue = false
+        }
+
+        var forceNew = forceNewFirstSession
+        while let index = promptRuns.firstIndex(where: { $0.status == .queued }) {
+            var run = promptRuns[index]
+            markPromptRun(run.id, status: .running)
+            guard let session = await ensureSession(
+                intent: run.displayMessage,
+                purpose: run.purpose,
+                forceNew: forceNew,
+            ) else {
+                markPromptRun(run.id, status: .failed, error: "Could not create or reuse a session.")
+                forceNew = false
+                continue
+            }
+            forceNew = false
+            run.sessionID = session.id
+            updatePromptRun(run)
+            ChatDebugLog.log(
+                "session_ready",
+                metadata: [
+                    "prompt_id": run.id,
+                    "session_id": session.id,
+                    "purpose": session.purpose,
+                ],
+            )
+            let succeeded = await send(
+                message: run.daemonMessage,
+                displayMessage: run.displayMessage,
+                sessionID: session.id,
+                promptID: run.id,
+            )
+            if succeeded {
+                markPromptRun(run.id, status: .completed)
+            } else if promptRuns.first(where: { $0.id == run.id })?.status == .running {
+                markPromptRun(run.id, status: .failed, error: lastError ?? "Turn failed.")
+            }
+        }
+    }
+
+    private func updatePromptRun(_ run: ChatPromptRun) {
+        guard let index = promptRuns.firstIndex(where: { $0.id == run.id }) else {
+            return
+        }
+        promptRuns[index] = run
+    }
+
+    private func markPromptRun(
+        _ id: String,
+        status: ChatPromptStatus,
+        turnID: String? = nil,
+        error: String? = nil,
+    ) {
+        guard let index = promptRuns.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        var run = promptRuns[index]
+        run.status = status
+        if let turnID {
+            run.turnID = turnID
+        }
+        run.error = error
+        promptRuns[index] = run
     }
 
     func ensureSession(
@@ -620,7 +695,13 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
-    func send(message: String, displayMessage: String? = nil, sessionID: String) async {
+    @discardableResult
+    func send(
+        message: String,
+        displayMessage: String? = nil,
+        sessionID: String,
+        promptID: String? = nil,
+    ) async -> Bool {
         let visibleMessage = displayMessage ?? message
         pendingGrantRetryMessage = nil
         grantPromptPresented = false
@@ -637,13 +718,14 @@ final class CapDepAppModel: ObservableObject {
                 authorizeStreamingImagePath(path)
             }
             finalizeStreamingAssistant(demoResponse)
-            return
+            return true
         }
-        await runTurn(
+        return await runTurn(
             message: message,
             displayMessage: visibleMessage,
             sessionID: sessionID,
             appendUserMessage: true,
+            promptID: promptID,
         )
     }
 
@@ -665,12 +747,14 @@ final class CapDepAppModel: ObservableObject {
         """.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    @discardableResult
     private func runTurn(
         message: String,
         displayMessage: String? = nil,
         sessionID: String,
         appendUserMessage: Bool,
-    ) async {
+        promptID: String? = nil,
+    ) async -> Bool {
         isRunningTurn = true
         if appendUserMessage {
             beginTurn(userMessage: displayMessage ?? message)
@@ -698,6 +782,9 @@ final class CapDepAppModel: ObservableObject {
             currentTurnID = nil
             noteGrantRetryIfNeeded()
             presentPolicyPromptsAfterTurn()
+            Task {
+                await processPromptQueue()
+            }
             ChatDebugLog.log(
                 "turn_send_end",
                 metadata: [
@@ -729,6 +816,9 @@ final class CapDepAppModel: ObservableObject {
             }
             observedTurnID = turnID
             currentTurnID = turnID
+            if let promptID {
+                markPromptRun(promptID, status: .running, turnID: turnID)
+            }
             currentSessionID = sessionID
             let turnStream = turn["stream"] as? String ?? "turn:\(turnID)"
             ChatDebugLog.log(
@@ -788,8 +878,15 @@ final class CapDepAppModel: ObservableObject {
                 ChatDebugLog.log("subscribe_fallback_poll", metadata: ["turn_id": turnID])
                 try await pollTurnUntilFinished(turnID: turnID)
             }
+            return true
         } catch {
             lastError = error.localizedDescription
+            if let promptID {
+                markPromptRun(promptID, status: .failed, error: error.localizedDescription)
+            }
+            if streamingAssistantMessageID != nil {
+                finalizeStreamingAssistant("[turn failed: \(error.localizedDescription)]")
+            }
             ChatDebugLog.log(
                 "turn_error",
                 metadata: [
@@ -798,6 +895,7 @@ final class CapDepAppModel: ObservableObject {
                     "error": error.localizedDescription,
                 ],
             )
+            return false
         }
     }
 
@@ -830,6 +928,21 @@ final class CapDepAppModel: ObservableObject {
     }
 
     private func applyTurnEvent(_ event: [String: Any]) throws -> Bool {
+        guard let eventTurnID = event["turn_id"] as? String, !eventTurnID.isEmpty else {
+            ChatDebugLog.log("ignored_turn_event", metadata: ["reason": "missing turn_id"])
+            return false
+        }
+        guard eventTurnID == currentTurnID else {
+            ChatDebugLog.log(
+                "ignored_turn_event",
+                metadata: [
+                    "reason": "turn_id mismatch",
+                    "event_turn_id": eventTurnID,
+                    "current_turn_id": currentTurnID ?? "",
+                ],
+            )
+            return false
+        }
         turnStatusLine = describeTurnEvent(event)
         let type = event["type"] as? String ?? ""
         let payload = event["payload"] as? [String: Any] ?? [:]
