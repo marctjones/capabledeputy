@@ -9,7 +9,11 @@ from capabledeputy.daemon.google_gmail_setup import (
     configure_gmail_oauth_client,
     configure_google_oauth_client,
     gmail_oauth_status,
+    google_oauth_all_diagnostics,
+    google_oauth_diagnostics,
+    google_oauth_identity_strategy,
     google_oauth_status,
+    redacted_google_oauth_payload,
     revoke_google_oauth_token,
 )
 from capabledeputy.upstream.server_yaml import ServerYamlConfig
@@ -91,6 +95,74 @@ def test_revoke_google_oauth_token_removes_only_token_cache(tmp_path: Path) -> N
     assert revoked["client_id_configured"] is True
     assert revoked["token_configured"] is False
     assert not token_cache.exists()
+
+
+def test_google_oauth_status_reports_account_and_scope_mismatch(tmp_path: Path) -> None:
+    status = configure_google_oauth_client(
+        "google-gmail",
+        client_id="gmail-client",
+        client_secret="gmail-secret",
+        config_home=tmp_path,
+    )
+    token_cache = Path(status["token_cache"])
+    token_cache.write_text(
+        '{"access_token":"token","refresh_token":"refresh",'
+        '"email":"marc@example.com",'
+        '"scope":"https://www.googleapis.com/auth/gmail.readonly"}',
+        encoding="utf-8",
+    )
+
+    refreshed = google_oauth_status("google-gmail", tmp_path)
+
+    assert refreshed["token_present"] is True
+    assert refreshed["token_has_refresh_token"] is True
+    assert refreshed["token_account"] == "marc@example.com"
+    assert refreshed["token_scopes"] == ["https://www.googleapis.com/auth/gmail.readonly"]
+    assert "https://www.googleapis.com/auth/gmail.compose" in refreshed["missing_scopes"]
+
+
+def test_google_oauth_diagnostics_are_fake_token_testable_and_redacted(tmp_path: Path) -> None:
+    status = configure_google_oauth_client(
+        "google-calendar",
+        client_id="calendar-client",
+        client_secret="calendar-secret",
+        config_home=tmp_path,
+    )
+    Path(status["token_cache"]).write_text(
+        '{"access_token":"token","refresh_token":"refresh",'
+        '"scope":["https://www.googleapis.com/auth/calendar.readonly"]}',
+        encoding="utf-8",
+    )
+
+    diagnostics = google_oauth_diagnostics("google-calendar", tmp_path)
+    redacted = redacted_google_oauth_payload(
+        {
+            **diagnostics["status"],
+            "access_token": "token",
+            "refresh_token": "refresh",
+            "client_secret": "secret",
+        },
+    )
+
+    assert diagnostics["ready"] is True
+    assert [check["status"] for check in diagnostics["checks"]] == ["ok", "ok", "ok"]
+    assert "access_token" not in redacted
+    assert "refresh_token" not in redacted
+    assert "client_secret" not in redacted
+
+
+def test_google_oauth_all_diagnostics_include_identity_strategy(tmp_path: Path) -> None:
+    strategy = google_oauth_identity_strategy()
+    diagnostics = google_oauth_all_diagnostics(tmp_path)
+
+    assert strategy["default"] == "operator_managed_oauth_client"
+    assert strategy["token_owner"] == "capdep_daemon"
+    assert diagnostics["identity_strategy"]["advanced_byo_client_supported"] is True
+    assert {service["service_id"] for service in diagnostics["services"]} == {
+        "google-gmail",
+        "google-calendar",
+        "google-drive",
+    }
 
 
 def test_unknown_google_oauth_service_is_rejected(tmp_path: Path) -> None:

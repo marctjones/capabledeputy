@@ -21,6 +21,8 @@ from capabledeputy.daemon.google_gmail_setup import (
     configure_gmail_oauth_client,
     configure_google_oauth_client,
     gmail_oauth_status,
+    google_oauth_all_diagnostics,
+    google_oauth_diagnostics,
     google_oauth_status,
     google_oauth_statuses,
     redacted_gmail_oauth_payload,
@@ -249,6 +251,12 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
             return google_oauth_status(service_id)
         return google_oauth_statuses()
 
+    async def google_oauth_diagnostics_handler(params: dict[str, Any]) -> dict[str, Any]:
+        service_id = str(params.get("service_id") or "")
+        if service_id:
+            return google_oauth_diagnostics(service_id)
+        return google_oauth_all_diagnostics()
+
     async def google_configure_oauth(params: dict[str, Any]) -> dict[str, Any]:
         service_id = str(params.get("service_id") or GOOGLE_GMAIL_SERVER)
         status = configure_google_oauth_client(
@@ -342,6 +350,7 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
         "workflow.templates": workflow_templates,
         "workflow.launch": workflow_launch,
         "setup.google.oauth_status": google_oauth_status_handler,
+        "setup.google.oauth_diagnostics": google_oauth_diagnostics_handler,
         "setup.google.configure_oauth": google_configure_oauth,
         "setup.google.oauth_login": google_oauth_login,
         "setup.google.oauth_revoke": google_oauth_revoke,

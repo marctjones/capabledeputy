@@ -445,6 +445,7 @@ def google_oauth_configure_command(
     _print_google_oauth_status(result)
 
 
+@google_oauth_app.command("connect")
 @google_oauth_app.command("login")
 def google_oauth_login_command(
     service_id: Annotated[
@@ -490,6 +491,7 @@ def google_oauth_login_command(
     _print_google_oauth_status(result)
 
 
+@google_oauth_app.command("disconnect")
 @google_oauth_app.command("revoke")
 def google_oauth_revoke_command(
     service_id: Annotated[
@@ -546,6 +548,12 @@ def _print_google_oauth_service_status(status: dict[str, Any]) -> None:
     )
     token = "yes" if status.get("token_configured") else "no"
     console.print(f"[bold]{name}[/bold]: configured={configured} client={client} token={token}")
+    account = status.get("token_account")
+    if account:
+        console.print(f"  account: {account}")
+    missing_scopes = status.get("missing_scopes") or []
+    if missing_scopes:
+        console.print(f"  [yellow]missing scopes:[/yellow] {', '.join(missing_scopes)}")
     server_yaml = status.get("server_yaml")
     if server_yaml:
         console.print(f"  server config: {server_yaml}")
@@ -1934,9 +1942,10 @@ def setup_command(
         ),
     ] = False,
 ) -> None:
-    """Register the standard bundled-server assistant surface — fs,
-    memory, git, fetch, search — plus a Podman sandbox region if
-    available.
+    """Compatibility alias for `capdep-setup assistant-surface --apply`.
+
+    Register the standard bundled-server assistant surface — fs, memory, git,
+    fetch, search — plus a Podman sandbox region if available.
 
     Writes managed blocks under `~/.config/capabledeputy/daemon.yaml`.
     Re-running is safe and idempotent: existing blocks are refreshed,
@@ -1946,10 +1955,7 @@ def setup_command(
     up. Run both if you want both — they update different managed
     blocks in the same file.
     """
-    from capabledeputy.cli._managed_config import (
-        register_default_assistant_surface,
-        user_default_daemon_config_path,
-    )
+    from capabledeputy.cli.setup_domains import setup_assistant_surface
 
     if no_sandbox and force_sandbox:
         err_console.print(
@@ -1957,13 +1963,14 @@ def setup_command(
         )
         raise typer.Exit(code=2)
 
-    daemon_yaml = user_default_daemon_config_path()
-    include_sandbox = False if no_sandbox else True if force_sandbox else None
+    result = setup_assistant_surface(
+        apply=True,
+        no_sandbox=no_sandbox,
+        force_sandbox=force_sandbox,
+    )
+    daemon_yaml = result.paths["daemon_config"]
     console.print("[bold]registering bundled assistant tools:[/bold]")
-    for msg in register_default_assistant_surface(
-        daemon_yaml,
-        include_sandbox=include_sandbox,
-    ):
+    for msg in result.actions:
         console.print(f"  [dim]·[/dim] {msg}")
     console.print(
         f"\n[green]daemon config: {daemon_yaml}[/green]\n"

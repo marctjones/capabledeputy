@@ -156,14 +156,22 @@ def google_oauth_status(
     paths = google_oauth_paths(service.server_id, config_home)
     server_config = _load_google_server_config(paths.server_yaml)
     token_path = _token_path(service.server_id, server_config, config_home)
+    token_summary = token_cache_summary(token_path)
     return {
         "server": service.server_id,
         "service_id": service.server_id,
         "display_name": service.display_name,
+        "expected_scopes": list(service.scopes),
         "configured": paths.server_yaml.is_file(),
         "client_id_configured": paths.client_id_file.is_file(),
         "client_secret_configured": paths.client_secret_file.is_file(),
         "token_configured": token_path.is_file(),
+        "token_present": bool(token_summary.get("present")),
+        "token_has_refresh_token": bool(token_summary.get("has_refresh_token")),
+        "token_expires_at": token_summary.get("expires_at"),
+        "token_account": token_summary.get("account"),
+        "token_scopes": list(token_summary.get("scopes") or []),
+        "missing_scopes": _missing_scopes(service.scopes, token_summary.get("scopes") or ()),
         "server_yaml": str(paths.server_yaml),
         "client_id_file": str(paths.client_id_file),
         "client_secret_file": str(paths.client_secret_file),
@@ -174,9 +182,26 @@ def google_oauth_status(
 
 def google_oauth_statuses(config_home: Path | None = None) -> dict[str, Any]:
     return {
+        "identity_strategy": google_oauth_identity_strategy(),
         "services": [
             google_oauth_status(service_id, config_home) for service_id in GOOGLE_OAUTH_SERVICES
         ],
+    }
+
+
+def google_oauth_identity_strategy() -> dict[str, Any]:
+    """Current default Google OAuth identity strategy.
+
+    CapDep does not yet ship a hosted multi-user OAuth client. Until that exists,
+    the safe default is an operator-provided Google Cloud OAuth client stored
+    through daemon-owned setup methods. This keeps account tokens daemon-owned
+    and auditable while preserving the future path to a simpler hosted client.
+    """
+    return {
+        "default": "operator_managed_oauth_client",
+        "hosted_client_available": False,
+        "advanced_byo_client_supported": True,
+        "token_owner": "capdep_daemon",
     }
 
 
@@ -345,9 +370,8 @@ def _gmail_server_yaml(paths: GmailOAuthPaths) -> str:
 
 def redacted_google_oauth_payload(status: dict[str, Any]) -> dict[str, Any]:
     """Return an audit-safe shape for setup actions."""
-    return {
-        key: value for key, value in status.items() if key not in {"client_id", "client_secret"}
-    }
+    redacted_keys = {"client_id", "client_secret", "access_token", "refresh_token", "id_token"}
+    return {key: value for key, value in status.items() if key not in redacted_keys}
 
 
 def redacted_gmail_oauth_payload(status: dict[str, Any]) -> dict[str, Any]:
@@ -359,8 +383,96 @@ def token_cache_summary(path: Path) -> dict[str, Any]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return {"present": False}
+    scopes = _parse_scope_list(data.get("scope") or data.get("scopes"))
     return {
         "present": bool(data.get("access_token")),
         "has_refresh_token": bool(data.get("refresh_token")),
         "expires_at": data.get("expires_at"),
+        "account": data.get("account") or data.get("email") or data.get("login_hint"),
+        "scopes": list(scopes),
     }
+
+
+def google_oauth_diagnostics(
+    service_id: str,
+    config_home: Path | None = None,
+) -> dict[str, Any]:
+    status = google_oauth_status(service_id, config_home)
+    checks: list[dict[str, Any]] = []
+    checks.append(
+        {
+            "id": "server_config",
+            "status": "ok" if status["configured"] else "blocking",
+            "detail": "Managed server YAML exists."
+            if status["configured"]
+            else "Managed server YAML has not been written.",
+        },
+    )
+    checks.append(
+        {
+            "id": "oauth_client",
+            "status": "ok"
+            if status["client_id_configured"] and status["client_secret_configured"]
+            else "blocking",
+            "detail": "OAuth client files exist."
+            if status["client_id_configured"] and status["client_secret_configured"]
+            else "OAuth client ID and secret must be configured before login.",
+        },
+    )
+    missing_scopes = list(status.get("missing_scopes") or [])
+    token_status = "ok" if status["token_present"] else "manual"
+    if missing_scopes:
+        token_status = "warning"
+    checks.append(
+        {
+            "id": "token",
+            "status": token_status,
+            "detail": _token_diagnostic_detail(status, missing_scopes),
+        },
+    )
+    return {
+        "service_id": service_id,
+        "display_name": status["display_name"],
+        "status": redacted_google_oauth_payload(status),
+        "checks": checks,
+        "ready": all(check["status"] == "ok" for check in checks),
+    }
+
+
+def google_oauth_all_diagnostics(config_home: Path | None = None) -> dict[str, Any]:
+    return {
+        "identity_strategy": google_oauth_identity_strategy(),
+        "services": [
+            google_oauth_diagnostics(service_id, config_home)
+            for service_id in GOOGLE_OAUTH_SERVICES
+        ],
+    }
+
+
+def _parse_scope_list(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return tuple(scope for scope in value.split() if scope)
+    if isinstance(value, list | tuple | set):
+        return tuple(str(scope) for scope in value if str(scope))
+    return ()
+
+
+def _missing_scopes(expected: tuple[str, ...], observed: Any) -> list[str]:
+    observed_set = set(_parse_scope_list(observed))
+    if not observed_set:
+        return []
+    return [scope for scope in expected if scope not in observed_set]
+
+
+def _token_diagnostic_detail(status: dict[str, Any], missing_scopes: list[str]) -> str:
+    if not status["token_configured"]:
+        return "No token cache exists; browser authorization is needed."
+    if not status["token_present"]:
+        return "Token cache exists but no access token was found; reauthorize this service."
+    if missing_scopes:
+        return "Token is missing required scope(s): " + ", ".join(missing_scopes)
+    if not status["token_has_refresh_token"]:
+        return "Access token exists but no refresh token was found; reauthorization may be needed."
+    return "Token cache contains an access token and expected scopes."
