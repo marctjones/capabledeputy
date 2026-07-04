@@ -35,6 +35,7 @@ from capabledeputy.daemon.server import Daemon
 from capabledeputy.daemon.session_handlers import make_session_handlers
 from capabledeputy.daemon.settings_store import load_settings
 from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
+from capabledeputy.daemon.skill_handlers import make_skill_handlers
 from capabledeputy.daemon.source_context_handlers import make_source_context_handlers
 from capabledeputy.daemon.state_handlers import make_state_handlers
 from capabledeputy.daemon.tool_handlers import make_tool_handlers
@@ -585,6 +586,7 @@ async def run_daemon(
     handlers.update(make_devbox_handlers(app))
     handlers.update(make_relationship_handlers(app))
     handlers.update(make_security_context_handlers(app))
+    handlers.update(make_skill_handlers(app))
     handlers.update(make_audit_handlers(app.audit))
     handlers.update(make_policy_handlers())
     handlers.update(make_tool_handlers(app.registry, app.graph, app.tool_client))

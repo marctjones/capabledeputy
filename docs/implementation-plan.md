@@ -219,7 +219,7 @@ the CapDepMac Swift package tests pass.
 
 ## v0.44.0 — Skills interoperability and sandboxed execution
 
-Open on 2026-07-04. CapDep already has a flat `SKILL.md` adapter that turns
+Implemented locally on 2026-07-04. CapDep already had a flat `SKILL.md` adapter that turns
 markdown skills into policy-gated quarantined tools. v0.44 broadens that into
 Codex/Claude-style folder compatibility without letting imported skills become
 an untracked authority path. The core product promise is compatibility with
@@ -231,13 +231,13 @@ instructions, or run host scripts outside the sandbox.
 
 | Issue | Work | Status |
 |---|---|---|
-| #216 | EPIC: SKILL.md interoperability with CapDep security guarantees | Open |
-| #217 | Enforce CapDep policy, labels, provenance, and audit for skills | Open |
-| #218 | Model skill modes as guidance, tool, or hybrid | Open |
-| #220 | Add compatibility, adversarial, and end-to-end tests for skills | Open |
-| #221 | Import Codex and Claude SKILL.md folder formats | Open |
-| #222 | Run skill scripts only in containerized sandboxes | Open |
-| #223 | Expose skill registry and diagnostics across clients | Open |
+| #216 | EPIC: SKILL.md interoperability with CapDep security guarantees | Done locally |
+| #217 | Enforce CapDep policy, labels, provenance, and audit for skills | Done locally |
+| #218 | Model skill modes as guidance, tool, or hybrid | Done locally |
+| #220 | Add compatibility, adversarial, and end-to-end tests for skills | Done locally |
+| #221 | Import Codex and Claude SKILL.md folder formats | Done locally |
+| #222 | Run skill scripts only in containerized sandboxes | Done locally |
+| #223 | Expose skill registry and diagnostics across clients | Done locally |
 
 ### Sequencing
 
@@ -252,6 +252,21 @@ instructions, or run host scripts outside the sandbox.
 6. Close with compatibility fixtures, adversarial tests, E2E flows, client
    parity, and docs (#220).
 
+### Implementation
+
+- `skills.parser` imports flat Markdown skills and folder packages with
+  resource/script inventories and diagnostics.
+- `guidance`, `tool`, and `hybrid` modes are explicit. Folder packages default
+  to untrusted guidance; flat files preserve historical tool behavior.
+- Guidance remains visible even without a quarantined LLM. LLM-backed tools are
+  registered only when the quarantined model is available.
+- Script skills advertise `EXECUTE_SANDBOX`, target `spec_id`, and run only by
+  passing script bytes into the configured sandbox actuator. No raw host
+  subprocess execution path is provided.
+- The daemon exposes `skill.list`, `skill.show`, `skill.guidance`, and
+  `skill.diagnostics`; the CLI exposes matching `capdep skill` commands.
+- `docs/skills-interoperability.md` records the supported package contract.
+
 ### Done-when
 
 - Codex-style and Claude-style sample skills import cleanly, or fail with clear
@@ -263,8 +278,9 @@ instructions, or run host scripts outside the sandbox.
 - Skill scripts never execute as raw host subprocesses; they run only through
   CapDep sandbox/container paths with audited inputs, outputs, mounts, and
   artifacts.
-- CLI, TUI, CapDepMac, and MCP-control can show installed, invalid, disabled,
-  and degraded skill states.
+- The daemon and CLI can show installed, invalid, disabled, and degraded skill
+  states; TUI, CapDepMac, and MCP-control support are tracked as intentional
+  client UI follow-ups in `docs/client-parity.json`.
 - The standard suite includes parser/loader compatibility fixtures,
   adversarial metadata tests, resource traversal tests, sandbox escape
   refusals, policy/audit assertions, and at least one guidance, tool, and

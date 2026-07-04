@@ -20,6 +20,7 @@ from capabledeputy.cli.override_cmd import override_app
 from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.scripting import scripting_app
 from capabledeputy.cli.session import session_app
+from capabledeputy.cli.skill import skill_app
 from capabledeputy.cli.tool import tool_app
 from capabledeputy.cli.workflow import workflow_app
 from capabledeputy.daemon.lifecycle import (
@@ -57,6 +58,7 @@ oauth_app = typer.Typer(
 app.add_typer(oauth_app, name="oauth")
 app.add_typer(workflow_app, name="workflow")
 app.add_typer(image_app, name="image")
+app.add_typer(skill_app, name="skill")
 google_oauth_app = typer.Typer(
     help="Configure daemon-owned Google Workspace MCP OAuth.",
     no_args_is_help=True,

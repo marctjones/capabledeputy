@@ -98,8 +98,8 @@ CAPDEP_LLM_MODEL="ollama/llama3.1:70b"
 # If unset, the planner LLM is reused.
 CAPDEP_QUARANTINED_LLM_MODEL="ollama/phi3:mini"
 
-# Optional: load SKILL.md files from a directory at daemon startup.
-# Each skill becomes a labeled tool that calls the quarantined LLM.
+# Optional: load flat SKILL.md files and folder packages at daemon startup.
+# Folder packages default to guidance; flat files default to quarantined tools.
 CAPDEP_SKILLS_DIR="$HOME/.config/capabledeputy/skills"
 ```
 

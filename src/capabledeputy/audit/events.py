@@ -114,6 +114,7 @@ class EventType(StrEnum):
 
     TOOL_DISPATCHED = "tool.dispatched"
     TOOL_RETURNED = "tool.returned"
+    SKILL_GUIDANCE_LOADED = "skill.guidance_loaded"
 
     APPROVAL_REQUESTED = "approval.requested"
     APPROVAL_APPROVED = "approval.approved"

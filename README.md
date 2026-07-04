@@ -100,6 +100,7 @@ read — strengths, weaknesses, and prioritized fixes — is in
 - [docs/gui-greenfield-design.md](docs/gui-greenfield-design.md) — **greenfield GUI product design** — primary users, desktop posture, workflows, automation model, screen-space rules, and integrated menu system
 - [docs/macos-desktop-ux-strategy.md](docs/macos-desktop-ux-strategy.md) — **macOS desktop UX strategy** — native menu-bar/command-palette/approval/dashboard design guidance for CapDep's supervised desktop assistant shell
 - [docs/safe-scripting-assistant-v040.md](docs/safe-scripting-assistant-v040.md) — **safe practical scripting assistant** — daemon-owned script planning, sandboxed execution, evidence, and exact export approvals for non-programmer automation tasks
+- [docs/skills-interoperability.md](docs/skills-interoperability.md) — **SKILL.md interoperability** — Codex/Claude-style folder packages, explicit guidance/tool/hybrid modes, and sandbox-only script execution
 - [docs/image-generation-adult-model-notes.md](docs/image-generation-adult-model-notes.md) — local image-generation backend/model capability notes and deferred model-download findings
 - [docs/commonmark-client-capabilities.md](docs/commonmark-client-capabilities.md) — CommonMark rendering and fallback matrix for CapDepMac, CLI/TUI, MCP-control, and plain/log clients
 

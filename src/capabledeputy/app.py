@@ -131,6 +131,7 @@ class App:
 
         self.turns = TurnLifecycleManager(self)
         self._skills_dir = skills_dir
+        self.skill_load_report: Any = None
         self._enable_policy_preview = enable_policy_preview
         # Background devbox idle-reaper task, started by `startup()`
         # when a PodmanDevbox is wired. Held here so `shutdown()` (and
@@ -195,18 +196,25 @@ class App:
                 self.registry.register(tool)
 
     def _maybe_load_skills(self) -> None:
-        if self._skills_dir is None or self.quarantined_llm is None:
+        if self._skills_dir is None:
             return
         if not self._skills_dir.is_dir():
             return
         # Local import keeps PyYAML optional for users who don't use skills.
-        from capabledeputy.skills.loader import load_skill_directory
+        from capabledeputy.skills.loader import load_skill_directory_report
 
-        load_skill_directory(
+        sandbox_actuator = (
+            self.policy_context.sandbox_actuator
+            if self.policy_context is not None
+            else None
+        )
+        self.skill_load_report = load_skill_directory_report(
             self._skills_dir,
             self.registry,
             self.quarantined_llm,
             skip_on_duplicate=True,
+            sandbox_actuator=sandbox_actuator,
+            audit=self.audit,
         )
 
     async def startup(self) -> None:

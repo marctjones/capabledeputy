@@ -1,29 +1,45 @@
-"""SKILL.md adapter — turns OpenClaw-style markdown skills into labeled tools.
+"""SKILL.md adapter — imports markdown skills into CapDep.
 
-A skill is a single Markdown file with optional YAML frontmatter followed
-by a prompt body. The frontmatter declares the skill's identity, the
-labels it inherits, the capability kind it requires, and optionally a
-declassification schema. The body is a prompt template; `{{var}}`
-placeholders are filled from the tool's call args.
+CapDep supports its original flat Markdown skill files plus folder-based
+`SKILL.md` packages. Imported skills are normalized into explicit guidance,
+tool, or hybrid modes so compatibility does not bypass the policy model.
 
 When invoked the skill calls the quarantined LLM (no tools provided),
 either as a free-text generator (output = `{"text": ...}`) or — when
 `schema:` is set in the frontmatter — through the structured-extraction
 path so the output is a typed, schema-validated value. Either way the
-declared `inherent_labels` propagate into the calling session's label
+declared `inherent_tags` propagate into the calling session's label
 set, identical to native tools.
 """
 
 from __future__ import annotations
 
 from capabledeputy.skills.adapter import skill_to_tool
-from capabledeputy.skills.loader import load_skill_directory
-from capabledeputy.skills.parser import Skill, SkillParseError, parse_skill_text
+from capabledeputy.skills.loader import (
+    SkillLoadReport,
+    load_skill_directory,
+    load_skill_directory_report,
+)
+from capabledeputy.skills.parser import (
+    Skill,
+    SkillMode,
+    SkillParseError,
+    SkillResource,
+    SkillScript,
+    parse_skill_package,
+    parse_skill_text,
+)
 
 __all__ = [
     "Skill",
+    "SkillLoadReport",
+    "SkillMode",
     "SkillParseError",
+    "SkillResource",
+    "SkillScript",
     "load_skill_directory",
+    "load_skill_directory_report",
+    "parse_skill_package",
     "parse_skill_text",
     "skill_to_tool",
 ]

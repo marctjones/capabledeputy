@@ -20,8 +20,11 @@ from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import CategoryTag, LabelState, Tier
 from capabledeputy.skills import (
     Skill,
+    SkillMode,
     SkillParseError,
     load_skill_directory,
+    load_skill_directory_report,
+    parse_skill_package,
     parse_skill_text,
     skill_to_tool,
 )
@@ -58,6 +61,7 @@ def test_parser_reads_required_fields() -> None:
     skill = parse_skill_text(_skill_text())
     assert skill.name == "skill.test"
     assert skill.description == "test skill"
+    assert skill.mode == SkillMode.TOOL
     assert skill.capability_kind == CapabilityKind.READ_FS
     assert (
         CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")
@@ -209,6 +213,245 @@ def test_load_skill_directory_dedups_when_requested(tmp_path: Path) -> None:
     llm = FakeLLMClient([])
     names = load_skill_directory(tmp_path, registry, llm, skip_on_duplicate=True)
     assert names == ["skill.dup"]
+
+
+def test_folder_skill_defaults_to_guidance_and_discovers_resources(tmp_path: Path) -> None:
+    package = tmp_path / "codex-style"
+    (package / "references").mkdir(parents=True)
+    (package / "scripts").mkdir()
+    (package / "references" / "guide.md").write_text("Reference details")
+    (package / "scripts" / "run.py").write_text("print('ok')\n")
+    (package / "SKILL.md").write_text(
+        textwrap.dedent(
+            """\
+            ---
+            name: codex-style
+            description: Use this for a Codex-style workflow.
+            metadata:
+              short-description: Codex style
+            scripts:
+              - path: scripts/run.py
+                language: python
+                spec_id: python-sandbox
+            ---
+            # Workflow
+            Read references/guide.md only when needed.
+            """,
+        ),
+    )
+
+    skill = parse_skill_package(package)
+
+    assert skill.mode == SkillMode.GUIDANCE
+    assert skill.guidance_enabled
+    assert not skill.tool_enabled
+    assert skill.metadata["short-description"] == "Codex style"
+    assert {resource.relpath for resource in skill.resources} == {
+        "references/guide.md",
+        "scripts/run.py",
+    }
+    assert skill.scripts[0].relpath == "scripts/run.py"
+    assert "sandbox/container" in "; ".join(skill.diagnostics)
+
+
+def test_folder_skill_rejects_script_path_traversal(tmp_path: Path) -> None:
+    package = tmp_path / "bad-script"
+    package.mkdir()
+    (package / "SKILL.md").write_text(
+        textwrap.dedent(
+            """\
+            ---
+            name: bad-script
+            description: bad script path
+            scripts:
+              - path: ../run.py
+            ---
+            Body
+            """,
+        ),
+    )
+
+    with pytest.raises(SkillParseError, match="escapes package root"):
+        parse_skill_package(package)
+
+
+def test_folder_skill_rejects_resource_symlink_escape(tmp_path: Path) -> None:
+    package = tmp_path / "bad-resource"
+    (package / "references").mkdir(parents=True)
+    outside = tmp_path / "outside.md"
+    outside.write_text("outside")
+    (package / "references" / "outside.md").symlink_to(outside)
+    (package / "SKILL.md").write_text(
+        textwrap.dedent(
+            """\
+            ---
+            name: bad-resource
+            description: bad resource path
+            ---
+            Body
+            """,
+        ),
+    )
+
+    with pytest.raises(SkillParseError, match="escapes package root"):
+        parse_skill_package(package)
+
+
+def test_hybrid_folder_skill_registers_tool_and_guidance(tmp_path: Path) -> None:
+    package = tmp_path / "hybrid"
+    package.mkdir()
+    (package / "SKILL.md").write_text(
+        textwrap.dedent(
+            """\
+            ---
+            name: skill.hybrid
+            description: hybrid skill
+            mode: hybrid
+            parameters:
+              type: object
+              properties:
+                text:
+                  type: string
+            target_arg: text
+            ---
+            Summarize {{text}}
+            """,
+        ),
+    )
+    registry = ToolRegistry()
+    report = load_skill_directory_report(tmp_path, registry, FakeLLMClient([]))
+
+    assert "skill.hybrid" in report.skills
+    assert report.skills["skill.hybrid"].guidance_enabled
+    assert "skill.hybrid" in registry
+    assert report.registered_tools == ["skill.hybrid"]
+
+
+def test_guidance_loads_without_quarantined_llm(tmp_path: Path) -> None:
+    package = tmp_path / "guidance"
+    package.mkdir()
+    (package / "SKILL.md").write_text(
+        textwrap.dedent(
+            """\
+            ---
+            name: skill.guidance
+            description: guidance skill
+            ---
+            Follow this workflow.
+            """,
+        ),
+    )
+    registry = ToolRegistry()
+    report = load_skill_directory_report(tmp_path, registry, None)
+
+    assert "skill.guidance" in report.skills
+    assert report.skills["skill.guidance"].guidance_enabled
+    assert report.registered_tools == []
+    assert report.skipped == []
+
+
+def test_tool_skill_without_quarantined_llm_is_visible_but_not_registered(tmp_path: Path) -> None:
+    (tmp_path / "tool.md").write_text(_skill_text(name="skill.needs_llm"))
+    registry = ToolRegistry()
+    report = load_skill_directory_report(tmp_path, registry, None)
+
+    assert "skill.needs_llm" in report.skills
+    assert "skill.needs_llm" not in registry
+    assert report.skipped == [
+        {
+            "path": str(tmp_path / "tool.md"),
+            "name": "skill.needs_llm",
+            "reason": "missing-quarantined-llm",
+        },
+    ]
+
+
+async def test_script_skill_refuses_without_sandbox(tmp_path: Path) -> None:
+    package = tmp_path / "scripted"
+    (package / "scripts").mkdir(parents=True)
+    (package / "scripts" / "run.py").write_text("print('ok')\n")
+    (package / "SKILL.md").write_text(
+        textwrap.dedent(
+            """\
+            ---
+            name: skill.scripted
+            description: scripted skill
+            mode: tool
+            scripts:
+              - path: scripts/run.py
+                language: python
+                spec_id: python-sandbox
+            ---
+            Script body
+            """,
+        ),
+    )
+    skill = parse_skill_package(package)
+    tool = skill_to_tool(skill, FakeLLMClient([]))
+    from uuid import uuid4
+
+    assert tool.capability_kind == CapabilityKind.EXECUTE_SANDBOX
+    assert tool.target_arg == "spec_id"
+    result = await tool.handler({}, ToolContext(session_id=uuid4(), label_state=LabelState()))
+
+    assert "host execution is refused" in result.output["error"]
+
+
+class _SandboxResult:
+    exit_code = 0
+    output_digest = "abc123"
+    cancelled = False
+    timed_out = False
+    outputs = ()
+
+
+class _FakeSandboxActuator:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def create_region(self, *, spec_id: str) -> str:
+        self.calls.append({"method": "create_region", "spec_id": spec_id})
+        return "region-1"
+
+    def execute(self, **kwargs: Any) -> _SandboxResult:
+        self.calls.append({"method": "execute", **kwargs})
+        return _SandboxResult()
+
+    def discard_region(self, region_id: str) -> None:
+        self.calls.append({"method": "discard_region", "region_id": region_id})
+
+
+async def test_script_skill_runs_only_through_sandbox(tmp_path: Path) -> None:
+    package = tmp_path / "scripted"
+    (package / "scripts").mkdir(parents=True)
+    (package / "scripts" / "run.py").write_text("print('ok')\n")
+    (package / "SKILL.md").write_text(
+        textwrap.dedent(
+            """\
+            ---
+            name: skill.scripted
+            description: scripted skill
+            mode: tool
+            scripts:
+              - path: scripts/run.py
+                language: python
+                spec_id: python-sandbox
+            ---
+            Script body
+            """,
+        ),
+    )
+    skill = parse_skill_package(package)
+    actuator = _FakeSandboxActuator()
+    tool = skill_to_tool(skill, FakeLLMClient([]), sandbox_actuator=actuator)  # type: ignore[arg-type]
+    from uuid import uuid4
+
+    result = await tool.handler({}, ToolContext(session_id=uuid4(), label_state=LabelState()))
+
+    assert result.output["exit_code"] == 0
+    execute = next(call for call in actuator.calls if call["method"] == "execute")
+    assert execute["argv"] == ("python", "/in/main.py")
+    assert execute["inputs"] == {"main.py": b"print('ok')\n"}
 
 
 def test_repo_starter_skills_parse() -> None:
