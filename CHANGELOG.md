@@ -6,6 +6,48 @@ breaking changes).
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-07-04
+
+Stable release for local media/model operations, CommonMark client rendering,
+and SKILL.md interoperability.
+
+### Skills interoperability
+
+- Added Codex/Claude-style folder `SKILL.md` package imports alongside the
+  existing flat Markdown skill format.
+- Added explicit `guidance`, `tool`, and `hybrid` modes so imported skills are
+  never treated as implicit operator or system authority.
+- Exposed skill registry and diagnostics over daemon RPC and `capdep skill`
+  CLI commands.
+- Routed declared skill scripts only through `EXECUTE_SANDBOX` execution with
+  audited isolation-region lifecycle events; host subprocess execution is
+  refused.
+- Added resource traversal, symlink escape, sandbox refusal, sandbox-only
+  execution, handler audit, and client parity regression tests.
+
+### CommonMark rendering
+
+- Added a shared CommonMark capability contract, parser/sanitizer fixtures, and
+  client parity metadata for rendered Markdown surfaces.
+- Added terminal-safe CLI/TUI rendering behavior and MCP-control fallback
+  metadata for lower-capability clients.
+- Hardened CapDepMac rendering sanitizer behavior and documented supported
+  CommonMark behavior across client surfaces.
+
+### Local media and model operations
+
+- Promoted daemon-owned local media/model operations for image generation,
+  including profile selection, readiness checks, benchmark-informed defaults,
+  progress/status reporting, cancellation, and queue recovery.
+- Documented local model/image backend setup and deferred model capability
+  findings.
+
+### Roadmap
+
+- Closed GitHub milestone `14 Product — v0.44.0 — Skills interoperability and
+  sandboxed execution`.
+- v0.42 and v0.43 product ladder work is included in this stable tag.
+
 ## [0.41.1] - 2026-07-03
 
 Patch release for reproducible local image-generation dependency locking.
@@ -984,6 +1026,9 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.44.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.44.0
+[0.41.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.41.1
+[0.41.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.41.0
 [0.25.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.25.0
 [0.24.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.24.0
 [0.23.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.23.0

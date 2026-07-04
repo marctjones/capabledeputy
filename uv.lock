@@ -111,7 +111,7 @@ wheels = [
 
 [[package]]
 name = "capabledeputy"
-version = "0.41.0"
+version = "0.44.0"
 source = { editable = "." }
 dependencies = [
     { name = "anyio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },

@@ -2,21 +2,20 @@
 
 Living plan that organizes the open GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
-rationale*. Last refreshed 2026-07-04 — **v0.42 local media/model operations
-reliability** is closed, **v0.43 CommonMark rendering across client surfaces**
-is implemented locally for tracker closeout, and **v0.44 skills
-interoperability and sandboxed execution** is the next open product milestone.
+rationale*. Last refreshed 2026-07-04 — **v0.44.0** is the current stable
+release, covering local media/model operations reliability, CommonMark rendering
+across client surfaces, and skills interoperability with sandboxed execution.
 The live GitHub tracker has no unmilestoned open issues, and every GitHub
 milestone title now carries an ordered prefix.
 
-Recently completed milestone (GitHub): **12 Product — v0.42.0 — Local media
-and model operations reliability**.
+Recently completed stable release: **v0.44.0**.
 
-Current closeout milestone (GitHub): **13 Product — v0.43.0 — CommonMark
-rendering across client surfaces**.
+Included product milestones: **12 Product — v0.42.0 — Local media/model
+operations reliability** · **13 Product — v0.43.0 — CommonMark rendering
+across client surfaces** · **14 Product — v0.44.0 — Skills interoperability
+and sandboxed execution**.
 
-Next implementation milestone (GitHub): **14 Product — v0.44.0 — Skills
-interoperability and sandboxed execution** (#216-#223).
+Next implementation milestone: unscheduled.
 
 Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
 reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical

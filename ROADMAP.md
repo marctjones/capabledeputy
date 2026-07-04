@@ -6,10 +6,9 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-07-04 — v0.41.1 is the current stable release. v0.42
-local media/model operations reliability is closed, v0.43 CommonMark rendering
-across client surfaces is implemented locally for tracker closeout, and v0.44
-is now tracking SKILL.md interoperability with sandboxed execution. v1.0
+**Last refreshed:** 2026-07-04 — v0.44.0 is the current stable release,
+covering local media/model operations reliability, CommonMark rendering across
+client surfaces, and SKILL.md interoperability with sandboxed execution. v1.0
 remains unscheduled.
 
 ## Product Ladder — v0.35 → v0.44
