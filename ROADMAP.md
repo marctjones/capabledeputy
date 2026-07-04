@@ -8,10 +8,11 @@ historical backlog snapshots, not the current roadmap.
 
 **Last refreshed:** 2026-07-04 — v0.44.0 is the current stable release,
 covering local media/model operations reliability, CommonMark rendering across
-client surfaces, and SKILL.md interoperability with sandboxed execution. v1.0
-remains unscheduled.
+client surfaces, and SKILL.md interoperability with sandboxed execution. v0.45
+is now open for dead-simple Google account connection. v1.0 remains
+unscheduled.
 
-## Product Ladder — v0.35 → v0.44
+## Product Ladder — v0.35 → v0.45
 
 ```mermaid
 flowchart LR
@@ -25,7 +26,8 @@ flowchart LR
   v42[v0.42 Local media/model reliability]
   v43[v0.43 CommonMark client rendering]
   v44[v0.44 Skills interoperability + sandboxed execution]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44
+  v45[v0.45 Dead-simple Google account connection]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -40,6 +42,7 @@ flowchart LR
 | **12 Product — v0.42.0 — Local media and model operations reliability** | Productionize local media/model operations | #202–#208 |
 | **13 Product — v0.43.0 — CommonMark rendering across client surfaces** | CommonMark rendering and fallback parity across clients | #209–#215 |
 | **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | Codex/Claude-style SKILL.md compatibility with CapDep security guarantees and containerized skill scripts | #216–#223 |
+| **15 Product — v0.45.0 — Dead-simple Google account connection** | One-click Google/Gmail/Workspace account connection with daemon-owned OAuth, diagnostics, and CLI/CapDepMac parity | #224–#232 |
 
 ## Tracker Coverage
 
@@ -47,6 +50,7 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
+| **15 Product — v0.45.0 — Dead-simple Google account connection** | #224–#232 | Open: default OAuth identity strategy, one-click CapDepMac wizard, daemon hot-reload, pre/postflight diagnostics, scope presets/account identity, CLI parity, tests, and docs. |
 | **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | #216–#223 | Closed: imports flat and folder-based SKILL.md packages, models guidance/tool/hybrid modes, preserves policy/labels/provenance/audit, routes skill scripts through sandbox execution only, exposes daemon/CLI diagnostics, and adds compatibility/adversarial/E2E tests. |
 | **13 Product — v0.43.0 — CommonMark rendering across client surfaces** | #209–#215 | Complete locally: shared CommonMark contract, sanitizer fixtures, CapDepMac rendering sanitizer, terminal-safe CLI/TUI rendering, MCP-control metadata/fallback behavior, and release parity docs/tests. |
 | **12 Product — v0.42.0 — Local media and model operations reliability** | #202–#208 | Complete: profile selection, model/account readiness, benchmark-informed defaults, progress/status, queue recovery, and setup/release docs for local media/model operations. |
@@ -74,6 +78,49 @@ Closed GitHub milestones use the same ordered-prefix convention:
 | **00.10 Done — v0.33.0 — Streaming turn lifecycle and liveness** | Closed |
 | **00.11 Done — v0.34.0 — First-run, connectors, and rich chat readiness** | Closed |
 | **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | Closed |
+
+## Active Focus — v0.45.0 Dead-simple Google Account Connection
+
+Goal: make connecting Gmail and Google Workspace accounts simple enough for a
+normal user to complete from CapDepMac or the CLI without first learning the
+Google Cloud Console. The daemon remains the owner of OAuth setup, token
+storage, upstream server configuration, tool registration, status, and audit.
+OAuth login proves account access only; it does not grant CapDep action
+authority or bypass MCP admission, policy labels, approvals, provenance, or
+scope checks.
+
+### v0.45.0 scope
+
+| Issue | Work | Local status |
+|---|---|---|
+| #224 | EPIC: dead-simple Google account connection | Planned |
+| #226 | Decide and implement default Google OAuth identity strategy | Planned |
+| #225 | One-click CapDepMac Google account wizard | Planned |
+| #227 | Daemon hot-reload after Google OAuth token changes | Planned |
+| #228 | Google OAuth preflight, postflight, and repair diagnostics | Planned |
+| #229 | Unified Google scope presets and account selection | Planned |
+| #230 | CLI parity for Google connect, status, and disconnect | Planned |
+| #231 | Automated tests for Google OAuth setup state machine | Planned |
+| #232 | Update Google Workspace docs for simple and advanced setup | Planned |
+
+### v0.45.0 done-when
+
+- A normal user can connect Gmail, Calendar, and Drive from CapDepMac without
+  creating a Google Cloud project or pasting OAuth client secrets.
+- The advanced bring-your-own OAuth client path remains available and clearly
+  separated from the default simple path.
+- Token create, revoke, scope change, and account change events update daemon
+  upstream configuration and tool availability without stale authority.
+- Status and repair surfaces show account identity, service readiness, scopes,
+  and actionable repair steps without exposing tokens or client secrets.
+- CLI commands can connect, report status, and disconnect Google accounts using
+  the same daemon APIs as CapDepMac.
+- Tests cover the OAuth setup state machine with fake providers, including
+  success, denial, expired tokens, revoked tokens, scope mismatch, config
+  reload, and secret redaction.
+- README and Google Workspace docs make the simple path primary, keep advanced
+  setup available, and explicitly state that OAuth login is not a CapDep
+  capability grant.
 
 ## Completed Focus — v0.42.0 Local Media and Model Operations Reliability
 
