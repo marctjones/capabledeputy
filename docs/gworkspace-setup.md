@@ -29,7 +29,7 @@ CapDep can automate the safe Google Cloud pieces and then point you at the
 Google-controlled Auth/Admin pages that still require browser approval:
 
 ```bash
-capdep-google-cloud-setup \
+capdep-setup google-cloud \
   --project PROJECT_ID \
   --services gmail,drive,calendar \
   --register-capdep

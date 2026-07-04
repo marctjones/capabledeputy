@@ -13,6 +13,7 @@ from capabledeputy.cli.google_cloud_setup import (
     required_cloud_apis,
     run_cloud_setup,
 )
+from capabledeputy.cli.setup_cli import app as setup_app
 
 runner = CliRunner()
 
@@ -200,6 +201,32 @@ def test_google_cloud_setup_cli_json_dry_run() -> None:
     result = runner.invoke(
         app,
         [
+            "--project",
+            "capdep-oauth",
+            "--services",
+            "gmail",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert '"project_id": "capdep-oauth"' in result.stdout
+    assert '"gmailmcp.googleapis.com"' in result.stdout
+
+
+def test_generic_setup_cli_lists_available_setup_domains() -> None:
+    result = runner.invoke(setup_app, ["list"])
+
+    assert result.exit_code == 0
+    assert "google-cloud" in result.stdout
+    assert "Workspace OAuth" in result.stdout
+
+
+def test_generic_setup_cli_dispatches_google_cloud_setup() -> None:
+    result = runner.invoke(
+        setup_app,
+        [
+            "google-cloud",
             "--project",
             "capdep-oauth",
             "--services",
