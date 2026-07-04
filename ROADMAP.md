@@ -10,9 +10,10 @@ historical backlog snapshots, not the current roadmap.
 covering local media/model operations reliability, CommonMark rendering across
 client surfaces, and SKILL.md interoperability with sandboxed execution. v0.45
 and v0.46 are implemented on `main`; v0.47 is next for native office
-automation skills. v1.0 remains unscheduled.
+automation skills, followed by v0.48 native MLX model asset conversion and
+benchmarking. v1.0 remains unscheduled.
 
-## Product Ladder — v0.35 → v0.47
+## Product Ladder — v0.35 → v0.48
 
 ```mermaid
 flowchart LR
@@ -29,7 +30,8 @@ flowchart LR
   v45[v0.45 Dead-simple Google account connection]
   v46[v0.46 Consolidated setup automation]
   v47[v0.47 Native office automation skills]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47
+  v48[v0.48 Native MLX model asset pipeline]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -47,6 +49,7 @@ flowchart LR
 | **15 Product — v0.45.0 — Dead-simple Google account connection** | One-click Google/Gmail/Workspace account connection with daemon-owned OAuth, diagnostics, and CLI/CapDepMac parity | #224–#232 |
 | **16 Product — v0.46.0 — Consolidated setup automation** | One-time setup domains under `capdep-setup`, with daemon/client runtime boundaries and non-destructive setup tests | #233–#240 |
 | **17 Product — v0.47.0 — Native office automation skills** | Bounded SKILL.md workflows and native automation for Apple iWork/Mail and Microsoft Office apps | #241–#248 |
+| **18 Product — v0.48.0 — Native MLX model asset pipeline** | Reconsider local text/image model choices around native MLX/MFLUX conversion, provenance, setup planning, and measured defaults | #249–#256 |
 
 ## Tracker Coverage
 
@@ -55,6 +58,7 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
 | **17 Product — v0.47.0 — Native office automation skills** | #241–#248 | Planned: package bounded SKILL.md workflows and app-specific native automation for Apple Mail, Pages, Numbers, Keynote, Microsoft Outlook, Word, and PowerPoint while preserving explicit capabilities, labels, provenance, approval gates, and non-destructive fake-runner tests. |
+| **18 Product — v0.48.0 — Native MLX model asset pipeline** | #249–#256 | Planned next: inventory current text/image model assets, decide which PyTorch/diffusers/safetensors assets should be converted to native MLX/MFLUX-friendly artifacts, implement conversion-aware `capdep-setup` planning, preserve provenance/gated access metadata, benchmark converted assets against source runtimes, and surface readiness/fallback state through daemon/client status. |
 | **16 Product — v0.46.0 — Consolidated setup automation** | #233–#240 | Complete locally: one-time assistant-surface/IMAP/Workspace/image/model/macOS-daemon/sandbox setup lives under `capdep-setup`, compatibility aliases remain, and temp-home/fake-runner tests guard non-destructive setup behavior. |
 | **15 Product — v0.45.0 — Dead-simple Google account connection** | #224–#232 | Complete locally: preset-first Google account setup, daemon-owned OAuth state, live reload/unload where possible, redacted diagnostics, CLI/CapDepMac parity, and fake-provider tests. |
 | **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | #216–#223 | Closed: imports flat and folder-based SKILL.md packages, models guidance/tool/hybrid modes, preserves policy/labels/provenance/audit, routes skill scripts through sandbox execution only, exposes daemon/CLI diagnostics, and adds compatibility/adversarial/E2E tests. |
@@ -224,6 +228,49 @@ organize workflows around bounded tools.
   installed.
 - Real app automation smokes are opt-in with explicit markers/environment
   flags and disposable fixture documents/accounts only.
+
+## Planned Focus — v0.48.0 Native MLX Model Asset Pipeline
+
+Goal: reconsider CapDep's local model choices in light of converting suitable
+PyTorch, diffusers, safetensors, and Hugging Face assets into native Apple
+Silicon MLX/MFLUX-friendly artifacts. This work must stay evidence-driven:
+existing MLX/MFLUX repos remain preferred when they are already practical,
+unsupported conversions remain explicit, and defaults only change after local
+benchmark artifacts show a real benefit.
+
+### v0.48.0 scope
+
+| Issue | Work | Local status |
+|---|---|---|
+| #252 | EPIC: native MLX model asset pipeline | Planned |
+| #249 | Inventory model profiles and conversion feasibility | Planned |
+| #250 | Add `capdep-setup` model conversion planner | Planned |
+| #251 | Implement reproducible MLX/MFLUX conversion cache | Planned |
+| #253 | Benchmark converted assets against source runtimes | Planned |
+| #256 | Surface converted model readiness in daemon and clients | Planned |
+| #254 | Enforce model provenance, gated access, and fallback safety | Planned |
+| #255 | Document native MLX conversion recommendations and limits | Planned |
+
+### v0.48.0 done-when
+
+- CapDep has a machine-readable inventory of text and image model profiles,
+  source formats, source repositories, gates/licenses, current runtime backend,
+  and conversion feasibility.
+- `capdep-setup models` can dry-run conversion-aware plans and requires
+  explicit apply/download/convert flags before mutating model caches.
+- Converted assets carry manifests with source repo, revision, file hashes,
+  conversion command, tool versions, quantization, output files, and fallback
+  source assets.
+- Daemon readiness reports whether a profile is using native MLX/MFLUX,
+  converted assets, or source fallback, with actionable repair steps for stale
+  or missing conversions.
+- Benchmarks compare converted and source runtime paths for load latency,
+  generation latency, memory footprint, output validity, and quality/parity
+  where applicable; image and text results stay separate.
+- Runtime never silently uses partial, stale, provenance-missing, or
+  gate-unaccepted artifacts.
+- README and model docs explain when conversion is preferred, unsupported, or
+  intentionally avoided.
 
 ## Completed Focus — v0.42.0 Local Media and Model Operations Reliability
 

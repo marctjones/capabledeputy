@@ -7,7 +7,7 @@ release, covering local media/model operations reliability, CommonMark rendering
 across client surfaces, and skills interoperability with sandboxed execution.
 v0.45 Google account connection and v0.46 consolidated setup automation are
 implemented on `main`; v0.47 native office automation skills is the next
-implementation milestone.
+implementation milestone, followed by v0.48 native MLX model asset conversion.
 
 Recently completed stable release: **v0.44.0**.
 
@@ -16,7 +16,8 @@ operations reliability** · **13 Product — v0.43.0 — CommonMark rendering
 across client surfaces** · **14 Product — v0.44.0 — Skills interoperability
 and sandboxed execution** · **15 Product — v0.45.0 — Dead-simple Google account
 connection** · **16 Product — v0.46.0 — Consolidated setup automation** ·
-**17 Product — v0.47.0 — Native office automation skills**.
+**17 Product — v0.47.0 — Native office automation skills** · **18 Product —
+v0.48.0 — Native MLX model asset pipeline**.
 
 Next implementation milestone: **17 Product — v0.47.0 — Native office
 automation skills** (#241-#248).
@@ -50,52 +51,58 @@ Themes currently driving priority:
    workflows and app-specific native automation for Apple Mail, Pages, Numbers,
    Keynote, Microsoft Outlook, Word, and PowerPoint without turning native
    automation into ambient authority (#241-#248).
-2. **v0.46 consolidated setup automation** — implemented one-time setup domains
+2. **v0.48 native MLX model asset pipeline** — reconsider text/image model
+   choices around local conversion of PyTorch, diffusers, safetensors, and
+   Hugging Face assets into native Apple Silicon MLX/MFLUX-friendly artifacts;
+   keep conversion in `capdep-setup`, preserve provenance/gated access
+   metadata, benchmark against source runtimes, and surface readiness/fallback
+   state through daemon/client status (#249-#256).
+3. **v0.46 consolidated setup automation** — implemented one-time setup domains
    under `capdep-setup`, including setup/runtime boundaries, explicit
    dry-run/apply behavior, model download plans, sandbox runtime checks, and
    macOS daemon parity verification (#233-#240).
-3. **v0.45 dead-simple Google account connection** — implemented preset-first
+4. **v0.45 dead-simple Google account connection** — implemented preset-first
    Gmail/Calendar/Drive setup with daemon-owned OAuth state, scoped permissions,
    token auditability, live reload/unload where possible, advanced
    bring-your-own-client setup, and CapDep policy/MCP boundaries intact
    (#224-#232).
-4. **v0.44 skills interoperability and sandboxed execution** — shipped
+5. **v0.44 skills interoperability and sandboxed execution** — shipped
    Codex/Claude-style `SKILL.md` imports without weakening CapDep authority:
    skills are explicit guidance/tool/hybrid packages, preserve
    policy/labels/provenance/audit, run scripts only through containerized
    sandbox paths, expose client diagnostics, and carry compatibility plus
    adversarial/E2E tests (#216-#223).
-5. **v0.43 CommonMark client rendering** — shared CommonMark contract,
+6. **v0.43 CommonMark client rendering** — shared CommonMark contract,
    parser/sanitizer fixtures, CapDepMac rich rendering, terminal-safe CLI/TUI
    rendering, MCP-control fallback behavior, and release parity evidence
    (#209-#215).
-6. **v0.42 local media/model operations reliability** — profile selection,
+7. **v0.42 local media/model operations reliability** — profile selection,
    model/account readiness, benchmark-informed defaults, real progress/status,
    cancellation/recovery, and setup/release docs (#202-#208).
-7. **MCP security integration** — MCP must remain an integration substrate, not
+8. **MCP security integration** — MCP must remain an integration substrate, not
    a second authority path. v0.29 turns the current targeted tests into a
    security conformance suite before CapDep relies heavily on external MCP
    servers and headless clients.
-8. **Client proof, not just parity claims** — v0.30 replaces source/manifest
+9. **Client proof, not just parity claims** — v0.30 replaces source/manifest
    checks with live daemon integration coverage for CLI, TUI, Swift GUI, and
    MCP-control.
    Coverage is ratcheted independently for daemon files, clients, MCP
    surfaces, bundled MCP servers, and tools; the near-term target is 85% per
    group and the stretch target is 90%, but CI first enforces non-regression
    from the checked-in baseline.
-9. **Multi-session explainability** — v0.31 made labels, flow patterns,
+10. **Multi-session explainability** — v0.31 made labels, flow patterns,
    external actors, approvals, policy rules, provenance, and audit inspectable
    across turns and clients.
-10. **Source identity and labeling correctness** — IFC guarantees ride on
+11. **Source identity and labeling correctness** — IFC guarantees ride on
    correct labels. The old v0.16 track is now narrowed to canonical source
    identity and per-message email labeling.
-11. **Terminal UX and approval polish** — remaining terminal work is useful,
+12. **Terminal UX and approval polish** — remaining terminal work is useful,
    but it is not the primary desktop-agent path and should not duplicate daemon
    authority.
-12. **Research/non-goals** — keep remote/mobile control, always-on autonomy,
+13. **Research/non-goals** — keep remote/mobile control, always-on autonomy,
    community sharing, and web/cross-platform alternatives explicit without
    promoting them to immediate implementation.
-13. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
+14. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
    human oversight. The decision-refinement layer is live; future work should
    add concrete inspectors or policy scripts, not revive the old epic.
 
@@ -194,6 +201,57 @@ become independent credential or capability authorities.
 | #33 | Design: Workspace capability mapping | v0.16 / #42 |
 | #34 | Email labeling — design + content-rule impl (raise-only labeler) | v0.16 / #42 |
 | #13 | Credential vault and stdio upstream no-broad-env hardening | v0.33.0 |
+
+## v0.48.0 — Native MLX model asset pipeline
+
+Planned after v0.47. v0.48 revisits local model selection now that conversion
+to native MLX/MFLUX-friendly artifacts is part of the design space. The goal is
+not to convert everything. The goal is to decide, with local evidence, which
+assets should use existing MLX/MFLUX repos, which should be converted locally,
+and which should remain on source runtime paths such as diffusers/MPS.
+
+### Scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #252 | EPIC: native MLX model asset pipeline | Planned |
+| #249 | Inventory model profiles and conversion feasibility | Planned |
+| #250 | Add `capdep-setup` model conversion planner | Planned |
+| #251 | Implement reproducible MLX/MFLUX conversion cache | Planned |
+| #253 | Benchmark converted assets against source runtimes | Planned |
+| #256 | Surface converted model readiness in daemon and clients | Planned |
+| #254 | Enforce model provenance, gated access, and fallback safety | Planned |
+| #255 | Document native MLX conversion recommendations and limits | Planned |
+
+### Sequencing
+
+1. Inventory current CapDep model profiles and formats first (#249), including
+   text roles, MFLUX image profiles, diffusers SDXL/Pony fallbacks, LoRAs, and
+   local checkpoint environment variables.
+2. Extend `capdep-setup models` with conversion-aware dry-run plans (#250)
+   before implementing mutating conversion so users can inspect disk,
+   dependency, gate, and fallback impacts.
+3. Implement a reproducible conversion/cache manifest only for supported
+   assets (#251), recording source repo/revision/files, checksums, conversion
+   command, tool versions, quantization, output files, and fallback source.
+4. Add benchmark scripts/artifacts that compare converted and source runtime
+   paths in separate processes where memory matters (#253).
+5. Surface converted/native/fallback readiness through daemon status and
+   client parity metadata (#256).
+6. Add provenance, gated-access, stale/partial artifact, and fallback safety
+   tests (#254).
+7. Update README/model docs with measured recommendations and explicit limits
+   (#255).
+
+### Done-when
+
+- Conversion plans and manifests are reproducible and source-traceable.
+- Mutating downloads/conversions require explicit `--apply` plus conversion
+  intent; default setup remains dry-run.
+- Unsupported conversions fail clearly without changing runtime defaults.
+- Benchmarks justify any default changes and keep text/image results separate.
+- Daemon/client readiness reports native MLX/MFLUX, converted, source fallback,
+  stale, and missing states without clients owning conversion authority.
 
 ## v0.42.0 — Local media and model operations reliability
 
