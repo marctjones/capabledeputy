@@ -139,11 +139,50 @@ def test_setup_models_apply_download_uses_fake_runner_and_cache(tmp_path: Path) 
     assert all(str(tmp_path / "hf") in command for command in calls)
 
 
+def test_setup_models_apply_convert_writes_manifests(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr("capabledeputy.cli.setup_domains.platform.system", lambda: "Darwin")
+    monkeypatch.setattr("capabledeputy.cli.setup_domains.platform.machine", lambda: "arm64")
+
+    def fake_runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(tuple(command))
+        return subprocess.CompletedProcess(list(command), 0, stdout="", stderr="")
+
+    result = setup_models(
+        apply=True,
+        convert=True,
+        cache_home=tmp_path / "hf",
+        asset_home=tmp_path / "assets",
+        command_runner=fake_runner,
+    )
+
+    assert result.status == "conversion_manifests_written"
+    assert result.changed is True
+    assert result.details["inventory"]
+    assert result.details["unsupported_conversions"] == [
+        "image.sdxl-photoreal",
+        "image.pony-graphic-novel",
+    ]
+    assert result.details["manifest_paths"]
+    assert all(Path(path).is_file() for path in result.details["manifest_paths"])
+    assert calls == result.details["conversion_commands"]
+
+
 def test_setup_models_download_requires_apply(tmp_path: Path) -> None:
     import pytest
 
     with pytest.raises(ValueError, match="--download requires --apply"):
         setup_models(download=True, cache_home=tmp_path / "hf")
+
+
+def test_setup_models_convert_requires_apply(tmp_path: Path) -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="--convert requires --apply"):
+        setup_models(convert=True, cache_home=tmp_path / "hf")
 
 
 def test_setup_sandbox_apply_uses_fake_podman_runner(monkeypatch) -> None:
@@ -215,7 +254,9 @@ def test_setup_office_automation_apply_uses_fake_runner() -> None:
 
 def test_capdep_setup_rejects_mutating_suboptions_without_apply(tmp_path: Path) -> None:
     models = runner.invoke(setup_app, ["models", "--download", "--hf-home", str(tmp_path)])
+    convert = runner.invoke(setup_app, ["models", "--convert", "--hf-home", str(tmp_path)])
     macos = runner.invoke(setup_app, ["macos-daemon", "--verify", "--repo-root", str(tmp_path)])
 
     assert models.exit_code == 2
+    assert convert.exit_code == 2
     assert macos.exit_code == 2

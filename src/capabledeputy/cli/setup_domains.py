@@ -30,6 +30,13 @@ from capabledeputy.cli._managed_config import (
     user_default_daemon_config_path,
     write_managed_block,
 )
+from capabledeputy.model_assets import (
+    model_asset_home,
+    model_asset_inventory,
+    model_conversion_commands,
+    model_download_commands,
+    write_conversion_manifests,
+)
 
 CommandRunner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 
@@ -286,60 +293,102 @@ def setup_models(
     *,
     apply: bool = False,
     download: bool = False,
+    convert: bool = False,
     cache_home: Path | None = None,
+    asset_home: Path | None = None,
     command_runner: CommandRunner | None = None,
 ) -> SetupDomainResult:
     cache_home = cache_home or Path(
         os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface",
     )
+    asset_home = model_asset_home(asset_home)
     apple_silicon = platform.system() == "Darwin" and platform.machine() == "arm64"
+    inventory = model_asset_inventory(apple_silicon=apple_silicon)
     recommendations = [
         {
-            "role": "planner",
-            "profile": "balanced",
-            "model": "mlx/Qwen/Qwen3-4B-MLX-4bit" if apple_silicon else "Qwen/Qwen3-4B",
-        },
-        {
-            "role": "image",
-            "profile": "fast",
-            "model": "filipstrand/Z-Image-Turbo-mflux-4bit"
-            if apple_silicon
-            else "stabilityai/sdxl-turbo",
-        },
+            "role": profile.role,
+            "profile": profile.profile_id,
+            "model": profile.recommended_runtime,
+            "conversion_status": profile.conversion_status,
+        }
+        for profile in inventory
+        if profile.conversion_status != "unsupported"
     ]
-    commands = tuple(
-        ("hf", "download", str(item["model"]), "--cache-dir", str(cache_home))
-        for item in recommendations
-    )
+    download_commands = model_download_commands(inventory, cache_home=cache_home)
+    conversion_commands = model_conversion_commands(inventory, asset_home=asset_home)
+    commands = (*download_commands, *conversion_commands)
     if download and not apply:
         raise ValueError("--download requires --apply")
-    if apply and download:
+    if convert and not apply:
+        raise ValueError("--convert requires --apply")
+    if convert and not apple_silicon:
+        raise ValueError("--convert currently requires Apple Silicon MLX support")
+    manifest_paths: tuple[Path, ...] = ()
+    if apply and (download or convert):
         runner = command_runner or _default_runner
-        for command in commands:
+        selected_commands = []
+        if download:
+            selected_commands.extend(download_commands)
+        if convert:
+            selected_commands.extend(conversion_commands)
+        for command in selected_commands:
             runner(command)
-    status = "downloaded" if apply and download else "ready_to_download" if apply else "dry_run"
+        if convert:
+            manifest_paths = write_conversion_manifests(
+                inventory,
+                asset_home=asset_home,
+                commands=conversion_commands,
+                applied=True,
+            )
+    status = (
+        "conversion_manifests_written"
+        if apply and convert
+        else "downloaded"
+        if apply and download
+        else "ready_to_download"
+        if apply
+        else "dry_run"
+    )
     summary = (
-        "Downloaded recommended local planner/image model assets."
+        "Applied the native model asset plan and wrote provenance manifests."
+        if apply and convert
+        else "Downloaded recommended local planner/image model assets."
         if apply and download
         else "Prepared a model harvesting plan; add --download to fetch assets."
         if apply
-        else "Would inspect machine capability and recommend local planner/image models."
+        else "Would inspect machine capability and recommend local planner/image models, "
+        "including native MLX/MFLUX conversion feasibility."
     )
     return SetupDomainResult(
         domain="models",
         apply=apply,
         status=status,
         summary=summary,
-        actions=("inspect machine capability", "check Hugging Face token presence"),
+        actions=(
+            "inspect machine capability",
+            "check Hugging Face token presence",
+            "inventory text and image model profile formats",
+            "plan native MLX/MFLUX conversion only for supported assets",
+            "preserve source fallback for unsupported conversions",
+        ),
         commands=commands,
-        changed=bool(apply and download),
-        paths=_path_map(hf_home=cache_home),
+        changed=bool(apply and (download or convert)),
+        paths=_path_map(hf_home=cache_home, model_asset_home=asset_home),
         details={
             "apple_silicon": apple_silicon,
             "hf_token_present": bool(
                 os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN"),
             ),
             "recommendations": recommendations,
+            "inventory": [profile.as_dict() for profile in inventory],
+            "download_commands": [list(command) for command in download_commands],
+            "conversion_commands": [list(command) for command in conversion_commands],
+            "manifest_paths": [str(path) for path in manifest_paths],
+            "unsupported_conversions": [
+                profile.profile_id
+                for profile in inventory
+                if profile.conversion_status == "unsupported"
+            ],
         },
     )
 

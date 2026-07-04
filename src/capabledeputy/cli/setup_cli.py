@@ -213,6 +213,13 @@ def models_command(
         bool,
         typer.Option("--download", help="Download recommended assets. Requires --apply."),
     ] = False,
+    convert: Annotated[
+        bool,
+        typer.Option(
+            "--convert",
+            help="Convert supported assets and write manifests. Requires --apply.",
+        ),
+    ] = False,
     json_output: Annotated[
         bool,
         typer.Option("--json", help="Print machine-readable JSON."),
@@ -220,7 +227,7 @@ def models_command(
 ) -> None:
     """Inspect local capability and recommend model assets."""
     try:
-        result = setup_models(apply=apply, download=download, cache_home=hf_home)
+        result = setup_models(apply=apply, download=download, convert=convert, cache_home=hf_home)
     except ValueError as exc:
         err_console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=2) from None

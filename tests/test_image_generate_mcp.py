@@ -63,6 +63,24 @@ def test_split_servers_expose_single_tools() -> None:
     assert legacy_names == {"image.generate", "image.fetch"}
 
 
+def test_available_image_profiles_surface_asset_readiness(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("CAPDEP_MODEL_ASSET_HOME", str(tmp_path / "assets"))
+    profiles = {profile["id"]: profile for profile in available_image_profiles()}
+
+    assert profiles["default"]["asset_profile"] == "image.default"
+    assert profiles["default"]["asset_readiness"]["status"] == "native"
+    assert profiles["sdxl-nsfw"]["asset_readiness"]["status"] == "source_fallback"
+
+
+def test_image_readiness_includes_model_asset_state(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("CAPDEP_MODEL_ASSET_HOME", str(tmp_path / "assets"))
+    readiness = image_readiness(profile_name="default")
+
+    assert readiness["asset_profile"] == "image.default"
+    assert readiness["asset_readiness"]["status"] == "native"
+    assert any(check["id"] == "model-asset" for check in readiness["checks"])
+
+
 def test_has_image_generation_intent_detects_scene_requests() -> None:
     assert has_image_generation_intent("generate a photoreal portrait of a blonde woman")
     assert has_image_generation_intent("create an explicit nsfw illustration")

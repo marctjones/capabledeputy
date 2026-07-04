@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from capabledeputy.model_assets import conversion_readiness
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - non-POSIX fallback
@@ -194,6 +196,17 @@ _PROFILE_METADATA: dict[str, dict[str, Any]] = {
     },
 }
 
+_PROFILE_ASSET_IDS = {
+    "default": "image.default",
+    "fast": "image.default",
+    "balanced": "image.default",
+    "quality": "image.flux-schnell-lora",
+    "flux-nsfw": "image.flux-schnell-lora",
+    "flux2-nsfw": "image.flux-schnell-lora",
+    "sdxl-nsfw": "image.sdxl-photoreal",
+    "pony-nsfw": "image.pony-graphic-novel",
+}
+
 
 @contextmanager
 def _serialized_generation(output_dir: Path) -> Any:
@@ -310,6 +323,7 @@ def available_image_profiles() -> list[dict[str, Any]]:
         backend = _normalize_backend(preset.get("backend"))
         style = _normalize_style(preset.get("style"))
         model = _normalize_mflux_model(preset.get("model")) if backend == "mflux" else style
+        asset_profile = _PROFILE_ASSET_IDS.get(profile_id)
         profiles.append(
             {
                 "id": profile_id,
@@ -326,6 +340,10 @@ def available_image_profiles() -> list[dict[str, Any]]:
                 "quantize": _optional_int(preset.get("quantize")),
                 "guidance": _optional_float(preset.get("guidance")),
                 "requires": _profile_requirements(preset),
+                "asset_profile": asset_profile,
+                "asset_readiness": conversion_readiness(asset_profile)
+                if asset_profile
+                else None,
             },
         )
     return profiles
@@ -423,6 +441,21 @@ def image_readiness(*, profile_name: str | None = None) -> dict[str, Any]:
     checks.extend(_backend_readiness_checks(backend))
     checks.extend(_path_readiness_checks(config))
     checks.extend(_account_readiness_checks(config, backend))
+    asset_profile = _PROFILE_ASSET_IDS.get(
+        (profile_name or os.environ.get("CAPDEP_IMAGE_PROFILE") or "default").strip().lower(),
+    )
+    asset_readiness = conversion_readiness(asset_profile) if asset_profile else None
+    if asset_readiness is not None:
+        checks.append(
+            {
+                "id": "model-asset",
+                "status": "ok"
+                if asset_readiness["status"] in {"native", "converted", "source_fallback"}
+                else "warning",
+                "detail": f"{asset_readiness['profile_id']}: {asset_readiness['status']}",
+                "recovery": "Run `capdep-setup models --apply --convert` for supported assets.",
+            },
+        )
     ok = not any(check["status"] == "error" for check in checks)
     return {
         "ok": ok,
@@ -430,6 +463,8 @@ def image_readiness(*, profile_name: str | None = None) -> dict[str, Any]:
         "backend": backend,
         "model": config.model,
         "model_path": config.model_path or _MFLUX_DEFAULT_MODEL_PATHS.get(config.model),
+        "asset_profile": asset_profile,
+        "asset_readiness": asset_readiness,
         "device": config.device,
         "checks": checks,
     }
