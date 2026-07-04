@@ -6,12 +6,13 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-07-03 — v0.41.1 is the current stable release. v0.42
-local media/model operations reliability is closed, and v0.43 CommonMark
-rendering across client surfaces is implemented locally for tracker closeout.
-v1.0 remains unscheduled.
+**Last refreshed:** 2026-07-04 — v0.41.1 is the current stable release. v0.42
+local media/model operations reliability is closed, v0.43 CommonMark rendering
+across client surfaces is implemented locally for tracker closeout, and v0.44
+is now tracking SKILL.md interoperability with sandboxed execution. v1.0
+remains unscheduled.
 
-## Product Ladder — v0.35 → v0.43
+## Product Ladder — v0.35 → v0.44
 
 ```mermaid
 flowchart LR
@@ -24,7 +25,8 @@ flowchart LR
   v41[v0.41 GUI reliability + scripting UX]
   v42[v0.42 Local media/model reliability]
   v43[v0.43 CommonMark client rendering]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43
+  v44[v0.44 Skills interoperability + sandboxed execution]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -38,6 +40,7 @@ flowchart LR
 | **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | Reliable Swift GUI interaction handling plus safe scripting flows | #196–#201 |
 | **12 Product — v0.42.0 — Local media and model operations reliability** | Productionize local media/model operations | #202–#208 |
 | **13 Product — v0.43.0 — CommonMark rendering across client surfaces** | CommonMark rendering and fallback parity across clients | #209–#215 |
+| **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | Codex/Claude-style SKILL.md compatibility with CapDep security guarantees and containerized skill scripts | #216–#223 |
 
 ## Tracker Coverage
 
@@ -45,6 +48,7 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
+| **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | #216–#223 | Open: import folder-based SKILL.md packages, model guidance/tool/hybrid modes, preserve policy/labels/provenance/audit, fully containerize skill scripts, expose client diagnostics, and add compatibility/adversarial/E2E tests. |
 | **13 Product — v0.43.0 — CommonMark rendering across client surfaces** | #209–#215 | Complete locally: shared CommonMark contract, sanitizer fixtures, CapDepMac rendering sanitizer, terminal-safe CLI/TUI rendering, MCP-control metadata/fallback behavior, and release parity docs/tests. |
 | **12 Product — v0.42.0 — Local media and model operations reliability** | #202–#208 | Complete: profile selection, model/account readiness, benchmark-informed defaults, progress/status, queue recovery, and setup/release docs for local media/model operations. |
 | **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | #196–#201 | Complete product-ladder work: CapDepMac queueing/recovery plus daemon-owned scripting workflows are implemented and closed. |

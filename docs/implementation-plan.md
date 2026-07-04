@@ -2,17 +2,21 @@
 
 Living plan that organizes the open GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
-rationale*. Last refreshed 2026-07-03 — **v0.42 local media/model operations
-reliability** is closed and **v0.43 CommonMark rendering across client
-surfaces** is implemented locally for tracker closeout. The live GitHub tracker
-has no unmilestoned open issues, and every GitHub milestone title now carries
-an ordered prefix.
+rationale*. Last refreshed 2026-07-04 — **v0.42 local media/model operations
+reliability** is closed, **v0.43 CommonMark rendering across client surfaces**
+is implemented locally for tracker closeout, and **v0.44 skills
+interoperability and sandboxed execution** is the next open product milestone.
+The live GitHub tracker has no unmilestoned open issues, and every GitHub
+milestone title now carries an ordered prefix.
 
 Recently completed milestone (GitHub): **12 Product — v0.42.0 — Local media
 and model operations reliability**.
 
 Current closeout milestone (GitHub): **13 Product — v0.43.0 — CommonMark
 rendering across client surfaces**.
+
+Next implementation milestone (GitHub): **14 Product — v0.44.0 — Skills
+interoperability and sandboxed execution** (#216-#223).
 
 Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
 reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical
@@ -39,37 +43,43 @@ v0.17 — Gap hardening and explainability**.
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **v0.43 CommonMark client rendering** — shared CommonMark contract,
+1. **v0.44 skills interoperability and sandboxed execution** — import
+   Codex/Claude-style `SKILL.md` folders without weakening CapDep authority:
+   skills must be explicit guidance/tool/hybrid packages, preserve
+   policy/labels/provenance/audit, run scripts only through containerized
+   sandbox paths, expose client diagnostics, and carry compatibility plus
+   adversarial/E2E tests (#216-#223).
+2. **v0.43 CommonMark client rendering** — shared CommonMark contract,
    parser/sanitizer fixtures, CapDepMac rich rendering, terminal-safe CLI/TUI
    rendering, MCP-control fallback behavior, and release parity evidence
    (#209-#215).
-2. **v0.42 local media/model operations reliability** — profile selection,
+3. **v0.42 local media/model operations reliability** — profile selection,
    model/account readiness, benchmark-informed defaults, real progress/status,
    cancellation/recovery, and setup/release docs (#202-#208).
-3. **MCP security integration** — MCP must remain an integration substrate, not
+4. **MCP security integration** — MCP must remain an integration substrate, not
    a second authority path. v0.29 turns the current targeted tests into a
    security conformance suite before CapDep relies heavily on external MCP
    servers and headless clients.
-4. **Client proof, not just parity claims** — v0.30 replaces source/manifest
+5. **Client proof, not just parity claims** — v0.30 replaces source/manifest
    checks with live daemon integration coverage for CLI, TUI, Swift GUI, and
    MCP-control.
    Coverage is ratcheted independently for daemon files, clients, MCP
    surfaces, bundled MCP servers, and tools; the near-term target is 85% per
    group and the stretch target is 90%, but CI first enforces non-regression
    from the checked-in baseline.
-5. **Multi-session explainability** — v0.31 made labels, flow patterns,
+6. **Multi-session explainability** — v0.31 made labels, flow patterns,
    external actors, approvals, policy rules, provenance, and audit inspectable
    across turns and clients.
-6. **Source identity and labeling correctness** — IFC guarantees ride on
+7. **Source identity and labeling correctness** — IFC guarantees ride on
    correct labels. The old v0.16 track is now narrowed to canonical source
    identity and per-message email labeling.
-7. **Terminal UX and approval polish** — remaining terminal work is useful,
+8. **Terminal UX and approval polish** — remaining terminal work is useful,
    but it is not the primary desktop-agent path and should not duplicate daemon
    authority.
-8. **Research/non-goals** — keep remote/mobile control, always-on autonomy,
+9. **Research/non-goals** — keep remote/mobile control, always-on autonomy,
    community sharing, and web/cross-platform alternatives explicit without
    promoting them to immediate implementation.
-9. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
+10. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
    human oversight. The decision-refinement layer is live; future work should
    add concrete inspectors or policy scripts, not revive the old epic.
 
@@ -206,6 +216,59 @@ the CapDepMac Swift package tests pass.
   supported capability levels.
 - Release documentation accurately describes supported CommonMark behavior and
   known limits.
+
+## v0.44.0 — Skills interoperability and sandboxed execution
+
+Open on 2026-07-04. CapDep already has a flat `SKILL.md` adapter that turns
+markdown skills into policy-gated quarantined tools. v0.44 broadens that into
+Codex/Claude-style folder compatibility without letting imported skills become
+an untracked authority path. The core product promise is compatibility with
+CapDep's security model: skills can add knowledge and workflow affordances, but
+they cannot grant themselves capabilities, silently inject privileged
+instructions, or run host scripts outside the sandbox.
+
+### Scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #216 | EPIC: SKILL.md interoperability with CapDep security guarantees | Open |
+| #217 | Enforce CapDep policy, labels, provenance, and audit for skills | Open |
+| #218 | Model skill modes as guidance, tool, or hybrid | Open |
+| #220 | Add compatibility, adversarial, and end-to-end tests for skills | Open |
+| #221 | Import Codex and Claude SKILL.md folder formats | Open |
+| #222 | Run skill scripts only in containerized sandboxes | Open |
+| #223 | Expose skill registry and diagnostics across clients | Open |
+
+### Sequencing
+
+1. Define the normalized package model and compatibility subset (#221).
+2. Decide and implement explicit guidance/tool/hybrid flow semantics (#218).
+3. Wire policy, labels, provenance, and audit before any richer execution path
+   ships (#217).
+4. Route all skill `scripts/` execution through containerized sandbox/devbox
+   primitives with declared mounts and audited artifacts (#222).
+5. Expose daemon/client registry and diagnostics so invalid or degraded skills
+   are visible without reading raw package internals (#223).
+6. Close with compatibility fixtures, adversarial tests, E2E flows, client
+   parity, and docs (#220).
+
+### Done-when
+
+- Codex-style and Claude-style sample skills import cleanly, or fail with clear
+  compatibility diagnostics.
+- Imported skills are explicit `guidance`, `tool`, or `hybrid` packages; no
+  skill guidance is treated as operator/system authority.
+- Skill metadata cannot escalate capabilities, weaken policy, launder labels,
+  or hide provenance.
+- Skill scripts never execute as raw host subprocesses; they run only through
+  CapDep sandbox/container paths with audited inputs, outputs, mounts, and
+  artifacts.
+- CLI, TUI, CapDepMac, and MCP-control can show installed, invalid, disabled,
+  and degraded skill states.
+- The standard suite includes parser/loader compatibility fixtures,
+  adversarial metadata tests, resource traversal tests, sandbox escape
+  refusals, policy/audit assertions, and at least one guidance, tool, and
+  script E2E flow.
 
 **EPIC #41 is closed** (layer live, frequency policy, `capdep why`).
 **EPIC #42 is closed** with source identity and labeling correctness captured
