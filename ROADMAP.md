@@ -10,9 +10,10 @@ historical backlog snapshots, not the current roadmap.
 covering local media/model operations reliability, CommonMark rendering across
 client surfaces, and SKILL.md interoperability with sandboxed execution. v0.45
 is open for dead-simple Google account connection, and v0.46 is planned for
-consolidated one-time setup automation. v1.0 remains unscheduled.
+consolidated one-time setup automation. v0.47 is planned for native office
+automation skills. v1.0 remains unscheduled.
 
-## Product Ladder — v0.35 → v0.46
+## Product Ladder — v0.35 → v0.47
 
 ```mermaid
 flowchart LR
@@ -28,7 +29,8 @@ flowchart LR
   v44[v0.44 Skills interoperability + sandboxed execution]
   v45[v0.45 Dead-simple Google account connection]
   v46[v0.46 Consolidated setup automation]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46
+  v47[v0.47 Native office automation skills]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -45,6 +47,7 @@ flowchart LR
 | **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | Codex/Claude-style SKILL.md compatibility with CapDep security guarantees and containerized skill scripts | #216–#223 |
 | **15 Product — v0.45.0 — Dead-simple Google account connection** | One-click Google/Gmail/Workspace account connection with daemon-owned OAuth, diagnostics, and CLI/CapDepMac parity | #224–#232 |
 | **16 Product — v0.46.0 — Consolidated setup automation** | One-time setup domains under `capdep-setup`, with daemon/client runtime boundaries and non-destructive setup tests | #233–#240 |
+| **17 Product — v0.47.0 — Native office automation skills** | Bounded SKILL.md workflows and native automation for Apple iWork/Mail and Microsoft Office apps | #241–#248 |
 
 ## Tracker Coverage
 
@@ -52,6 +55,7 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
+| **17 Product — v0.47.0 — Native office automation skills** | #241–#248 | Planned: package bounded SKILL.md workflows and app-specific native automation for Apple Mail, Pages, Numbers, Keynote, Microsoft Outlook, Word, and PowerPoint while preserving explicit capabilities, labels, provenance, approval gates, and non-destructive fake-runner tests. |
 | **16 Product — v0.46.0 — Consolidated setup automation** | #233–#240 | Planned: migrate one-time assistant-surface/IMAP/Workspace/image/model/macOS-daemon/sandbox setup under `capdep-setup`, preserve compatibility aliases, and add temp-home/fake-runner tests that do not mutate local developer environments. |
 | **15 Product — v0.45.0 — Dead-simple Google account connection** | #224–#232 | Open: default OAuth identity strategy, one-click CapDepMac wizard, daemon hot-reload, pre/postflight diagnostics, scope presets/account identity, CLI parity, tests, and docs. |
 | **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | #216–#223 | Closed: imports flat and folder-based SKILL.md packages, models guidance/tool/hybrid modes, preserves policy/labels/provenance/audit, routes skill scripts through sandbox execution only, exposes daemon/CLI diagnostics, and adds compatibility/adversarial/E2E tests. |
@@ -168,6 +172,56 @@ setup logic.
   flags and are skipped in the default suite.
 - README and setup docs explain the setup/runtime boundary, compatibility
   aliases, dry-run/apply behavior, and local test safety contract.
+
+## Planned Focus — v0.47.0 Native Office Automation Skills
+
+Goal: make CapDep useful across desktop office applications by packaging
+bounded SKILL.md workflows and app-specific native automation for Apple Mail,
+Pages, Numbers, Keynote, Microsoft Outlook, Word, PowerPoint, and related
+office flows. This milestone must not turn native automation into an ambient
+authority escape hatch: the daemon remains the authority for tool admission,
+labels, capabilities, provenance, audit, and approvals, and skills only
+organize workflows around bounded tools.
+
+### v0.47.0 scope
+
+| Issue | Work | Local status |
+|---|---|---|
+| #241 | EPIC: native office automation skills | Planned |
+| #243 | Harden Apple Mail, Pages, Numbers, and Keynote automation tools | Planned |
+| #242 | Add Microsoft Outlook, Word, and PowerPoint native automation adapters | Planned |
+| #244 | Package office workflows as SKILL.md bundles | Planned |
+| #246 | Add setup and permission diagnostics for native office automation | Planned |
+| #247 | Define office automation capabilities, labels, and approval gates | Planned |
+| #245 | Surface office automation workflows in CapDepMac and CLI | Planned |
+| #248 | Add fake-runner and opt-in real-app tests for office automation | Planned |
+
+### v0.47.0 done-when
+
+- Apple Mail, Pages, Numbers, Keynote, Outlook, Word, and PowerPoint automation
+  is exposed only as bounded app-specific tools or skill workflows; arbitrary
+  AppleScript, JXA, VBA, Office macros, shell, and unrestricted UI scripting
+  are not user-facing capabilities.
+- SKILL.md packages describe useful office workflows such as mail
+  triage/drafting, document review/revision, spreadsheet review, deck
+  outline/speaker-note preparation, export/share review, and presentation
+  control without bypassing daemon-owned policy.
+- Capabilities and labels distinguish read, draft, edit, export, send,
+  present, account identity, document/source identity, user-authored content,
+  and external/untrusted content.
+- Sends, irreversible edits, exports, presentation starts, and cross-app data
+  movement require explicit policy paths and approval gates.
+- `capdep-setup` and daemon readiness surfaces explain installed-app
+  availability, TCC/Automation permission needs, and unsupported app states
+  without launching or controlling apps by default.
+- CapDepMac and CLI consume daemon/skill/tool metadata for readiness and
+  workflows; clients do not duplicate authority or hard-code policy.
+- Standard tests use fake native automation runners, fake daemon responses, and
+  golden tool descriptors; they do not open apps, steal focus, send mail, edit
+  user documents, start presentations, alter TCC, or require Office/iWork
+  installed.
+- Real app automation smokes are opt-in with explicit markers/environment
+  flags and disposable fixture documents/accounts only.
 
 ## Completed Focus — v0.42.0 Local Media and Model Operations Reliability
 
