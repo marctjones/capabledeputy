@@ -5,6 +5,7 @@ struct GoogleOAuthWizardView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var step: WizardStep = .chooseService
+    @State private var selectedPresetID = "workspace"
     @State private var selectedServiceID = "google-gmail"
     @State private var clientID = ""
     @State private var clientSecret = ""
@@ -19,6 +20,33 @@ struct GoogleOAuthWizardView: View {
 
     private var googleConnectors: [ConnectorStatus] {
         model.connectorStatuses.filter { $0.id.hasPrefix("google-") }
+    }
+
+    private var googlePresets: [GoogleOAuthPreset] {
+        model.googleOAuthPresets.isEmpty
+            ? [
+                GoogleOAuthPreset(dictionary: [
+                    "id": "gmail",
+                    "display_name": "Gmail only",
+                    "description": "Connect Gmail for search, reading threads, labels, and drafts.",
+                    "service_ids": ["google-gmail"],
+                    "grants_summary": "Gmail read/search plus draft and label management.",
+                    "next_service_id": "google-gmail",
+                ]),
+                GoogleOAuthPreset(dictionary: [
+                    "id": "workspace",
+                    "display_name": "Gmail + Calendar + Drive",
+                    "description": "Connect the standard Google Workspace services used by CapDep.",
+                    "service_ids": ["google-gmail", "google-calendar", "google-drive"],
+                    "grants_summary": "Gmail read/draft/label, read-only Calendar, and read-only Drive.",
+                    "next_service_id": "google-gmail",
+                ]),
+            ]
+            : model.googleOAuthPresets
+    }
+
+    private var selectedPreset: GoogleOAuthPreset {
+        googlePresets.first(where: { $0.id == selectedPresetID }) ?? googlePresets[0]
     }
 
     private var status: GoogleOAuthStatus {
@@ -45,6 +73,11 @@ struct GoogleOAuthWizardView: View {
         .onChange(of: model.googleOAuthWizardServiceID) { _, _ in
             syncFromModel()
         }
+        .onChange(of: selectedPresetID) { _, _ in
+            selectedServiceID = selectedPreset.nextServiceID
+            authorizeError = nil
+            step = initialStep(for: selectedServiceID)
+        }
         .onChange(of: selectedServiceID) { _, _ in
             authorizeError = nil
             step = initialStep(for: selectedServiceID)
@@ -55,7 +88,7 @@ struct GoogleOAuthWizardView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Set Up Google Account")
                 .font(.largeTitle.weight(.bold))
-            Text("Sign in with Google in your browser. CapDep never sees your Google password.")
+            Text("Choose what to connect, then sign in with Google in your browser. CapDep never sees your Google password.")
                 .foregroundStyle(.secondary)
         }
     }
@@ -86,16 +119,17 @@ struct GoogleOAuthWizardView: View {
 
     private var chooseServiceStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Choose a Google service")
+            Text("Choose a Google account preset")
                 .font(.title2.weight(.semibold))
-            Text("Pick Gmail, Calendar, or Drive. You can run this wizard again for each service.")
+            Text("Pick the Google services CapDep should prepare. Each service stays a separate least-privilege MCP connector under the hood.")
                 .foregroundStyle(.secondary)
-            Picker("Service", selection: $selectedServiceID) {
-                ForEach(googleConnectors) { connector in
-                    Text(connector.name).tag(connector.id)
+            Picker("Preset", selection: $selectedPresetID) {
+                ForEach(googlePresets) { preset in
+                    Text(preset.displayName).tag(preset.id)
                 }
             }
             .pickerStyle(.radioGroup)
+            presetStatusCard
             if googleConnectors.isEmpty {
                 Text("No Google connectors reported by the daemon. Check that CapDep is connected, then refresh.")
                     .foregroundStyle(.secondary)
@@ -157,9 +191,9 @@ struct GoogleOAuthWizardView: View {
             Label("One-time setup required", systemImage: "1.circle")
                 .font(.headline)
             Text(
-                "Before your first sign-in, Google requires a one-time OAuth client registration "
-                    + "in your Google Cloud project. This is not your Google login — it's how Google "
-                    + "knows CapDep on your Mac is allowed to request access.",
+                "Use the one-time Google Cloud setup only if this CapDep install does not already "
+                    + "have an OAuth client. This is not your Google login — it is how Google knows "
+                    + "CapDep on your Mac is allowed to request the selected preset.",
             )
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -181,8 +215,8 @@ struct GoogleOAuthWizardView: View {
                 .font(.title2.weight(.semibold))
             Text(
                 "Create a Google Cloud OAuth client (Desktop or Web app), then paste the client ID "
-                    + "and secret here. You only do this once per machine. After that, sign-in is "
-                    + "just the browser button on the previous step.",
+                    + "and secret here. Advanced users can bring their own client; normal setup uses "
+                    + "the preset choice and browser sign-in.",
             )
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -217,7 +251,7 @@ struct GoogleOAuthWizardView: View {
             serviceStatusCard
 
             if status.restartRequired {
-                Text("Restart the daemon once so the new MCP server is loaded into the tool registry.")
+                Text("Restart the daemon once so this MCP server is loaded or unloaded in the tool registry.")
                     .foregroundStyle(.secondary)
                 Button("Restart Daemon") {
                     Task {
@@ -236,6 +270,27 @@ struct GoogleOAuthWizardView: View {
                 .buttonStyle(.bordered)
             }
         }
+    }
+
+    private var presetStatusCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(selectedPreset.displayName)
+                .font(.headline)
+            Text(selectedPreset.description)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(selectedPreset.grantsSummary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if selectedPreset.totalCount > 0 {
+                Text("\(selectedPreset.connectedCount)/\(selectedPreset.totalCount) services connected")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(selectedPreset.connected ? .green : .secondary)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var serviceStatusCard: some View {
@@ -316,6 +371,10 @@ struct GoogleOAuthWizardView: View {
         } else if let first = googleConnectors.first?.id {
             selectedServiceID = first
         }
+        if let matchingPreset = googlePresets.first(where: { $0.serviceIDs.contains(selectedServiceID) }) {
+            selectedPresetID = matchingPreset.id
+            selectedServiceID = matchingPreset.nextServiceID
+        }
         step = initialStep(for: selectedServiceID)
         let current = model.googleOAuthStatus(for: selectedServiceID)
         if current.clientIDConfigured {
@@ -364,7 +423,11 @@ struct GoogleOAuthWizardView: View {
     }
 
     private func nextIncompleteServiceID(after serviceID: String) -> String? {
-        let connectors = googleConnectors
+        let presetServiceIDs = selectedPreset.serviceIDs
+        let connectors = googleConnectors.filter { presetServiceIDs.contains($0.id) }
+        if connectors.isEmpty {
+            return googleConnectors.first(where: { !model.googleOAuthStatus(for: $0.id).tokenConfigured })?.id
+        }
         guard let index = connectors.firstIndex(where: { $0.id == serviceID }) else {
             return connectors.first(where: { !model.googleOAuthStatus(for: $0.id).tokenConfigured })?.id
         }

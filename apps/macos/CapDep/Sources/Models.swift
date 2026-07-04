@@ -752,6 +752,32 @@ struct GmailOAuthStatus: Hashable {
 
 typealias GoogleOAuthStatus = GmailOAuthStatus
 
+struct GoogleOAuthPreset: Identifiable, Hashable {
+    let id: String
+    let displayName: String
+    let description: String
+    let serviceIDs: [String]
+    let grantsSummary: String
+    let configuredCount: Int
+    let connectedCount: Int
+    let totalCount: Int
+    let connected: Bool
+    let nextServiceID: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["id"] as? String ?? ""
+        self.displayName = dictionary["display_name"] as? String ?? id
+        self.description = dictionary["description"] as? String ?? ""
+        self.serviceIDs = dictionary["service_ids"] as? [String] ?? []
+        self.grantsSummary = dictionary["grants_summary"] as? String ?? ""
+        self.configuredCount = dictionary["configured_count"] as? Int ?? 0
+        self.connectedCount = dictionary["connected_count"] as? Int ?? 0
+        self.totalCount = dictionary["total_count"] as? Int ?? serviceIDs.count
+        self.connected = dictionary["connected"] as? Bool ?? false
+        self.nextServiceID = dictionary["next_service_id"] as? String ?? serviceIDs.first ?? "google-gmail"
+    }
+}
+
 struct DaemonSettings: Hashable {
     var defaultPurpose: String
     var globalShortcut: String

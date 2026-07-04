@@ -18,6 +18,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var turnStatusLine = ""
     @Published private(set) var gmailOAuthStatus = GmailOAuthStatus.empty
     @Published private(set) var googleOAuthStatuses: [String: GoogleOAuthStatus] = [:]
+    @Published private(set) var googleOAuthPresets: [GoogleOAuthPreset] = []
     @Published private(set) var daemonSettings = DaemonSettings.empty
     @Published private(set) var imageProfiles: [ImageProfile] = []
     @Published private(set) var imageReadiness = ImageReadiness.empty
@@ -444,6 +445,9 @@ final class CapDepAppModel: ObservableObject {
             googleOAuthStatuses = Dictionary(
                 uniqueKeysWithValues: googleStatuses.map { ($0.serviceID, $0) },
             )
+            googleOAuthPresets = (
+                googleOAuthObject?["presets"] as? [[String: Any]] ?? []
+            ).map(GoogleOAuthPreset.init(dictionary:))
             gmailOAuthStatus = googleOAuthStatuses["google-gmail"] ?? GmailOAuthStatus.empty
             daemonSettings = DaemonSettings(
                 dictionary: settingsObject?["settings"] as? [String: Any] ?? [:],
