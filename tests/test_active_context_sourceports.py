@@ -16,7 +16,10 @@ from capabledeputy.substrate.active_context import (
     KeynoteContextSourcePort,
     MacOSAppContextSourcePort,
     NumbersContextSourcePort,
+    OutlookContextSourcePort,
     PagesContextSourcePort,
+    PowerPointContextSourcePort,
+    WordContextSourcePort,
     active_context_from_payload,
 )
 from capabledeputy.substrate.source_port import get_source_port
@@ -106,6 +109,24 @@ def test_iwork_context_ports_canonicalize_file_and_document_ids(tmp_path: Path) 
     assert isinstance(get_source_port("numbers"), NumbersContextSourcePort)
 
 
+def test_office_context_ports_canonicalize_file_and_document_ids(tmp_path: Path) -> None:
+    doc = tmp_path / "Brief.docx"
+    deck = tmp_path / "Pitch.pptx"
+
+    assert WordContextSourcePort().canonicalize_resource(doc.as_uri()) == (
+        f"macos:word:file:{doc.as_uri()}"
+    )
+    assert PowerPointContextSourcePort().canonicalize_resource("powerpoint:document:deck-123") == (
+        "macos:powerpoint:document:deck-123"
+    )
+    assert PowerPointContextSourcePort().canonicalize_resource(deck.as_uri()) == (
+        f"macos:powerpoint:file:{deck.as_uri()}"
+    )
+    assert OutlookContextSourcePort().canonicalize_resource("outlook:message:msg-123") == (
+        "macos:outlook:message:msg-123"
+    )
+
+
 def test_calendar_context_requires_stable_event_id() -> None:
     assert CalendarContextSourcePort().canonicalize_resource("calendar:event:evt-123") == (
         "macos:calendar:event:evt-123"
@@ -137,6 +158,9 @@ def test_active_context_source_ports_are_registry_accessible() -> None:
     assert isinstance(get_source_port("pages"), PagesContextSourcePort)
     assert isinstance(get_source_port("numbers"), NumbersContextSourcePort)
     assert isinstance(get_source_port("keynote"), KeynoteContextSourcePort)
+    assert isinstance(get_source_port("outlook"), OutlookContextSourcePort)
+    assert isinstance(get_source_port("word"), WordContextSourcePort)
+    assert isinstance(get_source_port("powerpoint"), PowerPointContextSourcePort)
 
 
 async def test_source_context_handlers_import_and_canonicalize() -> None:

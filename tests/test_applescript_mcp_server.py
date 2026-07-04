@@ -6,7 +6,17 @@ from typing import Any
 
 import pytest
 
-from capabledeputy.mcp_servers import apple_mail, applescript, keynote, macos, numbers, pages
+from capabledeputy.mcp_servers import (
+    apple_mail,
+    applescript,
+    keynote,
+    macos,
+    numbers,
+    outlook,
+    pages,
+    powerpoint,
+    word,
+)
 
 
 class FakeRunner:
@@ -336,6 +346,41 @@ def test_specialized_macos_server_exposes_bounded_tools() -> None:
     assert "applescript.run" not in names
 
 
+def test_specialized_outlook_server_exposes_bounded_tools() -> None:
+    names = _tool_names(outlook.tools(runner=FakeRunner()))
+
+    assert names == {
+        "outlook.list_accounts",
+        "outlook.create_draft",
+    }
+    assert "applescript.run" not in names
+
+
+def test_specialized_word_server_exposes_bounded_tools() -> None:
+    names = _tool_names(word.tools(runner=FakeRunner()))
+
+    assert names == {
+        "word.frontmost_document",
+        "word.document_text",
+        "word.append_text",
+        "word.export_pdf",
+    }
+    assert "applescript.run" not in names
+
+
+def test_specialized_powerpoint_server_exposes_bounded_tools() -> None:
+    names = _tool_names(powerpoint.tools(runner=FakeRunner()))
+
+    assert names == {
+        "powerpoint.frontmost_presentation",
+        "powerpoint.list_slides",
+        "powerpoint.append_speaker_notes",
+        "powerpoint.start_slideshow",
+        "powerpoint.export_pdf",
+    }
+    assert "applescript.run" not in names
+
+
 @pytest.mark.asyncio
 async def test_specialized_apple_mail_create_draft_uses_argv_not_script_text() -> None:
     runner = FakeRunner(
@@ -362,3 +407,67 @@ async def test_specialized_apple_mail_create_draft_uses_argv_not_script_text() -
     script, argv, _timeout = runner.calls[0]
     assert malicious_body not in script
     assert argv == ["friend@example.com", "Draft", malicious_body, "", ""]
+
+
+@pytest.mark.asyncio
+async def test_specialized_outlook_create_draft_uses_argv_not_script_text() -> None:
+    runner = FakeRunner(
+        applescript.AppleScriptResult(
+            stdout='{"created":true,"visible":true,"sent":false}',
+            stderr="",
+            returncode=0,
+        ),
+    )
+    tool = _tool_by_name(outlook.tools(runner=runner), "outlook.create_draft")
+    malicious_body = 'hello"; do shell script "touch /tmp/bad'
+
+    result = await tool.handler(
+        {
+            "to": "friend@example.com",
+            "subject": "Draft",
+            "body": malicious_body,
+        },
+    )
+
+    assert isinstance(result, dict)
+    assert result["result"] == {"created": True, "visible": True, "sent": False}
+    script, argv, _timeout = runner.calls[0]
+    assert malicious_body not in script
+    assert argv == ["friend@example.com", "Draft", malicious_body, "", ""]
+
+
+@pytest.mark.asyncio
+async def test_word_append_text_uses_argv_not_script_text() -> None:
+    runner = FakeRunner(
+        applescript.AppleScriptResult(stdout='{"appended":true}', stderr="", returncode=0),
+    )
+    tool = _tool_by_name(word.tools(runner=runner), "word.append_text")
+    malicious = 'hello"; do shell script "touch /tmp/bad'
+
+    result = await tool.handler({"text": malicious})
+
+    assert isinstance(result, dict)
+    assert result["result"] == {"appended": True}
+    script, argv, _timeout = runner.calls[0]
+    assert malicious not in script
+    assert argv == [malicious]
+
+
+@pytest.mark.asyncio
+async def test_powerpoint_append_notes_uses_argv_not_script_text() -> None:
+    runner = FakeRunner(
+        applescript.AppleScriptResult(stdout='{"updated":true}', stderr="", returncode=0),
+    )
+    tool = _tool_by_name(
+        powerpoint.tools(runner=runner),
+        "powerpoint.append_speaker_notes",
+    )
+    malicious = 'notes"; do shell script "touch /tmp/bad'
+
+    result = await tool.handler({"slide_number": 2, "notes": malicious})
+
+    assert isinstance(result, dict)
+    assert result["result"] == {"updated": True}
+    script, argv, _timeout = runner.calls[0]
+    assert malicious not in script
+    assert argv == ["2", malicious]

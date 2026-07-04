@@ -222,6 +222,59 @@ upstream_servers:
         capability_kind: MACOS_NOTIFICATION
         target_template: "macos://notification"
 
+  # ---------------- Microsoft Office apps ----------------
+  # Same bounded AppleScript substrate as the Apple app servers. These
+  # are draft/read/edit/export/present actions only; no macros, VBA, or
+  # generic script execution is exposed.
+
+  - name: bundled-outlook
+    command: ["capdep", "mcp-server-outlook"]
+    inherent_labels: ["confidential.personal", "untrusted.user_input"]
+    tool_overrides:
+      "outlook.list_accounts":
+        capability_kind: OUTLOOK_READ
+        target_template: "outlook://accounts"
+      "outlook.create_draft":
+        capability_kind: OUTLOOK_DRAFT
+        target_arg: to
+
+  - name: bundled-word
+    command: ["capdep", "mcp-server-word"]
+    inherent_labels: ["confidential.personal"]
+    tool_overrides:
+      "word.frontmost_document":
+        capability_kind: WORD_READ
+        target_template: "word://frontmost"
+      "word.document_text":
+        capability_kind: WORD_READ
+        target_template: "word://frontmost"
+      "word.append_text":
+        capability_kind: WORD_EDIT
+        target_template: "word://frontmost"
+      "word.export_pdf":
+        capability_kind: WORD_EXPORT
+        target_arg: path
+
+  - name: bundled-powerpoint
+    command: ["capdep", "mcp-server-powerpoint"]
+    inherent_labels: ["confidential.personal"]
+    tool_overrides:
+      "powerpoint.frontmost_presentation":
+        capability_kind: POWERPOINT_READ
+        target_template: "powerpoint://frontmost"
+      "powerpoint.list_slides":
+        capability_kind: POWERPOINT_READ
+        target_template: "powerpoint://frontmost"
+      "powerpoint.append_speaker_notes":
+        capability_kind: POWERPOINT_EDIT
+        target_template: "powerpoint://frontmost"
+      "powerpoint.start_slideshow":
+        capability_kind: POWERPOINT_PRESENT
+        target_template: "powerpoint://frontmost"
+      "powerpoint.export_pdf":
+        capability_kind: POWERPOINT_EXPORT
+        target_arg: path
+
   # ---------------- Google Workspace ----------------
   # Browser OAuth/PKCE bootstrap:
   #   export GOOGLE_MCP_CLIENT_ID=...

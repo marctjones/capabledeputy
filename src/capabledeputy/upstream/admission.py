@@ -30,6 +30,12 @@ _EGRESS_KINDS: frozenset[CapabilityKind] = frozenset(
         CapabilityKind.PAGES_EXPORT,
         CapabilityKind.NUMBERS_EDIT,
         CapabilityKind.NUMBERS_EXPORT,
+        CapabilityKind.OUTLOOK_DRAFT,
+        CapabilityKind.WORD_EDIT,
+        CapabilityKind.WORD_EXPORT,
+        CapabilityKind.POWERPOINT_EDIT,
+        CapabilityKind.POWERPOINT_EXPORT,
+        CapabilityKind.POWERPOINT_PRESENT,
     },
 )
 

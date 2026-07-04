@@ -48,6 +48,15 @@ class CapabilityKind(StrEnum):
     NUMBERS_READ = "NUMBERS_READ"
     NUMBERS_EDIT = "NUMBERS_EDIT"
     NUMBERS_EXPORT = "NUMBERS_EXPORT"
+    OUTLOOK_READ = "OUTLOOK_READ"
+    OUTLOOK_DRAFT = "OUTLOOK_DRAFT"
+    WORD_READ = "WORD_READ"
+    WORD_EDIT = "WORD_EDIT"
+    WORD_EXPORT = "WORD_EXPORT"
+    POWERPOINT_READ = "POWERPOINT_READ"
+    POWERPOINT_EDIT = "POWERPOINT_EDIT"
+    POWERPOINT_EXPORT = "POWERPOINT_EXPORT"
+    POWERPOINT_PRESENT = "POWERPOINT_PRESENT"
 
     # Granular destructive-op kinds (DESIGN.md §7.5 — Clark-Wilson + CRUD
     # decomposition). New tools that distinguish create / modify / delete
@@ -116,6 +125,8 @@ DESTRUCTIVE_KINDS: frozenset[CapabilityKind] = frozenset(
         CapabilityKind.MACOS_CLIPBOARD_WRITE,
         CapabilityKind.PAGES_EDIT,
         CapabilityKind.NUMBERS_EDIT,
+        CapabilityKind.WORD_EDIT,
+        CapabilityKind.POWERPOINT_EDIT,
     },
 )
 
@@ -145,6 +156,9 @@ _WRITE_UNION_MATCHES: dict[CapabilityKind, frozenset[CapabilityKind]] = {
             CapabilityKind.KEYNOTE_READ,
             CapabilityKind.PAGES_READ,
             CapabilityKind.NUMBERS_READ,
+            CapabilityKind.OUTLOOK_READ,
+            CapabilityKind.WORD_READ,
+            CapabilityKind.POWERPOINT_READ,
             CapabilityKind.BROWSER_READ,
             CapabilityKind.MACOS_CLIPBOARD_READ,
         },
@@ -174,6 +188,15 @@ _WRITE_UNION_MATCHES: dict[CapabilityKind, frozenset[CapabilityKind]] = {
             CapabilityKind.NUMBERS_READ,
             CapabilityKind.NUMBERS_EDIT,
             CapabilityKind.NUMBERS_EXPORT,
+            CapabilityKind.OUTLOOK_READ,
+            CapabilityKind.OUTLOOK_DRAFT,
+            CapabilityKind.WORD_READ,
+            CapabilityKind.WORD_EDIT,
+            CapabilityKind.WORD_EXPORT,
+            CapabilityKind.POWERPOINT_READ,
+            CapabilityKind.POWERPOINT_EDIT,
+            CapabilityKind.POWERPOINT_EXPORT,
+            CapabilityKind.POWERPOINT_PRESENT,
         },
     ),
 }

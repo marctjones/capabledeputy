@@ -109,12 +109,25 @@ async def test_connector_status_reports_google_and_local_apps(app: App) -> None:
     result = await handlers["connector.status"]({})
 
     ids = {connector["id"] for connector in result["connectors"]}
-    assert {"google-gmail", "google-calendar", "google-drive", "apple-mail"} <= ids
+    assert {
+        "google-gmail",
+        "google-calendar",
+        "google-drive",
+        "apple-mail",
+        "apple-pages",
+        "apple-numbers",
+        "apple-keynote",
+        "microsoft-outlook",
+        "microsoft-word",
+        "microsoft-powerpoint",
+    } <= ids
     gmail = next(c for c in result["connectors"] if c["id"] == "google-gmail")
     assert gmail["status"] == "missing_credentials"
     assert gmail["actions"][0]["id"] == "setup.google.google-gmail.configure_oauth"
     calendar = next(c for c in result["connectors"] if c["id"] == "google-calendar")
     assert calendar["actions"][1]["id"] == "setup.google.google-calendar.oauth_login"
+    word = next(c for c in result["connectors"] if c["id"] == "microsoft-word")
+    assert word["bundle_id"] == "com.microsoft.Word"
 
 
 async def test_connector_status_reports_google_runtime_states(

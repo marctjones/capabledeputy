@@ -464,3 +464,29 @@ def test_repo_starter_skills_parse() -> None:
         skill = parse_skill_text(path.read_text(encoding="utf-8"), source_path=path)
         assert isinstance(skill, Skill)
         assert skill.name.startswith("skill.")
+
+
+def test_repo_office_skill_packages_parse_as_guidance() -> None:
+    skills_dir = Path(__file__).parent.parent / "skills"
+    package_names = {
+        "office-mail-drafting",
+        "office-document-review",
+        "office-spreadsheet-review",
+        "office-deck-prep",
+    }
+
+    parsed = {
+        package.name: parse_skill_package(skills_dir / package.name)
+        for package in sorted(skills_dir.iterdir())
+        if package.is_dir() and package.name in package_names
+    }
+
+    assert set(parsed) == package_names
+    assert {skill.name for skill in parsed.values()} == {
+        "skill.office.mail_drafting",
+        "skill.office.document_review",
+        "skill.office.spreadsheet_review",
+        "skill.office.deck_prep",
+    }
+    assert all(skill.guidance_enabled and not skill.tool_enabled for skill in parsed.values())
+    assert all(skill.metadata["workflow-family"] == "native-office" for skill in parsed.values())

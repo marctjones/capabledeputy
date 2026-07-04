@@ -18,6 +18,7 @@ from capabledeputy.cli.setup_domains import (
     setup_imap_register,
     setup_macos_daemon,
     setup_models,
+    setup_office_automation,
     setup_sandbox,
 )
 
@@ -78,6 +79,7 @@ def list_setups() -> None:
     typer.echo("imap\tIMAP daemon config registration")
     typer.echo("macos-daemon\tmacOS daemon launch path and parity validation")
     typer.echo("models\tLocal model recommendation and harvesting plan")
+    typer.echo("office-automation\tNative desktop Office app readiness checks")
     typer.echo("sandbox\tSandbox prerequisite verification")
 
 
@@ -238,6 +240,21 @@ def sandbox_command(
 ) -> None:
     """Check sandbox prerequisites."""
     _print_result(setup_sandbox(apply=apply), json_output=json_output)
+
+
+@app.command("office-automation")
+def office_automation_command(
+    apply: Annotated[
+        bool,
+        typer.Option("--apply", help="Run local app availability checks."),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Print machine-readable JSON."),
+    ] = False,
+) -> None:
+    """Check native Office automation prerequisites without launching apps."""
+    _print_result(setup_office_automation(apply=apply), json_output=json_output)
 
 
 @app.command("macos-daemon")

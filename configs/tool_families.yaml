@@ -13,9 +13,12 @@ families:
       - IMAP_READ
       - APPLE_MAIL_READ
       - APPLE_MAIL_DRAFT
+      - OUTLOOK_READ
+      - OUTLOOK_DRAFT
     include_prefixes:
       - inbox.
       - email.
+      - outlook.
 
   calendar:
     purpose_handles: [calendar]
@@ -39,6 +42,8 @@ families:
     include_prefixes:
       - pages.
       - numbers.
+      - word.
+      - powerpoint.
       - memory.
 
   general:

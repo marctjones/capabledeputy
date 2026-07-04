@@ -16,7 +16,7 @@
 def _threshold_for(kind, purpose):
     if kind in ["SEND_EMAIL", "SEND_MESSAGE", "QUEUE_PURCHASE"]:
         return 5
-    if kind in ["GMAIL_DRAFT", "APPLE_MAIL_DRAFT"]:
+    if kind in ["GMAIL_DRAFT", "APPLE_MAIL_DRAFT", "OUTLOOK_DRAFT"]:
         if purpose in ["inbox", "writing"]:
             return 25
         return 10
@@ -28,7 +28,14 @@ def _threshold_for(kind, purpose):
         return 12
     if kind == "MACOS_NOTIFICATION":
         return None
-    if kind in ["PAGES_EDIT", "NUMBERS_EDIT", "KEYNOTE_PRESENT"]:
+    if kind in [
+        "PAGES_EDIT",
+        "NUMBERS_EDIT",
+        "WORD_EDIT",
+        "POWERPOINT_EDIT",
+        "KEYNOTE_PRESENT",
+        "POWERPOINT_PRESENT",
+    ]:
         return 20
     if kind in ["CREATE_CAL", "MODIFY_CAL", "DELETE_CAL"]:
         if purpose == "calendar":

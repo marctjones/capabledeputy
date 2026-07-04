@@ -33,6 +33,20 @@ from capabledeputy.cli._managed_config import (
 
 CommandRunner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 
+OFFICE_AUTOMATION_APPS: tuple[dict[str, str], ...] = (
+    {"id": "apple-mail", "name": "Apple Mail", "bundle_id": "com.apple.mail"},
+    {"id": "apple-pages", "name": "Pages", "bundle_id": "com.apple.iWork.Pages"},
+    {"id": "apple-numbers", "name": "Numbers", "bundle_id": "com.apple.iWork.Numbers"},
+    {"id": "apple-keynote", "name": "Keynote", "bundle_id": "com.apple.iWork.Keynote"},
+    {"id": "microsoft-outlook", "name": "Microsoft Outlook", "bundle_id": "com.microsoft.Outlook"},
+    {"id": "microsoft-word", "name": "Microsoft Word", "bundle_id": "com.microsoft.Word"},
+    {
+        "id": "microsoft-powerpoint",
+        "name": "Microsoft PowerPoint",
+        "bundle_id": "com.microsoft.Powerpoint",
+    },
+)
+
 
 @dataclass(frozen=True)
 class SetupDomainResult:
@@ -359,6 +373,68 @@ def setup_sandbox(
         commands=((podman, "--version"), (podman, "info", "--format", "json")) if podman else (),
         paths=_path_map(podman=Path(podman) if podman else None),
         details={"runtime_health": health},
+    )
+
+
+def setup_office_automation(
+    *,
+    apply: bool = False,
+    command_runner: CommandRunner | None = None,
+) -> SetupDomainResult:
+    commands = tuple(
+        ("/usr/bin/mdfind", f"kMDItemCFBundleIdentifier == '{app['bundle_id']}'")
+        for app in OFFICE_AUTOMATION_APPS
+    )
+    checks: list[dict[str, Any]] = []
+    if apply:
+        runner = command_runner or _default_runner
+        for app, command in zip(OFFICE_AUTOMATION_APPS, commands, strict=True):
+            try:
+                completed = runner(command)
+                installed = completed.returncode == 0 and bool((completed.stdout or "").strip())
+                error = ""
+            except Exception as exc:
+                installed = False
+                error = str(exc)
+            checks.append(
+                {
+                    **app,
+                    "installed": installed,
+                    "error": error,
+                },
+            )
+    return SetupDomainResult(
+        domain="office-automation",
+        apply=apply,
+        status="checked" if apply else "dry_run",
+        summary=(
+            "Checked local Office app availability and documented Automation permission needs."
+            if apply
+            else "Would check local Office app availability and Automation permission needs."
+        ),
+        actions=(
+            "check Apple Mail, Pages, Numbers, and Keynote bundle availability",
+            "check Microsoft Outlook, Word, and PowerPoint bundle availability",
+            "show macOS Automation privacy settings guidance",
+        ),
+        commands=commands,
+        details={
+            "apps": checks
+            if checks
+            else [
+                {
+                    **app,
+                    "installed": None,
+                    "error": "",
+                }
+                for app in OFFICE_AUTOMATION_APPS
+            ],
+            "privacy_settings_url": (
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+            ),
+            "mutates_permissions": False,
+            "launches_apps": False,
+        },
     )
 
 

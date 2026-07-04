@@ -189,9 +189,15 @@ purposes:
         pattern: "*"
       - kind: APPLE_MAIL_READ
         pattern: "*"
+      - kind: OUTLOOK_READ
+        pattern: "*"
       - kind: KEYNOTE_READ
         pattern: "*"
+      - kind: POWERPOINT_READ
+        pattern: "*"
       - kind: PAGES_READ
+        pattern: "*"
+      - kind: WORD_READ
         pattern: "*"
       - kind: NUMBERS_READ
         pattern: "*"
@@ -214,6 +220,10 @@ purposes:
       - kind: APPLE_MAIL_READ
         pattern: "*"
       - kind: APPLE_MAIL_DRAFT
+        pattern: "*"
+      - kind: OUTLOOK_READ
+        pattern: "*"
+      - kind: OUTLOOK_DRAFT
         pattern: "*"
       - kind: DRIVE_READ
         pattern: "*"
@@ -263,9 +273,21 @@ purposes:
         pattern: "*"
       - kind: PAGES_EXPORT
         pattern: "*"
+      - kind: WORD_READ
+        pattern: "*"
+      - kind: WORD_EDIT
+        pattern: "*"
+      - kind: WORD_EXPORT
+        pattern: "*"
       - kind: NUMBERS_READ
         pattern: "*"
       - kind: KEYNOTE_READ
+        pattern: "*"
+      - kind: POWERPOINT_READ
+        pattern: "*"
+      - kind: POWERPOINT_EDIT
+        pattern: "*"
+      - kind: POWERPOINT_EXPORT
         pattern: "*"
       - kind: WEB_FETCH
         pattern: "*"
@@ -286,6 +308,8 @@ purposes:
       - kind: DRIVE_READ
         pattern: "*"
       - kind: PAGES_READ
+        pattern: "*"
+      - kind: WORD_READ
         pattern: "*"
       - kind: NUMBERS_READ
         pattern: "*"

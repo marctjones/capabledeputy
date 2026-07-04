@@ -14,6 +14,7 @@ from capabledeputy.cli.setup_domains import (
     setup_imap_register,
     setup_macos_daemon,
     setup_models,
+    setup_office_automation,
     setup_sandbox,
 )
 
@@ -192,6 +193,24 @@ def test_setup_macos_daemon_apply_verify_uses_fake_runner(tmp_path: Path) -> Non
     assert calls[1] == ("ps", "-axo", "pid,command")
     assert calls[2][-1].endswith("verify-gui-parity.py")
     assert result.details["parity_script_present"] is True
+
+
+def test_setup_office_automation_apply_uses_fake_runner() -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(tuple(command))
+        stdout = "/Applications/Fake.app\n" if "com.microsoft.Word" in command[-1] else ""
+        return subprocess.CompletedProcess(list(command), 0, stdout=stdout, stderr="")
+
+    result = setup_office_automation(apply=True, command_runner=fake_runner)
+
+    assert result.status == "checked"
+    assert result.details["mutates_permissions"] is False
+    assert result.details["launches_apps"] is False
+    assert any(app["id"] == "microsoft-word" and app["installed"] for app in result.details["apps"])
+    assert calls
+    assert all(command[0] == "/usr/bin/mdfind" for command in calls)
 
 
 def test_capdep_setup_rejects_mutating_suboptions_without_apply(tmp_path: Path) -> None:

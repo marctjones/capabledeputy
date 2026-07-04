@@ -119,6 +119,17 @@ def test_infer_browser_and_iwork_kinds_from_name() -> None:
     assert _infer_capability_kind(None, "keynote.start_slideshow") == CapabilityKind.KEYNOTE_PRESENT
     assert _infer_capability_kind(None, "pages.append_text") == CapabilityKind.PAGES_EDIT
     assert _infer_capability_kind(None, "numbers.set_cell_value") == CapabilityKind.NUMBERS_EDIT
+    assert _infer_capability_kind(None, "outlook.create_draft") == CapabilityKind.OUTLOOK_DRAFT
+    assert _infer_capability_kind(None, "word.append_text") == CapabilityKind.WORD_EDIT
+    assert _infer_capability_kind(None, "word.export_pdf") == CapabilityKind.WORD_EXPORT
+    assert (
+        _infer_capability_kind(None, "powerpoint.append_speaker_notes")
+        == CapabilityKind.POWERPOINT_EDIT
+    )
+    assert (
+        _infer_capability_kind(None, "powerpoint.start_slideshow")
+        == CapabilityKind.POWERPOINT_PRESENT
+    )
 
 
 def test_voicemail_not_mistaken_for_gmail() -> None:

@@ -21,6 +21,7 @@ def inspect(action, session, proposed_outcome):
         "SEND_MESSAGE",
         "GMAIL_DRAFT",
         "APPLE_MAIL_DRAFT",
+        "OUTLOOK_DRAFT",
         "CREATE_CAL",
         "MODIFY_CAL",
         "WRITE_FILE",
@@ -28,6 +29,11 @@ def inspect(action, session, proposed_outcome):
         "PAGES_EXPORT",
         "NUMBERS_EDIT",
         "NUMBERS_EXPORT",
+        "WORD_EDIT",
+        "WORD_EXPORT",
+        "POWERPOINT_EDIT",
+        "POWERPOINT_EXPORT",
+        "POWERPOINT_PRESENT",
     ]
     risky_tiers = ["restricted", "regulated", "prohibited"]
     risky_provenance = ["untrusted", "external", "low", "external-untrusted"]

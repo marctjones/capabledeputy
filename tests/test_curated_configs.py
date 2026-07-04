@@ -188,4 +188,18 @@ def test_bundled_python_config_includes_specialized_macos_servers() -> None:
         "bundled-pages",
         "bundled-numbers",
         "bundled-macos",
+        "bundled-outlook",
+        "bundled-word",
+        "bundled-powerpoint",
     } <= names
+
+    outlook = next(config for config in configs if config.name == "bundled-outlook")
+    assert outlook.tool_overrides["outlook.create_draft"].capability_kind is not None
+    assert outlook.tool_overrides["outlook.create_draft"].target_arg == "to"
+    word = next(config for config in configs if config.name == "bundled-word")
+    assert word.tool_overrides["word.append_text"].capability_kind is not None
+    assert word.tool_overrides["word.append_text"].target_template == "word://frontmost"
+    powerpoint = next(config for config in configs if config.name == "bundled-powerpoint")
+    assert powerpoint.tool_overrides["powerpoint.start_slideshow"].target_template == (
+        "powerpoint://frontmost"
+    )

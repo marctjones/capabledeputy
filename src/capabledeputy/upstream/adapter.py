@@ -192,6 +192,24 @@ def _infer_capability_kind(
         if any(t in lowered for t in ("set", "write", "update", "edit")):
             return CapabilityKind.NUMBERS_EDIT
         return CapabilityKind.NUMBERS_READ
+    if "outlook" in lowered:
+        if "draft" in lowered:
+            return CapabilityKind.OUTLOOK_DRAFT
+        return CapabilityKind.OUTLOOK_READ
+    if lowered.startswith("word") or "word." in lowered or "word_" in lowered:
+        if "export" in lowered:
+            return CapabilityKind.WORD_EXPORT
+        if any(t in lowered for t in ("append", "edit", "write", "set", "insert")):
+            return CapabilityKind.WORD_EDIT
+        return CapabilityKind.WORD_READ
+    if "powerpoint" in lowered:
+        if "export" in lowered:
+            return CapabilityKind.POWERPOINT_EXPORT
+        if any(t in lowered for t in ("start", "stop", "play", "present", "slideshow")):
+            return CapabilityKind.POWERPOINT_PRESENT
+        if any(t in lowered for t in ("append", "edit", "write", "set", "insert")):
+            return CapabilityKind.POWERPOINT_EDIT
+        return CapabilityKind.POWERPOINT_READ
     if lowered.startswith("macos") or "macos." in lowered or "macos_" in lowered:
         if "clipboard" in lowered:
             if any(t in lowered for t in ("set", "write", "replace")):

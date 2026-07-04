@@ -83,6 +83,9 @@ def get_source_port(kind: str, **kwargs: object) -> SourcePort:
         "pages",
         "numbers",
         "keynote",
+        "outlook",
+        "word",
+        "powerpoint",
         "calendar",
         "apple-calendar",
     }:
@@ -102,6 +105,9 @@ def get_source_port(kind: str, **kwargs: object) -> SourcePort:
         "pages",
         "numbers",
         "keynote",
+        "outlook",
+        "word",
+        "powerpoint",
         "calendar",
     ]
     raise ValueError(f"unknown source-port provider {kind!r}; known: {known}")

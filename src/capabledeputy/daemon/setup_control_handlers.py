@@ -16,6 +16,7 @@ import yaml
 from capabledeputy.app import App
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.cli._managed_config import user_config_dir
+from capabledeputy.cli.setup_domains import OFFICE_AUTOMATION_APPS
 from capabledeputy.daemon.google_gmail_setup import (
     GOOGLE_GMAIL_SERVER,
     GOOGLE_OAUTH_SERVICES,
@@ -128,38 +129,8 @@ def make_setup_control_handlers(
                 for service_id, service in GOOGLE_OAUTH_SERVICES.items()
             ]
             + [
-                {
-                    "id": "apple-mail",
-                    "name": "Apple Mail",
-                    "type": "local_app",
-                    "status": "permission_needed",
-                    "detail": "macOS grants Automation permission on first use.",
-                    "actions": [_open_macos_automation_action()],
-                },
-                {
-                    "id": "apple-pages",
-                    "name": "Pages",
-                    "type": "local_app",
-                    "status": "permission_needed",
-                    "detail": "Use app-specific AppleScript tools; macOS prompts on first use.",
-                    "actions": [_open_macos_automation_action()],
-                },
-                {
-                    "id": "apple-numbers",
-                    "name": "Numbers",
-                    "type": "local_app",
-                    "status": "permission_needed",
-                    "detail": "Use app-specific AppleScript tools; macOS prompts on first use.",
-                    "actions": [_open_macos_automation_action()],
-                },
-                {
-                    "id": "apple-keynote",
-                    "name": "Keynote",
-                    "type": "local_app",
-                    "status": "permission_needed",
-                    "detail": "Use app-specific AppleScript tools; macOS prompts on first use.",
-                    "actions": [_open_macos_automation_action()],
-                },
+                _office_connector(app_info)
+                for app_info in OFFICE_AUTOMATION_APPS
             ],
         }
 
@@ -375,6 +346,21 @@ def _google_connector(
                 "enabled": bool(status["token_configured"]),
             },
         ],
+    }
+
+
+def _office_connector(app_info: dict[str, str]) -> dict[str, Any]:
+    return {
+        "id": app_info["id"],
+        "name": app_info["name"],
+        "type": "local_app",
+        "bundle_id": app_info["bundle_id"],
+        "status": "permission_needed",
+        "detail": (
+            "Use bounded app-specific automation tools; macOS grants Automation "
+            "permission on first use."
+        ),
+        "actions": [_open_macos_automation_action()],
     }
 
 

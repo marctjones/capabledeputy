@@ -145,6 +145,9 @@ class MacOSAppContextSourcePort(SourcePort):
             "pages",
             "numbers",
             "keynote",
+            "outlook",
+            "word",
+            "powerpoint",
         },
     )
 
@@ -287,6 +290,30 @@ class KeynoteContextSourcePort(_MacOSSpecificAppSourcePort):
         return _canonical_iwork_resource("keynote", uri)
 
 
+class OutlookContextSourcePort(_MacOSSpecificAppSourcePort):
+    source_kind = "outlook"
+    labels = _labels_for_untrusted_app_content()
+
+    def canonicalize_resource(self, uri: str) -> str:
+        return _canonical_office_resource("outlook", uri)
+
+
+class WordContextSourcePort(_MacOSSpecificAppSourcePort):
+    source_kind = "word"
+    labels = _labels_for_macos_app()
+
+    def canonicalize_resource(self, uri: str) -> str:
+        return _canonical_office_resource("word", uri)
+
+
+class PowerPointContextSourcePort(_MacOSSpecificAppSourcePort):
+    source_kind = "powerpoint"
+    labels = _labels_for_macos_app()
+
+    def canonicalize_resource(self, uri: str) -> str:
+        return _canonical_office_resource("powerpoint", uri)
+
+
 class CalendarContextSourcePort(_MacOSSpecificAppSourcePort):
     source_kind = "calendar"
     labels = _labels_for_macos_app()
@@ -405,6 +432,29 @@ def _canonical_iwork_resource(app: str, uri: str) -> str:
     raise ActiveContextError(f"{app} context requires file://, {app}:, or {app}:document: URI")
 
 
+def _canonical_office_resource(app: str, uri: str) -> str:
+    raw = str(uri or "").strip()
+    if raw.startswith(f"{app}:document:"):
+        token = raw.removeprefix(f"{app}:document:")
+        return f"macos:{app}:document:{_stable_token(token, kind=f'{app} document')}"
+    if app == "outlook" and raw.startswith(f"{app}:message:"):
+        token = raw.removeprefix(f"{app}:message:")
+        return f"macos:{app}:message:{_stable_token(token, kind='Outlook message')}"
+    parsed = urlparse(raw)
+    scheme = parsed.scheme.lower()
+    if scheme == "file":
+        return f"macos:{app}:file:{_canonical_file_uri(raw)}"
+    if scheme == app:
+        token = _stable_scheme_payload(parsed)
+        kind = "Outlook message" if app == "outlook" else f"{app} document"
+        noun = "message" if app == "outlook" else "document"
+        return f"macos:{app}:{noun}:{_stable_token(token, kind=kind)}"
+    accepted = f"file://, {app}:, or {app}:document:"
+    if app == "outlook":
+        accepted = f"{app}:, {app}:message:, or {app}:document:"
+    raise ActiveContextError(f"{app} context requires {accepted} URI")
+
+
 def _specific_macos_port(kind: str) -> _MacOSSpecificAppSourcePort | None:
     if kind in {"apple-mail", "mail", "macos.apple-mail"}:
         return AppleMailContextSourcePort()
@@ -416,6 +466,12 @@ def _specific_macos_port(kind: str) -> _MacOSSpecificAppSourcePort | None:
         return NumbersContextSourcePort()
     if kind in {"keynote", "macos.keynote"}:
         return KeynoteContextSourcePort()
+    if kind in {"outlook", "microsoft-outlook", "macos.outlook"}:
+        return OutlookContextSourcePort()
+    if kind in {"word", "microsoft-word", "macos.word"}:
+        return WordContextSourcePort()
+    if kind in {"powerpoint", "microsoft-powerpoint", "macos.powerpoint"}:
+        return PowerPointContextSourcePort()
     if kind in {"calendar", "apple-calendar", "macos.calendar"}:
         return CalendarContextSourcePort()
     return None

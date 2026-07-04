@@ -70,6 +70,9 @@ def foreground_chat_default_capabilities(
             _make_cap(CapabilityKind.GENERATE_IMAGE, "*"),
             _make_cap(CapabilityKind.FETCH_IMAGE, "*"),
             _make_cap(CapabilityKind.APPLE_MAIL_READ, "*"),
+            _make_cap(CapabilityKind.OUTLOOK_READ, "*"),
+            _make_cap(CapabilityKind.WORD_READ, "*"),
+            _make_cap(CapabilityKind.POWERPOINT_READ, "*"),
             _make_cap(CapabilityKind.EXECUTE_SANDBOX, "scratch"),
         ),
     )
@@ -98,9 +101,7 @@ def should_apply_foreground_defaults(
         return False
     if capability_count == 0:
         return True
-    if capability_set is not None and _missing_foreground_image_caps(capability_set):
-        return True
-    return False
+    return capability_set is not None and _missing_foreground_image_caps(capability_set)
 
 
 def supplement_foreground_capabilities(

@@ -125,6 +125,12 @@ bindings:
     default_tier: sensitive
     assignment_provenance: operator-declared
 
+  - name: outlook-content
+    scope_pattern_canonical: "outlook://**"
+    category: email
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
   - name: pages-content
     scope_pattern_canonical: "pages://**"
     category: personal
@@ -139,6 +145,18 @@ bindings:
 
   - name: keynote-content
     scope_pattern_canonical: "keynote://**"
+    category: work
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: word-content
+    scope_pattern_canonical: "word://**"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: powerpoint-content
+    scope_pattern_canonical: "powerpoint://**"
     category: work
     default_tier: sensitive
     assignment_provenance: operator-declared

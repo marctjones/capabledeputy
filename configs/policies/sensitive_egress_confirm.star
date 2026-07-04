@@ -27,8 +27,13 @@ def inspect(action, session, proposed_outcome):
         "QUEUE_PURCHASE",
         "GMAIL_DRAFT",
         "APPLE_MAIL_DRAFT",
+        "OUTLOOK_DRAFT",
         "CREATE_CAL",
         "MODIFY_CAL",
+        "PAGES_EXPORT",
+        "WORD_EXPORT",
+        "NUMBERS_EXPORT",
+        "POWERPOINT_EXPORT",
     ]
     sensitive = (
         "restricted" in session["tiers"]

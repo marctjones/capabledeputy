@@ -39,6 +39,9 @@ def test_personal_assistant_daemon_uses_official_google_and_macos_servers() -> N
         "bundled-pages",
         "bundled-numbers",
         "bundled-macos",
+        "bundled-outlook",
+        "bundled-word",
+        "bundled-powerpoint",
         "google-gmail",
         "google-drive",
         "google-calendar",
@@ -89,6 +92,21 @@ def test_personal_assistant_daemon_uses_official_google_and_macos_servers() -> N
     )
     assert macos.tool_overrides["macos.get_clipboard_text"].target_template == "macos://clipboard"
 
+    outlook = next(config for config in configs if config.name == "bundled-outlook")
+    assert outlook.tool_overrides["outlook.create_draft"].target_arg == "to"
+    word = next(config for config in configs if config.name == "bundled-word")
+    assert word.tool_overrides["word.append_text"].capability_kind == CapabilityKind.WORD_EDIT
+    assert word.tool_overrides["word.export_pdf"].target_arg == "path"
+    powerpoint = next(config for config in configs if config.name == "bundled-powerpoint")
+    assert (
+        powerpoint.tool_overrides["powerpoint.append_speaker_notes"].capability_kind
+        == CapabilityKind.POWERPOINT_EDIT
+    )
+    assert (
+        powerpoint.tool_overrides["powerpoint.start_slideshow"].capability_kind
+        == CapabilityKind.POWERPOINT_PRESENT
+    )
+
 
 def test_personal_assistant_enables_conservative_starlark_inspectors() -> None:
     raw = yaml.safe_load((_PRESET / "daemon.yaml").read_text(encoding="utf-8"))
@@ -135,19 +153,27 @@ def test_personal_assistant_purposes_are_macos_google_and_apple_ready() -> None:
     assert (CapabilityKind.GMAIL_READ, "*") in general
     assert (CapabilityKind.DRIVE_READ, "*") in general
     assert (CapabilityKind.APPLE_MAIL_READ, "*") in general
+    assert (CapabilityKind.OUTLOOK_READ, "*") in general
     assert (CapabilityKind.PAGES_READ, "*") in general
+    assert (CapabilityKind.WORD_READ, "*") in general
     assert (CapabilityKind.NUMBERS_READ, "*") in general
+    assert (CapabilityKind.POWERPOINT_READ, "*") in general
     assert (CapabilityKind.MACOS_CLIPBOARD_READ, "*") in general
 
     inbox = _cap_pairs("inbox")
     assert (CapabilityKind.GMAIL_DRAFT, "*") in inbox
     assert (CapabilityKind.APPLE_MAIL_DRAFT, "*") in inbox
+    assert (CapabilityKind.OUTLOOK_DRAFT, "*") in inbox
     assert (CapabilityKind.PEOPLE_READ, "*") in inbox
 
     writing = _cap_pairs("writing")
     assert (CapabilityKind.PAGES_EDIT, "*") in writing
     assert (CapabilityKind.PAGES_EXPORT, "*") in writing
+    assert (CapabilityKind.WORD_EDIT, "*") in writing
+    assert (CapabilityKind.WORD_EXPORT, "*") in writing
     assert (CapabilityKind.KEYNOTE_READ, "*") in writing
+    assert (CapabilityKind.POWERPOINT_EDIT, "*") in writing
+    assert (CapabilityKind.POWERPOINT_EXPORT, "*") in writing
 
 
 def test_personal_assistant_source_bindings_cover_service_uri_schemes() -> None:
@@ -163,9 +189,12 @@ def test_personal_assistant_source_bindings_cover_service_uri_schemes() -> None:
     assert bindings.resolve("gchat://spaces/abc/messages/def").category == "work"
     assert bindings.resolve("people://contacts/abc").category == "personal"
     assert bindings.resolve("applemail://inbox/message/123").category == "email"
+    assert bindings.resolve("outlook://accounts").category == "email"
     assert bindings.resolve("pages://frontmost").category == "personal"
+    assert bindings.resolve("word://frontmost").category == "personal"
     assert bindings.resolve("numbers://frontmost").category == "personal"
     assert bindings.resolve("keynote://frontmost").category == "work"
+    assert bindings.resolve("powerpoint://frontmost").category == "work"
     assert bindings.resolve("macos://clipboard").category == "personal"
     assert bindings.resolve("macos://app/com.apple.mail").category == "personal"
     assert bindings.resolve("macos://notification").category == "scratch"
