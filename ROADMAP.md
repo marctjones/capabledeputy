@@ -97,14 +97,14 @@ scope checks.
 | Issue | Work | Local status |
 |---|---|---|
 | #224 | EPIC: dead-simple Google account connection | Planned |
-| #226 | Decide and implement default Google OAuth identity strategy | Planned |
+| #226 | Decide and implement default Google OAuth identity strategy | Done locally |
 | #225 | One-click CapDepMac Google account wizard | Planned |
 | #227 | Daemon hot-reload after Google OAuth token changes | Planned |
-| #228 | Google OAuth preflight, postflight, and repair diagnostics | Planned |
+| #228 | Google OAuth preflight, postflight, and repair diagnostics | Done locally |
 | #229 | Unified Google scope presets and account selection | Planned |
-| #230 | CLI parity for Google connect, status, and disconnect | Planned |
-| #231 | Automated tests for Google OAuth setup state machine | Planned |
-| #232 | Update Google Workspace docs for simple and advanced setup | Planned |
+| #230 | CLI parity for Google connect, status, and disconnect | Done locally |
+| #231 | Automated tests for Google OAuth setup state machine | Done locally |
+| #232 | Update Google Workspace docs for simple and advanced setup | Done locally |
 
 ### v0.45.0 done-when
 
@@ -140,13 +140,13 @@ setup logic.
 | Issue | Work | Local status |
 |---|---|---|
 | #233 | EPIC: consolidate one-time setup automation under `capdep-setup` | Planned |
-| #234 | Migrate assistant-surface, IMAP, and Workspace bootstrap into `capdep-setup` | Planned |
-| #235 | Replace image venv shell setup with `capdep-setup images` | Planned |
-| #236 | Add local model harvesting and machine capability setup domain | Planned |
-| #237 | Add macOS daemon launch setup and parity validation domain | Planned |
-| #238 | Add sandbox prerequisite setup and verification domain | Planned |
-| #239 | Build non-destructive setup test harness for temp homes and fake runners | Planned |
-| #240 | Document setup/runtime boundary and compatibility aliases | Planned |
+| #234 | Migrate assistant-surface, IMAP, and Workspace bootstrap into `capdep-setup` | Partial: new setup domains exist; `capdep setup` is a compatibility wrapper; IMAP secret prompting remains on the old compatibility command |
+| #235 | Replace image venv shell setup with `capdep-setup images` | Done locally |
+| #236 | Add local model harvesting and machine capability setup domain | Partial: dry-run recommendation domain exists; real downloader remains future opt-in work |
+| #237 | Add macOS daemon launch setup and parity validation domain | Partial: dry-run inspection domain exists; real launchd mutation remains opt-in future work |
+| #238 | Add sandbox prerequisite setup and verification domain | Partial: dry-run prerequisite check exists; real runtime health checks remain future work |
+| #239 | Build non-destructive setup test harness for temp homes and fake runners | Done locally |
+| #240 | Document setup/runtime boundary and compatibility aliases | Done locally |
 
 ### v0.46.0 done-when
 

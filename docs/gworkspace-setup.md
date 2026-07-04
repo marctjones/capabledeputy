@@ -76,7 +76,7 @@ gcloud services enable gmailmcp.googleapis.com \
 Register the CapDep managed block:
 
 ```bash
-capdep gworkspace-setup
+capdep-setup google-workspace --apply
 ```
 
 Run one OAuth login per enabled official server. Each server gets the scopes
@@ -84,11 +84,11 @@ declared in the config and stores a refreshable token under
 `~/.config/capabledeputy/oauth/`:
 
 ```bash
-capdep oauth login --server google-gmail
-capdep oauth login --server google-drive
-capdep oauth login --server google-calendar
-capdep oauth login --server google-chat
-capdep oauth login --server google-people
+capdep oauth google connect google-gmail
+capdep oauth google connect google-drive
+capdep oauth google connect google-calendar
+capdep oauth google connect google-chat
+capdep oauth google connect google-people
 ```
 
 This writes five strict upstream entries to
@@ -103,7 +103,7 @@ This writes five strict upstream entries to
 To narrow services:
 
 ```bash
-capdep gworkspace-setup --services gmail,drive,calendar
+capdep-setup google-workspace --services gmail,drive,calendar --apply
 ```
 
 ## Community Mode
@@ -116,8 +116,11 @@ gws auth setup
 gws auth login -s drive,gmail,calendar,docs,sheets
 npm install -g gws-mcp-server
 
-capdep gworkspace-setup --mode community
+capdep-setup google-workspace --mode community --apply
 ```
+
+The older `capdep gworkspace-setup` command remains as a compatibility alias
+for existing operator workflows.
 
 ## Verify
 

@@ -9,16 +9,22 @@ the v0.5 — UX EPIC features landed in the May 2026 sprint.
 
 ```bash
 # One-time setup
-uv run capdep imap-setup            # Gmail via App Password (no OAuth)
-uv run capdep gworkspace-setup      # Official Workspace remote MCP servers
-uv run capdep oauth login --server google-gmail
+uv run capdep-setup list
+uv run capdep-setup assistant-surface --apply
+uv run capdep-setup google-cloud --project PROJECT_ID --services gmail,drive,calendar
+uv run capdep-setup google-workspace --services gmail,drive,calendar --apply
+uv run capdep oauth google connect google-gmail
 
 # Daily use
 uv run capdep chat
 ```
 
 The daemon auto-starts if not running. `~/.config/capabledeputy/daemon.yaml`
-is loaded by default (`imap-setup` / `gworkspace-setup` populate it).
+is loaded by default. `capdep-setup` owns one-time machine/account/bootstrap
+work; the daemon owns live readiness, OAuth/token state, policy, approvals,
+audit, runtime status, and user workflows. Older `capdep setup`,
+`capdep imap-setup`, and `capdep gworkspace-setup` commands remain available as
+compatibility paths.
 
 ## Configuration layout (#35)
 

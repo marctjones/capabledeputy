@@ -48,6 +48,16 @@ capdep imap-setup --username you@gmail.com
 You'll be prompted for the App Password (input hidden). Defaults
 assume Gmail (imap.gmail.com:993, smtp.gmail.com:465). For other
 providers, pass `--host`, `--port`, `--smtp-host`, `--smtp-port`.
+The non-secret daemon block can also be planned or refreshed through the
+consolidated setup entry point:
+
+```bash
+capdep-setup imap
+capdep-setup imap --apply
+```
+
+`capdep imap-setup` remains the compatibility path for writing the local IMAP
+secret files because it prompts for the App Password.
 
 Examples:
 

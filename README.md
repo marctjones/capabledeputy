@@ -137,6 +137,31 @@ uv run pytest demos/scenarios/daily_briefing.py --no-cov -s
 See [demos/scenarios/README.md](demos/scenarios/README.md) for the
 demo lineup and what each one proves.
 
+### One-time setup automation
+
+Use `capdep-setup` for machine-local and account-preparation work that should
+not live in the daemon or client surfaces:
+
+```bash
+capdep-setup list
+capdep-setup assistant-surface --apply
+capdep-setup google-cloud --project PROJECT_ID --services gmail,drive,calendar
+capdep-setup google-workspace --services gmail,drive,calendar
+capdep-setup images
+capdep-setup models
+capdep-setup sandbox
+capdep-setup macos-daemon
+```
+
+The consolidated setup commands are dry-run/check by default. Mutating actions
+require `--apply`, including writing managed daemon config, creating image
+venvs, installing packages, planning local model harvesting, or touching daemon
+launch setup. The daemon remains responsible for live readiness, OAuth/token
+state, policy, approvals, audit, runtime status, and user workflows. Standard
+setup tests use temp homes, fake caches, and fake subprocess runners so they do
+not mutate the developer's real `~/.config/capabledeputy`, `.venv-images`,
+Hugging Face cache, launchd state, daemon sockets, keychain, or model cache.
+
 ### macOS desktop chat (CapDepMac)
 
 The native Swift GUI (`apps/macos/CapDep`) is the primary conversational
