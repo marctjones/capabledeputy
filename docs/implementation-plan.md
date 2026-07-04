@@ -5,9 +5,9 @@ with dependencies. Authoritative status is GitHub; this doc is the *sequencing
 rationale*. Last refreshed 2026-07-04 — **v0.44.0** is the current stable
 release, covering local media/model operations reliability, CommonMark rendering
 across client surfaces, and skills interoperability with sandboxed execution.
-v0.45 Google account connection and v0.46 consolidated setup automation are
-implemented on `main`; v0.47 native office automation skills is the next
-implementation milestone, followed by v0.48 native MLX model asset conversion.
+v0.45 Google account connection, v0.46 consolidated setup automation, and
+v0.47 native office automation skills are implemented on `main`; v0.48 native
+MLX model asset conversion is the next implementation milestone.
 
 Recently completed stable release: **v0.44.0**.
 
@@ -19,8 +19,8 @@ connection** · **16 Product — v0.46.0 — Consolidated setup automation** ·
 **17 Product — v0.47.0 — Native office automation skills** · **18 Product —
 v0.48.0 — Native MLX model asset pipeline**.
 
-Next implementation milestone: **17 Product — v0.47.0 — Native office
-automation skills** (#241-#248).
+Next implementation milestone: **18 Product — v0.48.0 — Native MLX model asset
+pipeline** (#249-#256).
 
 Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
 reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical
@@ -47,16 +47,16 @@ v0.17 — Gap hardening and explainability**.
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **v0.47 native office automation skills** — package bounded SKILL.md
-   workflows and app-specific native automation for Apple Mail, Pages, Numbers,
-   Keynote, Microsoft Outlook, Word, and PowerPoint without turning native
-   automation into ambient authority (#241-#248).
-2. **v0.48 native MLX model asset pipeline** — reconsider text/image model
+1. **v0.48 native MLX model asset pipeline** — reconsider text/image model
    choices around local conversion of PyTorch, diffusers, safetensors, and
    Hugging Face assets into native Apple Silicon MLX/MFLUX-friendly artifacts;
    keep conversion in `capdep-setup`, preserve provenance/gated access
    metadata, benchmark against source runtimes, and surface readiness/fallback
    state through daemon/client status (#249-#256).
+2. **v0.47 native office automation skills** — implemented bounded SKILL.md
+   workflows and app-specific native automation for Apple Mail, Pages, Numbers,
+   Keynote, Microsoft Outlook, Word, and PowerPoint without turning native
+   automation into ambient authority (#241-#248).
 3. **v0.46 consolidated setup automation** — implemented one-time setup domains
    under `capdep-setup`, including setup/runtime boundaries, explicit
    dry-run/apply behavior, model download plans, sandbox runtime checks, and
@@ -178,6 +178,7 @@ become independent credential or capability authorities.
 
 | # | What | Milestone |
 |---|---|---|
+| #241-#248 | Native office automation skills, bounded Microsoft Office adapters, office capabilities/labels/approvals, setup diagnostics, and fake-runner tests | v0.47.0 |
 | #137/#136/#134/#133/#138 | Daemon-enforced workstream ownership, daemon state views, client parity, MCP-control workstream tools, and multi-client tests | v0.32.0 |
 | #31/#32/#22/#13 | Daemon-owned turn lifecycle, heartbeat/disconnect cancellation, CLI Rich Live turn streaming, and stdio upstream no-broad-env hardening | v0.33.0 |
 | #140-#145/#182/#183 | First-run setup plan/check/status/actions, OAuth recovery, morning-briefing smoke, peer onboarding research, rich chat media, and local model routing | v0.34.0 |
@@ -204,11 +205,12 @@ become independent credential or capability authorities.
 
 ## v0.48.0 — Native MLX model asset pipeline
 
-Planned after v0.47. v0.48 revisits local model selection now that conversion
-to native MLX/MFLUX-friendly artifacts is part of the design space. The goal is
-not to convert everything. The goal is to decide, with local evidence, which
-assets should use existing MLX/MFLUX repos, which should be converted locally,
-and which should remain on source runtime paths such as diffusers/MPS.
+Next implementation milestone. v0.48 revisits local model selection now that
+conversion to native MLX/MFLUX-friendly artifacts is part of the design space.
+The goal is not to convert everything. The goal is to decide, with local
+evidence, which assets should use existing MLX/MFLUX repos, which should be
+converted locally, and which should remain on source runtime paths such as
+diffusers/MPS.
 
 ### Scope
 

@@ -8,10 +8,9 @@ historical backlog snapshots, not the current roadmap.
 
 **Last refreshed:** 2026-07-04 — v0.44.0 is the current stable release,
 covering local media/model operations reliability, CommonMark rendering across
-client surfaces, and SKILL.md interoperability with sandboxed execution. v0.45
-and v0.46 are implemented on `main`; v0.47 is next for native office
-automation skills, followed by v0.48 native MLX model asset conversion and
-benchmarking. v1.0 remains unscheduled.
+client surfaces, and SKILL.md interoperability with sandboxed execution. v0.45,
+v0.46, and v0.47 are implemented on `main`; v0.48 is next for native MLX model
+asset conversion and benchmarking. v1.0 remains unscheduled.
 
 ## Product Ladder — v0.35 → v0.48
 
@@ -57,8 +56,8 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
-| **17 Product — v0.47.0 — Native office automation skills** | #241–#248 | Planned: package bounded SKILL.md workflows and app-specific native automation for Apple Mail, Pages, Numbers, Keynote, Microsoft Outlook, Word, and PowerPoint while preserving explicit capabilities, labels, provenance, approval gates, and non-destructive fake-runner tests. |
 | **18 Product — v0.48.0 — Native MLX model asset pipeline** | #249–#256 | Planned next: inventory current text/image model assets, decide which PyTorch/diffusers/safetensors assets should be converted to native MLX/MFLUX-friendly artifacts, implement conversion-aware `capdep-setup` planning, preserve provenance/gated access metadata, benchmark converted assets against source runtimes, and surface readiness/fallback state through daemon/client status. |
+| **17 Product — v0.47.0 — Native office automation skills** | #241–#248 | Complete locally: bounded SKILL.md workflows, Microsoft Outlook/Word/PowerPoint adapters, office capability/label/approval mappings, setup diagnostics, config wiring, and fake-runner tests are implemented without exposing arbitrary AppleScript, VBA, macros, shell, or UI scripting. |
 | **16 Product — v0.46.0 — Consolidated setup automation** | #233–#240 | Complete locally: one-time assistant-surface/IMAP/Workspace/image/model/macOS-daemon/sandbox setup lives under `capdep-setup`, compatibility aliases remain, and temp-home/fake-runner tests guard non-destructive setup behavior. |
 | **15 Product — v0.45.0 — Dead-simple Google account connection** | #224–#232 | Complete locally: preset-first Google account setup, daemon-owned OAuth state, live reload/unload where possible, redacted diagnostics, CLI/CapDepMac parity, and fake-provider tests. |
 | **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | #216–#223 | Closed: imports flat and folder-based SKILL.md packages, models guidance/tool/hybrid modes, preserves policy/labels/provenance/audit, routes skill scripts through sandbox execution only, exposes daemon/CLI diagnostics, and adds compatibility/adversarial/E2E tests. |
@@ -179,7 +178,7 @@ setup logic.
 - README and setup docs explain the setup/runtime boundary, compatibility
   aliases, dry-run/apply behavior, and local test safety contract.
 
-## Planned Focus — v0.47.0 Native Office Automation Skills
+## Completed Focus — v0.47.0 Native Office Automation Skills
 
 Goal: make CapDep useful across desktop office applications by packaging
 bounded SKILL.md workflows and app-specific native automation for Apple Mail,
@@ -193,14 +192,14 @@ organize workflows around bounded tools.
 
 | Issue | Work | Local status |
 |---|---|---|
-| #241 | EPIC: native office automation skills | Planned |
-| #243 | Harden Apple Mail, Pages, Numbers, and Keynote automation tools | Planned |
-| #242 | Add Microsoft Outlook, Word, and PowerPoint native automation adapters | Planned |
-| #244 | Package office workflows as SKILL.md bundles | Planned |
-| #246 | Add setup and permission diagnostics for native office automation | Planned |
-| #247 | Define office automation capabilities, labels, and approval gates | Planned |
-| #245 | Surface office automation workflows in CapDepMac and CLI | Planned |
-| #248 | Add fake-runner and opt-in real-app tests for office automation | Planned |
+| #241 | EPIC: native office automation skills | Done locally |
+| #243 | Harden Apple Mail, Pages, Numbers, and Keynote automation tools | Done locally |
+| #242 | Add Microsoft Outlook, Word, and PowerPoint native automation adapters | Done locally |
+| #244 | Package office workflows as SKILL.md bundles | Done locally |
+| #246 | Add setup and permission diagnostics for native office automation | Done locally |
+| #247 | Define office automation capabilities, labels, and approval gates | Done locally |
+| #245 | Surface office automation workflows in CapDepMac and CLI | Done locally |
+| #248 | Add fake-runner and opt-in real-app tests for office automation | Done locally |
 
 ### v0.47.0 done-when
 
