@@ -13,6 +13,7 @@ from capabledeputy.cli.approval import approval_app
 from capabledeputy.cli.audit import audit_app, watch_command
 from capabledeputy.cli.audit_cmd import storage_shape_command
 from capabledeputy.cli.chat import chat_command, demo_app
+from capabledeputy.cli.google_cloud_setup import cloud_setup_command
 from capabledeputy.cli.image import image_app
 from capabledeputy.cli.init_cmd import init_command
 from capabledeputy.cli.maintenance import maintenance_app
@@ -524,6 +525,87 @@ def google_oauth_revoke_command(
         console.print(_json.dumps(result, indent=2))
         return
     _print_google_oauth_status(result)
+
+
+@google_oauth_app.command("cloud-setup")
+def google_cloud_setup_command(
+    project_id: Annotated[
+        str,
+        typer.Option(
+            "--project",
+            "-p",
+            help="Google Cloud project ID to configure for CapDep Workspace OAuth.",
+        ),
+    ],
+    services: Annotated[
+        str,
+        typer.Option(
+            "--services",
+            "-s",
+            help="Comma-separated Workspace services: gmail,drive,calendar,chat,people.",
+        ),
+    ] = "gmail,drive,calendar",
+    create_project: Annotated[
+        bool,
+        typer.Option("--create-project", help="Create the Google Cloud project before setup."),
+    ] = False,
+    project_name: Annotated[
+        str,
+        typer.Option("--project-name", help="Display name when --create-project is used."),
+    ] = "CapDep Google Workspace OAuth",
+    organization: Annotated[
+        str | None,
+        typer.Option("--organization", help="Google Cloud organization ID for project creation."),
+    ] = None,
+    folder: Annotated[
+        str | None,
+        typer.Option("--folder", help="Google Cloud folder ID for project creation."),
+    ] = None,
+    billing_account: Annotated[
+        str | None,
+        typer.Option("--billing-account", help="Billing account to link after project creation."),
+    ] = None,
+    apply: Annotated[
+        bool,
+        typer.Option("--apply", help="Run the generated gcloud commands."),
+    ] = False,
+    register_capdep: Annotated[
+        bool,
+        typer.Option(
+            "--register-capdep",
+            help="Write/update CapDep's local Google Workspace managed config block.",
+        ),
+    ] = False,
+    open_pages: Annotated[
+        bool,
+        typer.Option("--open", help="Open the remaining Google Auth/Admin console pages."),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a setup summary."),
+    ] = False,
+) -> None:
+    """Prepare Google Cloud for CapDep's Google Workspace OAuth integration.
+
+    By default this is a dry run. Use --apply to run the safe gcloud setup
+    commands. OAuth consent publishing, OAuth client creation, and Workspace
+    Admin app trust still require Google-controlled browser approval.
+    """
+    cloud_setup_command(
+        project_id=project_id,
+        services=services,
+        create_project=create_project,
+        project_name=project_name,
+        organization=organization,
+        folder=folder,
+        billing_account=billing_account,
+        apply=apply,
+        register_capdep=register_capdep,
+        open_pages=open_pages,
+        json_output=json_output,
+        console=console,
+        err_console=err_console,
+    )
 
 
 def _print_google_oauth_status(result: dict[str, Any]) -> None:

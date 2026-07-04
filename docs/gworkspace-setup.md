@@ -25,6 +25,34 @@ Prerequisites:
 - A Google OAuth client ID and secret exported as `GOOGLE_MCP_CLIENT_ID` and
   `GOOGLE_MCP_CLIENT_SECRET`.
 
+CapDep can automate the safe Google Cloud pieces and then point you at the
+Google-controlled Auth/Admin pages that still require browser approval:
+
+```bash
+capdep oauth google cloud-setup \
+  --project PROJECT_ID \
+  --services gmail,drive,calendar \
+  --register-capdep
+```
+
+By default this is a dry run. Add `--apply` to run the generated `gcloud`
+commands. Add `--create-project` and `--billing-account BILLING_ACCOUNT_ID` if
+you want the helper to create and link a new project before enabling APIs.
+
+The helper can:
+
+- Create/select a Google Cloud project.
+- Link a billing account when requested.
+- Enable the Google Workspace APIs and official MCP services for the selected
+  products.
+- Register CapDep's local managed Google Workspace block.
+- Print or open the Google Auth Platform and Workspace Admin API Controls pages.
+
+The helper cannot bypass Google-controlled approval steps. You still need to
+configure/publish the OAuth consent app, create the OAuth client, copy the
+client ID/secret into CapDep, and trust/allow the OAuth client in Workspace
+Admin API Controls for Workspace domains such as `joneslaw.io`.
+
 Enable the Workspace APIs and MCP services:
 
 ```bash
