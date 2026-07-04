@@ -161,8 +161,8 @@ async def test_turn_subscription_disconnect_cancels_registered_turn(tmp_path: Pa
         async with anyio.create_task_group() as tg:
             tg.start_soon(_consume_next, agen)
             await anyio.sleep(0.05)
-            await agen.aclose()
             tg.cancel_scope.cancel()
+        await agen.aclose()
 
         interrupted = await _wait_for_status(running, turn_id, "interrupted")
 
