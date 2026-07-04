@@ -284,6 +284,11 @@ async def test_google_oauth_gui_handlers_are_daemon_owned(
         "google-calendar",
         "google-drive",
     }
+    assert {preset["id"] for preset in all_status["presets"]} >= {
+        "gmail",
+        "gmail-calendar",
+        "workspace",
+    }
     assert configured["client_secret_configured"] is True
     assert single_status["token_configured"] is True
     assert logged_in["token_configured"] is True
@@ -294,6 +299,80 @@ async def test_google_oauth_gui_handlers_are_daemon_owned(
         "google.oauth_login",
         "google.oauth_revoke",
     ]
+
+
+async def test_google_oauth_status_reports_runtime_reload_state(
+    app: App,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    app.upstream_manager = SimpleNamespace(
+        server_status={
+            "google-gmail": SimpleNamespace(state="registered"),
+        },
+    )
+    handlers = make_gui_handlers(app)
+
+    gmail = await handlers["setup.google.oauth_status"]({"service_id": "google-gmail"})
+    calendar = await handlers["setup.google.oauth_status"]({"service_id": "google-calendar"})
+
+    assert gmail["reload_state"]["registered"] is True
+    assert gmail["restart_required"] is False
+    assert calendar["reload_state"]["registered"] is False
+    assert calendar["restart_required"] is True
+
+
+async def test_google_oauth_login_and_revoke_reload_running_manager(
+    app: App,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    calls: list[tuple[str, str]] = []
+
+    class FakeManager:
+        def __init__(self) -> None:
+            self.server_status = {}
+
+        async def reload_server(self, config) -> None:
+            calls.append(("reload", config.name))
+            self.server_status[config.name] = SimpleNamespace(state="registered")
+
+        async def unload_server(self, name: str) -> None:
+            calls.append(("unload", name))
+            self.server_status.pop(name, None)
+
+    async def fake_login(
+        service_id: str,
+        *,
+        open_browser: bool,
+        timeout_seconds: int,
+    ) -> dict[str, object]:
+        status = configure_google_oauth_client(
+            service_id,
+            client_id="cid",
+            client_secret="secret",
+        )
+        token_cache = Path(status["token_cache"])
+        token_cache.parent.mkdir(parents=True, exist_ok=True)
+        token_cache.write_text('{"access_token": "redacted"}', encoding="utf-8")
+        return {**status, "token_configured": True}
+
+    from capabledeputy.daemon.google_gmail_setup import configure_google_oauth_client
+
+    app.upstream_manager = FakeManager()
+    handlers = make_gui_handlers(app)
+    monkeypatch.setattr("capabledeputy.daemon.gui_handlers.run_google_oauth_login", fake_login)
+
+    logged_in = await handlers["setup.google.oauth_login"](
+        {"service_id": "google-drive", "open_browser": False},
+    )
+    revoked = await handlers["setup.google.oauth_revoke"]({"service_id": "google-drive"})
+
+    assert calls == [("reload", "google-drive"), ("unload", "google-drive")]
+    assert logged_in["reload_state"]["registered"] is True
+    assert revoked["reload_state"]["registered"] is False
 
 
 async def test_legacy_gmail_oauth_gui_handlers_remain_available(

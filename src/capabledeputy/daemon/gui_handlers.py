@@ -23,8 +23,9 @@ from capabledeputy.daemon.google_gmail_setup import (
     gmail_oauth_status,
     google_oauth_all_diagnostics,
     google_oauth_diagnostics,
-    google_oauth_status,
-    google_oauth_statuses,
+    google_oauth_server_config,
+    google_oauth_status_with_runtime,
+    google_oauth_statuses_with_runtime,
     redacted_gmail_oauth_payload,
     redacted_google_oauth_payload,
     revoke_google_oauth_token,
@@ -248,8 +249,13 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
     async def google_oauth_status_handler(params: dict[str, Any]) -> dict[str, Any]:
         service_id = str(params.get("service_id") or "")
         if service_id:
-            return google_oauth_status(service_id)
-        return google_oauth_statuses()
+            return google_oauth_status_with_runtime(
+                service_id,
+                upstream_manager=getattr(app, "upstream_manager", None),
+            )
+        return google_oauth_statuses_with_runtime(
+            upstream_manager=getattr(app, "upstream_manager", None),
+        )
 
     async def google_oauth_diagnostics_handler(params: dict[str, Any]) -> dict[str, Any]:
         service_id = str(params.get("service_id") or "")
@@ -274,7 +280,11 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
                 },
             ),
         )
-        return status
+        await _reload_google_service(app, service_id, enable=False)
+        return google_oauth_status_with_runtime(
+            service_id,
+            upstream_manager=getattr(app, "upstream_manager", None),
+        )
 
     async def google_oauth_login(params: dict[str, Any]) -> dict[str, Any]:
         service_id = str(params.get("service_id") or GOOGLE_GMAIL_SERVER)
@@ -293,7 +303,11 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
                 },
             ),
         )
-        return status
+        await _reload_google_service(app, service_id, enable=True)
+        return google_oauth_status_with_runtime(
+            service_id,
+            upstream_manager=getattr(app, "upstream_manager", None),
+        )
 
     async def google_oauth_revoke(params: dict[str, Any]) -> dict[str, Any]:
         service_id = str(params.get("service_id") or GOOGLE_GMAIL_SERVER)
@@ -308,7 +322,11 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
                 },
             ),
         )
-        return status
+        await _reload_google_service(app, service_id, enable=False)
+        return google_oauth_status_with_runtime(
+            service_id,
+            upstream_manager=getattr(app, "upstream_manager", None),
+        )
 
     async def google_gmail_configure_oauth(params: dict[str, Any]) -> dict[str, Any]:
         status = configure_gmail_oauth_client(
@@ -362,6 +380,23 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
         "provenance.graph": provenance_graph,
         "macos.frontmost_context": macos_frontmost_context,
     }
+
+
+async def _reload_google_service(app: App, service_id: str, *, enable: bool) -> None:
+    manager = getattr(app, "upstream_manager", None)
+    if manager is None:
+        return
+    if enable:
+        config = google_oauth_server_config(service_id)
+        if config is None:
+            return
+        reload_server = getattr(manager, "reload_server", None)
+        if reload_server is not None:
+            await reload_server(config)
+        return
+    unload_server = getattr(manager, "unload_server", None)
+    if unload_server is not None:
+        await unload_server(service_id)
 
 
 def _review_artifact_from_approval_payload(payload: str) -> dict[str, Any] | None:

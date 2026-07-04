@@ -23,6 +23,15 @@ GOOGLE_DRIVE_SERVER = "google-drive"
 
 
 @dataclass(frozen=True)
+class GoogleOAuthPreset:
+    preset_id: str
+    display_name: str
+    description: str
+    service_ids: tuple[str, ...]
+    grants_summary: str
+
+
+@dataclass(frozen=True)
 class GoogleOAuthService:
     server_id: str
     display_name: str
@@ -104,6 +113,33 @@ GOOGLE_OAUTH_SERVICES: dict[str, GoogleOAuthService] = {
 }
 
 
+GOOGLE_OAUTH_PRESETS: dict[str, GoogleOAuthPreset] = {
+    "gmail": GoogleOAuthPreset(
+        preset_id="gmail",
+        display_name="Gmail only",
+        description="Connect Gmail for search, reading threads, labels, and draft creation.",
+        service_ids=(GOOGLE_GMAIL_SERVER,),
+        grants_summary=(
+            "Gmail read/search plus draft and label management; sending remains policy-gated."
+        ),
+    ),
+    "gmail-calendar": GoogleOAuthPreset(
+        preset_id="gmail-calendar",
+        display_name="Gmail + Calendar",
+        description="Connect Gmail and Calendar for email-aware scheduling workflows.",
+        service_ids=(GOOGLE_GMAIL_SERVER, GOOGLE_CALENDAR_SERVER),
+        grants_summary="Gmail read/draft/label plus read-only Calendar access.",
+    ),
+    "workspace": GoogleOAuthPreset(
+        preset_id="workspace",
+        display_name="Gmail + Calendar + Drive",
+        description="Connect the standard Google Workspace services used by CapDep workflows.",
+        service_ids=(GOOGLE_GMAIL_SERVER, GOOGLE_CALENDAR_SERVER, GOOGLE_DRIVE_SERVER),
+        grants_summary="Gmail read/draft/label, read-only Calendar, and read-only Drive access.",
+    ),
+}
+
+
 @dataclass(frozen=True)
 class GoogleOAuthPaths:
     server_id: str
@@ -157,6 +193,7 @@ def google_oauth_status(
     server_config = _load_google_server_config(paths.server_yaml)
     token_path = _token_path(service.server_id, server_config, config_home)
     token_summary = token_cache_summary(token_path)
+    running_state = google_oauth_runtime_state(service.server_id, upstream_manager=None)
     return {
         "server": service.server_id,
         "service_id": service.server_id,
@@ -176,16 +213,117 @@ def google_oauth_status(
         "client_id_file": str(paths.client_id_file),
         "client_secret_file": str(paths.client_secret_file),
         "token_cache": str(token_path),
-        "restart_required": True,
+        "restart_required": running_state["reload_required"],
+        "reload_state": running_state,
     }
 
 
 def google_oauth_statuses(config_home: Path | None = None) -> dict[str, Any]:
+    service_statuses = [
+        google_oauth_status(service_id, config_home) for service_id in GOOGLE_OAUTH_SERVICES
+    ]
     return {
         "identity_strategy": google_oauth_identity_strategy(),
-        "services": [
-            google_oauth_status(service_id, config_home) for service_id in GOOGLE_OAUTH_SERVICES
-        ],
+        "presets": google_oauth_presets_from_statuses(service_statuses),
+        "services": service_statuses,
+    }
+
+
+def google_oauth_presets_from_statuses(
+    statuses: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    by_service = {str(status.get("service_id")): status for status in statuses}
+    presets: list[dict[str, Any]] = []
+    for preset in GOOGLE_OAUTH_PRESETS.values():
+        selected = [by_service.get(service_id, {}) for service_id in preset.service_ids]
+        connected = [
+            status
+            for status in selected
+            if status.get("token_configured") and not status.get("missing_scopes")
+        ]
+        configured = [status for status in selected if status.get("configured")]
+        next_service = next(
+            (
+                service_id
+                for service_id in preset.service_ids
+                if not by_service.get(service_id, {}).get("token_configured")
+            ),
+            preset.service_ids[0],
+        )
+        presets.append(
+            {
+                "id": preset.preset_id,
+                "display_name": preset.display_name,
+                "description": preset.description,
+                "service_ids": list(preset.service_ids),
+                "grants_summary": preset.grants_summary,
+                "configured_count": len(configured),
+                "connected_count": len(connected),
+                "total_count": len(preset.service_ids),
+                "connected": len(connected) == len(preset.service_ids),
+                "next_service_id": next_service,
+            },
+        )
+    return presets
+
+
+def google_oauth_runtime_state(
+    service_id: str,
+    *,
+    upstream_manager: Any | None,
+) -> dict[str, Any]:
+    server_status = getattr(upstream_manager, "server_status", {}) if upstream_manager else {}
+    state = server_status.get(service_id)
+    registered = bool(state and getattr(state, "state", "") == "registered")
+    reload_available = bool(
+        upstream_manager
+        and hasattr(upstream_manager, "reload_server")
+        and hasattr(upstream_manager, "unload_server")
+    )
+    return {
+        "service_id": service_id,
+        "registered": registered,
+        "state": getattr(state, "state", "not_loaded") if state else "not_loaded",
+        "reload_required": not registered,
+        "reload_available": reload_available,
+        "message": (
+            "The running daemon already has this Google MCP server registered."
+            if registered
+            else "The daemon can reload this Google MCP server now."
+            if reload_available
+            else "Restart the daemon to load or unload this Google MCP server in the tool registry."
+        ),
+    }
+
+
+def google_oauth_status_with_runtime(
+    service_id: str,
+    *,
+    upstream_manager: Any | None,
+    config_home: Path | None = None,
+) -> dict[str, Any]:
+    status = google_oauth_status(service_id, config_home)
+    runtime = google_oauth_runtime_state(service_id, upstream_manager=upstream_manager)
+    return {**status, "restart_required": runtime["reload_required"], "reload_state": runtime}
+
+
+def google_oauth_statuses_with_runtime(
+    *,
+    upstream_manager: Any | None,
+    config_home: Path | None = None,
+) -> dict[str, Any]:
+    statuses = [
+        google_oauth_status_with_runtime(
+            service_id,
+            upstream_manager=upstream_manager,
+            config_home=config_home,
+        )
+        for service_id in GOOGLE_OAUTH_SERVICES
+    ]
+    return {
+        "identity_strategy": google_oauth_identity_strategy(),
+        "presets": google_oauth_presets_from_statuses(statuses),
+        "services": statuses,
     }
 
 
@@ -202,6 +340,11 @@ def google_oauth_identity_strategy() -> dict[str, Any]:
         "hosted_client_available": False,
         "advanced_byo_client_supported": True,
         "token_owner": "capdep_daemon",
+        "simple_user_default": "workspace",
+        "simple_user_note": (
+            "Normal users choose a preset; advanced users can still bring their own "
+            "Google OAuth client until a hosted CapDep client is available."
+        ),
     }
 
 
@@ -307,6 +450,14 @@ def _load_google_server_config(path: Path) -> UpstreamServerConfig | None:
         return None
     parsed = ServerYamlConfig.from_dict(raw, filename=str(path))
     return parsed.server_config
+
+
+def google_oauth_server_config(
+    service_id: str,
+    config_home: Path | None = None,
+) -> UpstreamServerConfig | None:
+    paths = google_oauth_paths(service_id, config_home)
+    return _load_google_server_config(paths.server_yaml)
 
 
 def _load_gmail_server_config(path: Path) -> UpstreamServerConfig | None:

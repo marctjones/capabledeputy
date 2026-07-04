@@ -64,6 +64,19 @@ def test_list_returns_all_registered() -> None:
     assert {t.name for t in listed} == {"a", "b"}
 
 
+def test_unregister_prefix_removes_only_matching_tools() -> None:
+    registry = ToolRegistry()
+    registry.register(_make_tool("google-gmail.search_threads"))
+    registry.register(_make_tool("google-gmail.get_thread"))
+    registry.register(_make_tool("google-drive.search"))
+    registry.register(_make_tool("memory.read"))
+
+    removed = registry.unregister_prefix("google-gmail.")
+
+    assert removed == ("google-gmail.search_threads", "google-gmail.get_thread")
+    assert {tool.name for tool in registry.list()} == {"google-drive.search", "memory.read"}
+
+
 def test_descriptors_return_split_tool_contract() -> None:
     registry = ToolRegistry()
     registry.register(

@@ -65,6 +65,8 @@ class UpstreamManager:
         self._registry = registry
         self._sessions: list[LiveSession] = []
         self._adapters: list[LabeledMcpAdapter] = []
+        self._sessions_by_name: dict[str, LiveSession] = {}
+        self._adapters_by_name: dict[str, LabeledMcpAdapter] = {}
         # Issue #34 — per-message email labeling. When provided (loaded
         # from configs/email_label_rules.yaml), every upstream read result
         # is run through the labeler; it returns empty for non-email
@@ -127,6 +129,8 @@ class UpstreamManager:
         for session in reversed(self._sessions):
             await session.stop()
         self._sessions.clear()
+        self._sessions_by_name.clear()
+        self._adapters_by_name.clear()
 
     async def _connect_and_register(
         self,
@@ -135,6 +139,7 @@ class UpstreamManager:
         live = LiveSession(config, spawn_logger=_stderr_logger)
         await live.start()
         self._sessions.append(live)
+        self._sessions_by_name[config.name] = live
         result_labeler: Callable[[str, dict[str, Any], Any], Any] | None = None
         if self._email_labeler is not None and getattr(self._email_labeler, "rules", ()):
             labeler = self._email_labeler
@@ -151,6 +156,50 @@ class UpstreamManager:
         )
         await adapter.register_tools(self._registry)
         self._adapters.append(adapter)
+        self._adapters_by_name[config.name] = adapter
+
+    async def unload_server(self, name: str) -> tuple[str, ...]:
+        """Stop one upstream server and remove its registered tool prefix."""
+        session = self._sessions_by_name.pop(name, None)
+        if session is not None:
+            await session.stop()
+            if session in self._sessions:
+                self._sessions.remove(session)
+        adapter = self._adapters_by_name.pop(name, None)
+        if adapter is not None and adapter in self._adapters:
+            self._adapters.remove(adapter)
+        self._status.pop(name, None)
+        return self._registry.unregister_prefix(f"{name}.")
+
+    async def reload_server(self, config: UpstreamServerConfig) -> UpstreamServerStatus:
+        """Reload one upstream config, replacing stale tools fail-closed."""
+        await self.unload_server(config.name)
+        try:
+            await self._connect_and_register(config)
+            adapter = self._adapters[-1]
+            status = UpstreamServerStatus(
+                name=config.name,
+                state="registered",
+                registered_at_epoch=int(time.time()),
+                registered_tool_count=len(adapter.registered_names),
+                rejected_tool_count=len(adapter.rejected_tools),
+                rejected_tool_names=tuple(adapter.rejected_tools),
+                command=tuple(config.command),
+                transport=config.transport,
+                url=config.url,
+            )
+        except Exception as e:
+            status = UpstreamServerStatus(
+                name=config.name,
+                state="failed",
+                registered_at_epoch=int(time.time()),
+                error=str(e)[:500],
+                command=tuple(config.command),
+                transport=config.transport,
+                url=config.url,
+            )
+        self._status[config.name] = status
+        return status
 
     @property
     def adapters(self) -> list[LabeledMcpAdapter]:

@@ -364,6 +364,19 @@ class ToolRegistry:
         except KeyError as e:
             raise ToolNotFoundError(name) from e
 
+    def unregister_prefix(self, prefix: str) -> tuple[str, ...]:
+        """Remove all tools whose names start with ``prefix``.
+
+        This is intentionally prefix-scoped for upstream MCP reloads: a
+        revoked or reconfigured upstream must not leave stale names callable in
+        the global registry, but native tools and unrelated servers must stay
+        untouched.
+        """
+        removed = tuple(name for name in self._tools if name.startswith(prefix))
+        for name in removed:
+            del self._tools[name]
+        return removed
+
     def list(self) -> list[ToolDefinition]:
         return list(self._tools.values())
 
