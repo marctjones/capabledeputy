@@ -9,8 +9,7 @@ historical backlog snapshots, not the current roadmap.
 **Last refreshed:** 2026-07-04 — v0.44.0 is the current stable release,
 covering local media/model operations reliability, CommonMark rendering across
 client surfaces, and SKILL.md interoperability with sandboxed execution. v0.45
-is open for dead-simple Google account connection, and v0.46 is planned for
-consolidated one-time setup automation. v0.47 is planned for native office
+and v0.46 are implemented on `main`; v0.47 is next for native office
 automation skills. v1.0 remains unscheduled.
 
 ## Product Ladder — v0.35 → v0.47
@@ -56,8 +55,8 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
 | **17 Product — v0.47.0 — Native office automation skills** | #241–#248 | Planned: package bounded SKILL.md workflows and app-specific native automation for Apple Mail, Pages, Numbers, Keynote, Microsoft Outlook, Word, and PowerPoint while preserving explicit capabilities, labels, provenance, approval gates, and non-destructive fake-runner tests. |
-| **16 Product — v0.46.0 — Consolidated setup automation** | #233–#240 | Planned: migrate one-time assistant-surface/IMAP/Workspace/image/model/macOS-daemon/sandbox setup under `capdep-setup`, preserve compatibility aliases, and add temp-home/fake-runner tests that do not mutate local developer environments. |
-| **15 Product — v0.45.0 — Dead-simple Google account connection** | #224–#232 | Open: default OAuth identity strategy, one-click CapDepMac wizard, daemon hot-reload, pre/postflight diagnostics, scope presets/account identity, CLI parity, tests, and docs. |
+| **16 Product — v0.46.0 — Consolidated setup automation** | #233–#240 | Complete locally: one-time assistant-surface/IMAP/Workspace/image/model/macOS-daemon/sandbox setup lives under `capdep-setup`, compatibility aliases remain, and temp-home/fake-runner tests guard non-destructive setup behavior. |
+| **15 Product — v0.45.0 — Dead-simple Google account connection** | #224–#232 | Complete locally: preset-first Google account setup, daemon-owned OAuth state, live reload/unload where possible, redacted diagnostics, CLI/CapDepMac parity, and fake-provider tests. |
 | **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | #216–#223 | Closed: imports flat and folder-based SKILL.md packages, models guidance/tool/hybrid modes, preserves policy/labels/provenance/audit, routes skill scripts through sandbox execution only, exposes daemon/CLI diagnostics, and adds compatibility/adversarial/E2E tests. |
 | **13 Product — v0.43.0 — CommonMark rendering across client surfaces** | #209–#215 | Complete locally: shared CommonMark contract, sanitizer fixtures, CapDepMac rendering sanitizer, terminal-safe CLI/TUI rendering, MCP-control metadata/fallback behavior, and release parity docs/tests. |
 | **12 Product — v0.42.0 — Local media and model operations reliability** | #202–#208 | Complete: profile selection, model/account readiness, benchmark-informed defaults, progress/status, queue recovery, and setup/release docs for local media/model operations. |
@@ -86,7 +85,7 @@ Closed GitHub milestones use the same ordered-prefix convention:
 | **00.11 Done — v0.34.0 — First-run, connectors, and rich chat readiness** | Closed |
 | **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | Closed |
 
-## Active Focus — v0.45.0 Dead-simple Google Account Connection
+## Completed Focus — v0.45.0 Dead-simple Google Account Connection
 
 Goal: make connecting Gmail and Google Workspace accounts simple enough for a
 normal user to complete from CapDepMac or the CLI without first learning the
@@ -100,24 +99,27 @@ scope checks.
 
 | Issue | Work | Local status |
 |---|---|---|
-| #224 | EPIC: dead-simple Google account connection | Planned |
+| #224 | EPIC: dead-simple Google account connection | Done locally |
 | #226 | Decide and implement default Google OAuth identity strategy | Done locally |
-| #225 | One-click CapDepMac Google account wizard | Planned |
-| #227 | Daemon hot-reload after Google OAuth token changes | Planned |
+| #225 | One-click CapDepMac Google account wizard | Done locally |
+| #227 | Daemon hot-reload after Google OAuth token changes | Done locally |
 | #228 | Google OAuth preflight, postflight, and repair diagnostics | Done locally |
-| #229 | Unified Google scope presets and account selection | Planned |
+| #229 | Unified Google scope presets and account selection | Done locally |
 | #230 | CLI parity for Google connect, status, and disconnect | Done locally |
 | #231 | Automated tests for Google OAuth setup state machine | Done locally |
 | #232 | Update Google Workspace docs for simple and advanced setup | Done locally |
 
 ### v0.45.0 done-when
 
-- A normal user can connect Gmail, Calendar, and Drive from CapDepMac without
-  creating a Google Cloud project or pasting OAuth client secrets.
-- The advanced bring-your-own OAuth client path remains available and clearly
-  separated from the default simple path.
+- A normal user chooses a Google preset in CapDepMac; the daemon keeps the
+  underlying Gmail, Calendar, and Drive services least-privilege and separate.
+- The bring-your-own OAuth client path remains available and clearly separated
+  from account sign-in; CapDep still does not ship a hosted multi-user Google
+  OAuth client.
 - Token create, revoke, scope change, and account change events update daemon
-  upstream configuration and tool availability without stale authority.
+  upstream configuration and tool availability with live reload/unload where
+  the running upstream manager is available, otherwise with an explicit restart
+  requirement.
 - Status and repair surfaces show account identity, service readiness, scopes,
   and actionable repair steps without exposing tokens or client secrets.
 - CLI commands can connect, report status, and disconnect Google accounts using
@@ -129,7 +131,7 @@ scope checks.
   setup available, and explicitly state that OAuth login is not a CapDep
   capability grant.
 
-## Planned Focus — v0.46.0 Consolidated Setup Automation
+## Completed Focus — v0.46.0 Consolidated Setup Automation
 
 Goal: keep CapDep's daemon and clients focused on runtime authority by moving
 one-time install, external account preparation, dependency setup, local model
@@ -143,12 +145,12 @@ setup logic.
 
 | Issue | Work | Local status |
 |---|---|---|
-| #233 | EPIC: consolidate one-time setup automation under `capdep-setup` | Planned |
-| #234 | Migrate assistant-surface, IMAP, and Workspace bootstrap into `capdep-setup` | Partial: new setup domains exist; `capdep setup` is a compatibility wrapper; IMAP secret prompting remains on the old compatibility command |
+| #233 | EPIC: consolidate one-time setup automation under `capdep-setup` | Done locally |
+| #234 | Migrate assistant-surface, IMAP, and Workspace bootstrap into `capdep-setup` | Done locally |
 | #235 | Replace image venv shell setup with `capdep-setup images` | Done locally |
-| #236 | Add local model harvesting and machine capability setup domain | Partial: dry-run recommendation domain exists; real downloader remains future opt-in work |
-| #237 | Add macOS daemon launch setup and parity validation domain | Partial: dry-run inspection domain exists; real launchd mutation remains opt-in future work |
-| #238 | Add sandbox prerequisite setup and verification domain | Partial: dry-run prerequisite check exists; real runtime health checks remain future work |
+| #236 | Add local model harvesting and machine capability setup domain | Done locally |
+| #237 | Add macOS daemon launch setup and parity validation domain | Done locally |
+| #238 | Add sandbox prerequisite setup and verification domain | Done locally |
 | #239 | Build non-destructive setup test harness for temp homes and fake runners | Done locally |
 | #240 | Document setup/runtime boundary and compatibility aliases | Done locally |
 

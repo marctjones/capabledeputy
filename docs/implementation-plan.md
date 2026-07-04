@@ -5,9 +5,9 @@ with dependencies. Authoritative status is GitHub; this doc is the *sequencing
 rationale*. Last refreshed 2026-07-04 — **v0.44.0** is the current stable
 release, covering local media/model operations reliability, CommonMark rendering
 across client surfaces, and skills interoperability with sandboxed execution.
-The live GitHub tracker has one open product milestone for v0.45 Google account
-connection work, no unmilestoned open issues, and every GitHub milestone title
-now carries an ordered prefix.
+v0.45 Google account connection and v0.46 consolidated setup automation are
+implemented on `main`; v0.47 native office automation skills is the next
+implementation milestone.
 
 Recently completed stable release: **v0.44.0**.
 
@@ -15,10 +15,11 @@ Included product milestones: **12 Product — v0.42.0 — Local media/model
 operations reliability** · **13 Product — v0.43.0 — CommonMark rendering
 across client surfaces** · **14 Product — v0.44.0 — Skills interoperability
 and sandboxed execution** · **15 Product — v0.45.0 — Dead-simple Google account
-connection**.
+connection** · **16 Product — v0.46.0 — Consolidated setup automation** ·
+**17 Product — v0.47.0 — Native office automation skills**.
 
-Next implementation milestone: **15 Product — v0.45.0 — Dead-simple Google
-account connection** (#224-#232).
+Next implementation milestone: **17 Product — v0.47.0 — Native office
+automation skills** (#241-#248).
 
 Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
 reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical
@@ -45,47 +46,56 @@ v0.17 — Gap hardening and explainability**.
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **v0.45 dead-simple Google account connection** — make Gmail, Calendar, and
-   Drive connection one-click for normal users while keeping daemon-owned OAuth,
-   scoped permissions, token auditability, advanced bring-your-own-client
-   setup, and CapDep policy/MCP boundaries intact (#224-#232).
-2. **v0.44 skills interoperability and sandboxed execution** — shipped
+1. **v0.47 native office automation skills** — package bounded SKILL.md
+   workflows and app-specific native automation for Apple Mail, Pages, Numbers,
+   Keynote, Microsoft Outlook, Word, and PowerPoint without turning native
+   automation into ambient authority (#241-#248).
+2. **v0.46 consolidated setup automation** — implemented one-time setup domains
+   under `capdep-setup`, including setup/runtime boundaries, explicit
+   dry-run/apply behavior, model download plans, sandbox runtime checks, and
+   macOS daemon parity verification (#233-#240).
+3. **v0.45 dead-simple Google account connection** — implemented preset-first
+   Gmail/Calendar/Drive setup with daemon-owned OAuth state, scoped permissions,
+   token auditability, live reload/unload where possible, advanced
+   bring-your-own-client setup, and CapDep policy/MCP boundaries intact
+   (#224-#232).
+4. **v0.44 skills interoperability and sandboxed execution** — shipped
    Codex/Claude-style `SKILL.md` imports without weakening CapDep authority:
    skills are explicit guidance/tool/hybrid packages, preserve
    policy/labels/provenance/audit, run scripts only through containerized
    sandbox paths, expose client diagnostics, and carry compatibility plus
    adversarial/E2E tests (#216-#223).
-3. **v0.43 CommonMark client rendering** — shared CommonMark contract,
+5. **v0.43 CommonMark client rendering** — shared CommonMark contract,
    parser/sanitizer fixtures, CapDepMac rich rendering, terminal-safe CLI/TUI
    rendering, MCP-control fallback behavior, and release parity evidence
    (#209-#215).
-4. **v0.42 local media/model operations reliability** — profile selection,
+6. **v0.42 local media/model operations reliability** — profile selection,
    model/account readiness, benchmark-informed defaults, real progress/status,
    cancellation/recovery, and setup/release docs (#202-#208).
-5. **MCP security integration** — MCP must remain an integration substrate, not
+7. **MCP security integration** — MCP must remain an integration substrate, not
    a second authority path. v0.29 turns the current targeted tests into a
    security conformance suite before CapDep relies heavily on external MCP
    servers and headless clients.
-6. **Client proof, not just parity claims** — v0.30 replaces source/manifest
+8. **Client proof, not just parity claims** — v0.30 replaces source/manifest
    checks with live daemon integration coverage for CLI, TUI, Swift GUI, and
    MCP-control.
    Coverage is ratcheted independently for daemon files, clients, MCP
    surfaces, bundled MCP servers, and tools; the near-term target is 85% per
    group and the stretch target is 90%, but CI first enforces non-regression
    from the checked-in baseline.
-7. **Multi-session explainability** — v0.31 made labels, flow patterns,
+9. **Multi-session explainability** — v0.31 made labels, flow patterns,
    external actors, approvals, policy rules, provenance, and audit inspectable
    across turns and clients.
-8. **Source identity and labeling correctness** — IFC guarantees ride on
+10. **Source identity and labeling correctness** — IFC guarantees ride on
    correct labels. The old v0.16 track is now narrowed to canonical source
    identity and per-message email labeling.
-9. **Terminal UX and approval polish** — remaining terminal work is useful,
+11. **Terminal UX and approval polish** — remaining terminal work is useful,
    but it is not the primary desktop-agent path and should not duplicate daemon
    authority.
-10. **Research/non-goals** — keep remote/mobile control, always-on autonomy,
+12. **Research/non-goals** — keep remote/mobile control, always-on autonomy,
    community sharing, and web/cross-platform alternatives explicit without
    promoting them to immediate implementation.
-11. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
+13. **Decision fatigue** — coarse policy leads to rubber-stamping and eroded
    human oversight. The decision-refinement layer is live; future work should
    add concrete inspectors or policy scripts, not revive the old epic.
 
@@ -95,7 +105,7 @@ The policy themes come from `docs/security-alignment-assessment.md`:
 
 ## v0.45.0 — Dead-simple Google account connection
 
-Open milestone. v0.45 turns Google account setup from an expert-oriented
+Complete locally. v0.45 turns Google account setup from an expert-oriented
 OAuth-client configuration flow into a normal-user account connection flow,
 while retaining the existing security boundary: the daemon owns OAuth state,
 upstream server configuration, status, token storage, and reload behavior.
@@ -106,15 +116,15 @@ become independent credential or capability authorities.
 
 | Issue | Work | Status |
 |---|---|---|
-| #224 | EPIC: dead-simple Google account connection | Open |
-| #226 | Decide and implement default Google OAuth identity strategy | Open |
-| #225 | One-click CapDepMac Google account wizard | Open |
-| #227 | Daemon hot-reload after Google OAuth token changes | Open |
-| #228 | Google OAuth preflight, postflight, and repair diagnostics | Open |
-| #229 | Unified Google scope presets and account selection | Open |
-| #230 | CLI parity for Google connect, status, and disconnect | Open |
-| #231 | Automated tests for Google OAuth setup state machine | Open |
-| #232 | Update Google Workspace docs for simple and advanced setup | Open |
+| #224 | EPIC: dead-simple Google account connection | Done locally |
+| #226 | Decide and implement default Google OAuth identity strategy | Done locally |
+| #225 | One-click CapDepMac Google account wizard | Done locally |
+| #227 | Daemon hot-reload after Google OAuth token changes | Done locally |
+| #228 | Google OAuth preflight, postflight, and repair diagnostics | Done locally |
+| #229 | Unified Google scope presets and account selection | Done locally |
+| #230 | CLI parity for Google connect, status, and disconnect | Done locally |
+| #231 | Automated tests for Google OAuth setup state machine | Done locally |
+| #232 | Update Google Workspace docs for simple and advanced setup | Done locally |
 
 ### Sequencing
 
@@ -139,13 +149,16 @@ become independent credential or capability authorities.
 
 ### Done-when
 
-- A normal user can connect Gmail, Calendar, and Drive from CapDepMac without
-  visiting Google Cloud Console or pasting OAuth client secrets.
+- A normal user chooses Gmail, Gmail + Calendar, or Gmail + Calendar + Drive
+  from CapDepMac, and CapDep keeps the underlying MCP services separately
+  scoped and statused.
 - Advanced BYO Google OAuth client setup remains supported and documented for
-  users who need their own project or tenant controls.
+  users who need their own project or tenant controls; CapDep does not yet ship
+  a hosted multi-user Google OAuth client.
 - Daemon config, upstream MCP server availability, and tool status update after
-  token creation, revocation, scope change, and account switch without a manual
-  daemon restart.
+  token creation, revocation, scope change, and account switch through live
+  reload/unload when the upstream manager is available, with explicit restart
+  requirements otherwise.
 - CapDepMac and CLI show the signed-in account, enabled services, missing
   scopes, token health, and repair actions without exposing token or secret
   material.

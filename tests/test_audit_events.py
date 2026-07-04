@@ -70,6 +70,7 @@ def test_event_type_values_are_dotted_namespaces() -> None:
         "onguard",
         "turn",
         "purpose",
+        "skill",
     }
     for et in EventType:
         head, sep, _ = et.value.partition(".")
@@ -158,6 +159,7 @@ def test_event_type_taxonomy_matches_design() -> None:
         "onguard.schedule_changed",
         "onguard.schedule_run",
         "onguard.artifact_changed",
+        "skill.guidance_loaded",
     }
     actual = {et.value for et in EventType}
     assert actual == expected, f"missing: {expected - actual}, extra: {actual - expected}"
