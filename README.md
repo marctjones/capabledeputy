@@ -149,18 +149,27 @@ capdep-setup google-cloud --project PROJECT_ID --services gmail,drive,calendar
 capdep-setup google-workspace --services gmail,drive,calendar
 capdep-setup images
 capdep-setup models
+capdep-setup models --apply --download
 capdep-setup sandbox
 capdep-setup macos-daemon
+capdep-setup macos-daemon --apply --verify
 ```
 
 The consolidated setup commands are dry-run/check by default. Mutating actions
 require `--apply`, including writing managed daemon config, creating image
-venvs, installing packages, planning local model harvesting, or touching daemon
-launch setup. The daemon remains responsible for live readiness, OAuth/token
-state, policy, approvals, audit, runtime status, and user workflows. Standard
-setup tests use temp homes, fake caches, and fake subprocess runners so they do
-not mutate the developer's real `~/.config/capabledeputy`, `.venv-images`,
-Hugging Face cache, launchd state, daemon sockets, keychain, or model cache.
+venvs, installing packages, downloading model assets, checking sandbox runtime
+health, or verifying daemon launch/parity state. The daemon remains responsible
+for live readiness, OAuth/token state, policy, approvals, audit, runtime status,
+and user workflows. Standard setup tests use temp homes, fake caches, and fake
+subprocess runners so they do not mutate the developer's real
+`~/.config/capabledeputy`, `.venv-images`, Hugging Face cache, launchd state,
+daemon sockets, keychain, or model cache.
+
+Google account setup is preset-first in CapDepMac: users choose Gmail,
+Gmail + Calendar, or Gmail + Calendar + Drive, while the daemon keeps the
+underlying MCP services separately scoped, audited, and reloadable. Advanced
+bring-your-own Google OAuth client setup remains available; OAuth sign-in only
+proves account access and never grants CapDep action authority by itself.
 
 ### macOS desktop chat (CapDepMac)
 

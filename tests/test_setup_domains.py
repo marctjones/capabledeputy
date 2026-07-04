@@ -14,6 +14,7 @@ from capabledeputy.cli.setup_domains import (
     setup_imap_register,
     setup_macos_daemon,
     setup_models,
+    setup_sandbox,
 )
 
 runner = CliRunner()
@@ -114,3 +115,88 @@ def test_capdep_setup_domain_apply_writes_only_requested_config(tmp_path: Path) 
     assert '"apply": true' in result.stdout
     assert config.exists()
     assert "name: mail" in config.read_text(encoding="utf-8")
+
+
+def test_setup_models_apply_download_uses_fake_runner_and_cache(tmp_path: Path) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(tuple(command))
+        return subprocess.CompletedProcess(list(command), 0, stdout="", stderr="")
+
+    result = setup_models(
+        apply=True,
+        download=True,
+        cache_home=tmp_path / "hf",
+        command_runner=fake_runner,
+    )
+
+    assert result.status == "downloaded"
+    assert result.changed is True
+    assert calls
+    assert all(command[:2] == ("hf", "download") for command in calls)
+    assert all(str(tmp_path / "hf") in command for command in calls)
+
+
+def test_setup_models_download_requires_apply(tmp_path: Path) -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="--download requires --apply"):
+        setup_models(download=True, cache_home=tmp_path / "hf")
+
+
+def test_setup_sandbox_apply_uses_fake_podman_runner(monkeypatch) -> None:
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr("capabledeputy.cli.setup_domains.shutil.which", lambda name: "/bin/podman")
+
+    def fake_runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(tuple(command))
+        stdout = "podman version 5.0\n" if command[-1] == "--version" else "{}"
+        return subprocess.CompletedProcess(list(command), 0, stdout=stdout, stderr="")
+
+    result = setup_sandbox(apply=True, command_runner=fake_runner)
+
+    assert result.status == "ready"
+    assert calls == [
+        ("/bin/podman", "--version"),
+        ("/bin/podman", "info", "--format", "json"),
+    ]
+    assert result.details["runtime_health"]["checked"] is True
+
+
+def test_setup_macos_daemon_apply_verify_uses_fake_runner(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    scripts = repo / "scripts"
+    scripts.mkdir(parents=True)
+    for name in (
+        "run-local-daemon-launchd.sh",
+        "run-local-daemon-tmux.sh",
+        "verify-gui-parity.py",
+    ):
+        (scripts / name).write_text("#!/bin/sh\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(tuple(command))
+        return subprocess.CompletedProcess(list(command), 0, stdout="ok", stderr="")
+
+    result = setup_macos_daemon(
+        apply=True,
+        verify=True,
+        repo_root=repo,
+        command_runner=fake_runner,
+    )
+
+    assert result.status == "verified"
+    assert calls[0] == ("launchctl", "list")
+    assert calls[1] == ("ps", "-axo", "pid,command")
+    assert calls[2][-1].endswith("verify-gui-parity.py")
+    assert result.details["parity_script_present"] is True
+
+
+def test_capdep_setup_rejects_mutating_suboptions_without_apply(tmp_path: Path) -> None:
+    models = runner.invoke(setup_app, ["models", "--download", "--hf-home", str(tmp_path)])
+    macos = runner.invoke(setup_app, ["macos-daemon", "--verify", "--repo-root", str(tmp_path)])
+
+    assert models.exit_code == 2
+    assert macos.exit_code == 2

@@ -207,13 +207,22 @@ def models_command(
         Path | None,
         typer.Option("--hf-home", help="Hugging Face cache home."),
     ] = None,
+    download: Annotated[
+        bool,
+        typer.Option("--download", help="Download recommended assets. Requires --apply."),
+    ] = False,
     json_output: Annotated[
         bool,
         typer.Option("--json", help="Print machine-readable JSON."),
     ] = False,
 ) -> None:
     """Inspect local capability and recommend model assets."""
-    _print_result(setup_models(apply=apply, cache_home=hf_home), json_output=json_output)
+    try:
+        result = setup_models(apply=apply, download=download, cache_home=hf_home)
+    except ValueError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from None
+    _print_result(result, json_output=json_output)
 
 
 @app.command("sandbox")
@@ -238,13 +247,22 @@ def macos_daemon_command(
         typer.Option("--apply", help="Reserved for future launchd changes."),
     ] = False,
     repo_root: Annotated[Path | None, typer.Option("--repo-root", help="Repository root.")] = None,
+    verify: Annotated[
+        bool,
+        typer.Option("--verify", help="Run daemon connectivity/parity checks. Requires --apply."),
+    ] = False,
     json_output: Annotated[
         bool,
         typer.Option("--json", help="Print machine-readable JSON."),
     ] = False,
 ) -> None:
     """Check macOS daemon launch paths and parity validation prerequisites."""
-    _print_result(setup_macos_daemon(apply=apply, repo_root=repo_root), json_output=json_output)
+    try:
+        result = setup_macos_daemon(apply=apply, repo_root=repo_root, verify=verify)
+    except ValueError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=2) from None
+    _print_result(result, json_output=json_output)
 
 
 if __name__ == "__main__":

@@ -271,7 +271,9 @@ def setup_images(
 def setup_models(
     *,
     apply: bool = False,
+    download: bool = False,
     cache_home: Path | None = None,
+    command_runner: CommandRunner | None = None,
 ) -> SetupDomainResult:
     cache_home = cache_home or Path(
         os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface",
@@ -291,9 +293,21 @@ def setup_models(
             else "stabilityai/sdxl-turbo",
         },
     ]
-    status = "dry_run" if not apply else "planned_only"
+    commands = tuple(
+        ("hf", "download", str(item["model"]), "--cache-dir", str(cache_home))
+        for item in recommendations
+    )
+    if download and not apply:
+        raise ValueError("--download requires --apply")
+    if apply and download:
+        runner = command_runner or _default_runner
+        for command in commands:
+            runner(command)
+    status = "downloaded" if apply and download else "ready_to_download" if apply else "dry_run"
     summary = (
-        "Model harvesting is planned only; downloads require an explicit future downloader."
+        "Downloaded recommended local planner/image model assets."
+        if apply and download
+        else "Prepared a model harvesting plan; add --download to fetch assets."
         if apply
         else "Would inspect machine capability and recommend local planner/image models."
     )
@@ -302,6 +316,9 @@ def setup_models(
         apply=apply,
         status=status,
         summary=summary,
+        actions=("inspect machine capability", "check Hugging Face token presence"),
+        commands=commands,
+        changed=bool(apply and download),
         paths=_path_map(hf_home=cache_home),
         details={
             "apple_silicon": apple_silicon,
@@ -313,8 +330,22 @@ def setup_models(
     )
 
 
-def setup_sandbox(*, apply: bool = False) -> SetupDomainResult:
+def setup_sandbox(
+    *,
+    apply: bool = False,
+    command_runner: CommandRunner | None = None,
+) -> SetupDomainResult:
     podman = shutil.which("podman")
+    health: dict[str, Any] = {"checked": False}
+    if apply and podman:
+        runner = command_runner or _default_runner
+        version = runner((podman, "--version"))
+        info = runner((podman, "info", "--format", "json"))
+        health = {
+            "checked": True,
+            "version": (version.stdout or "").strip(),
+            "info_present": bool((info.stdout or "").strip()),
+        }
     return SetupDomainResult(
         domain="sandbox",
         apply=apply,
@@ -325,21 +356,52 @@ def setup_sandbox(*, apply: bool = False) -> SetupDomainResult:
             else "Podman is not on PATH; sandbox setup would need Podman installed first."
         ),
         actions=("check Podman availability", "verify sandbox runtime health"),
+        commands=((podman, "--version"), (podman, "info", "--format", "json")) if podman else (),
         paths=_path_map(podman=Path(podman) if podman else None),
+        details={"runtime_health": health},
     )
 
 
-def setup_macos_daemon(*, apply: bool = False, repo_root: Path | None = None) -> SetupDomainResult:
+def setup_macos_daemon(
+    *,
+    apply: bool = False,
+    repo_root: Path | None = None,
+    verify: bool = False,
+    command_runner: CommandRunner | None = None,
+) -> SetupDomainResult:
     repo_root = repo_root or _default_repo_root()
     launchd_script = repo_root / "scripts" / "run-local-daemon-launchd.sh"
     tmux_script = repo_root / "scripts" / "run-local-daemon-tmux.sh"
     parity_script = repo_root / "scripts" / "verify-gui-parity.py"
+    commands: tuple[tuple[str, ...], ...] = (
+        ("launchctl", "list"),
+        ("ps", "-axo", "pid,command"),
+    )
+    parity_command = (sys.executable, str(parity_script))
+    if verify:
+        commands = (*commands, parity_command)
+    if verify and not apply:
+        raise ValueError("--verify requires --apply")
+    checks: list[dict[str, Any]] = []
+    if apply:
+        runner = command_runner or _default_runner
+        for command in commands:
+            completed = runner(command)
+            checks.append(
+                {
+                    "command": list(command),
+                    "returncode": completed.returncode,
+                    "stdout_present": bool(completed.stdout),
+                },
+            )
     return SetupDomainResult(
         domain="macos-daemon",
         apply=apply,
-        status="dry_run" if not apply else "planned_only",
+        status="verified" if apply and verify else "checked" if apply else "dry_run",
         summary=(
-            "Would inspect daemon launch paths and run connectivity/parity checks; "
+            "Inspected daemon launch paths and parity prerequisites."
+            if apply
+            else "Would inspect daemon launch paths and run connectivity/parity checks; "
             "real launchd changes stay opt-in."
         ),
         actions=(
@@ -347,6 +409,7 @@ def setup_macos_daemon(*, apply: bool = False, repo_root: Path | None = None) ->
             "validate tmux daemon script",
             "run daemon connectivity/parity check after explicit launch",
         ),
+        commands=commands,
         paths=_path_map(
             launchd_script=launchd_script,
             tmux_script=tmux_script,
@@ -356,6 +419,7 @@ def setup_macos_daemon(*, apply: bool = False, repo_root: Path | None = None) ->
             "launchd_script_present": launchd_script.is_file(),
             "tmux_script_present": tmux_script.is_file(),
             "parity_script_present": parity_script.is_file(),
+            "checks": checks,
         },
     )
 
