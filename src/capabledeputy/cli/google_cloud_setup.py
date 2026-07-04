@@ -8,6 +8,7 @@ import subprocess
 import webbrowser
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -42,8 +43,11 @@ class CloudSetupResult:
     services: tuple[str, ...]
     cloud_apis: tuple[str, ...]
     commands: tuple[tuple[str, ...], ...]
+    verification_command: tuple[str, ...]
     ran_commands: tuple[tuple[str, ...], ...]
     skipped_commands: tuple[tuple[str, ...], ...]
+    verified_cloud_apis: tuple[str, ...]
+    missing_cloud_apis: tuple[str, ...]
     local_config_path: str | None
     local_config_changed: bool
     oauth_overview_url: str
@@ -57,8 +61,11 @@ class CloudSetupResult:
             "services": list(self.services),
             "cloud_apis": list(self.cloud_apis),
             "commands": [list(command) for command in self.commands],
+            "verification_command": list(self.verification_command),
             "ran_commands": [list(command) for command in self.ran_commands],
             "skipped_commands": [list(command) for command in self.skipped_commands],
+            "verified_cloud_apis": list(self.verified_cloud_apis),
+            "missing_cloud_apis": list(self.missing_cloud_apis),
             "local_config_path": self.local_config_path,
             "local_config_changed": self.local_config_changed,
             "oauth_overview_url": self.oauth_overview_url,
@@ -128,6 +135,33 @@ def build_cloud_setup_commands(
     return tuple(commands)
 
 
+def build_enabled_services_command(project_id: str) -> tuple[str, ...]:
+    return (
+        "gcloud",
+        "services",
+        "list",
+        "--enabled",
+        "--project",
+        project_id,
+        "--format=json",
+    )
+
+
+def parse_enabled_service_names(output: str) -> tuple[str, ...]:
+    if not output.strip():
+        return ()
+    raw = json.loads(output)
+    if not isinstance(raw, list):
+        raise ValueError("gcloud services list returned non-list JSON")
+    names: list[str] = []
+    for item in raw:
+        if isinstance(item, dict):
+            name = str(item.get("config", {}).get("name") or item.get("name") or "")
+            if name:
+                names.append(name)
+    return tuple(names)
+
+
 def run_cloud_setup(
     *,
     project_id: str,
@@ -158,9 +192,12 @@ def run_cloud_setup(
         folder=folder,
         billing_account=billing_account,
     )
+    verification_command = build_enabled_services_command(project_id)
 
     ran: list[tuple[str, ...]] = []
     skipped: list[tuple[str, ...]] = []
+    verified: tuple[str, ...] = ()
+    missing: tuple[str, ...] = ()
     if apply:
         if shutil.which("gcloud") is None and command_runner is None:
             raise RuntimeError("gcloud is not on PATH; install Google Cloud CLI first")
@@ -168,6 +205,15 @@ def run_cloud_setup(
         for command in commands:
             runner(command)
             ran.append(command)
+        verification = runner(verification_command)
+        verified = parse_enabled_service_names(verification.stdout or "")
+        verified_set = set(verified)
+        missing = tuple(api for api in apis if api not in verified_set)
+        if missing:
+            raise RuntimeError(
+                "Google Cloud project is still missing required enabled API(s): "
+                + ", ".join(missing)
+            )
     else:
         skipped.extend(commands)
 
@@ -188,8 +234,11 @@ def run_cloud_setup(
         services=parsed_services,
         cloud_apis=apis,
         commands=commands,
+        verification_command=verification_command,
         ran_commands=tuple(ran),
         skipped_commands=tuple(skipped),
+        verified_cloud_apis=verified,
+        missing_cloud_apis=missing,
         local_config_path=local_config_path,
         local_config_changed=local_config_changed,
         oauth_overview_url=OAUTH_OVERVIEW_URL.format(project=project_id),
@@ -223,6 +272,12 @@ def print_cloud_setup_result(
         status = "ran" if command in ran else "pending"
         table.add_row(status, " ".join(command))
     console.print(table)
+
+    console.print("\n[bold]verification[/bold]")
+    if result.apply:
+        console.print("  [green]enabled APIs verified[/green]")
+    else:
+        console.print("  pending: " + " ".join(result.verification_command))
 
     if result.local_config_path:
         changed = "updated" if result.local_config_changed else "already current"
@@ -294,3 +349,93 @@ def cloud_setup_command(
     print_cloud_setup_result(result, console=console, json_output=json_output)
     if open_pages:
         open_cloud_setup_pages(result)
+
+
+app = typer.Typer(
+    help=(
+        "One-time Google Cloud setup helper for CapDep Workspace OAuth. "
+        "Dry-runs by default; use --apply to ensure APIs/MCP services are enabled."
+    ),
+    no_args_is_help=False,
+)
+console = Console()
+err_console = Console(stderr=True)
+
+
+@app.callback(invoke_without_command=True)
+def main(
+    project_id: Annotated[
+        str,
+        typer.Option(
+            "--project",
+            "-p",
+            help="Google Cloud project ID to configure for CapDep Workspace OAuth.",
+        ),
+    ],
+    services: Annotated[
+        str,
+        typer.Option(
+            "--services",
+            "-s",
+            help="Comma-separated Workspace services: gmail,drive,calendar,chat,people.",
+        ),
+    ] = "gmail,drive,calendar",
+    create_project: Annotated[
+        bool,
+        typer.Option("--create-project", help="Create the Google Cloud project before setup."),
+    ] = False,
+    project_name: Annotated[
+        str,
+        typer.Option("--project-name", help="Display name when --create-project is used."),
+    ] = "CapDep Google Workspace OAuth",
+    organization: Annotated[
+        str | None,
+        typer.Option("--organization", help="Google Cloud organization ID for project creation."),
+    ] = None,
+    folder: Annotated[
+        str | None,
+        typer.Option("--folder", help="Google Cloud folder ID for project creation."),
+    ] = None,
+    billing_account: Annotated[
+        str | None,
+        typer.Option("--billing-account", help="Billing account to link after project creation."),
+    ] = None,
+    apply: Annotated[
+        bool,
+        typer.Option("--apply", help="Run gcloud commands and verify required APIs are enabled."),
+    ] = False,
+    register_capdep: Annotated[
+        bool,
+        typer.Option(
+            "--register-capdep",
+            help="Write/update CapDep's local Google Workspace managed config block.",
+        ),
+    ] = False,
+    open_pages: Annotated[
+        bool,
+        typer.Option("--open", help="Open the remaining Google Auth/Admin console pages."),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a setup summary."),
+    ] = False,
+) -> None:
+    cloud_setup_command(
+        project_id=project_id,
+        services=services,
+        create_project=create_project,
+        project_name=project_name,
+        organization=organization,
+        folder=folder,
+        billing_account=billing_account,
+        apply=apply,
+        register_capdep=register_capdep,
+        open_pages=open_pages,
+        json_output=json_output,
+        console=console,
+        err_console=err_console,
+    )
+
+
+if __name__ == "__main__":
+    app()

@@ -62,6 +62,7 @@ starlark = ["starlark-pyo3>=2026.1"]
 
 [project.scripts]
 capdep = "capabledeputy.cli.main:app"
+capdep-google-cloud-setup = "capabledeputy.cli.google_cloud_setup:app"
 
 [build-system]
 requires = ["uv_build>=0.9.27,<0.10.0"]

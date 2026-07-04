@@ -29,7 +29,7 @@ CapDep can automate the safe Google Cloud pieces and then point you at the
 Google-controlled Auth/Admin pages that still require browser approval:
 
 ```bash
-capdep oauth google cloud-setup \
+capdep-google-cloud-setup \
   --project PROJECT_ID \
   --services gmail,drive,calendar \
   --register-capdep
@@ -38,6 +38,8 @@ capdep oauth google cloud-setup \
 By default this is a dry run. Add `--apply` to run the generated `gcloud`
 commands. Add `--create-project` and `--billing-account BILLING_ACCOUNT_ID` if
 you want the helper to create and link a new project before enabling APIs.
+When `--apply` is used, the helper re-lists enabled Google Cloud services and
+fails if any required API or Workspace MCP service is still missing.
 
 The helper can:
 
