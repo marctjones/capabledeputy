@@ -9,10 +9,10 @@ historical backlog snapshots, not the current roadmap.
 **Last refreshed:** 2026-07-04 — v0.44.0 is the current stable release,
 covering local media/model operations reliability, CommonMark rendering across
 client surfaces, and SKILL.md interoperability with sandboxed execution. v0.45
-is now open for dead-simple Google account connection. v1.0 remains
-unscheduled.
+is open for dead-simple Google account connection, and v0.46 is planned for
+consolidated one-time setup automation. v1.0 remains unscheduled.
 
-## Product Ladder — v0.35 → v0.45
+## Product Ladder — v0.35 → v0.46
 
 ```mermaid
 flowchart LR
@@ -27,7 +27,8 @@ flowchart LR
   v43[v0.43 CommonMark client rendering]
   v44[v0.44 Skills interoperability + sandboxed execution]
   v45[v0.45 Dead-simple Google account connection]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45
+  v46[v0.46 Consolidated setup automation]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -43,6 +44,7 @@ flowchart LR
 | **13 Product — v0.43.0 — CommonMark rendering across client surfaces** | CommonMark rendering and fallback parity across clients | #209–#215 |
 | **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | Codex/Claude-style SKILL.md compatibility with CapDep security guarantees and containerized skill scripts | #216–#223 |
 | **15 Product — v0.45.0 — Dead-simple Google account connection** | One-click Google/Gmail/Workspace account connection with daemon-owned OAuth, diagnostics, and CLI/CapDepMac parity | #224–#232 |
+| **16 Product — v0.46.0 — Consolidated setup automation** | One-time setup domains under `capdep-setup`, with daemon/client runtime boundaries and non-destructive setup tests | #233–#240 |
 
 ## Tracker Coverage
 
@@ -50,6 +52,7 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
+| **16 Product — v0.46.0 — Consolidated setup automation** | #233–#240 | Planned: migrate one-time assistant-surface/IMAP/Workspace/image/model/macOS-daemon/sandbox setup under `capdep-setup`, preserve compatibility aliases, and add temp-home/fake-runner tests that do not mutate local developer environments. |
 | **15 Product — v0.45.0 — Dead-simple Google account connection** | #224–#232 | Open: default OAuth identity strategy, one-click CapDepMac wizard, daemon hot-reload, pre/postflight diagnostics, scope presets/account identity, CLI parity, tests, and docs. |
 | **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | #216–#223 | Closed: imports flat and folder-based SKILL.md packages, models guidance/tool/hybrid modes, preserves policy/labels/provenance/audit, routes skill scripts through sandbox execution only, exposes daemon/CLI diagnostics, and adds compatibility/adversarial/E2E tests. |
 | **13 Product — v0.43.0 — CommonMark rendering across client surfaces** | #209–#215 | Complete locally: shared CommonMark contract, sanitizer fixtures, CapDepMac rendering sanitizer, terminal-safe CLI/TUI rendering, MCP-control metadata/fallback behavior, and release parity docs/tests. |
@@ -121,6 +124,50 @@ scope checks.
 - README and Google Workspace docs make the simple path primary, keep advanced
   setup available, and explicitly state that OAuth login is not a CapDep
   capability grant.
+
+## Planned Focus — v0.46.0 Consolidated Setup Automation
+
+Goal: keep CapDep's daemon and clients focused on runtime authority by moving
+one-time install, external account preparation, dependency setup, local model
+harvesting, and managed-config bootstrap into the dedicated `capdep-setup`
+command tree. The daemon remains the owner of live readiness, OAuth/token
+state, policy, approvals, audit, runtime status, and user workflows; clients
+render those states and invoke daemon-owned actions rather than duplicating
+setup logic.
+
+### v0.46.0 scope
+
+| Issue | Work | Local status |
+|---|---|---|
+| #233 | EPIC: consolidate one-time setup automation under `capdep-setup` | Planned |
+| #234 | Migrate assistant-surface, IMAP, and Workspace bootstrap into `capdep-setup` | Planned |
+| #235 | Replace image venv shell setup with `capdep-setup images` | Planned |
+| #236 | Add local model harvesting and machine capability setup domain | Planned |
+| #237 | Add macOS daemon launch setup and parity validation domain | Planned |
+| #238 | Add sandbox prerequisite setup and verification domain | Planned |
+| #239 | Build non-destructive setup test harness for temp homes and fake runners | Planned |
+| #240 | Document setup/runtime boundary and compatibility aliases | Planned |
+
+### v0.46.0 done-when
+
+- `capdep-setup list` exposes setup domains for assistant surface, IMAP,
+  Workspace registration, image runtime, local models, macOS daemon launch, and
+  sandbox prerequisites.
+- Existing setup-like commands either dispatch to the new implementation or are
+  clearly documented compatibility aliases.
+- Mutating setup commands support dry-run/check behavior and require explicit
+  apply before writing local config, creating venvs, installing packages,
+  downloading models, touching launchd, or registering sandbox settings.
+- Standard tests run setup flows against temp `HOME`, `XDG_CONFIG_HOME`,
+  `HF_HOME`, fake cache paths, fake daemon config paths, and fake subprocess
+  runners.
+- Standard tests do not write to the developer's real
+  `~/.config/capabledeputy`, repo `.venv-images`, Hugging Face cache, daemon
+  sockets, launchd state, keychain, or real model caches.
+- Real integration setup tests are opt-in with explicit markers/environment
+  flags and are skipped in the default suite.
+- README and setup docs explain the setup/runtime boundary, compatibility
+  aliases, dry-run/apply behavior, and local test safety contract.
 
 ## Completed Focus — v0.42.0 Local Media and Model Operations Reliability
 
