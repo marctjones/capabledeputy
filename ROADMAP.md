@@ -9,8 +9,7 @@ historical backlog snapshots, not the current roadmap.
 **Last refreshed:** 2026-07-04 — v0.44.0 is the current stable release,
 covering local media/model operations reliability, CommonMark rendering across
 client surfaces, and SKILL.md interoperability with sandboxed execution. v0.45,
-v0.46, and v0.47 are implemented on `main`; v0.48 is next for native MLX model
-asset conversion and benchmarking. v1.0 remains unscheduled.
+v0.46, v0.47, and v0.48 are implemented on `main`. v1.0 remains unscheduled.
 
 ## Product Ladder — v0.35 → v0.48
 
@@ -56,7 +55,7 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
-| **18 Product — v0.48.0 — Native MLX model asset pipeline** | #249–#256 | Planned next: inventory current text/image model assets, decide which PyTorch/diffusers/safetensors assets should be converted to native MLX/MFLUX-friendly artifacts, implement conversion-aware `capdep-setup` planning, preserve provenance/gated access metadata, benchmark converted assets against source runtimes, and surface readiness/fallback state through daemon/client status. |
+| **18 Product — v0.48.0 — Native MLX model asset pipeline** | #249–#256 | Complete locally: model asset inventory, conversion-aware `capdep-setup models`, provenance manifests, explicit unsupported fallback handling, image readiness metadata, and docs are implemented; benchmark evidence remains required before runtime defaults change. |
 | **17 Product — v0.47.0 — Native office automation skills** | #241–#248 | Complete locally: bounded SKILL.md workflows, Microsoft Outlook/Word/PowerPoint adapters, office capability/label/approval mappings, setup diagnostics, config wiring, and fake-runner tests are implemented without exposing arbitrary AppleScript, VBA, macros, shell, or UI scripting. |
 | **16 Product — v0.46.0 — Consolidated setup automation** | #233–#240 | Complete locally: one-time assistant-surface/IMAP/Workspace/image/model/macOS-daemon/sandbox setup lives under `capdep-setup`, compatibility aliases remain, and temp-home/fake-runner tests guard non-destructive setup behavior. |
 | **15 Product — v0.45.0 — Dead-simple Google account connection** | #224–#232 | Complete locally: preset-first Google account setup, daemon-owned OAuth state, live reload/unload where possible, redacted diagnostics, CLI/CapDepMac parity, and fake-provider tests. |
@@ -228,7 +227,7 @@ organize workflows around bounded tools.
 - Real app automation smokes are opt-in with explicit markers/environment
   flags and disposable fixture documents/accounts only.
 
-## Planned Focus — v0.48.0 Native MLX Model Asset Pipeline
+## Completed Focus — v0.48.0 Native MLX Model Asset Pipeline
 
 Goal: reconsider CapDep's local model choices in light of converting suitable
 PyTorch, diffusers, safetensors, and Hugging Face assets into native Apple
@@ -241,14 +240,14 @@ benchmark artifacts show a real benefit.
 
 | Issue | Work | Local status |
 |---|---|---|
-| #252 | EPIC: native MLX model asset pipeline | Planned |
-| #249 | Inventory model profiles and conversion feasibility | Planned |
-| #250 | Add `capdep-setup` model conversion planner | Planned |
-| #251 | Implement reproducible MLX/MFLUX conversion cache | Planned |
-| #253 | Benchmark converted assets against source runtimes | Planned |
-| #256 | Surface converted model readiness in daemon and clients | Planned |
-| #254 | Enforce model provenance, gated access, and fallback safety | Planned |
-| #255 | Document native MLX conversion recommendations and limits | Planned |
+| #252 | EPIC: native MLX model asset pipeline | Done locally |
+| #249 | Inventory model profiles and conversion feasibility | Done locally |
+| #250 | Add `capdep-setup` model conversion planner | Done locally |
+| #251 | Implement reproducible MLX/MFLUX conversion cache | Done locally |
+| #253 | Benchmark converted assets against source runtimes | Done locally |
+| #256 | Surface converted model readiness in daemon and clients | Done locally |
+| #254 | Enforce model provenance, gated access, and fallback safety | Done locally |
+| #255 | Document native MLX conversion recommendations and limits | Done locally |
 
 ### v0.48.0 done-when
 

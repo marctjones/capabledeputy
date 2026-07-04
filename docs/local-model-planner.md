@@ -44,6 +44,36 @@ When enabled, the adapter strips `<think>...</think>` and
 `<thinking>...</thinking>` blocks before CapableDeputy parses tool-call
 or extractor output, so structured paths continue to work.
 
+## Native MLX model asset pipeline
+
+`capdep-setup models` is the one-time setup surface for local model assets. It
+does not change runtime defaults by itself. The command now emits a
+machine-readable inventory for planner, extractor, MFLUX image, and explicit
+diffusers fallback profiles:
+
+```bash
+capdep-setup models --json
+capdep-setup models --apply --download
+capdep-setup models --apply --convert
+```
+
+The inventory records source repository, source format, recommended runtime,
+gate/fallback status, quantization, and conversion feasibility. Existing native
+MLX or MFLUX repositories are preferred when they are practical. Supported
+conversions write provenance manifests under `CAPDEP_MODEL_ASSET_HOME` or
+`$HF_HOME/capdep-model-assets`; each manifest records the profile, source repo,
+conversion command, fallback runtime, and placeholders for revision/hash/output
+evidence that real conversion jobs can fill in later. Unsupported SDXL/Pony
+safetensors remain explicit diffusers fallbacks.
+
+Image readiness and `capdep image profiles` surface the same asset state as
+`native`, `converted`, or `source_fallback`. Runtime defaults should only
+change after local benchmark evidence justifies the change. Use:
+
+```bash
+scripts/benchmark_image_models.py --candidate z-image-turbo --candidate flux2-klein-4b
+```
+
 ## Why run the planner locally
 
 In CapableDeputy two LLMs participate in dual-LLM mode (DESIGN.md §5.2):

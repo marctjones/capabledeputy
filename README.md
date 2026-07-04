@@ -150,6 +150,7 @@ capdep-setup google-workspace --services gmail,drive,calendar
 capdep-setup images
 capdep-setup models
 capdep-setup models --apply --download
+capdep-setup models --apply --convert
 capdep-setup sandbox
 capdep-setup office-automation
 capdep-setup macos-daemon
@@ -159,11 +160,11 @@ capdep-setup macos-daemon --apply --verify
 The consolidated setup commands are dry-run/check by default. Mutating actions
 require `--apply`, including writing managed daemon config, creating image
 venvs, installing packages, downloading model assets, checking sandbox runtime
-health, checking native Office app availability, or verifying daemon
-launch/parity state. The daemon remains responsible for live readiness,
-OAuth/token state, policy, approvals, audit, runtime status, and user
-workflows. Standard setup tests use temp homes, fake caches, and fake
-subprocess runners so they do not mutate the developer's real
+health, writing local model conversion manifests, checking native Office app
+availability, or verifying daemon launch/parity state. The daemon remains
+responsible for live readiness, OAuth/token state, policy, approvals, audit,
+runtime status, and user workflows. Standard setup tests use temp homes, fake
+caches, and fake subprocess runners so they do not mutate the developer's real
 `~/.config/capabledeputy`, `.venv-images`, Hugging Face cache, launchd state,
 daemon sockets, keychain, or model cache.
 
@@ -237,6 +238,15 @@ Diffusers SDXL/Pony profiles remain explicit fallback profiles for local
 checkpoint installs. Readiness checks cover backend imports, output paths,
 LoRA/checkpoint paths, Hugging Face token presence, and selected model metadata;
 they report token source names only, not token values.
+
+`capdep-setup models` now produces a conversion-aware model asset inventory
+covering text and image profiles, source formats, Hugging Face repositories,
+gate/fallback status, and native MLX/MFLUX feasibility. `--download` fetches
+recommended source/native assets; `--convert` runs supported MLX conversion
+commands and writes provenance manifests under the model asset cache. Unsupported
+SDXL/Pony safetensors fallbacks stay explicit source-runtime fallbacks and are
+not silently promoted to defaults. Use `scripts/benchmark_image_models.py` for
+local benchmark evidence before changing profile defaults.
 
 ### Safe scripting assistant
 
