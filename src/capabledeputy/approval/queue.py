@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -347,6 +349,91 @@ class ApprovalQueue:
             )
             return self._requests[request.id]
         return request
+
+    async def submit_elicitation(
+        self,
+        *,
+        from_session,
+        prompt: str,
+        requesting_server: str = "",
+        schema: dict[str, Any] | None = None,
+        response_inherent_labels: frozenset[str] = frozenset(),
+        ttl_seconds: int | None = None,
+    ) -> ApprovalRequest:
+        """Queue an MCP elicitation as an operator-visible approval request.
+
+        The approval decision must include ``decision_scope["elicitation_response"]``
+        before a mediator can return a user response to the upstream server.
+        This keeps approval and arbitrary user input distinct: clicking approve
+        is not silently treated as a fabricated answer.
+        """
+
+        payload = json.dumps(
+            {
+                "prompt": prompt,
+                "schema": schema or {},
+                "requesting_server": requesting_server,
+                "response_inherent_labels": sorted(response_inherent_labels),
+            },
+            sort_keys=True,
+        )
+        target = requesting_server or "upstream-mcp"
+        return await self.submit(
+            from_session=from_session,
+            action=ApprovalAction.ELICITATION,
+            payload=payload,
+            target=target,
+            justification=f"MCP elicitation from {target}: {prompt}",
+            ttl_seconds=ttl_seconds,
+            rule="mcp-elicitation",
+        )
+
+    async def complete_elicitation(
+        self,
+        request_id: int,
+        *,
+        response_value: dict[str, Any],
+        decided_by: str = "user",
+    ) -> ApprovalRequest:
+        """Approve an elicitation with the operator's structured response."""
+
+        return await self.approve(
+            request_id,
+            decided_by=decided_by,
+            decision_scope={"elicitation_response": response_value},
+        )
+
+    async def wait_for_elicitation_response(
+        self,
+        request_id: int,
+        *,
+        timeout_seconds: float | None = None,
+        poll_interval_seconds: float = 0.1,
+    ) -> dict[str, Any]:
+        """Wait until an elicitation request is completed, denied, or expires."""
+
+        deadline = None if timeout_seconds is None else datetime.now(UTC) + timedelta(
+            seconds=timeout_seconds,
+        )
+        while True:
+            request = self.get(request_id)
+            if request.status == ApprovalStatus.APPROVED:
+                response = request.decision_scope.get("elicitation_response")
+                if not isinstance(response, dict):
+                    raise ApprovalStateError(
+                        f"elicitation {request_id} approved without elicitation_response",
+                    )
+                return response
+            if request.status in {
+                ApprovalStatus.DENIED,
+                ApprovalStatus.DEFERRED,
+                ApprovalStatus.EXPIRED,
+            }:
+                reason = request.decision_scope.get("reason") or request.status.value
+                raise ApprovalStateError(f"elicitation {request_id} not completed: {reason}")
+            if deadline is not None and datetime.now(UTC) >= deadline:
+                raise ApprovalStateError(f"elicitation {request_id} timed out")
+            await asyncio.sleep(poll_interval_seconds)
 
     async def approve(
         self,

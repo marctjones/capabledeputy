@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import UUID
 
 from capabledeputy.substrate.elicitation_port import (
     ElicitationRefused,
@@ -79,6 +80,7 @@ class ApprovalQueueElicitationMediator:
 
     name: str = "ApprovalQueueElicitationMediator"
     approval_queue: Any = None
+    timeout_seconds: float = 300.0
 
     async def mediate(
         self,
@@ -89,16 +91,35 @@ class ApprovalQueueElicitationMediator:
                 reason="no approval queue configured for elicitation routing",
                 rule="elicitation-no-queue",
             )
-        # The actual queue wire-up is operator-side; here we just
-        # surface a structural failure if it isn't connected. A
-        # follow-up commit will implement queue.submit_elicitation()
-        # so this mediator can actually post + wait for the user's
-        # response. For now, this is the port that lets the surface
-        # be in place.
-        return ElicitationRefused(
-            reason=(
-                "approval-queue routing of elicitations not yet implemented; "
-                "configure RefuseAllElicitationMediator until follow-up lands"
-            ),
-            rule="elicitation-routing-not-implemented",
+        if request.session_id is None:
+            return ElicitationRefused(
+                reason="approval-queue elicitation routing requires a session_id",
+                rule="elicitation-no-session",
+            )
+        try:
+            session_id = (
+                request.session_id
+                if isinstance(request.session_id, UUID)
+                else UUID(str(request.session_id))
+            )
+            queued = await self.approval_queue.submit_elicitation(
+                from_session=session_id,
+                prompt=request.prompt,
+                requesting_server=request.requesting_server,
+                schema=request.schema,
+                response_inherent_labels=request.response_inherent_labels,
+            )
+            response_value = await self.approval_queue.wait_for_elicitation_response(
+                queued.id,
+                timeout_seconds=self.timeout_seconds,
+            )
+        except Exception as exc:
+            return ElicitationRefused(
+                reason=str(exc),
+                rule="elicitation-approval-queue-failed",
+            )
+        return ElicitationResponse(
+            response_value=response_value,
+            decided_by="approval-queue",
+            applied_labels=request.response_inherent_labels,
         )

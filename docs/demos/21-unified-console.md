@@ -74,9 +74,12 @@ Keys: `ctrl+a` re-open the latest pending approval, `ctrl+q` quit,
 - `capdep tui` (spectator, with the session-graph view) is kept — the
   console is additive, not a replacement.
 
-Known scope: session-control slash commands (`/spawn`, `/grant`,
-`/extract`, …) remain REPL-only for now; the console's input is
-agent-message + `/quit`. Folding those in is a clean follow-up.
+The console also accepts the core user-only slash commands for session control
+and recovery: `/spawn`, `/grant`, `/status`, `/labels`, `/caps`, `/schemas`,
+`/extract`, `/approvals`, `/approve`, `/respond`, and `/deny`. These commands
+are daemon RPCs, not agent messages, so they remain invisible to the LLM just
+like the REPL equivalents. `/respond <approval-id> <json-object>` completes
+approval-queue elicitations with explicit operator input.
 
 ## Files
 

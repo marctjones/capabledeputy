@@ -97,6 +97,20 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         request = await app.approval_queue.defer(int(params["id"]))
         return request.to_dict()
 
+    async def approval_respond_elicitation(params: dict[str, Any]) -> dict[str, Any]:
+        response_value = params.get("response_value")
+        if not isinstance(response_value, dict):
+            raise ValueError("response_value must be an object")
+        request = app.approval_queue.get(int(params["id"]))
+        if request.action is not ApprovalAction.ELICITATION:
+            raise ValueError(f"approval {request.id} is not an elicitation")
+        completed = await app.approval_queue.complete_elicitation(
+            request.id,
+            response_value=response_value,
+            decided_by=str(params.get("decided_by", "user")),
+        )
+        return completed.to_dict()
+
     async def approval_approve(params: dict[str, Any]) -> dict[str, Any]:
         request = app.approval_queue.get(int(params["id"]))
         if request.status != ApprovalStatus.PENDING:
@@ -110,7 +124,14 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         ):
             raise ValueError("approval requires strong authentication")
 
-        approved = await app.approval_queue.approve(request.id, decided_by=decided_by)
+        decision_scope = params.get("decision_scope")
+        if decision_scope is not None and not isinstance(decision_scope, dict):
+            raise ValueError("decision_scope must be an object")
+        approved = await app.approval_queue.approve(
+            request.id,
+            decided_by=decided_by,
+            decision_scope=decision_scope,
+        )
 
         if approved.action == ApprovalAction.SEND_EMAIL:
             new_session, dispatch_outcome = await _execute_declassified_email(
@@ -235,6 +256,7 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         "approval.approve_group": approval_approve_group,
         "approval.deny": approval_deny,
         "approval.defer": approval_defer,
+        "approval.respond_elicitation": approval_respond_elicitation,
     }
 
 

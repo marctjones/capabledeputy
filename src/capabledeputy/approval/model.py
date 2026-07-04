@@ -14,6 +14,7 @@ from capabledeputy.policy.labels import LabelState
 
 class ApprovalAction(StrEnum):
     DECLASSIFY = "DECLASSIFY"
+    ELICITATION = "ELICITATION"
     SEND_EMAIL = "SEND_EMAIL"
     MERGE = "MERGE"
     GRANT = "GRANT"

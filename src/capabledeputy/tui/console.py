@@ -23,6 +23,11 @@ entirely server-side — this only calls `session.send` /
 
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
+
+from rich.markup import escape
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -74,7 +79,7 @@ class CapDepConsole(App[None]):
                 yield Static("Conversation + policy trace", classes="pane-title")
                 yield RichLog(id="log", markup=True, wrap=True)
                 yield Input(
-                    placeholder="message the agent…  (/quit to exit)",
+                    placeholder="message the agent…  (/help for commands, /quit to exit)",
                     id="prompt",
                 )
             with Vertical(id="side"):
@@ -99,8 +104,264 @@ class CapDepConsole(App[None]):
         if text in ("/quit", "/exit"):
             self.exit()
             return
+        if text.startswith("/"):
+            self.query_one("#log", RichLog).write(f"[bold]command[/bold] {escape(text)}")
+            self._handle_slash(text)
+            return
         self.query_one("#log", RichLog).write(f"[bold]you[/bold] {text}")
         self._send(text)
+
+    @work(exclusive=True)
+    async def _handle_slash(self, line: str) -> None:
+        log = self.query_one("#log", RichLog)
+        cmd, _, arg = line[1:].partition(" ")
+        cmd = cmd.lower()
+        try:
+            if cmd == "help":
+                self._write_help(log)
+            elif cmd == "whoami":
+                log.write(escape(self._session_id))
+            elif cmd == "switch":
+                await self._cmd_switch(arg, log)
+            elif cmd == "session":
+                await self._cmd_session(arg, log)
+            elif cmd == "spawn":
+                await self._cmd_spawn(arg, log)
+            elif cmd == "grant":
+                await self._cmd_grant(arg, log)
+            elif cmd == "status":
+                await self._cmd_status(log)
+            elif cmd == "labels":
+                await self._cmd_status(log, only="labels")
+            elif cmd == "caps":
+                await self._cmd_status(log, only="caps")
+            elif cmd == "schemas":
+                await self._cmd_schemas(log)
+            elif cmd == "extract":
+                await self._cmd_extract(arg, log)
+            elif cmd == "approvals":
+                await self._cmd_approvals(log)
+            elif cmd == "approve":
+                await self._cmd_approve(arg, log)
+            elif cmd == "respond":
+                await self._cmd_respond(arg, log)
+            elif cmd == "deny":
+                await self._cmd_deny(arg, log)
+            else:
+                log.write(f"[red]unknown command:[/red] /{escape(cmd)}")
+        except DaemonNotRunningError:
+            log.write("[red]daemon not running[/red]")
+        except Exception as e:
+            log.write(f"[red]command error:[/red] {escape(str(e))}")
+        self._refresh_status()
+
+    def _write_help(self, log: RichLog) -> None:
+        log.write(
+            "[bold]commands[/bold] /help /quit /whoami /switch <id> /session [id] "
+            "/spawn <intent> [--bare] /grant <KIND> <pattern> "
+            "[--one-shot --destructive --max-amount N --ttl S] /status /labels /caps "
+            "/schemas /extract <msg> <schema> /approvals /approve <id> "
+            "/respond <id> <json> /deny <id>",
+        )
+
+    async def _cmd_switch(self, arg: str, log: RichLog) -> None:
+        target = arg.strip()
+        if not target:
+            log.write("[red]usage:[/red] /switch <session-id>")
+            return
+        self._session_id = target
+        self._history_loaded = False
+        log.write(f"[green]→[/green] now talking to [cyan]{escape(target[:8])}[/cyan]")
+        await self._refresh_status_now()
+
+    async def _cmd_session(self, arg: str, log: RichLog) -> None:
+        target = arg.strip() or self._session_id
+        result = await self._client.call("session.get", {"session_id": target})
+        log.write(
+            f"[bold]session[/bold] {escape(str(result.get('id', target))[:8])} "
+            f"[dim]status={escape(str(result.get('status', '?')))}[/dim]",
+        )
+        for line in status_lines(result):
+            log.write(escape(line))
+
+    async def _cmd_spawn(self, arg: str, log: RichLog) -> None:
+        parts = arg.split()
+        bare = "--bare" in parts
+        intent = " ".join(p for p in parts if p != "--bare").strip()
+        if not intent:
+            intent = "user-spawned clean session"
+        new = await self._client.call(
+            "session.new",
+            {"intent": intent, "parent": self._session_id},
+        )
+        new_id = str(new["id"])
+        await self._client.call(
+            "session.add_labels",
+            {"session_id": new_id, "labels": ["trusted.user_direct"]},
+        )
+        inherited = 0
+        if not bare:
+            parent = await self._client.call("session.get", {"session_id": self._session_id})
+            for cap in parent.get("capability_set", []):
+                cap_copy = {
+                    "kind": cap["kind"],
+                    "pattern": cap["pattern"],
+                    "expiry": "session",
+                    "origin": "user_approved",
+                    "audit_id": str(uuid4()),
+                    "max_amount": cap.get("max_amount"),
+                    "allows_destructive": False,
+                    "revoked_by": [],
+                }
+                await self._client.call(
+                    "session.grant_capability",
+                    {"session_id": new_id, "capability": cap_copy},
+                )
+                inherited += 1
+        self._session_id = new_id
+        self._history_loaded = False
+        log.write(
+            f"[green]✓ spawned[/green] [cyan]{escape(new_id[:8])}[/cyan] "
+            f"[dim]trusted.user_direct, inherited={inherited}[/dim]",
+        )
+
+    async def _cmd_grant(self, arg: str, log: RichLog) -> None:
+        parts = arg.split()
+        if len(parts) < 2:
+            log.write("[red]usage:[/red] /grant <KIND> <pattern> [flags]")
+            return
+        raw_kind = parts[0]
+        kind = raw_kind if ":" in raw_kind else raw_kind.upper()
+        pattern = parts[1]
+        rest = parts[2:]
+        max_amount = None
+        if "--max-amount" in rest:
+            idx = rest.index("--max-amount")
+            max_amount = int(rest[idx + 1])
+        expires_at = None
+        if "--ttl" in rest:
+            idx = rest.index("--ttl")
+            ttl = int(rest[idx + 1])
+            expires_at = (datetime.now(UTC) + timedelta(seconds=ttl)).isoformat()
+        cap = {
+            "kind": kind,
+            "pattern": pattern,
+            "expiry": "one_shot" if "--one-shot" in rest else "session",
+            "origin": "user_approved",
+            "audit_id": str(uuid4()),
+            "max_amount": max_amount,
+            "allows_destructive": "--destructive" in rest,
+            "revoked_by": [],
+        }
+        if expires_at is not None:
+            cap["expires_at"] = expires_at
+        await self._client.call(
+            "session.grant_capability",
+            {"session_id": self._session_id, "capability": cap},
+        )
+        log.write(f"[green]✓ granted[/green] {escape(kind)} {escape(pattern)}")
+
+    async def _cmd_status(self, log: RichLog, *, only: str | None = None) -> None:
+        result = await self._client.call("session.get", {"session_id": self._session_id})
+        if only == "labels":
+            log.write(f"[bold]labels[/bold] {escape(str(result.get('label_set', [])))}")
+            return
+        if only == "caps":
+            caps = result.get("capability_set", [])
+            if not caps:
+                log.write("[dim]no capabilities[/dim]")
+                return
+            for cap in caps:
+                log.write(
+                    f"[bold]{escape(str(cap.get('kind', '?')))}[/bold] "
+                    f"{escape(str(cap.get('pattern', '*')))}",
+                )
+            return
+        for line in status_lines(result):
+            log.write(escape(line))
+
+    async def _cmd_schemas(self, log: RichLog) -> None:
+        result = await self._client.call("extract.schemas", {})
+        schemas = result.get("schemas", [])
+        if not schemas:
+            log.write("[dim]no schemas available[/dim]")
+            return
+        log.write("[bold]schemas[/bold] " + escape(", ".join(map(str, schemas))))
+
+    async def _cmd_extract(self, arg: str, log: RichLog) -> None:
+        parts = arg.split()
+        if len(parts) < 2:
+            log.write("[red]usage:[/red] /extract <message_id> <schema>")
+            return
+        result = await self._client.call(
+            "extract.inbox_message",
+            {"message_id": parts[0], "schema": parts[1]},
+        )
+        if "error" in result:
+            log.write(f"[red]extract failed:[/red] {escape(str(result['error']))}")
+            return
+        log.write(
+            "[green]declassified[/green] "
+            + escape(json.dumps(result.get("data", {}), sort_keys=True)),
+        )
+
+    async def _cmd_approvals(self, log: RichLog) -> None:
+        result = await self._client.call("approval.list", {"status": "pending"})
+        approvals = result.get("approvals", [])
+        if not approvals:
+            log.write("[dim]no pending approvals[/dim]")
+            return
+        self._pending = [int(a["id"]) for a in approvals if "id" in a]
+        for approval in approvals:
+            log.write(
+                f"[yellow]#{approval.get('id')}[/yellow] "
+                f"{escape(str(approval.get('action', '?')))} → "
+                f"{escape(str(approval.get('target', '?')))}",
+            )
+
+    async def _cmd_approve(self, arg: str, log: RichLog) -> None:
+        if not arg.strip():
+            log.write("[red]usage:[/red] /approve <id>")
+            return
+        approval_id = int(arg.strip())
+        self._pending = [approval_id]
+        log.write(f"[yellow]opening approval #{approval_id}[/yellow]")
+        self._open_approval(approval_id)
+
+    async def _cmd_respond(self, arg: str, log: RichLog) -> None:
+        raw_id, _, raw_json = arg.strip().partition(" ")
+        if not raw_id or not raw_json:
+            log.write("[red]usage:[/red] /respond <approval-id> <json-object>")
+            return
+        approval_id = int(raw_id)
+        response_value = json.loads(raw_json)
+        if not isinstance(response_value, dict):
+            log.write("[red]response must be a JSON object[/red]")
+            return
+        await self._client.call(
+            "approval.respond_elicitation",
+            {
+                "id": approval_id,
+                "response_value": response_value,
+                "decided_by": "console",
+            },
+        )
+        log.write(f"[green]✓ responded[/green] elicitation #{approval_id}")
+
+    async def _cmd_deny(self, arg: str, log: RichLog) -> None:
+        if not arg.strip():
+            log.write("[red]usage:[/red] /deny <id>")
+            return
+        approval_id = int(arg.strip())
+        await self._client.call(
+            "approval.deny",
+            {"id": approval_id, "reason": "denied via console"},
+        )
+        log.write(f"[yellow]denied[/yellow] approval #{approval_id}")
+
+    async def _refresh_status_now(self) -> None:
+        full = await self._client.call("session.get", {"session_id": self._session_id})
+        self.query_one("#status", Static).update("\n".join(status_lines(full)))
 
     @work(exclusive=True)
     async def _send(self, message: str) -> None:

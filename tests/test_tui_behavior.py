@@ -131,6 +131,101 @@ async def test_console_deny_renders_recovery_hint(fake_daemon) -> None:
         assert "recover" in text  # DENY_RECOVERY hint surfaced
 
 
+async def test_console_slash_grant_calls_daemon_without_agent_send(fake_daemon) -> None:
+    app = CapDepConsole(_SID)
+    app._client = fake_daemon({"session.get": _SESSION})
+
+    async with app.run_test() as pilot:
+        await _settle(pilot)
+        await pilot.press(*"/grant SEND_EMAIL alice@example.com --one-shot", "enter")
+        await _settle(pilot)
+
+    calls = [m for m, _ in app._client.calls]
+    assert "session.grant_capability" in calls
+    assert "session.send" not in calls
+    grant = next(
+        params for method, params in app._client.calls if method == "session.grant_capability"
+    )
+    assert grant["session_id"] == _SID
+    assert grant["capability"]["kind"] == "SEND_EMAIL"
+    assert grant["capability"]["pattern"] == "alice@example.com"
+    assert grant["capability"]["expiry"] == "one_shot"
+
+
+async def test_console_slash_spawn_bare_switches_session(fake_daemon) -> None:
+    child_id = "ffff0000-0000-0000-0000-000000000000"
+    app = CapDepConsole(_SID)
+    app._client = fake_daemon(
+        {
+            "session.get": _SESSION,
+            "session.new": {"id": child_id, "parent": _SID},
+            "session.add_labels": {},
+        },
+    )
+
+    async with app.run_test() as pilot:
+        await _settle(pilot)
+        await pilot.press(*"/spawn clean child --bare", "enter")
+        await _settle(pilot)
+
+    assert app._session_id == child_id
+    assert ("session.new", {"intent": "clean child", "parent": _SID}) in app._client.calls
+    assert (
+        "session.add_labels",
+        {"session_id": child_id, "labels": ["trusted.user_direct"]},
+    ) in app._client.calls
+
+
+async def test_console_slash_extract_calls_daemon_and_renders_result(fake_daemon) -> None:
+    app = CapDepConsole(_SID)
+    app._client = fake_daemon(
+        {
+            "session.get": _SESSION,
+            "extract.inbox_message": {
+                "schema": "contact",
+                "message_id": "m1",
+                "data": {"email": "alice@example.com"},
+            },
+        },
+    )
+    from textual.widgets import RichLog
+
+    async with app.run_test() as pilot:
+        await _settle(pilot)
+        await pilot.press(*"/extract m1 contact", "enter")
+        await _settle(pilot)
+        text = " ".join(s.text for s in app.query_one("#log", RichLog).lines)
+
+    assert (
+        "extract.inbox_message",
+        {"message_id": "m1", "schema": "contact"},
+    ) in app._client.calls
+    assert "declassified" in text
+    assert "alice@example.com" in text
+
+
+async def test_console_slash_respond_elicitation_calls_daemon_without_agent_send(
+    fake_daemon,
+) -> None:
+    app = CapDepConsole(_SID)
+    app._client = fake_daemon({"session.get": _SESSION, "approval.respond_elicitation": {}})
+
+    async with app.run_test() as pilot:
+        await _settle(pilot)
+        await pilot.press(*'/respond 7 {"date":"2026-07-04"}', "enter")
+        await _settle(pilot)
+
+    assert (
+        "approval.respond_elicitation",
+        {
+            "id": 7,
+            "response_value": {"date": "2026-07-04"},
+            "decided_by": "console",
+        },
+    ) in app._client.calls
+    assert "session.send" not in [m for m, _ in app._client.calls]
+
+
 async def test_spectator_open_approval_and_approve(fake_daemon) -> None:
     app = CapDepTUI(poll_interval=999.0)
     app._client = fake_daemon(

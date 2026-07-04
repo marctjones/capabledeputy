@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+from uuid import uuid4
+
 import pytest
 
+from capabledeputy.approval.model import ApprovalAction
+from capabledeputy.approval.queue import ApprovalQueue
 from capabledeputy.substrate.elicitation_mediators_builtin import (
     AllowlistElicitationMediator,
     ApprovalQueueElicitationMediator,
@@ -12,6 +17,7 @@ from capabledeputy.substrate.elicitation_mediators_builtin import (
 from capabledeputy.substrate.elicitation_port import (
     ElicitationRefused,
     ElicitationRequest,
+    ElicitationResponse,
 )
 
 
@@ -82,15 +88,76 @@ async def test_approval_queue_mediator_no_queue_refuses() -> None:
 
 
 @pytest.mark.asyncio
-async def test_approval_queue_mediator_routing_not_yet_implemented() -> None:
-    """The port is in place; the actual queue submission is a follow-up."""
-
-    class _FakeQueue:
-        pass
-
-    mediator = ApprovalQueueElicitationMediator(approval_queue=_FakeQueue())
+async def test_approval_queue_mediator_requires_session() -> None:
+    mediator = ApprovalQueueElicitationMediator(approval_queue=ApprovalQueue())
     request = ElicitationRequest(prompt="?", requesting_server="x")
     response = await mediator.mediate(request)
-    # Documented limitation surfaced as a clear refusal until wired
     assert isinstance(response, ElicitationRefused)
-    assert response.rule == "elicitation-routing-not-implemented"
+    assert response.rule == "elicitation-no-session"
+
+
+@pytest.mark.asyncio
+async def test_approval_queue_mediator_routes_and_waits_for_response() -> None:
+    queue = ApprovalQueue()
+    session_id = uuid4()
+    mediator = ApprovalQueueElicitationMediator(
+        approval_queue=queue,
+        timeout_seconds=2.0,
+    )
+
+    async def decide() -> None:
+        while not queue.list():
+            await asyncio.sleep(0)
+        queued = queue.list()[0]
+        assert queued.action == ApprovalAction.ELICITATION
+        assert queued.target == "calendar"
+        await queue.complete_elicitation(
+            queued.id,
+            response_value={"date": "2026-07-04"},
+            decided_by="test",
+        )
+
+    task = asyncio.create_task(decide())
+    response = await mediator.mediate(
+        ElicitationRequest(
+            prompt="Pick a date",
+            schema={"type": "object"},
+            requesting_server="calendar",
+            session_id=session_id,
+            response_inherent_labels=frozenset({"trusted.user_direct"}),
+        ),
+    )
+    await task
+
+    assert isinstance(response, ElicitationResponse)
+    assert response.response_value == {"date": "2026-07-04"}
+    assert response.applied_labels == frozenset({"trusted.user_direct"})
+
+
+@pytest.mark.asyncio
+async def test_approval_queue_mediator_fails_closed_when_approved_without_response() -> None:
+    queue = ApprovalQueue()
+    session_id = uuid4()
+    mediator = ApprovalQueueElicitationMediator(
+        approval_queue=queue,
+        timeout_seconds=2.0,
+    )
+
+    async def approve_without_response() -> None:
+        while not queue.list():
+            await asyncio.sleep(0)
+        await queue.approve(queue.list()[0].id, decided_by="test")
+
+    task = asyncio.create_task(approve_without_response())
+    response = await mediator.mediate(
+        ElicitationRequest(
+            prompt="Pick a date",
+            requesting_server="calendar",
+            session_id=session_id,
+        ),
+    )
+    await task
+
+    assert isinstance(response, ElicitationRefused)
+    assert response.rule == "elicitation-approval-queue-failed"
+    assert "without elicitation_response" in response.reason

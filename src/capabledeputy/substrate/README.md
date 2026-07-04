@@ -84,7 +84,8 @@ decides whether to route the prompt through the approval queue
 Built-ins:
   - `RefuseAllElicitationMediator` — default-safe
   - `AllowlistElicitationMediator` — gate by server
-  - `ApprovalQueueElicitationMediator` — route to operator approval
+  - `ApprovalQueueElicitationMediator` — route to operator approval and wait
+    for an explicit `elicitation_response`; a bare approval fails closed
 
 See: `elicitation_port.py` + `elicitation_mediators_builtin.py`
 

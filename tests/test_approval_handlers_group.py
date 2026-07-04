@@ -146,3 +146,41 @@ async def test_approve_group_audits_each_approval(app: App, tmp_path: Path) -> N
     ]
     # At least one approval-approved event per sibling.
     assert len(decisions) >= 2
+
+
+@pytest.mark.anyio
+async def test_respond_elicitation_completes_with_response_scope(app: App) -> None:
+    handlers = make_approval_handlers(app)
+    queued = await app.approval_queue.submit_elicitation(
+        from_session=uuid4(),
+        prompt="Pick a date",
+        requesting_server="calendar",
+    )
+
+    result = await handlers["approval.respond_elicitation"](
+        {
+            "id": queued.id,
+            "response_value": {"date": "2026-07-04"},
+            "decided_by": "test",
+        },
+    )
+
+    assert result["status"] == ApprovalStatus.APPROVED.value
+    assert result["action"] == ApprovalAction.ELICITATION.value
+    assert result["decision_scope"]["elicitation_response"] == {"date": "2026-07-04"}
+
+
+@pytest.mark.anyio
+async def test_respond_elicitation_rejects_non_elicitation(app: App) -> None:
+    handlers = make_approval_handlers(app)
+    queued = await app.approval_queue.submit(
+        from_session=uuid4(),
+        action=ApprovalAction.GRANT,
+        payload="grant",
+        target="READ_FS",
+    )
+
+    with pytest.raises(ValueError, match="not an elicitation"):
+        await handlers["approval.respond_elicitation"](
+            {"id": queued.id, "response_value": {"ok": True}},
+        )
