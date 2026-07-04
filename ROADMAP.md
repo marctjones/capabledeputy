@@ -48,7 +48,7 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
-| **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | #216–#223 | Complete locally: imports flat and folder-based SKILL.md packages, models guidance/tool/hybrid modes, preserves policy/labels/provenance/audit, routes skill scripts through sandbox execution only, exposes daemon/CLI diagnostics, and adds compatibility/adversarial/E2E tests. |
+| **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | #216–#223 | Closed: imports flat and folder-based SKILL.md packages, models guidance/tool/hybrid modes, preserves policy/labels/provenance/audit, routes skill scripts through sandbox execution only, exposes daemon/CLI diagnostics, and adds compatibility/adversarial/E2E tests. |
 | **13 Product — v0.43.0 — CommonMark rendering across client surfaces** | #209–#215 | Complete locally: shared CommonMark contract, sanitizer fixtures, CapDepMac rendering sanitizer, terminal-safe CLI/TUI rendering, MCP-control metadata/fallback behavior, and release parity docs/tests. |
 | **12 Product — v0.42.0 — Local media and model operations reliability** | #202–#208 | Complete: profile selection, model/account readiness, benchmark-informed defaults, progress/status, queue recovery, and setup/release docs for local media/model operations. |
 | **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | #196–#201 | Complete product-ladder work: CapDepMac queueing/recovery plus daemon-owned scripting workflows are implemented and closed. |

@@ -219,7 +219,7 @@ the CapDepMac Swift package tests pass.
 
 ## v0.44.0 — Skills interoperability and sandboxed execution
 
-Implemented locally on 2026-07-04. CapDep already had a flat `SKILL.md` adapter that turns
+Implemented and closed in the tracker on 2026-07-04. CapDep already had a flat `SKILL.md` adapter that turns
 markdown skills into policy-gated quarantined tools. v0.44 broadens that into
 Codex/Claude-style folder compatibility without letting imported skills become
 an untracked authority path. The core product promise is compatibility with
@@ -231,13 +231,13 @@ instructions, or run host scripts outside the sandbox.
 
 | Issue | Work | Status |
 |---|---|---|
-| #216 | EPIC: SKILL.md interoperability with CapDep security guarantees | Done locally |
-| #217 | Enforce CapDep policy, labels, provenance, and audit for skills | Done locally |
-| #218 | Model skill modes as guidance, tool, or hybrid | Done locally |
-| #220 | Add compatibility, adversarial, and end-to-end tests for skills | Done locally |
-| #221 | Import Codex and Claude SKILL.md folder formats | Done locally |
-| #222 | Run skill scripts only in containerized sandboxes | Done locally |
-| #223 | Expose skill registry and diagnostics across clients | Done locally |
+| #216 | EPIC: SKILL.md interoperability with CapDep security guarantees | Closed |
+| #217 | Enforce CapDep policy, labels, provenance, and audit for skills | Closed |
+| #218 | Model skill modes as guidance, tool, or hybrid | Closed |
+| #220 | Add compatibility, adversarial, and end-to-end tests for skills | Closed |
+| #221 | Import Codex and Claude SKILL.md folder formats | Closed |
+| #222 | Run skill scripts only in containerized sandboxes | Closed |
+| #223 | Expose skill registry and diagnostics across clients | Closed |
 
 ### Sequencing
 
