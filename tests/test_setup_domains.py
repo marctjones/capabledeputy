@@ -163,6 +163,7 @@ def test_setup_models_apply_convert_writes_manifests(
     assert result.changed is True
     assert result.details["inventory"]
     inventory = {item["id"]: item for item in result.details["inventory"]}
+    assert inventory["planner.fast"]["download_repo"] == "Qwen/Qwen3-4B-MLX-4bit"
     assert inventory["planner.quality"]["recommended_runtime"] == (
         "mlx-community/Qwen3-30B-A3B-4bit"
     )
@@ -170,6 +171,15 @@ def test_setup_models_apply_convert_writes_manifests(
         "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
     )
     assert inventory["vlm.experimental"]["backend"] == "mlx-vlm"
+    download_repos = {
+        command[2]
+        for command in result.details["download_commands"]
+        if command[:2] == ["hf", "download"]
+    }
+    assert "Qwen/Qwen3-4B-MLX-4bit" in download_repos
+    assert "mlx-community/Qwen3-30B-A3B-4bit" in download_repos
+    assert "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit" in download_repos
+    assert "Qwen/Qwen3-4B" not in download_repos
     assert result.details["unsupported_conversions"] == [
         "image.sdxl-photoreal",
         "image.pony-graphic-novel",

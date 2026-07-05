@@ -33,7 +33,16 @@ class ModelAssetProfile:
 
     @property
     def can_download(self) -> bool:
-        return "/" in self.source_repo
+        return self.download_repo is not None
+
+    @property
+    def download_repo(self) -> str | None:
+        runtime = self.recommended_runtime.removeprefix("mlx/")
+        if "/" in runtime:
+            return runtime
+        if "/" in self.source_repo:
+            return self.source_repo
+        return None
 
     @property
     def can_convert(self) -> bool:
@@ -59,6 +68,7 @@ class ModelAssetProfile:
             "notes": self.notes,
             "files": list(self.files),
             "can_download": self.can_download,
+            "download_repo": self.download_repo,
             "can_convert": self.can_convert,
         }
 
@@ -225,9 +235,9 @@ def model_download_commands(
     cache_home: Path,
 ) -> tuple[tuple[str, ...], ...]:
     return tuple(
-        ("hf", "download", profile.source_repo, "--cache-dir", str(cache_home))
+        ("hf", "download", profile.download_repo, "--cache-dir", str(cache_home))
         for profile in inventory
-        if profile.can_download
+        if profile.download_repo is not None
     )
 
 

@@ -8,9 +8,9 @@ default_backend: mlx
 # Conversational chat turns cap completion at CHAT_MAX_TOKENS (512) in
 # capabledeputy.agent.chat_turn — independent of role max_tokens below.
 roles:
-  # 8B follows tool/image instructions better than 4B; still fast on Apple Silicon.
+  # Fast default for short turns and normal chat.
   planner.fast:
-    mlx: mlx-community/Qwen3-8B-4bit
+    mlx: Qwen/Qwen3-4B-MLX-4bit
     max_tokens: 2048
 
   # Tool-heavy and image-generation turns (see loop.py image_intent override).
