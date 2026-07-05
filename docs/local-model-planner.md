@@ -74,6 +74,31 @@ change after local benchmark evidence justifies the change. Use:
 scripts/benchmark_image_models.py --candidate z-image-turbo --candidate flux2-klein-4b
 ```
 
+## Recommended MLX roles
+
+The built-in Apple Silicon text roles are:
+
+| Role | Model | Use |
+|---|---|---|
+| `planner.fast` | `Qwen/Qwen3-4B-MLX-4bit` | Default short turns and normal chat. |
+| `planner.tools` | `mlx-community/Qwen3-14B-4bit` | Tool-heavy research/writing turns. |
+| `planner.quality` | `mlx-community/Qwen3-30B-A3B-4bit` | Slower quality turns that still use the text `mlx-lm` path. |
+| `planner.coder` | `mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit` | Programmatic mode and safe scripting/code generation. |
+| `extractor` | `mlx-community/Phi-3.5-mini-instruct-4bit` | Quarantined schema extraction. |
+
+`mlx-community/Qwen3.6-35B-A3B-4bit` is tracked as an experimental VLM asset,
+not as a default text planner, because it uses the `mlx-vlm` path. Promote it
+only after CapDep has an explicit VLM backend and benchmark coverage.
+
+Per-role overrides:
+
+```bash
+export CAPDEP_LLM_MODEL="mlx/Qwen/Qwen3-4B-MLX-4bit"
+export CAPDEP_LLM_TOOLS_MODEL="mlx/mlx-community/Qwen3-14B-4bit"
+export CAPDEP_LLM_QUALITY_MODEL="mlx/mlx-community/Qwen3-30B-A3B-4bit"
+export CAPDEP_LLM_CODER_MODEL="mlx/mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
+```
+
 ## Why run the planner locally
 
 In CapableDeputy two LLMs participate in dual-LLM mode (DESIGN.md §5.2):

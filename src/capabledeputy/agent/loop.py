@@ -151,16 +151,20 @@ MODEL_ROLE_ALIASES: dict[str, str | None] = {
     "tool": "planner.tools",
     "quality": "planner.quality",
     "better": "planner.quality",
+    "coder": "planner.coder",
+    "code": "planner.coder",
+    "scripting": "planner.coder",
+    "script": "planner.coder",
 }
 
 
 def _extract_model_role_directive(user_message: str) -> tuple[str, str | None]:
     """Return message text and optional per-turn planner role override.
 
-    Operator-facing clients can prefix a turn with `/fast`, `/quality`, or
-    `/model <mode>`. The directive is stripped before the message is stored in
-    session history so chat remains readable and future context is not polluted
-    by UI control syntax.
+    Operator-facing clients can prefix a turn with `/fast`, `/quality`,
+    `/coder`, or `/model <mode>`. The directive is stripped before the message
+    is stored in session history so chat remains readable and future context is
+    not polluted by UI control syntax.
     """
     stripped = user_message.lstrip()
     leading_ws = user_message[: len(user_message) - len(stripped)]

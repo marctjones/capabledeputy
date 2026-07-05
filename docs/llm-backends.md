@@ -25,6 +25,18 @@ export CAPDEP_LLM_BACKEND=mlx
 export CAPDEP_LLM_MODEL=Qwen/Qwen3-4B-MLX-4bit
 ```
 
+CapDep also has role-specific MLX planners for heavier turns:
+
+| Env var | Built-in role | Default model |
+|---|---|---|
+| `CAPDEP_LLM_TOOLS_MODEL` | `planner.tools` | `mlx-community/Qwen3-14B-4bit` |
+| `CAPDEP_LLM_QUALITY_MODEL` | `planner.quality` | `mlx-community/Qwen3-30B-A3B-4bit` |
+| `CAPDEP_LLM_CODER_MODEL` | `planner.coder` | `mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit` |
+| `CAPDEP_QUARANTINED_LLM_MODEL` | `extractor` | `mlx-community/Phi-3.5-mini-instruct-4bit` |
+
+Use `/coder` or `/model coder` for a one-turn coding/scripting planner
+override. PROGRAMMATIC mode selects `planner.coder` by default.
+
 Thinking output is stripped before parsing/rendering. Model-native thinking is
 off by default for stricter JSON/tool-call envelopes; enable it explicitly:
 

@@ -106,6 +106,51 @@ def model_asset_inventory(*, apple_silicon: bool | None = None) -> tuple[ModelAs
             notes="Larger tool-selection/planning candidate.",
         ),
         ModelAssetProfile(
+            profile_id="planner.quality",
+            role="text",
+            backend=text_runtime,
+            source_repo="Qwen/Qwen3-30B-A3B",
+            source_format="huggingface-transformers",
+            recommended_runtime="mlx-community/Qwen3-30B-A3B-4bit"
+            if apple_silicon
+            else "Qwen/Qwen3-30B-A3B",
+            conversion_status="native_mlx_available" if apple_silicon else "source_runtime",
+            quantization="4bit" if apple_silicon else None,
+            fallback_runtime="transformers",
+            notes="Preferred quality planner candidate; text-only MLX-LM MoE path.",
+        ),
+        ModelAssetProfile(
+            profile_id="planner.coder",
+            role="text",
+            backend=text_runtime,
+            source_repo="Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            source_format="huggingface-transformers",
+            recommended_runtime="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
+            if apple_silicon
+            else "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            conversion_status="native_mlx_available" if apple_silicon else "source_runtime",
+            quantization="4bit" if apple_silicon else None,
+            fallback_runtime="transformers",
+            notes="Coding and safe-scripting planner candidate.",
+        ),
+        ModelAssetProfile(
+            profile_id="vlm.experimental",
+            role="vision-language",
+            backend="mlx-vlm" if apple_silicon else "transformers",
+            source_repo="Qwen/Qwen3.6-35B-A3B",
+            source_format="huggingface-transformers-vlm",
+            recommended_runtime="mlx-community/Qwen3.6-35B-A3B-4bit"
+            if apple_silicon
+            else "Qwen/Qwen3.6-35B-A3B",
+            conversion_status="native_mlx_vlm_available" if apple_silicon else "source_runtime",
+            quantization="4bit" if apple_silicon else None,
+            fallback_runtime="transformers",
+            notes=(
+                "Experimental VLM candidate; keep out of text planner routing until "
+                "CapDep has explicit mlx-vlm support."
+            ),
+        ),
+        ModelAssetProfile(
             profile_id="extractor",
             role="text",
             backend=text_runtime,
@@ -258,6 +303,7 @@ def conversion_readiness(profile_id: str, *, asset_home: Path | None = None) -> 
     manifest = home / "manifests" / profile.manifest_name
     if profile.conversion_status in {
         "native_mlx_available",
+        "native_mlx_vlm_available",
         "native_mflux_available",
         "runtime_native_no_conversion",
     }:

@@ -162,6 +162,14 @@ def test_setup_models_apply_convert_writes_manifests(
     assert result.status == "conversion_manifests_written"
     assert result.changed is True
     assert result.details["inventory"]
+    inventory = {item["id"]: item for item in result.details["inventory"]}
+    assert inventory["planner.quality"]["recommended_runtime"] == (
+        "mlx-community/Qwen3-30B-A3B-4bit"
+    )
+    assert inventory["planner.coder"]["recommended_runtime"] == (
+        "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
+    )
+    assert inventory["vlm.experimental"]["backend"] == "mlx-vlm"
     assert result.details["unsupported_conversions"] == [
         "image.sdxl-photoreal",
         "image.pony-graphic-novel",

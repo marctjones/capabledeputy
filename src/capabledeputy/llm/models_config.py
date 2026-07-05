@@ -160,7 +160,11 @@ def _builtin_defaults() -> ModelsConfig:
                 max_tokens=4096,
             ),
             "planner.quality": ModelRoleSpec(
-                mlx="mlx-community/Qwen3.6-35B-A3B-4bit",
+                mlx="mlx-community/Qwen3-30B-A3B-4bit",
+                max_tokens=4096,
+            ),
+            "planner.coder": ModelRoleSpec(
+                mlx="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
                 max_tokens=4096,
             ),
             "extractor": ModelRoleSpec(
@@ -181,7 +185,7 @@ def _builtin_defaults() -> ModelsConfig:
                 purpose_handle=frozenset({"research", "writing"}),
             ),
             RoutingRule(
-                role="planner.tools",
+                role="planner.coder",
                 reason="programmatic_mode",
                 execution_mode="PROGRAMMATIC",
             ),

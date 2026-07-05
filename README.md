@@ -248,6 +248,13 @@ SDXL/Pony safetensors fallbacks stay explicit source-runtime fallbacks and are
 not silently promoted to defaults. Use `scripts/benchmark_image_models.py` for
 local benchmark evidence before changing profile defaults.
 
+Built-in MLX text roles keep `Qwen/Qwen3-4B-MLX-4bit` as the fast default,
+use `mlx-community/Qwen3-14B-4bit` for tool-heavy turns,
+`mlx-community/Qwen3-30B-A3B-4bit` for quality turns, and
+`mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit` for programmatic
+coding/scripting turns. Qwen3.6 VLM assets stay experimental until CapDep has an
+explicit `mlx-vlm` backend path.
+
 ### Safe scripting assistant
 
 The v0.40/v0.41 scripting workflow is daemon-owned. Clients can ask for a plan,

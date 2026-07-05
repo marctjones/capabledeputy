@@ -51,6 +51,9 @@ class ModelPool:
         quality = os.environ.get("CAPDEP_LLM_QUALITY_MODEL", "").strip()
         if quality:
             overrides["planner.quality"] = quality.removeprefix("mlx/")
+        coder = os.environ.get("CAPDEP_LLM_CODER_MODEL", "").strip()
+        if coder:
+            overrides["planner.coder"] = coder.removeprefix("mlx/")
         quarantined = os.environ.get("CAPDEP_QUARANTINED_LLM_MODEL", "").strip()
         if quarantined:
             overrides["extractor"] = quarantined.removeprefix("mlx/")
@@ -155,12 +158,16 @@ def require_mlx_on_apple_silicon(*, prefer_local_mlx: bool = True) -> None:
             "Use MLX (default) or set CAPDEP_ALLOW_REMOTE_LLM=1 to override.",
         )
     model = os.environ.get("CAPDEP_LLM_MODEL", "").strip()
-    if model and not model.startswith("mlx/") and not model.startswith("Qwen/"):
-        if model.startswith("ollama/") or "claude" in model.lower():
-            raise RuntimeError(
-                f"CAPDEP_LLM_MODEL={model!r} is not an MLX model. "
-                "Use mlx/<repo> or set CAPDEP_ALLOW_REMOTE_LLM=1.",
-            )
+    if (
+        model
+        and not model.startswith("mlx/")
+        and not model.startswith("Qwen/")
+        and (model.startswith("ollama/") or "claude" in model.lower())
+    ):
+        raise RuntimeError(
+            f"CAPDEP_LLM_MODEL={model!r} is not an MLX model. "
+            "Use mlx/<repo> or set CAPDEP_ALLOW_REMOTE_LLM=1.",
+        )
 
 
 def make_legacy_pool_client(model_spec: str | None) -> LLMClient:

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from capabledeputy.agent.loop import _extract_model_role_directive
 from capabledeputy.llm.models_config import load_models_config
 from capabledeputy.llm.pool import ModelPool
 from capabledeputy.llm.routing import ModelRoutingContext, resolve_model_role
 from capabledeputy.mode.dispatcher import ExecutionMode
-from capabledeputy.agent.loop import _extract_model_role_directive
 
 
 def test_load_models_config_from_repo_file() -> None:
@@ -17,7 +17,13 @@ def test_load_models_config_from_repo_file() -> None:
     assert config.default_backend == "mlx"
     assert "planner.fast" in config.roles
     assert "planner.quality" in config.roles
+    assert "planner.coder" in config.roles
     assert "extractor" in config.roles
+    assert config.roles["planner.quality"].mlx == "mlx-community/Qwen3-30B-A3B-4bit"
+    assert (
+        config.roles["planner.coder"].mlx
+        == "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
+    )
     assert config.tool_selection.mode == "retrieve"
 
 
@@ -48,7 +54,7 @@ def test_resolve_tools_for_large_surface() -> None:
     assert result.reason == "large_tool_surface"
 
 
-def test_resolve_tools_for_programmatic_mode() -> None:
+def test_resolve_coder_for_programmatic_mode() -> None:
     config = load_models_config()
     result = resolve_model_role(
         config,
@@ -58,7 +64,8 @@ def test_resolve_tools_for_programmatic_mode() -> None:
             n_visible_tools=3,
         ),
     )
-    assert result.role == "planner.tools"
+    assert result.role == "planner.coder"
+    assert result.reason == "programmatic_mode"
 
 
 def test_resolve_quality_for_long_writing_turn() -> None:
@@ -101,6 +108,14 @@ def test_manual_model_directive_is_stripped() -> None:
     assert message == "search and summarize"
     assert role == "planner.tools"
 
+    message, role = _extract_model_role_directive("/coder write a script")
+    assert message == "write a script"
+    assert role == "planner.coder"
+
+    message, role = _extract_model_role_directive("/model scripting batch photos")
+    assert message == "batch photos"
+    assert role == "planner.coder"
+
     message, role = _extract_model_role_directive("plain question")
     assert message == "plain question"
     assert role is None
@@ -132,7 +147,9 @@ def test_model_pool_status_reports_roles() -> None:
 def test_model_pool_status_reports_env_model_overrides(monkeypatch) -> None:
     monkeypatch.setenv("CAPDEP_LLM_TOOLS_MODEL", "mlx/custom/tools")
     monkeypatch.setenv("CAPDEP_LLM_QUALITY_MODEL", "mlx/custom/quality")
+    monkeypatch.setenv("CAPDEP_LLM_CODER_MODEL", "mlx/custom/coder")
     pool = ModelPool.from_config()
     status = pool.status()
     assert status["roles"]["planner.tools"]["mlx"] == "custom/tools"
     assert status["roles"]["planner.quality"]["mlx"] == "custom/quality"
+    assert status["roles"]["planner.coder"]["mlx"] == "custom/coder"
