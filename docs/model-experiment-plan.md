@@ -64,3 +64,26 @@ Notes:
   prompt template or adapter-specific runtime.
 - Reranker candidates remain pending because they need a cross-encoder/reranker
   runtime rather than `mlx_lm.generate`.
+
+## Follow-up run, 2026-07-06
+
+The second pass checked whether the first xLAM result was caused by weak prompt
+formatting and tested the smaller native MLX guard candidate.
+
+| Candidate | Artifact | Peak memory | Generation speed | Result |
+|---|---:|---:|---:|---|
+| `Salesforce/Llama-xLAM-2-8b-fc-r` with OpenAI-style tool schemas | Existing 4-bit MLX, 4.2 GB | 5.1 GB | 11-20 tokens/s | Still selected only the first necessary tool for multi-step requests. The larger tool-schema prompt made generation slower without improving task coverage. |
+| `mlx-community/Qwen3Guard-Gen-0.6B-MLX` | Native MLX, cached from Hugging Face | 1.4-1.5 GB | 24-57 tokens/s | Best guard-sidecar signal so far. It marked the benign local summary safe, the prompt-injection exfiltration request unsafe, and the financial/delete request controversial. |
+
+Decision updates:
+
+- Prefer `Qwen3Guard-Gen-0.6B-MLX` over the converted 4B guard for a cheap
+  annotation sidecar experiment. It is faster, smaller, and caught the
+  high-impact action case that the 4B raw test missed.
+- Keep xLAM 8B out of the default planner path. A fairer tool-schema prompt did
+  not produce complete multi-step tool plans, so the 32B conversion is not a
+  priority until there is a better xLAM-specific runtime/parser experiment.
+- Reranker testing is still blocked on adding an explicit reranker runtime. The
+  current development environment has `transformers`, but not `torch` or
+  `sentence_transformers`, and the rerankers should not be evaluated through
+  `mlx_lm.generate`.
