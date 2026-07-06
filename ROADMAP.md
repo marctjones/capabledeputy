@@ -11,7 +11,7 @@ covering dead-simple Google account connection, consolidated setup automation,
 native office automation skills, and native MLX/MFLUX model asset planning.
 v1.0 remains unscheduled.
 
-## Product Ladder — v0.35 → v0.48
+## Product Ladder — v0.35 → v0.49
 
 ```mermaid
 flowchart LR
@@ -29,7 +29,8 @@ flowchart LR
   v46[v0.46 Consolidated setup automation]
   v47[v0.47 Native office automation skills]
   v48[v0.48 Native MLX model asset pipeline]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48
+  v49[v0.49 Measured model runtime + retrieval quality]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48 --> v49
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -48,6 +49,7 @@ flowchart LR
 | **16 Product — v0.46.0 — Consolidated setup automation** | One-time setup domains under `capdep-setup`, with daemon/client runtime boundaries and non-destructive setup tests | #233–#240 |
 | **17 Product — v0.47.0 — Native office automation skills** | Bounded SKILL.md workflows and native automation for Apple iWork/Mail and Microsoft Office apps | #241–#248 |
 | **18 Product — v0.48.0 — Native MLX model asset pipeline** | Reconsider local text/image model choices around native MLX/MFLUX conversion, provenance, setup planning, and measured defaults | #249–#256 |
+| **19 Product — v0.49.0 — Measured local model runtime and retrieval quality** | Benchmark-backed model defaults, explicit reranker runtime, advisory guard sidecar, and retrieval-quality fixtures | #257–#263 |
 
 ## Tracker Coverage
 
@@ -55,6 +57,7 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
+| **19 Product — v0.49.0 — Measured local model runtime and retrieval quality** | #257–#263 | Open: next implementation milestone. Promote local model work from asset planning to measured runtime decisions with explicit reranker support, reproducible role benchmarks, retrieval-quality fixtures, advisory guard annotations, default-promotion gates, and release docs/tests. |
 | **18 Product — v0.48.0 — Native MLX model asset pipeline** | #249–#256 | Closed/released: model asset inventory, conversion-aware `capdep-setup models`, provenance manifests, explicit unsupported fallback handling, image readiness metadata, model experiment evidence, and docs are implemented; benchmark evidence remains required before runtime defaults change. |
 | **17 Product — v0.47.0 — Native office automation skills** | #241–#248 | Closed/released: bounded SKILL.md workflows, Microsoft Outlook/Word/PowerPoint adapters, office capability/label/approval mappings, setup diagnostics, config wiring, and fake-runner tests are implemented without exposing arbitrary AppleScript, VBA, macros, shell, or UI scripting. |
 | **16 Product — v0.46.0 — Consolidated setup automation** | #233–#240 | Closed/released: one-time assistant-surface/IMAP/Workspace/image/model/macOS-daemon/sandbox setup lives under `capdep-setup`, compatibility aliases remain, and temp-home/fake-runner tests guard non-destructive setup behavior. |

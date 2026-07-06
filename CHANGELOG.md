@@ -6,6 +6,13 @@ breaking changes).
 
 ## [Unreleased]
 
+### Roadmap
+
+- Opened `19 Product — v0.49.0 — Measured local model runtime and retrieval
+  quality` with issues #257-#263 for reranker runtime support, reproducible
+  role benchmarks, retrieval-quality fixtures, advisory guard annotations,
+  benchmark-backed default gates, and release docs/tests.
+
 ## [0.48.0] - 2026-07-06
 
 Stable release for Google account connection, consolidated setup automation,

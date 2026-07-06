@@ -17,7 +17,8 @@ connection** · **16 Product — v0.46.0 — Consolidated setup automation** ·
 **17 Product — v0.47.0 — Native office automation skills** · **18 Product —
 v0.48.0 — Native MLX model asset pipeline**.
 
-Next implementation milestone: not yet assigned after v0.48 release.
+Next implementation milestone: **19 Product — v0.49.0 — Measured local model
+runtime and retrieval quality** (#257-#263).
 
 Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
 reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical
@@ -44,42 +45,47 @@ v0.17 — Gap hardening and explainability**.
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **v0.48 native MLX model asset pipeline** — implemented conversion-aware
+1. **v0.49 measured local model runtime and retrieval quality** — newly opened
+   to turn model asset planning into measured runtime decisions: explicit
+   reranker support, reproducible role benchmarks, retrieval-quality fixtures,
+   advisory guard annotations, default-promotion gates, and release docs/tests
+   (#257-#263).
+2. **v0.48 native MLX model asset pipeline** — implemented conversion-aware
    text/image model inventory, explicit setup/download/convert planning,
    provenance manifests, fallback safety, readiness metadata, and docs while
    preserving the rule that defaults only change after benchmark evidence
    (#249-#256).
-2. **v0.47 native office automation skills** — implemented bounded SKILL.md
+3. **v0.47 native office automation skills** — implemented bounded SKILL.md
    workflows and app-specific native automation for Apple Mail, Pages, Numbers,
    Keynote, Microsoft Outlook, Word, and PowerPoint without turning native
    automation into ambient authority (#241-#248).
-3. **v0.46 consolidated setup automation** — implemented one-time setup domains
+4. **v0.46 consolidated setup automation** — implemented one-time setup domains
    under `capdep-setup`, including setup/runtime boundaries, explicit
    dry-run/apply behavior, model download plans, sandbox runtime checks, and
    macOS daemon parity verification (#233-#240).
-4. **v0.45 dead-simple Google account connection** — implemented preset-first
+5. **v0.45 dead-simple Google account connection** — implemented preset-first
    Gmail/Calendar/Drive setup with daemon-owned OAuth state, scoped permissions,
    token auditability, live reload/unload where possible, advanced
    bring-your-own-client setup, and CapDep policy/MCP boundaries intact
    (#224-#232).
-5. **v0.44 skills interoperability and sandboxed execution** — shipped
+6. **v0.44 skills interoperability and sandboxed execution** — shipped
    Codex/Claude-style `SKILL.md` imports without weakening CapDep authority:
    skills are explicit guidance/tool/hybrid packages, preserve
    policy/labels/provenance/audit, run scripts only through containerized
    sandbox paths, expose client diagnostics, and carry compatibility plus
    adversarial/E2E tests (#216-#223).
-6. **v0.43 CommonMark client rendering** — shared CommonMark contract,
+7. **v0.43 CommonMark client rendering** — shared CommonMark contract,
    parser/sanitizer fixtures, CapDepMac rich rendering, terminal-safe CLI/TUI
    rendering, MCP-control fallback behavior, and release parity evidence
    (#209-#215).
-7. **v0.42 local media/model operations reliability** — profile selection,
+8. **v0.42 local media/model operations reliability** — profile selection,
    model/account readiness, benchmark-informed defaults, real progress/status,
    cancellation/recovery, and setup/release docs (#202-#208).
-8. **MCP security integration** — MCP must remain an integration substrate, not
+9. **MCP security integration** — MCP must remain an integration substrate, not
    a second authority path. v0.29 turns the current targeted tests into a
    security conformance suite before CapDep relies heavily on external MCP
    servers and headless clients.
-9. **Client proof, not just parity claims** — v0.30 replaces source/manifest
+10. **Client proof, not just parity claims** — v0.30 replaces source/manifest
    checks with live daemon integration coverage for CLI, TUI, Swift GUI, and
    MCP-control.
    Coverage is ratcheted independently for daemon files, clients, MCP
@@ -174,6 +180,7 @@ become independent credential or capability authorities.
 
 | # | What | Milestone |
 |---|---|---|
+| #257-#263 | Measured local model runtime, explicit reranker support, role benchmarks, retrieval-quality fixtures, advisory guard annotations, default-promotion gates, and model benchmark release docs | v0.49.0 |
 | #249-#256 | Native MLX model asset inventory, setup conversion planner, manifests, readiness metadata, fallback safety, and model docs | v0.48.0 |
 | #241-#248 | Native office automation skills, bounded Microsoft Office adapters, office capabilities/labels/approvals, setup diagnostics, and fake-runner tests | v0.47.0 |
 | #137/#136/#134/#133/#138 | Daemon-enforced workstream ownership, daemon state views, client parity, MCP-control workstream tools, and multi-client tests | v0.32.0 |
@@ -199,6 +206,39 @@ become independent credential or capability authorities.
 | #33 | Design: Workspace capability mapping | v0.16 / #42 |
 | #34 | Email labeling — design + content-rule impl (raise-only labeler) | v0.16 / #42 |
 | #13 | Credential vault and stdio upstream no-broad-env hardening | v0.33.0 |
+
+## v0.49.0 — Measured local model runtime and retrieval quality
+
+Open. v0.49 turns the v0.48 model asset pipeline into measured runtime
+decisions. The goal is not to chase larger models. The goal is to prove which
+local models improve CapDep-specific tasks, keep reranking on an appropriate
+runtime, and preserve the rule that CapDep policy remains authoritative even
+when a model sidecar annotates risk.
+
+### Scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #257 | EPIC: measured local model runtime and retrieval quality | Open |
+| #258 | Add explicit reranker runtime and evaluation harness | Open |
+| #259 | Add retrieval and reranking quality fixtures | Open |
+| #260 | Benchmark planner, chat, coder, and guard model roles | Open |
+| #261 | Integrate guard-sidecar annotations without policy authority | Open |
+| #262 | Enforce benchmark-backed model default promotion gates | Open |
+| #263 | Document measured model operations and release tests | Open |
+
+### Sequencing
+
+1. Add the reranker runtime and fixtures first (#258, #259), because BGE/Jina
+   candidates should not be evaluated through `mlx_lm.generate`.
+2. Expand reproducible role benchmarks (#260) using the v0.48 model inventory
+   and the local xLAM/Qwen3Guard experiment evidence.
+3. Prototype guard-sidecar annotations (#261) only as advisory metadata; tests
+   must prove a guard miss cannot allow a forbidden action.
+4. Add default-promotion gates (#262) so setup/client surfaces distinguish
+   available, benchmarked, and promoted models.
+5. Close with release docs/tests (#263), including clear instructions for
+   running benchmarks without unexpected local environment mutation.
 
 ## v0.48.0 — Native MLX model asset pipeline
 
