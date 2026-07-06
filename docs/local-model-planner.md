@@ -74,6 +74,9 @@ change after local benchmark evidence justifies the change. Use:
 scripts/benchmark_image_models.py --candidate z-image-turbo --candidate flux2-klein-4b
 ```
 
+The current three-option shortlist for each CapDep model purpose is tracked in
+[`docs/model-candidate-validation.md`](model-candidate-validation.md).
+
 ## Recommended MLX roles
 
 The built-in Apple Silicon text roles are:
