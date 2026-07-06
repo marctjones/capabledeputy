@@ -121,3 +121,5 @@ Do not spend local setup time converting source checkpoints for these purposes
 until a candidate lacks a native artifact or benchmark evidence shows that a
 repo-local conversion is materially better than the published MLX/MFLUX asset.
 
+Source-only and weak-native specialized candidates are tracked separately in
+[`docs/model-experiment-plan.md`](model-experiment-plan.md).
