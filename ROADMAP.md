@@ -6,10 +6,10 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-07-04 — v0.44.0 is the current stable release,
-covering local media/model operations reliability, CommonMark rendering across
-client surfaces, and SKILL.md interoperability with sandboxed execution. v0.45,
-v0.46, v0.47, and v0.48 are implemented on `main`. v1.0 remains unscheduled.
+**Last refreshed:** 2026-07-06 — v0.48.0 is the current stable release,
+covering dead-simple Google account connection, consolidated setup automation,
+native office automation skills, and native MLX/MFLUX model asset planning.
+v1.0 remains unscheduled.
 
 ## Product Ladder — v0.35 → v0.48
 
@@ -55,10 +55,10 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
-| **18 Product — v0.48.0 — Native MLX model asset pipeline** | #249–#256 | Complete locally: model asset inventory, conversion-aware `capdep-setup models`, provenance manifests, explicit unsupported fallback handling, image readiness metadata, and docs are implemented; benchmark evidence remains required before runtime defaults change. |
-| **17 Product — v0.47.0 — Native office automation skills** | #241–#248 | Complete locally: bounded SKILL.md workflows, Microsoft Outlook/Word/PowerPoint adapters, office capability/label/approval mappings, setup diagnostics, config wiring, and fake-runner tests are implemented without exposing arbitrary AppleScript, VBA, macros, shell, or UI scripting. |
-| **16 Product — v0.46.0 — Consolidated setup automation** | #233–#240 | Complete locally: one-time assistant-surface/IMAP/Workspace/image/model/macOS-daemon/sandbox setup lives under `capdep-setup`, compatibility aliases remain, and temp-home/fake-runner tests guard non-destructive setup behavior. |
-| **15 Product — v0.45.0 — Dead-simple Google account connection** | #224–#232 | Complete locally: preset-first Google account setup, daemon-owned OAuth state, live reload/unload where possible, redacted diagnostics, CLI/CapDepMac parity, and fake-provider tests. |
+| **18 Product — v0.48.0 — Native MLX model asset pipeline** | #249–#256 | Closed/released: model asset inventory, conversion-aware `capdep-setup models`, provenance manifests, explicit unsupported fallback handling, image readiness metadata, model experiment evidence, and docs are implemented; benchmark evidence remains required before runtime defaults change. |
+| **17 Product — v0.47.0 — Native office automation skills** | #241–#248 | Closed/released: bounded SKILL.md workflows, Microsoft Outlook/Word/PowerPoint adapters, office capability/label/approval mappings, setup diagnostics, config wiring, and fake-runner tests are implemented without exposing arbitrary AppleScript, VBA, macros, shell, or UI scripting. |
+| **16 Product — v0.46.0 — Consolidated setup automation** | #233–#240 | Closed/released: one-time assistant-surface/IMAP/Workspace/image/model/macOS-daemon/sandbox setup lives under `capdep-setup`, compatibility aliases remain, and temp-home/fake-runner tests guard non-destructive setup behavior. |
+| **15 Product — v0.45.0 — Dead-simple Google account connection** | #224–#232 | Closed/released: preset-first Google account setup, daemon-owned OAuth state, live reload/unload where possible, redacted diagnostics, CLI/CapDepMac parity, and fake-provider tests. |
 | **14 Product — v0.44.0 — Skills interoperability and sandboxed execution** | #216–#223 | Closed: imports flat and folder-based SKILL.md packages, models guidance/tool/hybrid modes, preserves policy/labels/provenance/audit, routes skill scripts through sandbox execution only, exposes daemon/CLI diagnostics, and adds compatibility/adversarial/E2E tests. |
 | **13 Product — v0.43.0 — CommonMark rendering across client surfaces** | #209–#215 | Complete locally: shared CommonMark contract, sanitizer fixtures, CapDepMac rendering sanitizer, terminal-safe CLI/TUI rendering, MCP-control metadata/fallback behavior, and release parity docs/tests. |
 | **12 Product — v0.42.0 — Local media and model operations reliability** | #202–#208 | Complete: profile selection, model/account readiness, benchmark-informed defaults, progress/status, queue recovery, and setup/release docs for local media/model operations. |

@@ -2,14 +2,12 @@
 
 Living plan that organizes the open GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
-rationale*. Last refreshed 2026-07-04 — **v0.44.0** is the current stable
-release, covering local media/model operations reliability, CommonMark rendering
-across client surfaces, and skills interoperability with sandboxed execution.
-v0.45 Google account connection, v0.46 consolidated setup automation, v0.47
-native office automation skills, and v0.48 native MLX model asset conversion
-are implemented on `main`.
+rationale*. Last refreshed 2026-07-06 — **v0.48.0** is the current stable
+release, covering dead-simple Google account connection, consolidated setup
+automation, native office automation skills, and native MLX/MFLUX model asset
+planning.
 
-Recently completed stable release: **v0.44.0**.
+Recently completed stable release: **v0.48.0**.
 
 Included product milestones: **12 Product — v0.42.0 — Local media/model
 operations reliability** · **13 Product — v0.43.0 — CommonMark rendering
@@ -19,7 +17,7 @@ connection** · **16 Product — v0.46.0 — Consolidated setup automation** ·
 **17 Product — v0.47.0 — Native office automation skills** · **18 Product —
 v0.48.0 — Native MLX model asset pipeline**.
 
-Next implementation milestone: not yet assigned after v0.48 closeout.
+Next implementation milestone: not yet assigned after v0.48 release.
 
 Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
 reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical

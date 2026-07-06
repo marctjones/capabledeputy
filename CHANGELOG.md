@@ -6,6 +6,59 @@ breaking changes).
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-07-06
+
+Stable release for Google account connection, consolidated setup automation,
+native office automation skills, and native MLX/MFLUX model asset planning.
+
+### Google account connection
+
+- Added preset-first Gmail/Calendar/Drive setup flows with daemon-owned OAuth
+  state and scoped permissions.
+- Added live reload/unload where possible, redacted diagnostics, and CLI plus
+  CapDepMac parity for Google setup state.
+- Preserved advanced bring-your-own-client setup without moving OAuth authority
+  into clients.
+
+### Consolidated setup automation
+
+- Consolidated one-time setup domains under `capdep-setup`, including assistant
+  surfaces, IMAP/Workspace bootstrap, image/model setup, macOS daemon launch
+  parity checks, sandbox prerequisites, and compatibility aliases.
+- Added non-destructive setup tests that run against temp homes, fake runners,
+  fake model caches, and dry-run plans.
+- Kept daemon and client runtime paths focused on authority, readiness, policy,
+  OAuth state, and user workflows.
+
+### Native office automation skills
+
+- Added bounded SKILL.md workflows and app-specific native automation adapters
+  for Apple Mail, Pages, Numbers, Keynote, Microsoft Outlook, Word, and
+  PowerPoint.
+- Added office automation capabilities, labels, approval gates, setup
+  diagnostics, config wiring, and fake-runner tests.
+- Preserved the security boundary: no arbitrary AppleScript, VBA, macros, shell,
+  or UI scripting is exposed as ambient authority.
+
+### Native MLX/MFLUX model asset pipeline
+
+- Added model asset inventory, conversion-aware `capdep-setup models`, model
+  provenance manifests, readiness metadata, unsupported fallback handling, and
+  documentation for native MLX/MFLUX model selection.
+- Added a side-effect-free model experiment harness and recorded local
+  experiments for xLAM and Qwen3Guard candidates.
+- Confirmed that runtime defaults still require benchmark evidence before they
+  change; the best guard-sidecar signal so far is
+  `mlx-community/Qwen3Guard-Gen-0.6B-MLX`.
+
+### Roadmap
+
+- Closed and released GitHub milestones `15 Product — v0.45.0`,
+  `16 Product — v0.46.0`, `17 Product — v0.47.0`, and
+  `18 Product — v0.48.0`.
+- Pruned stale remote-tracking branch state after confirming the only leftover
+  non-main branch was a closed, obsolete Dependabot PR branch.
+
 ## [0.44.0] - 2026-07-04
 
 Stable release for local media/model operations, CommonMark client rendering,
@@ -1026,6 +1079,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.48.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.48.0
 [0.44.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.44.0
 [0.41.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.41.1
 [0.41.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.41.0
