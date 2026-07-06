@@ -59,6 +59,7 @@ class ModelExperimentCandidate:
             self.source_repo,
             "--mlx-path",
             str(output),
+            "--quantize",
             "--q-bits",
             str(q_bits),
         )

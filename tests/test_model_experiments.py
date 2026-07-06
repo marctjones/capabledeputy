@@ -34,6 +34,7 @@ def test_model_experiment_conversion_commands_are_explicit(tmp_path: Path) -> No
 
     assert commands["xlam-8b-tool"][1:3] == ["-m", "mlx_lm.convert"]
     assert "--hf-path" in commands["xlam-8b-tool"]
+    assert "--quantize" in commands["xlam-8b-tool"]
     assert "Salesforce/Llama-xLAM-2-8b-fc-r" in commands["xlam-8b-tool"]
     assert str(tmp_path / "converted" / "xlam-8b-tool") in commands["xlam-8b-tool"]
 

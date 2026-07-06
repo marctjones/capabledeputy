@@ -43,3 +43,24 @@ default.
   through `mlx_lm.generate`.
 - Defaults change only after local benchmark artifacts record latency, output
   validity, and task-specific accuracy.
+
+## Local run, 2026-07-06
+
+The first local pass converted the two smallest source-convertible candidates
+and ran deterministic smoke prompts on the M5 laptop.
+
+| Candidate | Artifact | Peak memory | Generation speed | Result |
+|---|---:|---:|---:|---|
+| `Salesforce/Llama-xLAM-2-8b-fc-r` | 4-bit MLX, 4.2 GB | 4.7 GB | 28-30 tokens/s | Fast and stable, but raw prompting selected only the first necessary tool for multi-step tasks. Keep as a tool-selection experiment, not a default replacement. |
+| `Qwen/Qwen3Guard-Gen-4B` | 4-bit MLX, 2.1 GB | 2.8 GB | 11-13 tokens/s | Separates some benign/risky prompts, but emits generic safety categories and missed the financial/destructive approval case. Use only as a possible risk annotation sidecar with CapDep's policy layer remaining authoritative. |
+
+Notes:
+
+- `mlx_lm.convert` needs `--quantize --q-bits 4`; `--q-bits 4` alone produced
+  bf16 artifacts. The experiment harness now emits the explicit quantized
+  command.
+- The 32B xLAM candidate was not converted in this pass. The 8B result does
+  not yet justify the larger conversion cost without a better tool-calling
+  prompt template or adapter-specific runtime.
+- Reranker candidates remain pending because they need a cross-encoder/reranker
+  runtime rather than `mlx_lm.generate`.
