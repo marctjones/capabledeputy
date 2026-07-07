@@ -6,12 +6,18 @@ breaking changes).
 
 ## [Unreleased]
 
-### Roadmap
+### Measured model runtime and retrieval quality
 
-- Opened `19 Product — v0.49.0 — Measured local model runtime and retrieval
-  quality` with issues #257-#263 for reranker runtime support, reproducible
-  role benchmarks, retrieval-quality fixtures, advisory guard annotations,
-  benchmark-backed default gates, and release docs/tests.
+- Implemented `19 Product — v0.49.0 — Measured local model runtime and
+  retrieval quality` with a side-effect-free model-quality plan, explicit
+  reranker runtime status, deterministic retrieval fixtures, role benchmark
+  cases, advisory guard annotations, and benchmark-backed promotion gates.
+- Added `scripts/benchmark_model_quality.py` and surfaced measured-quality
+  summaries through `capdep-setup models` so setup/client paths can distinguish
+  available candidates from promoted defaults.
+- Registered `reranker.default` as a separate cross-encoder runtime and
+  `guard.sidecar` as an advisory model profile, preserving the rule that
+  CapDep policy and approval engines remain authoritative.
 
 ## [0.48.0] - 2026-07-06
 

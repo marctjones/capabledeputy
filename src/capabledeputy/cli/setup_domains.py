@@ -37,6 +37,7 @@ from capabledeputy.model_assets import (
     model_download_commands,
     write_conversion_manifests,
 )
+from capabledeputy.model_quality import model_quality_plan
 
 CommandRunner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 
@@ -316,6 +317,7 @@ def setup_models(
     ]
     download_commands = model_download_commands(inventory, cache_home=cache_home)
     conversion_commands = model_conversion_commands(inventory, asset_home=asset_home)
+    quality_plan = model_quality_plan()
     commands = (*download_commands, *conversion_commands)
     if download and not apply:
         raise ValueError("--download requires --apply")
@@ -383,6 +385,14 @@ def setup_models(
             "inventory": [profile.as_dict() for profile in inventory],
             "download_commands": [list(command) for command in download_commands],
             "conversion_commands": [list(command) for command in conversion_commands],
+            "measured_quality": {
+                "schema": quality_plan["schema"],
+                "reranker_runtime": quality_plan["reranker_runtime"],
+                "retrieval_fixture_count": len(quality_plan["retrieval_fixtures"]),
+                "role_benchmark_count": len(quality_plan["role_benchmarks"]),
+                "guard_annotation_count": len(quality_plan["guard_annotations"]),
+                "promotion_gates": quality_plan["promotion_gates"],
+            },
             "manifest_paths": [str(path) for path in manifest_paths],
             "unsupported_conversions": [
                 profile.profile_id

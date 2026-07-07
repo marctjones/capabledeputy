@@ -171,6 +171,11 @@ def test_setup_models_apply_convert_writes_manifests(
         "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
     )
     assert inventory["vlm.experimental"]["backend"] == "mlx-vlm"
+    assert inventory["reranker.default"]["backend"] == "sentence-transformers-cross-encoder"
+    assert inventory["reranker.default"]["conversion_status"] == "separate_runtime"
+    assert inventory["guard.sidecar"]["recommended_runtime"] == (
+        "mlx-community/Qwen3Guard-Gen-0.6B-4bit"
+    )
     download_repos = {
         command[2]
         for command in result.details["download_commands"]
@@ -179,6 +184,8 @@ def test_setup_models_apply_convert_writes_manifests(
     assert "Qwen/Qwen3-4B-MLX-4bit" in download_repos
     assert "mlx-community/Qwen3-30B-A3B-4bit" in download_repos
     assert "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit" in download_repos
+    assert "BAAI/bge-reranker-v2-m3" in download_repos
+    assert "mlx-community/Qwen3Guard-Gen-0.6B-4bit" in download_repos
     assert "Qwen/Qwen3-4B" not in download_repos
     assert result.details["unsupported_conversions"] == [
         "image.sdxl-photoreal",
@@ -187,6 +194,16 @@ def test_setup_models_apply_convert_writes_manifests(
     assert result.details["manifest_paths"]
     assert all(Path(path).is_file() for path in result.details["manifest_paths"])
     assert calls == result.details["conversion_commands"]
+    assert all("--quantize" in command for command in result.details["conversion_commands"])
+    measured = result.details["measured_quality"]
+    assert measured["schema"] == "capdep.model_quality_plan.v1"
+    assert measured["retrieval_fixture_count"] == 3
+    assert measured["role_benchmark_count"] >= 5
+    assert measured["guard_annotation_count"] == 3
+    assert {
+        gate["status"]
+        for gate in measured["promotion_gates"]
+    } == {"candidate_only"}
 
 
 def test_setup_models_download_requires_apply(tmp_path: Path) -> None:

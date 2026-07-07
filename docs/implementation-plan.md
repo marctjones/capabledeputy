@@ -209,36 +209,43 @@ become independent credential or capability authorities.
 
 ## v0.49.0 — Measured local model runtime and retrieval quality
 
-Open. v0.49 turns the v0.48 model asset pipeline into measured runtime
-decisions. The goal is not to chase larger models. The goal is to prove which
-local models improve CapDep-specific tasks, keep reranking on an appropriate
-runtime, and preserve the rule that CapDep policy remains authoritative even
-when a model sidecar annotates risk.
+Complete locally. v0.49 turns the v0.48 model asset pipeline into measured
+runtime decisions. The goal is not to chase larger models. The goal is to prove
+which local models improve CapDep-specific tasks, keep reranking on an
+appropriate runtime, and preserve the rule that CapDep policy remains
+authoritative even when a model sidecar annotates risk.
 
 ### Scope
 
 | Issue | Work | Status |
 |---|---|---|
-| #257 | EPIC: measured local model runtime and retrieval quality | Open |
-| #258 | Add explicit reranker runtime and evaluation harness | Open |
-| #259 | Add retrieval and reranking quality fixtures | Open |
-| #260 | Benchmark planner, chat, coder, and guard model roles | Open |
-| #261 | Integrate guard-sidecar annotations without policy authority | Open |
-| #262 | Enforce benchmark-backed model default promotion gates | Open |
-| #263 | Document measured model operations and release tests | Open |
+| #257 | EPIC: measured local model runtime and retrieval quality | Complete locally |
+| #258 | Add explicit reranker runtime and evaluation harness | Complete locally |
+| #259 | Add retrieval and reranking quality fixtures | Complete locally |
+| #260 | Benchmark planner, chat, coder, and guard model roles | Complete locally |
+| #261 | Integrate guard-sidecar annotations without policy authority | Complete locally |
+| #262 | Enforce benchmark-backed model default promotion gates | Complete locally |
+| #263 | Document measured model operations and release tests | Complete locally |
 
 ### Sequencing
 
-1. Add the reranker runtime and fixtures first (#258, #259), because BGE/Jina
-   candidates should not be evaluated through `mlx_lm.generate`.
-2. Expand reproducible role benchmarks (#260) using the v0.48 model inventory
-   and the local xLAM/Qwen3Guard experiment evidence.
-3. Prototype guard-sidecar annotations (#261) only as advisory metadata; tests
-   must prove a guard miss cannot allow a forbidden action.
-4. Add default-promotion gates (#262) so setup/client surfaces distinguish
-   available, benchmarked, and promoted models.
-5. Close with release docs/tests (#263), including clear instructions for
-   running benchmarks without unexpected local environment mutation.
+1. `src/capabledeputy/model_quality.py` provides a non-mutating quality plan
+   with reranker runtime status, retrieval fixtures, role benchmark cases,
+   guard annotations, and promotion gates.
+2. `reranker.default` is registered as a separate
+   `sentence-transformers-cross-encoder` profile; BGE/Jina-style rerankers are
+   not evaluated through `mlx_lm.generate`.
+3. `guard.sidecar` is registered as advisory-only. Guard annotations produce
+   CapDep risk signals, but CapDep policy, labels, approvals, and audit remain
+   authoritative.
+4. `capdep-setup models` reports measured-quality summaries, including
+   candidate-only promotion gates until required benchmark evidence is present.
+5. Release validation is covered by focused unit/script tests and the
+   non-mutating benchmark command:
+
+   ```bash
+   .venv/bin/python scripts/benchmark_model_quality.py --results benchmark-results/model-quality/plan.jsonl
+   ```
 
 ## v0.48.0 — Native MLX model asset pipeline
 

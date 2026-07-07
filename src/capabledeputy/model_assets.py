@@ -175,6 +175,37 @@ def model_asset_inventory(*, apple_silicon: bool | None = None) -> tuple[ModelAs
             notes="Small extraction role; native MLX repo is preferred when available.",
         ),
         ModelAssetProfile(
+            profile_id="reranker.default",
+            role="reranker",
+            backend="sentence-transformers-cross-encoder",
+            source_repo="BAAI/bge-reranker-v2-m3",
+            source_format="huggingface-cross-encoder",
+            recommended_runtime="BAAI/bge-reranker-v2-m3",
+            conversion_status="separate_runtime",
+            fallback_runtime="lexical",
+            notes=(
+                "Default reranker candidate; evaluate through a cross-encoder "
+                "runtime, not mlx_lm.generate."
+            ),
+        ),
+        ModelAssetProfile(
+            profile_id="guard.sidecar",
+            role="guard",
+            backend=text_runtime,
+            source_repo="Qwen/Qwen3Guard-Gen-0.6B",
+            source_format="huggingface-transformers",
+            recommended_runtime="mlx-community/Qwen3Guard-Gen-0.6B-4bit"
+            if apple_silicon
+            else "Qwen/Qwen3Guard-Gen-0.6B",
+            conversion_status="native_mlx_available" if apple_silicon else "source_runtime",
+            quantization="4bit" if apple_silicon else None,
+            fallback_runtime="policy_engine_only",
+            notes=(
+                "Advisory risk annotation candidate; CapDep policy and approval "
+                "engines remain authoritative."
+            ),
+        ),
+        ModelAssetProfile(
             profile_id="image.default",
             role="image",
             backend=image_runtime,
@@ -260,6 +291,7 @@ def model_conversion_commands(
                 profile.source_repo,
                 "--mlx-path",
                 str(output),
+                "--quantize",
                 "--q-bits",
                 "4",
             ),
@@ -318,6 +350,8 @@ def conversion_readiness(profile_id: str, *, asset_home: Path | None = None) -> 
         "runtime_native_no_conversion",
     }:
         status = "native"
+    elif profile.conversion_status == "separate_runtime":
+        status = "separate_runtime"
     elif profile.conversion_status == "unsupported":
         status = "source_fallback"
     elif manifest.is_file():

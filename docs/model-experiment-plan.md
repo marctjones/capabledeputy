@@ -16,10 +16,12 @@ runs those commands explicitly.
 .venv/bin/python scripts/benchmark_model_experiments.py --purpose tool_selection
 .venv/bin/python scripts/benchmark_model_experiments.py --purpose risk_guard
 .venv/bin/python scripts/benchmark_model_experiments.py --purpose reranker
+.venv/bin/python scripts/benchmark_model_quality.py
 ```
 
 Results are written to `benchmark-results/model-experiments/plan.jsonl` by
-default.
+default for candidate experiments. The measured-quality plan writes to
+`benchmark-results/model-quality/plan.jsonl` by default.
 
 ## Candidates
 
@@ -87,3 +89,31 @@ Decision updates:
   current development environment has `transformers`, but not `torch` or
   `sentence_transformers`, and the rerankers should not be evaluated through
   `mlx_lm.generate`.
+
+## Measured-quality plan, 2026-07-06
+
+v0.49 adds a side-effect-free quality plan that setup and release checks can
+run without downloading, converting, or promoting any models:
+
+```bash
+.venv/bin/python scripts/benchmark_model_quality.py --results benchmark-results/model-quality/plan.jsonl
+```
+
+The plan records:
+
+- the current reranker runtime status for the
+  `sentence-transformers-cross-encoder` path;
+- deterministic retrieval fixtures and lexical baseline scores;
+- model-role benchmark cases derived from `configs/models.yaml`;
+- advisory guard-sidecar annotations mapped to CapDep risk signals;
+- promotion gates for planner, extractor, reranker, and guard profiles.
+
+Promotion gates require local evidence for latency, memory, task accuracy,
+valid output rate, license status, and fallback behavior. Missing evidence
+keeps a profile at `candidate_only`; failing evidence marks it `blocked`;
+passing evidence is required before a profile may be treated as `promoted`.
+
+`capdep-setup models --json` includes the same measured-quality summary for
+client/setup surfaces. This is reporting metadata only. Guard-sidecar output is
+advisory, and CapDep policy, labels, approvals, and audit remain the
+authoritative enforcement path.
