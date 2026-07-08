@@ -56,7 +56,8 @@ flowchart LR
 
 ## Tracker Coverage
 
-This pass audited the live GitHub tracker. Open work is grouped as:
+This pass audited the live GitHub tracker. There are currently no open GitHub
+issues; completed and closed work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
@@ -888,7 +889,7 @@ explicit support decision for CLI, TUI, Swift GUI, and MCP-control.
 - MCP-control exposes automation-safe daemon operations as MCP tools while
   routing dangerous work through daemon policy and approvals.
 
-## Next Focus — v0.28.0 Onguard Clients + Daemon Coordination
+## Completed Focus — v0.28.0 Onguard Clients + Daemon Coordination
 
 Goal: make headless background work extensible without making the daemon a
 giant application server. Onguard clients are normal daemon clients that claim

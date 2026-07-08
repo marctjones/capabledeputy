@@ -1,6 +1,6 @@
 # Implementation plan & milestones
 
-Living plan that organizes the open GitHub issues into sequenced milestones
+Living plan that organizes GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
 rationale*. Last refreshed 2026-07-08 — **v0.48.0** is the current stable
 release. **v0.49.0**, **v0.50.0**, and **v0.51.0** are implemented on `main`.
