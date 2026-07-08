@@ -198,3 +198,21 @@ bindings:
     category: public
     default_tier: none
     assignment_provenance: operator-declared
+
+  - name: browser-https
+    scope_pattern_canonical: "browser://https/**"
+    category: public
+    default_tier: none
+    assignment_provenance: operator-declared
+
+  - name: browser-active-page
+    scope_pattern_canonical: "browser://active/**"
+    category: public
+    default_tier: none
+    assignment_provenance: operator-declared
+
+  - name: screen-current-window
+    scope_pattern_canonical: "screen://current-window"
+    category: personal
+    default_tier: sensitive
+    assignment_provenance: operator-declared

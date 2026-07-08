@@ -7,10 +7,10 @@ maps this roadmap onto GitHub issues and dependencies. The older
 historical backlog snapshots, not the current roadmap.
 
 **Last refreshed:** 2026-07-08 — v0.48.0 is the current stable release.
-v0.49.0 is implemented on `main`; v0.50.0 is complete locally pending tracker
-closeout. v1.0 remains unscheduled.
+v0.49.0, v0.50.0, and v0.51.0 are implemented on `main`. v1.0 remains
+unscheduled.
 
-## Product Ladder — v0.35 → v0.50
+## Product Ladder — v0.35 → v0.51
 
 ```mermaid
 flowchart LR
@@ -30,7 +30,8 @@ flowchart LR
   v48[v0.48 Native MLX model asset pipeline]
   v49[v0.49 Measured model runtime + retrieval quality]
   v50[v0.50 Security assurance + flow-pattern proof]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48 --> v49 --> v50
+  v51[v0.51 Daily-driver policy defaults + workflow gates]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48 --> v49 --> v50 --> v51
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -51,6 +52,7 @@ flowchart LR
 | **18 Product — v0.48.0 — Native MLX model asset pipeline** | Reconsider local text/image model choices around native MLX/MFLUX conversion, provenance, setup planning, and measured defaults | #249–#256 |
 | **19 Product — v0.49.0 — Measured local model runtime and retrieval quality** | Benchmark-backed model defaults, explicit reranker runtime, advisory guard sidecar, and retrieval-quality fixtures | #257–#263 |
 | **20 Product — v0.50.0 — Security assurance and flow-pattern proof** | Prove the security model and flow-pattern guarantees across clients, tools, substrates, labels, advisory warnings, and model sidecars | #264–#270 |
+| **21 Product — v0.51.0 — Daily-driver policy defaults and desktop workflow gates** | Productized default policies for normal OpenClaw-style desktop workflows with clear approval, override, denial, readiness, UX, and retention gates | #271, #272, #275–#282 |
 
 ## Tracker Coverage
 
@@ -58,6 +60,7 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
+| **21 Product — v0.51.0 — Daily-driver policy defaults and desktop workflow gates** | #271, #272, #275–#282 | Complete locally: daily-driver preset/approval matrix, curated tool catalog/readiness, relationship setup, browser/screen gates, draft-first messaging/calendar mutation, staged filesystem/office mutation, approval UX, data minimization/retention, and policy docs/diagnostics/regression tests are implemented. |
 | **20 Product — v0.50.0 — Security assurance and flow-pattern proof** | #264–#270 | Complete locally: reference-monitor totality inventory/tests, flow-pattern composition proof inventory, label/source coverage fixtures, fake/dry-run substrate contracts, audited WARN/advisory outcomes, and model-sidecar authority-boundary checks are implemented. |
 | **19 Product — v0.49.0 — Measured local model runtime and retrieval quality** | #257–#263 | Complete locally: model-quality planning, explicit reranker runtime status, deterministic retrieval fixtures, role benchmark cases, advisory guard annotations, setup/client measured-quality summaries, default-promotion gates, and release docs/tests are implemented. Runtime defaults remain candidate-only until benchmark evidence satisfies the gates. |
 | **18 Product — v0.48.0 — Native MLX model asset pipeline** | #249–#256 | Closed/released: model asset inventory, conversion-aware `capdep-setup models`, provenance manifests, explicit unsupported fallback handling, image readiness metadata, model experiment evidence, and docs are implemented; benchmark evidence remains required before runtime defaults change. |
@@ -91,6 +94,74 @@ Closed GitHub milestones use the same ordered-prefix convention:
 | **00.10 Done — v0.33.0 — Streaming turn lifecycle and liveness** | Closed |
 | **00.11 Done — v0.34.0 — First-run, connectors, and rich chat readiness** | Closed |
 | **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | Closed |
+
+## Completed Focus — v0.51.0 Daily-driver Policy Defaults and Desktop Workflow Gates
+
+Goal: make CapDep useful as a normal daily-driver/OpenClaw-style desktop
+assistant by productizing the default policy posture around concrete workflows
+instead of leaving normal users to edit policy YAML. The milestone preserves
+CapDep's core security model: capabilities remain runtime-held, labels/IFC are
+structural, approvals occur at risk boundaries, sidecars stay advisory, and
+clients never become policy authorities.
+
+### v0.51.0 scope
+
+| Issue | Work | Local status |
+|---|---|---|
+| #279 | EPIC: daily-driver policy defaults and desktop workflow gates | Complete locally |
+| #277 | Daily-driver preset and approval matrix | Complete locally |
+| #280 | Curated daily-driver tool catalog, admission, and readiness checks | Complete locally |
+| #278 | Workflow-first setup for self, trusted recipients, and relationship groups | Complete locally |
+| #271 | First-class browser and screen-context policy gates | Complete locally |
+| #275 | Draft-first messaging and calendar mutation gates | Complete locally |
+| #276 | Staged filesystem and office-document mutation workflow | Complete locally |
+| #281 | Approval UX, payload previews, and client consistency for daily-driver gates | Complete locally |
+| #282 | Daily-driver data minimization, audit redaction, and retention defaults | Complete locally |
+| #272 | Daily-driver policy docs, diagnostics, and regression tests | Complete locally |
+
+### v0.51.0 policy posture
+
+- Low-friction by default: allowed-root reads, web research, mailbox/calendar/doc
+  reads after OAuth, summaries, scratch/draft writes, image generation, git read,
+  and user-visible notifications.
+- Approval by default: direct sends, calendar mutations, browser form
+  submission, downloads/uploads, clipboard writes, office edits/exports, writes
+  outside scratch roots, destructive file operations, purchases, and sandbox or
+  devbox execution with real side effects.
+- Override by default: sensitive declassification, confidential/financial/health
+  egress to non-trusted destinations, generic browser scripting, generic
+  AppleScript/VBA/macros, broad persistent capabilities, unclassified MCP tools,
+  and any sidecar attempt to authorize or waive policy.
+- Deny by default: credential exfiltration, arbitrary shell outside the sandbox,
+  silent destructive file mutation, unclassified tools in strict mode, and
+  direct send/publish/purchase flows unless explicitly enabled.
+- Minimize by default: raw email bodies, document text, clipboard contents,
+  screen/browser context, generated media prompts, and secrets should be
+  transient or redacted unless the user explicitly saves them as an artifact.
+
+### v0.51.0 done-when
+
+- A normal user can select the daily-driver preset and complete setup without
+  editing placeholders such as `me@example.com`.
+- Browser/screen context, inbox triage, meeting prep, research-to-brief, file
+  organization, office drafting, safe scripting, and image workflows are covered
+  by workflow fixtures and client-visible diagnostics.
+- The daily-driver tool catalog reports available, unavailable, degraded, and
+  intentionally disabled tools without falling back to generic ambient
+  automation.
+- Draft/preview flows remain the default for messaging and publishing, while
+  direct external state changes require approval or override.
+- Approval surfaces show action, target, tool, capability, labels, destination,
+  state-changing effects, and the preview/payload needed for an informed
+  decision.
+- Calendar mutation scopes, readiness, policy mappings, and status diagnostics
+  are internally consistent.
+- Filesystem and office-document mutations use staged plans/previews before
+  risky writes, overwrites, deletes, or exports.
+- Audit and retention defaults preserve replayable policy evidence without
+  creating surprising durable copies of sensitive daily-driver content.
+- README/config docs, `ROADMAP.md`, tracker issues, and the standard test suite
+  agree on the default policy matrix.
 
 ## Completed Focus — v0.45.0 Dead-simple Google Account Connection
 

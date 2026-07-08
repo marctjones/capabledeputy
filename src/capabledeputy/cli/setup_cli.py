@@ -13,6 +13,7 @@ from capabledeputy.cli.setup_domains import (
     SetupDomainResult,
     result_to_json,
     setup_assistant_surface,
+    setup_daily_driver,
     setup_google_workspace_register,
     setup_images,
     setup_imap_register,
@@ -64,8 +65,7 @@ def _print_result(result: SetupDomainResult, *, json_output: bool) -> None:
             console.print(f"  [dim]{key}:[/dim] {value}")
     if not result.apply:
         console.print(
-            "\n[dim]No local state was changed. "
-            "Re-run with --apply to mutate setup state.[/dim]",
+            "\n[dim]No local state was changed. Re-run with --apply to mutate setup state.[/dim]",
         )
 
 
@@ -73,6 +73,7 @@ def _print_result(result: SetupDomainResult, *, json_output: bool) -> None:
 def list_setups() -> None:
     """List available setup automation domains."""
     typer.echo("assistant-surface\tBundled assistant MCP server config bootstrap")
+    typer.echo("daily-driver\tDaily-driver policy readiness and relationship setup")
     typer.echo("google-cloud\tGoogle Cloud / Workspace OAuth API enablement")
     typer.echo("google-workspace\tGoogle Workspace daemon config registration")
     typer.echo("images\tImage-generation runtime venv setup")
@@ -120,6 +121,54 @@ def assistant_surface_command(
     except ValueError as exc:
         err_console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=2) from None
+    _print_result(result, json_output=json_output)
+
+
+@app.command("daily-driver")
+def daily_driver_command(
+    apply: Annotated[
+        bool,
+        typer.Option("--apply", help="Write generated relationship/approval config files."),
+    ] = False,
+    config: Annotated[
+        Path | None,
+        typer.Option("--config", help="Daemon config path to inspect for tool readiness."),
+    ] = None,
+    output_dir: Annotated[
+        Path | None,
+        typer.Option("--output-dir", help="Directory for generated relationship/pattern config."),
+    ] = None,
+    self_addresses: Annotated[
+        str,
+        typer.Option("--self", help="Comma-separated self email/account identities."),
+    ] = "",
+    trusted_draft_recipients: Annotated[
+        str,
+        typer.Option("--trusted-draft", help="Comma-separated trusted draft recipients."),
+    ] = "",
+    family_recipients: Annotated[
+        str,
+        typer.Option("--family", help="Comma-separated family recipients."),
+    ] = "",
+    work_recipients: Annotated[
+        str,
+        typer.Option("--work", help="Comma-separated work/team recipients."),
+    ] = "",
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Print machine-readable JSON."),
+    ] = False,
+) -> None:
+    """Inspect daily-driver readiness and generate exact relationship defaults."""
+    result = setup_daily_driver(
+        apply=apply,
+        config_path=config,
+        output_dir=output_dir,
+        self_addresses=self_addresses,
+        trusted_draft_recipients=trusted_draft_recipients,
+        family_recipients=family_recipients,
+        work_recipients=work_recipients,
+    )
     _print_result(result, json_output=json_output)
 
 

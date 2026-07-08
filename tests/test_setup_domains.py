@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from capabledeputy.cli.setup_cli import app as setup_app
 from capabledeputy.cli.setup_domains import (
     setup_assistant_surface,
+    setup_daily_driver,
     setup_google_workspace_register,
     setup_images,
     setup_imap_register,
@@ -28,6 +29,7 @@ def test_setup_domains_dry_run_does_not_write_real_or_temp_paths(tmp_path: Path)
 
     results = [
         setup_assistant_surface(config_path=config),
+        setup_daily_driver(config_path=config, output_dir=tmp_path / "daily-driver"),
         setup_imap_register(config_path=config),
         setup_google_workspace_register(config_path=config, services="gmail"),
         setup_images(repo_root=tmp_path / "repo", venv_path=image_venv),
@@ -86,6 +88,7 @@ def test_capdep_setup_list_includes_consolidated_domains() -> None:
 
     assert result.exit_code == 0
     assert "assistant-surface" in result.stdout
+    assert "daily-driver" in result.stdout
     assert "google-cloud" in result.stdout
     assert "images" in result.stdout
     assert "models" in result.stdout
@@ -200,10 +203,7 @@ def test_setup_models_apply_convert_writes_manifests(
     assert measured["retrieval_fixture_count"] == 3
     assert measured["role_benchmark_count"] >= 5
     assert measured["guard_annotation_count"] == 3
-    assert {
-        gate["status"]
-        for gate in measured["promotion_gates"]
-    } == {"candidate_only"}
+    assert {gate["status"] for gate in measured["promotion_gates"]} == {"candidate_only"}
 
 
 def test_setup_models_download_requires_apply(tmp_path: Path) -> None:

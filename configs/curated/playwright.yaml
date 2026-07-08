@@ -14,29 +14,29 @@ upstream_servers:
     inherent_labels:
       - untrusted.external
     tool_overrides:
-      browser_console_messages:   { capability_kind: BROWSER_READ }
-      browser_network_request:    { capability_kind: BROWSER_READ }
-      browser_network_requests:   { capability_kind: BROWSER_READ }
-      browser_snapshot:           { capability_kind: BROWSER_READ }
-      browser_take_screenshot:    { capability_kind: BROWSER_READ }
+      browser_console_messages:   { capability_kind: BROWSER_READ, target_template: "browser://active/console" }
+      browser_network_request:    { capability_kind: BROWSER_READ, target_template: "browser://active/network" }
+      browser_network_requests:   { capability_kind: BROWSER_READ, target_template: "browser://active/network" }
+      browser_snapshot:           { capability_kind: BROWSER_READ, target_template: "browser://active/snapshot" }
+      browser_take_screenshot:    { capability_kind: BROWSER_READ, target_template: "browser://active/screenshot" }
 
-      browser_click:              { capability_kind: BROWSER_INTERACT }
-      browser_close:              { capability_kind: BROWSER_NAVIGATE }
-      browser_drag:               { capability_kind: BROWSER_INTERACT }
-      browser_drop:               { capability_kind: BROWSER_FILE }
-      browser_evaluate:           { capability_kind: BROWSER_SCRIPT }
-      browser_file_upload:        { capability_kind: BROWSER_FILE }
-      browser_fill_form:          { capability_kind: BROWSER_INTERACT }
-      browser_handle_dialog:      { capability_kind: BROWSER_INTERACT }
-      browser_hover:              { capability_kind: BROWSER_INTERACT }
-      browser_navigate:           { capability_kind: BROWSER_NAVIGATE }
-      browser_navigate_back:      { capability_kind: BROWSER_NAVIGATE }
-      browser_press_key:          { capability_kind: BROWSER_INTERACT }
-      browser_resize:             { capability_kind: BROWSER_NAVIGATE }
-      browser_select_option:      { capability_kind: BROWSER_INTERACT }
-      browser_tabs:               { capability_kind: BROWSER_NAVIGATE }
-      browser_type:               { capability_kind: BROWSER_INTERACT }
-      browser_wait_for:           { capability_kind: BROWSER_NAVIGATE }
+      browser_click:              { capability_kind: BROWSER_INTERACT, target_template: "browser://active/click" }
+      browser_close:              { capability_kind: BROWSER_NAVIGATE, target_template: "browser://active" }
+      browser_drag:               { capability_kind: BROWSER_INTERACT, target_template: "browser://active/drag" }
+      browser_drop:               { capability_kind: BROWSER_FILE, target_template: "browser://active/drop" }
+      browser_evaluate:           { capability_kind: BROWSER_SCRIPT, target_template: "browser://active/script" }
+      browser_file_upload:        { capability_kind: BROWSER_FILE, target_template: "browser://active/upload" }
+      browser_fill_form:          { capability_kind: BROWSER_INTERACT, target_template: "browser://active/form" }
+      browser_handle_dialog:      { capability_kind: BROWSER_INTERACT, target_template: "browser://active/dialog" }
+      browser_hover:              { capability_kind: BROWSER_INTERACT, target_template: "browser://active/hover" }
+      browser_navigate:           { capability_kind: BROWSER_NAVIGATE, target_arg: url }
+      browser_navigate_back:      { capability_kind: BROWSER_NAVIGATE, target_template: "browser://active/history" }
+      browser_press_key:          { capability_kind: BROWSER_INTERACT, target_template: "browser://active/key" }
+      browser_resize:             { capability_kind: BROWSER_NAVIGATE, target_template: "browser://active/viewport" }
+      browser_select_option:      { capability_kind: BROWSER_INTERACT, target_template: "browser://active/select" }
+      browser_tabs:               { capability_kind: BROWSER_NAVIGATE, target_template: "browser://active/tabs" }
+      browser_type:               { capability_kind: BROWSER_INTERACT, target_template: "browser://active/type" }
+      browser_wait_for:           { capability_kind: BROWSER_NAVIGATE, target_template: "browser://active/wait" }
     isolation:
       image: docker.io/library/node:22-slim
       network: bridge

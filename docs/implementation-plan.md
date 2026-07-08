@@ -3,8 +3,7 @@
 Living plan that organizes the open GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
 rationale*. Last refreshed 2026-07-08 — **v0.48.0** is the current stable
-release. **v0.49.0** is implemented on `main`, and **v0.50.0** is complete
-locally pending tracker closeout.
+release. **v0.49.0**, **v0.50.0**, and **v0.51.0** are implemented on `main`.
 
 Recently completed stable release: **v0.48.0**.
 
@@ -16,7 +15,8 @@ connection** · **16 Product — v0.46.0 — Consolidated setup automation** ·
 **17 Product — v0.47.0 — Native office automation skills** · **18 Product —
 v0.48.0 — Native MLX model asset pipeline** · **19 Product — v0.49.0 —
 Measured local model runtime and retrieval quality** · **20 Product — v0.50.0 —
-Security assurance and flow-pattern proof**.
+Security assurance and flow-pattern proof** · **21 Product — v0.51.0 —
+Daily-driver policy defaults and desktop workflow gates**.
 
 Next implementation milestone: none currently opened. v1.0 remains
 unscheduled.
@@ -46,52 +46,59 @@ v0.17 — Gap hardening and explainability**.
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **v0.50 security assurance and flow-pattern proof** — implemented locally to
+1. **v0.51 daily-driver policy defaults and desktop workflow gates** —
+   implemented locally to turn the personal-assistant/default policy posture
+   into a normal-user daily-driver preset: curated tool admission/readiness,
+   workflow-first setup, browser/screen context gates, draft-first messaging,
+   calendar mutation readiness, staged filesystem/office mutation, approval UX,
+   retention/redaction defaults, and policy diagnostics/regression tests
+   (#271, #272, #275-#282).
+2. **v0.50 security assurance and flow-pattern proof** — implemented locally to
    make CapDep more provable, less fragile, and less noisy without broadening
    model authority: reference-monitor totality inventory/tests, flow-pattern
    composition proof inventory, label/source coverage fixtures, real-substrate
    contract definitions, audited WARN tier, and model-sidecar authority
    boundaries (#264-#270).
-2. **v0.49 measured local model runtime and retrieval quality** — implemented
+3. **v0.49 measured local model runtime and retrieval quality** — implemented
    model-quality planning, explicit reranker support, reproducible role
    benchmarks, retrieval-quality fixtures, advisory guard annotations,
    default-promotion gates, and release docs/tests (#257-#263).
-3. **v0.48 native MLX model asset pipeline** — implemented conversion-aware
+4. **v0.48 native MLX model asset pipeline** — implemented conversion-aware
    text/image model inventory, explicit setup/download/convert planning,
    provenance manifests, fallback safety, readiness metadata, and docs while
    preserving the rule that defaults only change after benchmark evidence
    (#249-#256).
-4. **v0.47 native office automation skills** — implemented bounded SKILL.md
+5. **v0.47 native office automation skills** — implemented bounded SKILL.md
    workflows and app-specific native automation for Apple Mail, Pages, Numbers,
    Keynote, Microsoft Outlook, Word, and PowerPoint without turning native
    automation into ambient authority (#241-#248).
-5. **v0.46 consolidated setup automation** — implemented one-time setup domains
+6. **v0.46 consolidated setup automation** — implemented one-time setup domains
    under `capdep-setup`, including setup/runtime boundaries, explicit
    dry-run/apply behavior, model download plans, sandbox runtime checks, and
    macOS daemon parity verification (#233-#240).
-6. **v0.45 dead-simple Google account connection** — implemented preset-first
+7. **v0.45 dead-simple Google account connection** — implemented preset-first
    Gmail/Calendar/Drive setup with daemon-owned OAuth state, scoped permissions,
    token auditability, live reload/unload where possible, advanced
    bring-your-own-client setup, and CapDep policy/MCP boundaries intact
    (#224-#232).
-6. **v0.44 skills interoperability and sandboxed execution** — shipped
+8. **v0.44 skills interoperability and sandboxed execution** — shipped
    Codex/Claude-style `SKILL.md` imports without weakening CapDep authority:
    skills are explicit guidance/tool/hybrid packages, preserve
    policy/labels/provenance/audit, run scripts only through containerized
    sandbox paths, expose client diagnostics, and carry compatibility plus
    adversarial/E2E tests (#216-#223).
-7. **v0.43 CommonMark client rendering** — shared CommonMark contract,
+9. **v0.43 CommonMark client rendering** — shared CommonMark contract,
    parser/sanitizer fixtures, CapDepMac rich rendering, terminal-safe CLI/TUI
    rendering, MCP-control fallback behavior, and release parity evidence
    (#209-#215).
-8. **v0.42 local media/model operations reliability** — profile selection,
+10. **v0.42 local media/model operations reliability** — profile selection,
    model/account readiness, benchmark-informed defaults, real progress/status,
    cancellation/recovery, and setup/release docs (#202-#208).
-9. **MCP security integration** — MCP must remain an integration substrate, not
+11. **MCP security integration** — MCP must remain an integration substrate, not
    a second authority path. v0.29 turns the current targeted tests into a
    security conformance suite before CapDep relies heavily on external MCP
    servers and headless clients.
-10. **Client proof, not just parity claims** — v0.30 replaces source/manifest
+12. **Client proof, not just parity claims** — v0.30 replaces source/manifest
    checks with live daemon integration coverage for CLI, TUI, Swift GUI, and
    MCP-control.
    Coverage is ratcheted independently for daemon files, clients, MCP
@@ -212,6 +219,59 @@ become independent credential or capability authorities.
 | #33 | Design: Workspace capability mapping | v0.16 / #42 |
 | #34 | Email labeling — design + content-rule impl (raise-only labeler) | v0.16 / #42 |
 | #13 | Credential vault and stdio upstream no-broad-env hardening | v0.33.0 |
+
+## v0.51.0 — Daily-driver policy defaults and desktop workflow gates
+
+Complete locally. v0.51 turns the policy/security substrate into a practical
+default posture for normal daily-driver/OpenClaw-style workflows. The goal is
+not to weaken controls; the goal is to make safe operations feel natural while
+risky operations stop at predictable approval, override, or denial gates.
+
+### Scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #279 | EPIC: daily-driver policy defaults and desktop workflow gates | Complete locally |
+| #277 | Daily-driver preset and approval matrix | Complete locally |
+| #280 | Curated daily-driver tool catalog, admission, and readiness checks | Complete locally |
+| #278 | Workflow-first setup for self, trusted recipients, and relationship groups | Complete locally |
+| #271 | First-class browser and screen-context policy gates | Complete locally |
+| #275 | Draft-first messaging and calendar mutation gates | Complete locally |
+| #276 | Staged filesystem and office-document mutation workflow | Complete locally |
+| #281 | Approval UX, payload previews, and client consistency for daily-driver gates | Complete locally |
+| #282 | Daily-driver data minimization, audit redaction, and retention defaults | Complete locally |
+| #272 | Daily-driver policy docs, diagnostics, and regression tests | Complete locally |
+
+### Sequencing
+
+1. Define and encode the daily-driver approval matrix first so later tool
+   wiring has one policy target: low-friction reads/drafts/scratch work,
+   approval for external or irreversible state changes, override for sensitive
+   declassification or generic automation, and denial for silent destructive or
+   credential-exfiltrating flows.
+2. Define the curated daily-driver tool catalog and readiness diagnostics so
+   policy defaults are tied to explicitly admitted tools rather than whatever
+   generic MCP/browser/desktop automation happens to be installed.
+3. Add workflow-first setup for self identities, trusted recipients, trusted
+   work domains, and calendar identities so placeholder approval patterns are
+   replaced by explicit user configuration.
+4. Wire browser and screen/current-window context through read/navigate versus
+   interact/script/file capabilities, with form submission, upload/download,
+   account mutation, purchase, and script injection gated.
+5. Make messaging and calendar defaults draft-first and readiness-aware,
+   including consistent OAuth scope checks for calendar mutation tools.
+6. Add staged filesystem and office-document mutation plans so file
+   organization, batch edits, document edits, and exports are previewable before
+   risky writes.
+7. Standardize approval UX across clients so users see action, target, tool,
+   capability, labels, destination, state-changing effects, and the preview or
+   payload needed to make an informed decision.
+8. Set retention/redaction defaults so audit remains replayable without
+   retaining raw sensitive email, document, clipboard, screen, browser, media
+   prompt, or secret payloads unless the user explicitly saves an artifact.
+9. Finish with docs, diagnostics, and regression fixtures that prove normal
+   workflows are useful and high-risk workflows still stop at the daemon-owned
+   policy boundary.
 
 ## v0.50.0 — Security assurance and flow-pattern proof
 

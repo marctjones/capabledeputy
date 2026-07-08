@@ -145,6 +145,7 @@ not live in the daemon or client surfaces:
 ```bash
 capdep-setup list
 capdep-setup assistant-surface --apply
+capdep-setup daily-driver --self you@example.com --trusted-draft assistant@example.com
 capdep-setup google-cloud --project PROJECT_ID --services gmail,drive,calendar
 capdep-setup google-workspace --services gmail,drive,calendar
 capdep-setup images
@@ -167,6 +168,13 @@ runtime status, and user workflows. Standard setup tests use temp homes, fake
 caches, and fake subprocess runners so they do not mutate the developer's real
 `~/.config/capabledeputy`, `.venv-images`, Hugging Face cache, launchd state,
 daemon sockets, keychain, or model cache.
+
+`capdep-setup daily-driver` is the v0.51 policy-readiness entry point. It
+checks the curated daily-driver tool catalog, reports available, degraded,
+missing, and intentionally disabled tools, and can generate exact self/trusted
+relationship groups plus draft approval patterns. It does not enable direct
+sends, generic browser scripting, generic desktop automation, or broad shell
+authority.
 
 Google account setup is preset-first in CapDepMac: users choose Gmail,
 Gmail + Calendar, or Gmail + Calendar + Drive, while the daemon keeps the

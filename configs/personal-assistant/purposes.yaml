@@ -53,6 +53,14 @@ purposes:
         pattern: "*"
       - kind: MACOS_NOTIFICATION
         pattern: "*"
+      - kind: BROWSER_READ
+        pattern: "https://*"
+      - kind: BROWSER_NAVIGATE
+        pattern: "https://*"
+      - kind: BROWSER_INTERACT
+        pattern: "https://*"
+      - kind: BROWSER_FILE
+        pattern: "https://*"
       - kind: GENERATE_IMAGE
         pattern: "*"
       - kind: FETCH_IMAGE
@@ -151,6 +159,14 @@ purposes:
       - kind: POWERPOINT_EXPORT
         pattern: "*"
       - kind: WEB_FETCH
+        pattern: "https://*"
+      - kind: BROWSER_READ
+        pattern: "https://*"
+      - kind: BROWSER_NAVIGATE
+        pattern: "https://*"
+      - kind: BROWSER_INTERACT
+        pattern: "https://*"
+      - kind: BROWSER_FILE
         pattern: "https://*"
 
   - purpose_id: research

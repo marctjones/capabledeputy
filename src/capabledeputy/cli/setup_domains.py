@@ -30,6 +30,14 @@ from capabledeputy.cli._managed_config import (
     user_default_daemon_config_path,
     write_managed_block,
 )
+from capabledeputy.daily_driver import (
+    approval_patterns_yaml,
+    evaluate_tool_readiness,
+    policy_contract_json,
+    readiness_summary,
+    relationship_groups_yaml,
+    write_daily_driver_identity_files,
+)
 from capabledeputy.model_assets import (
     model_asset_home,
     model_asset_inventory,
@@ -209,6 +217,92 @@ def setup_google_workspace_register(
         changed=changed,
         paths=_path_map(daemon_config=config_path),
         details={"mode": mode, "services": detail_services},
+    )
+
+
+def _split_csv(value: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def setup_daily_driver(
+    *,
+    apply: bool = False,
+    config_path: Path | None = None,
+    output_dir: Path | None = None,
+    self_addresses: str = "",
+    trusted_draft_recipients: str = "",
+    family_recipients: str = "",
+    work_recipients: str = "",
+) -> SetupDomainResult:
+    """Plan or apply daily-driver identity/readiness setup.
+
+    The dry-run path is intentionally useful: it reports tool readiness and
+    shows the exact files that would be written. Apply writes only the chosen
+    output directory; it does not mutate OAuth tokens, macOS TCC, or live daemon
+    state.
+    """
+
+    config_path = config_path or user_default_daemon_config_path()
+    output_dir = output_dir or config_path.parent
+    readiness = evaluate_tool_readiness(config_path)
+    summary = readiness_summary(readiness)
+    self_ids = _split_csv(self_addresses)
+    trusted_ids = _split_csv(trusted_draft_recipients)
+    family_ids = _split_csv(family_recipients)
+    work_ids = _split_csv(work_recipients)
+    rendered_relationships = relationship_groups_yaml(
+        self_addresses=self_ids,
+        trusted_draft_recipients=trusted_ids,
+        family_recipients=family_ids,
+        work_recipients=work_ids,
+    )
+    rendered_patterns = approval_patterns_yaml(
+        self_addresses=self_ids,
+        trusted_draft_recipients=trusted_ids,
+    )
+    paths = _path_map(
+        daemon_config=config_path,
+        output_dir=output_dir,
+        relationship_groups=output_dir / "relationship_groups.yaml",
+        approval_patterns=output_dir / "approval-patterns.yaml",
+    )
+    written: tuple[Path, Path] | tuple[()] = ()
+    if apply:
+        written = write_daily_driver_identity_files(
+            directory=output_dir,
+            self_addresses=self_ids,
+            trusted_draft_recipients=trusted_ids,
+            family_recipients=family_ids,
+            work_recipients=work_ids,
+        )
+    return SetupDomainResult(
+        domain="daily-driver",
+        apply=apply,
+        status="configured" if apply else "dry_run",
+        summary=(
+            "Wrote daily-driver relationship and approval-pattern config."
+            if apply
+            else "Would inspect daily-driver tool readiness and write relationship/approval config."
+        ),
+        actions=(
+            "inspect curated daily-driver tool catalog readiness",
+            "generate self/trusted relationship groups from explicit operator input",
+            "generate exact-address draft approval patterns",
+            "report default policy and retention contract",
+        ),
+        changed=apply,
+        paths=paths,
+        details={
+            "readiness": summary,
+            "tools": [item.as_dict() for item in readiness],
+            "policy_contract": policy_contract_json(),
+            "relationship_groups_yaml": rendered_relationships,
+            "approval_patterns_yaml": rendered_patterns,
+            "written_paths": [str(path) for path in written],
+            "mutates_oauth": False,
+            "mutates_tcc": False,
+            "starts_daemon": False,
+        },
     )
 
 

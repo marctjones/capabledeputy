@@ -34,9 +34,22 @@ mkdir -p ~/.config/capabledeputy
 cp configs/personal-assistant/*.yaml ~/.config/capabledeputy/
 ```
 
-Edit paths in `source_bindings.yaml` and addresses in
-`relationship_groups.yaml` / `approval-patterns.yaml` before relying on the
-low-friction draft paths. The defaults are macOS-first:
+Use the daily-driver setup helper to inspect tool readiness and generate exact
+self/trusted recipient config without hand-editing placeholders:
+
+```bash
+capdep-setup daily-driver \
+  --self you@example.com \
+  --trusted-draft assistant@example.com
+```
+
+Add `--apply` to write `relationship_groups.yaml` and
+`approval-patterns.yaml` into the selected config directory. The command is a
+dry run by default and reports unavailable, degraded, and intentionally disabled
+tools.
+
+Edit paths in `source_bindings.yaml` before relying on low-friction local file
+paths. The defaults are macOS-first:
 `/Users/*/Documents`, `/Users/*/Desktop`, `/Users/*/Documents/GitHub`, and
 `/Users/*/notes`.
 
@@ -53,6 +66,11 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
 - **Read** your local files under `~/Documents`, `~/Desktop`, `~/Documents/GitHub`, `~/notes`
 - **Write** to `~/notes/scratch/**` without approval
 - **Search the web** and read fetched content (labeled untrusted, naturally chokes egress)
+- **Use browser context** through curated browser read/navigation/interaction/file
+  capabilities. Browser scripting remains override-gated and is not granted by
+  the default purposes.
+- **Use screen/current-window context** only as a labeled read-only source; it
+  does not grant click/type/screen-control authority.
 - **Read Gmail / Drive / Calendar / Chat / People** after native `capdep oauth login` for the Workspace servers you enable
 - **Read and draft in Apple Mail / Gmail**; direct send is disabled by default.
   Self/trusted-recipient drafts can stay low-friction once relationship groups
@@ -74,7 +92,24 @@ Same effect; doesn't pollute your `~/.config/capabledeputy/`.
 - **Irreversible file ops** (delete, modify-in-place on protected paths) without approval
 - **Direct email send** unless you deliberately enable a `SEND_EMAIL` server/config
 - **Silent first-use AppleScript writes/clipboard access**; the Starlark layer requires approval before the first active local automation in a session
+- **Generic browser scripting / generic screen control** without an override and
+  explicit curated admission
 - **Anything `prohibited` tier** without an explicit override (the override flow is single-authorized — that's you)
+
+## Default daily-driver approval posture
+
+| Default | Examples |
+|---|---|
+| No approval | allowed-root reads, summaries, web research, scratch/draft writes, image generation, git read, notifications |
+| Warn | broad scans, first surprising read-only context sources, clipboard/screen context reads |
+| Require approval | direct sends, calendar mutation, browser form submit/upload/download/account change, clipboard write, office edit/export, writes outside scratch, purchases, sandbox/devbox with real side effects |
+| Override required | sensitive declassification, financial/health/confidential egress to non-trusted destinations, generic browser scripting, generic AppleScript/VBA/macros/shell, unclassified MCP tools |
+| Deny | credential exfiltration, silent destructive mutation, arbitrary shell outside sandbox, model-sidecar authorization/declassification |
+
+Audit logs retain policy metadata, labels, targets, hashes, and redacted
+previews by default. Raw email bodies, document text, clipboard text,
+screen/browser content, generated media prompts, and secrets should remain
+transient unless you explicitly save them as a draft or artifact.
 
 ## Customizing
 
