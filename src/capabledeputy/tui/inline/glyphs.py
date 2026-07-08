@@ -33,6 +33,7 @@ STYLE_GUTTER = "dim"
 
 _DECISION_GLYPH: dict[Decision, str] = {
     Decision.ALLOW: GLYPH_ALLOW,
+    Decision.WARN: GLYPH_WARN,
     Decision.REQUIRE_APPROVAL: GLYPH_APPROVE,
     Decision.OVERRIDE_REQUIRED: GLYPH_OVERRIDE,
     Decision.DENY: GLYPH_DENY,
@@ -40,6 +41,7 @@ _DECISION_GLYPH: dict[Decision, str] = {
 
 _DECISION_STYLE: dict[Decision, str] = {
     Decision.ALLOW: STYLE_ALLOW,
+    Decision.WARN: STYLE_WARN,
     Decision.REQUIRE_APPROVAL: STYLE_APPROVE,
     Decision.OVERRIDE_REQUIRED: STYLE_OVERRIDE,
     Decision.DENY: STYLE_DENY,

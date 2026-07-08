@@ -6,12 +6,19 @@ breaking changes).
 
 ## [Unreleased]
 
-### Roadmap
+### Security assurance and flow-pattern proof
 
-- Opened `20 Product — v0.50.0 — Security assurance and flow-pattern proof`
-  with issues #264-#270 for reference-monitor totality, flow-pattern
-  composition tests, label/source coverage, real-substrate contract tests,
-  audited WARN/advisory outcomes, and model-sidecar authority boundaries.
+- Implemented `20 Product — v0.50.0 — Security assurance and flow-pattern
+  proof` with a side-effect-free assurance inventory covering
+  reference-monitor totality, flow-pattern composition, label/source coverage,
+  fake/dry-run substrate contracts, advisory warnings, and model-sidecar
+  authority boundaries.
+- Added audited `Decision.WARN` support as a non-blocking advisory outcome that
+  renders in client warning styles and cannot weaken `DENY`,
+  `OVERRIDE_REQUIRED`, or `REQUIRE_APPROVAL`.
+- Added tests for policy-before-dispatch ordering, native tool policy metadata,
+  model-sidecar non-authority, declassification scope, and WARN dispatch/audit
+  behavior.
 
 ### Measured model runtime and retrieval quality
 

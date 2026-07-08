@@ -24,6 +24,7 @@ SPEAKER_GLYPH = "●"
 
 DECISION_STYLE: dict[str, str] = {
     "allow": STYLE_ALLOW,
+    "warn": STYLE_WARNING,
     "deny": STYLE_DENY,
     "require_approval": STYLE_APPROVAL,
     "override_required": STYLE_OVERRIDE,
@@ -31,6 +32,7 @@ DECISION_STYLE: dict[str, str] = {
 
 RICH_DECISION_STYLE: dict[Decision, str] = {
     Decision.ALLOW: STYLE_ALLOW,
+    Decision.WARN: STYLE_WARNING,
     Decision.DENY: STYLE_DENY,
     Decision.REQUIRE_APPROVAL: STYLE_APPROVAL,
     Decision.OVERRIDE_REQUIRED: STYLE_OVERRIDE,

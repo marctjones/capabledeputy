@@ -25,8 +25,8 @@ from capabledeputy.presentation import (
     render_labels,
 )
 
-_GLYPH = {"allow": "✓", "deny": "✗", "require_approval": "⚠"}
-_COLOR = {"allow": "green", "deny": "red", "require_approval": "yellow"}
+_GLYPH = {"allow": "✓", "warn": "⚑", "deny": "✗", "require_approval": "⚠"}
+_COLOR = {"allow": "green", "warn": "yellow", "deny": "red", "require_approval": "yellow"}
 
 
 def outcome_line(o: dict[str, Any]) -> str:
@@ -91,7 +91,7 @@ def format_turn(result: dict[str, Any]) -> list[str | RenderableType]:
             hint = DENY_RECOVERY.get(o.get("rule") or "")
             if hint:
                 lines.append(f"    [cyan]↳ recover:[/cyan] [dim]{hint}[/dim]")
-        elif o.get("decision") == "require_approval" and o.get("reason"):
+        elif o.get("decision") in {"warn", "require_approval"} and o.get("reason"):
             lines.append(f"    [dim]{o['reason']}[/dim]")
     return lines
 

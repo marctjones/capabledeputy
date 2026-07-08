@@ -21,6 +21,7 @@ from capabledeputy.policy.pipeline import DecisionFrame, DecisionRequest
 from capabledeputy.policy.relationships import RelationshipGroup, RelationshipGroups
 from capabledeputy.policy.rules import Decision
 from capabledeputy.session.graph import SessionGraph
+from capabledeputy.substrate.decision_inspector_port import DecisionTighten
 from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
 from capabledeputy.tools.registry import (
@@ -91,6 +92,17 @@ class _AllowingPipeline:
         )
 
 
+class _WarnInspector:
+    name = "warner"
+
+    def inspect(self, *, action, session, proposed_outcome):
+        return DecisionTighten(
+            to=Decision.WARN,
+            rule="heads-up",
+            rationale="non-blocking warning",
+        )
+
+
 async def test_allow_dispatches_and_returns_output(writer: AuditWriter) -> None:
     registry, graph, client = await _make_setup(writer)
     registry.register(
@@ -127,6 +139,41 @@ async def test_allow_dispatches_and_returns_output(writer: AuditWriter) -> None:
     outcome = await client.call_tool(s.id, "fs.read", {"path": "/home/marc/n.md"})
     assert outcome.decision == Decision.ALLOW
     assert outcome.output == {"received": {"path": "/home/marc/n.md"}}
+
+
+async def test_warn_dispatches_and_emits_advisory_audit(writer: AuditWriter) -> None:
+    registry = ToolRegistry()
+    graph = SessionGraph(audit=writer)
+    client = LabeledToolClient(
+        registry,
+        graph,
+        writer,
+        policy_context=PolicyContext(decision_inspectors=(_WarnInspector(),)),
+    )
+    registry.register(
+        ToolDefinition(
+            name="fs.read",
+            description="t",
+            capability_kind=CapabilityKind.READ_FS,
+            handler=_ok_handler,
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
+            target_arg="path",
+        ),
+    )
+    s = await graph.new()
+    await graph.grant_capability(s.id, Capability(kind=CapabilityKind.READ_FS, pattern="*"))
+
+    outcome = await client.call_tool(s.id, "fs.read", {"path": "/home/marc/n.md"})
+
+    assert outcome.decision == Decision.WARN
+    assert outcome.output == {"received": {"path": "/home/marc/n.md"}}
+    events = await writer.read_all()
+    event_types = [event.event_type for event in events]
+    assert EventType.POLICY_WARNED in event_types
+    assert event_types.index(EventType.POLICY_WARNED) < event_types.index(
+        EventType.TOOL_DISPATCHED,
+    )
 
 
 async def test_dispatch_uses_injected_policy_pipeline(writer: AuditWriter) -> None:

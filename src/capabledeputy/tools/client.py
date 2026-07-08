@@ -300,7 +300,7 @@ class LabeledToolClient:
         action: Action,
         decision: PolicyDecision,
     ) -> None:
-        if decision.decision != Decision.ALLOW:
+        if decision.decision not in {Decision.ALLOW, Decision.WARN}:
             return
         if action.kind in _EGRESS_LIKE_KINDS:
             return
@@ -423,7 +423,7 @@ class LabeledToolClient:
             policy_decision,
         )
 
-        if policy_decision.decision == Decision.ALLOW:
+        if policy_decision.decision in {Decision.ALLOW, Decision.WARN}:
             source_floor = self._source_flow.restricted_source_floor_decision(
                 tool=tool,
                 source_tags=source_tags,
@@ -444,7 +444,7 @@ class LabeledToolClient:
         )
         await self._emit_capability_checked(session_id, action, policy_decision)
 
-        if policy_decision.decision != Decision.ALLOW:
+        if policy_decision.decision not in {Decision.ALLOW, Decision.WARN}:
             approval_submission: dict[str, Any] | None = None
             approval_id: int | None = None
             if (
@@ -587,10 +587,7 @@ class LabeledToolClient:
                 raise
             return ToolCallOutcome(
                 decision=Decision.ALLOW,
-                error=(
-                    "UpstreamCallFailed: upstream request cancelled "
-                    "(remote error?)"
-                ),
+                error=("UpstreamCallFailed: upstream request cancelled (remote error?)"),
                 rule=None,
                 tool_name=tool_name,
                 tool_args=args,
@@ -744,7 +741,7 @@ class LabeledToolClient:
             )
 
         return ToolCallOutcome(
-            decision=Decision.ALLOW,
+            decision=policy_decision.decision,
             output=result.output,
             tags_added=tags_added,
             tool_name=tool_name,
@@ -955,6 +952,20 @@ class LabeledToolClient:
                 payload=build_policy_decided_payload(tool_name, args, decision),
             ),
         )
+        if decision.decision is Decision.WARN:
+            await self._audit.write(
+                Event(
+                    event_type=EventType.POLICY_WARNED,
+                    session_id=session_id,
+                    payload={
+                        "tool": tool_name,
+                        "args": args,
+                        "rule": decision.rule,
+                        "reason": decision.reason,
+                        "non_blocking": True,
+                    },
+                ),
+            )
         if decision.refused_relax_inputs:
             await self._audit.write(
                 Event(
@@ -973,7 +984,7 @@ class LabeledToolClient:
         if (
             self._policy_context is not None
             and self._policy_context.residual_risk_thresholds is not None
-            and decision.decision is Decision.ALLOW
+            and decision.decision in {Decision.ALLOW, Decision.WARN}
         ):
             decision_risk_ids: list[str] = []
             if decision.matched_capability is not None:

@@ -7,8 +7,8 @@ maps this roadmap onto GitHub issues and dependencies. The older
 historical backlog snapshots, not the current roadmap.
 
 **Last refreshed:** 2026-07-08 — v0.48.0 is the current stable release.
-v0.49.0 is implemented on `main`; v0.50.0 is the next tracked milestone:
-security assurance and flow-pattern proof. v1.0 remains unscheduled.
+v0.49.0 is implemented on `main`; v0.50.0 is complete locally pending tracker
+closeout. v1.0 remains unscheduled.
 
 ## Product Ladder — v0.35 → v0.50
 
@@ -58,7 +58,7 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
-| **20 Product — v0.50.0 — Security assurance and flow-pattern proof** | #264–#270 | Open: next implementation milestone. Harden CapDep around reference-monitor totality, flow-pattern composition tests, label/source coverage, real-substrate contract tests, audited WARN/advisory outcomes, and model-sidecar authority boundaries. |
+| **20 Product — v0.50.0 — Security assurance and flow-pattern proof** | #264–#270 | Complete locally: reference-monitor totality inventory/tests, flow-pattern composition proof inventory, label/source coverage fixtures, fake/dry-run substrate contracts, audited WARN/advisory outcomes, and model-sidecar authority-boundary checks are implemented. |
 | **19 Product — v0.49.0 — Measured local model runtime and retrieval quality** | #257–#263 | Complete locally: model-quality planning, explicit reranker runtime status, deterministic retrieval fixtures, role benchmark cases, advisory guard annotations, setup/client measured-quality summaries, default-promotion gates, and release docs/tests are implemented. Runtime defaults remain candidate-only until benchmark evidence satisfies the gates. |
 | **18 Product — v0.48.0 — Native MLX model asset pipeline** | #249–#256 | Closed/released: model asset inventory, conversion-aware `capdep-setup models`, provenance manifests, explicit unsupported fallback handling, image readiness metadata, model experiment evidence, and docs are implemented; benchmark evidence remains required before runtime defaults change. |
 | **17 Product — v0.47.0 — Native office automation skills** | #241–#248 | Closed/released: bounded SKILL.md workflows, Microsoft Outlook/Word/PowerPoint adapters, office capability/label/approval mappings, setup diagnostics, config wiring, and fake-runner tests are implemented without exposing arbitrary AppleScript, VBA, macros, shell, or UI scripting. |

@@ -103,6 +103,7 @@ def test_event_type_taxonomy_matches_design() -> None:
         "decision.latency_degraded",
         "mode.selected",
         "policy.decided",
+        "policy.warned",
         "label.propagated",
         "capability.checked",
         "capability.granted",

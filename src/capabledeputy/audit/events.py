@@ -66,6 +66,7 @@ class EventType(StrEnum):
 
     MODE_SELECTED = "mode.selected"
     POLICY_DECIDED = "policy.decided"
+    POLICY_WARNED = "policy.warned"
     PURPOSE_CONTAMINATION_SUSPECTED = "purpose.contamination_suspected"
     # Cookbook Pattern ⑥ — session in SHADOW enforcement mode and the
     # engine returned a non-ALLOW outcome. The dispatcher rewrites to

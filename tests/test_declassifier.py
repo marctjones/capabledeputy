@@ -219,6 +219,30 @@ def test_chain_all_abstain_returns_input_unchanged() -> None:
     assert applied == []
 
 
+def test_declassification_is_scoped_to_current_result_not_session() -> None:
+    """A declassifier can lower the current result, not clear prior session taint."""
+
+    session_labels = LabelState(
+        a=frozenset({CategoryTag("health", Tier.REGULATED)}),
+        b=frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}),
+    )
+    projector = SchemaProjector(
+        allowed_keys=("safe",),
+        lower_axis_b_level=ProvenanceLevel.PRINCIPAL_DIRECT.value,
+    )
+
+    final, applied = apply_declassifier_chain(
+        cast(tuple[DeclassifyingTransformer, ...], (projector,)),
+        value={"safe": "projected", "raw": "drop"},
+        current_label_state=session_labels,
+    )
+
+    assert final == {"safe": "projected"}
+    assert applied
+    assert session_labels.a == frozenset({CategoryTag("health", Tier.REGULATED)})
+    assert session_labels.b == frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+
+
 def test_chain_sequential_application() -> None:
     """Two redactors in a row: first redacts SSN, second redacts emails.
 

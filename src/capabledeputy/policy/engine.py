@@ -209,7 +209,8 @@ _LEGACY_RANK: dict[Decision, int] = {
     # wins over REQUIRE_APPROVAL and ALLOW.
     Decision.OVERRIDE_REQUIRED: 1,
     Decision.REQUIRE_APPROVAL: 2,
-    Decision.ALLOW: 3,
+    Decision.WARN: 3,
+    Decision.ALLOW: 4,
 }
 
 # V2 RuleOutcome → legacy Decision mapping. SUGGEST collapses to
@@ -640,7 +641,7 @@ def _synthesize_recovery_steps(
     `policy.preview` so the agent quotes verbatim instead of inventing
     commands.
     """
-    if decision is Decision.ALLOW:
+    if decision in {Decision.ALLOW, Decision.WARN}:
         return ()
 
     kind = kind_name(action.kind) if action.kind else "READ_FS"

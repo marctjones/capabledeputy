@@ -62,7 +62,7 @@ class ToolPolicyHooks:
         mode = getattr(session, "enforcement_mode", EnforcementMode.STRICT)
         if mode != EnforcementMode.SHADOW:
             return proposed
-        if proposed.decision == Decision.ALLOW:
+        if proposed.decision in {Decision.ALLOW, Decision.WARN}:
             return proposed
         if not proposed.rule or "no matching capability" in (proposed.reason or "").lower():
             return proposed
@@ -179,6 +179,24 @@ class ToolPolicyHooks:
                         "reason": (
                             "inspector relax may not cross a structural floor "
                             "(only REQUIRE_APPROVAL is relaxable)"
+                        ),
+                    },
+                ),
+            )
+            return proposed
+        if new_decision == Decision.WARN and proposed.decision != Decision.ALLOW:
+            await self._audit.write(
+                Event(
+                    event_type=EventType.RELAXATION_REFUSED,
+                    session_id=session_id,
+                    payload={
+                        "tool": tool_name,
+                        "refused_rule": rule_with_origin,
+                        "base_decision": proposed.decision.value,
+                        "attempted_decision": new_decision.value,
+                        "reason": (
+                            "WARN is non-blocking only after an ALLOW base decision; "
+                            "it may not weaken approval or hard floors"
                         ),
                     },
                 ),

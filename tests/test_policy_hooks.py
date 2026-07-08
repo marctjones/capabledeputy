@@ -20,7 +20,7 @@ from capabledeputy.policy.rules import Decision
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.session.model import EnforcementMode, Session
-from capabledeputy.substrate.decision_inspector_port import DecisionRelax
+from capabledeputy.substrate.decision_inspector_port import DecisionRelax, DecisionTighten
 from capabledeputy.substrate.declassifier_port import DeclassifyResult
 from capabledeputy.substrate.inspector_port import InspectorRaiseResult
 from capabledeputy.tools.policy_hooks import ToolPolicyHooks
@@ -31,6 +31,28 @@ class _RelaxInspector:
 
     def inspect(self, *, action, session, proposed_outcome):
         return DecisionRelax(to=Decision.ALLOW, rule="operator-ok", rationale="ok")
+
+
+class _WarnInspector:
+    name = "warner"
+
+    def inspect(self, *, action, session, proposed_outcome):
+        return DecisionTighten(
+            to=Decision.WARN,
+            rule="operator-heads-up",
+            rationale="visible but non-blocking",
+        )
+
+
+class _WarnRelaxInspector:
+    name = "warn-relaxer"
+
+    def inspect(self, *, action, session, proposed_outcome):
+        return DecisionRelax(
+            to=Decision.WARN,
+            rule="bad-relax",
+            rationale="should not weaken approval",
+        )
 
 
 class _SchemaDeclassifier:
@@ -103,6 +125,51 @@ async def test_decision_inspector_relaxes_require_approval(tmp_path) -> None:
     assert adjusted.rule == "relaxer:operator-ok"
     events = await audit.read_all()
     assert events[0].event_type == EventType.DECISION_INSPECTOR_APPLIED
+
+
+async def test_decision_inspector_warns_after_allow(tmp_path) -> None:
+    audit = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(audit=audit)
+    hooks = ToolPolicyHooks(
+        policy_context=PolicyContext(decision_inspectors=(_WarnInspector(),)),
+        audit=audit,
+        graph=graph,
+    )
+
+    adjusted = await hooks.apply_decision_inspectors(
+        uuid4(),
+        Session.new(),
+        Action(kind=CapabilityKind.READ_FS, target="/tmp/note.txt"),
+        "fs.read",
+        PolicyDecision(decision=Decision.ALLOW, rule="base"),
+    )
+
+    assert adjusted.decision == Decision.WARN
+    assert adjusted.rule == "warner:operator-heads-up"
+    events = await audit.read_all()
+    assert events[0].event_type == EventType.DECISION_INSPECTOR_APPLIED
+
+
+async def test_decision_inspector_cannot_warn_to_weaken_approval(tmp_path) -> None:
+    audit = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(audit=audit)
+    hooks = ToolPolicyHooks(
+        policy_context=PolicyContext(decision_inspectors=(_WarnRelaxInspector(),)),
+        audit=audit,
+        graph=graph,
+    )
+
+    adjusted = await hooks.apply_decision_inspectors(
+        uuid4(),
+        Session.new(),
+        Action(kind=CapabilityKind.SEND_EMAIL, target="x@example.com"),
+        "email.send",
+        PolicyDecision(decision=Decision.REQUIRE_APPROVAL, rule="base"),
+    )
+
+    assert adjusted.decision == Decision.REQUIRE_APPROVAL
+    events = await audit.read_all()
+    assert events[0].event_type == EventType.RELAXATION_REFUSED
 
 
 async def test_decision_inspector_relationship_groups_resolve_embedded_target_email(

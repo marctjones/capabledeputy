@@ -3,8 +3,8 @@
 Living plan that organizes the open GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
 rationale*. Last refreshed 2026-07-08 — **v0.48.0** is the current stable
-release. **v0.49.0** is implemented on `main`, and **v0.50.0** is the next
-tracked milestone for security assurance and flow-pattern proof.
+release. **v0.49.0** is implemented on `main`, and **v0.50.0** is complete
+locally pending tracker closeout.
 
 Recently completed stable release: **v0.48.0**.
 
@@ -15,10 +15,11 @@ and sandboxed execution** · **15 Product — v0.45.0 — Dead-simple Google acc
 connection** · **16 Product — v0.46.0 — Consolidated setup automation** ·
 **17 Product — v0.47.0 — Native office automation skills** · **18 Product —
 v0.48.0 — Native MLX model asset pipeline** · **19 Product — v0.49.0 —
-Measured local model runtime and retrieval quality**.
+Measured local model runtime and retrieval quality** · **20 Product — v0.50.0 —
+Security assurance and flow-pattern proof**.
 
-Next implementation milestone: **20 Product — v0.50.0 — Security assurance and
-flow-pattern proof** (#264-#270).
+Next implementation milestone: none currently opened. v1.0 remains
+unscheduled.
 
 Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
 reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical
@@ -45,11 +46,12 @@ v0.17 — Gap hardening and explainability**.
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **v0.50 security assurance and flow-pattern proof** — newly opened to make
-   CapDep more provable, less fragile, and less noisy without broadening model
-   authority: reference-monitor totality, flow-pattern composition tests,
-   label/source coverage, real-substrate contract tests, audited WARN tier, and
-   model-sidecar authority boundaries (#264-#270).
+1. **v0.50 security assurance and flow-pattern proof** — implemented locally to
+   make CapDep more provable, less fragile, and less noisy without broadening
+   model authority: reference-monitor totality inventory/tests, flow-pattern
+   composition proof inventory, label/source coverage fixtures, real-substrate
+   contract definitions, audited WARN tier, and model-sidecar authority
+   boundaries (#264-#270).
 2. **v0.49 measured local model runtime and retrieval quality** — implemented
    model-quality planning, explicit reranker support, reproducible role
    benchmarks, retrieval-quality fixtures, advisory guard annotations,
@@ -213,7 +215,8 @@ become independent credential or capability authorities.
 
 ## v0.50.0 — Security assurance and flow-pattern proof
 
-Open. v0.50 is a hardening milestone, not a capability-expansion milestone.
+Complete locally. v0.50 is a hardening milestone, not a
+capability-expansion milestone.
 The goal is to make CapDep more provable, less fragile, and less noisy while
 staying true to the project purpose: controlled authority, controlled
 information flow, human oversight, reversibility, and replayable audit.
@@ -222,34 +225,35 @@ information flow, human oversight, reversibility, and replayable audit.
 
 | Issue | Work | Status |
 |---|---|---|
-| #264 | EPIC: security assurance and flow-pattern proof | Open |
-| #266 | Add reference-monitor totality checks | Open |
-| #265 | Add flow-pattern composition tests | Open |
-| #267 | Harden label coverage and source bindings | Open |
-| #268 | Add real-substrate contract tests | Open |
-| #270 | Add audited WARN advisory tier | Open |
-| #269 | Prove model-sidecar authority boundaries | Open |
+| #264 | EPIC: security assurance and flow-pattern proof | Complete locally |
+| #266 | Add reference-monitor totality checks | Complete locally |
+| #265 | Add flow-pattern composition tests | Complete locally |
+| #267 | Harden label coverage and source bindings | Complete locally |
+| #268 | Add real-substrate contract tests | Complete locally |
+| #270 | Add audited WARN advisory tier | Complete locally |
+| #269 | Prove model-sidecar authority boundaries | Complete locally |
 
 ### Sequencing
 
-1. Inventory effectful entry points and add reference-monitor totality tests
-   first (#266), because every later proof depends on knowing effects route
-   through the deterministic chokepoint.
-2. Add flow-pattern composition tests (#265) for chained/parallel
-   declassification, shared Brewer-Nash state, sandbox label retention,
-   reference-handle secrecy, and integrity-critical ordering.
-3. Expand label/source coverage (#267) with conservative source defaults,
-   raise-only rules, and explicit negative tests for unlabeled sensitive data.
-4. Add real-substrate contract tests (#268) using fake/dry-run providers by
-   default and opt-in non-destructive live smoke where useful.
-5. Add the audited WARN/advisory tier (#270) only after the hard floors are
-   well covered, so WARN can reduce approval fatigue without weakening DENY,
-   OVERRIDE_REQUIRED, or REQUIRE_APPROVAL outcomes.
-6. Prove model-sidecar boundaries (#269) across reranking, guard annotations,
-   model-quality plans, image generation prompts, and future model-assisted
-   label suggestions. Model outputs may rank, annotate, summarize, or suggest;
-   they must not authorize, declassify outside certified paths, or weaken
-   policy.
+1. `src/capabledeputy/security_assurance.py` inventories the assurance tracks
+   and evidence hooks for reference-monitor totality, flow-pattern composition,
+   source coverage, real-substrate contracts, WARN advisories, and model
+   sidecar boundaries.
+2. `tests/test_reference_monitor_totality.py` verifies native tool registry
+   policy metadata and asserts policy decisions are audited before tool
+   dispatch for an effectful native path.
+3. `tests/test_security_assurance.py` captures flow-pattern failure modes,
+   source coverage expectations, fake/dry-run substrate contracts, and sidecar
+   boundary invariants as executable inventory checks.
+4. `tests/test_model_sidecar_boundaries.py` proves guard annotations, reranker
+   status, and promotion gates remain advisory/candidate-only and cannot
+   authorize, declassify, or weaken policy floors.
+5. `Decision.WARN` is an audited non-blocking advisory outcome. It proceeds
+   like `ALLOW` after deterministic policy/capability checks, emits
+   `policy.warned`, renders in CLI/TUI warning styles, and cannot be used by
+   inspectors to weaken `DENY`, `OVERRIDE_REQUIRED`, or `REQUIRE_APPROVAL`.
+6. Declassification remains scoped to the current result projection rather than
+   mutating session labels, covered by the added declassifier regression test.
 
 ## v0.49.0 — Measured local model runtime and retrieval quality
 

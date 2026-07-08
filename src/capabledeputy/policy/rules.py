@@ -10,6 +10,12 @@ from enum import StrEnum
 
 class Decision(StrEnum):
     ALLOW = "allow"
+    # v0.50 — non-blocking advisory. WARN proceeds like ALLOW after the
+    # ordinary capability/policy checks have allowed the action, but it is
+    # surfaced and audited so the operator sees the caution without approval
+    # fatigue. It must never weaken DENY / OVERRIDE_REQUIRED /
+    # REQUIRE_APPROVAL floors.
+    WARN = "warn"
     DENY = "deny"
     REQUIRE_APPROVAL = "require_approval"
     # 003 US6 T079 — distinct outcome for crossing a hard floor.

@@ -67,9 +67,10 @@ class DecisionTighten:
 # Lookup-based; explicit so engine code doesn't depend on enum order.
 _RESTRICTIVENESS: dict[Decision, int] = {
     Decision.ALLOW: 0,
-    Decision.REQUIRE_APPROVAL: 1,
-    Decision.OVERRIDE_REQUIRED: 2,
-    Decision.DENY: 3,
+    Decision.WARN: 1,
+    Decision.REQUIRE_APPROVAL: 2,
+    Decision.OVERRIDE_REQUIRED: 3,
+    Decision.DENY: 4,
 }
 
 

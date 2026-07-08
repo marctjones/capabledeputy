@@ -14,11 +14,13 @@ from capabledeputy.policy.rules import Decision
 def test_cli_styles_expose_semantic_decision_palette() -> None:
     assert SPEAKER_GLYPH
     assert DECISION_STYLE["allow"] == STYLE_ALLOW
+    assert DECISION_STYLE["warn"] == STYLE_WARNING
     assert DECISION_STYLE["deny"] == STYLE_DENY
     assert DECISION_STYLE["require_approval"] == STYLE_WARNING
 
 
 def test_decision_style_accepts_enum_and_string() -> None:
     assert decision_style(Decision.ALLOW) == STYLE_ALLOW
+    assert decision_style(Decision.WARN) == STYLE_WARNING
     assert decision_style("deny") == STYLE_DENY
     assert decision_style("unknown") == STYLE_WARNING
