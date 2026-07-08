@@ -517,6 +517,8 @@ BUNDLED_IMAGE_GENERATE_BLOCK_BODY = """\
       CAPDEP_IMAGE_WIDTH: "768"
       CAPDEP_IMAGE_HEIGHT: "768"
       CAPDEP_IMAGE_STEPS: "9"
+      # On Apple Silicon, auto requires MFLUX with MLX/Metal and fails
+      # closed instead of falling back to CPU/Torch/Diffusers.
       # Profiles: default, flux-nsfw, flux2-nsfw, sdxl-nsfw, pony-nsfw.
       # Flux profiles use CAPDEP_IMAGE_LORAS / CAPDEP_IMAGE_LORA_SCALES.
       # SDXL/Pony profiles use the checkpoint env overrides below.
@@ -562,6 +564,8 @@ BUNDLED_IMAGES_BLOCK_BODY = """\
       CAPDEP_IMAGE_WIDTH: "768"
       CAPDEP_IMAGE_HEIGHT: "768"
       CAPDEP_IMAGE_STEPS: "9"
+      # On Apple Silicon, auto requires MFLUX with MLX/Metal and fails
+      # closed instead of falling back to CPU/Torch/Diffusers.
       # Profiles: default, flux-nsfw, flux2-nsfw, sdxl-nsfw, pony-nsfw.
       # Flux profiles use CAPDEP_IMAGE_LORAS / CAPDEP_IMAGE_LORA_SCALES.
       # SDXL/Pony profiles use the checkpoint env overrides below.

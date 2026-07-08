@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -19,6 +23,56 @@ from capabledeputy.mcp_servers._image_pipeline import (
     image_readiness,
     load_image_gen_config,
 )
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _image_runtime_python() -> Path | None:
+    explicit = os.environ.get("CAPDEP_IMAGE_PYTHON", "").strip()
+    if explicit:
+        path = Path(explicit).expanduser()
+        return path if path.is_file() else None
+    path = _repo_root() / ".venv-images" / "bin" / "python"
+    return path if path.is_file() else None
+
+
+def _image_runtime_readiness(profile_name: str) -> dict[str, Any] | None:
+    python = _image_runtime_python()
+    if python is None:
+        return None
+    code = (
+        "import json, sys; "
+        "from capabledeputy.mcp_servers._image_pipeline import image_readiness; "
+        "print(json.dumps(image_readiness(profile_name=sys.argv[1])))"
+    )
+    try:
+        completed = subprocess.run(
+            [str(python), "-c", code, profile_name],
+            cwd=_repo_root(),
+            env=os.environ.copy(),
+            text=True,
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+    except Exception:
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        result = json.loads(completed.stdout.strip().splitlines()[-1])
+    except Exception:
+        return None
+    if isinstance(result, dict):
+        result["runtime_python"] = str(python)
+        return result
+    return None
+
+
+def _daemon_visible_image_readiness(profile_name: str) -> dict[str, Any]:
+    return _image_runtime_readiness(profile_name) or image_readiness(profile_name=profile_name)
 
 
 @dataclass(frozen=True)
@@ -255,7 +309,7 @@ def make_image_ops_handlers(app: App) -> dict[str, Handler]:
         selected = load_settings().image_profile
         return {
             "selected": selected,
-            "readiness": image_readiness(profile_name=selected),
+            "readiness": _daemon_visible_image_readiness(selected),
         }
 
     async def image_profile_set(params: dict[str, Any]) -> dict[str, Any]:
@@ -277,12 +331,12 @@ def make_image_ops_handlers(app: App) -> dict[str, Handler]:
         return {
             "selected": settings.image_profile,
             "changed": list(changed),
-            "readiness": image_readiness(profile_name=settings.image_profile),
+            "readiness": _daemon_visible_image_readiness(settings.image_profile),
         }
 
     async def image_readiness_handler(params: dict[str, Any]) -> dict[str, Any]:
         profile = str(params.get("profile") or load_settings().image_profile).strip().lower()
-        return image_readiness(profile_name=profile)
+        return _daemon_visible_image_readiness(profile)
 
     return {
         "image.profiles": image_profiles,

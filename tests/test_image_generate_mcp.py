@@ -81,6 +81,58 @@ def test_image_readiness_includes_model_asset_state(monkeypatch, tmp_path: Path)
     assert any(check["id"] == "model-asset" for check in readiness["checks"])
 
 
+def test_image_readiness_checks_mlx_metal_on_apple_silicon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "capabledeputy.mcp_servers._image_pipeline._on_apple_silicon",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "capabledeputy.mcp_servers._image_pipeline._mflux_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "capabledeputy.mcp_servers._image_pipeline._mlx_metal_status",
+        lambda: (True, "mlx.core Metal backend available"),
+    )
+
+    readiness = image_readiness(profile_name="default")
+
+    assert readiness["backend"] == "mflux"
+    mlx_metal = next(check for check in readiness["checks"] if check["id"] == "mlx-metal")
+    assert mlx_metal["status"] == "ok"
+    assert mlx_metal["detail"] == "mlx.core Metal backend available"
+
+
+def test_image_readiness_refuses_auto_diffusers_fallback_on_apple_silicon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CAPDEP_IMAGE_BACKEND", "auto")
+    monkeypatch.setattr(
+        "capabledeputy.mcp_servers._image_pipeline._on_apple_silicon",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "capabledeputy.mcp_servers._image_pipeline._mflux_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "capabledeputy.mcp_servers._image_pipeline._mlx_metal_status",
+        lambda: (True, "mlx.core Metal backend available"),
+    )
+
+    readiness = image_readiness(profile_name="default")
+
+    assert readiness["ok"] is False
+    assert readiness["backend"] == "mflux"
+    assert any(
+        check["id"] == "mlx-metal" and check["status"] == "error"
+        for check in readiness["checks"]
+    )
+    assert "requires MFLUX with MLX/Metal" in readiness["checks"][1]["detail"]
+
+
 def test_has_image_generation_intent_detects_scene_requests() -> None:
     assert has_image_generation_intent("generate a photoreal portrait of a blonde woman")
     assert has_image_generation_intent("create an explicit nsfw illustration")
@@ -481,6 +533,48 @@ def test_generate_image_mocked_pipeline(tmp_path: Path) -> None:
     payloads = image_attachment_payloads_from_outcome({"output": out})
     assert payloads and payloads[0]["path"] == out["image_path"]
     clear_pipeline_cache()
+
+
+def test_generate_image_auto_refuses_without_mflux_mlx_on_apple_silicon(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        "capabledeputy.mcp_servers._image_pipeline._on_apple_silicon",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "capabledeputy.mcp_servers._image_pipeline._mflux_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "capabledeputy.mcp_servers._image_pipeline._mlx_metal_status",
+        lambda: (True, "mlx.core Metal backend available"),
+    )
+    config = ImageGenConfig(
+        output_dir=tmp_path,
+        backend="auto",
+        default_style="photoreal",
+        model="z-image-turbo",
+        model_path=None,
+        quantize=8,
+        lora_paths=(),
+        lora_scales=(),
+        guidance=None,
+        device="mps",
+        default_width=512,
+        default_height=512,
+        default_steps=4,
+        safety_enabled=False,
+        prompt_filter_enabled=False,
+        checkpoints={},
+    )
+
+    out = generate_image(prompt="operator selected local image prompt", config=config)
+
+    assert out["ok"] is False
+    assert out["backend"] == "mflux"
+    assert "requires MFLUX with MLX/Metal" in out["error"]
 
 
 def test_generate_image_mocked_mflux_backend(tmp_path: Path) -> None:

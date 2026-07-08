@@ -61,6 +61,31 @@ async def test_image_profile_handlers_persist_and_report_readiness(
     assert app.audit.events[-1].payload["action"] == "image.profile.set"
 
 
+async def test_image_readiness_prefers_isolated_image_runtime(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setattr(
+        "capabledeputy.daemon.image_ops_handlers._image_runtime_readiness",
+        lambda profile: {
+            "ok": True,
+            "profile": profile,
+            "backend": "mflux",
+            "checks": [{"id": "mlx-metal", "status": "ok"}],
+            "runtime_python": "/repo/.venv-images/bin/python",
+        },
+    )
+    app = FakeApp()
+    handlers = make_image_ops_handlers(app)  # type: ignore[arg-type]
+
+    readiness = await handlers["image.readiness"]({"profile": "default"})
+
+    assert readiness["ok"] is True
+    assert readiness["runtime_python"].endswith(".venv-images/bin/python")
+    assert readiness["checks"] == [{"id": "mlx-metal", "status": "ok"}]
+
+
 async def test_image_job_lifecycle_emits_status_events(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

@@ -1,4 +1,4 @@
-"""Bundled MCP server: local image generation (MLX/MFLUX or SDXL fallback).
+"""Bundled MCP server: local image generation (MLX/MFLUX on Apple Silicon).
 
 Run via:
   capdep mcp-server-image-generate
@@ -56,9 +56,11 @@ def tools() -> list[ToolDescriptor]:
                 "include the returned `markdown` in your reply.\n\n"
                 "Do NOT use for Wikipedia or website photos — use wikipedia.lookup "
                 "and bundled-image-fetch.image.fetch instead.\n\n"
-                "Default Mac backend is MLX via MFLUX when available. Diffusers SDXL "
-                "remains available as a compatibility fallback. The backend, model, "
-                "quantization, LoRAs, and prompt filtering are operator configuration."
+                "Default Mac backend is MLX/Metal via MFLUX. On Apple Silicon, "
+                "the default/auto path fails closed instead of falling back to "
+                "CPU/Torch when MFLUX or MLX/Metal is unavailable. The backend, "
+                "model, quantization, LoRAs, and prompt filtering are operator "
+                "configuration."
             ),
             input_schema={
                 "type": "object",

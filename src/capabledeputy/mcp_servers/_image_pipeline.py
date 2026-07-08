@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import re
 import shutil
 import threading
@@ -315,6 +316,55 @@ def _resolve_device(requested: str | None) -> str:
     return "cpu"
 
 
+def _on_apple_silicon() -> bool:
+    return platform.system() == "Darwin" and platform.machine() == "arm64"
+
+
+def _mlx_metal_status() -> tuple[bool, str]:
+    try:
+        import mlx.core as mx  # type: ignore[import-not-found]
+    except Exception as exc:
+        return False, f"mlx.core not importable: {exc}"
+    try:
+        if not bool(mx.metal.is_available()):
+            return False, "mlx.core imported but Metal is not available"
+    except Exception as exc:
+        return False, f"mlx.core imported but Metal check failed: {exc}"
+    return True, "mlx.core Metal backend available"
+
+
+def _mflux_mlx_available() -> bool:
+    if not _mflux_available():
+        return False
+    if _on_apple_silicon():
+        available, _ = _mlx_metal_status()
+        return available
+    return True
+
+
+def _resolve_runtime_backend(config: ImageGenConfig) -> str:
+    backend = config.backend
+    if backend == "auto":
+        if _mflux_mlx_available():
+            return "mflux"
+        if _on_apple_silicon():
+            available, detail = _mlx_metal_status()
+            reason = detail if not available else "mflux not importable"
+            raise RuntimeError(
+                "image generation requires MFLUX with MLX/Metal on Apple Silicon; "
+                f"{reason}. Install/fix .venv-images with `scripts/setup-images-venv.sh`.",
+            )
+        return "diffusers"
+    if backend == "mflux" and _on_apple_silicon():
+        available, detail = _mlx_metal_status()
+        if not available:
+            raise RuntimeError(
+                "image generation requires MLX/Metal for the MFLUX backend on Apple Silicon; "
+                f"{detail}.",
+            )
+    return backend
+
+
 def available_image_profiles() -> list[dict[str, Any]]:
     """Return daemon/client-safe image profile metadata."""
     profiles: list[dict[str, Any]] = []
@@ -428,9 +478,38 @@ def image_readiness(*, profile_name: str | None = None) -> dict[str, Any]:
             ],
         }
 
-    backend = config.backend
-    if backend == "auto":
-        backend = "mflux" if _mflux_available() else "diffusers"
+    try:
+        backend = _resolve_runtime_backend(config)
+    except Exception as exc:
+        backend = "mflux" if _on_apple_silicon() else config.backend
+        checks = [
+            {
+                "id": "profile",
+                "status": "ok",
+                "detail": f"{profile_name or os.environ.get('CAPDEP_IMAGE_PROFILE') or 'default'}",
+            },
+            {
+                "id": "mlx-metal",
+                "status": "error",
+                "detail": str(exc),
+                "recovery": "Install/fix .venv-images with `scripts/setup-images-venv.sh`.",
+            },
+        ]
+        return {
+            "ok": False,
+            "profile": profile_name or os.environ.get("CAPDEP_IMAGE_PROFILE") or "default",
+            "backend": backend,
+            "model": config.model,
+            "model_path": config.model_path or _MFLUX_DEFAULT_MODEL_PATHS.get(config.model),
+            "asset_profile": _PROFILE_ASSET_IDS.get(
+                (profile_name or os.environ.get("CAPDEP_IMAGE_PROFILE") or "default")
+                .strip()
+                .lower(),
+            ),
+            "asset_readiness": None,
+            "device": config.device,
+            "checks": checks,
+        }
     checks.append(
         {
             "id": "profile",
@@ -475,6 +554,16 @@ def _backend_readiness_checks(backend: str) -> list[dict[str, Any]]:
     if backend == "mflux":
         checks.append(_module_check("mflux", "mflux", "Install image extras in .venv-images."))
         checks.append(_module_check("mlx", "mlx.core", "Install MLX/MFLUX on Apple Silicon."))
+        if _on_apple_silicon():
+            available, detail = _mlx_metal_status()
+            checks.append(
+                {
+                    "id": "mlx-metal",
+                    "status": "ok" if available else "error",
+                    "detail": detail,
+                    "recovery": "Install MLX in .venv-images and run on Apple Silicon with Metal.",
+                },
+            )
     elif backend == "diffusers":
         for module in ("torch", "diffusers", "huggingface_hub"):
             checks.append(_module_check(module, module, "Install capabledeputy[images]."))
@@ -850,9 +939,17 @@ def generate_image(
     """Generate a PNG and return structured output for inline GUI display."""
     cfg = config or load_image_gen_config()
     normalized_style = _normalize_style(style or cfg.default_style)
-    backend = cfg.backend
-    if backend == "auto":
-        backend = "mflux" if _mflux_available() else "diffusers"
+    try:
+        backend = _resolve_runtime_backend(cfg)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "backend": "mflux" if _on_apple_silicon() else cfg.backend,
+            "style": normalized_style,
+            "model": cfg.model,
+            "device": cfg.device,
+        }
 
     if backend == "diffusers" and normalized_style not in cfg.checkpoints:
         return {"ok": False, "error": f"unknown style {normalized_style!r}"}

@@ -286,8 +286,9 @@ upstream_servers:
 
   - name: bundled-image-generate
     # Prefer repo .venv-images (scripts/setup-images-venv.sh) or set
-    # CAPDEP_IMAGE_PYTHON in env. On Apple Silicon, auto uses MFLUX/MLX
-    # when installed, with Diffusers SDXL as the compatibility fallback.
+    # CAPDEP_IMAGE_PYTHON in env. On Apple Silicon, auto requires
+    # MFLUX with MLX/Metal and fails closed instead of falling back to
+    # CPU/Torch/Diffusers.
     command: ["capdep-image-generate", "mcp-server-image-generate"]
     inherent_labels: []
     env:
