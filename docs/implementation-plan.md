@@ -3,7 +3,8 @@
 Living plan that organizes GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
 rationale*. Last refreshed 2026-07-08 — **v0.48.0** is the current stable
-release. **v0.49.0**, **v0.50.0**, and **v0.51.0** are implemented on `main`.
+release. **v0.49.0**, **v0.50.0**, **v0.51.0**, and **v0.52.0** are
+implemented on `main`.
 
 Recently completed stable release: **v0.48.0**.
 
@@ -16,7 +17,8 @@ connection** · **16 Product — v0.46.0 — Consolidated setup automation** ·
 v0.48.0 — Native MLX model asset pipeline** · **19 Product — v0.49.0 —
 Measured local model runtime and retrieval quality** · **20 Product — v0.50.0 —
 Security assurance and flow-pattern proof** · **21 Product — v0.51.0 —
-Daily-driver policy defaults and desktop workflow gates**.
+Daily-driver policy defaults and desktop workflow gates** · **22 Product —
+v0.52.0 — Daily-driver workflow validation**.
 
 Next implementation milestone: none currently opened. v1.0 remains
 unscheduled.
@@ -46,59 +48,64 @@ v0.17 — Gap hardening and explainability**.
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **v0.51 daily-driver policy defaults and desktop workflow gates** —
+1. **v0.52 daily-driver workflow validation** — implemented locally to validate
+   the daily-driver preset against concrete user-facing workflows, expose
+   workflow readiness in setup, fix drift in calendar/research/writing purpose
+   coverage, bind IMAP/browser/screen source URIs, and document the validation
+   gates (#283-#287).
+2. **v0.51 daily-driver policy defaults and desktop workflow gates** —
    implemented locally to turn the personal-assistant/default policy posture
    into a normal-user daily-driver preset: curated tool admission/readiness,
    workflow-first setup, browser/screen context gates, draft-first messaging,
    calendar mutation readiness, staged filesystem/office mutation, approval UX,
    retention/redaction defaults, and policy diagnostics/regression tests
    (#271, #272, #275-#282).
-2. **v0.50 security assurance and flow-pattern proof** — implemented locally to
+3. **v0.50 security assurance and flow-pattern proof** — implemented locally to
    make CapDep more provable, less fragile, and less noisy without broadening
    model authority: reference-monitor totality inventory/tests, flow-pattern
    composition proof inventory, label/source coverage fixtures, real-substrate
    contract definitions, audited WARN tier, and model-sidecar authority
    boundaries (#264-#270).
-3. **v0.49 measured local model runtime and retrieval quality** — implemented
+4. **v0.49 measured local model runtime and retrieval quality** — implemented
    model-quality planning, explicit reranker support, reproducible role
    benchmarks, retrieval-quality fixtures, advisory guard annotations,
    default-promotion gates, and release docs/tests (#257-#263).
-4. **v0.48 native MLX model asset pipeline** — implemented conversion-aware
+5. **v0.48 native MLX model asset pipeline** — implemented conversion-aware
    text/image model inventory, explicit setup/download/convert planning,
    provenance manifests, fallback safety, readiness metadata, and docs while
    preserving the rule that defaults only change after benchmark evidence
    (#249-#256).
-5. **v0.47 native office automation skills** — implemented bounded SKILL.md
+6. **v0.47 native office automation skills** — implemented bounded SKILL.md
    workflows and app-specific native automation for Apple Mail, Pages, Numbers,
    Keynote, Microsoft Outlook, Word, and PowerPoint without turning native
    automation into ambient authority (#241-#248).
-6. **v0.46 consolidated setup automation** — implemented one-time setup domains
+7. **v0.46 consolidated setup automation** — implemented one-time setup domains
    under `capdep-setup`, including setup/runtime boundaries, explicit
    dry-run/apply behavior, model download plans, sandbox runtime checks, and
    macOS daemon parity verification (#233-#240).
-7. **v0.45 dead-simple Google account connection** — implemented preset-first
+8. **v0.45 dead-simple Google account connection** — implemented preset-first
    Gmail/Calendar/Drive setup with daemon-owned OAuth state, scoped permissions,
    token auditability, live reload/unload where possible, advanced
    bring-your-own-client setup, and CapDep policy/MCP boundaries intact
    (#224-#232).
-8. **v0.44 skills interoperability and sandboxed execution** — shipped
+9. **v0.44 skills interoperability and sandboxed execution** — shipped
    Codex/Claude-style `SKILL.md` imports without weakening CapDep authority:
    skills are explicit guidance/tool/hybrid packages, preserve
    policy/labels/provenance/audit, run scripts only through containerized
    sandbox paths, expose client diagnostics, and carry compatibility plus
    adversarial/E2E tests (#216-#223).
-9. **v0.43 CommonMark client rendering** — shared CommonMark contract,
+10. **v0.43 CommonMark client rendering** — shared CommonMark contract,
    parser/sanitizer fixtures, CapDepMac rich rendering, terminal-safe CLI/TUI
    rendering, MCP-control fallback behavior, and release parity evidence
    (#209-#215).
-10. **v0.42 local media/model operations reliability** — profile selection,
+11. **v0.42 local media/model operations reliability** — profile selection,
    model/account readiness, benchmark-informed defaults, real progress/status,
    cancellation/recovery, and setup/release docs (#202-#208).
-11. **MCP security integration** — MCP must remain an integration substrate, not
+12. **MCP security integration** — MCP must remain an integration substrate, not
    a second authority path. v0.29 turns the current targeted tests into a
    security conformance suite before CapDep relies heavily on external MCP
    servers and headless clients.
-12. **Client proof, not just parity claims** — v0.30 replaces source/manifest
+13. **Client proof, not just parity claims** — v0.30 replaces source/manifest
    checks with live daemon integration coverage for CLI, TUI, Swift GUI, and
    MCP-control.
    Coverage is ratcheted independently for daemon files, clients, MCP
@@ -219,6 +226,37 @@ become independent credential or capability authorities.
 | #33 | Design: Workspace capability mapping | v0.16 / #42 |
 | #34 | Email labeling — design + content-rule impl (raise-only labeler) | v0.16 / #42 |
 | #13 | Credential vault and stdio upstream no-broad-env hardening | v0.33.0 |
+
+## v0.52.0 — Daily-driver workflow validation
+
+Complete locally. v0.52 validates the daily-driver preset against concrete
+user-facing workflows and exposes the result through setup so normal users can
+see practical readiness before trying the preset.
+
+### Scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #285 | EPIC: daily-driver user workflow validation pass | Complete locally |
+| #283 | Daily-driver workflow validation report | Complete locally |
+| #284 | Preset drift found by workflow validation | Complete locally |
+| #286 | Workflow validation through daily-driver setup | Complete locally |
+| #287 | Daily-driver validation docs and gates | Complete locally |
+
+### Sequencing
+
+1. Add a validation report that compares workflow templates with the
+   personal-assistant preset's purposes, source bindings, review gates, and
+   retention defaults.
+2. Wire that report into `capdep-setup daily-driver` so tool readiness and
+   workflow readiness are shown together.
+3. Fix drift discovered by the report rather than weakening validation:
+   calendar workflows need mail/Drive context, research memo needs browser
+   context, document revision needs Numbers edit coverage, and source bindings
+   must include IMAP/browser/screen URIs.
+4. Document the expected user-facing posture for each covered workflow.
+5. Add regression tests that fail when a workflow capability or source binding
+   is removed without updating the preset or workflow declaration.
 
 ## v0.51.0 — Daily-driver policy defaults and desktop workflow gates
 

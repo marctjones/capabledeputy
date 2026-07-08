@@ -46,7 +46,9 @@ capdep-setup daily-driver \
 Add `--apply` to write `relationship_groups.yaml` and
 `approval-patterns.yaml` into the selected config directory. The command is a
 dry run by default and reports unavailable, degraded, and intentionally disabled
-tools.
+tools. JSON output also includes a workflow validation report for the bundled
+daily-driver workflows; see
+[`docs/daily-driver-validation.md`](../../docs/daily-driver-validation.md).
 
 Edit paths in `source_bindings.yaml` before relying on low-friction local file
 paths. The defaults are macOS-first:

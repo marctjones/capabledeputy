@@ -145,6 +145,7 @@ def test_setup_daily_driver_dry_run_does_not_write(tmp_path: Path) -> None:
     assert result.apply is False
     assert result.status == "dry_run"
     assert result.details["readiness"]["ready"] is True
+    assert result.details["workflow_validation"]["ready"] is True
     assert "me@example.com" in result.details["relationship_groups_yaml"]
     assert not output.exists()
 
@@ -197,4 +198,8 @@ def test_capdep_setup_daily_driver_cli_json(tmp_path: Path) -> None:
     assert payload["domain"] == "daily-driver"
     assert payload["apply"] is False
     assert payload["details"]["readiness"]["schema"] == "capdep.daily_driver_readiness.v1"
+    assert (
+        payload["details"]["workflow_validation"]["schema"]
+        == "capdep.daily_driver_workflow_validation.v1"
+    )
     assert not output.exists()

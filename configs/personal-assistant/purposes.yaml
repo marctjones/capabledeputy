@@ -107,13 +107,17 @@ purposes:
 
   - purpose_id: calendar
     label: "Calendar review and scheduling"
-    admissible_categories: [personal, work, public]
+    admissible_categories: [personal, work, email, public]
     default_capabilities:
       - kind: CALENDAR_READ
         pattern: "*"
       - kind: CREATE_CAL
         pattern: "*"
       - kind: MODIFY_CAL
+        pattern: "*"
+      - kind: GMAIL_READ
+        pattern: "*"
+      - kind: DRIVE_READ
         pattern: "*"
       - kind: PEOPLE_READ
         pattern: "*"
@@ -150,6 +154,8 @@ purposes:
         pattern: "*"
       - kind: NUMBERS_READ
         pattern: "*"
+      - kind: NUMBERS_EDIT
+        pattern: "*"
       - kind: KEYNOTE_READ
         pattern: "*"
       - kind: POWERPOINT_READ
@@ -183,6 +189,8 @@ purposes:
         pattern: "/Users/*/Documents/**"
       - kind: DRIVE_READ
         pattern: "*"
+      - kind: BROWSER_READ
+        pattern: "https://*"
       - kind: PAGES_READ
         pattern: "*"
       - kind: WORD_READ

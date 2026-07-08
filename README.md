@@ -174,7 +174,8 @@ checks the curated daily-driver tool catalog, reports available, degraded,
 missing, and intentionally disabled tools, and can generate exact self/trusted
 relationship groups plus draft approval patterns. It does not enable direct
 sends, generic browser scripting, generic desktop automation, or broad shell
-authority.
+authority. Its JSON details include the daily-driver workflow validation report
+described in [docs/daily-driver-validation.md](docs/daily-driver-validation.md).
 
 Google account setup is preset-first in CapDepMac: users choose Gmail,
 Gmail + Calendar, or Gmail + Calendar + Drive, while the daemon keeps the

@@ -59,6 +59,8 @@ _SUPPORTED_SCHEMES = frozenset(
         "unc",
         "http",
         "https",
+        "browser",
+        "screen",
         "mcp",
         "gmail",
         "gdoc",

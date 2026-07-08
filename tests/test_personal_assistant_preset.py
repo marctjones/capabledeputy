@@ -166,6 +166,13 @@ def test_personal_assistant_purposes_are_macos_google_and_apple_ready() -> None:
     assert (CapabilityKind.OUTLOOK_DRAFT, "*") in inbox
     assert (CapabilityKind.PEOPLE_READ, "*") in inbox
 
+    calendar = _cap_pairs("calendar")
+    assert (CapabilityKind.CALENDAR_READ, "*") in calendar
+    assert (CapabilityKind.CREATE_CAL, "*") in calendar
+    assert (CapabilityKind.MODIFY_CAL, "*") in calendar
+    assert (CapabilityKind.GMAIL_READ, "*") in calendar
+    assert (CapabilityKind.DRIVE_READ, "*") in calendar
+
     writing = _cap_pairs("writing")
     assert (CapabilityKind.PAGES_EDIT, "*") in writing
     assert (CapabilityKind.PAGES_EXPORT, "*") in writing
@@ -174,6 +181,10 @@ def test_personal_assistant_purposes_are_macos_google_and_apple_ready() -> None:
     assert (CapabilityKind.KEYNOTE_READ, "*") in writing
     assert (CapabilityKind.POWERPOINT_EDIT, "*") in writing
     assert (CapabilityKind.POWERPOINT_EXPORT, "*") in writing
+
+    research = _cap_pairs("research")
+    assert (CapabilityKind.WEB_FETCH, "https://*") in research
+    assert (CapabilityKind.BROWSER_READ, "https://*") in research
 
 
 def test_personal_assistant_source_bindings_cover_service_uri_schemes() -> None:
@@ -184,6 +195,7 @@ def test_personal_assistant_source_bindings_cover_service_uri_schemes() -> None:
     )
     assert bindings.resolve("file:///Users/marc/Desktop/todo.txt").category == "personal"
     assert bindings.resolve("gmail://thread/123").category == "email"
+    assert bindings.resolve("imap://inbox/message/123").category == "email"
     assert bindings.resolve("gdrive://file/abc").category == "personal"
     assert bindings.resolve("gcal://primary/event/abc").category == "personal"
     assert bindings.resolve("gchat://spaces/abc/messages/def").category == "work"
@@ -198,6 +210,8 @@ def test_personal_assistant_source_bindings_cover_service_uri_schemes() -> None:
     assert bindings.resolve("macos://clipboard").category == "personal"
     assert bindings.resolve("macos://app/com.apple.mail").category == "personal"
     assert bindings.resolve("macos://notification").category == "scratch"
+    assert bindings.resolve("browser://active/page").category == "public"
+    assert bindings.resolve("screen://current-window").category == "personal"
 
 
 def test_personal_assistant_relationship_groups_support_low_friction_workflows() -> None:

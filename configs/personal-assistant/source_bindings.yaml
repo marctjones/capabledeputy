@@ -87,6 +87,12 @@ bindings:
     default_tier: sensitive
     assignment_provenance: operator-declared
 
+  - name: imap-content
+    scope_pattern_canonical: "imap://**"
+    category: email
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
   - name: gdocs-content
     scope_pattern_canonical: "gdoc://**"
     category: personal

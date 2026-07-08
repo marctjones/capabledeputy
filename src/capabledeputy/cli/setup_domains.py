@@ -38,6 +38,7 @@ from capabledeputy.daily_driver import (
     relationship_groups_yaml,
     write_daily_driver_identity_files,
 )
+from capabledeputy.daily_driver_validation import validate_daily_driver_workflows
 from capabledeputy.model_assets import (
     model_asset_home,
     model_asset_inventory,
@@ -244,8 +245,15 @@ def setup_daily_driver(
 
     config_path = config_path or user_default_daemon_config_path()
     output_dir = output_dir or config_path.parent
+    preset_dir = config_path.parent
+    if (
+        not (preset_dir / "purposes.yaml").is_file()
+        or not (preset_dir / "source_bindings.yaml").is_file()
+    ):
+        preset_dir = Path("configs/personal-assistant")
     readiness = evaluate_tool_readiness(config_path)
     summary = readiness_summary(readiness)
+    workflow_validation = validate_daily_driver_workflows(preset_dir=preset_dir)
     self_ids = _split_csv(self_addresses)
     trusted_ids = _split_csv(trusted_draft_recipients)
     family_ids = _split_csv(family_recipients)
@@ -294,6 +302,7 @@ def setup_daily_driver(
         paths=paths,
         details={
             "readiness": summary,
+            "workflow_validation": workflow_validation,
             "tools": [item.as_dict() for item in readiness],
             "policy_contract": policy_contract_json(),
             "relationship_groups_yaml": rendered_relationships,

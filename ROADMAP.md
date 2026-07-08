@@ -7,10 +7,10 @@ maps this roadmap onto GitHub issues and dependencies. The older
 historical backlog snapshots, not the current roadmap.
 
 **Last refreshed:** 2026-07-08 — v0.48.0 is the current stable release.
-v0.49.0, v0.50.0, and v0.51.0 are implemented on `main`. v1.0 remains
-unscheduled.
+v0.49.0, v0.50.0, v0.51.0, and v0.52.0 are implemented on `main`. v1.0
+remains unscheduled.
 
-## Product Ladder — v0.35 → v0.51
+## Product Ladder — v0.35 → v0.52
 
 ```mermaid
 flowchart LR
@@ -31,7 +31,8 @@ flowchart LR
   v49[v0.49 Measured model runtime + retrieval quality]
   v50[v0.50 Security assurance + flow-pattern proof]
   v51[v0.51 Daily-driver policy defaults + workflow gates]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48 --> v49 --> v50 --> v51
+  v52[v0.52 Daily-driver workflow validation]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48 --> v49 --> v50 --> v51 --> v52
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -53,6 +54,7 @@ flowchart LR
 | **19 Product — v0.49.0 — Measured local model runtime and retrieval quality** | Benchmark-backed model defaults, explicit reranker runtime, advisory guard sidecar, and retrieval-quality fixtures | #257–#263 |
 | **20 Product — v0.50.0 — Security assurance and flow-pattern proof** | Prove the security model and flow-pattern guarantees across clients, tools, substrates, labels, advisory warnings, and model sidecars | #264–#270 |
 | **21 Product — v0.51.0 — Daily-driver policy defaults and desktop workflow gates** | Productized default policies for normal OpenClaw-style desktop workflows with clear approval, override, denial, readiness, UX, and retention gates | #271, #272, #275–#282 |
+| **22 Product — v0.52.0 — Daily-driver workflow validation** | Validate the daily-driver preset against concrete user-facing workflows, setup diagnostics, source bindings, and review gates | #283–#287 |
 
 ## Tracker Coverage
 
@@ -61,6 +63,7 @@ issues; completed and closed work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
+| **22 Product — v0.52.0 — Daily-driver workflow validation** | #283–#287 | Complete locally: workflow validation report, preset drift fixes, source binding scheme coverage, setup output integration, docs, and regression tests are implemented. |
 | **21 Product — v0.51.0 — Daily-driver policy defaults and desktop workflow gates** | #271, #272, #275–#282 | Complete locally: daily-driver preset/approval matrix, curated tool catalog/readiness, relationship setup, browser/screen gates, draft-first messaging/calendar mutation, staged filesystem/office mutation, approval UX, data minimization/retention, and policy docs/diagnostics/regression tests are implemented. |
 | **20 Product — v0.50.0 — Security assurance and flow-pattern proof** | #264–#270 | Complete locally: reference-monitor totality inventory/tests, flow-pattern composition proof inventory, label/source coverage fixtures, fake/dry-run substrate contracts, audited WARN/advisory outcomes, and model-sidecar authority-boundary checks are implemented. |
 | **19 Product — v0.49.0 — Measured local model runtime and retrieval quality** | #257–#263 | Complete locally: model-quality planning, explicit reranker runtime status, deterministic retrieval fixtures, role benchmark cases, advisory guard annotations, setup/client measured-quality summaries, default-promotion gates, and release docs/tests are implemented. Runtime defaults remain candidate-only until benchmark evidence satisfies the gates. |
@@ -95,6 +98,39 @@ Closed GitHub milestones use the same ordered-prefix convention:
 | **00.10 Done — v0.33.0 — Streaming turn lifecycle and liveness** | Closed |
 | **00.11 Done — v0.34.0 — First-run, connectors, and rich chat readiness** | Closed |
 | **11 Product — v0.41.0 — CapDepMac reliability and safe scripting UX** | Closed |
+
+## Completed Focus — v0.52.0 Daily-driver Workflow Validation
+
+Goal: validate the daily-driver preset against the concrete user workflows a
+normal operator will try first. The pass keeps setup honest by reporting
+workflow readiness next to tool readiness and by failing tests when the workflow
+catalog, purpose capabilities, source bindings, review gates, or retention
+defaults drift apart.
+
+### v0.52.0 scope
+
+| Issue | Work | Local status |
+|---|---|---|
+| #285 | EPIC: daily-driver user workflow validation pass | Complete locally |
+| #283 | Add daily-driver workflow validation report | Complete locally |
+| #284 | Fix preset drift found by workflow validation | Complete locally |
+| #286 | Expose workflow validation through daily-driver setup | Complete locally |
+| #287 | Document daily-driver validation results and gates | Complete locally |
+
+### v0.52.0 validation coverage
+
+- `capdep-setup daily-driver --json` reports `workflow_validation` with
+  per-workflow readiness, launch/mutation/egress gates, foreground-review
+  posture, missing capabilities, unbound source ports, and forbidden default
+  capabilities.
+- The validation covers morning briefing, inbox triage, calendar planning,
+  meeting prep, research memo, web research, summarize selection, and revise
+  document workflows.
+- The pass fixed concrete preset drift: meeting prep now has calendar-purpose
+  mail/Drive context; research memo has browser-read coverage; revise document
+  has Numbers edit coverage; IMAP/browser/screen source URIs are bound.
+- Regression tests fail if future changes remove required workflow
+  capabilities or source bindings.
 
 ## Completed Focus — v0.51.0 Daily-driver Policy Defaults and Desktop Workflow Gates
 
