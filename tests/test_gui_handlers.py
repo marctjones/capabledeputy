@@ -48,7 +48,45 @@ async def test_setup_status_reports_actionable_checks(app: App) -> None:
         "apple-automation",
         "daemon-settings",
         "config-validation",
+        "web-search",
     } <= check_ids
+
+
+async def test_setup_status_reports_limited_search_provider(
+    app: App,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
+    monkeypatch.delenv("KAGI_API_KEY", raising=False)
+    app.upstream_manager = SimpleNamespace(
+        server_status={
+            "bundled-search": SimpleNamespace(
+                name="bundled-search",
+                state="registered",
+                registered_tool_count=1,
+                rejected_tool_count=0,
+                error="",
+                transport="stdio",
+                url="",
+            ),
+            "kagi": SimpleNamespace(
+                name="kagi",
+                state="failed",
+                registered_tool_count=0,
+                rejected_tool_count=0,
+                error="[Errno 2] No such file or directory: 'uvx'",
+                transport="stdio",
+                url="",
+            ),
+        },
+    )
+    handlers = make_gui_handlers(app)
+
+    result = await handlers["setup.status"]({})
+
+    web_search = next(check for check in result["checks"] if check["id"] == "web-search")
+    assert web_search["status"] == "warning"
+    assert "Kagi search failed to launch" in web_search["detail"]
 
 
 async def test_policy_explain_returns_plain_english_for_recent_decision(app: App) -> None:

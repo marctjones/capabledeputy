@@ -227,9 +227,11 @@ struct ChatView: View {
     private func capabilityGrantBanner(step: RecoveryStep, sessionID: String) -> some View {
         let grantPattern = step.guiGrantPattern() ?? step.grantPattern
         let canRetry = model.pendingGrantRetryMessage != nil
+        let title = step.isWebSearchGrant ? "Allow web search?" : "Allow access to this location?"
+        let actionLabel = step.isWebSearchGrant ? "Open web search prompt" : (canRetry ? "Open access prompt" : "Review access request")
         return HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Allow access to this location?")
+                Text(title)
                     .font(.headline)
                 if let kind = step.grantKind, let grantPattern {
                     Text("CapDep needs \(kind) permission for \(grantPattern) before it can continue.")
@@ -250,7 +252,7 @@ struct ChatView: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
-            Button(canRetry ? "Open access prompt" : "Review access request") {
+            Button(actionLabel) {
                 model.grantPromptPresented = true
                 openWindow(id: "capability-grant-card")
             }

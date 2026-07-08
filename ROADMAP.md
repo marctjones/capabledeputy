@@ -10,7 +10,7 @@ historical backlog snapshots, not the current roadmap.
 v0.49.0, v0.50.0, v0.51.0, and v0.52.0 are implemented on `main`. v1.0
 remains unscheduled.
 
-## Product Ladder — v0.35 → v0.52
+## Product Ladder — v0.35 → v0.53
 
 ```mermaid
 flowchart LR
@@ -32,7 +32,8 @@ flowchart LR
   v50[v0.50 Security assurance + flow-pattern proof]
   v51[v0.51 Daily-driver policy defaults + workflow gates]
   v52[v0.52 Daily-driver workflow validation]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48 --> v49 --> v50 --> v51 --> v52
+  v53[v0.53 Natural web search]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48 --> v49 --> v50 --> v51 --> v52 --> v53
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -55,14 +56,16 @@ flowchart LR
 | **20 Product — v0.50.0 — Security assurance and flow-pattern proof** | Prove the security model and flow-pattern guarantees across clients, tools, substrates, labels, advisory warnings, and model sidecars | #264–#270 |
 | **21 Product — v0.51.0 — Daily-driver policy defaults and desktop workflow gates** | Productized default policies for normal OpenClaw-style desktop workflows with clear approval, override, denial, readiness, UX, and retention gates | #271, #272, #275–#282 |
 | **22 Product — v0.52.0 — Daily-driver workflow validation** | Validate the daily-driver preset against concrete user-facing workflows, setup diagnostics, source bindings, and review gates | #283–#287 |
+| **23 Product — v0.53.0 — Natural web search** | Make read-only web/news search feel native in daily-driver chat with standing search grants, GUI-mediated recovery, provider readiness, and regression coverage | #288–#291 |
 
 ## Tracker Coverage
 
-This pass audited the live GitHub tracker. There are currently no open GitHub
-issues; completed and closed work is grouped as:
+This pass audited the live GitHub tracker. Open product work is listed first;
+completed and closed work follows:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
+| **23 Product — v0.53.0 — Natural web search** | #288–#291 | Implemented locally: read-only search grants, Swift GUI grant/retry copy, provider readiness diagnostics, and natural-search regression coverage. |
 | **22 Product — v0.52.0 — Daily-driver workflow validation** | #283–#287 | Complete locally: workflow validation report, preset drift fixes, source binding scheme coverage, setup output integration, docs, and regression tests are implemented. |
 | **21 Product — v0.51.0 — Daily-driver policy defaults and desktop workflow gates** | #271, #272, #275–#282 | Complete locally: daily-driver preset/approval matrix, curated tool catalog/readiness, relationship setup, browser/screen gates, draft-first messaging/calendar mutation, staged filesystem/office mutation, approval UX, data minimization/retention, and policy docs/diagnostics/regression tests are implemented. |
 | **20 Product — v0.50.0 — Security assurance and flow-pattern proof** | #264–#270 | Complete locally: reference-monitor totality inventory/tests, flow-pattern composition proof inventory, label/source coverage fixtures, fake/dry-run substrate contracts, audited WARN/advisory outcomes, and model-sidecar authority-boundary checks are implemented. |

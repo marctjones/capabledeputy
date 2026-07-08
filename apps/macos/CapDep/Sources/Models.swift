@@ -381,8 +381,12 @@ struct RecoveryStep: Identifiable, Hashable {
         return path + "/*"
     }
 
+    var isWebSearchGrant: Bool {
+        grantKind == "WEB_FETCH" && (guiGrantPattern() ?? grantPattern) == "*"
+    }
+
     var prefersSessionGrantFromGUI: Bool {
-        grantKind == "READ_FS" && !args.contains("--destructive")
+        ["READ_FS", "WEB_FETCH"].contains(grantKind ?? "") && !args.contains("--destructive")
     }
 }
 

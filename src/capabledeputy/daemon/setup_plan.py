@@ -7,6 +7,8 @@ actions are valid.
 
 from __future__ import annotations
 
+import os
+import shutil
 from typing import Any
 
 from capabledeputy.app import App
@@ -51,6 +53,7 @@ def build_setup_checks(app: App) -> list[dict[str, Any]]:
     elif app.llm_client is not None and ollama_reachable() and model_spec.startswith("ollama/"):
         model_detail += "; using local Ollama planner."
     imap_loaded = any(server.get("name") == "mail" for server in upstream)
+    search_check = _search_provider_check(upstream)
     if imap_loaded and imap_credentials_present():
         imap_status = "ok"
         imap_detail = "IMAP mail upstream is loaded with saved credentials."
@@ -112,6 +115,7 @@ def build_setup_checks(app: App) -> list[dict[str, Any]]:
                 },
             ],
         },
+        search_check,
         {
             "id": "relationship-groups",
             "title": "Relationship groups",
@@ -209,6 +213,7 @@ def build_setup_steps(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         "config-validation",
         "google-oauth",
         "imap-email",
+        "web-search",
         "relationship-groups",
         "source-bindings",
         "approval-patterns",
@@ -273,6 +278,56 @@ def build_setup_plan(app: App) -> dict[str, Any]:
         "summary": summary,
         "steps": steps,
         "checks": checks,
+    }
+
+
+def _search_provider_check(upstream: list[dict[str, Any]]) -> dict[str, Any]:
+    by_name = {str(server.get("name")): server for server in upstream}
+    bundled = by_name.get("bundled-search")
+    kagi = by_name.get("kagi")
+    brave_key = bool(os.environ.get("BRAVE_SEARCH_API_KEY", "").strip())
+    kagi_key = bool(os.environ.get("KAGI_API_KEY", "").strip())
+    uvx_available = shutil.which("uvx") is not None
+    actions = [
+        {
+            "id": "config.validate",
+            "label": "Validate Search Config",
+            "kind": "daemon_rpc",
+        },
+    ]
+    if kagi and kagi.get("state") == "registered":
+        return {
+            "id": "web-search",
+            "title": "Web search provider",
+            "status": "ok",
+            "detail": "Kagi search is registered for broad web/news search.",
+            "actions": actions,
+        }
+    if brave_key and bundled and bundled.get("state") == "registered":
+        return {
+            "id": "web-search",
+            "title": "Web search provider",
+            "status": "ok",
+            "detail": "Bundled search is registered with Brave Search API coverage.",
+            "actions": actions,
+        }
+    if kagi_key and not uvx_available:
+        detail = "KAGI_API_KEY is set, but uvx is missing so the Kagi MCP cannot launch."
+    elif kagi and kagi.get("state") == "failed":
+        detail = f"Kagi search failed to launch: {kagi.get('error') or 'unknown error'}"
+    elif bundled and bundled.get("state") == "registered":
+        detail = (
+            "Bundled search is registered, but no Brave or Kagi key is active. "
+            "Current-events searches use DuckDuckGo Instant Answer fallback, which is limited."
+        )
+    else:
+        detail = "No full web/news search provider is registered."
+    return {
+        "id": "web-search",
+        "title": "Web search provider",
+        "status": "warning",
+        "detail": detail,
+        "actions": actions,
     }
 
 

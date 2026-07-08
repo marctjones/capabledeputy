@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from capabledeputy.policy.purposes import load as load_purposes
-from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.session.foreground_defaults import (
     foreground_chat_default_capabilities,
     should_apply_foreground_defaults,
@@ -34,6 +34,17 @@ def test_general_purpose_web_fetch_allows_search_targets() -> None:
         if cap.kind.value == "WEB_FETCH"
     ]
     assert "*" in web_caps
+
+
+def test_personal_assistant_web_fetch_allows_search_targets() -> None:
+    purposes = load_purposes(Path("configs/personal-assistant/purposes.yaml"))
+    for purpose_id in ("general", "writing", "research"):
+        purpose = purposes.get(purpose_id)
+        assert purpose is not None
+        assert any(
+            cap.kind.value == "WEB_FETCH" and cap.pattern == "*"
+            for cap in purpose.default_capabilities
+        )
 
 
 def test_should_apply_foreground_defaults_for_gui_owner() -> None:
@@ -66,6 +77,20 @@ def test_supplement_foreground_capabilities_adds_missing_image_caps() -> None:
     kinds = {cap.kind for cap in added}
     assert CapabilityKind.GENERATE_IMAGE in kinds
     assert CapabilityKind.FETCH_IMAGE in kinds
+
+
+def test_supplement_foreground_capabilities_adds_missing_web_search_wildcard() -> None:
+    caps = frozenset(
+        {
+            Capability(kind=CapabilityKind.WEB_FETCH, pattern="https://*"),
+            Capability(kind=CapabilityKind.GENERATE_IMAGE, pattern="*"),
+            Capability(kind=CapabilityKind.FETCH_IMAGE, pattern="*"),
+        },
+    )
+
+    added = supplement_foreground_capabilities(caps)
+
+    assert any(cap.kind is CapabilityKind.WEB_FETCH and cap.pattern == "*" for cap in added)
 
 
 @pytest.mark.asyncio

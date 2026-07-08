@@ -21,8 +21,14 @@ DEFAULT_TIMEOUT = 10.0
 DDG_ZERO_RESULTS_HINT = (
     "DuckDuckGo Instant Answer returned no results for this query. "
     "It only answers factoid-style questions, not news or broad web search. "
-    "Set BRAVE_SEARCH_API_KEY on the daemon for full search, or use the "
+    "Set BRAVE_SEARCH_API_KEY on the daemon for full search, or enable the "
     "kagi_search_fetch tool when KAGI_API_KEY is configured."
+)
+
+DDG_LIMITATION_HINT = (
+    "DuckDuckGo Instant Answer is a limited no-key fallback, not a full web/news "
+    "search provider. Set BRAVE_SEARCH_API_KEY for full bundled search, or enable "
+    "Kagi for richer news and current-events results."
 )
 
 
@@ -113,9 +119,12 @@ async def ddg_instant_answer_search(query: str, count: int) -> dict[str, Any]:
         "query": query,
         "count": len(results),
         "results": results[:count],
+        "provider_readiness": {
+            "full_web_search": False,
+            "recommended": "Set BRAVE_SEARCH_API_KEY or enable Kagi.",
+        },
     }
-    if not results:
-        payload["limitation"] = DDG_ZERO_RESULTS_HINT
+    payload["limitation"] = DDG_ZERO_RESULTS_HINT if not results else DDG_LIMITATION_HINT
     return payload
 
 

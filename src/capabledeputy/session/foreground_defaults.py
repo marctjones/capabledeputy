@@ -87,6 +87,13 @@ def _missing_foreground_image_caps(capability_set: frozenset[Capability]) -> boo
     )
 
 
+def _missing_foreground_web_search_cap(capability_set: frozenset[Capability]) -> bool:
+    return not any(
+        cap.kind is CapabilityKind.WEB_FETCH and cap.pattern == "*"
+        for cap in capability_set
+    )
+
+
 def should_apply_foreground_defaults(
     *,
     owner: str | None,
@@ -101,7 +108,10 @@ def should_apply_foreground_defaults(
         return False
     if capability_count == 0:
         return True
-    return capability_set is not None and _missing_foreground_image_caps(capability_set)
+    return capability_set is not None and (
+        _missing_foreground_image_caps(capability_set)
+        or _missing_foreground_web_search_cap(capability_set)
+    )
 
 
 def supplement_foreground_capabilities(
@@ -111,11 +121,15 @@ def supplement_foreground_capabilities(
 ) -> tuple[Capability, ...]:
     """Grant only foreground caps missing from an existing purpose-born set."""
     existing_kinds = {cap.kind for cap in capability_set}
-    return tuple(
-        cap
-        for cap in foreground_chat_default_capabilities(home=home)
-        if cap.kind not in existing_kinds
-    )
+    additions: list[Capability] = []
+    for cap in foreground_chat_default_capabilities(home=home):
+        if cap.kind is CapabilityKind.WEB_FETCH:
+            if _missing_foreground_web_search_cap(capability_set):
+                additions.append(cap)
+            continue
+        if cap.kind not in existing_kinds:
+            additions.append(cap)
+    return tuple(additions)
 
 
 def _make_cap(kind: CapabilityKind, pattern: str) -> Capability:

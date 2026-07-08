@@ -68,6 +68,8 @@ async def test_ddg_instant_answer_parses_nested_topics(
     assert result["api"] == "instant_answer"
     assert result["count"] == 2
     assert result["results"][0]["title"] == "Cat"
+    assert result["provider_readiness"]["full_web_search"] is False
+    assert "limited" in result["limitation"]
 
 
 @pytest.mark.asyncio
@@ -97,6 +99,7 @@ async def test_ddg_zero_results_includes_limitation_hint(
     assert result["count"] == 0
     assert "limitation" in result
     assert "Instant Answer" in result["limitation"]
+    assert result["provider_readiness"]["recommended"]
 
 
 @pytest.mark.asyncio

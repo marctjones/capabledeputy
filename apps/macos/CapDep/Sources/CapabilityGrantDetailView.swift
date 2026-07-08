@@ -15,11 +15,12 @@ struct CapabilityGrantDetailView: View {
     }
 
     var body: some View {
+        let isWebSearch = step.isWebSearchGrant
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Allow access?")
+                        Text(isWebSearch ? "Allow web search?" : "Allow access?")
                             .font(.largeTitle.weight(.bold))
                         if let kind = step.grantKind {
                             Text(PolicyPromptCopy.capabilityKindLabel(kind))
@@ -80,9 +81,7 @@ struct CapabilityGrantDetailView: View {
 
                 DetailSection(title: "After you allow") {
                     Text(
-                        canRetry
-                            ? "CapDep will grant session access for this scope and automatically retry your last message."
-                            : "CapDep will grant session access for this scope. Ask again and the file or directory read should proceed.",
+                        PolicyPromptCopy.afterGrantText(isWebSearch: isWebSearch, canRetry: canRetry),
                     )
                     .foregroundStyle(.secondary)
                 }
@@ -102,7 +101,10 @@ struct CapabilityGrantDetailView: View {
                                 model.dismissGrantPrompt()
                             }
                         } label: {
-                            Label("Allow & try again", systemImage: "arrow.clockwise.circle.fill")
+                            Label(
+                                isWebSearch ? "Allow search & try again" : "Allow & try again",
+                                systemImage: "arrow.clockwise.circle.fill",
+                            )
                         }
                         .buttonStyle(.borderedProminent)
                         .keyboardShortcut(.defaultAction)
@@ -113,7 +115,10 @@ struct CapabilityGrantDetailView: View {
                                 model.dismissGrantPrompt()
                             }
                         } label: {
-                            Label("Allow access", systemImage: "checkmark.circle.fill")
+                            Label(
+                                isWebSearch ? "Allow web search" : "Allow access",
+                                systemImage: "checkmark.circle.fill",
+                            )
                         }
                         .buttonStyle(.borderedProminent)
                         .keyboardShortcut(.defaultAction)
@@ -139,7 +144,7 @@ enum PolicyPromptCopy {
         case "SEND_EMAIL":
             return "Send email"
         case "WEB_FETCH":
-            return "Fetch web pages"
+            return "Search and fetch web pages"
         case "GMAIL_READ":
             return "Read Gmail"
         case "CALENDAR_READ":
@@ -152,11 +157,28 @@ enum PolicyPromptCopy {
     }
 
     static func grantEffectText(kind: String?, toolName: String?) -> String {
+        if kind == "WEB_FETCH" {
+            if let toolName, !toolName.isEmpty {
+                return "The assistant called \(toolName) to search or fetch the web, but this session does not yet have read-only web access."
+            }
+            return "This session does not yet have read-only web access for search or page fetches."
+        }
         let action = capabilityKindLabel(kind ?? "access")
         if let toolName, !toolName.isEmpty {
             return "The assistant called \(toolName) but this session lacks \(action.lowercased()) permission for the requested target."
         }
         return "This session lacks \(action.lowercased()) permission for the requested target."
+    }
+
+    static func afterGrantText(isWebSearch: Bool, canRetry: Bool) -> String {
+        if isWebSearch {
+            return canRetry
+                ? "CapDep will grant read-only web search access for this session and automatically retry your last message."
+                : "CapDep will grant read-only web search access for this session. Ask again and the search should proceed."
+        }
+        return canRetry
+            ? "CapDep will grant session access for this scope and automatically retry your last message."
+            : "CapDep will grant session access for this scope. Ask again and the file or directory read should proceed."
     }
 }
 
