@@ -6,6 +6,13 @@ breaking changes).
 
 ## [Unreleased]
 
+### Roadmap
+
+- Opened `20 Product — v0.50.0 — Security assurance and flow-pattern proof`
+  with issues #264-#270 for reference-monitor totality, flow-pattern
+  composition tests, label/source coverage, real-substrate contract tests,
+  audited WARN/advisory outcomes, and model-sidecar authority boundaries.
+
 ### Measured model runtime and retrieval quality
 
 - Implemented `19 Product — v0.49.0 — Measured local model runtime and

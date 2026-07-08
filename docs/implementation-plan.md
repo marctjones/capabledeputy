@@ -2,10 +2,9 @@
 
 Living plan that organizes the open GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
-rationale*. Last refreshed 2026-07-06 — **v0.48.0** is the current stable
-release, covering dead-simple Google account connection, consolidated setup
-automation, native office automation skills, and native MLX/MFLUX model asset
-planning.
+rationale*. Last refreshed 2026-07-08 — **v0.48.0** is the current stable
+release. **v0.49.0** is implemented on `main`, and **v0.50.0** is the next
+tracked milestone for security assurance and flow-pattern proof.
 
 Recently completed stable release: **v0.48.0**.
 
@@ -15,10 +14,11 @@ across client surfaces** · **14 Product — v0.44.0 — Skills interoperability
 and sandboxed execution** · **15 Product — v0.45.0 — Dead-simple Google account
 connection** · **16 Product — v0.46.0 — Consolidated setup automation** ·
 **17 Product — v0.47.0 — Native office automation skills** · **18 Product —
-v0.48.0 — Native MLX model asset pipeline**.
+v0.48.0 — Native MLX model asset pipeline** · **19 Product — v0.49.0 —
+Measured local model runtime and retrieval quality**.
 
-Next implementation milestone: **19 Product — v0.49.0 — Measured local model
-runtime and retrieval quality** (#257-#263).
+Next implementation milestone: **20 Product — v0.50.0 — Security assurance and
+flow-pattern proof** (#264-#270).
 
 Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
 reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical
@@ -45,25 +45,29 @@ v0.17 — Gap hardening and explainability**.
 dependencies, and why the next pull should focus on one milestone over another.
 
 Themes currently driving priority:
-1. **v0.49 measured local model runtime and retrieval quality** — newly opened
-   to turn model asset planning into measured runtime decisions: explicit
-   reranker support, reproducible role benchmarks, retrieval-quality fixtures,
-   advisory guard annotations, default-promotion gates, and release docs/tests
-   (#257-#263).
-2. **v0.48 native MLX model asset pipeline** — implemented conversion-aware
+1. **v0.50 security assurance and flow-pattern proof** — newly opened to make
+   CapDep more provable, less fragile, and less noisy without broadening model
+   authority: reference-monitor totality, flow-pattern composition tests,
+   label/source coverage, real-substrate contract tests, audited WARN tier, and
+   model-sidecar authority boundaries (#264-#270).
+2. **v0.49 measured local model runtime and retrieval quality** — implemented
+   model-quality planning, explicit reranker support, reproducible role
+   benchmarks, retrieval-quality fixtures, advisory guard annotations,
+   default-promotion gates, and release docs/tests (#257-#263).
+3. **v0.48 native MLX model asset pipeline** — implemented conversion-aware
    text/image model inventory, explicit setup/download/convert planning,
    provenance manifests, fallback safety, readiness metadata, and docs while
    preserving the rule that defaults only change after benchmark evidence
    (#249-#256).
-3. **v0.47 native office automation skills** — implemented bounded SKILL.md
+4. **v0.47 native office automation skills** — implemented bounded SKILL.md
    workflows and app-specific native automation for Apple Mail, Pages, Numbers,
    Keynote, Microsoft Outlook, Word, and PowerPoint without turning native
    automation into ambient authority (#241-#248).
-4. **v0.46 consolidated setup automation** — implemented one-time setup domains
+5. **v0.46 consolidated setup automation** — implemented one-time setup domains
    under `capdep-setup`, including setup/runtime boundaries, explicit
    dry-run/apply behavior, model download plans, sandbox runtime checks, and
    macOS daemon parity verification (#233-#240).
-5. **v0.45 dead-simple Google account connection** — implemented preset-first
+6. **v0.45 dead-simple Google account connection** — implemented preset-first
    Gmail/Calendar/Drive setup with daemon-owned OAuth state, scoped permissions,
    token auditability, live reload/unload where possible, advanced
    bring-your-own-client setup, and CapDep policy/MCP boundaries intact
@@ -206,6 +210,46 @@ become independent credential or capability authorities.
 | #33 | Design: Workspace capability mapping | v0.16 / #42 |
 | #34 | Email labeling — design + content-rule impl (raise-only labeler) | v0.16 / #42 |
 | #13 | Credential vault and stdio upstream no-broad-env hardening | v0.33.0 |
+
+## v0.50.0 — Security assurance and flow-pattern proof
+
+Open. v0.50 is a hardening milestone, not a capability-expansion milestone.
+The goal is to make CapDep more provable, less fragile, and less noisy while
+staying true to the project purpose: controlled authority, controlled
+information flow, human oversight, reversibility, and replayable audit.
+
+### Scope
+
+| Issue | Work | Status |
+|---|---|---|
+| #264 | EPIC: security assurance and flow-pattern proof | Open |
+| #266 | Add reference-monitor totality checks | Open |
+| #265 | Add flow-pattern composition tests | Open |
+| #267 | Harden label coverage and source bindings | Open |
+| #268 | Add real-substrate contract tests | Open |
+| #270 | Add audited WARN advisory tier | Open |
+| #269 | Prove model-sidecar authority boundaries | Open |
+
+### Sequencing
+
+1. Inventory effectful entry points and add reference-monitor totality tests
+   first (#266), because every later proof depends on knowing effects route
+   through the deterministic chokepoint.
+2. Add flow-pattern composition tests (#265) for chained/parallel
+   declassification, shared Brewer-Nash state, sandbox label retention,
+   reference-handle secrecy, and integrity-critical ordering.
+3. Expand label/source coverage (#267) with conservative source defaults,
+   raise-only rules, and explicit negative tests for unlabeled sensitive data.
+4. Add real-substrate contract tests (#268) using fake/dry-run providers by
+   default and opt-in non-destructive live smoke where useful.
+5. Add the audited WARN/advisory tier (#270) only after the hard floors are
+   well covered, so WARN can reduce approval fatigue without weakening DENY,
+   OVERRIDE_REQUIRED, or REQUIRE_APPROVAL outcomes.
+6. Prove model-sidecar boundaries (#269) across reranking, guard annotations,
+   model-quality plans, image generation prompts, and future model-assisted
+   label suggestions. Model outputs may rank, annotate, summarize, or suggest;
+   they must not authorize, declassify outside certified paths, or weaken
+   policy.
 
 ## v0.49.0 — Measured local model runtime and retrieval quality
 

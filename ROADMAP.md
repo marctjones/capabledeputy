@@ -6,11 +6,11 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-07-06 — v0.48.0 is the current stable release.
-v0.49.0 is implemented on `main` as the next unreleased milestone: measured
-local model runtime and retrieval-quality planning. v1.0 remains unscheduled.
+**Last refreshed:** 2026-07-08 — v0.48.0 is the current stable release.
+v0.49.0 is implemented on `main`; v0.50.0 is the next tracked milestone:
+security assurance and flow-pattern proof. v1.0 remains unscheduled.
 
-## Product Ladder — v0.35 → v0.49
+## Product Ladder — v0.35 → v0.50
 
 ```mermaid
 flowchart LR
@@ -29,7 +29,8 @@ flowchart LR
   v47[v0.47 Native office automation skills]
   v48[v0.48 Native MLX model asset pipeline]
   v49[v0.49 Measured model runtime + retrieval quality]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48 --> v49
+  v50[v0.50 Security assurance + flow-pattern proof]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48 --> v49 --> v50
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -49,6 +50,7 @@ flowchart LR
 | **17 Product — v0.47.0 — Native office automation skills** | Bounded SKILL.md workflows and native automation for Apple iWork/Mail and Microsoft Office apps | #241–#248 |
 | **18 Product — v0.48.0 — Native MLX model asset pipeline** | Reconsider local text/image model choices around native MLX/MFLUX conversion, provenance, setup planning, and measured defaults | #249–#256 |
 | **19 Product — v0.49.0 — Measured local model runtime and retrieval quality** | Benchmark-backed model defaults, explicit reranker runtime, advisory guard sidecar, and retrieval-quality fixtures | #257–#263 |
+| **20 Product — v0.50.0 — Security assurance and flow-pattern proof** | Prove the security model and flow-pattern guarantees across clients, tools, substrates, labels, advisory warnings, and model sidecars | #264–#270 |
 
 ## Tracker Coverage
 
@@ -56,6 +58,7 @@ This pass audited the live GitHub tracker. Open work is grouped as:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
+| **20 Product — v0.50.0 — Security assurance and flow-pattern proof** | #264–#270 | Open: next implementation milestone. Harden CapDep around reference-monitor totality, flow-pattern composition tests, label/source coverage, real-substrate contract tests, audited WARN/advisory outcomes, and model-sidecar authority boundaries. |
 | **19 Product — v0.49.0 — Measured local model runtime and retrieval quality** | #257–#263 | Complete locally: model-quality planning, explicit reranker runtime status, deterministic retrieval fixtures, role benchmark cases, advisory guard annotations, setup/client measured-quality summaries, default-promotion gates, and release docs/tests are implemented. Runtime defaults remain candidate-only until benchmark evidence satisfies the gates. |
 | **18 Product — v0.48.0 — Native MLX model asset pipeline** | #249–#256 | Closed/released: model asset inventory, conversion-aware `capdep-setup models`, provenance manifests, explicit unsupported fallback handling, image readiness metadata, model experiment evidence, and docs are implemented; benchmark evidence remains required before runtime defaults change. |
 | **17 Product — v0.47.0 — Native office automation skills** | #241–#248 | Closed/released: bounded SKILL.md workflows, Microsoft Outlook/Word/PowerPoint adapters, office capability/label/approval mappings, setup diagnostics, config wiring, and fake-runner tests are implemented without exposing arbitrary AppleScript, VBA, macros, shell, or UI scripting. |
