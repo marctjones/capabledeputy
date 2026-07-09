@@ -16,24 +16,26 @@ wrapper run_turn() consumes the stream correctly.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 
 from capabledeputy.agent.events import (
-    event_to_dict,
     IterationStarted,
     LLMRequestSent,
-    LLMTokenReceived,
     LLMResponseReceived,
+    LLMTokenReceived,
     ModelSelected,
     TurnCompleted,
     TurnInterrupted,
+    event_to_dict,
 )
 from capabledeputy.agent.loop import AgentLoopExceededError, run_turn, run_turn_streaming
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.types import FinishReason, LLMResponse, Message, ToolDescription
+from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.session.graph import SessionGraph
 from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.registry import ToolRegistry
@@ -206,6 +208,44 @@ async def test_streaming_llm_emits_token_events(
     assert [evt.text for evt in token_events] == ["hello ", "world"]
     assert isinstance(events[-1], TurnCompleted)
     assert events[-1].result.content == "hello world"
+
+
+async def test_capdepmac_turn_suppresses_leaked_web_fetch_grant(
+    tmp_path: Path,
+) -> None:
+    audit = AuditWriter(tmp_path / "audit.jsonl")
+    graph = SessionGraph(audit=audit)
+    session = await graph.new(owner="CapDepMac", intent="news")
+    graph._sessions[session.id] = replace(
+        session,
+        capability_set=frozenset({Capability(CapabilityKind.WEB_FETCH, "*")}),
+    )
+    registry = ToolRegistry()
+    tool_client = LabeledToolClient(registry=registry, graph=graph, audit=audit)
+    llm = _StreamingStubLLM(
+        [
+            "The runtime suggests:\n"
+            "1. `/grant WEB_FETCH *` — to enable web search capabilities."
+        ],
+    )
+
+    events = []
+    async for evt in run_turn_streaming(
+        session_id=session.id,
+        user_message="what is today's top news",
+        llm=llm,
+        tool_client=tool_client,
+        registry=registry,
+        graph=graph,
+        audit=audit,
+    ):
+        events.append(evt)
+
+    assert isinstance(events[-1], TurnCompleted)
+    content = events[-1].result.content
+    assert "/grant" not in content
+    assert "already granted" in content
+    assert "provider or tool-call issue" in content
 
 
 async def test_run_turn_wrapper_returns_same_result(

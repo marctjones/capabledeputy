@@ -58,11 +58,11 @@ def tool_list(
     table.add_column("Inherent labels")
     for tool in tools:
         table.add_row(
-            tool["name"],
-            tool["capability_kind"],
-            tool["target_arg"],
-            tool["amount_arg"] or "",
-            ", ".join(tool["inherent_labels"]),
+            str(tool.get("name") or ""),
+            str(tool.get("capability_kind") or ""),
+            str(tool.get("target_arg") or ""),
+            str(tool.get("amount_arg") or ""),
+            ", ".join(str(label) for label in (tool.get("inherent_labels") or ())),
         )
     console.print(table)
 

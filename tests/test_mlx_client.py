@@ -44,6 +44,21 @@ def test_parse_tool_call_response() -> None:
     assert response.finish_reason == FinishReason.TOOL_CALLS
 
 
+def test_parse_streamed_bundled_search_tool_call_response() -> None:
+    response = parse_mlx_response(
+        (
+            '{"tool_calls": [{"id": "1", "name": "bundled-search.search.web", '
+            '"args": {"query": "todays top news", "count": 5}}]}'
+        ),
+        model=DEFAULT_MLX_MODEL,
+    )
+
+    assert len(response.tool_calls) == 1
+    assert response.tool_calls[0].name == "bundled-search.search.web"
+    assert response.tool_calls[0].args == {"query": "todays top news", "count": 5}
+    assert response.finish_reason == FinishReason.TOOL_CALLS
+
+
 def test_try_parse_returns_none_for_non_json() -> None:
     assert _try_parse_tool_calls("hello") is None
 

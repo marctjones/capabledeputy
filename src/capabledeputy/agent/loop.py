@@ -36,7 +36,9 @@ from capabledeputy.mode.dispatcher import (
     select_mode,
     visible_tools,
 )
+from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.rules import Decision
+from capabledeputy.session.foreground_defaults import FOREGROUND_CHAT_OWNERS
 from capabledeputy.session.graph import SessionGraph, SessionStateError
 from capabledeputy.session.model import Session, Turn, make_generated_image_artifact
 from capabledeputy.tools.aliasing import build_alias_map, build_reverse_map
@@ -234,6 +236,61 @@ def _looks_like_failed_tool_parse(content: str) -> bool:
     if "tool_calls" in content or "```json" in lowered:
         return True
     return "{" in content and ("tool_call" in lowered or '"name"' in content)
+
+
+_SLASH_RECOVERY_TOKENS = ("/grant", "/spawn", "/override", "/extract")
+
+
+def _foreground_gui_session(session: Session) -> bool:
+    return (session.owner or "").strip() in FOREGROUND_CHAT_OWNERS
+
+
+def _has_capability(session: Session, kind: CapabilityKind, pattern: str) -> bool:
+    return any(cap.kind is kind and cap.pattern == pattern for cap in session.capability_set)
+
+
+def _repair_foreground_recovery_leak(
+    content: str,
+    *,
+    session: Session,
+    outcomes: list[ToolCallOutcome] | tuple[ToolCallOutcome, ...],
+) -> str:
+    """Keep terminal recovery commands from leaking into GUI chat.
+
+    CapDepMac renders structured recovery/approval metadata from tool outcomes.
+    A model-authored "The runtime suggests: `/grant ...`" paragraph is plain
+    text, so the GUI cannot turn it into the approval card the user expects.
+    """
+    if not content or not _foreground_gui_session(session):
+        return content
+    lowered = content.lower()
+    if not any(token in lowered for token in _SLASH_RECOVERY_TOKENS):
+        return content
+    if "/grant web_fetch" in lowered and _has_capability(session, CapabilityKind.WEB_FETCH, "*"):
+        return (
+            "Web search is already granted for this CapDepMac session. I was "
+            "not able to complete the search through the current provider/tool "
+            "path, so this is a provider or tool-call issue rather than a GUI "
+            "permission issue."
+        )
+    blocked = [
+        outcome
+        for outcome in outcomes
+        if outcome.decision in {Decision.DENY, Decision.REQUIRE_APPROVAL}
+    ]
+    if blocked:
+        names = ", ".join(sorted({o.tool_name or "tool" for o in blocked}))
+        return (
+            f"The runtime blocked or queued {names}. CapDepMac should show the "
+            "structured approval or recovery control for that action; I will "
+            "not ask you to type slash commands into chat."
+        )
+    return (
+        "I do not have a valid runtime recovery action for this turn. "
+        "CapDepMac permissions and approvals should be handled through the GUI; "
+        "if the request still fails after retrying, check the daemon/provider "
+        "readiness rather than typing slash commands into chat."
+    )
 
 
 def _call_signature(tool_name: str, args: dict) -> str:
@@ -461,7 +518,18 @@ def _generated_image_artifacts_from_outcomes(
     return tuple(artifacts)
 
 
-def _no_tools_notice_message() -> Message:
+def _no_tools_notice_message(session: Session) -> Message:
+    if _foreground_gui_session(session):
+        return Message(
+            role=Role.SYSTEM,
+            content=(
+                "NOTICE: this CapDepMac/foreground GUI session has no tools "
+                "available for this turn. Do not write tool-call code blocks "
+                "as text, and do not tell the user to type slash commands. "
+                "Tell them that the GUI/daemon needs to surface setup, grant, "
+                "or provider-readiness controls for this request."
+            ),
+        )
     return Message(
         role=Role.SYSTEM,
         content=(
@@ -948,7 +1016,7 @@ async def run_turn_streaming(
     # bypasses the runtime entirely. Tell the LLM, in plain language,
     # that the list is empty and what the user has to do to fix it.
     if not tool_descriptions and not conversational:
-        messages.append(_no_tools_notice_message())
+        messages.append(_no_tools_notice_message(session))
     visible_tool_names = {t.name for t in visible_all}
     reverse_map: dict[str, str] = {}
     if session.tool_aliasing:
@@ -1359,6 +1427,11 @@ async def run_turn_streaming(
                     allowed_paths=allowed_image_paths,
                     outcomes=tool_outcomes,
                 )
+            final_content = _repair_foreground_recovery_leak(
+                final_content,
+                session=session,
+                outcomes=tool_outcomes,
+            )
             agent_turn = Turn(
                 turn_id=len(session.history),
                 role="agent",
@@ -1641,7 +1714,7 @@ async def run_turn_streaming(
                     ),
                 )
                 if not tool_descriptions:
-                    messages.append(_no_tools_notice_message())
+                    messages.append(_no_tools_notice_message(session))
 
     # Loop exceeded max_iterations. Issue #2 — audit the cap-fire with
     # the last-N tool calls so the pathological turn is inspectable /

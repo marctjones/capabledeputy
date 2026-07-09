@@ -188,6 +188,18 @@ class TestEmptySession:
         assert isinstance(ctx.context_hash, str)
         assert len(ctx.context_hash) == 64  # SHA-256 hex
 
+    def test_capdepmac_recovery_hints_do_not_prompt_slash_commands(self) -> None:
+        """Foreground GUI sessions rely on structured recovery controls."""
+        session = Session.new(owner="CapDepMac")
+
+        ctx = build_llm_context(session, [], {}, [])
+
+        assert "This session is owned by a foreground GUI client" in ctx.system_prompt
+        assert "Do NOT tell the user to type slash commands" in ctx.system_prompt
+        assert "Run `/grant <KIND> <pattern>`" not in ctx.system_prompt
+        assert "CapDep Console window" not in ctx.system_prompt
+        assert "Press F1 / F2 / F3" not in ctx.system_prompt
+
     def test_empty_session_includes_session_section(
         self,
         empty_session: Session,
@@ -562,7 +574,9 @@ class TestRecoveryHints:
         ctx = build_llm_context(gui_session, tools, registry, events)
 
         assert "Press F1 / F2 / F3 to run them." not in ctx.system_prompt
-        assert "CapDep Console" in ctx.system_prompt
+        assert "CapDep Console" not in ctx.system_prompt
+        assert "The GUI renders" in ctx.system_prompt
+        assert "approval or recovery control" in ctx.system_prompt
 
     def test_repl_surface_keeps_f_key_recovery_bindings(
         self,

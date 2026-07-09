@@ -198,22 +198,30 @@ def _session_artifacts_section(session: Session, *, max_count: int = 8) -> str:
 def _recovery_hints_section(session: Session) -> str:
     """Recovery guidance tailored to the client surface."""
     if _is_foreground_chat_surface(session):
-        fkey_line = (
-            "Do NOT mention function-key shortcuts — those bindings exist "
-            "only in the terminal REPL."
-        )
-        surface_line = (
-            "Tell the user recovery slash commands can be run from the "
-            "CapDep Console window."
-        )
-        surfacing_suffix = ""
-    else:
-        fkey_line = (
-            "The user has F1 / F2 / F3 keypresses that execute the first "
-            "three steps directly, so quoting accurately matters."
-        )
-        surface_line = ""
-        surfacing_suffix = "\n>\n> Press F1 / F2 / F3 to run them."
+        return """# Recovery Hints
+
+This session is owned by a foreground GUI client such as CapDepMac.
+Do NOT tell the user to type slash commands like `/grant`, `/spawn`,
+`/override`, or `/extract` in normal chat, and do NOT mention terminal
+function-key shortcuts.
+
+When a tool is denied or requires approval, the runtime sends structured
+`recovery_steps` / approval metadata to the client. The GUI renders the
+appropriate approval or recovery control. Your job is to explain the
+blocked action in plain language and wait for the GUI-mediated result.
+
+If a tool was not denied and no approval was requested, never invent a
+permission request. For read-only foreground defaults such as web search,
+assume missing results are a provider/readiness/tool failure, not a user
+grant problem, unless a real tool outcome says otherwise.
+"""
+
+    fkey_line = (
+        "The user has F1 / F2 / F3 keypresses that execute the first "
+        "three steps directly, so quoting accurately matters."
+    )
+    surface_line = ""
+    surfacing_suffix = "\n>\n> Press F1 / F2 / F3 to run them."
 
     return f"""# Recovery Hints
 
@@ -259,6 +267,8 @@ def _session_caps_str(session: Session) -> str:
     means the agent has zero permissions — the LLM context tells it to
     surface that to the user rather than fabricate."""
     if not session.capability_set:
+        if _is_foreground_chat_surface(session):
+            return "(none — no GUI-mediated capabilities are active for this session)"
         return "(none — agent has zero capabilities; tell user to /grant)"
     parts = []
     for cap in sorted(session.capability_set, key=lambda c: (kind_name(c.kind), c.pattern)):
@@ -536,6 +546,20 @@ the guarantee.
   That is not an invocation — it is fabrication. The runtime cannot see
   it, no policy is evaluated, no real action happens."""
 
+    if _is_foreground_chat_surface(session):
+        empty_tools_guidance = (
+            "Tell the user explicitly: \"I have no tools available in this "
+            "GUI session.\" Do not ask them to type slash commands in chat; "
+            "CapDepMac should present GUI-mediated setup, grant, or recovery "
+            "controls when the daemon provides structured recovery metadata."
+        )
+    else:
+        empty_tools_guidance = (
+            "Tell the user explicitly: \"I have no capabilities granted in this "
+            "session. Run `/grant <KIND> <pattern>` to give me one (for example, "
+            "`/grant SEND_EMAIL recipient@example.com --one-shot`).\" Do not pretend."
+        )
+
     # --- Assemble full system prompt ---
     system_prompt = f"""You are an AI assistant operating inside CapableDeputy.
 
@@ -549,9 +573,7 @@ useful, accurate answers.
   tool list has only `email.send`, `inbox.read`, `inbox.list`, say so —
   do not invent `email.forward`.
 - If your tool list is EMPTY for this turn, you have no tools at all.
-  Tell the user explicitly: "I have no capabilities granted in this
-  session. Run `/grant <KIND> <pattern>` to give me one (for example,
-  `/grant SEND_EMAIL recipient@example.com --one-shot`)." Do not pretend.
+  {empty_tools_guidance}
 - After calling a tool, the runtime returns a real result. Report that
   result accurately. Do not fabricate decisions or outputs.
 - When the user asks for a web search, headlines, or to look something
