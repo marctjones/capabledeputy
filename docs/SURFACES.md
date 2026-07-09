@@ -7,12 +7,21 @@ by what you're trying to do, not by capability.
 ## Start here
 
 ```bash
+scripts/bootstrap-dev-env.sh
 uv run capdep daemon start            # the brain — start this first
 uv run capdep daemon start -v         # …with live RPC logging
 ```
 
 Everything else is a client of that daemon. With no daemon running,
 every client tells you to start it.
+
+The Python development environment is intentionally single-path: uv owns
+dependency resolution from `uv.lock`, installs into the repo-local `.venv`,
+and local daemon launch helpers put `.venv/bin` first on `PATH` so upstream
+tools such as `uvx kagimcp` resolve consistently.
+Image generation keeps heavy ML packages in `.venv-images` for runtime
+isolation, but `capdep-setup images --apply` also provisions that environment
+through uv.
 
 ## The decision
 

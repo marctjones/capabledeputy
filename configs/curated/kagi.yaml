@@ -3,8 +3,10 @@
 # Producer: Kagi Search (official kagisearch/kagimcp package).
 # Transport: stdio via uvx.
 #
-# Export:
-#   export KAGI_API_KEY=...
+# Credentials:
+#   Preferred: ~/.config/capabledeputy/secrets/vault.yaml entry for server `kagi`.
+#   Also supported: export KAGI_API_KEY before daemon start.
+# Local dev resolves `uvx` through the repo `.venv/bin` when present.
 #
 # This replaces any custom/news-specific MCP server. Kagi's single search
 # tool can search web, news, videos, podcasts, and images; results remain

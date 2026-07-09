@@ -69,13 +69,16 @@ def test_effective_command_wraps_when_isolation_set() -> None:
     )
     eff = cfg.effective_command()
     # Isolation wraps the original command at the end:
-    assert eff[-3:] == ("uvx", "mcp-server-filesystem", "/data")
+    assert eff[-3].endswith("/uvx") or eff[-3] == "uvx"
+    assert eff[-2:] == ("mcp-server-filesystem", "/data")
     assert "--read-only" in eff
 
 
 def test_effective_command_passthrough_when_no_isolation() -> None:
     cfg = UpstreamServerConfig(name="fs", command=("uvx", "mcp-server-filesystem", "/data"))
-    assert cfg.effective_command() == ("uvx", "mcp-server-filesystem", "/data")
+    eff = cfg.effective_command()
+    assert eff[0].endswith("/uvx") or eff[0] == "uvx"
+    assert eff[1:] == ("mcp-server-filesystem", "/data")
 
 
 def test_parse_config_with_isolation() -> None:

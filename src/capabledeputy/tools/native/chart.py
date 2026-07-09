@@ -37,7 +37,7 @@ def _render_chart(
     except ImportError as exc:
         raise RuntimeError(
             "matplotlib is required for chart.plot — install with "
-            "`pip install capabledeputy[charts]` or `pip install matplotlib`",
+            "`uv sync --all-groups --extra charts`",
         ) from exc
 
     if len(x_labels) != len(y_values):

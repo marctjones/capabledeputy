@@ -183,7 +183,7 @@ def test_personal_assistant_purposes_are_macos_google_and_apple_ready() -> None:
     assert (CapabilityKind.POWERPOINT_EXPORT, "*") in writing
 
     research = _cap_pairs("research")
-    assert (CapabilityKind.WEB_FETCH, "https://*") in research
+    assert (CapabilityKind.WEB_FETCH, "*") in research
     assert (CapabilityKind.BROWSER_READ, "https://*") in research
 
 

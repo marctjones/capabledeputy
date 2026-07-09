@@ -3,12 +3,13 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CAPDEP="$REPO_ROOT/.venv/bin/capdep"
+DEV_BIN="$REPO_ROOT/.venv/bin"
 LABEL="${CAPDEP_LAUNCHD_LABEL:-local.capabledeputy.daemon}"
 DOMAIN="gui/$(id -u)"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 OUT_LOG="${CAPDEP_DAEMON_STDOUT_LOG:-/tmp/capdep-launchd.out.log}"
 ERR_LOG="${CAPDEP_DAEMON_STDERR_LOG:-/tmp/capdep-launchd.err.log}"
-PATH_VALUE="${CAPDEP_DAEMON_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
+PATH_VALUE="$DEV_BIN:${CAPDEP_DAEMON_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
 
 usage() {
   cat <<USAGE

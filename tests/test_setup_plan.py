@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from capabledeputy.app import App
 from capabledeputy.daemon.gui_handlers import make_gui_handlers
-from capabledeputy.policy.context import PolicyContext
 from capabledeputy.daemon.setup_plan import (
     FIRST_WORKFLOW_ID,
     build_setup_check,
     build_setup_plan,
 )
+from capabledeputy.policy.context import PolicyContext
 
 
 @pytest.fixture
@@ -83,3 +84,37 @@ async def test_setup_plan_includes_imap_email_step(
 
     assert imap_step["status"] == "warning"
     assert "imap-setup" in imap_step["detail"]
+
+
+async def test_setup_plan_reports_failed_configured_mcp_servers(app: App) -> None:
+    app.upstream_manager = SimpleNamespace(
+        server_status={
+            "bundled-search": SimpleNamespace(
+                name="bundled-search",
+                state="registered",
+                registered_tool_count=1,
+                rejected_tool_count=0,
+                error="",
+                transport="stdio",
+                url="",
+            ),
+            "example": SimpleNamespace(
+                name="example",
+                state="failed",
+                registered_tool_count=0,
+                rejected_tool_count=0,
+                error="[Errno 2] No such file or directory: 'missing-command'",
+                transport="stdio",
+                url="",
+            ),
+        },
+    )
+
+    plan = build_setup_plan(app)
+    check = next(check for check in plan["checks"] if check["id"] == "configured-mcp")
+    step = next(step for step in plan["steps"] if step["id"] == "configured-mcp")
+
+    assert check["status"] == "warning"
+    assert check["failed_servers"] == ["example"]
+    assert "missing-command" in check["detail"]
+    assert step["status"] == "warning"

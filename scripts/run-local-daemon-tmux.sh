@@ -3,9 +3,11 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CAPDEP="$REPO_ROOT/.venv/bin/capdep"
+DEV_BIN="$REPO_ROOT/.venv/bin"
 SOCKET="${CAPDEP_TMUX_SOCKET:-capdep-daemon-debug}"
 SESSION="${CAPDEP_TMUX_SESSION:-capdep-daemon}"
 LOG="${CAPDEP_DAEMON_TMUX_LOG:-/tmp/capdep-daemon-tmux-debug.log}"
+PATH_VALUE="$DEV_BIN:${CAPDEP_DAEMON_PATH:-$PATH}"
 
 usage() {
   cat <<USAGE
@@ -58,7 +60,7 @@ start_daemon() {
   fi
   : > "$LOG"
   tmux -L "$SOCKET" new-session -d -s "$SESSION" -c "$REPO_ROOT" \
-    "CAPDEP_IDLE_SHUTDOWN_SECONDS=off '$CAPDEP' daemon start 2>&1 | tee '$LOG'; printf '\nexit=%s\n' \"\$?\" | tee -a '$LOG'; exec zsh"
+    "PATH='$PATH_VALUE' CAPDEP_REPO_ROOT='$REPO_ROOT' CAPDEP_IDLE_SHUTDOWN_SECONDS=off '$CAPDEP' daemon start 2>&1 | tee '$LOG'; printf '\nexit=%s\n' \"\$?\" | tee -a '$LOG'; exec zsh"
   wait_for_daemon || {
     echo "capdep tmux daemon failed to start" >&2
     tail -120 "$LOG" >&2 2>/dev/null || true

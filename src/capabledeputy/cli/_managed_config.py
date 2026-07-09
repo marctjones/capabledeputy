@@ -59,6 +59,39 @@ def _capdep_executable() -> str | None:
     return capdep
 
 
+def _project_venv_bin() -> Path | None:
+    capdep = _capdep_executable()
+    if capdep:
+        bin_dir = Path(capdep).resolve().parent
+        if bin_dir.name == "bin" and bin_dir.parent.name == ".venv":
+            return bin_dir
+    executable = Path(sys.executable).resolve()
+    bin_dir = executable.parent
+    if bin_dir.name == "bin" and bin_dir.parent.name == ".venv":
+        return bin_dir
+    cwd_venv_bin = Path.cwd() / ".venv" / "bin"
+    return cwd_venv_bin if cwd_venv_bin.is_dir() else None
+
+
+def uvx_spawn_command() -> list[str]:
+    """Resolve uvx through the project dev environment.
+
+    CapDep standardizes Python tooling on uv with a repo-local `.venv`.
+    GUI/launchd/tmux daemon launches may not inherit an operator shell PATH,
+    so upstream configs can keep portable `["uvx", ...]` commands while the
+    daemon resolves them to `.venv/bin/uvx` when available.
+    """
+    venv_bin = _project_venv_bin()
+    if venv_bin is not None:
+        uvx = venv_bin / "uvx"
+        if uvx.is_file():
+            return [str(uvx)]
+    uvx = shutil.which("uvx")
+    if uvx:
+        return [uvx]
+    return ["uvx"]
+
+
 def capdep_spawn_command(mcp_subcommand: str) -> list[str]:
     """Resolve the capdep CLI used to spawn bundled MCP subprocesses.
 
@@ -149,6 +182,8 @@ def resolve_upstream_spawn_command(command: tuple[str, ...] | list[str]) -> tupl
         return tuple(images_spawn_command(sub))
     if head == "capdep" and len(command) > 1:
         return tuple(capdep_spawn_command(command[1]))
+    if head == "uvx":
+        return tuple(uvx_spawn_command() + list(command[1:]))
     return tuple(command)
 
 
@@ -519,7 +554,8 @@ BUNDLED_IMAGE_GENERATE_BLOCK_BODY = """\
       CAPDEP_IMAGE_STEPS: "9"
       # On Apple Silicon, auto requires MFLUX with MLX/Metal and fails
       # closed instead of falling back to CPU/Torch/Diffusers.
-      # Profiles: default, flux-nsfw, flux2-nsfw, sdxl-nsfw, pony-nsfw.
+      # Profiles: default, quality-flux2, quality-qwen,
+      #   flux-nsfw, flux2-nsfw, sdxl-nsfw, pony-nsfw.
       # Flux profiles use CAPDEP_IMAGE_LORAS / CAPDEP_IMAGE_LORA_SCALES.
       # SDXL/Pony profiles use the checkpoint env overrides below.
       # CAPDEP_IMAGE_CHECKPOINT_PATH: "/path/to/photoreal-or-sdxl.safetensors"
@@ -566,7 +602,8 @@ BUNDLED_IMAGES_BLOCK_BODY = """\
       CAPDEP_IMAGE_STEPS: "9"
       # On Apple Silicon, auto requires MFLUX with MLX/Metal and fails
       # closed instead of falling back to CPU/Torch/Diffusers.
-      # Profiles: default, flux-nsfw, flux2-nsfw, sdxl-nsfw, pony-nsfw.
+      # Profiles: default, quality-flux2, quality-qwen,
+      #   flux-nsfw, flux2-nsfw, sdxl-nsfw, pony-nsfw.
       # Flux profiles use CAPDEP_IMAGE_LORAS / CAPDEP_IMAGE_LORA_SCALES.
       # SDXL/Pony profiles use the checkpoint env overrides below.
       # CAPDEP_IMAGE_CHECKPOINT_PATH: "/path/to/photoreal-or-sdxl.safetensors"

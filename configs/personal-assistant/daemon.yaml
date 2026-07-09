@@ -69,9 +69,11 @@ upstream_servers:
         capability_kind: WEB_FETCH
         target_arg: query
 
-  # Kagi — full web/news search when KAGI_API_KEY is exported before
-  # daemon start. Prefer kagi_search_fetch for headlines; bundled-search
-  # uses Brave (if keyed) or DuckDuckGo Instant Answer as fallback.
+  # Kagi — full web/news search. Store KAGI_API_KEY in the CapDep
+  # credential vault for server `kagi` or export it before daemon start.
+  # The daemon resolves `uvx` through the repo `.venv/bin` in local dev.
+  # Prefer kagi_search_fetch for headlines; bundled-search uses Brave
+  # (if keyed) or DuckDuckGo Instant Answer as fallback.
   - name: kagi
     command: ["uvx", "kagimcp"]
     env:

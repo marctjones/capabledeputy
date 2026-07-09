@@ -80,6 +80,10 @@ def test_setup_images_apply_uses_fake_runner_and_fake_venv(tmp_path: Path) -> No
 
     assert result.apply is True
     assert calls
+    assert calls[0][1] == "venv"
+    assert calls[1][:3] == (calls[0][0], "pip", "install")
+    assert "--python" in calls[1]
+    assert calls[2][:3] == (calls[0][0], "pip", "install")
     assert all(str(tmp_path) in " ".join(command) for command in calls[:3])
 
 
@@ -142,6 +146,24 @@ def test_setup_models_apply_download_uses_fake_runner_and_cache(tmp_path: Path) 
     assert all(str(tmp_path / "hf") in command for command in calls)
 
 
+def test_setup_models_reports_huggingface_cache_token(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    hf_home = tmp_path / "hf"
+    hf_home.mkdir()
+    token_path = hf_home / "token"
+    token_path.write_text("hf_fake\n", encoding="utf-8")
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+
+    result = setup_models(cache_home=hf_home)
+
+    assert result.details["hf_token_present"] is True
+    assert str(token_path) in result.details["hf_token_sources"]
+
+
 def test_setup_models_apply_convert_writes_manifests(
     tmp_path: Path,
     monkeypatch,
@@ -170,8 +192,17 @@ def test_setup_models_apply_convert_writes_manifests(
     assert inventory["planner.quality"]["recommended_runtime"] == (
         "mlx-community/Qwen3-30B-A3B-4bit"
     )
+    assert inventory["planner.quality.challenger"]["recommended_runtime"] == (
+        "mlx-community/Qwen3.6-27B-OptiQ-4bit"
+    )
     assert inventory["planner.coder"]["recommended_runtime"] == (
         "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
+    )
+    assert inventory["image.flux2-klein-quality"]["recommended_runtime"] == (
+        "mflux flux2-klein-4b"
+    )
+    assert inventory["image.qwen-image-quality"]["recommended_runtime"] == (
+        "OsaurusAI/Qwen-Image-mflux-4bit"
     )
     assert inventory["vlm.experimental"]["backend"] == "mlx-vlm"
     assert inventory["reranker.default"]["backend"] == "sentence-transformers-cross-encoder"
@@ -185,10 +216,13 @@ def test_setup_models_apply_convert_writes_manifests(
         if command[:2] == ["hf", "download"]
     }
     assert "Qwen/Qwen3-4B-MLX-4bit" in download_repos
+    assert "mlx-community/Qwen3.6-27B-OptiQ-4bit" in download_repos
     assert "mlx-community/Qwen3-30B-A3B-4bit" in download_repos
     assert "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit" in download_repos
     assert "BAAI/bge-reranker-v2-m3" in download_repos
     assert "mlx-community/Qwen3Guard-Gen-0.6B-4bit" in download_repos
+    assert "black-forest-labs/FLUX.2-klein-4B" in download_repos
+    assert "OsaurusAI/Qwen-Image-mflux-4bit" in download_repos
     assert "Qwen/Qwen3-4B" not in download_repos
     assert result.details["unsupported_conversions"] == [
         "image.sdxl-photoreal",

@@ -335,7 +335,7 @@ def _import_starlark() -> Any:
     except ImportError as e:  # pragma: no cover - exercised only without the extra
         raise PolicyScriptHostUnavailableError(
             "the Starlark policy host requires the 'starlark' runtime; "
-            "install it with `pip install capabledeputy[starlark]` "
+            "install it with `uv sync --all-groups` "
             "(starlark-pyo3).",
         ) from e
     return starlark

@@ -130,7 +130,7 @@ transient unless you explicitly save them as a draft or artifact.
 2. Install the Starlark policy runtime if your environment did not install dev extras:
 
    ```bash
-   pip install 'capabledeputy[starlark]'
+   uv sync --all-groups
    ```
 
 3. `export ANTHROPIC_API_KEY=sk-...` (or whichever LLM provider you chose)

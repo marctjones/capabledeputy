@@ -108,6 +108,24 @@ def _path_map(**paths: Path | None) -> dict[str, str]:
     return {key: str(value) for key, value in paths.items() if value is not None}
 
 
+def _huggingface_token_sources(*, cache_home: Path | None = None) -> tuple[str, ...]:
+    sources: list[str] = []
+    for name in ("HF_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
+        if os.environ.get(name):
+            sources.append(name)
+    home = Path.home()
+    candidate_paths = [
+        cache_home / "token" if cache_home is not None else None,
+        home / ".cache" / "huggingface" / "token",
+        home / ".huggingface" / "token",
+        home / ".config" / "huggingface" / "token",
+    ]
+    for token_path in candidate_paths:
+        if token_path is not None and token_path.is_file():
+            sources.append(str(token_path))
+    return tuple(dict.fromkeys(sources))
+
+
 def setup_assistant_surface(
     *,
     apply: bool = False,
@@ -316,6 +334,7 @@ def setup_daily_driver(
 
 
 def image_setup_commands(repo_root: Path, venv_path: Path) -> tuple[tuple[str, ...], ...]:
+    uv = shutil.which("uv") or str(repo_root / ".venv" / "bin" / "uv")
     py = venv_path / "bin" / "python"
     packages = [
         "mflux>=0.18.0",
@@ -342,10 +361,9 @@ def image_setup_commands(repo_root: Path, venv_path: Path) -> tuple[tuple[str, .
             "pyyaml>=6.0",
         ]
     return (
-        (sys.executable, "-m", "venv", str(venv_path)),
-        (str(py), "-m", "pip", "install", "-U", "pip", "wheel"),
-        (str(py), "-m", "pip", "install", "-e", str(repo_root), "--no-deps"),
-        (str(py), "-m", "pip", "install", *packages),
+        (uv, "venv", str(venv_path)),
+        (uv, "pip", "install", "--python", str(py), "-e", str(repo_root), "--no-deps"),
+        (uv, "pip", "install", "--python", str(py), *packages),
         (str(py), "-c", "import torch; print('torch', torch.__version__)"),
         (
             str(py),
@@ -379,7 +397,7 @@ def setup_images(
     runner = command_runner or _default_runner
     for command in commands:
         venv_python = venv_path / "bin" / "python"
-        if command[:3] == (sys.executable, "-m", "venv") and venv_python.is_file():
+        if len(command) >= 2 and command[1] == "venv" and venv_python.is_file():
             continue
         runner(command)
     return SetupDomainResult(
@@ -421,6 +439,7 @@ def setup_models(
     download_commands = model_download_commands(inventory, cache_home=cache_home)
     conversion_commands = model_conversion_commands(inventory, asset_home=asset_home)
     quality_plan = model_quality_plan()
+    hf_token_sources = _huggingface_token_sources(cache_home=cache_home)
     commands = (*download_commands, *conversion_commands)
     if download and not apply:
         raise ValueError("--download requires --apply")
@@ -481,9 +500,8 @@ def setup_models(
         paths=_path_map(hf_home=cache_home, model_asset_home=asset_home),
         details={
             "apple_silicon": apple_silicon,
-            "hf_token_present": bool(
-                os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN"),
-            ),
+            "hf_token_present": bool(hf_token_sources),
+            "hf_token_sources": list(hf_token_sources),
             "recommendations": recommendations,
             "inventory": [profile.as_dict() for profile in inventory],
             "download_commands": [list(command) for command in download_commands],

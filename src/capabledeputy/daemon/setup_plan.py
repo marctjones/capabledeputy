@@ -8,18 +8,22 @@ actions are valid.
 from __future__ import annotations
 
 import os
-import shutil
 from typing import Any
 
 from capabledeputy.app import App
-from capabledeputy.cli._managed_config import imap_credentials_present
+from capabledeputy.cli._managed_config import imap_credentials_present, uvx_spawn_command
 from capabledeputy.daemon.google_gmail_setup import GOOGLE_GMAIL_SERVER, google_oauth_statuses
 from capabledeputy.daemon.settings_store import load_settings
-from capabledeputy.llm.factory import mlx_metal_available, ollama_reachable, resolve_planner_model_spec
 from capabledeputy.daemon.workflow_templates import (
     FIRST_WORKFLOW_TEMPLATE_ID,
     first_workflow_template,
 )
+from capabledeputy.llm.factory import (
+    mlx_metal_available,
+    ollama_reachable,
+    resolve_planner_model_spec,
+)
+from capabledeputy.upstream.credential_vault import default_vault_path, load_credential_vault
 
 FIRST_WORKFLOW_ID = FIRST_WORKFLOW_TEMPLATE_ID
 
@@ -28,13 +32,13 @@ _STATUS_ORDER = {"blocking": 0, "warning": 1, "manual": 2, "ok": 3}
 
 def build_setup_checks(app: App) -> list[dict[str, Any]]:
     """Return the same check rows as ``setup.status``."""
+    from capabledeputy.daemon.google_gmail_setup import google_oauth_status
     from capabledeputy.daemon.gui_handlers import (
         _gmail_setup_check_status,
         _google_setup_actions,
         _google_setup_check_detail,
         _upstream_status,
     )
-    from capabledeputy.daemon.google_gmail_setup import google_oauth_status
 
     upstream = _upstream_status(app)
     google_statuses = google_oauth_statuses()["services"]
@@ -54,6 +58,7 @@ def build_setup_checks(app: App) -> list[dict[str, Any]]:
         model_detail += "; using local Ollama planner."
     imap_loaded = any(server.get("name") == "mail" for server in upstream)
     search_check = _search_provider_check(upstream)
+    upstream_check = _configured_upstreams_check(upstream)
     if imap_loaded and imap_credentials_present():
         imap_status = "ok"
         imap_detail = "IMAP mail upstream is loaded with saved credentials."
@@ -94,6 +99,7 @@ def build_setup_checks(app: App) -> list[dict[str, Any]]:
             ),
             "blocking": app.policy_context is None,
         },
+        upstream_check,
         {
             "id": "google-oauth",
             "title": "Google OAuth / MCP",
@@ -211,6 +217,7 @@ def build_setup_steps(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         "model",
         "policy",
         "config-validation",
+        "configured-mcp",
         "google-oauth",
         "imap-email",
         "web-search",
@@ -286,8 +293,12 @@ def _search_provider_check(upstream: list[dict[str, Any]]) -> dict[str, Any]:
     bundled = by_name.get("bundled-search")
     kagi = by_name.get("kagi")
     brave_key = bool(os.environ.get("BRAVE_SEARCH_API_KEY", "").strip())
-    kagi_key = bool(os.environ.get("KAGI_API_KEY", "").strip())
-    uvx_available = shutil.which("uvx") is not None
+    try:
+        vault_has_kagi_key = bool(load_credential_vault(default_vault_path()).env_for("kagi"))
+    except Exception:
+        vault_has_kagi_key = False
+    kagi_key = bool(os.environ.get("KAGI_API_KEY", "").strip()) or vault_has_kagi_key
+    uvx_available = uvx_spawn_command()[0] != "uvx"
     actions = [
         {
             "id": "config.validate",
@@ -326,6 +337,61 @@ def _search_provider_check(upstream: list[dict[str, Any]]) -> dict[str, Any]:
         "id": "web-search",
         "title": "Web search provider",
         "status": "warning",
+        "detail": detail,
+        "actions": actions,
+    }
+
+
+def _configured_upstreams_check(upstream: list[dict[str, Any]]) -> dict[str, Any]:
+    actions = [
+        {
+            "id": "config.validate",
+            "label": "Validate MCP Config",
+            "kind": "daemon_rpc",
+        },
+        {
+            "id": "config.log_locations",
+            "label": "Open Logs",
+            "kind": "daemon_rpc",
+        },
+    ]
+    if not upstream:
+        return {
+            "id": "configured-mcp",
+            "title": "Configured MCP servers",
+            "status": "manual",
+            "detail": "No upstream MCP server status is available from the daemon.",
+            "actions": actions,
+        }
+
+    failed = [server for server in upstream if str(server.get("state") or "") == "failed"]
+    if failed:
+        summarized = []
+        for server in failed[:4]:
+            name = str(server.get("name") or "unknown")
+            error = str(server.get("error") or "unknown error").strip()
+            summarized.append(f"{name}: {error}")
+        suffix = "" if len(failed) <= 4 else f"; plus {len(failed) - 4} more"
+        return {
+            "id": "configured-mcp",
+            "title": "Configured MCP servers",
+            "status": "warning",
+            "detail": (
+                "Configured MCP server(s) failed to launch: " + "; ".join(summarized) + suffix
+            ),
+            "actions": actions,
+            "failed_servers": [str(server.get("name") or "") for server in failed],
+        }
+
+    registered = [server for server in upstream if str(server.get("state") or "") == "registered"]
+    rejected_tools = sum(int(server.get("rejected_tool_count") or 0) for server in upstream)
+    detail = f"{len(registered)}/{len(upstream)} configured MCP server(s) registered."
+    if rejected_tools:
+        detail += f" {rejected_tools} tool(s) were rejected by policy classification."
+    return {
+        "id": "configured-mcp",
+        "title": "Configured MCP servers",
+        "status": "ok",
         "detail": detail,
         "actions": actions,
     }

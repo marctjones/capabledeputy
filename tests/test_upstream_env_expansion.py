@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from capabledeputy.cli._managed_config import resolve_upstream_spawn_command
 from capabledeputy.upstream.config import (
     UpstreamServerConfig,
     expand_env_value,
@@ -109,3 +110,17 @@ def test_multi_credential_pattern_distinct_envs(monkeypatch: pytest.MonkeyPatch)
     # prefix; see adapter.py:134).
     assert parsed[0].name == "github-work"
     assert parsed[1].name == "github-personal"
+
+
+def test_uvx_command_resolves_to_project_venv(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    venv_bin = tmp_path / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    uvx = venv_bin / "uvx"
+    uvx.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.argv", [str(venv_bin / "capdep")])
+
+    assert resolve_upstream_spawn_command(("uvx", "kagimcp")) == (
+        str(uvx),
+        "kagimcp",
+    )

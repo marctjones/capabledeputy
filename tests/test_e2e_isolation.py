@@ -83,11 +83,14 @@ def test_effective_command_wraps_existing_invocation() -> None:
         isolation=iso,
     )
     eff = cfg.effective_command()
-    assert eff[-3:] == ("uvx", "mcp-server-filesystem", "/data")
+    assert eff[-3].endswith("/uvx") or eff[-3] == "uvx"
+    assert eff[-2:] == ("mcp-server-filesystem", "/data")
     assert "--read-only" in eff
     # No isolation: command passes through unchanged.
     bare = UpstreamServerConfig(name="fs", command=("uvx", "mcp-server-filesystem"))
-    assert bare.effective_command() == ("uvx", "mcp-server-filesystem")
+    bare_eff = bare.effective_command()
+    assert bare_eff[0].endswith("/uvx") or bare_eff[0] == "uvx"
+    assert bare_eff[1:] == ("mcp-server-filesystem",)
 
 
 def test_quadlet_generator_emits_strict_directives(tmp_path: Path) -> None:
