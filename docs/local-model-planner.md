@@ -71,7 +71,10 @@ Image readiness and `capdep image profiles` surface the same asset state as
 change after local benchmark evidence justifies the change. Use:
 
 ```bash
-scripts/benchmark_image_models.py --candidate z-image-turbo --candidate flux2-klein-4b
+scripts/benchmark_image_models.py \
+  --candidate z-image-turbo \
+  --candidate flux2-klein-4b \
+  --candidate qwen-image
 ```
 
 The current three-option shortlist for each CapDep model purpose is tracked in
@@ -88,6 +91,11 @@ The built-in Apple Silicon text roles are:
 | `planner.quality` | `mlx-community/Qwen3-30B-A3B-4bit` | Slower quality turns that still use the text `mlx-lm` path. |
 | `planner.coder` | `mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit` | Programmatic mode and safe scripting/code generation. |
 | `extractor` | `mlx-community/Phi-3.5-mini-instruct-4bit` | Quarantined schema extraction. |
+
+`mlx-community/Qwen3.6-27B-OptiQ-4bit` is tracked as the first
+quality-planner challenger. It is downloadable through `capdep-setup models`,
+but it remains candidate-only until local CapDep benchmarks show better latency,
+memory, and valid-output behavior than the current `planner.quality` default.
 
 `mlx-community/Qwen3.6-35B-A3B-4bit` is tracked as an experimental VLM asset,
 not as a default text planner, because it uses the `mlx-vlm` path. Promote it

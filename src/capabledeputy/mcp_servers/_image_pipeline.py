@@ -115,6 +115,20 @@ _PROFILE_PRESETS: dict[str, dict[str, str]] = {
         "guidance": "1.0",
         "steps": "8",
     },
+    "quality-flux2": {
+        "backend": "mflux",
+        "model": "flux2-klein-4b",
+        "quantize": "8",
+        "guidance": "1.0",
+        "steps": "8",
+    },
+    "quality-qwen": {
+        "backend": "mflux",
+        "model": "qwen-image",
+        "model_path": "OsaurusAI/Qwen-Image-mflux-4bit",
+        "quantize": "4",
+        "steps": "12",
+    },
     "flux-nsfw": {
         "backend": "mflux",
         "model": "schnell",
@@ -168,6 +182,20 @@ _PROFILE_METADATA: dict[str, dict[str, Any]] = {
         "benchmark_note": "Significantly slower than Z-Image-Turbo; keep explicit.",
         "slow": True,
     },
+    "quality-flux2": {
+        "title": "Flux2 quality challenger",
+        "tier": "benchmark",
+        "description": "MFLUX Flux2 Klein 4B quality candidate for benchmark runs.",
+        "benchmark_note": "First general-quality challenger; benchmark before promotion.",
+        "slow": True,
+    },
+    "quality-qwen": {
+        "title": "Qwen Image quality challenger",
+        "tier": "benchmark",
+        "description": "Qwen Image MFLUX 4-bit candidate for benchmark runs.",
+        "benchmark_note": "Evaluate prompt adherence and latency before promotion.",
+        "slow": True,
+    },
     "flux-nsfw": {
         "title": "Flux LoRA",
         "tier": "adapter-test",
@@ -201,9 +229,11 @@ _PROFILE_ASSET_IDS = {
     "default": "image.default",
     "fast": "image.default",
     "balanced": "image.default",
-    "quality": "image.flux-schnell-lora",
+    "quality": "image.flux2-klein-quality",
+    "quality-flux2": "image.flux2-klein-quality",
+    "quality-qwen": "image.qwen-image-quality",
     "flux-nsfw": "image.flux-schnell-lora",
-    "flux2-nsfw": "image.flux-schnell-lora",
+    "flux2-nsfw": "image.flux2-klein-quality",
     "sdxl-nsfw": "image.sdxl-photoreal",
     "pony-nsfw": "image.pony-graphic-novel",
 }
@@ -695,7 +725,7 @@ def _require_image_deps() -> None:
     except ImportError as exc:
         raise RuntimeError(
             "image generation requires optional deps — install with "
-            "`pip install capabledeputy[images]`",
+            "`scripts/setup-images-venv.sh`",
         ) from exc
 
 

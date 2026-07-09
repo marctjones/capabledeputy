@@ -1,6 +1,6 @@
 # MLX model candidate validation
 
-Validated: 2026-07-06.
+Validated: 2026-07-08.
 
 This note compares three practical Apple Silicon model candidates for each
 CapDep runtime purpose. The shortlist intentionally prefers already-native
@@ -23,11 +23,11 @@ Validation checks performed:
 |---|---|---|---|
 | Fast/default chat | `Qwen/Qwen3-4B-MLX-4bit` | `mlx-community/Qwen3-8B-4bit` | `mlx-community/Qwen3-1.7B-4bit` |
 | Tool-heavy planning | `mlx-community/Qwen3-14B-4bit` | `mlx-community/Qwen3-8B-4bit` | `lmstudio-community/Mistral-Small-3.2-24B-Instruct-2506-MLX-4bit` |
-| Quality planning | `mlx-community/Qwen3-30B-A3B-4bit` | `lmstudio-community/Mistral-Small-3.2-24B-Instruct-2506-MLX-4bit` | `mlx-community/Qwen3-32B-4bit` |
+| Quality planning | `mlx-community/Qwen3-30B-A3B-4bit` | `mlx-community/Qwen3.6-27B-OptiQ-4bit` | `lmstudio-community/Mistral-Small-3.2-24B-Instruct-2506-MLX-4bit` |
 | Coding/scripting | `mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit` | `mlx-community/Qwen2.5-Coder-14B-Instruct-4bit` | `mlx-community/Devstral-Small-2507-4bit` |
 | Quarantined extraction | `mlx-community/Phi-3.5-mini-instruct-4bit` | `mlx-community/Qwen3-1.7B-4bit` | `mlx-community/Llama-3.2-3B-Instruct-4bit` |
 | Vision-language | `mlx-community/Qwen2.5-VL-7B-Instruct-4bit` | `mlx-community/InternVL3-8B-6bit` | `mlx-community/Qwen2.5-VL-32B-Instruct-4bit` |
-| Image generation | `filipstrand/Z-Image-Turbo-mflux-4bit` | `black-forest-labs/FLUX.1-schnell` via MFLUX | `dhairyashil/FLUX.1-schnell-mflux-4bit` |
+| Image generation | `filipstrand/Z-Image-Turbo-mflux-4bit` | `black-forest-labs/FLUX.2-klein-4B` via MFLUX | `OsaurusAI/Qwen-Image-mflux-4bit` |
 
 ## Fast/default chat
 
@@ -56,11 +56,12 @@ local benchmark shows Mistral Small gives materially better tool decisions.
 | Candidate | MLX status | Gate | License | Local cache | Fit |
 |---|---:|---:|---:|---:|---|
 | `mlx-community/Qwen3-30B-A3B-4bit` | Native MLX 4-bit MoE | No | Apache-2.0 | Missing | Best default quality candidate for long reasoning without full dense 30B cost. |
+| `mlx-community/Qwen3.6-27B-OptiQ-4bit` | Native MLX OptiQ 4-bit | No | Apache-2.0 | Missing | First A/B challenger; newer Qwen family with mixed precision for Apple Silicon. |
 | `lmstudio-community/Mistral-Small-3.2-24B-Instruct-2506-MLX-4bit` | Native MLX 4-bit | No | Apache-2.0 | Missing | Strong prose/planning alternative; less aligned with current Qwen routing. |
-| `mlx-community/Qwen3-32B-4bit` | Native MLX 4-bit dense | No | Apache-2.0 | Missing | Useful quality baseline, but likely heavier than 30B-A3B for similar benefit. |
 
 Decision: keep `mlx-community/Qwen3-30B-A3B-4bit` as the quality role and use
-Mistral Small as the first A/B challenger.
+`mlx-community/Qwen3.6-27B-OptiQ-4bit` as the first A/B challenger. Promote
+only with local CapDep latency, memory, and valid-output evidence.
 
 ## Coding and safe scripting
 
@@ -100,11 +101,14 @@ explicit VLM runtime path. Do not route this through `mlx-lm` text planner code.
 | Candidate | MLX/MFLUX status | Gate | License | Local cache | Fit |
 |---|---:|---:|---:|---:|---|
 | `filipstrand/Z-Image-Turbo-mflux-4bit` | Native MFLUX 4-bit | No | Other | Cached | Best interactive default due to existing local cache and MFLUX packaging. |
-| `black-forest-labs/FLUX.1-schnell` | MFLUX runtime-native family | Auto | Apache-2.0 | Cached | Best supported FLUX baseline; gate must remain explicit. |
-| `dhairyashil/FLUX.1-schnell-mflux-4bit` | Native MFLUX 4-bit | No | Apache-2.0 | Missing | Ungated MFLUX-packaged fallback, but lower adoption signal. |
+| `black-forest-labs/FLUX.2-klein-4B` | MFLUX runtime-native family | No | Apache-2.0 | Cached | First general-quality challenger; strong adoption but slower than Z-Image-Turbo. |
+| `OsaurusAI/Qwen-Image-mflux-4bit` | Native MFLUX 4-bit | No | Apache-2.0 | Missing | Qwen Image challenger; benchmark prompt adherence and latency before promotion. |
 
 Decision: keep `filipstrand/Z-Image-Turbo-mflux-4bit` as the interactive image
-default and keep `FLUX.1-schnell` as the benchmark/control family.
+default. Benchmark `FLUX.2-klein-4B` and `Qwen-Image-mflux-4bit` before any
+profile promotion. Keep adult-output work separate: use MFLUX LoRA profiles for
+Apple Silicon experiments and keep SDXL/Pony/Illustrious as explicit diffusers
+fallback profiles rather than trying to convert those checkpoints to MLX.
 
 ## Conversion policy
 

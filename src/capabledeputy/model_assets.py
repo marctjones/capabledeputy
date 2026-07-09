@@ -130,6 +130,23 @@ def model_asset_inventory(*, apple_silicon: bool | None = None) -> tuple[ModelAs
             notes="Preferred quality planner candidate; text-only MLX-LM MoE path.",
         ),
         ModelAssetProfile(
+            profile_id="planner.quality.challenger",
+            role="text",
+            backend=text_runtime,
+            source_repo="Qwen/Qwen3.6-27B",
+            source_format="huggingface-transformers",
+            recommended_runtime="mlx-community/Qwen3.6-27B-OptiQ-4bit"
+            if apple_silicon
+            else "Qwen/Qwen3.6-27B",
+            conversion_status="native_mlx_available" if apple_silicon else "source_runtime",
+            quantization="optiq-4bit" if apple_silicon else None,
+            fallback_runtime="planner.quality",
+            notes=(
+                "First A/B challenger for quality planning; keep candidate-only "
+                "until CapDep benchmark evidence beats the current Qwen3 30B-A3B role."
+            ),
+        ),
+        ModelAssetProfile(
             profile_id="planner.coder",
             role="text",
             backend=text_runtime,
@@ -230,6 +247,40 @@ def model_asset_inventory(*, apple_silicon: bool | None = None) -> tuple[ModelAs
             gated=False,
             fallback_runtime="diffusers",
             notes="MFLUX can run this family directly; LoRA compatibility is adapter-specific.",
+        ),
+        ModelAssetProfile(
+            profile_id="image.flux2-klein-quality",
+            role="image",
+            backend=image_runtime,
+            source_repo="black-forest-labs/FLUX.2-klein-4B",
+            source_format="diffusers",
+            recommended_runtime="mflux flux2-klein-4b" if apple_silicon else "diffusers",
+            conversion_status="runtime_native_no_conversion" if apple_silicon else "source_runtime",
+            gated=False,
+            fallback_runtime="image.default",
+            notes=(
+                "General image-quality challenger. Benchmark before promoting; "
+                "not the preferred adult-output path because the base family has mitigations."
+            ),
+        ),
+        ModelAssetProfile(
+            profile_id="image.qwen-image-quality",
+            role="image",
+            backend=image_runtime,
+            source_repo="OsaurusAI/Qwen-Image-mflux-4bit"
+            if apple_silicon
+            else "Qwen/Qwen-Image",
+            source_format="mflux-mlx" if apple_silicon else "diffusers",
+            recommended_runtime="OsaurusAI/Qwen-Image-mflux-4bit"
+            if apple_silicon
+            else "diffusers",
+            conversion_status="native_mflux_available" if apple_silicon else "source_runtime",
+            quantization="4bit" if apple_silicon else None,
+            fallback_runtime="image.default",
+            notes=(
+                "Qwen Image MFLUX quality challenger; keep explicit until local "
+                "benchmark evidence justifies a default/profile promotion."
+            ),
         ),
         ModelAssetProfile(
             profile_id="image.sdxl-photoreal",

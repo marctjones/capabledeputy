@@ -46,7 +46,7 @@ PREFETCH_REPOS = {
     "schnell": "black-forest-labs/FLUX.1-schnell",
     "dev": "black-forest-labs/FLUX.1-dev",
     "krea-dev": "black-forest-labs/FLUX.1-Krea-dev",
-    "qwen-image": "Qwen/Qwen-Image",
+    "qwen-image": "OsaurusAI/Qwen-Image-mflux-4bit",
 }
 
 

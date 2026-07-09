@@ -306,6 +306,8 @@ upstream_servers:
       CAPDEP_IMAGE_STEPS: "9"
       # Profiles:
       #   default    = fast MFLUX/MLX Z-Image-Turbo when available
+      #   quality-flux2 = MFLUX FLUX.2 Klein benchmark challenger
+      #   quality-qwen  = MFLUX Qwen Image benchmark challenger
       #   flux-nsfw  = MFLUX FLUX.1 LoRA profile; set CAPDEP_IMAGE_LORAS
       #   flux2-nsfw = MFLUX FLUX.2 Klein 9B LoRA profile; slower but targeted
       #   sdxl-nsfw  = Diffusers SDXL fallback; set photoreal checkpoint below

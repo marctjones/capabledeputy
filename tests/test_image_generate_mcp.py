@@ -339,6 +339,10 @@ def test_available_image_profiles_describe_benchmark_defaults() -> None:
     assert profiles["default"]["model"] == "z-image-turbo"
     assert profiles["balanced"]["steps"] > profiles["fast"]["steps"]
     assert profiles["quality"]["slow"] is True
+    assert profiles["quality"]["asset_profile"] == "image.flux2-klein-quality"
+    assert profiles["quality-flux2"]["model"] == "flux2-klein-4b"
+    assert profiles["quality-qwen"]["model"] == "qwen-image"
+    assert profiles["quality-qwen"]["asset_profile"] == "image.qwen-image-quality"
     assert profiles["sdxl-nsfw"]["backend"] == "diffusers"
     assert profiles["sdxl-nsfw"]["model"] == "photoreal"
 
