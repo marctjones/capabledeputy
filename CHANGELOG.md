@@ -6,6 +6,45 @@ breaking changes).
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-07-08
+
+Stable release for natural web search, daily-driver workflow validation and
+policy defaults, security assurance proofing, measured model quality planning,
+and updated MLX/MFLUX model candidates.
+
+### Natural web search and GUI recovery
+
+- Made read-only web/news search behave as a natural daily-driver workflow with
+  standing search capability coverage, Kagi configuration guidance, provider
+  readiness checks, and regression tests for streamed search tool calls.
+- Hardened CapDepMac/foreground GUI sessions so model-authored slash-command
+  recovery text is repaired into GUI-mediated recovery language instead of
+  telling users to type terminal commands into chat.
+- Added configured-MCP diagnostics to setup planning so failed upstream servers
+  are surfaced directly with validation/log actions.
+
+### Setup and development environment
+
+- Standardized local Python development on uv and the repo-local `.venv`, added
+  `scripts/bootstrap-dev-env.sh`, and made local daemon launch helpers put
+  `.venv/bin` first on `PATH`.
+- Resolved `uvx` upstream server commands through the project venv when
+  available, so Kagi and other uvx-launched MCP servers work reliably from
+  tmux, launchd, and GUI-owned daemon starts.
+- Moved image setup onto uv-based commands while keeping `.venv-images` as an
+  isolated runtime environment for large image dependencies.
+
+### Model strategy
+
+- Added `planner.quality.challenger` for
+  `mlx-community/Qwen3.6-27B-OptiQ-4bit` as a candidate-only quality planner.
+- Added `quality-flux2` and `quality-qwen` image benchmark profiles, backed by
+  MFLUX `flux2-klein-4b` and `OsaurusAI/Qwen-Image-mflux-4bit`, while keeping
+  Z-Image-Turbo as the interactive default.
+- Updated model setup inventory, download planning, benchmark docs, image
+  readiness metadata, and Hugging Face token-source reporting. SDXL/Pony remain
+  explicit Diffusers fallback profiles, not silently promoted to MLX defaults.
+
 ### Security assurance and flow-pattern proof
 
 - Implemented `20 Product — v0.50.0 — Security assurance and flow-pattern
@@ -1106,6 +1145,7 @@ released, version-stamped baseline. Package metadata (`pyproject.toml`,
 - `scripts/gemma4_quarantine_bench.py`: benchmark a local ollama model as the
   quarantined extractor using the real production extraction path.
 
+[0.53.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.53.0
 [0.48.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.48.0
 [0.44.0]: https://github.com/marctjones/capabledeputy/releases/tag/v0.44.0
 [0.41.1]: https://github.com/marctjones/capabledeputy/releases/tag/v0.41.1

@@ -6,9 +6,10 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-07-08 — v0.48.0 is the current stable release.
-v0.49.0, v0.50.0, v0.51.0, and v0.52.0 are implemented on `main`. v1.0
-remains unscheduled.
+**Last refreshed:** 2026-07-08 — v0.53.0 is the current stable release,
+covering natural web search, daily-driver validation/defaults, security
+assurance proofing, measured model quality planning, and updated MLX/MFLUX
+model candidates. v1.0 remains unscheduled.
 
 ## Product Ladder — v0.35 → v0.53
 
@@ -65,11 +66,11 @@ completed and closed work follows:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
-| **23 Product — v0.53.0 — Natural web search** | #288–#291 | Implemented locally: read-only search grants, Swift GUI grant/retry copy, provider readiness diagnostics, and natural-search regression coverage. |
-| **22 Product — v0.52.0 — Daily-driver workflow validation** | #283–#287 | Complete locally: workflow validation report, preset drift fixes, source binding scheme coverage, setup output integration, docs, and regression tests are implemented. |
-| **21 Product — v0.51.0 — Daily-driver policy defaults and desktop workflow gates** | #271, #272, #275–#282 | Complete locally: daily-driver preset/approval matrix, curated tool catalog/readiness, relationship setup, browser/screen gates, draft-first messaging/calendar mutation, staged filesystem/office mutation, approval UX, data minimization/retention, and policy docs/diagnostics/regression tests are implemented. |
-| **20 Product — v0.50.0 — Security assurance and flow-pattern proof** | #264–#270 | Complete locally: reference-monitor totality inventory/tests, flow-pattern composition proof inventory, label/source coverage fixtures, fake/dry-run substrate contracts, audited WARN/advisory outcomes, and model-sidecar authority-boundary checks are implemented. |
-| **19 Product — v0.49.0 — Measured local model runtime and retrieval quality** | #257–#263 | Complete locally: model-quality planning, explicit reranker runtime status, deterministic retrieval fixtures, role benchmark cases, advisory guard annotations, setup/client measured-quality summaries, default-promotion gates, and release docs/tests are implemented. Runtime defaults remain candidate-only until benchmark evidence satisfies the gates. |
+| **23 Product — v0.53.0 — Natural web search** | #288–#291 | Closed/released: read-only search grants, GUI-mediated recovery, provider readiness diagnostics, Kagi setup alignment, and natural-search regression coverage are implemented. |
+| **22 Product — v0.52.0 — Daily-driver workflow validation** | #283–#287 | Closed/released: workflow validation report, preset drift fixes, source binding scheme coverage, setup output integration, docs, and regression tests are implemented. |
+| **21 Product — v0.51.0 — Daily-driver policy defaults and desktop workflow gates** | #271, #272, #275–#282 | Closed/released: daily-driver preset/approval matrix, curated tool catalog/readiness, relationship setup, browser/screen gates, draft-first messaging/calendar mutation, staged filesystem/office mutation, approval UX, data minimization/retention, and policy docs/diagnostics/regression tests are implemented. |
+| **20 Product — v0.50.0 — Security assurance and flow-pattern proof** | #264–#270 | Closed/released: reference-monitor totality inventory/tests, flow-pattern composition proof inventory, label/source coverage fixtures, fake/dry-run substrate contracts, audited WARN/advisory outcomes, and model-sidecar authority-boundary checks are implemented. |
+| **19 Product — v0.49.0 — Measured local model runtime and retrieval quality** | #257–#263 | Closed/released: model-quality planning, explicit reranker runtime status, deterministic retrieval fixtures, role benchmark cases, advisory guard annotations, setup/client measured-quality summaries, default-promotion gates, and release docs/tests are implemented. Runtime defaults remain candidate-only until benchmark evidence satisfies the gates. |
 | **18 Product — v0.48.0 — Native MLX model asset pipeline** | #249–#256 | Closed/released: model asset inventory, conversion-aware `capdep-setup models`, provenance manifests, explicit unsupported fallback handling, image readiness metadata, model experiment evidence, and docs are implemented; benchmark evidence remains required before runtime defaults change. |
 | **17 Product — v0.47.0 — Native office automation skills** | #241–#248 | Closed/released: bounded SKILL.md workflows, Microsoft Outlook/Word/PowerPoint adapters, office capability/label/approval mappings, setup diagnostics, config wiring, and fake-runner tests are implemented without exposing arbitrary AppleScript, VBA, macros, shell, or UI scripting. |
 | **16 Product — v0.46.0 — Consolidated setup automation** | #233–#240 | Closed/released: one-time assistant-surface/IMAP/Workspace/image/model/macOS-daemon/sandbox setup lives under `capdep-setup`, compatibility aliases remain, and temp-home/fake-runner tests guard non-destructive setup behavior. |

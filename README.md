@@ -6,7 +6,7 @@ A structurally secure runtime for personal AI agents.
 
 CapableDeputy is an AI agent runtime built as a faithful implementation of recognized security models — a reference monitor, an information-flow lattice, and the object-capability model — with the LLM treated as an untrusted component *outside* the trusted computing base. Every action the agent takes flows through one deterministic capability and information-flow chokepoint, escalates to programmatic execution when stakes warrant, and surfaces every cross-compartment data flow through human-auditable approval gates.
 
-**Status:** Alpha — **v0.48.0 released** — dead-simple Google account connection, consolidated `capdep-setup` automation, bounded native office automation skills, and the native MLX/MFLUX model asset pipeline. Recent releases also added SKILL.md interoperability, CommonMark rendering parity, daemon-owned local media/model operations, CapDepMac prompt queueing/recovery, safe scripting workflows, generated-image session artifacts, connector admission, local model routing, background automation coordination, memory/retention/compaction, and MCP workflow templates. See [CHANGELOG.md](CHANGELOG.md) for released changes and [ROADMAP.md](ROADMAP.md) for longer-term planning.
+**Status:** Alpha — **v0.53.0 released** — natural web search, daily-driver workflow validation, daily-driver policy defaults, security assurance proofing, measured local model quality planning, and updated MLX/MFLUX model candidates. Recent releases also added dead-simple Google account connection, consolidated setup automation, bounded native office automation skills, SKILL.md interoperability, CommonMark rendering parity, daemon-owned local media/model operations, CapDepMac prompt queueing/recovery, safe scripting workflows, local model routing, background automation coordination, memory/retention/compaction, and MCP workflow templates. See [CHANGELOG.md](CHANGELOG.md) for released changes and [ROADMAP.md](ROADMAP.md) for longer-term planning.
 
 ## Why
 
@@ -117,8 +117,16 @@ read — strengths, weaknesses, and prioritized fixes — is in
 
 ## Development
 
+CapDep standardizes on **uv** for Python packaging and one repo-local
+development environment: `.venv`. Do not install project dependencies with
+`pip`, Poetry, or ad hoc virtualenvs. Bootstrap once, then use `uv run ...`
+or the checked-in launch scripts, which put `.venv/bin` first on `PATH`.
+The optional `.venv-images` environment is a uv-managed runtime isolation
+boundary for large image-generation dependencies, not a second developer
+environment.
+
 ```bash
-uv sync --all-groups
+scripts/bootstrap-dev-env.sh
 uv run pytest
 ```
 
@@ -203,6 +211,7 @@ apps/macos/CapDep/scripts/run-local-app.sh
 # Configure Kagi web search (API key outside git):
 #   ~/.config/capabledeputy/secrets/vault.yaml  →  kagi / KAGI_API_KEY
 #   ~/.config/capabledeputy/servers.d/kagi.yaml →  kagi_search_fetch tool
+# Kagi's `uvx kagimcp` command resolves through .venv/bin/uvx at daemon start.
 ```
 
 New CapDepMac sessions receive foreground read caps for common home-directory
@@ -242,11 +251,12 @@ capdep image cancel <job-id>
 ```
 
 Default, fast, and balanced profiles use the Apple Silicon MFLUX/MLX
-Z-Image-Turbo path. The quality profile uses the slower Flux2 Klein path.
-Diffusers SDXL/Pony profiles remain explicit fallback profiles for local
-checkpoint installs. Readiness checks cover backend imports, output paths,
-LoRA/checkpoint paths, Hugging Face token presence, and selected model metadata;
-they report token source names only, not token values.
+Z-Image-Turbo path. The quality profile uses the slower Flux2 Klein path, with
+`quality-flux2` and `quality-qwen` exposed as benchmark challengers before any
+default promotion. Diffusers SDXL/Pony profiles remain explicit fallback
+profiles for local checkpoint installs. Readiness checks cover backend imports,
+output paths, LoRA/checkpoint paths, Hugging Face token presence, and selected
+model metadata; they report token source names only, not token values.
 
 `capdep-setup models` now produces a conversion-aware model asset inventory
 covering text and image profiles, source formats, Hugging Face repositories,
@@ -261,8 +271,10 @@ Built-in MLX text roles keep `Qwen/Qwen3-4B-MLX-4bit` as the fast default,
 use `mlx-community/Qwen3-14B-4bit` for tool-heavy turns,
 `mlx-community/Qwen3-30B-A3B-4bit` for quality turns, and
 `mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit` for programmatic
-coding/scripting turns. Qwen3.6 VLM assets stay experimental until CapDep has an
-explicit `mlx-vlm` backend path.
+coding/scripting turns. `mlx-community/Qwen3.6-27B-OptiQ-4bit` is tracked as
+the first quality-planner challenger, but remains candidate-only until local
+CapDep benchmarks beat the current quality role. Qwen3.6 VLM assets stay
+experimental until CapDep has an explicit `mlx-vlm` backend path.
 
 ### Safe scripting assistant
 

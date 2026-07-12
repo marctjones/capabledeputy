@@ -2,11 +2,10 @@
 
 Living plan that organizes GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
-rationale*. Last refreshed 2026-07-08 — **v0.48.0** is the current stable
-release. **v0.49.0**, **v0.50.0**, **v0.51.0**, and **v0.52.0** are
-implemented on `main`.
+rationale*. Last refreshed 2026-07-08 — **v0.53.0** is the current stable
+release.
 
-Recently completed stable release: **v0.48.0**.
+Recently completed stable release: **v0.53.0**.
 
 Included product milestones: **12 Product — v0.42.0 — Local media/model
 operations reliability** · **13 Product — v0.43.0 — CommonMark rendering
@@ -18,7 +17,8 @@ v0.48.0 — Native MLX model asset pipeline** · **19 Product — v0.49.0 —
 Measured local model runtime and retrieval quality** · **20 Product — v0.50.0 —
 Security assurance and flow-pattern proof** · **21 Product — v0.51.0 —
 Daily-driver policy defaults and desktop workflow gates** · **22 Product —
-v0.52.0 — Daily-driver workflow validation**.
+v0.52.0 — Daily-driver workflow validation** · **23 Product — v0.53.0 —
+Natural web search**.
 
 Next implementation milestone: none currently opened. v1.0 remains
 unscheduled.
