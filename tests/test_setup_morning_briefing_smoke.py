@@ -7,6 +7,7 @@ from pathlib import Path
 
 import anyio
 import pytest
+from demos.scenarios._helpers import make_app, make_session
 
 from capabledeputy.daemon.setup_plan import FIRST_WORKFLOW_ID, build_setup_check
 from capabledeputy.daemon.workflow_templates import (
@@ -18,7 +19,6 @@ from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.context import PolicyContext
 from capabledeputy.policy.labels import LabelState
-from demos.scenarios._helpers import make_app, make_session
 from tests.daemon_integration import running_daemon
 
 
@@ -73,17 +73,11 @@ async def test_morning_briefing_live_daemon_e2e(tmp_path: Path) -> None:
         [
             LLMResponse(
                 content="Reading notes for the briefing.",
-                tool_calls=(
-                    ToolCall(id="mb1", name="memory.read", args={"key": notes_key}),
-                ),
+                tool_calls=(ToolCall(id="mb1", name="memory.read", args={"key": notes_key}),),
                 finish_reason=FinishReason.TOOL_CALLS,
             ),
             LLMResponse(
-                content=(
-                    "Morning briefing:\n"
-                    "- Call dentist today\n"
-                    "- Buy milk on the way home"
-                ),
+                content=("Morning briefing:\n- Call dentist today\n- Buy milk on the way home"),
                 finish_reason=FinishReason.STOP,
             ),
         ],
@@ -108,11 +102,7 @@ async def test_morning_briefing_live_daemon_e2e(tmp_path: Path) -> None:
         assert check["first_workflow"] == FIRST_WORKFLOW_ID
 
         template = first_workflow_template()
-        listed = next(
-            item
-            for item in workflows["templates"]
-            if item["id"] == FIRST_WORKFLOW_ID
-        )
+        listed = next(item for item in workflows["templates"] if item["id"] == FIRST_WORKFLOW_ID)
         assert listed["purpose_handle"] == template["purpose_handle"]
         assert listed["turn_message"] == workflow_turn_message(template)
 

@@ -92,9 +92,11 @@ def _summary_artifact(session: Any, turns: list[Any], *, keep_last: int) -> dict
                 "turn_id": getattr(turn, "turn_id", None),
                 "role": getattr(turn, "role", ""),
                 "content_preview": content[:500],
-                "content_sha256": __import__("hashlib").sha256(
+                "content_sha256": __import__("hashlib")
+                .sha256(
                     content.encode("utf-8"),
-                ).hexdigest(),
+                )
+                .hexdigest(),
             },
         )
     return {
@@ -112,8 +114,7 @@ def _summary_artifact(session: Any, turns: list[Any], *, keep_last: int) -> dict
             "origin": session.origin.to_dict(),
         },
         "summary": "\n".join(
-            f"{item['role']}[{item['turn_id']}]: {item['content_preview']}"
-            for item in items
+            f"{item['role']}[{item['turn_id']}]: {item['content_preview']}" for item in items
         ),
         "source_turns": items,
     }

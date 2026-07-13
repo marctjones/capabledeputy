@@ -267,13 +267,9 @@ def model_asset_inventory(*, apple_silicon: bool | None = None) -> tuple[ModelAs
             profile_id="image.qwen-image-quality",
             role="image",
             backend=image_runtime,
-            source_repo="OsaurusAI/Qwen-Image-mflux-4bit"
-            if apple_silicon
-            else "Qwen/Qwen-Image",
+            source_repo="OsaurusAI/Qwen-Image-mflux-4bit" if apple_silicon else "Qwen/Qwen-Image",
             source_format="mflux-mlx" if apple_silicon else "diffusers",
-            recommended_runtime="OsaurusAI/Qwen-Image-mflux-4bit"
-            if apple_silicon
-            else "diffusers",
+            recommended_runtime="OsaurusAI/Qwen-Image-mflux-4bit" if apple_silicon else "diffusers",
             conversion_status="native_mflux_available" if apple_silicon else "source_runtime",
             quantization="4bit" if apple_silicon else None,
             fallback_runtime="image.default",

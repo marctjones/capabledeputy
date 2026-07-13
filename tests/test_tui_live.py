@@ -8,14 +8,13 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from textual.widgets import Input, RichLog, Static
+from textual.widgets import Input, RichLog
 
 from capabledeputy.ipc.client import DaemonNotRunningError
 from capabledeputy.tui.app import (
     CapDepTUI,
     DaemonRPCWorkbenchScreen,
     GoogleWorkspaceSetupScreen,
-    SetupAssistantScreen,
     WorkflowLibraryScreen,
 )
 from capabledeputy.tui.console import CapDepConsole
@@ -334,7 +333,7 @@ async def test_tui_daemon_rpc_workbench_calls_arbitrary_daemon_method(fake_daemo
 
         screen = cast(DaemonRPCWorkbenchScreen, app.screen)
         screen.query_one("#rpc-method", Input).value = "policy.validate"
-        screen.query_one("#rpc-params", Input).value = "{\"strict\": true}"
+        screen.query_one("#rpc-params", Input).value = '{"strict": true}'
         screen.action_run_rpc()
         await _settle(pilot)
 

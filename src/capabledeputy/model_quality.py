@@ -241,10 +241,7 @@ def lexical_rerank(query: str, documents: tuple[RetrievalDocument, ...]) -> tupl
         tag_overlap = len(set(document.tags) & set(query_tokens))
         return (overlap, tag_overlap, document.doc_id)
 
-    return tuple(
-        document.doc_id
-        for document in sorted(documents, key=score, reverse=True)
-    )
+    return tuple(document.doc_id for document in sorted(documents, key=score, reverse=True))
 
 
 def retrieval_quality_score(
@@ -327,9 +324,7 @@ def parse_guard_annotation(text: str) -> GuardAnnotation:
             raw_categories = value.strip()
             if raw_categories.lower() not in {"", "none"}:
                 categories = tuple(
-                    category.strip()
-                    for category in raw_categories.split(",")
-                    if category.strip()
+                    category.strip() for category in raw_categories.split(",") if category.strip()
                 )
     lowered = text.lower()
     signals: list[str] = []
@@ -417,9 +412,7 @@ def promotion_gates(
                 profile_id=profile_id,
                 status="promoted" if ok else "blocked",
                 reason=(
-                    "benchmark evidence satisfies gate"
-                    if ok
-                    else "benchmark evidence below gate"
+                    "benchmark evidence satisfies gate" if ok else "benchmark evidence below gate"
                 ),
                 required_evidence=required,
                 observed_evidence=observed,

@@ -65,9 +65,7 @@ class InteractiveWorkstream:
             "status": self.status,
             "reason": self.reason,
             "released_at": self.released_at.isoformat() if self.released_at else None,
-            "last_renewed_at": (
-                self.last_renewed_at.isoformat() if self.last_renewed_at else None
-            ),
+            "last_renewed_at": (self.last_renewed_at.isoformat() if self.last_renewed_at else None),
             "active": self.is_active(),
         }
         if include_token:

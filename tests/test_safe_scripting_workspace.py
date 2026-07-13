@@ -36,8 +36,7 @@ def test_source_port_registry_exposes_script_workspace(tmp_path) -> None:
     port = get_source_port("safe-scripting", root=tmp_path, workspace_id="batch")
 
     assert (
-        port.canonical_destination_id("out/result.txt")
-        == "script-workspace:batch:out/result.txt"
+        port.canonical_destination_id("out/result.txt") == "script-workspace:batch:out/result.txt"
     )
 
 
@@ -128,9 +127,12 @@ def test_file_export_artifact_binds_exact_output_destination(tmp_path) -> None:
 
     assert artifact.artifact_type is ArtifactType.FILE_EXPORT
     assert artifact.destination_id == "script-workspace:scripts:out/report.txt"
-    assert artifact.sha256 != make_file_export_artifact(
-        title="Write report",
-        content="renamed 13 files\n",
-        workspace=workspace,
-        target_path="out/report.txt",
-    ).sha256
+    assert (
+        artifact.sha256
+        != make_file_export_artifact(
+            title="Write report",
+            content="renamed 13 files\n",
+            workspace=workspace,
+            target_path="out/report.txt",
+        ).sha256
+    )

@@ -127,8 +127,7 @@ def test_image_readiness_refuses_auto_diffusers_fallback_on_apple_silicon(
     assert readiness["ok"] is False
     assert readiness["backend"] == "mflux"
     assert any(
-        check["id"] == "mlx-metal" and check["status"] == "error"
-        for check in readiness["checks"]
+        check["id"] == "mlx-metal" and check["status"] == "error" for check in readiness["checks"]
     )
     assert "requires MFLUX with MLX/Metal" in readiness["checks"][1]["detail"]
 

@@ -66,9 +66,7 @@ class ModelExperimentCandidate:
 
     def as_dict(self, *, output_root: Path | None = None) -> dict[str, Any]:
         command = (
-            self.conversion_command(output_root=output_root)
-            if output_root is not None
-            else None
+            self.conversion_command(output_root=output_root) if output_root is not None else None
         )
         return {
             "candidate_id": self.candidate_id,

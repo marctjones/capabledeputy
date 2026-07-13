@@ -9,9 +9,9 @@ from __future__ import annotations
 import asyncio
 import sys
 from typing import Any
+
 from capabledeputy.ipc.client import DaemonClient
 from capabledeputy.ipc.socket_path import default_socket_path
-
 
 GUI_METHODS: tuple[tuple[str, dict[str, Any]], ...] = (
     ("ping", {}),

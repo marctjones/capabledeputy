@@ -421,9 +421,7 @@ def available_image_profiles() -> list[dict[str, Any]]:
                 "guidance": _optional_float(preset.get("guidance")),
                 "requires": _profile_requirements(preset),
                 "asset_profile": asset_profile,
-                "asset_readiness": conversion_readiness(asset_profile)
-                if asset_profile
-                else None,
+                "asset_readiness": conversion_readiness(asset_profile) if asset_profile else None,
             },
         )
     return profiles
@@ -724,8 +722,7 @@ def _require_image_deps() -> None:
         import torch  # noqa: F401
     except ImportError as exc:
         raise RuntimeError(
-            "image generation requires optional deps — install with "
-            "`scripts/setup-images-venv.sh`",
+            "image generation requires optional deps — install with `scripts/setup-images-venv.sh`",
         ) from exc
 
 

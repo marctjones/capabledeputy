@@ -324,15 +324,12 @@ async def dispatch_tool(
             **{"_meta": meta},
         )
 
-    output = result.get("output") or {}
     media_payload: dict[str, Any] = dict(result)
     if result.get("labels_added"):
         media_payload = {
             **media_payload,
             "labels_added_note": (
-                "[capdep: session labels expanded with "
-                + ", ".join(result["labels_added"])
-                + "]"
+                "[capdep: session labels expanded with " + ", ".join(result["labels_added"]) + "]"
             ),
         }
 

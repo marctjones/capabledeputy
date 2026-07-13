@@ -6,6 +6,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
 from capabledeputy.agent.chat_turn import (
     _image_fetch_tool_names,
     _image_generate_tool_names,
@@ -226,9 +227,8 @@ def select_tools_for_turn(
             if tool_name in visible_names:
                 mandatory_names.add(tool_name)
                 break
-    if has_chart_generation_intent(user_message):
-        if any(t.name == "chart.plot" for t in visible):
-            mandatory_names.add("chart.plot")
+    if has_chart_generation_intent(user_message) and any(t.name == "chart.plot" for t in visible):
+        mandatory_names.add("chart.plot")
     for name in mandatory_names:
         if any(t.name == name for t in visible):
             candidate_names.add(name)
@@ -287,11 +287,7 @@ async def select_tools_for_turn_async(
         selection_config=selection_config,
     )
     cfg = selection_config or ToolSelectionConfig()
-    if (
-        cfg.mode != "retrieve+ai"
-        or router_llm is None
-        or base.n_visible < cfg.ai_gate_visible_gte
-    ):
+    if cfg.mode != "retrieve+ai" or router_llm is None or base.n_visible < cfg.ai_gate_visible_gte:
         return base
 
     compact = [_compact_line(t) for t in base.candidates]

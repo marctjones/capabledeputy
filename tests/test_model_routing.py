@@ -21,10 +21,7 @@ def test_load_models_config_from_repo_file() -> None:
     assert "extractor" in config.roles
     assert config.roles["planner.fast"].mlx == "Qwen/Qwen3-4B-MLX-4bit"
     assert config.roles["planner.quality"].mlx == "mlx-community/Qwen3-30B-A3B-4bit"
-    assert (
-        config.roles["planner.coder"].mlx
-        == "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
-    )
+    assert config.roles["planner.coder"].mlx == "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
     assert config.tool_selection.mode == "retrieve"
 
 

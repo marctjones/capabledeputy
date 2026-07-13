@@ -273,11 +273,11 @@ def validate_tool_definition(
         and not any(effect_class_is_egress_capable(e) for e in effects)
     ):
         raise ToolValidationError(
-                f"{tool.name}: capability {tool.capability_kind} is outbound-capable "
-                f"(canonical effect {kind_effect}) but declares no egress-capable "
-                f"operation (declared effects: {sorted(str(e) for e in effects)}). "
-                "An outbound tool must declare an egress-capable EffectClass (#294).",
-            )
+            f"{tool.name}: capability {tool.capability_kind} is outbound-capable "
+            f"(canonical effect {kind_effect}) but declares no egress-capable "
+            f"operation (declared effects: {sorted(str(e) for e in effects)}). "
+            "An outbound tool must declare an egress-capable EffectClass (#294).",
+        )
 
 
 # Best-effort capability-kind -> EffectClass for adapter-created tools

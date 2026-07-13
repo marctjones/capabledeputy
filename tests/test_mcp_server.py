@@ -374,9 +374,7 @@ async def test_web_fetch_gated_for_personal_data_via_real_daemon(
     categories that actually reach a web.fetch in the default config (health/
     financial are restricted-tier and refused at the mode floor)."""
     daemon, app = await _build_daemon(paths)
-    personal_tag = CategoryTag(
-        "personal", Tier.REGULATED, assignment_provenance="source-declared"
-    )
+    personal_tag = CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")
     app.memory.write("addr", "123 Main St", LabelState(a=frozenset({personal_tag})))
     s = await app.graph.new(intent="personal exfil probe")
     app.graph._sessions[s.id] = replace(

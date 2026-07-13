@@ -179,8 +179,8 @@ def _session_artifacts_section(session: Session, *, max_count: int = 8) -> str:
         "# Session Artifacts",
         "",
         "Recent generated images available in this session. Refer to these by",
-        "artifact id or path when the user says things like \"that image\",",
-        "\"the image you made\", or asks to revise/use a prior generated image.",
+        'artifact id or path when the user says things like "that image",',
+        '"the image you made", or asks to revise/use a prior generated image.',
         "Do not invent paths. Do not claim you inspected pixels unless a",
         "vision-capable tool/model actually inspected the file.",
         "",
@@ -536,7 +536,9 @@ the guarantee.
     # contributed custom kinds.
     custom_kinds_section = _format_custom_kinds_section()
 
-    tool_instructions = tool_call_instructions or """CRITICAL — how you call tools:
+    tool_instructions = (
+        tool_call_instructions
+        or """CRITICAL — how you call tools:
 
 - The ONLY way to invoke a tool is via the API's `tool_use` mechanism.
   Tools available to you on this turn appear in the system-provided
@@ -545,19 +547,20 @@ the guarantee.
 - NEVER write a tool call as text or code (e.g. backticked ```inbox.search(...)```).
   That is not an invocation — it is fabrication. The runtime cannot see
   it, no policy is evaluated, no real action happens."""
+    )
 
     if _is_foreground_chat_surface(session):
         empty_tools_guidance = (
-            "Tell the user explicitly: \"I have no tools available in this "
-            "GUI session.\" Do not ask them to type slash commands in chat; "
+            'Tell the user explicitly: "I have no tools available in this '
+            'GUI session." Do not ask them to type slash commands in chat; '
             "CapDepMac should present GUI-mediated setup, grant, or recovery "
             "controls when the daemon provides structured recovery metadata."
         )
     else:
         empty_tools_guidance = (
-            "Tell the user explicitly: \"I have no capabilities granted in this "
+            'Tell the user explicitly: "I have no capabilities granted in this '
             "session. Run `/grant <KIND> <pattern>` to give me one (for example, "
-            "`/grant SEND_EMAIL recipient@example.com --one-shot`).\" Do not pretend."
+            '`/grant SEND_EMAIL recipient@example.com --one-shot`)." Do not pretend.'
         )
 
     # --- Assemble full system prompt ---

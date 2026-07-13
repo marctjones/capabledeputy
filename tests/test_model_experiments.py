@@ -57,12 +57,10 @@ def test_write_jsonl_plan_includes_cases(tmp_path: Path) -> None:
     rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
     assert rows[0]["event"] == "experiment_plan"
     assert any(
-        row["event"] == "candidate" and row["candidate_id"] == "qwen3guard-06b"
-        for row in rows
+        row["event"] == "candidate" and row["candidate_id"] == "qwen3guard-06b" for row in rows
     )
     assert any(
-        row["event"] == "case" and row["case_id"] == "external_prompt_injection"
-        for row in rows
+        row["event"] == "case" and row["case_id"] == "external_prompt_injection" for row in rows
     )
 
 
@@ -88,6 +86,4 @@ def test_model_experiment_script_writes_filtered_plan(tmp_path: Path) -> None:
     assert "wrote_plan" in completed.stdout
     rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()]
     assert rows[0]["purpose"] == "tool_selection"
-    assert {row["purpose"] for row in rows if row["event"] == "candidate"} == {
-        "tool_selection"
-    }
+    assert {row["purpose"] for row in rows if row["event"] == "candidate"} == {"tool_selection"}

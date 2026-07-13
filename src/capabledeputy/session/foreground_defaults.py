@@ -81,16 +81,12 @@ def foreground_chat_default_capabilities(
 
 def _missing_foreground_image_caps(capability_set: frozenset[Capability]) -> bool:
     kinds = {cap.kind for cap in capability_set}
-    return (
-        CapabilityKind.GENERATE_IMAGE not in kinds
-        or CapabilityKind.FETCH_IMAGE not in kinds
-    )
+    return CapabilityKind.GENERATE_IMAGE not in kinds or CapabilityKind.FETCH_IMAGE not in kinds
 
 
 def _missing_foreground_web_search_cap(capability_set: frozenset[Capability]) -> bool:
     return not any(
-        cap.kind is CapabilityKind.WEB_FETCH and cap.pattern == "*"
-        for cap in capability_set
+        cap.kind is CapabilityKind.WEB_FETCH and cap.pattern == "*" for cap in capability_set
     )
 
 

@@ -412,8 +412,13 @@ class ApprovalQueue:
     ) -> dict[str, Any]:
         """Wait until an elicitation request is completed, denied, or expires."""
 
-        deadline = None if timeout_seconds is None else datetime.now(UTC) + timedelta(
-            seconds=timeout_seconds,
+        deadline = (
+            None
+            if timeout_seconds is None
+            else datetime.now(UTC)
+            + timedelta(
+                seconds=timeout_seconds,
+            )
         )
         while True:
             request = self.get(request_id)

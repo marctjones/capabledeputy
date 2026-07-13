@@ -78,7 +78,13 @@ def test_collect_media_from_tool_output_path(tmp_path: Path) -> None:
 
 def test_format_terminal_agent_markdown_renders_code_block() -> None:
     rendered = format_terminal_agent_markdown("```python\nprint(1)\n```")
-    assert "print(1)" in rendered
+    # rich syntax-highlights the code block with per-token ANSI color codes, so
+    # the raw string interleaves escapes with the source. Strip ANSI before the
+    # content check so the assertion is robust to rich version / color settings.
+    import re
+
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", rendered)
+    assert "print(1)" in plain
 
 
 def test_format_terminal_agent_markdown_sanitizes_commonmark() -> None:

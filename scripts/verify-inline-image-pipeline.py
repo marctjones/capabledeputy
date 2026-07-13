@@ -103,23 +103,31 @@ def step2_launcher_exports(demo: Path) -> str | None:
 def step3_daemon_env(expected: str) -> None:
     step(3, "Daemon process environment (CAPDEP_DEMO_IMAGE)")
     try:
-        pid = subprocess.check_output(
-            ["pgrep", "-f", "capdep daemon start"],
-            text=True,
-        ).strip().split()[0]
+        pid = (
+            subprocess.check_output(
+                ["pgrep", "-f", "capdep daemon start"],
+                text=True,
+            )
+            .strip()
+            .split()[0]
+        )
     except (subprocess.CalledProcessError, IndexError):
         warn("daemon not running — skip live env check")
         return
     # ps mangles values with spaces; read daemon start log / use Python helper.
-    proc = subprocess.run(
-        [sys.executable, "-c", f"""
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"""
 import os, subprocess
 pid = {pid}
 # macOS: ask the process for its environ via proc_pidpath isn't available;
 # fall back to checking whether our expected path is what we configured.
 expected = {expected!r}
 print(expected)
-"""],
+""",
+        ],
         capture_output=True,
         text=True,
         check=True,
@@ -246,7 +254,7 @@ async def steps6_through9(demo: Path) -> tuple[str, str]:
     if tools_seen is None:
         fail("no llm_request_sent event")
     elif tools_seen == 0:
-        fail(f"llm_request_sent n_tools=0 (conversational routing)")
+        fail("llm_request_sent n_tools=0 (conversational routing)")
     else:
         ok(f"llm_request_sent n_tools={tools_seen}")
 
@@ -348,7 +356,9 @@ def step11_chat_trace() -> None:
         if "local_demo_image_shortcut" in ln:
             mode_set.append("GUI shortcut (no daemon) — markdown injected locally")
         if "0 tools available" in ln:
-            mode_set.append("DAEMON routing failed — 0 tools (conversational); no image markdown sent")
+            mode_set.append(
+                "DAEMON routing failed — 0 tools (conversational); no image markdown sent"
+            )
         if "unable to display images" in ln.lower():
             mode_set.append("MODEL refused — prose only, no ![...](path)")
         if "image_resolve_fail" in ln:

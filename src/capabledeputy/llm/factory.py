@@ -55,9 +55,10 @@ def resolve_planner_model_spec(*, prefer_local_mlx: bool = True) -> str:
 
     import platform
 
-    on_apple_silicon = (
-        platform.system() == "Darwin" and platform.machine().lower() in {"arm64", "aarch64"}
-    )
+    on_apple_silicon = platform.system() == "Darwin" and platform.machine().lower() in {
+        "arm64",
+        "aarch64",
+    }
     allow_remote = os.environ.get("CAPDEP_ALLOW_REMOTE_LLM", "").strip().lower() in {
         "1",
         "true",

@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from capabledeputy.policy.purposes import load as load_purposes
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.purposes import load as load_purposes
 from capabledeputy.session.foreground_defaults import (
     foreground_chat_default_capabilities,
     should_apply_foreground_defaults,
@@ -29,9 +29,7 @@ def test_general_purpose_web_fetch_allows_search_targets() -> None:
     general = purposes.get("general")
     assert general is not None
     web_caps = [
-        cap.pattern
-        for cap in general.default_capabilities
-        if cap.kind.value == "WEB_FETCH"
+        cap.pattern for cap in general.default_capabilities if cap.kind.value == "WEB_FETCH"
     ]
     assert "*" in web_caps
 
@@ -71,7 +69,9 @@ def test_should_apply_foreground_defaults_for_gui_owner() -> None:
 def test_supplement_foreground_capabilities_adds_missing_image_caps() -> None:
     caps = foreground_chat_default_capabilities()
     without_image = frozenset(
-        cap for cap in caps if cap.kind not in {CapabilityKind.GENERATE_IMAGE, CapabilityKind.FETCH_IMAGE}
+        cap
+        for cap in caps
+        if cap.kind not in {CapabilityKind.GENERATE_IMAGE, CapabilityKind.FETCH_IMAGE}
     )
     added = supplement_foreground_capabilities(without_image)
     kinds = {cap.kind for cap in added}

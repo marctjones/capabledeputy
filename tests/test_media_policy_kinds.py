@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from capabledeputy.policy.capabilities import Capability, CapabilityKind, CapabilityOrigin
 from capabledeputy.policy.grant_validation import validate_grant_pattern
-from uuid import uuid4
 
 
 def _cap(kind: CapabilityKind, pattern: str) -> Capability:

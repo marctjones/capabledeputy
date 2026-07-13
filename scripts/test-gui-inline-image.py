@@ -9,9 +9,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-DEMO_PATH = (
-    Path.home() / "Library/Application Support/CapDep/media/demo-cat.jpg"
-)
+DEMO_PATH = Path.home() / "Library/Application Support/CapDep/media/demo-cat.jpg"
 DEMO_FALLBACK = REPO / "apps/macos/CapDep/.build/demo-cat.jpg"
 MESSAGE = "Show me the demo cat image inline"
 
@@ -45,7 +43,7 @@ async def main() -> None:
         print(f"WARN CAPDEP_DEMO_IMAGE={demo_env!r} (expected {demo})")
     elif not demo_env:
         os.environ["CAPDEP_DEMO_IMAGE"] = str(demo)
-        print(f"NOTE set CAPDEP_DEMO_IMAGE for this test run")
+        print("NOTE set CAPDEP_DEMO_IMAGE for this test run")
 
     from capabledeputy.ipc.client import DaemonClient
     from capabledeputy.ipc.socket_path import default_socket_path

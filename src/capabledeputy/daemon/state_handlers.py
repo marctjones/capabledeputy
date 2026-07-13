@@ -63,7 +63,9 @@ def make_state_handlers(app: App) -> dict[str, Handler]:
                 "onguard": _onguard_workflows(onguard_snapshot),
             },
             "approvals": {
-                "pending_count": sum(1 for approval in approvals if approval.status.value == "pending"),
+                "pending_count": sum(
+                    1 for approval in approvals if approval.status.value == "pending"
+                ),
                 "items": [approval.to_dict() for approval in approvals],
             },
             "mcp": {
@@ -97,19 +99,24 @@ def make_state_handlers(app: App) -> dict[str, Handler]:
 
 
 async def _daemon_snapshot(app: App) -> dict[str, Any]:
-    from capabledeputy.daemon.handlers import _CODE_VERSION, _DAEMON_PID, _DAEMON_STARTED_AT
     import platform
     import sys
     import time as _time
 
+    from capabledeputy.daemon.handlers import _CODE_VERSION, _DAEMON_PID, _DAEMON_STARTED_AT
+
     uptime_seconds = int(_time.time() - _DAEMON_STARTED_AT)
     daemon_server = getattr(app, "daemon_server", None)
-    connections = await daemon_server.snapshot() if daemon_server is not None else {
-        "active_connections": 0,
-        "subscribers_by_stream": {},
-        "connection_subscriptions": {},
-        "subscription_count": 0,
-    }
+    connections = (
+        await daemon_server.snapshot()
+        if daemon_server is not None
+        else {
+            "active_connections": 0,
+            "subscribers_by_stream": {},
+            "connection_subscriptions": {},
+            "subscription_count": 0,
+        }
+    )
     return {
         **dict(_CODE_VERSION),
         "pid": _DAEMON_PID,

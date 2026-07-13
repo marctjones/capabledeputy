@@ -19,7 +19,6 @@ from anyio.abc import SocketStream, TaskGroup
 
 from capabledeputy.daemon.handlers import Handler, default_handlers
 from capabledeputy.daemon.verbose_log import VerboseLogger
-from capabledeputy.upstream.supervisor import _is_task_cancellation
 from capabledeputy.ipc.rpc import (
     INTERNAL_ERROR,
     JSONRPC_VERSION,
@@ -29,6 +28,7 @@ from capabledeputy.ipc.rpc import (
     error,
     parse_request,
 )
+from capabledeputy.upstream.supervisor import _is_task_cancellation
 
 
 class Daemon:
@@ -135,8 +135,7 @@ class Daemon:
             last_disconnect = self._last_client_disconnect_at
         async with self._sub_lock:
             subscribers_by_stream = {
-                stream_name: len(streams)
-                for stream_name, streams in self._subscribers.items()
+                stream_name: len(streams) for stream_name, streams in self._subscribers.items()
             }
             connection_subscriptions = {
                 str(conn_id): sorted(streams)

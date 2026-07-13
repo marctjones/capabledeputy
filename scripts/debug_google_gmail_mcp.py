@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 import traceback
 from pathlib import Path
 
@@ -25,28 +24,30 @@ async def main() -> int:
     assert config.auth is not None
 
     print("connecting to", config.url)
-    async with streamablehttp_client(
-        config.url,
-        auth=httpx_auth_from_config(config.auth, server_name=config.name),
-    ) as (read, write, _get_session_id):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            tools = await session.list_tools()
-            names = [t.name for t in tools.tools]
-            print("tools:", names[:10], "..." if len(names) > 10 else "")
-            print("calling search_threads...")
-            result = await session.call_tool(
-                "search_threads",
-                arguments={"query": "in:inbox", "pageSize": 3},
-            )
-            print("isError:", getattr(result, "isError", None))
-            for block in result.content[:3]:
-                text = getattr(block, "text", None)
-                if text:
-                    print(text[:2000])
-            structured = getattr(result, "structuredContent", None)
-            if structured:
-                print("structured keys:", list(structured.keys())[:10])
+    async with (
+        streamablehttp_client(
+            config.url,
+            auth=httpx_auth_from_config(config.auth, server_name=config.name),
+        ) as (read, write, _get_session_id),
+        ClientSession(read, write) as session,
+    ):
+        await session.initialize()
+        tools = await session.list_tools()
+        names = [t.name for t in tools.tools]
+        print("tools:", names[:10], "..." if len(names) > 10 else "")
+        print("calling search_threads...")
+        result = await session.call_tool(
+            "search_threads",
+            arguments={"query": "in:inbox", "pageSize": 3},
+        )
+        print("isError:", getattr(result, "isError", None))
+        for block in result.content[:3]:
+            text = getattr(block, "text", None)
+            if text:
+                print(text[:2000])
+        structured = getattr(result, "structuredContent", None)
+        if structured:
+            print("structured keys:", list(structured.keys())[:10])
     print("ok")
     return 0
 

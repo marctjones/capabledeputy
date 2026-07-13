@@ -145,10 +145,10 @@ def require_mlx_on_apple_silicon(*, prefer_local_mlx: bool = True) -> None:
         "on",
     }:
         return
-    on_apple_silicon = (
-        platform.system() == "Darwin"
-        and platform.machine().lower() in {"arm64", "aarch64"}
-    )
+    on_apple_silicon = platform.system() == "Darwin" and platform.machine().lower() in {
+        "arm64",
+        "aarch64",
+    }
     if not on_apple_silicon or not prefer_local_mlx:
         return
     backend = os.environ.get("CAPDEP_LLM_BACKEND", "").strip().lower()

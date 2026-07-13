@@ -24,7 +24,11 @@ from capabledeputy.policy.labels import (
 )
 from capabledeputy.search.providers import (
     DEFAULT_COUNT as _DEFAULT_SEARCH_COUNT,
+)
+from capabledeputy.search.providers import (
     MAX_COUNT as _MAX_SEARCH_COUNT,
+)
+from capabledeputy.search.providers import (
     search_web as _search_web_provider,
 )
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult

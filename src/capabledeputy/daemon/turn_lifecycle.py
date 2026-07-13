@@ -401,9 +401,7 @@ class TurnLifecycleManager:
                     )
                     should_cancel = False
                 else:
-                    elapsed = (
-                        datetime.now(UTC) - turn.last_heartbeat_at
-                    ).total_seconds()
+                    elapsed = (datetime.now(UTC) - turn.last_heartbeat_at).total_seconds()
                     should_cancel = elapsed >= turn.heartbeat_timeout_seconds
                 if should_cancel:
                     self._cancel_reasons[turn_id] = "heartbeat_timeout"
@@ -637,7 +635,7 @@ class TurnLifecycleManager:
         }
         events = self._events[turn_id]
         events.append(event)
-        del events[:-self._max_events_per_turn]
+        del events[: -self._max_events_per_turn]
         self._turns[turn_id] = replace(turn, cursor=cursor, updated_at=datetime.now(UTC))
         await self._app.session_coordinator.emit(
             turn.session_id,
