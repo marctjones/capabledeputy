@@ -8,7 +8,12 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # macOS Apple Silicon — CapableDeputy is a macOS-native product (mlx/MFLUX
+    # on Apple Silicon, Apple automation, the CapDepMac Swift app). Running CI on
+    # arm64 macOS exercises the real target platform: mlx/mflux install, the
+    # Apple-only code paths run, and coverage matches the macOS-calibrated
+    # ratchet baseline. (Was ubuntu-latest, where those paths skipped — #354.)
+    runs-on: macos-14
     strategy:
       fail-fast: false
       matrix:
@@ -45,14 +50,9 @@ jobs:
       - name: Test (pytest)
         run: uv run pytest --cov-report=xml
 
-      # Advisory: the ratchet baseline (coverage-ratchet.json) is calibrated on
-      # macOS, where the Apple-only mlx/image/desktop code paths ARE exercised.
-      # On Linux CI those tests skip, so coverage groups go missing / drop below
-      # floor and the ratchet fails even though nothing regressed. Until CI runs
-      # on macOS (or a Linux baseline is maintained), keep this informational.
-      # See #354.
+      # Blocking again now that CI runs on macOS, where the baseline was
+      # calibrated (the Apple-only paths run, so coverage groups/floors match).
       - name: Coverage ratchet
-        continue-on-error: true
         run: uv run python scripts/coverage_ratchet.py
 
       - name: Upload coverage

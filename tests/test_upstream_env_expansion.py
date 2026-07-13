@@ -8,8 +8,6 @@ the YAML file.
 
 from __future__ import annotations
 
-import platform
-
 import pytest
 
 from capabledeputy.cli._managed_config import resolve_upstream_spawn_command
@@ -114,10 +112,6 @@ def test_multi_credential_pattern_distinct_envs(monkeypatch: pytest.MonkeyPatch)
     assert parsed[1].name == "github-personal"
 
 
-@pytest.mark.skipif(
-    platform.system() != "Darwin",
-    reason="venv-uvx resolution collides with CI VIRTUAL_ENV/system uvx on PATH (#354)",
-)
 def test_uvx_command_resolves_to_project_venv(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     venv_bin = tmp_path / ".venv" / "bin"
     venv_bin.mkdir(parents=True)
@@ -125,6 +119,12 @@ def test_uvx_command_resolves_to_project_venv(monkeypatch: pytest.MonkeyPatch, t
     uvx.write_text("#!/bin/sh\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("sys.argv", [str(venv_bin / "capdep")])
+    # Isolate from the real installed `capdep`: `_capdep_executable()` calls
+    # shutil.which("capdep") first, which under `uv run` (CI) finds the project's
+    # actual .venv/bin/capdep and resolves to the real venv's uvx. Restrict PATH
+    # to the tmp venv (which has no capdep) so resolution falls through to the
+    # cwd-based project-venv detection this test exercises.
+    monkeypatch.setenv("PATH", str(venv_bin))
 
     assert resolve_upstream_spawn_command(("uvx", "kagimcp")) == (
         str(uvx),
