@@ -296,6 +296,20 @@ def _conflict_invariant_outcome(
     confidentiality-category legs (health, financial) gate a URL fetch.
     Rules are evaluated in precedence order; the first firing wins. Returns
     (decision, rule_id, reason) or None.
+
+    PARTIAL — known gap (#296 follow-up): this gates only health/financial, so
+    the floor is inconsistent — a *health* handle-routed fetch is denied while a
+    *personal* one is allowed via the same Pattern-3 flow, decided only by
+    category. Broadening the category set here is the WRONG axis and collides
+    with Pattern 3 (reference-handle routing): the coherent fix is
+    DESTINATION-based — make binding/allow-list resolution mandatory and
+    fail-closed for URL-target fetch even when the global BindingSet is empty
+    (today `bindings` defaults to None and the resolution at the call site is
+    skipped). That composes correctly with Pattern 3 (allowlisted destination =
+    safe routing regardless of taint; arbitrary destination = gated) and covers
+    both TURN_LEVEL and handle-routed cases. NB: Pattern 3 blinds the planner to
+    the VALUE, not to the DESTINATION, so a handle-routed fetch to an arbitrary
+    URL is still an exfil path — it is not made safe by handles alone.
     """
     is_email = action.kind == CapabilityKind.SEND_EMAIL
     is_message = action.kind == CapabilityKind.SEND_MESSAGE
