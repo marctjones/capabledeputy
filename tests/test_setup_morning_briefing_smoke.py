@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import platform
 from pathlib import Path
 
 import anyio
@@ -66,6 +67,10 @@ async def _wait_for_turn(
     raise AssertionError(f"turn {turn_id} did not complete; last={last}")
 
 
+@pytest.mark.skipif(
+    platform.system() != "Darwin",
+    reason="live daily-driver briefing E2E depends on macOS-resolved workflow tooling (#354)",
+)
 async def test_morning_briefing_live_daemon_e2e(tmp_path: Path) -> None:
     """Setup plan → foreground session → safe reads, blocked egress, workflow turn."""
     notes_key = f"{os.path.expanduser('~')}/notes/todo"
