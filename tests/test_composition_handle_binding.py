@@ -22,6 +22,7 @@ from capabledeputy.patterns.reference_handle import (
     ReferenceHandleStore,
     ResolvedLabels,
 )
+from capabledeputy.policy.bindings import BindingSet
 from capabledeputy.policy.capabilities import (
     Capability,
     CapabilityKind,
@@ -157,7 +158,7 @@ async def test_handle_substituted_for_real_value_after_decide(
         registry,
         graph,
         writer,
-        policy_context=PolicyContext(handle_store=store),
+        policy_context=PolicyContext(handle_store=store, bindings=_api_allowlist()),
     )
     outcome = await client.call_tool(
         s.id,
@@ -194,7 +195,7 @@ async def test_handle_bind_audit_event_emitted(writer: AuditWriter) -> None:
         registry,
         graph,
         writer,
-        policy_context=PolicyContext(handle_store=store),
+        policy_context=PolicyContext(handle_store=store, bindings=_api_allowlist()),
     )
     await client.call_tool(
         s.id,
@@ -230,7 +231,7 @@ async def test_non_handle_arg_passed_through_unchanged(writer: AuditWriter) -> N
         registry,
         graph,
         writer,
-        policy_context=PolicyContext(handle_store=store),
+        policy_context=PolicyContext(handle_store=store, bindings=_api_allowlist()),
     )
     outcome = await client.call_tool(
         s.id,
@@ -269,7 +270,7 @@ async def test_forged_handle_id_does_not_substitute_and_does_not_emit(
         registry,
         graph,
         writer,
-        policy_context=PolicyContext(handle_store=store),
+        policy_context=PolicyContext(handle_store=store, bindings=_api_allowlist()),
     )
     outcome = await client.call_tool(
         s.id,
@@ -314,3 +315,22 @@ async def test_handle_store_absent_does_not_substitute(writer: AuditWriter) -> N
     )
     # No store ⇒ no substitution; handler sees the raw token.
     assert outcome.output == {"received_body": a_uuid}
+
+
+def _api_allowlist() -> BindingSet:
+    """Allowlist api.example.com so a Pattern-3 handle-routed web.fetch is SAFE
+    ROUTING (operator-declared destination), not an ungated exfil. Without it the
+    destination-aware fetch floor (#293/#296) gates the confidential fetch."""
+    from capabledeputy.policy.bindings import BindingSet, SourceLocationLabelBinding
+    from capabledeputy.policy.tiers import Tier
+
+    return BindingSet(
+        bindings=(
+            SourceLocationLabelBinding(
+                name="ApiExample",
+                scope_pattern_canonical="https://api.example.com/*",
+                category="proprietary_work",
+                default_tier=Tier.SENSITIVE,
+            ),
+        ),
+    )

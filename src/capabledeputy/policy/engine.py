@@ -47,6 +47,7 @@ from capabledeputy.policy.optimistic import evaluate_optimistic
 from capabledeputy.policy.overrides import OverrideGrantStore, use_override
 from capabledeputy.policy.reversibility import ReversibilityLabel
 from capabledeputy.policy.rules import Decision
+from capabledeputy.policy.tiers import Tier, is_above, max_of
 
 DESTRUCTIVE_OP_RULE = "destructive-op-needs-approval"
 REVOKED_BY_PRIOR_USE_RULE = "capability-revoked-by-prior-use"
@@ -82,6 +83,16 @@ PROVENANCE_EGRESS_RULE = "untrusted-meets-egress"
 HEALTH_EGRESS_RULE = "health-meets-egress"
 FINANCIAL_EMAIL_RULE = "financial-meets-email"
 FINANCIAL_PURCHASE_RULE = "financial-meets-purchase"
+# Destination-aware web.fetch egress floor (#293/#296). A URL-target web.fetch
+# is an outbound request whose destination the planner controls. When the
+# destination is NOT operator-allowlisted (no BindingSet match), a session
+# carrying confidential data cannot silently exfiltrate it: restricted-tier data
+# is a structural DENY, regulated/sensitive-tier data requires human approval on
+# the host. An allowlisted destination is safe routing (composes with Pattern 3)
+# and is not gated by this floor. A clean session (no confidential category)
+# fetches freely — web research is preserved.
+FETCH_URL_RESTRICTED_RULE = "confidential-meets-web-fetch"
+FETCH_URL_REGULATED_RULE = "regulated-data-meets-web-fetch"
 
 # Cookbook §4 #6 — capability kinds that fire a first-use prompt
 # when `Session.first_use_prompt_enabled` is on. Reads are excluded
@@ -287,29 +298,11 @@ def _conflict_invariant_outcome(
 
     Egress is the action kind: SEND_EMAIL / SEND_MESSAGE / QUEUE_PURCHASE,
     plus active browser-control kinds because they can submit data to
-    arbitrary remote sites, plus a WEB_FETCH whose target is an http(s) URL
-    (the request path/query/body can carry data to an LLM-chosen host — #293).
-    Browser read-only observation and web.search (query target, fixed
-    provider) are deliberately excluded. The external-untrusted leg does NOT
-    apply to web fetch (a fetch taints the session external-untrusted, so
-    gating untrusted+fetch would break multi-page research); only the
-    confidentiality-category legs (health, financial) gate a URL fetch.
-    Rules are evaluated in precedence order; the first firing wins. Returns
-    (decision, rule_id, reason) or None.
-
-    PARTIAL — known gap (#296 follow-up): this gates only health/financial, so
-    the floor is inconsistent — a *health* handle-routed fetch is denied while a
-    *personal* one is allowed via the same Pattern-3 flow, decided only by
-    category. Broadening the category set here is the WRONG axis and collides
-    with Pattern 3 (reference-handle routing): the coherent fix is
-    DESTINATION-based — make binding/allow-list resolution mandatory and
-    fail-closed for URL-target fetch even when the global BindingSet is empty
-    (today `bindings` defaults to None and the resolution at the call site is
-    skipped). That composes correctly with Pattern 3 (allowlisted destination =
-    safe routing regardless of taint; arbitrary destination = gated) and covers
-    both TURN_LEVEL and handle-routed cases. NB: Pattern 3 blinds the planner to
-    the VALUE, not to the DESTINATION, so a handle-routed fetch to an arbitrary
-    URL is still an exfil path — it is not made safe by handles alone.
+    arbitrary remote sites. Browser read-only observation is deliberately
+    excluded. URL-target web.fetch egress is handled separately by the
+    destination-aware, tier-graded `_fetch_url_egress_outcome` floor
+    (#293/#296). Rules are evaluated in precedence order; the first firing
+    wins. Returns (decision, rule_id, reason) or None.
     """
     is_email = action.kind == CapabilityKind.SEND_EMAIL
     is_message = action.kind == CapabilityKind.SEND_MESSAGE
@@ -321,14 +314,12 @@ def _conflict_invariant_outcome(
         CapabilityKind.BROWSER_SCRIPT,
         CapabilityKind.BROWSER_FILE,
     }
-    # web.fetch to an LLM-chosen URL is an egress: the request path/query/body
-    # can carry read data to an arbitrary host (#293). Gate it on the URL shape
-    # so web.search (query target, fixed provider) is unaffected. Deliberately
-    # NOT subject to the external-untrusted leg below: a fetch taints the
-    # session external-untrusted, so blocking untrusted+fetch would kill
-    # multi-page research. Only the confidentiality-category legs apply.
-    is_fetch_url = action.kind == CapabilityKind.WEB_FETCH and _target_is_remote_url(action.target)
-    if not (is_email or is_message or is_purchase or is_browser or is_fetch_url):
+    # NB: URL-target web.fetch egress is handled by the destination-aware
+    # `_fetch_url_egress_outcome` floor (#293/#296), NOT here — it needs the
+    # allowlist signal and tier grading, and must not be subject to the
+    # external-untrusted leg below (a fetch taints the session
+    # external-untrusted, so gating untrusted+fetch would kill research).
+    if not (is_email or is_message or is_purchase or is_browser):
         return None
     if is_email:
         egress = "email"
@@ -336,13 +327,11 @@ def _conflict_invariant_outcome(
         egress = "message"
     elif is_browser:
         egress = "browser automation"
-    elif is_fetch_url:
-        egress = "web fetch"
     else:
         egress = "purchase"
     provenance = {e.level for e in labels.b}
     categories = {c.category for c in labels.a}
-    if ProvenanceLevel.EXTERNAL_UNTRUSTED in provenance and not is_fetch_url:
+    if ProvenanceLevel.EXTERNAL_UNTRUSTED in provenance:
         return (
             Decision.DENY,
             PROVENANCE_EGRESS_RULE,
@@ -356,7 +345,7 @@ def _conflict_invariant_outcome(
             f"{HEALTH_EGRESS_RULE}: health-category data cannot egress via {egress}",
         )
     if "financial" in categories:
-        if is_email or is_message or is_browser or is_fetch_url:
+        if is_email or is_message or is_browser:
             return (
                 Decision.DENY,
                 FINANCIAL_EMAIL_RULE,
@@ -369,6 +358,76 @@ def _conflict_invariant_outcome(
             f"purchase requires approval",
         )
     return None
+
+
+def _fetch_url_egress_outcome(
+    labels: LabelState,
+    action: Action,
+    *,
+    destination_allowlisted: bool,
+) -> tuple[Decision, str, str] | None:
+    """Destination-aware confidentiality floor for URL-target web.fetch (#293/#296).
+
+    A `web.fetch` to an LLM-chosen http(s) URL is an outbound request whose
+    destination the planner controls; the path/query/body can carry read data
+    to an arbitrary host. This is the exfiltration channel that shares
+    CapabilityKind.WEB_FETCH with `web.search` (whose target is a query string,
+    not a URL, so it is exempt here).
+
+    The gate keys on DESTINATION, not category alone, so it composes with
+    Pattern 3 (reference-handle routing): an operator-allowlisted destination is
+    safe routing and is not gated, whether the value is held directly or bound
+    from a handle. Absent an allowlist match, a session carrying confidential
+    data is gated by the highest confidential-category TIER present:
+
+      - restricted / prohibited (health, financial, credentials) ⇒ DENY
+        (structural — matches the other egress channels' confidentiality floor).
+      - regulated (personal, proprietary_work)                    ⇒ REQUIRE_APPROVAL
+        (no longer *silent*: a human decides on the destination host. This is a
+        human-judgment gate on the recipient, not a structural guarantee — a
+        reviewer cannot evaluate an opaque query string, but can evaluate the
+        host).
+      - sensitive and below (low-stakes working labels like `news`) ⇒ no gate.
+
+    A clean session (no confidential Axis-A category) or a session carrying only
+    sensitive-or-below labels fetches freely — web research and content
+    gathering are preserved. The external-untrusted provenance a fetch itself
+    attaches is Axis-B, not a confidential category, so multi-page research is
+    unaffected.
+
+    KNOWN LIMIT (out of scope, tracked): principal-typed secrets pasted into
+    chat carry no Axis-A label, so a fetch does not gate on them — this closure
+    is for *labeled* confidential data. That is the labeling-oracle gap, not a
+    fetch-specific one.
+    """
+    if action.kind != CapabilityKind.WEB_FETCH or not _target_is_remote_url(action.target):
+        return None
+    if destination_allowlisted:
+        return None
+    if not labels.a:
+        return None  # clean session — research is preserved
+    highest = max_of(*(tag.tier for tag in labels.a))
+    # Threshold is REGULATED: the registered high-confidentiality categories
+    # (personal, proprietary_work = regulated; health, financial, credentials =
+    # restricted) are all >= regulated. SENSITIVE and below are low-stakes
+    # working labels (e.g. `news` on fetched articles) — gating those would make
+    # ordinary content-gathering (fetch more pages into a labeled session) an
+    # approval-fatigue trap, with no real exfil benefit.
+    if not is_above(highest, Tier.SENSITIVE):
+        return None  # sensitive-or-below — not gated
+    if is_above(highest, Tier.REGULATED):  # restricted / prohibited
+        return (
+            Decision.DENY,
+            FETCH_URL_RESTRICTED_RULE,
+            f"{FETCH_URL_RESTRICTED_RULE}: restricted-tier data cannot egress via a "
+            "web.fetch to a non-allowlisted destination",
+        )
+    return (
+        Decision.REQUIRE_APPROVAL,
+        FETCH_URL_REGULATED_RULE,
+        f"{FETCH_URL_REGULATED_RULE}: confidential data egress via a web.fetch to a "
+        "non-allowlisted destination requires human approval of the destination host",
+    )
 
 
 def _compose_with_conflict_invariant(
@@ -1203,6 +1262,21 @@ def _decide_impl(
     # the legacy-only and the v2 return paths below — they only ratchet
     # stricter, never relax.
     conflict_outcome = _conflict_invariant_outcome(labels, action)
+    # Destination-aware web.fetch egress floor (#293/#296). A URL fetch is
+    # "allowlisted" when a configured BindingSet resolved its destination above
+    # (canonical_target set) — that is the operator declaring the host safe, and
+    # it composes with Pattern 3 handle-routing. Absent an allowlist match, a
+    # confidential-tainted session is gated by tier. Composed most-restrictively
+    # after envelope/v2/inspector, exactly like conflict_outcome, so a permissive
+    # dial or a relaxing rule can never dial the gate back to ALLOW.
+    fetch_destination_allowlisted = canonical_target is not None and _target_is_remote_url(
+        action.target,
+    )
+    fetch_outcome = _fetch_url_egress_outcome(
+        labels,
+        action,
+        destination_allowlisted=fetch_destination_allowlisted,
+    )
 
     if relax_inputs:
         inspected: RelaxInspectionResult = inspect_relax_inputs(relax_inputs)
@@ -1245,6 +1319,7 @@ def _decide_impl(
                 envelope_reason=envelope_reason,
             )
         result = _compose_with_conflict_invariant(result, conflict_outcome)
+        result = _compose_with_conflict_invariant(result, fetch_outcome)
         return _maybe_first_use_escalation(
             result,
             action=action,
@@ -1284,6 +1359,12 @@ def _decide_impl(
     composed = _compose_with_conflict_invariant(
         composed,
         conflict_outcome,
+        crossed_floors=v2.crossed_floors,
+        personal=trust_profile_is_personal,
+    )
+    composed = _compose_with_conflict_invariant(
+        composed,
+        fetch_outcome,
         crossed_floors=v2.crossed_floors,
         personal=trust_profile_is_personal,
     )

@@ -202,20 +202,10 @@ def test_capability_present_with_no_labels_allows() -> None:
             Decision.DENY,
             "health-meets-egress",
         ),
-        # #293: a URL-target web.fetch is an egress — health/financial cannot
-        # leak via the fetch URL. web.search (query target) is unaffected.
-        (
-            {"health": True},
-            CapabilityKind.WEB_FETCH,
-            Decision.DENY,
-            "health-meets-egress",
-        ),
-        (
-            {"financial": True},
-            CapabilityKind.WEB_FETCH,
-            Decision.DENY,
-            "financial-meets-email",
-        ),
+        # NB: URL-target web.fetch egress is covered by the dedicated,
+        # destination-aware fetch floor (test_fetch_url_egress_floor below),
+        # not this conflict-invariant matrix — it is tier-graded and has an
+        # allowlist escape, so it does not belong in these fixed-outcome rows.
         # Rule 3: confidential.financial + egress.email -> DENY
         (
             {"financial": True},
@@ -743,3 +733,115 @@ def test_expiry_takes_precedence_over_rate_in_attribution() -> None:
         labels=LabelState(),
     )
     assert r.rule == CAPABILITY_EXPIRED_RULE
+
+
+# --- Destination-aware web.fetch egress floor (#293/#296) ---------------------
+
+from capabledeputy.policy.bindings import BindingSet, SourceLocationLabelBinding  # noqa: E402
+
+
+def _fetch_action(url: str = "https://api.vendor.example/collect?d=x") -> Action:
+    return Action(kind=CapabilityKind.WEB_FETCH, target=url)
+
+
+def _cat(name: str, tier: Tier) -> LabelState:
+    return LabelState(a=frozenset({CategoryTag(category=name, tier=tier)}))
+
+
+def _allowlist(pattern: str = "https://api.vendor.example/*") -> BindingSet:
+    return BindingSet(
+        bindings=(
+            SourceLocationLabelBinding(
+                name="Vendor",
+                scope_pattern_canonical=pattern,
+                category="proprietary_work",
+                default_tier=Tier.SENSITIVE,
+            ),
+        ),
+    )
+
+
+def test_fetch_url_clean_session_allows() -> None:
+    """Trap C: a clean (no confidential category) session may fetch any URL —
+    web research is preserved. External-untrusted taint is Axis-B, not a
+    category, so multi-page research is unaffected."""
+    assert (
+        decide(
+            capabilities=_GLOB_CAPABILITIES,
+            action=_fetch_action(),
+            labels=LabelState(
+                b=frozenset({ProvenanceTag(level=ProvenanceLevel.EXTERNAL_UNTRUSTED)})
+            ),
+        ).decision
+        == Decision.ALLOW
+    )
+
+
+def test_fetch_url_restricted_data_denied() -> None:
+    result = decide(
+        capabilities=_GLOB_CAPABILITIES,
+        action=_fetch_action(),
+        labels=_cat("credentials", Tier.RESTRICTED),
+    )
+    assert result.decision == Decision.DENY
+    assert result.rule == "confidential-meets-web-fetch"
+
+
+def test_fetch_url_regulated_data_requires_approval() -> None:
+    result = decide(
+        capabilities=_GLOB_CAPABILITIES,
+        action=_fetch_action(),
+        labels=_cat("personal", Tier.REGULATED),
+    )
+    assert result.decision == Decision.REQUIRE_APPROVAL
+    assert result.rule == "regulated-data-meets-web-fetch"
+
+
+def test_fetch_url_allowlisted_destination_allows_safe_routing() -> None:
+    """An operator-allowlisted destination is safe routing regardless of taint
+    (composes with Pattern 3). Even restricted data may reach a declared host."""
+    for tier in (Tier.REGULATED, Tier.RESTRICTED):
+        result = decide(
+            capabilities=_GLOB_CAPABILITIES,
+            action=_fetch_action("https://api.vendor.example/collect"),
+            labels=_cat("personal", tier),
+            bindings=_allowlist(),
+        )
+        assert result.decision == Decision.ALLOW, f"tier={tier} should route to allowlisted host"
+
+
+def test_fetch_url_regulated_gate_is_unrelaxable_by_permissive_dial() -> None:
+    """Advisor check #1: the REQUIRE_APPROVAL floor must ratchet — a permissive
+    risk preference cannot dial it back to ALLOW."""
+    from capabledeputy.policy.envelope import RiskPreference
+
+    result = decide(
+        capabilities=_GLOB_CAPABILITIES,
+        action=_fetch_action(),
+        labels=_cat("personal", Tier.REGULATED),
+        risk_preference=RiskPreference.PERMISSIVE,
+    )
+    assert result.decision == Decision.REQUIRE_APPROVAL
+
+
+def test_web_search_not_gated_by_fetch_floor() -> None:
+    """web.search shares CapabilityKind.WEB_FETCH but its target is a query, not
+    a URL, so the fetch floor does not apply even with confidential data."""
+    result = decide(
+        capabilities=_GLOB_CAPABILITIES,
+        action=Action(kind=CapabilityKind.WEB_FETCH, target="what is lisinopril"),
+        labels=_cat("personal", Tier.REGULATED),
+    )
+    assert result.decision == Decision.ALLOW
+
+
+def test_fetch_url_sensitive_label_not_gated() -> None:
+    """Sensitive-tier working labels (e.g. `news` on fetched articles) do NOT
+    gate a fetch — content-gathering into a labeled session must not become an
+    approval-fatigue trap. Only regulated+ confidential data is gated."""
+    result = decide(
+        capabilities=_GLOB_CAPABILITIES,
+        action=_fetch_action(),
+        labels=_cat("news", Tier.SENSITIVE),
+    )
+    assert result.decision == Decision.ALLOW
