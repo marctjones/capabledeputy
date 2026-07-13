@@ -15,9 +15,7 @@ def approval_requires_strong_auth(request: ApprovalRequest) -> bool:
         return True
     labels = request.labels_in.to_dict()
     rendered = str(labels).lower()
-    return any(
-        token in rendered for token in ("financial", "health", "restricted", "prohibited")
-    )
+    return any(token in rendered for token in ("financial", "health", "restricted", "prohibited"))
 
 
 def approval_to_client_dict(

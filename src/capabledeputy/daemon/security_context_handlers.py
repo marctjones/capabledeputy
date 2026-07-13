@@ -186,16 +186,9 @@ def _policy(events: list[Event]) -> dict[str, Any]:
         "programmatic_transforms": inspectors[-50:],
         "decision_count": len(decisions),
         "deny_count": sum(1 for d in decisions if d.get("decision") == "deny"),
-        "approval_gate_count": sum(
-            1 for d in decisions if d.get("decision") == "require_approval"
-        ),
+        "approval_gate_count": sum(1 for d in decisions if d.get("decision") == "require_approval"),
         "matched_rule_ids": sorted(
-            {
-                str(rule)
-                for d in decisions
-                for rule in d.get("v2_matched_rule_ids", [])
-                if rule
-            },
+            {str(rule) for d in decisions for rule in d.get("v2_matched_rule_ids", []) if rule},
         ),
     }
 

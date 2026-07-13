@@ -8,6 +8,8 @@ the YAML file.
 
 from __future__ import annotations
 
+import platform
+
 import pytest
 
 from capabledeputy.cli._managed_config import resolve_upstream_spawn_command
@@ -112,6 +114,10 @@ def test_multi_credential_pattern_distinct_envs(monkeypatch: pytest.MonkeyPatch)
     assert parsed[1].name == "github-personal"
 
 
+@pytest.mark.skipif(
+    platform.system() != "Darwin",
+    reason="venv-uvx resolution collides with CI VIRTUAL_ENV/system uvx on PATH (#354)",
+)
 def test_uvx_command_resolves_to_project_venv(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     venv_bin = tmp_path / ".venv" / "bin"
     venv_bin.mkdir(parents=True)

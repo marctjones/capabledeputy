@@ -81,8 +81,7 @@ def _render_security_context(ctx: dict[str, Any]) -> None:
     else:
         console.print("  labels:       clean")
     console.print(
-        f"  caps:         {len(caps['active'])} active, "
-        f"{len(caps['used_kinds'])} used kind(s)",
+        f"  caps:         {len(caps['active'])} active, {len(caps['used_kinds'])} used kind(s)",
     )
     console.print(
         f"  policy:       {policy['decision_count']} decision(s), "
@@ -93,8 +92,7 @@ def _render_security_context(ctx: dict[str, Any]) -> None:
         f"{approvals['pending_count']} pending, {approvals['expired_count']} expired",
     )
     console.print(
-        f"  provenance:   {provenance['node_count']} node(s), "
-        f"{provenance['edge_count']} edge(s)",
+        f"  provenance:   {provenance['node_count']} node(s), {provenance['edge_count']} edge(s)",
     )
     if policy["recent_decisions"]:
         console.print("  recent policy:")

@@ -167,9 +167,7 @@ def build_setup_checks(app: App) -> list[dict[str, Any]]:
             "id": "source-bindings",
             "title": "Source bindings",
             "status": (
-                "ok"
-                if getattr(app.policy_context, "bindings", None) is not None
-                else "manual"
+                "ok" if getattr(app.policy_context, "bindings", None) is not None else "manual"
             ),
             "detail": "Operator-curated source labels are edited through daemon RPCs.",
             "actions": [

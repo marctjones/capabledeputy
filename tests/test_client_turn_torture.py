@@ -15,13 +15,13 @@ from pathlib import Path
 import anyio
 import pytest
 
+from capabledeputy.agent import loop as loop_mod
 from capabledeputy.app import App
 from capabledeputy.daemon.server import Daemon
 from capabledeputy.ipc.client import DaemonClient, DaemonError
 from capabledeputy.llm.fake import FakeLLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, ToolCall
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
-from capabledeputy.agent import loop as loop_mod
 from tests.daemon_integration import (
     DaemonTestPaths,
     build_test_handlers,
@@ -201,7 +201,9 @@ async def test_session_send_torture_cases(
     case: TurnTortureCase,
 ) -> None:
     if case.patch_context_window is not None:
-        monkeypatch.setattr(loop_mod, "_context_window_for", lambda model: case.patch_context_window)
+        monkeypatch.setattr(
+            loop_mod, "_context_window_for", lambda model: case.patch_context_window
+        )
 
     async with live_daemon(tmp_path, case.llm) as (_app, client, _paths):
         session_id = await _new_session(client, case.name)

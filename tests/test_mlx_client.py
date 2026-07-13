@@ -223,9 +223,7 @@ def _install_streaming_stub(client: MLXLLMClient, *, chunks: list[str]):
     client._load_model_sync = lambda: (object(), _FakeTokenizer())  # type: ignore[method-assign]
     return patch(
         "capabledeputy.llm.mlx_client.import_module",
-        side_effect=lambda name: _fake_mlx_lm(chunks)
-        if name == "mlx_lm"
-        else import_module(name),
+        side_effect=lambda name: _fake_mlx_lm(chunks) if name == "mlx_lm" else import_module(name),
     )
 
 

@@ -11,10 +11,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_COVERAGE = (
-    ROOT
-    / "apps/macos/CapDep/.build/arm64-apple-macosx/debug/codecov/CapDepMac.json"
-)
+DEFAULT_COVERAGE = ROOT / "apps/macos/CapDep/.build/arm64-apple-macosx/debug/codecov/CapDepMac.json"
 DEFAULT_SOURCE_ROOT = ROOT / "apps/macos/CapDep/Sources"
 
 
@@ -159,8 +156,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if total.line_percent + 1e-9 < args.fail_under:
         print(
-            f"Swift source line coverage {total.line_percent:.2f}% below "
-            f"{args.fail_under:.0f}%",
+            f"Swift source line coverage {total.line_percent:.2f}% below {args.fail_under:.0f}%",
             file=sys.stderr,
         )
         return 1

@@ -104,9 +104,7 @@ def skill_to_tool(
             additional_tags=skill.inherent_tags,
         )
 
-    capability_kind = (
-        CapabilityKind.EXECUTE_SANDBOX if skill.scripts else skill.capability_kind
-    )
+    capability_kind = CapabilityKind.EXECUTE_SANDBOX if skill.scripts else skill.capability_kind
     target_arg = "spec_id" if skill.scripts else skill.target_arg
     op, op_risks, op_surfaces = default_operation_for_kind(capability_kind)
     return ToolDefinition(

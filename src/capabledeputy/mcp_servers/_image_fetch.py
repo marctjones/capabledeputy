@@ -46,8 +46,7 @@ _OG_IMAGE_RE_ALT = re.compile(
 
 def default_image_cache_dir() -> Path:
     return Path(
-        os.environ.get("CAPDEP_IMAGE_OUTPUT_DIR")
-        or (Path.home() / ".capdep" / "work" / "images"),
+        os.environ.get("CAPDEP_IMAGE_OUTPUT_DIR") or (Path.home() / ".capdep" / "work" / "images"),
     )
 
 
@@ -131,8 +130,12 @@ async def fetch_image(
             body = resp.content
             final_url = str(resp.url)
 
-    if content_type and content_type not in _IMAGE_CONTENT_TYPES and not content_type.startswith(
-        "image/",
+    if (
+        content_type
+        and content_type not in _IMAGE_CONTENT_TYPES
+        and not content_type.startswith(
+            "image/",
+        )
     ):
         return {
             "ok": False,

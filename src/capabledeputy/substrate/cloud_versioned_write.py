@@ -151,11 +151,15 @@ class GoogleDriveRevisionVersionedWritePort:
         )
         media_body = _media_upload(content)
         assert self.drive_service is not None
-        response = self.drive_service.files().update(
-            fileId=file_id,
-            media_body=media_body,
-            fields="id,version,headRevisionId",
-        ).execute()
+        response = (
+            self.drive_service.files()
+            .update(
+                fileId=file_id,
+                media_body=media_body,
+                fields="id,version,headRevisionId",
+            )
+            .execute()
+        )
         if self.keep_forever:
             revision_id = response.get("headRevisionId") or self._latest_revision(file_id)
             if revision_id:
@@ -184,21 +188,29 @@ class GoogleDriveRevisionVersionedWritePort:
             return None
         assert self.drive_service is not None
         try:
-            response = self.drive_service.revisions().get(
-                fileId=file_id,
-                revisionId=revision_id,
-                alt="media",
-            ).execute()
+            response = (
+                self.drive_service.revisions()
+                .get(
+                    fileId=file_id,
+                    revisionId=revision_id,
+                    alt="media",
+                )
+                .execute()
+            )
         except Exception:
             return None
         return _hash_bytes(_body_bytes(response))
 
     def _latest_revision(self, file_id: str) -> str | None:
         assert self.drive_service is not None
-        response = self.drive_service.revisions().list(
-            fileId=file_id,
-            fields="revisions(id,keepForever,modifiedTime)",
-        ).execute()
+        response = (
+            self.drive_service.revisions()
+            .list(
+                fileId=file_id,
+                fields="revisions(id,keepForever,modifiedTime)",
+            )
+            .execute()
+        )
         revisions = response.get("revisions") or []
         if not revisions:
             return None

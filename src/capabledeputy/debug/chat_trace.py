@@ -71,9 +71,8 @@ def _write(record: dict[str, Any]) -> None:
     path = chat_trace_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(record, separators=(",", ":"), default=str) + "\n"
-    with _lock:
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(line)
+    with _lock, path.open("a", encoding="utf-8") as handle:
+        handle.write(line)
 
 
 def log(kind: str, *, ctx: dict[str, Any] | None = None, **payload: Any) -> None:

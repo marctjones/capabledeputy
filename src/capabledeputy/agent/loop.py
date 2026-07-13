@@ -637,10 +637,7 @@ async def run_turn(
         )
     if interrupt_event is not None and (
         interrupt_reason == "context_overflow"
-        or (
-            interrupt_reason is not None
-            and interrupt_reason.startswith("llm_error:")
-        )
+        or (interrupt_reason is not None and interrupt_reason.startswith("llm_error:"))
     ):
         # Issue #36 / LLM error handling — the streaming generator has
         # already emitted a terminal interrupt event and audited the
@@ -648,10 +645,7 @@ async def run_turn(
         # partial turn result rather than collapsing into the generic
         # "no terminal event" wrapper error.
         return AgentTurnResult(
-            content=(
-                interrupt_event.partial_content
-                or f"[turn interrupted: {interrupt_reason}]"
-            ),
+            content=(interrupt_event.partial_content or f"[turn interrupted: {interrupt_reason}]"),
             iterations=interrupt_event.iteration,
             finish_reason=FinishReason.LENGTH,
             tool_outcomes=interrupt_event.partial_outcomes,
@@ -1031,9 +1025,8 @@ async def run_turn_streaming(
     probable_image_request = has_probable_image_generation_intent(user_message)
     selected_tool_names = {t.name for t in tool_surface.selected}
     visible_tool_names_all = {t.name for t in visible_all}
-    if (
-        (force_image_generate or probable_image_request)
-        and not image_generate_tool_names_in(visible_tool_names_all)
+    if (force_image_generate or probable_image_request) and not image_generate_tool_names_in(
+        visible_tool_names_all
     ):
         final_content = (
             "I cannot generate an image in this session because no generated-image "
@@ -1374,9 +1367,7 @@ async def run_turn_streaming(
             prior_paths=prior_image_paths,
             allowed_paths=allowed_image_paths,
         )
-        image_gen_mandatory = force_image_generate or (
-            probable_image_request and image_gen_refusal
-        )
+        image_gen_mandatory = force_image_generate or (probable_image_request and image_gen_refusal)
         if (
             not response.tool_calls
             and tool_descriptions

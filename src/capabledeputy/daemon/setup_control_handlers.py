@@ -128,10 +128,7 @@ def make_setup_control_handlers(
                 )
                 for service_id, service in GOOGLE_OAUTH_SERVICES.items()
             ]
-            + [
-                _office_connector(app_info)
-                for app_info in OFFICE_AUTOMATION_APPS
-            ],
+            + [_office_connector(app_info) for app_info in OFFICE_AUTOMATION_APPS],
         }
 
     async def runtime_status(params: dict[str, Any]) -> dict[str, Any]:

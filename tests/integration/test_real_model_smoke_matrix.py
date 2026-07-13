@@ -91,6 +91,5 @@ async def test_real_model_can_dispatch_safe_memory_tool(
 
     assert result["content"].strip()
     assert any(
-        outcome.get("tool_name", "").endswith("memory.read")
-        for outcome in result["tool_outcomes"]
+        outcome.get("tool_name", "").endswith("memory.read") for outcome in result["tool_outcomes"]
     )

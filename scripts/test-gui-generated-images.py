@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -79,10 +78,7 @@ async def run_turn(client, message: str, label: str) -> dict:
                 tools_seen = int(payload.get("n_tools") or 0)
             if etype == "tool_dispatched":
                 name = str(
-                    payload.get("tool_name")
-                    or payload.get("tool")
-                    or payload.get("name")
-                    or ""
+                    payload.get("tool_name") or payload.get("tool") or payload.get("name") or ""
                 )
                 if name:
                     tool_names.append(name)

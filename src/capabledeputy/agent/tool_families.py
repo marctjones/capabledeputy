@@ -99,6 +99,4 @@ def tool_matches_family(tool: ToolDefinition, family: ToolFamily) -> bool:
         return True
     if family.include_prefixes:
         return any(tool.name.startswith(prefix) for prefix in family.include_prefixes)
-    if not family.include_kinds and not family.include_prefixes:
-        return True
-    return False
+    return bool(not family.include_kinds and not family.include_prefixes)

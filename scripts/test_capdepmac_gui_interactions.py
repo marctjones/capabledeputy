@@ -171,8 +171,7 @@ def wait_for_trace_image_markdown(*, line_count: int, timeout: float) -> None:
     while time.monotonic() < deadline:
         lines = _trace_lines_after(line_count)
         if any(
-            "turn_send_end" in line and 'output_has_image_markdown="true"' in line
-            for line in lines
+            "turn_send_end" in line and 'output_has_image_markdown="true"' in line for line in lines
         ):
             return
         time.sleep(0.5)

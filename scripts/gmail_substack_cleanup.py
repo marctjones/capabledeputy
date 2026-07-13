@@ -16,7 +16,6 @@ import email
 import imaplib
 import json
 import re
-import ssl
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -185,7 +184,7 @@ def unsubscribe_url(target: dict[str, str]) -> tuple[bool, str]:
         if exc.code in {200, 202, 204, 302, 303}:
             return True, f"http_{exc.code}"
         return False, f"http_{exc.code}"
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return False, str(exc)
 
 

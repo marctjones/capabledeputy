@@ -241,9 +241,7 @@ class LiveSession:
         """Initial spawn. Raises on failure (no retry). Subsequent
         respawn-on-death attempts handle their own backoff."""
         if self._config.transport == "streamable_http":
-            self._req_send, self._req_recv = anyio.create_memory_object_stream[
-                _OwnerRequest
-            ](32)
+            self._req_send, self._req_recv = anyio.create_memory_object_stream[_OwnerRequest](32)
             self._owner_stack = AsyncExitStack()
             await self._owner_stack.__aenter__()
             self._owner_tg = await self._owner_stack.enter_async_context(

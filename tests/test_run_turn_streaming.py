@@ -223,10 +223,7 @@ async def test_capdepmac_turn_suppresses_leaked_web_fetch_grant(
     registry = ToolRegistry()
     tool_client = LabeledToolClient(registry=registry, graph=graph, audit=audit)
     llm = _StreamingStubLLM(
-        [
-            "The runtime suggests:\n"
-            "1. `/grant WEB_FETCH *` — to enable web search capabilities."
-        ],
+        ["The runtime suggests:\n1. `/grant WEB_FETCH *` — to enable web search capabilities."],
     )
 
     events = []

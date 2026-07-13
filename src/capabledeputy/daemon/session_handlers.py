@@ -113,9 +113,7 @@ def make_session_handlers(
             session_id,
             str(params["message"]),
             submitted_by=str(
-                params.get("submitted_by")
-                or params.get("client_id")
-                or "client",
+                params.get("submitted_by") or params.get("client_id") or "client",
             ),
         )
         await coordinator.emit(

@@ -64,11 +64,11 @@ def test_full_surface_when_small_catalog() -> None:
 
 def test_family_narrows_inbox_tools() -> None:
     registry = ToolRegistry()
-    tools = [
-        _tool(f"inbox.tool{i}", CapabilityKind.GMAIL_READ) for i in range(12)
-    ] + [
-        _tool(f"calendar.tool{i}", CapabilityKind.CALENDAR_READ) for i in range(12)
-    ] + [_tool("policy.preview", CapabilityKind.READ_FS)]
+    tools = (
+        [_tool(f"inbox.tool{i}", CapabilityKind.GMAIL_READ) for i in range(12)]
+        + [_tool(f"calendar.tool{i}", CapabilityKind.CALENDAR_READ) for i in range(12)]
+        + [_tool("policy.preview", CapabilityKind.READ_FS)]
+    )
     for tool in tools:
         registry.register(tool)
     session = _session_with_caps(CapabilityKind.GMAIL_READ, CapabilityKind.READ_FS)
@@ -113,11 +113,11 @@ def test_widen_adds_missing_tool() -> None:
 
 def test_broad_caps_respect_max_selected() -> None:
     registry = ToolRegistry()
-    tools = [
-        _tool(f"mail.tool{i}", CapabilityKind.GMAIL_READ) for i in range(20)
-    ] + [
-        _tool(f"fs.tool{i}", CapabilityKind.READ_FS) for i in range(20)
-    ] + [_tool("policy.preview", CapabilityKind.READ_FS)]
+    tools = (
+        [_tool(f"mail.tool{i}", CapabilityKind.GMAIL_READ) for i in range(20)]
+        + [_tool(f"fs.tool{i}", CapabilityKind.READ_FS) for i in range(20)]
+        + [_tool("policy.preview", CapabilityKind.READ_FS)]
+    )
     for tool in tools:
         registry.register(tool)
     session = _session_with_caps(
@@ -140,16 +140,16 @@ def test_broad_caps_respect_max_selected() -> None:
 
 def test_web_search_intent_includes_kagi_and_search_tools() -> None:
     registry = ToolRegistry()
-    tools = [
-        _tool(f"mail.tool{i}", CapabilityKind.GMAIL_READ) for i in range(20)
-    ] + [
-        _tool(f"fs.tool{i}", CapabilityKind.READ_FS) for i in range(20)
-    ] + [
-        _tool("kagi.kagi_search_fetch", CapabilityKind.WEB_FETCH),
-        _tool("web.search", CapabilityKind.WEB_FETCH),
-        _tool("bundled-search.search.web", CapabilityKind.WEB_FETCH),
-        _tool("policy.preview", CapabilityKind.READ_FS),
-    ]
+    tools = (
+        [_tool(f"mail.tool{i}", CapabilityKind.GMAIL_READ) for i in range(20)]
+        + [_tool(f"fs.tool{i}", CapabilityKind.READ_FS) for i in range(20)]
+        + [
+            _tool("kagi.kagi_search_fetch", CapabilityKind.WEB_FETCH),
+            _tool("web.search", CapabilityKind.WEB_FETCH),
+            _tool("bundled-search.search.web", CapabilityKind.WEB_FETCH),
+            _tool("policy.preview", CapabilityKind.READ_FS),
+        ]
+    )
     for tool in tools:
         registry.register(tool)
     session = _session_with_caps(CapabilityKind.WEB_FETCH, CapabilityKind.GMAIL_READ)
@@ -170,9 +170,7 @@ def test_web_search_intent_includes_kagi_and_search_tools() -> None:
 
 def test_kagi_hides_ddg_search_tools_for_general_lookup() -> None:
     registry = ToolRegistry()
-    tools = [
-        _tool(f"mail.tool{i}", CapabilityKind.GMAIL_READ) for i in range(20)
-    ] + [
+    tools = [_tool(f"mail.tool{i}", CapabilityKind.GMAIL_READ) for i in range(20)] + [
         _tool("kagi.kagi_search_fetch", CapabilityKind.WEB_FETCH),
         _tool("web.search", CapabilityKind.WEB_FETCH),
         _tool("bundled-search.search.web", CapabilityKind.WEB_FETCH),

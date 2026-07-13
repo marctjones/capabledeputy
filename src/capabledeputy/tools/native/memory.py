@@ -151,9 +151,7 @@ class LabeledMemoryStore:
             "path": str(self._db_path) if self._db_path is not None else None,
             "entry_count": len(keys),
             "keys": keys,
-            "labels_by_key": {
-                key: self.label_state_of(key).to_dict() for key in keys
-            },
+            "labels_by_key": {key: self.label_state_of(key).to_dict() for key in keys},
             "trust_classes": _count_by(entry["trust_class"] for entry in entries),
         }
 

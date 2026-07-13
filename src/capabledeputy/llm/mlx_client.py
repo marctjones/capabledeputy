@@ -23,8 +23,6 @@ from importlib import import_module
 from typing import Any, ClassVar
 from uuid import uuid4
 
-from anyio.to_thread import run_sync
-
 from capabledeputy.llm.types import (
     FinishReason,
     LLMResponse,

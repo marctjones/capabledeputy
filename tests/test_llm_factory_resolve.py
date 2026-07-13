@@ -21,7 +21,10 @@ def test_resolve_planner_model_spec_stays_mlx_without_remote_opt_in(
     monkeypatch.setattr(factory, "mlx_metal_available", lambda: True)
     monkeypatch.setattr(factory, "ollama_reachable", lambda: True)
 
-    assert factory.resolve_planner_model_spec(prefer_local_mlx=False) == factory.default_llm_model_spec()
+    assert (
+        factory.resolve_planner_model_spec(prefer_local_mlx=False)
+        == factory.default_llm_model_spec()
+    )
 
 
 def test_resolve_planner_model_spec_uses_ollama_when_remote_allowed(

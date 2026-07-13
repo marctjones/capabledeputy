@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 
 from capabledeputy.daemon.image_attachments import image_attachment_payloads_from_outcome
 from capabledeputy.tools.native.chart import make_chart_tools
 from capabledeputy.tools.registry import ToolContext
-from uuid import uuid4
 
 
 @pytest.fixture

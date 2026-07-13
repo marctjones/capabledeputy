@@ -30,18 +30,19 @@ def _rule_matches(rule: RoutingRule, ctx: ModelRoutingContext) -> bool:
         return False
     if rule.execution_mode is not None:
         rule_token = rule.execution_mode.upper().replace("-", "_")
-        if ctx.execution_mode.name.upper() != rule_token and ctx.execution_mode.value.upper() != rule_token:
+        if (
+            ctx.execution_mode.name.upper() != rule_token
+            and ctx.execution_mode.value.upper() != rule_token
+        ):
             return False
-    if rule.n_visible_tools_gte is not None:
-        if ctx.n_visible_tools < rule.n_visible_tools_gte:
-            return False
-    if rule.n_selected_tools_gte is not None:
-        if ctx.n_selected_tools < rule.n_selected_tools_gte:
-            return False
-    if rule.user_message_chars_gte is not None:
-        if ctx.user_message_chars < rule.user_message_chars_gte:
-            return False
-    return True
+    if rule.n_visible_tools_gte is not None and ctx.n_visible_tools < rule.n_visible_tools_gte:
+        return False
+    if rule.n_selected_tools_gte is not None and ctx.n_selected_tools < rule.n_selected_tools_gte:
+        return False
+    return not (
+        rule.user_message_chars_gte is not None
+        and ctx.user_message_chars < rule.user_message_chars_gte
+    )
 
 
 def resolve_model_role(config: ModelsConfig, ctx: ModelRoutingContext) -> ModelRoutingResult:

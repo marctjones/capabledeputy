@@ -108,7 +108,6 @@ class Skill:
 
         return _PLACEHOLDER_RE.sub(_sub, self.body)
 
-
     @property
     def tool_enabled(self) -> bool:
         return self.mode in {SkillMode.TOOL, SkillMode.HYBRID}

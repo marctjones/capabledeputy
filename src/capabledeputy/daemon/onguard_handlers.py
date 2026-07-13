@@ -527,8 +527,7 @@ def make_onguard_handlers(app: App) -> dict[str, Handler]:
     async def artifact_handoff(params: dict[str, Any]) -> dict[str, Any]:
         artifact = await app.onguard.read_artifact(artifact_id=str(params["artifact_id"]))
         intent = str(
-            params.get("intent")
-            or f"Review onguard artifact {artifact['artifact_id']}",
+            params.get("intent") or f"Review onguard artifact {artifact['artifact_id']}",
         )
         session = await app.graph.new(
             owner=str(params.get("owner", "interactive-client")),

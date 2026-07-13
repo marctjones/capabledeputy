@@ -198,9 +198,7 @@ def test_setup_models_apply_convert_writes_manifests(
     assert inventory["planner.coder"]["recommended_runtime"] == (
         "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
     )
-    assert inventory["image.flux2-klein-quality"]["recommended_runtime"] == (
-        "mflux flux2-klein-4b"
-    )
+    assert inventory["image.flux2-klein-quality"]["recommended_runtime"] == ("mflux flux2-klein-4b")
     assert inventory["image.qwen-image-quality"]["recommended_runtime"] == (
         "OsaurusAI/Qwen-Image-mflux-4bit"
     )

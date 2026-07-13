@@ -5,11 +5,14 @@ from uuid import uuid4
 
 import pytest
 
+from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction, ApprovalRequest, ApprovalStatus
-from capabledeputy.approval.strong_auth import approval_requires_strong_auth, approval_to_client_dict
+from capabledeputy.approval.strong_auth import (
+    approval_requires_strong_auth,
+    approval_to_client_dict,
+)
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.policy.labels import LabelState, tags_for_labels_strings
-from capabledeputy.app import App
 
 
 @pytest.fixture

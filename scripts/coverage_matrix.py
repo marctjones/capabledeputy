@@ -92,9 +92,7 @@ def collect_rows(coverage: dict[str, Any]) -> tuple[list[CoverageRow], list[Cove
         statements = int(summary.get("num_statements", 0))
         branch_covered = int(summary.get("covered_branches", 0))
         branches = int(summary.get("num_branches", 0))
-        modules.append(
-            CoverageRow(module, "module", covered, statements, branch_covered, branches)
-        )
+        modules.append(CoverageRow(module, "module", covered, statements, branch_covered, branches))
         bucket = packages.setdefault(_package_name(module), [0, 0, 0, 0])
         bucket[0] += covered
         bucket[1] += statements

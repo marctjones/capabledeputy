@@ -177,9 +177,7 @@ async def test_allowed_no_egress_emits_purpose_contamination_residual(tmp_path) 
     assert out.decision.value == "allow"
     events = await app.audit.read_all()
     residual = [
-        event
-        for event in events
-        if event.event_type == EventType.PURPOSE_CONTAMINATION_SUSPECTED
+        event for event in events if event.event_type == EventType.PURPOSE_CONTAMINATION_SUSPECTED
     ]
     assert len(residual) == 1
     assert residual[0].payload["purpose_handle"] == "work-only"

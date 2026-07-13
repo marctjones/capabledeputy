@@ -204,9 +204,7 @@ class App:
         from capabledeputy.skills.loader import load_skill_directory_report
 
         sandbox_actuator = (
-            self.policy_context.sandbox_actuator
-            if self.policy_context is not None
-            else None
+            self.policy_context.sandbox_actuator if self.policy_context is not None else None
         )
         self.skill_load_report = load_skill_directory_report(
             self._skills_dir,
