@@ -148,6 +148,17 @@ def _target_uses_binding_namespace(target: str) -> bool:
     return target.startswith("/") or "://" in target or target.startswith("mcp:")
 
 
+def _target_is_remote_url(target: str) -> bool:
+    """True when the action target is an outbound http(s) URL.
+
+    Distinguishes web.fetch (target = an LLM-chosen URL, an outbound request
+    that can carry data out via the path/query/body) from web.search (target =
+    a query string sent to a fixed provider). Both share CapabilityKind
+    WEB_FETCH, so the egress floor must gate on the target shape, not the kind
+    alone (#293)."""
+    return target.startswith(("http://", "https://"))
+
+
 @dataclass(frozen=True)
 class RecoveryStep:
     """A literal slash command an operator can paste to make progress
@@ -276,9 +287,15 @@ def _conflict_invariant_outcome(
 
     Egress is the action kind: SEND_EMAIL / SEND_MESSAGE / QUEUE_PURCHASE,
     plus active browser-control kinds because they can submit data to
-    arbitrary remote sites. Browser read-only observation is deliberately
-    excluded. Rules are evaluated in precedence order; the first firing
-    wins. Returns (decision, rule_id, reason) or None.
+    arbitrary remote sites, plus a WEB_FETCH whose target is an http(s) URL
+    (the request path/query/body can carry data to an LLM-chosen host — #293).
+    Browser read-only observation and web.search (query target, fixed
+    provider) are deliberately excluded. The external-untrusted leg does NOT
+    apply to web fetch (a fetch taints the session external-untrusted, so
+    gating untrusted+fetch would break multi-page research); only the
+    confidentiality-category legs (health, financial) gate a URL fetch.
+    Rules are evaluated in precedence order; the first firing wins. Returns
+    (decision, rule_id, reason) or None.
     """
     is_email = action.kind == CapabilityKind.SEND_EMAIL
     is_message = action.kind == CapabilityKind.SEND_MESSAGE
@@ -290,7 +307,14 @@ def _conflict_invariant_outcome(
         CapabilityKind.BROWSER_SCRIPT,
         CapabilityKind.BROWSER_FILE,
     }
-    if not (is_email or is_message or is_purchase or is_browser):
+    # web.fetch to an LLM-chosen URL is an egress: the request path/query/body
+    # can carry read data to an arbitrary host (#293). Gate it on the URL shape
+    # so web.search (query target, fixed provider) is unaffected. Deliberately
+    # NOT subject to the external-untrusted leg below: a fetch taints the
+    # session external-untrusted, so blocking untrusted+fetch would kill
+    # multi-page research. Only the confidentiality-category legs apply.
+    is_fetch_url = action.kind == CapabilityKind.WEB_FETCH and _target_is_remote_url(action.target)
+    if not (is_email or is_message or is_purchase or is_browser or is_fetch_url):
         return None
     if is_email:
         egress = "email"
@@ -298,11 +322,13 @@ def _conflict_invariant_outcome(
         egress = "message"
     elif is_browser:
         egress = "browser automation"
+    elif is_fetch_url:
+        egress = "web fetch"
     else:
         egress = "purchase"
     provenance = {e.level for e in labels.b}
     categories = {c.category for c in labels.a}
-    if ProvenanceLevel.EXTERNAL_UNTRUSTED in provenance:
+    if ProvenanceLevel.EXTERNAL_UNTRUSTED in provenance and not is_fetch_url:
         return (
             Decision.DENY,
             PROVENANCE_EGRESS_RULE,
@@ -316,7 +342,7 @@ def _conflict_invariant_outcome(
             f"{HEALTH_EGRESS_RULE}: health-category data cannot egress via {egress}",
         )
     if "financial" in categories:
-        if is_email or is_message or is_browser:
+        if is_email or is_message or is_browser or is_fetch_url:
             return (
                 Decision.DENY,
                 FINANCIAL_EMAIL_RULE,

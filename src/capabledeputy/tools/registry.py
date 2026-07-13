@@ -19,7 +19,11 @@ from uuid import UUID
 
 from capabledeputy.approval.route import ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.effect_class import EffectClass, Operation
+from capabledeputy.policy.effect_class import (
+    EffectClass,
+    Operation,
+    effect_class_is_egress_capable,
+)
 from capabledeputy.policy.labels import LabelState
 
 if TYPE_CHECKING:
@@ -252,6 +256,28 @@ def validate_tool_definition(
 
     # Rule 7 (wrapper union) needs sub-tool composition info not present on a
     # bare ToolDefinition; enforced at the wrapper construction site (R3b).
+
+    # Rule 8 (#294) — an outbound-capable capability MUST declare an
+    # egress-capable operation. Egress-ness is derived from the declared
+    # EffectClass taxonomy (EGRESS_CAPABLE_EFFECTS), the single source of
+    # truth, so it can never silently drift out of a hand-maintained
+    # CapabilityKind list — the exact failure mode that left web.fetch
+    # ungated (#293). A known outbound kind (e.g. WEB_FETCH, SEND_EMAIL,
+    # BROWSER_*) that declares only non-egress operations is refused at
+    # registration (fail-closed), so it can never reach the chokepoint
+    # miscategorised as a read.
+    kind_effect = _KIND_TO_EFFECT.get(str(tool.capability_kind))
+    if (
+        kind_effect is not None
+        and effect_class_is_egress_capable(kind_effect)
+        and not any(effect_class_is_egress_capable(e) for e in effects)
+    ):
+        raise ToolValidationError(
+                f"{tool.name}: capability {tool.capability_kind} is outbound-capable "
+                f"(canonical effect {kind_effect}) but declares no egress-capable "
+                f"operation (declared effects: {sorted(str(e) for e in effects)}). "
+                "An outbound tool must declare an egress-capable EffectClass (#294).",
+            )
 
 
 # Best-effort capability-kind -> EffectClass for adapter-created tools

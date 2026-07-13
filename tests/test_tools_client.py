@@ -210,8 +210,9 @@ async def test_deny_when_no_matching_capability(writer: AuditWriter) -> None:
             description="t",
             capability_kind=CapabilityKind.SEND_EMAIL,
             handler=_ok_handler,
-            operations=(Operation(EffectClass.FETCH),),
+            operations=(Operation(EffectClass.COMMUNICATE),),
             risk_ids=("RISK-INDIRECT-INJECTION",),
+            surfaces_destination_id=True,
             target_arg="to",
         ),
     )
@@ -230,8 +231,9 @@ async def test_deny_on_brewer_nash_conflict(writer: AuditWriter) -> None:
             description="t",
             capability_kind=CapabilityKind.SEND_EMAIL,
             handler=_ok_handler,
-            operations=(Operation(EffectClass.FETCH),),
+            operations=(Operation(EffectClass.COMMUNICATE),),
             risk_ids=("RISK-INDIRECT-INJECTION",),
+            surfaces_destination_id=True,
             target_arg="to",
         ),
     )

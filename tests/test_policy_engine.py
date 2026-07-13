@@ -202,6 +202,20 @@ def test_capability_present_with_no_labels_allows() -> None:
             Decision.DENY,
             "health-meets-egress",
         ),
+        # #293: a URL-target web.fetch is an egress — health/financial cannot
+        # leak via the fetch URL. web.search (query target) is unaffected.
+        (
+            {"health": True},
+            CapabilityKind.WEB_FETCH,
+            Decision.DENY,
+            "health-meets-egress",
+        ),
+        (
+            {"financial": True},
+            CapabilityKind.WEB_FETCH,
+            Decision.DENY,
+            "financial-meets-email",
+        ),
         # Rule 3: confidential.financial + egress.email -> DENY
         (
             {"financial": True},
@@ -250,7 +264,8 @@ def test_rule_firings(
     [
         ({"health": True}, CapabilityKind.READ_FS),
         ({"health": True}, CapabilityKind.WRITE_FS),
-        ({"health": True}, CapabilityKind.WEB_FETCH),
+        # NB: health + WEB_FETCH-to-URL is DENY (see test_rule_firings, #293);
+        # it is intentionally NOT in the non-conflicting-allow list.
         ({"health": True}, CapabilityKind.MACOS_AUTOMATION),
         ({"health": True}, CapabilityKind.BROWSER_READ),
         ({"health": True}, CapabilityKind.CALENDAR_READ),
