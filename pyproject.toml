@@ -83,8 +83,16 @@ dev = [
 ]
 
 [tool.uv]
+# Both environments must be resolvable: local dev is darwin/arm64 (where the
+# Apple-only mlx-lm/mflux extras resolve), and CI runs on linux. The Apple-only
+# deps carry `platform_system == 'Darwin' and platform_machine == 'arm64'`
+# markers, so the linux resolution simply excludes them (mlx/image generation
+# is macOS-only by design). Without the linux environment here, `uv sync` fails
+# on Ubuntu CI with "current Python platform is not compatible with the
+# lockfile's supported environments" (#351).
 environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'linux'",
 ]
 
 [tool.ruff]
