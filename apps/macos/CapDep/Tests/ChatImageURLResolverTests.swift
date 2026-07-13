@@ -29,12 +29,23 @@ final class ChatImageURLResolverTests: XCTestCase {
         }
     }
 
-    func testResolvesHTTPSURL() {
+    func testRejectsRemoteHTTPSURL() {
+        // #292 — agent markdown is untrusted; a remote image target must never
+        // be dereferenced (an outbound GET to a planner-chosen host is an
+        // exfiltration channel). Remote schemes are refused, not fetched.
         let result = ChatImageURLResolver.resolve("https://example.com/chart.png")
-        guard case .success(let resolved) = result else {
-            return XCTFail("expected success, got \(result)")
+        guard case .failure(let failure) = result else {
+            return XCTFail("expected failure for remote URL, got \(result)")
         }
-        XCTAssertTrue(resolved.isRemote)
+        XCTAssertEqual(failure, .unsupportedScheme)
+    }
+
+    func testRejectsRemoteHTTPURL() {
+        let result = ChatImageURLResolver.resolve("http://attacker.example/p.png?d=secret")
+        guard case .failure(let failure) = result else {
+            return XCTFail("expected failure for remote URL, got \(result)")
+        }
+        XCTAssertEqual(failure, .unsupportedScheme)
     }
 
     func testMatchesGrantPatternForDirectoryWildcard() {
