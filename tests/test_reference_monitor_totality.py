@@ -26,6 +26,32 @@ def test_native_tool_registry_entries_carry_policy_metadata(tmp_path: Path) -> N
         assert tool.capability_kind, f"{tool.name} must declare capability kind"
 
 
+def test_every_outbound_native_tool_declares_egress_effect(tmp_path: Path) -> None:
+    """#294 / #298 — audit: every registered outbound-capable tool must declare
+    an egress-capable operation, so egress-ness is carried by the tool's own
+    declaration rather than a hand-maintained kind list at the chokepoint. This
+    makes the Rule-8 registration guarantee explicit at the app level and guards
+    against a future tool (native, MCP-adapted, or skill) re-introducing the
+    web.fetch drift (#293). App.startup() would already refuse to register a
+    violator; this asserts the invariant holds for the full shipped surface."""
+    from capabledeputy.policy.effect_class import effect_class_is_egress_capable
+    from capabledeputy.tools.registry import _KIND_TO_EFFECT
+
+    app = App(
+        state_db_path=tmp_path / "state.db",
+        audit_log_path=tmp_path / "audit.jsonl",
+    )
+    for tool in app.registry.list():
+        kind_effect = _KIND_TO_EFFECT.get(str(tool.capability_kind))
+        if kind_effect is None or not effect_class_is_egress_capable(kind_effect):
+            continue  # not an outbound-capable kind
+        declared = {op.effect_class for op in tool.operations}
+        assert any(effect_class_is_egress_capable(e) for e in declared), (
+            f"{tool.name}: outbound capability {tool.capability_kind} must declare "
+            f"an egress-capable operation (declared: {sorted(str(e) for e in declared)})"
+        )
+
+
 @pytest.mark.asyncio
 async def test_policy_decided_is_emitted_before_every_dispatched_tool(
     tmp_path: Path,
