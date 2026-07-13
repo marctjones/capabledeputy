@@ -34,6 +34,7 @@ from capabledeputy.patterns.reference_handle import (
     ResolvedLabels,
     is_planner_safe_token,
 )
+from capabledeputy.policy.bindings import BindingSet
 from capabledeputy.policy.capabilities import (
     Capability,
     CapabilityKind,
@@ -94,7 +95,7 @@ async def _make_client(tmp_path: Any):
         registry,
         graph,
         writer,
-        policy_context=PolicyContext(handle_store=store),
+        policy_context=PolicyContext(handle_store=store, bindings=_example_allowlist()),
     )
     return client, graph, store, writer
 
@@ -218,3 +219,23 @@ async def test_handle_value_is_frozen_and_bind_trail_records_destination(
     binds = [e for e in events if e.event_type is EventType.PATTERN3_HANDLE_BIND]
     assert len(binds) == 1
     assert binds[0].payload["destination_canonical_id"] == "https://example.com/ingest"
+
+
+def _example_allowlist() -> BindingSet:
+    """Allowlist example.com so a Pattern-3 handle-routed web.fetch is SAFE
+    ROUTING (operator-declared destination), not an ungated exfil. The
+    destination-aware fetch floor (#293/#296) gates confidential fetches to
+    non-allowlisted hosts; forged/stolen-handle resistance is unchanged."""
+    from capabledeputy.policy.bindings import BindingSet, SourceLocationLabelBinding
+    from capabledeputy.policy.tiers import Tier
+
+    return BindingSet(
+        bindings=(
+            SourceLocationLabelBinding(
+                name="ExampleIngest",
+                scope_pattern_canonical="https://example.com/*",
+                category="proprietary_work",
+                default_tier=Tier.SENSITIVE,
+            ),
+        ),
+    )

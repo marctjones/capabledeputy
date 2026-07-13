@@ -101,3 +101,65 @@ def test_render_trusted_markdown_emits_kitty_for_local_image(
 
     assert inline_graphics_enabled()
     assert "\x1b_G" in emit_inline_image(image)
+
+
+def test_remote_image_target_is_never_dereferenced(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#292 — agent markdown is untrusted; a remote http(s) image target must
+    resolve to None and must NOT fire any outbound network request (the GET
+    would be an exfiltration channel bypassing the policy chokepoint)."""
+    import urllib.request
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("resolve_trusted_image_source must not open a network connection")
+
+    # Any attempt to dereference a URL fails the test loudly.
+    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+
+    for url in (
+        "http://attacker.example/p.png?d=SECRET",
+        "https://attacker.example/leak.png?d=SECRET",
+        "HTTP://Attacker.Example/x.png",
+    ):
+        assert resolve_trusted_image_source(url) is None
+
+
+def test_local_image_target_still_resolves(tmp_path: Path) -> None:
+    """The fix must not break legitimate local inline images."""
+    img = tmp_path / "chart.png"
+    img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)  # minimal PNG-ish bytes
+    assert resolve_trusted_image_source(str(img)) == img.resolve()
+
+
+def test_rendering_agent_image_markdown_makes_no_network_connection() -> None:
+    """#292 / #297 — 'no packet leaves the box'. Render agent markdown whose
+    image target points at a REAL local listener and assert the listener
+    receives ZERO connections. Pre-fix this render fired an outbound GET."""
+    import socket
+    import threading
+
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    listener.settimeout(0.75)
+    port = listener.getsockname()[1]
+    connections: list[object] = []
+
+    def _accept() -> None:
+        try:
+            conn, _ = listener.accept()
+            connections.append(conn)
+            conn.close()
+        except OSError:
+            pass  # timeout ⇒ nothing connected (the expected, secure outcome)
+
+    t = threading.Thread(target=_accept, daemon=True)
+    t.start()
+
+    secret = "SSN-123-45-6789"
+    markdown = f"Here is a chart ![leak](http://127.0.0.1:{port}/collect?d={secret})"
+    # Drive the real client render path.
+    _ = render_trusted_markdown(markdown)
+
+    t.join(timeout=1.5)
+    listener.close()
+    assert connections == [], "rendering agent markdown must not open a network connection"

@@ -35,6 +35,36 @@ class EffectClass(StrEnum):
     ACTUATE_PHYSICAL = "ACTUATE_PHYSICAL"  # physical-world effect
 
 
+# Canonical single source of truth (#294): which EffectClasses UNAMBIGUOUSLY
+# move data across the containment boundary outward. Registration
+# (validate_tool_definition) uses this to refuse an outbound-capable tool that
+# declares no egress-capable operation, so egress-ness can never silently drift
+# out of the hand-maintained CapabilityKind sets.
+#
+# FETCH is deliberately EXCLUDED here even though web.fetch is outbound: in this
+# codebase FETCH is the effect for ALL reads, including purely-local ones
+# (READ_FS, CALENDAR_READ, resources.list), so it cannot distinguish a local
+# read from a remote fetch. web.fetch's outbound gating is therefore enforced at
+# the chokepoint by capability-kind + URL-shaped target (see
+# `_conflict_invariant_outcome` / `_target_is_remote_url` in policy/engine.py),
+# not via this set — which keeps the registration rule free of false positives
+# on local-read tools while still closing the web.fetch exfil channel (#293).
+EGRESS_CAPABLE_EFFECTS: frozenset[EffectClass] = frozenset(
+    {
+        EffectClass.COMMUNICATE,
+        EffectClass.TRANSACT,
+        EffectClass.EXECUTE_REMOTE,
+        EffectClass.EXECUTE_DEPLOY,
+        EffectClass.ACTUATE_PHYSICAL,
+    },
+)
+
+
+def effect_class_is_egress_capable(effect_class: EffectClass) -> bool:
+    """True when this effect can move data across the containment boundary."""
+    return effect_class in EGRESS_CAPABLE_EFFECTS
+
+
 @dataclass(frozen=True)
 class Operation:
     """An action a tool performs (CORE "Operation").

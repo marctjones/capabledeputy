@@ -19,13 +19,17 @@ async def _noop(args: dict[str, Any], context: ToolContext) -> ToolResult:
 
 
 def _tool(name: str, kind: CapabilityKind) -> ToolDefinition:
+    from capabledeputy.tools.registry import _KIND_TO_EFFECT
+
+    effect = _KIND_TO_EFFECT.get(str(kind), EffectClass.FETCH)
     return ToolDefinition(
         name=name,
         description=f"tool {name}",
         capability_kind=kind,
         handler=_noop,
-        operations=(Operation(EffectClass.FETCH),),
+        operations=(Operation(effect),),
         risk_ids=("RISK-INDIRECT-INJECTION",),
+        surfaces_destination_id=True,
         parameters_schema={"type": "object", "properties": {"q": {"type": "string"}}},
     )
 

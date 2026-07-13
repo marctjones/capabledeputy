@@ -193,8 +193,9 @@ def _send_email_tool() -> ToolDefinition:
         capability_kind=CapabilityKind.SEND_EMAIL,
         handler=_ok_handler,
         target_arg="to",
-        operations=(Operation(EffectClass.FETCH),),
+        operations=(Operation(EffectClass.COMMUNICATE),),
         risk_ids=("RISK-INDIRECT-INJECTION",),
+        surfaces_destination_id=True,
     )
 
 

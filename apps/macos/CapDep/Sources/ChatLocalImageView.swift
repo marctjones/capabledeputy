@@ -69,23 +69,9 @@ struct ChatLocalImageView: View {
             return
         }
 
-        if resolved.isRemote {
-            do {
-                let (data, _) = try await URLSession.shared.data(from: resolved.url)
-                guard data.count <= ChatImageURLResolver.maxBytes else {
-                    markLoadFailed()
-                    return
-                }
-                guard let image = NSImage(data: data) else {
-                    markLoadFailed()
-                    return
-                }
-                staticImage = image
-            } catch {
-                markLoadFailed()
-            }
-            return
-        }
+        // Remote image targets are refused at resolution (#292), so a resolved
+        // image is always a local file — no network fetch of a planner-chosen
+        // URL happens here.
         guard let image = NSImage(contentsOf: resolved.url) else {
             markLoadFailed()
             return

