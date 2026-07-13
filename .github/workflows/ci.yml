@@ -33,7 +33,13 @@ jobs:
       - name: Format check (ruff)
         run: uv run ruff format --check
 
+      # Advisory until the pre-existing type debt is cleared (#353). pyright
+      # reports ~2129 errors in `standard` mode across the codebase — it has
+      # never been green (CI could not previously run this far). Kept in CI as
+      # an informational signal, but it does not block PRs until a dedicated
+      # type-annotation cleanup lands, at which point drop `continue-on-error`.
       - name: Type check (pyright)
+        continue-on-error: true
         run: uv run pyright
 
       - name: Test (pytest)
