@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import platform
 import sys
 import threading
 import time
@@ -64,10 +63,6 @@ def test_split_servers_expose_single_tools() -> None:
     assert legacy_names == {"image.generate", "image.fetch"}
 
 
-@pytest.mark.skipif(
-    not (platform.system() == "Darwin" and platform.machine() == "arm64"),
-    reason="asset readiness reports native only with Apple-Silicon mlx assets present",
-)
 def test_available_image_profiles_surface_asset_readiness(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("CAPDEP_MODEL_ASSET_HOME", str(tmp_path / "assets"))
     profiles = {profile["id"]: profile for profile in available_image_profiles()}
@@ -77,10 +72,6 @@ def test_available_image_profiles_surface_asset_readiness(monkeypatch, tmp_path:
     assert profiles["sdxl-nsfw"]["asset_readiness"]["status"] == "source_fallback"
 
 
-@pytest.mark.skipif(
-    not (platform.system() == "Darwin" and platform.machine() == "arm64"),
-    reason="asset readiness reports native only with Apple-Silicon mlx assets present",
-)
 def test_image_readiness_includes_model_asset_state(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("CAPDEP_MODEL_ASSET_HOME", str(tmp_path / "assets"))
     readiness = image_readiness(profile_name="default")
