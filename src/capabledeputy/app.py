@@ -198,7 +198,7 @@ class App:
         for tool in make_devbox_tools(self.policy_context):
             self.registry.register(tool)
         if self.quarantined_llm is not None:
-            for tool in make_extract_tools(self.memory, self.quarantined_llm):
+            for tool in make_extract_tools(self.memory, self.quarantined_llm, self.inbox):
                 self.registry.register(tool)
 
     def _maybe_load_skills(self) -> None:
