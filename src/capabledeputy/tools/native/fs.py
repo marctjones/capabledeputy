@@ -323,6 +323,8 @@ def make_fs_tools(labeler: FsLabeler | None = None) -> list[ToolDefinition]:
             handler=_fs_create_handler,
             target_arg="path",
             effect_class="data.create_local",
+            accepts_handles=True,
+            handle_arg_names=("content",),
             # Creating a NEW file (refuses if target exists) is genuinely
             # low-stakes: the operator can delete it. Real deployments
             # can add friction via envelopes or path bindings without
@@ -353,6 +355,8 @@ def make_fs_tools(labeler: FsLabeler | None = None) -> list[ToolDefinition]:
             handler=_fs_modify_handler,
             target_arg="path",
             effect_class="data.modify_local",
+            accepts_handles=True,
+            handle_arg_names=("content",),
             default_reversibility={"degree": "reversible-with-friction", "agent": "human"},
             tool_provenance="operator-curated",
             surfaces_destination_id=True,

@@ -60,6 +60,13 @@ _PROVENANCE_LABELS: dict[str, ProvenanceLevel] = {
 }
 
 
+def label_string_to_state(label: str) -> LabelState:
+    """Public wrapper: resolve a `confidential.<category>` / provenance label
+    string to a LabelState (tier resolved from configs/labels.yaml). Used by the
+    ingest path to apply an explicit operator-declared category."""
+    return _label_string_to_state(label)
+
+
 def _label_string_to_state(label: str) -> LabelState:
     if label in _PROVENANCE_LABELS:
         return LabelState(b=frozenset({ProvenanceTag(_PROVENANCE_LABELS[label])}))
