@@ -254,7 +254,7 @@ def _serialized_generation(output_dir: Path) -> Any:
         try:
             yield
         finally:
-            if lock_file is not None:
+            if lock_file is not None and fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
                 lock_file.close()
 

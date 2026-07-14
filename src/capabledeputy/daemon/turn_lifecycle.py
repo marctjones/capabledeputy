@@ -321,6 +321,8 @@ class TurnLifecycleManager:
             if lock is None:
                 raise RuntimeError(f"session {turn.session_id} already has an active turn")
             await self._set_status(turn_id, "running")
+            if self._app.llm_client is None:
+                raise RuntimeError("no LLM client configured for streaming turn")
             self._app.cancellation_flags[turn.session_id] = False
             async with anyio.create_task_group() as tg:
                 async with self._lock:

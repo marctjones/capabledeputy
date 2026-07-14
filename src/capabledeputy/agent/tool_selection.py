@@ -86,7 +86,7 @@ def _prefer_kagi_over_ddg_fallbacks(tools: list[ToolDefinition]) -> list[ToolDef
 
 
 def _tools_for_granted_kinds(session: Session, tools: list[ToolDefinition]) -> set[str]:
-    granted_kinds: set[CapabilityKind] = {cap.kind for cap in session.capability_set}
+    granted_kinds: set[CapabilityKind | str] = {cap.kind for cap in session.capability_set}
     if not granted_kinds:
         return set()
     return {t.name for t in tools if t.capability_kind in granted_kinds}

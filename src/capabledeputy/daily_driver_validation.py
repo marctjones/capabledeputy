@@ -15,7 +15,7 @@ from capabledeputy.daemon.workflow_templates import build_workflow_templates
 from capabledeputy.daily_driver import Gate
 from capabledeputy.policy.bindings import BindingError
 from capabledeputy.policy.bindings import load as load_bindings
-from capabledeputy.policy.capabilities import CapabilityKind
+from capabledeputy.policy.capabilities import CapabilityKind, kind_name
 from capabledeputy.policy.purposes import load as load_purposes
 
 _MAIL_READ_KINDS = frozenset({CapabilityKind.GMAIL_READ.value, CapabilityKind.IMAP_READ.value})
@@ -123,7 +123,7 @@ def validate_daily_driver_workflows(
         purpose_handle = str(workflow["purpose_handle"])
         purpose = purposes.get(purpose_handle)
         purpose_capabilities = (
-            {capability.kind.value for capability in purpose.default_capabilities}
+            {kind_name(capability.kind) for capability in purpose.default_capabilities}
             if purpose
             else set()
         )

@@ -213,7 +213,7 @@ def build_mcp_result(
     else:
         text = sanitize_commonmark_source(str(result))
 
-    content: list[mcp_types.TextContent | mcp_types.ImageContent] = [
+    content: list[mcp_types.ContentBlock] = [
         mcp_types.TextContent(type="text", text=text),
     ]
 
