@@ -12,6 +12,7 @@ from typing import Any
 from uuid import uuid4
 
 import anyio
+import anyio.to_thread
 
 from capabledeputy.app import App
 from capabledeputy.audit.events import Event, EventType

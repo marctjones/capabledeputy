@@ -1,9 +1,13 @@
+# Vars bound inside `async with create_task_group()` and used after the block
+# are safe here (normal completion binds them); silence the false positive.
+# pyright: reportPossiblyUnboundVariable=false
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
 import anyio
+import anyio.abc
 import pytest
 
 from capabledeputy.audit.events import Event

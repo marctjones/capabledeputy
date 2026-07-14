@@ -1963,7 +1963,7 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
             params["active_only"] = bool(args["active_only"])
         return params
     if name == "session_turn_events":
-        params = {"turn_id": str(args.get("turn_id") or "")}
+        params: dict[str, Any] = {"turn_id": str(args.get("turn_id") or "")}
         if args.get("after") is not None:
             params["after"] = int(args["after"])
         return params
@@ -1973,7 +1973,7 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
             "client_id": str(args.get("client_id") or ""),
         }
     if name == "session_turn_cancel":
-        params = {"turn_id": str(args.get("turn_id") or "")}
+        params: dict[str, Any] = {"turn_id": str(args.get("turn_id") or "")}
         if args.get("reason"):
             params["reason"] = str(args["reason"])
         if args.get("client_id"):
@@ -1987,7 +1987,7 @@ def _params_for(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _session_message_params(args: dict[str, Any]) -> dict[str, Any]:
-    params = {
+    params: dict[str, Any] = {
         "session_id": str(args.get("session_id") or ""),
         "message": str(args.get("message") or ""),
     }
