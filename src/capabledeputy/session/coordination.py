@@ -572,14 +572,14 @@ class SessionCoordinator:
         return {
             "sessions": {
                 str(session_id): {
-                    "has_active_turn": self._locks.get(session_id).locked()
-                    if session_id in self._locks
-                    else False,
+                    "has_active_turn": (
+                        self._locks[session_id].locked() if session_id in self._locks else False
+                    ),
                     "pending_input_count": len(self._queues.get(session_id, ())),
                     "pending_inputs": [item.to_dict() for item in self._queues.get(session_id, ())],
                     "event_count": len(self._events.get(session_id, ())),
                     "last_event_type": (
-                        self._events.get(session_id, ())[-1]["type"]
+                        self._events[session_id][-1]["type"]
                         if self._events.get(session_id)
                         else None
                     ),

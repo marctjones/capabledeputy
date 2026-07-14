@@ -35,7 +35,7 @@ def make_state_handlers(app: App) -> dict[str, Handler]:
                     type(app.quarantined_llm).__name__ if app.quarantined_llm is not None else ""
                 ),
                 "local_available": _has_mlx(),
-                "pool": app.model_pool.status() if getattr(app, "model_pool", None) else {},
+                "pool": app.model_pool.status() if app.model_pool is not None else {},
             },
             "clients": {
                 "daemon_connections": daemon_snapshot["connections"],
@@ -328,7 +328,7 @@ def _upstream_servers(app: App) -> list[dict[str, Any]]:
 
 def _has_mlx() -> bool:
     try:
-        import importlib
+        import importlib.util
 
         return importlib.util.find_spec("mlx_lm") is not None
     except Exception:

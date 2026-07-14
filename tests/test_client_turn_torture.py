@@ -60,7 +60,7 @@ async def live_daemon(
     app = App(
         state_db_path=paths.state_db,
         audit_log_path=paths.audit_log,
-        llm_client=llm_client,
+        llm_client=llm_client,  # pyright: ignore[reportArgumentType]
     )
     await app.startup()
     daemon = Daemon(paths.socket, handlers=build_test_handlers(app, paths))

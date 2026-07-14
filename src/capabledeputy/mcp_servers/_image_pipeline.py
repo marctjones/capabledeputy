@@ -1,4 +1,7 @@
 """Local image generation for the bundled images MCP server."""
+# Optional lazy deps (torch/diffusers/mflux/matplotlib) are guarded by
+# try/except ImportError and not installed by --all-groups.
+# pyright: reportMissingImports=false
 
 from __future__ import annotations
 
@@ -251,7 +254,7 @@ def _serialized_generation(output_dir: Path) -> Any:
         try:
             yield
         finally:
-            if lock_file is not None:
+            if lock_file is not None and fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
                 lock_file.close()
 
@@ -785,7 +788,9 @@ def _load_mflux_model(config: ImageGenConfig) -> Any:
         )
     elif model_name in {"fibo", "fibo-lite"}:
         from mflux.models.common.config import ModelConfig
-        from mflux.models.fibo.variants.txt2img.fibo import FIBO
+        from mflux.models.fibo.variants.txt2img.fibo import (
+            FIBO,
+        )
 
         model = FIBO(
             model_config=ModelConfig.from_name(model_name=model_name),
@@ -793,7 +798,9 @@ def _load_mflux_model(config: ImageGenConfig) -> Any:
             model_path=model_path,
         )
     elif model_name == "qwen-image":
-        from mflux.models.qwen.variants.txt2img.qwen_image import QwenImage
+        from mflux.models.qwen.variants.txt2img.qwen_image import (
+            QwenImage,
+        )
 
         model = QwenImage(
             quantize=config.quantize,
@@ -803,7 +810,9 @@ def _load_mflux_model(config: ImageGenConfig) -> Any:
         )
     elif model_name in {"schnell", "dev", "krea-dev"}:
         from mflux.models.common.config import ModelConfig
-        from mflux.models.flux.variants.txt2img.flux import Flux1
+        from mflux.models.flux.variants.txt2img.flux import (
+            Flux1,
+        )
 
         model = Flux1(
             model_config=ModelConfig.from_name(model_name=model_name),

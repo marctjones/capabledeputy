@@ -86,7 +86,7 @@ class _FakeDriveService:
             media_body._fd.seek(0)  # type: ignore[attr-defined]
             content = media_body._fd.read()  # type: ignore[attr-defined]
         else:
-            content = bytes(media_body)
+            content = bytes(media_body)  # pyright: ignore[reportArgumentType]
         revisions = self.revisions_by_file.setdefault(file_id, [])
         revision_id = f"r{len(revisions) + 1}"
         revisions.append((revision_id, content))

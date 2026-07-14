@@ -1,4 +1,7 @@
 """Generate chart images for inline GUI display via ``chart.plot``."""
+# Optional lazy deps (torch/diffusers/mflux/matplotlib) are guarded by
+# try/except ImportError and not installed by --all-groups.
+# pyright: reportMissingImports=false
 
 from __future__ import annotations
 

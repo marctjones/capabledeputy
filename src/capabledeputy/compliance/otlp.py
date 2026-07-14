@@ -40,7 +40,8 @@ def audit_events_to_otlp_traces(
     for index, event in enumerate(audit_events):
         audit_id = str(event.get("audit_id") or f"event-{index}")
         event_type = str(event.get("event_type") or "unknown")
-        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        _raw_payload = event.get("payload")
+        payload: dict[str, Any] = _raw_payload if isinstance(_raw_payload, dict) else {}
         attrs = [
             _attr("capdep.audit_id", audit_id),
             _attr("capdep.event_type", event_type),

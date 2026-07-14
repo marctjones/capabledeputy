@@ -170,7 +170,7 @@ def test_run_cloud_setup_can_register_capdep_managed_block(
 
     assert result.local_config_changed is True
     assert result.local_config_path == str(tmp_path / "capabledeputy" / "daemon.yaml")
-    text = Path(result.local_config_path).read_text(encoding="utf-8")
+    text = Path(str(result.local_config_path)).read_text(encoding="utf-8")
     assert "google-gmail" in text
     assert "google-calendar" in text
     assert "google-drive" not in text

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -34,6 +35,7 @@ from capabledeputy.agent.events import (
 )
 from capabledeputy.agent.loop import AgentLoopExceededError, run_turn, run_turn_streaming
 from capabledeputy.audit.writer import AuditWriter
+from capabledeputy.llm.client import LLMClient
 from capabledeputy.llm.types import FinishReason, LLMResponse, Message, ToolDescription
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.session.graph import SessionGraph
@@ -121,7 +123,7 @@ async def test_no_tool_calls_yields_terminal_completed_event(
     async for evt in run_turn_streaming(
         session_id=sid,
         user_message="hi",
-        llm=llm,
+        llm=cast(LLMClient, llm),
         tool_client=tool_client,
         registry=registry,
         graph=graph,
@@ -175,7 +177,7 @@ async def test_conversational_turn_caps_max_tokens(
     async for _evt in run_turn_streaming(
         session_id=sid,
         user_message="hi",
-        llm=llm,
+        llm=cast(LLMClient, llm),
         tool_client=tool_client,
         registry=registry,
         graph=graph,
@@ -196,7 +198,7 @@ async def test_streaming_llm_emits_token_events(
     async for evt in run_turn_streaming(
         session_id=sid,
         user_message="hi",
-        llm=llm,
+        llm=cast(LLMClient, llm),
         tool_client=tool_client,
         registry=registry,
         graph=graph,
@@ -230,7 +232,7 @@ async def test_capdepmac_turn_suppresses_leaked_web_fetch_grant(
     async for evt in run_turn_streaming(
         session_id=session.id,
         user_message="what is today's top news",
-        llm=llm,
+        llm=cast(LLMClient, llm),
         tool_client=tool_client,
         registry=registry,
         graph=graph,
@@ -266,7 +268,7 @@ async def test_run_turn_wrapper_returns_same_result(
     result = await run_turn(
         session_id=sid,
         user_message="hi",
-        llm=llm,
+        llm=cast(LLMClient, llm),
         tool_client=tool_client,
         registry=registry,
         graph=graph,
@@ -365,7 +367,7 @@ async def test_completed_event_appears_exactly_once_per_clean_turn(
     async for evt in run_turn_streaming(
         session_id=sid,
         user_message="x",
-        llm=llm,
+        llm=cast(LLMClient, llm),
         tool_client=tool_client,
         registry=registry,
         graph=graph,
@@ -401,7 +403,7 @@ async def test_iteration_events_carry_correct_index(
     async for evt in run_turn_streaming(
         session_id=sid,
         user_message="x",
-        llm=llm,
+        llm=cast(LLMClient, llm),
         tool_client=tool_client,
         registry=registry,
         graph=graph,

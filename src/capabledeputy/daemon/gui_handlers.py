@@ -71,9 +71,7 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
                     type(app.quarantined_llm).__name__ if app.quarantined_llm is not None else ""
                 ),
                 "local_available": _has_mlx(),
-                "pool": (
-                    app.model_pool.status() if getattr(app, "model_pool", None) is not None else {}
-                ),
+                "pool": (app.model_pool.status() if app.model_pool is not None else {}),
             },
             "upstream_servers": upstream,
             "capabilities_by_kind": _tools_by_kind(tools),

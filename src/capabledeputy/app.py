@@ -118,6 +118,12 @@ class App:
         )
         self.llm_client: LLMClient | None = _planner
         self.quarantined_llm: LLMClient | None = _quarantined_resolved
+        # Wired post-construction by the daemon lifecycle (and by tests): the
+        # running Daemon and the upstream MCP manager. Declared here (untyped to
+        # avoid import cycles) so assignments type-check instead of needing
+        # per-site `# type: ignore` / `cast(Any, app)`.
+        self.daemon_server: Any = None
+        self.upstream_manager: Any = None
         # Issue #23 — per-session cancellation flags. session.send sets
         # the entry to False at turn start; session.cancel flips it
         # True; the agent loop polls between iterations and yields

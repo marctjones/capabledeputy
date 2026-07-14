@@ -127,6 +127,11 @@ include = ["src", "tests"]
 # tests/test_policy_scripts.py can resolve the harness it imports.
 extraPaths = ["scripts"]
 exclude = ["**/__pycache__", "**/.venv"]
+# Point pyright at the project virtualenv so it can resolve installed packages
+# (the editable `capabledeputy` install + every dependency). Without this pyright
+# reports every import as missing (~2093 spurious reportMissingImports).
+venvPath = "."
+venv = ".venv"
 pythonVersion = "3.14"
 typeCheckingMode = "standard"
 reportMissingImports = "error"

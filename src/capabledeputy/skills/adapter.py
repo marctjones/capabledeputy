@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-from typing import Any
+from typing import Any, cast
 
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.llm.client import LLMClient
@@ -170,7 +170,7 @@ async def _run_script_skill(
             },
             additional_tags=skill.inherent_tags,
         )
-    timeout_seconds = int(args.get("timeout_seconds") or script.timeout_seconds)
+    timeout_seconds = int(cast(Any, args.get("timeout_seconds")) or script.timeout_seconds)
     if timeout_seconds < 1 or timeout_seconds > 600:
         return ToolResult(
             output={"error": "timeout_seconds must be in [1, 600]", "skill": skill.name},
@@ -186,7 +186,7 @@ async def _run_script_skill(
     argv = (*_container_argv(script.language, input_name), *(str(value) for value in argv_extra))
 
     try:
-        region_id = sandbox_actuator.create_region(spec_id=spec_id)
+        region_id = cast(Any, sandbox_actuator).create_region(spec_id=spec_id)
     except TypeError:
         region_id = sandbox_actuator.create_region()
     except Exception as e:

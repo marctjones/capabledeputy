@@ -786,7 +786,7 @@ async def run_daemon(
                 # Stash manager on app so /server (daemon.info RPC) can
                 # read per-upstream-server status. App doesn't strongly
                 # depend on the manager type — duck-typed `server_status`.
-                app.upstream_manager = manager  # type: ignore[attr-defined]
+                app.upstream_manager = manager
                 _report_admission(manager)
                 runtime_manifest = RuntimeManifest.from_runtime(
                     registry=app.registry,

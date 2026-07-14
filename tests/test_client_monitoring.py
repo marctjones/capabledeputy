@@ -8,7 +8,7 @@ clients talking to the same local IPC server at once.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import anyio
 
@@ -33,12 +33,12 @@ async def test_client_subscribe_receives_audit_events(tmp_path: Path) -> None:
             await anyio.sleep(0.05)
             await client.call("session.new", {"intent": "audit-subscribe-smoke"})
 
-        event = event_box["event"]
+        event: Any = event_box["event"]
 
         assert event["stream"] == "audit"
         assert event["data"]["event_type"] == "session.created"
         assert event["data"]["payload"]["intent"] == "audit-subscribe-smoke"
-        await events.aclose()
+        await events.aclose()  # pyright: ignore[reportAttributeAccessIssue]
 
 
 async def test_two_clients_can_interact_with_same_daemon_state(tmp_path: Path) -> None:
