@@ -20,6 +20,7 @@ from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.quarantined.extractor import ExtractionError, extract
 from capabledeputy.quarantined.schemas import list_schemas
+from capabledeputy.tools.native.inbox import Inbox
 from capabledeputy.tools.native.memory import LabeledMemoryStore
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
@@ -27,6 +28,7 @@ from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 def make_extract_tools(
     memory: LabeledMemoryStore,
     quarantined_llm: LLMClient,
+    inbox: Inbox | None = None,
 ) -> list[ToolDefinition]:
     async def quarantined_extract(
         args: dict[str, Any],
@@ -49,8 +51,38 @@ def make_extract_tools(
             },
         )
 
+    async def quarantined_extract_inbox(
+        args: dict[str, Any],
+        context: ToolContext,
+    ) -> ToolResult:
+        """CaMeL projection path for untrusted email (#302). A tool-less
+        quarantined LLM reads the raw message body under a Pydantic schema; the
+        planner receives only the schema-validated projection, never the raw
+        untrusted content. This is the alternative to `inbox.read`, which is
+        hidden in DUAL_LLM so untrusted email reaches the planner ONLY here.
+
+        Registered only when `inbox is not None` (below), so it is bound here."""
+        assert inbox is not None
+        message_id = str(args["message_id"])
+        schema_name = str(args["schema"])
+        message = inbox.get(message_id)
+        if message is None:
+            return ToolResult(output={"found": False})
+        try:
+            extracted = await extract(quarantined_llm, schema_name, message.body)
+        except ExtractionError as e:
+            return ToolResult(output={"found": True, "error": str(e)})
+        return ToolResult(
+            output={
+                "found": True,
+                "message_id": message_id,
+                "schema": schema_name,
+                "data": extracted.model_dump(mode="json"),
+            },
+        )
+
     schemas = ", ".join(list_schemas())
-    return [
+    tools = [
         ToolDefinition(
             name="quarantined.extract",
             effect_class="data.read_quarantined",
@@ -84,3 +116,40 @@ def make_extract_tools(
             },
         ),
     ]
+    if inbox is not None:
+        tools.append(
+            ToolDefinition(
+                name="quarantined.extract_inbox",
+                effect_class="data.read_quarantined",
+                operations=(Operation(EffectClass.FETCH, subtype="quarantined.extract_inbox"),),
+                risk_ids=("RISK-INDIRECT-INJECTION",),
+                default_reversibility={"degree": "reversible", "agent": "system"},
+                tool_provenance="operator-curated",
+                description=(
+                    "Extract structured fields from an inbound (untrusted) email "
+                    "through a quarantined LLM. The raw message body never enters "
+                    "the calling session's context — only the schema-validated "
+                    f"result. Available schemas: {schemas}. Required args: "
+                    "message_id (string), schema (one of the available schema names)."
+                ),
+                capability_kind=CapabilityKind.READ_FS,
+                handler=quarantined_extract_inbox,
+                target_arg="message_id",
+                parameters_schema={
+                    "type": "object",
+                    "properties": {
+                        "message_id": {
+                            "type": "string",
+                            "description": "Inbox message id to extract from.",
+                        },
+                        "schema": {
+                            "type": "string",
+                            "enum": list_schemas(),
+                            "description": "Declassification schema to validate against.",
+                        },
+                    },
+                    "required": ["message_id", "schema"],
+                },
+            ),
+        )
+    return tools

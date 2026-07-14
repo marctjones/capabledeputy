@@ -57,8 +57,15 @@ _CONFIDENTIAL_CATEGORIES: frozenset[str] = frozenset(
     },
 )
 
+# Raw labeled-data readers hidden in planner-exposure-limited modes (DUAL_LLM /
+# REFERENCE / SEALED). `inbox.read` returns raw untrusted email to the planner,
+# so it is hidden in DUAL_LLM (#302, CaMeL invariant): untrusted email content
+# reaches the planner ONLY via `quarantined.extract_inbox` (a schema-validated
+# projection). `inbox.list` (metadata: id/sender/subject) stays visible so the
+# planner can still select which message to project — a deliberate,
+# lower-risk-than-body allowance, not full metadata quarantine.
 _RAW_LABELED_DATA_TOOLS: frozenset[str] = frozenset(
-    {"memory.read", "fs.read", "web.fetch"},
+    {"memory.read", "fs.read", "web.fetch", "inbox.read"},
 )
 
 
