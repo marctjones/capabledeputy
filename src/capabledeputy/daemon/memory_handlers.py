@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from capabledeputy.app import App
 from capabledeputy.daemon.handlers import Handler
+from capabledeputy.policy.fs_labeling import label_string_to_state
+from capabledeputy.policy.labels import LabelState
+
+# Bounded read for ingest — the runtime reads the source, never the planner.
+_INGEST_MAX_BYTES = 256 * 1024
 
 
 def make_memory_handlers(app: App) -> dict[str, Handler]:
@@ -75,11 +81,82 @@ def make_memory_handlers(app: App) -> dict[str, Handler]:
             "labels": app.memory.entries(include_values=False)[-1].get("labels", []),
         }
 
+    async def memory_ingest_file(params: dict[str, Any]) -> dict[str, Any]:
+        """Model-A ingest (#300/#301/#303): the RUNTIME reads a source file,
+        labels it, and lands it in labeled memory — the planner is never
+        involved, so the raw value never enters the model's context. When a
+        session is given, the resolved label is raised onto the session BEFORE
+        its next turn, so mode selection picks REFERENCE (raw readers hidden) and
+        the planner can only route the value via `memory.handle`, never read it.
+
+        Params: path (required), key (optional), session_id (optional),
+        category (optional explicit `confidential.<category>` override),
+        require_label (optional; fail closed if no confidential label resolves).
+        """
+        raw_path = str(params["path"])
+        path = Path(raw_path).expanduser()
+        if not path.is_file():
+            return {"ok": False, "error": f"not a file: {raw_path}"}
+        data = path.read_bytes()
+        if len(data) > _INGEST_MAX_BYTES:
+            return {"ok": False, "error": f"file exceeds {_INGEST_MAX_BYTES}-byte ingest cap"}
+        # UTF-8 text only for now. A binary/PDF file would decode to lossy garbage
+        # (useless value AND content-regex labeling can't match mojibake), so
+        # refuse explicitly rather than silently store junk. PDF ingest via the
+        # existing pdf-extract path is a tracked follow-up.
+        try:
+            content = data.decode("utf-8")
+        except UnicodeDecodeError:
+            return {
+                "ok": False,
+                "error": "non-text file: ingest currently supports UTF-8 text only "
+                "(PDF/binary ingest is not yet implemented)",
+            }
+
+        # Labeling is done by the RUNTIME: an explicit operator category override,
+        # else the path/content fs-label rules. NB (labeling-oracle boundary): a
+        # file that matches no rule and has no explicit category resolves to NO
+        # label — it is stored public and does NOT taint the session. Sensitive
+        # files outside the shipped high-precision rules must be ingested with an
+        # explicit `category`; use `require_label` to fail closed instead.
+        explicit = params.get("category")
+        if explicit:
+            label = label_string_to_state(f"confidential.{explicit}")
+        elif app._fs_labeler is not None:
+            label = app._fs_labeler.labels_for(str(path), content=content)
+        else:
+            label = LabelState()
+
+        if bool(params.get("require_label")) and not label.a:
+            return {
+                "ok": False,
+                "error": "no confidential label resolved for this file; pass an explicit "
+                "`category` (require_label was set, so ingest fails closed)",
+            }
+
+        key = str(params.get("key") or f"ingest/{path.name}")
+        app.memory.write(key, content, label, trust_class="operator_note")
+
+        session_tainted = False
+        if params.get("session_id") and (label.a or label.b):
+            await app.graph.add_tags(UUID(str(params["session_id"])), label)
+            session_tainted = True
+
+        return {
+            "ok": True,
+            "key": key,
+            "categories": sorted(tag.category for tag in label.a),
+            "tiers": sorted({tag.tier.value for tag in label.a}),
+            "session_tainted": session_tainted,
+            "bytes": len(content),
+        }
+
     return {
         "memory.entries": memory_entries,
         "memory.policy": memory_policy,
         "memory.prune": memory_prune,
         "memory.compact_session": memory_compact_session,
+        "memory.ingest_file": memory_ingest_file,
     }
 
 
