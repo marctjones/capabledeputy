@@ -785,7 +785,9 @@ def _load_mflux_model(config: ImageGenConfig) -> Any:
         )
     elif model_name in {"fibo", "fibo-lite"}:
         from mflux.models.common.config import ModelConfig  # pyright: ignore[reportMissingImports]
-        from mflux.models.fibo.variants.txt2img.fibo import FIBO  # pyright: ignore[reportMissingImports]
+        from mflux.models.fibo.variants.txt2img.fibo import (
+            FIBO,  # pyright: ignore[reportMissingImports]
+        )
 
         model = FIBO(
             model_config=ModelConfig.from_name(model_name=model_name),
@@ -793,7 +795,9 @@ def _load_mflux_model(config: ImageGenConfig) -> Any:
             model_path=model_path,
         )
     elif model_name == "qwen-image":
-        from mflux.models.qwen.variants.txt2img.qwen_image import QwenImage  # pyright: ignore[reportMissingImports]
+        from mflux.models.qwen.variants.txt2img.qwen_image import (
+            QwenImage,  # pyright: ignore[reportMissingImports]
+        )
 
         model = QwenImage(
             quantize=config.quantize,
@@ -803,7 +807,9 @@ def _load_mflux_model(config: ImageGenConfig) -> Any:
         )
     elif model_name in {"schnell", "dev", "krea-dev"}:
         from mflux.models.common.config import ModelConfig  # pyright: ignore[reportMissingImports]
-        from mflux.models.flux.variants.txt2img.flux import Flux1  # pyright: ignore[reportMissingImports]
+        from mflux.models.flux.variants.txt2img.flux import (
+            Flux1,  # pyright: ignore[reportMissingImports]
+        )
 
         model = Flux1(
             model_config=ModelConfig.from_name(model_name=model_name),
