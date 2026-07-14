@@ -337,7 +337,7 @@ def _resolve_device(requested: str | None) -> str:
     if token in {"cpu", "mps"}:
         return token
     try:
-        import torch
+        import torch  # pyright: ignore[reportMissingImports]
 
         if torch.backends.mps.is_available():
             return "mps"
@@ -718,8 +718,8 @@ def wrap_prompt_for_style(prompt: str, style: str) -> str:
 
 def _require_image_deps() -> None:
     try:
-        import diffusers  # noqa: F401
-        import torch  # noqa: F401
+        import diffusers  # noqa: F401  # pyright: ignore[reportMissingImports]
+        import torch  # noqa: F401  # pyright: ignore[reportMissingImports]
     except ImportError as exc:
         raise RuntimeError(
             "image generation requires optional deps — install with `scripts/setup-images-venv.sh`",
@@ -759,8 +759,8 @@ def _load_mflux_model(config: ImageGenConfig) -> Any:
     lora_scales = list(config.lora_scales) or None
 
     if model_name in {"z-image", "z-image-turbo"}:
-        from mflux.models.common.config import ModelConfig
-        from mflux.models.z_image import ZImage
+        from mflux.models.common.config import ModelConfig  # pyright: ignore[reportMissingImports]
+        from mflux.models.z_image import ZImage  # pyright: ignore[reportMissingImports]
 
         model_config = (
             ModelConfig.z_image_turbo() if model_name == "z-image-turbo" else ModelConfig.z_image()
@@ -773,8 +773,8 @@ def _load_mflux_model(config: ImageGenConfig) -> Any:
             lora_scales=lora_scales,
         )
     elif model_name.startswith("flux2-klein"):
-        from mflux.models.common.config import ModelConfig
-        from mflux.models.flux2.variants import Flux2Klein
+        from mflux.models.common.config import ModelConfig  # pyright: ignore[reportMissingImports]
+        from mflux.models.flux2.variants import Flux2Klein  # pyright: ignore[reportMissingImports]
 
         model = Flux2Klein(
             model_config=ModelConfig.from_name(model_name=model_name),
@@ -784,8 +784,8 @@ def _load_mflux_model(config: ImageGenConfig) -> Any:
             lora_scales=lora_scales,
         )
     elif model_name in {"fibo", "fibo-lite"}:
-        from mflux.models.common.config import ModelConfig
-        from mflux.models.fibo.variants.txt2img.fibo import FIBO
+        from mflux.models.common.config import ModelConfig  # pyright: ignore[reportMissingImports]
+        from mflux.models.fibo.variants.txt2img.fibo import FIBO  # pyright: ignore[reportMissingImports]
 
         model = FIBO(
             model_config=ModelConfig.from_name(model_name=model_name),
@@ -793,7 +793,7 @@ def _load_mflux_model(config: ImageGenConfig) -> Any:
             model_path=model_path,
         )
     elif model_name == "qwen-image":
-        from mflux.models.qwen.variants.txt2img.qwen_image import QwenImage
+        from mflux.models.qwen.variants.txt2img.qwen_image import QwenImage  # pyright: ignore[reportMissingImports]
 
         model = QwenImage(
             quantize=config.quantize,
@@ -802,8 +802,8 @@ def _load_mflux_model(config: ImageGenConfig) -> Any:
             lora_scales=lora_scales,
         )
     elif model_name in {"schnell", "dev", "krea-dev"}:
-        from mflux.models.common.config import ModelConfig
-        from mflux.models.flux.variants.txt2img.flux import Flux1
+        from mflux.models.common.config import ModelConfig  # pyright: ignore[reportMissingImports]
+        from mflux.models.flux.variants.txt2img.flux import Flux1  # pyright: ignore[reportMissingImports]
 
         model = Flux1(
             model_config=ModelConfig.from_name(model_name=model_name),
@@ -876,8 +876,8 @@ def _load_pipeline(style: str, config: ImageGenConfig) -> Any:
         return cached
 
     _require_image_deps()
-    import torch
-    from diffusers import StableDiffusionXLPipeline
+    import torch  # pyright: ignore[reportMissingImports]
+    from diffusers import StableDiffusionXLPipeline  # pyright: ignore[reportMissingImports]
     from huggingface_hub import hf_hub_download
 
     preset = config.checkpoints.get(style)
@@ -924,7 +924,7 @@ def _generate_diffusers_image(
     seed: int | None,
     config: ImageGenConfig,
 ) -> dict[str, Any]:
-    import torch
+    import torch  # pyright: ignore[reportMissingImports]
 
     pipe = _load_pipeline(style, config)
     generator_device = "cpu" if config.device == "mps" else config.device

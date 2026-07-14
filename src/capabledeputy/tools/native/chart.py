@@ -30,10 +30,10 @@ def _render_chart(
     output_path: Path,
 ) -> None:
     try:
-        import matplotlib
+        import matplotlib  # pyright: ignore[reportMissingImports]
 
         matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
+        import matplotlib.pyplot as plt  # pyright: ignore[reportMissingImports]
     except ImportError as exc:
         raise RuntimeError(
             "matplotlib is required for chart.plot — install with "
