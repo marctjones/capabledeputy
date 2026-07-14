@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from rich.console import Console
 from rich.text import Text
 
@@ -23,7 +25,7 @@ def _render_item(item: str | object) -> str:
     return console.export_text().strip()
 
 
-def _plain(lines: list[str | object]) -> str:
+def _plain(lines: Sequence[object]) -> str:
     """Markup-stripped join — assert on what the human reads, not the
     Rich tag soup."""
     return "\n".join(_render_item(line) for line in lines)

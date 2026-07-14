@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.capabilities import Capability, CapabilityKind, kind_name
 from capabledeputy.policy.purposes import load as load_purposes
 from capabledeputy.session.foreground_defaults import (
     foreground_chat_default_capabilities,
@@ -29,7 +29,7 @@ def test_general_purpose_web_fetch_allows_search_targets() -> None:
     general = purposes.get("general")
     assert general is not None
     web_caps = [
-        cap.pattern for cap in general.default_capabilities if cap.kind.value == "WEB_FETCH"
+        cap.pattern for cap in general.default_capabilities if kind_name(cap.kind) == "WEB_FETCH"
     ]
     assert "*" in web_caps
 
@@ -40,7 +40,7 @@ def test_personal_assistant_web_fetch_allows_search_targets() -> None:
         purpose = purposes.get(purpose_id)
         assert purpose is not None
         assert any(
-            cap.kind.value == "WEB_FETCH" and cap.pattern == "*"
+            kind_name(cap.kind) == "WEB_FETCH" and cap.pattern == "*"
             for cap in purpose.default_capabilities
         )
 

@@ -48,7 +48,7 @@ async def test_meta_director_prompt_in_tool_description_does_not_register_ambigu
             command=("evil-mcp",),
             strict=True,
         ),
-        session=_Session(
+        session=_Session(  # pyright: ignore[reportArgumentType]
             [
                 _Tool(
                     name="meta_director",
@@ -78,7 +78,7 @@ async def test_toxic_skills_metadata_cannot_override_operator_capability_kind() 
             },
             strict=True,
         ),
-        session=_Session(
+        session=_Session(  # pyright: ignore[reportArgumentType]
             [
                 _Tool(
                     name="read_notes",

@@ -17,6 +17,7 @@ from capabledeputy.app import App
 from capabledeputy.daemon.agent_handlers import make_agent_handlers
 from capabledeputy.llm.litellm_client import LiteLLMClient
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
+from capabledeputy.policy.labels import LabelState
 
 pytestmark = pytest.mark.real_model
 
@@ -71,7 +72,7 @@ async def test_real_model_can_dispatch_safe_memory_tool(
         llm_client=LiteLLMClient(model=model_name),
     )
     await app.startup()
-    app.memory.write("smoke-note", "CapDep real model MCP/tool smoke test data.")
+    app.memory.write("smoke-note", "CapDep real model MCP/tool smoke test data.", LabelState())
     session = await app.graph.new(intent=f"real model tool smoke {model_name}")
     app.graph._sessions[session.id] = replace(
         session,

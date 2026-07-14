@@ -105,7 +105,7 @@ def test_capdepmac_gui_failure_artifacts_capture_trace_and_commands(
     artifact_dir = gui_smoke.write_failure_artifacts(
         artifact_dir=tmp_path / "artifacts",
         command_file=command_file,
-        args=args,
+        args=args,  # pyright: ignore[reportArgumentType]
         error=gui_smoke.SmokeError("boom"),
     )
 

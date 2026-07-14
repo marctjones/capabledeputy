@@ -6,7 +6,9 @@ import asyncio
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -47,7 +49,7 @@ from capabledeputy.policy.rules import Decision
 from capabledeputy.tools.client import ToolCallOutcome
 
 
-def _handler(server, name: str):
+def _handler(server, name: str) -> Callable[..., Any]:
     for tool in server.tools():
         if tool.name == name:
             return tool.handler
@@ -319,7 +321,7 @@ async def test_wikipedia_lookup_handler_returns_summary() -> None:
         "capabledeputy.mcp_servers.fetch.wikipedia_lookup",
         return_value=fake,
     ):
-        result = await fetch_handler({"title": "Cat"})
+        result: Any = await fetch_handler({"title": "Cat"})
     assert result["ok"] is True
     assert result["summary"]
 

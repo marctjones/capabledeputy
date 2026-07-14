@@ -162,7 +162,7 @@ async def test_turn_subscription_disconnect_cancels_registered_turn(tmp_path: Pa
             tg.start_soon(_consume_next, agen)
             await anyio.sleep(0.05)
             tg.cancel_scope.cancel()
-        await agen.aclose()
+        await agen.aclose()  # pyright: ignore[reportAttributeAccessIssue]
 
         interrupted = await _wait_for_status(running, turn_id, "interrupted")
 
