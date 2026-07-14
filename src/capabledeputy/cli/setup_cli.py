@@ -287,15 +287,21 @@ def models_command(
 def sandbox_command(
     apply: Annotated[
         bool,
-        typer.Option("--apply", help="Reserved for future mutating setup."),
+        typer.Option("--apply", help="Register the sandbox block when Podman is ready."),
     ] = False,
+    config: Annotated[
+        Path | None,
+        typer.Option("--config", help="Daemon config path. Defaults to user-local daemon.yaml."),
+    ] = None,
     json_output: Annotated[
         bool,
         typer.Option("--json", help="Print machine-readable JSON."),
     ] = False,
 ) -> None:
-    """Check sandbox prerequisites."""
-    _print_result(setup_sandbox(apply=apply), json_output=json_output)
+    """Make Pattern 5 (SEALED) reachable: check Podman readiness and, with
+    --apply, register the sandbox block so restricted-tier workflows can run in a
+    sealed, egress-free region. Reports install/start steps when Podman is not ready."""
+    _print_result(setup_sandbox(apply=apply, config_path=config), json_output=json_output)
 
 
 @app.command("office-automation")

@@ -252,23 +252,47 @@ def test_setup_models_convert_requires_apply(tmp_path: Path) -> None:
         setup_models(convert=True, cache_home=tmp_path / "hf")
 
 
-def test_setup_sandbox_apply_uses_fake_podman_runner(monkeypatch) -> None:
-    calls: list[tuple[str, ...]] = []
+def _podman_runner(version_rc: int, info_rc: int):
+    def runner(command):
+        rc = version_rc if command[-1] == "--version" else info_rc
+        out = "podman version 5.0\n" if command[-1] == "--version" else "{}"
+        return subprocess.CompletedProcess(list(command), rc, stdout=out, stderr="")
+
+    return runner
+
+
+def test_setup_sandbox_ready_apply_registers_block(monkeypatch, tmp_path) -> None:
+    """Podman ready (--version and info both succeed): --apply registers the
+    sandbox block and reports SEALED reachable."""
     monkeypatch.setattr("capabledeputy.cli.setup_domains.shutil.which", lambda name: "/bin/podman")
+    cfg = tmp_path / "daemon.yaml"
+    result = setup_sandbox(apply=True, config_path=cfg, command_runner=_podman_runner(0, 0))
+    assert result.status == "applied"
+    assert result.details["sealed_reachable"] is True
+    assert "sandbox" in cfg.read_text()
 
-    def fake_runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
-        calls.append(tuple(command))
-        stdout = "podman version 5.0\n" if command[-1] == "--version" else "{}"
-        return subprocess.CompletedProcess(list(command), 0, stdout=stdout, stderr="")
 
-    result = setup_sandbox(apply=True, command_runner=fake_runner)
+def test_setup_sandbox_machine_not_running(monkeypatch, tmp_path) -> None:
+    """--version succeeds but `podman info` fails: machine not running, SEALED
+    not yet reachable, with a start command."""
+    monkeypatch.setattr("capabledeputy.cli.setup_domains.shutil.which", lambda name: "/bin/podman")
+    result = setup_sandbox(
+        apply=True, config_path=tmp_path / "d.yaml", command_runner=_podman_runner(0, 1)
+    )
+    assert result.status == "not_ready"
+    assert result.details["sealed_reachable"] is False
+    assert ("podman", "machine", "start") in result.commands
 
-    assert result.status == "ready"
-    assert calls == [
-        ("/bin/podman", "--version"),
-        ("/bin/podman", "info", "--format", "json"),
-    ]
-    assert result.details["runtime_health"]["checked"] is True
+
+def test_setup_sandbox_not_installed_gives_install_steps(monkeypatch, tmp_path) -> None:
+    """podman --version fails: not installed, SEALED unavailable, install steps."""
+    monkeypatch.setattr("capabledeputy.cli.setup_domains.shutil.which", lambda name: "/bin/podman")
+    result = setup_sandbox(
+        apply=True, config_path=tmp_path / "d.yaml", command_runner=_podman_runner(127, 0)
+    )
+    assert result.status == "unavailable"
+    assert result.details["sealed_reachable"] is False
+    assert ("brew", "install", "podman") in result.commands
 
 
 def test_setup_macos_daemon_apply_verify_uses_fake_runner(tmp_path: Path) -> None:
@@ -327,3 +351,21 @@ def test_capdep_setup_rejects_mutating_suboptions_without_apply(tmp_path: Path) 
     assert models.exit_code == 2
     assert convert.exit_code == 2
     assert macos.exit_code == 2
+
+
+def test_sandbox_block_round_trips_to_daemon_specs(tmp_path) -> None:
+    """The block setup_sandbox registers is exactly what the daemon parses into
+    region specs — closes the loop that 'registered -> PodmanSandboxActuator
+    wired' is real, not two subsystems that merely look compatible (#299)."""
+    from capabledeputy.cli._managed_config import (
+        SANDBOX_BLOCK_BODY,
+        SANDBOX_BLOCK_ID,
+        write_managed_block,
+    )
+    from capabledeputy.substrate.podman_sandbox import load_sandbox_specs_from_file
+
+    cfg = tmp_path / "daemon.yaml"
+    write_managed_block(cfg, SANDBOX_BLOCK_ID, SANDBOX_BLOCK_BODY)
+    specs = load_sandbox_specs_from_file(cfg)
+    assert specs, "sandbox block must parse into at least one region spec"
+    assert any(s.spec_id == "scratch" for s in specs)

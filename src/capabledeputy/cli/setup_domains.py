@@ -25,6 +25,8 @@ from capabledeputy.cli._managed_config import (
     GWORKSPACE_DEFAULT_OFFICIAL_SERVICES,
     IMAP_BLOCK_BODY,
     IMAP_BLOCK_ID,
+    SANDBOX_BLOCK_BODY,
+    SANDBOX_BLOCK_ID,
     google_workspace_official_block_body,
     register_default_assistant_surface,
     user_default_daemon_config_path,
@@ -161,6 +163,119 @@ def setup_assistant_surface(
         changed=True,
         paths=_path_map(daemon_config=config_path),
         details={"include_sandbox": include_sandbox},
+    )
+
+
+def _podman_readiness(command_runner: CommandRunner | None = None) -> tuple[str, str]:
+    """Proper Podman readiness for Pattern 5 (SEALED): ('ready' |
+    'machine_not_running' | 'not_installed', detail).
+
+    `podman --version` succeeds even when the machine/VM is not running (macOS),
+    so it is not enough to know SEALED will actually work — `podman info` is the
+    real check (it fails when the machine is down or the service is unreachable).
+    Uses a non-checking runner so a nonzero exit is observed, not raised.
+    """
+
+    def _run(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        if command_runner is not None:
+            return command_runner(cmd)
+        return subprocess.run(list(cmd), check=False, text=True, capture_output=True, timeout=5)
+
+    if command_runner is None and shutil.which("podman") is None:
+        return "not_installed", "podman CLI not found on PATH"
+    exe = shutil.which("podman") or "podman"
+    try:
+        version = _run([exe, "--version"])
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return "not_installed", "podman --version failed to run"
+    if version.returncode != 0:
+        return "not_installed", "podman --version returned nonzero"
+    try:
+        info = _run([exe, "info"])
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return "machine_not_running", "podman info failed to run"
+    if info.returncode != 0:
+        return "machine_not_running", "podman info returned nonzero (machine likely not running)"
+    return "ready", (getattr(version, "stdout", "") or "").strip()
+
+
+def setup_sandbox(
+    *,
+    apply: bool = False,
+    config_path: Path | None = None,
+    command_runner: CommandRunner | None = None,
+) -> SetupDomainResult:
+    """Make Pattern 5 (SEALED) reachable by registering the Podman sandbox block
+    when Podman is actually ready (#299). Detects install + machine state and
+    gives concrete next steps otherwise — it NEVER claims SEALED is reachable
+    without a real, running Podman (the in-process actuator is a test double, not
+    an isolation boundary, and is never wired here)."""
+    config_path = config_path or user_default_daemon_config_path()
+    paths = _path_map(daemon_config=config_path)
+    readiness, detail = _podman_readiness(command_runner)
+    base = {"podman": detail, "readiness": readiness}
+
+    if readiness == "not_installed":
+        return SetupDomainResult(
+            domain="sandbox",
+            apply=apply,
+            status="unavailable",
+            summary=(
+                "Podman is not installed — Pattern 5 (SEALED) sandbox is unavailable. "
+                "Restricted-tier data can still be routed via Pattern 3 (REFERENCE handle "
+                "routing) where handle-aware tools apply; workflows that need sealed, "
+                "egress-free execution will refuse until Podman is installed and running."
+            ),
+            actions=("install Podman", "initialize and start the Podman machine"),
+            commands=(
+                ("brew", "install", "podman"),
+                ("podman", "machine", "init"),
+                ("podman", "machine", "start"),
+            ),
+            paths=paths,
+            details={**base, "sealed_reachable": False},
+        )
+    if readiness == "machine_not_running":
+        return SetupDomainResult(
+            domain="sandbox",
+            apply=apply,
+            status="not_ready",
+            summary=(
+                "Podman is installed but its machine is not running — SEALED is not yet "
+                "reachable. Start the machine, then re-run this step."
+            ),
+            actions=("start the Podman machine",),
+            commands=(("podman", "machine", "start"),),
+            paths=paths,
+            details={**base, "sealed_reachable": False},
+        )
+    # ready
+    if not apply:
+        return SetupDomainResult(
+            domain="sandbox",
+            apply=False,
+            status="dry_run",
+            summary=(
+                "Podman is ready — would register the sandbox block, making Pattern 5 "
+                "(SEALED) reachable for restricted-tier workflows."
+            ),
+            actions=("register the sandbox (podman, scratch region) block",),
+            paths=paths,
+            details={**base, "sealed_reachable": True},
+        )
+    existed, changed = write_managed_block(config_path, SANDBOX_BLOCK_ID, SANDBOX_BLOCK_BODY)
+    return SetupDomainResult(
+        domain="sandbox",
+        apply=True,
+        status="applied",
+        summary=(
+            "Registered the sandbox block — Pattern 5 (SEALED) is now reachable. "
+            "Restart the daemon to wire the PodmanSandboxActuator."
+        ),
+        actions=(("refreshed" if existed else "registered") + " sandbox (podman, scratch region)",),
+        changed=changed,
+        paths=paths,
+        details={**base, "sealed_reachable": True},
     )
 
 
@@ -521,38 +636,6 @@ def setup_models(
                 if profile.conversion_status == "unsupported"
             ],
         },
-    )
-
-
-def setup_sandbox(
-    *,
-    apply: bool = False,
-    command_runner: CommandRunner | None = None,
-) -> SetupDomainResult:
-    podman = shutil.which("podman")
-    health: dict[str, Any] = {"checked": False}
-    if apply and podman:
-        runner = command_runner or _default_runner
-        version = runner((podman, "--version"))
-        info = runner((podman, "info", "--format", "json"))
-        health = {
-            "checked": True,
-            "version": (version.stdout or "").strip(),
-            "info_present": bool((info.stdout or "").strip()),
-        }
-    return SetupDomainResult(
-        domain="sandbox",
-        apply=apply,
-        status="ready" if podman else "missing_podman",
-        summary=(
-            "Podman is available for sandbox execution."
-            if podman
-            else "Podman is not on PATH; sandbox setup would need Podman installed first."
-        ),
-        actions=("check Podman availability", "verify sandbox runtime health"),
-        commands=((podman, "--version"), (podman, "info", "--format", "json")) if podman else (),
-        paths=_path_map(podman=Path(podman) if podman else None),
-        details={"runtime_health": health},
     )
 
 
