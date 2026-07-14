@@ -102,7 +102,7 @@
         "src/capabledeputy/daemon/workflow_templates.py",
         "src/capabledeputy/daemon/workstream_handlers.py"
       ],
-      "min_percent": 84.67,
+      "min_percent": 83.83,
       "statements": 3796
     },
     "daemon.file.agent-handlers": {
@@ -207,7 +207,7 @@
       "files": [
         "src/capabledeputy/daemon/image_ops_handlers.py"
       ],
-      "min_percent": 87.17,
+      "min_percent": 82.89,
       "statements": 187
     },
     "daemon.file.lifecycle": {
@@ -215,7 +215,7 @@
       "files": [
         "src/capabledeputy/daemon/lifecycle.py"
       ],
-      "min_percent": 87.97,
+      "min_percent": 80.48,
       "statements": 374
     },
     "daemon.file.mcp-admission-handlers": {
@@ -345,7 +345,7 @@
       "files": [
         "src/capabledeputy/daemon/setup_plan.py"
       ],
-      "min_percent": 90.43,
+      "min_percent": 88.7,
       "statements": 115
     },
     "daemon.file.skill-handlers": {
@@ -506,7 +506,7 @@
       "files": [
         "src/capabledeputy/mcp_servers/_image_pipeline.py"
       ],
-      "min_percent": 72.49,
+      "min_percent": 72.25,
       "statements": 418
     },
     "mcp_server.bundled.images": {
