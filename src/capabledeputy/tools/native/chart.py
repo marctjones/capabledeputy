@@ -1,4 +1,7 @@
 """Generate chart images for inline GUI display via ``chart.plot``."""
+# Optional lazy deps (torch/diffusers/mflux/matplotlib) are guarded by
+# try/except ImportError and not installed by --all-groups.
+# pyright: reportMissingImports=false
 
 from __future__ import annotations
 
@@ -30,10 +33,10 @@ def _render_chart(
     output_path: Path,
 ) -> None:
     try:
-        import matplotlib  # pyright: ignore[reportMissingImports]
+        import matplotlib
 
         matplotlib.use("Agg")
-        import matplotlib.pyplot as plt  # pyright: ignore[reportMissingImports]
+        import matplotlib.pyplot as plt
     except ImportError as exc:
         raise RuntimeError(
             "matplotlib is required for chart.plot — install with "
