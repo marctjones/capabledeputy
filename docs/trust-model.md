@@ -13,6 +13,10 @@ three docs:
 - `docs/llm-flow-patterns.md` — how a planner relates to labeled data.
 - `docs/governance-scope.md` — what the system is *expected* to do
   (and deliberately not), in InfoSec/Privacy/AI-governance terms.
+- `docs/ai-planning-delegation.md` — the planning-layer companion: which
+  *planning* acts (flow-pattern choice, sequencing, decomposition, ingest-
+  tool choice) are safe to delegate to the untrusted model, and the two
+  conformance properties that enforce it.
 - **this** — *whether/when an action proceeds, who authorizes it, and
   the precise boundary of what the AI may propose vs. bind.*
 
