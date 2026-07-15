@@ -295,6 +295,58 @@ def test_podman_available_falls_back_to_false(monkeypatch: pytest.MonkeyPatch) -
     assert podman_available() is False
 
 
+def _podman_runner(version_rc: int, info_rc: int):
+    """A command runner that reports the given exit codes for `podman --version`
+    vs `podman info`, so readiness can be tested without a real Podman."""
+    import subprocess
+
+    def runner(command):
+        rc = version_rc if command[-1] == "--version" else info_rc
+        out = "podman version 5.0\n" if command[-1] == "--version" else "{}"
+        return subprocess.CompletedProcess(list(command), rc, stdout=out, stderr="")
+
+    return runner
+
+
+def test_podman_ready_requires_info_not_just_version() -> None:
+    """#361 — the exact trap the reconciliation fixes: `podman --version` can
+    succeed while the machine is DOWN. `podman_ready()` must be False then, so
+    the sandbox block is not written into a state where SEALED fails at runtime."""
+    from capabledeputy.cli._managed_config import podman_readiness, podman_ready
+
+    assert podman_ready(_podman_runner(0, 0)) is True
+    assert podman_ready(_podman_runner(0, 1)) is False  # version ok, machine down
+    assert podman_ready(_podman_runner(127, 0)) is False  # not installed
+
+    assert podman_readiness(_podman_runner(0, 1))[0] == "machine_not_running"
+    assert podman_readiness(_podman_runner(127, 0))[0] == "not_installed"
+
+
+def test_assistant_surface_autodetect_uses_deep_readiness(
+    xdg_tmp: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#361 — `register_default_assistant_surface` auto-detect (include_sandbox
+    is None) must consult the deep readiness, not `--version`. Machine down ⇒
+    sandbox skipped, even though podman is installed."""
+    import capabledeputy.cli._managed_config as mc
+
+    path = xdg_tmp / "daemon.yaml"
+
+    # Machine down: version ok, info fails → skip the block.
+    monkeypatch.setattr(mc, "podman_readiness", lambda runner=None: ("machine_not_running", ""))
+    msgs = mc.register_default_assistant_surface(path)
+    assert any("sandbox skipped" in m for m in msgs)
+    assert "sandbox" not in path.read_text(encoding="utf-8")
+
+    # Ready: version + info both ok → write the block.
+    path2 = xdg_tmp / "daemon2.yaml"
+    monkeypatch.setattr(mc, "podman_readiness", lambda runner=None: ("ready", "podman 5.0"))
+    msgs2 = mc.register_default_assistant_surface(path2)
+    assert any("sandbox" in m and "skipped" not in m for m in msgs2)
+    assert "sandbox" in path2.read_text(encoding="utf-8")
+
+
 # --- Google Workspace block via official `gws mcp` ----
 
 

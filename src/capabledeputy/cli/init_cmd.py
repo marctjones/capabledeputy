@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 import platform
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -41,6 +41,39 @@ def _config_home() -> Path:
     override = os.environ.get("XDG_CONFIG_HOME")
     base = Path(override) if override else Path.home() / ".config"
     return base / "capabledeputy"
+
+
+def _sandbox_readiness_line(command_runner: Any = None) -> str:
+    """One-line first-run note about Pattern 5 (SEALED) reachability (#361).
+
+    `capdep init` does not itself write the daemon sandbox block (it writes only
+    the XDG config, and never touches daemon.yaml), so it *surfaces* readiness
+    and the exact one command that makes SEALED reachable — so a fresh install
+    is one obvious step away, not silently missing. Probing is best-effort and
+    must never break init, hence the broad guard."""
+    try:
+        from capabledeputy.cli._managed_config import podman_readiness
+
+        readiness, _ = podman_readiness(command_runner)
+    except Exception:
+        readiness = "not_installed"
+    if readiness == "ready":
+        return (
+            "[green]Sealed sandbox (Pattern 5) available[/green] — run "
+            "[bold]capdep-setup sandbox --apply[/bold] to enable SEALED, "
+            "egress-free execution for restricted-tier work."
+        )
+    if readiness == "machine_not_running":
+        return (
+            "[yellow]Podman is installed but its machine is not running[/yellow] — "
+            "[bold]podman machine start[/bold], then "
+            "[bold]capdep-setup sandbox --apply[/bold] to enable SEALED (Pattern 5)."
+        )
+    return (
+        "[dim]Sealed sandbox (Pattern 5) is optional: install Podman "
+        "([bold]brew install podman[/bold]) then [bold]capdep-setup sandbox --apply[/bold]. "
+        "Without it, restricted-tier work still runs via Pattern 3 handle-routing.[/dim]"
+    )
 
 
 def _detect_os() -> str:
@@ -323,7 +356,7 @@ def init_command(
                 )
                 + "  1. [bold]capdep daemon start[/bold]\n"
                 "  2. [bold]capdep session create[/bold]\n"
-                "  3. [bold]capdep chat[/bold]\n\n"
+                "  3. [bold]capdep chat[/bold]\n\n" + _sandbox_readiness_line() + "\n\n"
                 "[dim]To regenerate this config, re-run [bold]capdep init --force[/bold].[/dim]"
             ),
             title="Done",

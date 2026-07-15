@@ -33,7 +33,9 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 
@@ -423,7 +425,11 @@ def register_default_assistant_surface(
             messages.append(f"{block_id} already up to date")
 
     if include_sandbox is None:
-        include_sandbox = podman_available()
+        # #361 — use the deep readiness check, not the shallow `--version` one:
+        # writing the sandbox block when the machine is DOWN produces the
+        # "block present but SEALED fails at runtime" trap. Same source of truth
+        # the `capdep-setup sandbox` step consults, so the two never disagree.
+        include_sandbox = podman_ready()
     if include_sandbox:
         replaced, changed = write_top_level_managed_block(
             path,
@@ -437,7 +443,7 @@ def register_default_assistant_surface(
         else:
             messages.append("sandbox already up to date")
     else:
-        messages.append("sandbox skipped (podman not detected)")
+        messages.append("sandbox skipped (podman not ready — install + start the machine)")
 
     return messages
 
@@ -1049,14 +1055,61 @@ sandbox:
 """
 
 
-def podman_available() -> bool:
-    """True iff the `podman` CLI is on PATH and `--version` exits zero.
-    Used by setup commands to decide whether to write the sandbox
-    managed block. Cached per-process; not aggressive enough about
-    detection that we'd want to retry."""
-    import shutil
-    import subprocess
+def podman_readiness(
+    command_runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]] | None = None,
+) -> tuple[str, str]:
+    """Canonical Podman readiness for Pattern 5 (SEALED):
+    ('ready' | 'machine_not_running' | 'not_installed', detail).
 
+    `podman --version` succeeds even when the machine/VM is not running (macOS),
+    so it is not enough to know SEALED will actually work — `podman info` is the
+    real check (it fails when the machine is down or the service is unreachable).
+    Uses a non-checking runner so a nonzero exit is observed, not raised.
+
+    This is the single source of truth: both the `capdep-setup sandbox` step and
+    the `assistant-surface` auto-detect consult it, so they can never disagree
+    about whether the sandbox block should be written. It lives here (the
+    lower-level module) because setup_domains imports from _managed_config, not
+    the reverse.
+    """
+
+    def _run(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        if command_runner is not None:
+            return command_runner(cmd)
+        return subprocess.run(list(cmd), check=False, text=True, capture_output=True, timeout=5)
+
+    if command_runner is None and shutil.which("podman") is None:
+        return "not_installed", "podman CLI not found on PATH"
+    exe = shutil.which("podman") or "podman"
+    try:
+        version = _run([exe, "--version"])
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return "not_installed", "podman --version failed to run"
+    if version.returncode != 0:
+        return "not_installed", "podman --version returned nonzero"
+    try:
+        info = _run([exe, "info"])
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return "machine_not_running", "podman info failed to run"
+    if info.returncode != 0:
+        return "machine_not_running", "podman info returned nonzero (machine likely not running)"
+    return "ready", (getattr(version, "stdout", "") or "").strip()
+
+
+def podman_ready(
+    command_runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]] | None = None,
+) -> bool:
+    """True iff Podman is installed AND its machine is up (`podman info` succeeds)
+    — i.e. SEALED is genuinely reachable. The gate for writing the sandbox block."""
+    return podman_readiness(command_runner)[0] == "ready"
+
+
+def podman_available() -> bool:
+    """True iff the `podman` CLI is on PATH and `--version` exits zero — i.e.
+    Podman is *installed*. NB: this is a weaker signal than `podman_ready()`; on
+    macOS `--version` succeeds even when the machine is down, so this must NOT be
+    used to decide whether SEALED is reachable (use `podman_ready()` for that).
+    Retained for callers that only need the installed-check."""
     bin_path = shutil.which("podman")
     if bin_path is None:
         return False

@@ -28,6 +28,7 @@ from capabledeputy.cli._managed_config import (
     SANDBOX_BLOCK_BODY,
     SANDBOX_BLOCK_ID,
     google_workspace_official_block_body,
+    podman_readiness,
     register_default_assistant_surface,
     user_default_daemon_config_path,
     write_managed_block,
@@ -167,36 +168,11 @@ def setup_assistant_surface(
 
 
 def _podman_readiness(command_runner: CommandRunner | None = None) -> tuple[str, str]:
-    """Proper Podman readiness for Pattern 5 (SEALED): ('ready' |
-    'machine_not_running' | 'not_installed', detail).
-
-    `podman --version` succeeds even when the machine/VM is not running (macOS),
-    so it is not enough to know SEALED will actually work — `podman info` is the
-    real check (it fails when the machine is down or the service is unreachable).
-    Uses a non-checking runner so a nonzero exit is observed, not raised.
-    """
-
-    def _run(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
-        if command_runner is not None:
-            return command_runner(cmd)
-        return subprocess.run(list(cmd), check=False, text=True, capture_output=True, timeout=5)
-
-    if command_runner is None and shutil.which("podman") is None:
-        return "not_installed", "podman CLI not found on PATH"
-    exe = shutil.which("podman") or "podman"
-    try:
-        version = _run([exe, "--version"])
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return "not_installed", "podman --version failed to run"
-    if version.returncode != 0:
-        return "not_installed", "podman --version returned nonzero"
-    try:
-        info = _run([exe, "info"])
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return "machine_not_running", "podman info failed to run"
-    if info.returncode != 0:
-        return "machine_not_running", "podman info returned nonzero (machine likely not running)"
-    return "ready", (getattr(version, "stdout", "") or "").strip()
+    """Podman readiness for Pattern 5 (SEALED). Thin delegate to the canonical
+    `podman_readiness` in `_managed_config` (#361) — the single source of truth
+    the `assistant-surface` auto-detect also uses, so the two never disagree
+    about whether the sandbox block should be written."""
+    return podman_readiness(command_runner)
 
 
 def setup_sandbox(

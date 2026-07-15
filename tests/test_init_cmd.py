@@ -16,13 +16,41 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from capabledeputy.cli.init_cmd import _write_anthropic_key_file, _write_config
+from capabledeputy.cli.init_cmd import (
+    _sandbox_readiness_line,
+    _write_anthropic_key_file,
+    _write_config,
+)
 from capabledeputy.cli.main import app
 
 
 @pytest.fixture
 def runner() -> CliRunner:
     return CliRunner()
+
+
+def _podman_runner(version_rc: int, info_rc: int):
+    import subprocess
+
+    def runner(command):
+        rc = version_rc if command[-1] == "--version" else info_rc
+        out = "podman version 5.0\n" if command[-1] == "--version" else "{}"
+        return subprocess.CompletedProcess(list(command), rc, stdout=out, stderr="")
+
+    return runner
+
+
+def test_sandbox_readiness_line_surfaces_enabling_command() -> None:
+    """#361 — first-run surfaces SEALED reachability and the exact one command
+    that enables it, for each Podman state."""
+    ready = _sandbox_readiness_line(_podman_runner(0, 0))
+    assert "available" in ready and "capdep-setup sandbox --apply" in ready
+
+    down = _sandbox_readiness_line(_podman_runner(0, 1))
+    assert "machine is not running" in down and "podman machine start" in down
+
+    absent = _sandbox_readiness_line(_podman_runner(127, 0))
+    assert "brew install podman" in absent and "Pattern 3" in absent
 
 
 def test_non_interactive_writes_defaults(
