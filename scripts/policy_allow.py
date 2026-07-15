@@ -3,7 +3,9 @@
 requires and a clean (non-tainting) label set, must be ALLOWED.
 
 This sweeps the full tool surface: memory.{create,read,write,update,
-delete}, inbox.{list,read}, calendar.{events_today,create_event,
+delete}, inbox.list + quarantined.extract_inbox (inbox.read itself is
+hidden from the planner under #359's projection-only default),
+calendar.{events_today,create_event,
 update_event,delete_event}, web.fetch, policy.preview, email.send,
 purchase.queue. The destructive tools are allowed here only because the
 capability carries allows_destructive=True (the gate's sanctioned
@@ -30,7 +32,7 @@ from _policy_harness import (
     tool_turn,
 )
 
-from capabledeputy.llm.types import LLMResponse
+from capabledeputy.llm.types import FinishReason, LLMResponse
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import LabelState, tags_for_labels_strings
 from capabledeputy.tools.native.inbox import InboundMessage
@@ -77,7 +79,11 @@ SCENARIOS: list[Scenario] = [
                 tc("r1", "memory.read", key="k"),
                 tc("wf", "web.fetch", url="https://example.test/doc"),
                 tc("il", "inbox.list"),
-                tc("ir", "inbox.read", id="m1"),
+                # #359 — inbox.read is no longer planner-callable (untrusted-
+                # source raw reader, hidden under the projection-only default).
+                # The sanctioned inbox-content path is the quarantined
+                # projection, which is ALLOW with a clean READ_FS cap.
+                tc("ir", "quarantined.extract_inbox", message_id="m1", schema="EmailTriageItem"),
                 tc("cal", "calendar.events_today"),
                 tc("pp", "policy.preview", kind="READ_FS"),
             ),
@@ -88,9 +94,21 @@ SCENARIOS: list[Scenario] = [
             Expect("memory.read", "allow"),
             Expect("web.fetch", "allow"),
             Expect("inbox.list", "allow"),
-            Expect("inbox.read", "allow"),
+            Expect("quarantined.extract_inbox", "allow"),
             Expect("calendar.events_today", "allow"),
             Expect("policy.preview", "allow"),
+        ],
+        # Separate cassette for the quarantined extractor so it does not consume
+        # the planner's scripted responses (quarantined_llm otherwise falls back
+        # to the main fake). One valid EmailTriageItem projection of message m1.
+        quarantined=[
+            LLMResponse(
+                content=(
+                    '{"sender": "colleague@example.com", "subject": "hi", '
+                    '"urgency": "low", "one_line_summary": "greeting"}'
+                ),
+                finish_reason=FinishReason.STOP,
+            ),
         ],
     ),
     Scenario(

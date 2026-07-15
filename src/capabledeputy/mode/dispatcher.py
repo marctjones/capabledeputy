@@ -58,15 +58,35 @@ _CONFIDENTIAL_CATEGORIES: frozenset[str] = frozenset(
 )
 
 # Raw labeled-data readers hidden in planner-exposure-limited modes (DUAL_LLM /
-# REFERENCE / SEALED). `inbox.read` returns raw untrusted email to the planner,
-# so it is hidden in DUAL_LLM (#302, CaMeL invariant): untrusted email content
-# reaches the planner ONLY via `quarantined.extract_inbox` (a schema-validated
-# projection). `inbox.list` (metadata: id/sender/subject) stays visible so the
-# planner can still select which message to project — a deliberate,
-# lower-risk-than-body allowance, not full metadata quarantine.
+# REFERENCE / SEALED): once the session is confidential, these raw reads would
+# land labeled data straight in the planner's context.
 _RAW_LABELED_DATA_TOOLS: frozenset[str] = frozenset(
-    {"memory.read", "fs.read", "web.fetch", "inbox.read"},
+    {"memory.read", "fs.read", "web.fetch"},
 )
+
+# #359 — untrusted-SOURCE raw readers, hidden from the planner in EVERY mode
+# under the projection-only posture (the default). Unlike _RAW_LABELED_DATA_TOOLS
+# (which fire only in exposure-limited modes, i.e. only once a confidential
+# Axis-A category is present), these must be hidden even in a fresh TURN_LEVEL
+# session with no labels yet — because the CaMeL threat is *steering*, and
+# steering happens on the FIRST read: an injected email body reaching the
+# planner raw on turn 1 has already delivered its instructions before any
+# provenance label exists to react to. So the raw reader is never shown; the
+# planner reaches inbox content ONLY via `quarantined.extract_inbox` (a
+# schema-validated projection: EmailTriageItem / EmailForwardable / …).
+# `inbox.list` metadata (id/sender/subject) stays visible for message selection.
+# NB: projection-only is the default posture; a v0.56 profile knob
+# (`planner_projection_only`) will be able to allow raw untrusted reads
+# (raw-allowed-with-taint) per profile. Scope: inbox.read today; web.fetch is a
+# follow-up (it needs a fetch-and-project tool, which does not exist yet).
+UNTRUSTED_SOURCE_RAW_READERS: frozenset[str] = frozenset({"inbox.read"})
+
+
+def planner_projection_only() -> bool:
+    """Whether untrusted-source raw readers are hidden from the planner by
+    default (projection-only posture). Single choke point so v0.56 profiles can
+    make this profile-driven; today it is the secure default, always True."""
+    return True
 
 
 def select_mode(
@@ -173,7 +193,21 @@ def filter_tools_for_mode(
     tools: list[ToolDefinition],
     mode: ExecutionMode,
 ) -> list[ToolDefinition]:
-    """Hide raw labeled-data readers in planner-exposure-limited modes."""
+    """Hide raw readers from the planner.
+
+    Two layers:
+      1. #359 — untrusted-SOURCE raw readers (`inbox.read`) are hidden in EVERY
+         mode under the projection-only posture (the default), so an injected
+         email body can never reach the planner raw — not even on the first read
+         of a fresh TURN_LEVEL session. The planner uses the quarantined
+         projection instead.
+      2. #302 — raw labeled-data readers (`memory.read`/`fs.read`/`web.fetch`)
+         are hidden additionally in the exposure-limited modes (DUAL_LLM /
+         REFERENCE / SEALED), i.e. once the session carries a confidential
+         Axis-A category.
+    """
+    if planner_projection_only():
+        tools = [t for t in tools if t.name not in UNTRUSTED_SOURCE_RAW_READERS]
     if mode not in {
         ExecutionMode.DUAL_LLM,
         ExecutionMode.REFERENCE,
