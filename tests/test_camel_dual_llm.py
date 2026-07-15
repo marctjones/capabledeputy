@@ -39,29 +39,91 @@ async def _app_with_inbox(tmp_path: Path, fake: FakeLLMClient) -> App:
 
 
 @pytest.mark.asyncio
-async def test_inbox_read_hidden_in_dual_llm_projection_visible(tmp_path: Path) -> None:
-    """In DUAL_LLM the raw `inbox.read` is removed from the planner's surface,
-    while the quarantined projection tool and the metadata lister remain.
+async def test_inbox_read_hidden_in_every_mode_projection_visible(tmp_path: Path) -> None:
+    """#359 — the raw `inbox.read` is removed from the planner's surface in
+    EVERY mode under the projection-only default, while the quarantined
+    projection tool and the metadata lister remain.
 
-    NB: this asserts `filter_tools_for_mode` (the function the agent loop applies),
-    not a driven DUAL_LLM turn. NB2 (scope): DUAL_LLM only engages when the session
-    holds a confidential Axis-A category — an email-only session (untrusted Axis-B
-    provenance, no category) stays TURN_LEVEL where inbox.read is visible. Full
-    provenance-based email quarantine is a separate follow-up."""
+    NB: this asserts `filter_tools_for_mode` (the function the agent loop
+    applies). #302 hid inbox.read only in DUAL_LLM; #359 hides it in TURN_LEVEL
+    too, because the CaMeL threat is steering and steering happens on the first
+    read — an email-only session (untrusted Axis-B provenance, no confidential
+    Axis-A category) stays TURN_LEVEL, so hiding it only in DUAL_LLM left the
+    turn-1 raw read reaching the planner."""
     app = await _app_with_inbox(tmp_path, FakeLLMClient([]))
     all_tools = app.registry.list()
     names = {t.name for t in all_tools}
-    assert "inbox.read" in names  # registered...
+    assert "inbox.read" in names  # registered (callable by non-planner paths)...
     assert "quarantined.extract_inbox" in names
 
-    visible = {t.name for t in filter_tools_for_mode(all_tools, ExecutionMode.DUAL_LLM)}
-    assert "inbox.read" not in visible  # ...but hidden from the planner in DUAL_LLM
-    assert "quarantined.extract_inbox" in visible  # projection path stays
-    assert "inbox.list" in visible  # metadata selection stays
+    for mode in (ExecutionMode.TURN_LEVEL, ExecutionMode.DUAL_LLM):
+        visible = {t.name for t in filter_tools_for_mode(all_tools, mode)}
+        assert "inbox.read" not in visible  # ...but never shown to the planner
+        assert "quarantined.extract_inbox" in visible  # projection path stays
+        assert "inbox.list" in visible  # metadata selection stays
 
-    # TURN_LEVEL is unchanged (raw reader visible when not exposure-limited).
-    turn = {t.name for t in filter_tools_for_mode(all_tools, ExecutionMode.TURN_LEVEL)}
-    assert "inbox.read" in turn
+
+@pytest.mark.asyncio
+async def test_loop_level_planner_cannot_reach_raw_inbox_in_turn_level(tmp_path: Path) -> None:
+    """#359 loop-level regression: drive a REAL TURN_LEVEL turn in an email-only
+    session (untrusted Axis-B provenance, no confidential Axis-A category). Even
+    when the planner explicitly tries `inbox.read`, it is not visible → denied,
+    so the raw injected body never reaches the planner. The quarantined
+    projection is the only inbox-content path offered."""
+    from dataclasses import replace
+
+    from capabledeputy.agent.loop import build_tool_descriptions, run_turn
+    from capabledeputy.llm.types import ToolCall
+    from capabledeputy.policy.capabilities import Capability, CapabilityKind
+    from capabledeputy.policy.rules import Decision
+
+    fake = FakeLLMClient(
+        [
+            # The planner tries to read the raw email...
+            LLMResponse(
+                content="",
+                tool_calls=(ToolCall(id="c1", name="inbox.read", args={"message_id": "m1"}),),
+                finish_reason=FinishReason.TOOL_CALLS,
+            ),
+            # ...and then gives a final answer.
+            LLMResponse(content="done", finish_reason=FinishReason.STOP),
+        ],
+    )
+    app = await _app_with_inbox(tmp_path, fake)
+    s = await app.graph.new(intent="triage inbox")
+    # Grant the caps that WOULD make inbox.read visible absent #359, plus the
+    # projection's READ_FS — so the test proves the hiding, not a missing grant.
+    app.graph._sessions[s.id] = replace(
+        s,
+        capability_set=frozenset(
+            {
+                Capability(kind=CapabilityKind.IMAP_READ, pattern="*"),
+                Capability(kind=CapabilityKind.READ_FS, pattern="*"),
+            },
+        ),
+    )
+
+    result = await run_turn(
+        session_id=s.id,
+        user_message="triage my inbox",
+        llm=fake,
+        tool_client=app.tool_client,
+        registry=app.registry,
+        graph=app.graph,
+        audit=app.audit,
+    )
+
+    # The planner's inbox.read attempt was refused — it is not visible in
+    # TURN_LEVEL under the projection-only default.
+    denied = [o for o in result.tool_outcomes if o.tool_name == "inbox.read"]
+    assert denied, "expected the planner's inbox.read attempt to be recorded"
+    assert all(o.decision == Decision.DENY for o in denied)
+
+    # The raw reader never entered the planner's tool surface; the projection did.
+    descs = build_tool_descriptions(app.registry, ExecutionMode.TURN_LEVEL, app.graph.get(s.id))
+    names = {d.name for d in descs}
+    assert "inbox.read" not in names
+    assert "quarantined.extract_inbox" in names
 
 
 @pytest.mark.asyncio
