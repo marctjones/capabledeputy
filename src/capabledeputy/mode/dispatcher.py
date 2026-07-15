@@ -20,12 +20,16 @@ Two related filtering decisions per turn:
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import LabelState
-from capabledeputy.policy.tiers import Tier
+from capabledeputy.policy.tiers import Tier, is_above
 from capabledeputy.session.model import Session
 from capabledeputy.tools.registry import ToolDefinition, ToolRegistry
+
+if TYPE_CHECKING:
+    from capabledeputy.policy.posture import Posture
 
 
 class ExecutionMode(StrEnum):
@@ -97,6 +101,7 @@ def select_mode(
     force_mode: ExecutionMode | None = None,
     has_sandbox_actuator: bool = False,
     session: Session | None = None,
+    posture: Posture | None = None,
 ) -> tuple[ExecutionMode, str]:
     """Pick the execution mode for an upcoming turn.
 
@@ -114,7 +119,12 @@ def select_mode(
       3. `prefer_programmatic` — session-level flag set at session.new
          time; takes precedence over the auto-escalation heuristic so
          users can opt into programmatic for a whole session.
-      4. Auto-heuristic — confidential categories present + a quarantined
+      4. `posture` (#304) — a configured security posture supplies the
+         default flow pattern per tier, replacing the auto-heuristic for
+         NONE/SENSITIVE/REGULATED sessions (restricted was already floored
+         above). Downgraded to the strongest achievable pattern, never
+         below the tier floor. Absent (posture is None) ⇒ legacy heuristic.
+      5. Auto-heuristic — confidential categories present + a quarantined
          extractor registered → DUAL_LLM. Otherwise TURN_LEVEL.
 
     Returns (mode, reason) so the audit record explains the choice.
@@ -167,6 +177,28 @@ def select_mode(
         return (
             ExecutionMode.PROGRAMMATIC,
             "session prefers programmatic mode; planner will emit a program",
+        )
+
+    # #304 — a configured posture supplies the default flow pattern per tier,
+    # REPLACING the hardcoded confidential→DUAL_LLM heuristic below. Restricted+
+    # was already handled by the fail-closed floor above, so this governs only
+    # NONE/SENSITIVE/REGULATED sessions. The posture default is downgraded to the
+    # strongest pattern actually achievable with the session's tool surface, but
+    # never below the tier floor (which for these tiers is TURN_LEVEL). When no
+    # posture is configured (posture is None) the legacy heuristic below runs
+    # unchanged.
+    if posture is not None:
+        highest = _highest_tier(label_state)
+        desired = posture.flow_pattern_for(highest)
+        mode = _achievable_mode(
+            desired,
+            registry,
+            has_sandbox_actuator=has_sandbox_actuator,
+            session=session,
+        )
+        return (
+            mode,
+            f"posture {posture.id!r}: tier {highest.value} default {desired.value} → {mode.value}",
         )
 
     # Check if any category in label_state.a matches confidential categories
@@ -252,6 +284,61 @@ def select_mode_for_restricted(
         "restricted-tier session requires Pattern (3) accepts_handles or "
         "Pattern (5) SandboxActuator — neither available; spawn refused (FR-047)",
     )
+
+
+def _highest_tier(label_state: LabelState) -> Tier:
+    """The session's most-restrictive Axis-A tier (NONE if unlabeled)."""
+    highest = Tier.NONE
+    for tag in label_state.a:
+        if is_above(tag.tier, highest):
+            highest = tag.tier
+    return highest
+
+
+def _achievable_mode(
+    desired: ExecutionMode,
+    registry: ToolRegistry,
+    *,
+    has_sandbox_actuator: bool,
+    session: Session | None,
+) -> ExecutionMode:
+    """Downgrade a posture's desired flow pattern to the strongest pattern the
+    session's tool surface can actually support, never below TURN_LEVEL.
+
+    Used only for NONE/SENSITIVE/REGULATED (the restricted floor is fail-closed
+    and handled separately), so a fall-through to TURN_LEVEL is always ≥ the tier
+    floor. This mirrors the availability checks the restricted floor uses, so a
+    posture asking for a pattern the surface can't provide degrades gracefully
+    rather than erroring.
+    """
+    if desired == ExecutionMode.PROGRAMMATIC:
+        return ExecutionMode.PROGRAMMATIC
+
+    def _handles() -> bool:
+        return (
+            visible_tool_surface_offers_handles(registry, session)
+            if session is not None
+            else tool_surface_offers_handles(registry.list())
+        )
+
+    def _sandbox() -> bool:
+        return has_sandbox_actuator and (
+            visible_tool_surface_offers_sandbox(registry, session) if session is not None else True
+        )
+
+    def _extractor() -> bool:
+        return any(t.name.startswith("quarantined.") for t in registry.list())
+
+    if desired == ExecutionMode.SEALED and _sandbox():
+        return ExecutionMode.SEALED
+    if desired in (ExecutionMode.SEALED, ExecutionMode.REFERENCE) and _handles():
+        return ExecutionMode.REFERENCE
+    if (
+        desired in (ExecutionMode.SEALED, ExecutionMode.REFERENCE, ExecutionMode.DUAL_LLM)
+        and _extractor()
+    ):
+        return ExecutionMode.DUAL_LLM
+    return ExecutionMode.TURN_LEVEL
 
 
 def tool_surface_offers_handles(tools: list[ToolDefinition]) -> bool:

@@ -243,3 +243,83 @@ def test_restricted_reference_selected_when_handle_consumer_visible() -> None:
 
     assert mode == ExecutionMode.REFERENCE
     assert "Pattern (3)" in reason
+
+
+# --- #304 posture-driven flow-pattern defaults --------------------------
+
+
+def _regulated_state() -> LabelState:
+    return LabelState(
+        a=frozenset(
+            {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")},
+        ),
+    )
+
+
+def _posture(regulated_mode: ExecutionMode):
+    from capabledeputy.policy.posture import DEFAULT_FLOW_PATTERN_DEFAULTS, Posture
+
+    return Posture(
+        id="p",
+        flow_pattern_defaults={**DEFAULT_FLOW_PATTERN_DEFAULTS, Tier.REGULATED: regulated_mode},
+    ).validate()
+
+
+def test_posture_none_leaves_legacy_behavior_unchanged() -> None:
+    """posture=None (the default everywhere until selection is wired) keeps the
+    legacy confidential→DUAL_LLM heuristic byte-for-byte."""
+    registry = _make_registry("quarantined.extract")
+    mode, _ = select_mode(_regulated_state(), registry)
+    assert mode == ExecutionMode.DUAL_LLM  # personal is a confidential category
+
+
+def test_posture_default_dual_llm_used_when_extractor_present() -> None:
+    registry = _make_registry("quarantined.extract")
+    mode, reason = select_mode(
+        _regulated_state(), registry, posture=_posture(ExecutionMode.DUAL_LLM)
+    )
+    assert mode == ExecutionMode.DUAL_LLM
+    assert "posture 'p'" in reason
+
+
+def test_posture_dual_llm_downgrades_when_no_extractor() -> None:
+    """A posture asking for DUAL_LLM at a tier degrades to TURN_LEVEL when the
+    surface has no quarantined extractor — never below the tier floor."""
+    registry = _make_registry("memory.read")  # no quarantined.* tool
+    mode, _ = select_mode(_regulated_state(), registry, posture=_posture(ExecutionMode.DUAL_LLM))
+    assert mode == ExecutionMode.TURN_LEVEL
+
+
+def test_posture_low_friction_relaxes_confidential_to_turn_level() -> None:
+    """A low-friction posture sets regulated → TURN_LEVEL, overriding the legacy
+    confidential→DUAL_LLM heuristic (above the regulated floor, so permitted)."""
+    registry = _make_registry("quarantined.extract")
+    mode, _ = select_mode(_regulated_state(), registry, posture=_posture(ExecutionMode.TURN_LEVEL))
+    assert mode == ExecutionMode.TURN_LEVEL
+
+
+def test_posture_reference_used_when_handle_tool_visible() -> None:
+    registry = ToolRegistry()
+    registry.register(_handle_aware_tool("fs.create", CapabilityKind.CREATE_FS))
+    mode, _ = select_mode(_regulated_state(), registry, posture=_posture(ExecutionMode.REFERENCE))
+    assert mode == ExecutionMode.REFERENCE
+
+
+def test_posture_does_not_lower_the_restricted_floor() -> None:
+    """Even a permissive posture cannot pull a restricted session below the
+    Pattern-3/5 floor — the floor is evaluated before the posture branch."""
+    registry = ToolRegistry()
+    registry.register(_handle_aware_tool("fs.create", CapabilityKind.CREATE_FS))
+    session = Session.new(
+        capability_set=frozenset({Capability(kind=CapabilityKind.CREATE_FS, pattern="*")}),
+    )
+    # Posture would "want" TURN_LEVEL for restricted, but validate() forbids that;
+    # use a posture that leaves the restricted default and confirm the floor wins.
+    mode, reason = select_mode(
+        _restricted_state(),
+        registry,
+        session=session,
+        posture=_posture(ExecutionMode.TURN_LEVEL),  # only regulated changed
+    )
+    assert mode == ExecutionMode.REFERENCE
+    assert "Pattern (3)" in reason
