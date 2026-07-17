@@ -333,3 +333,77 @@ def policy_check_command(
         console.print(f"[{color}]{problem.severity}[/{color}] {problem.where}: {problem.message}")
     if has_errors(problems):
         raise typer.Exit(1)
+
+
+@policy_app.command("why")
+def policy_why(
+    kind: Annotated[
+        str,
+        typer.Argument(help="Action kind, e.g. SEND_EMAIL / WEB_FETCH / READ_FS."),
+    ],
+    to: Annotated[str, typer.Option("--to", help="Action target (recipient / path / URL).")] = "*",
+    category: Annotated[
+        list[str] | None,
+        typer.Option("--category", help="Axis-A category on the data (repeatable)."),
+    ] = None,
+    untrusted: Annotated[
+        bool,
+        typer.Option("--untrusted", help="Mark the data as external-untrusted provenance."),
+    ] = False,
+    effect_class: Annotated[
+        str | None,
+        typer.Option("--effect", help="effect_class, e.g. social.send_email."),
+    ] = None,
+) -> None:
+    """#386 — explain, OFFLINE, why a hypothetical action would be decided the way
+    it is: the outcome, the rule/floor that decides it, and its precedence level.
+
+    A pure what-if over the real engine — no daemon required. Example:
+      capdep policy why SEND_EMAIL --to bob@x.com --category health
+    """
+    from capabledeputy.policy.capabilities import CapabilityKind
+    from capabledeputy.policy.explain import explain_decision
+    from capabledeputy.policy.labels import (
+        CategoryTag,
+        LabelState,
+        ProvenanceLevel,
+        ProvenanceTag,
+    )
+    from capabledeputy.policy.tiers import Tier
+
+    try:
+        cap_kind = CapabilityKind(kind)
+    except ValueError:
+        err_console.print(
+            f"[red]unknown kind[/red] {kind!r}; e.g. SEND_EMAIL / WEB_FETCH / READ_FS",
+        )
+        raise typer.Exit(2) from None
+
+    _tier_for = {
+        "health": Tier.RESTRICTED,
+        "financial": Tier.RESTRICTED,
+        "credentials": Tier.RESTRICTED,
+        "personal": Tier.REGULATED,
+        "proprietary_work": Tier.REGULATED,
+    }
+    tags = frozenset(
+        CategoryTag(c, _tier_for.get(c, Tier.SENSITIVE)) for c in (category or [])
+    )
+    prov = (
+        frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}) if untrusted else frozenset()
+    )
+    exp = explain_decision(
+        labels=LabelState(a=tags, b=prov),
+        kind=cap_kind,
+        target=to,
+        effect_class=effect_class,
+    )
+    color = {
+        "ALLOW": "green",
+        "WARN": "yellow",
+        "REQUIRE_APPROVAL": "yellow",
+        "OVERRIDE_REQUIRED": "magenta",
+        "DENY": "red",
+    }.get(exp.decision.name, "white")
+    console.print(f"[{color}]{exp.decision.name}[/{color}] — {exp.summary()}")
+    console.print(f"precedence level: {exp.level.name.lower()}")
