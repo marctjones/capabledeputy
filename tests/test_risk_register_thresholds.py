@@ -268,14 +268,14 @@ class TestIntegration:
     """Integration tests with actual register loading."""
 
     def test_load_and_check_thresholds(self) -> None:
-        """Load the actual risk_register.json and verify thresholds exist."""
+        """Load the actual risk_register.yaml and verify thresholds exist."""
         from pathlib import Path
 
         from capabledeputy.policy.risk_register import load
 
-        register_path = Path(__file__).parent.parent / "configs" / "risk_register.json"
+        register_path = Path(__file__).parent.parent / "configs" / "risk_register.yaml"
         if not register_path.is_file():
-            pytest.skip("risk_register.json not found")
+            pytest.skip("risk_register.yaml not found")
 
         register = load(register_path)
         assert len(register) > 0

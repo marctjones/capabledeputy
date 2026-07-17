@@ -31,7 +31,7 @@ _QUANTIFICATION_REQUIRED_FRAMEWORKS = frozenset(
 @pytest.fixture
 def risk_register_path() -> Path:
     """Path to the risk register config file."""
-    return Path(__file__).parent.parent.parent / "configs" / "risk_register.json"
+    return Path(__file__).parent.parent.parent / "configs" / "risk_register.yaml"
 
 
 class TestRiskRegisterThresholdSchema:

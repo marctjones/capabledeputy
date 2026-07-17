@@ -1,6 +1,6 @@
 """Risk Register (003 FR-015, FR-028).
 
-A single in-repo JSON file at configs/risk_register.json (operator-
+A single in-repo YAML file at configs/risk_register.yaml (operator-
 editable, human-declared, AI-read-only) holding entries
 `{id, summary, framework_refs[]}`. Labels and decisions cite `id`;
 the register itself cites external framework references (NIST CSF,
