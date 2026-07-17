@@ -64,6 +64,44 @@ async def test_inbox_read_hidden_in_every_mode_projection_visible(tmp_path: Path
 
 
 @pytest.mark.asyncio
+async def test_projection_only_false_keeps_inbox_read_hidden_in_exposure_limited_modes(
+    tmp_path: Path,
+) -> None:
+    """#305 layering guard: a posture that sets `projection_only=false`
+    (raw-allowed-with-taint, an explicit operator override — no shipped preset
+    does this) re-exposes `inbox.read` ONLY in TURN_LEVEL/PROGRAMMATIC. In the
+    exposure-limited modes (DUAL_LLM / REFERENCE / SEALED) the raw reader stays
+    hidden REGARDLESS of the knob — the #302 CaMeL invariant is a floor the
+    knob cannot cross. (#359 moved inbox.read out of _RAW_LABELED_DATA_TOOLS;
+    without this second layer, projection_only=false would silently regress
+    below the #302 baseline.)"""
+    from capabledeputy.policy.posture import Posture
+
+    raw_allowed = Posture(id="raw-allowed", projection_only=False).validate()
+    app = await _app_with_inbox(tmp_path, FakeLLMClient([]))
+    all_tools = app.registry.list()
+
+    # The knob re-exposes the raw reader in the raw-exposure modes only.
+    for mode in (ExecutionMode.TURN_LEVEL, ExecutionMode.PROGRAMMATIC):
+        visible = {t.name for t in filter_tools_for_mode(all_tools, mode, posture=raw_allowed)}
+        assert "inbox.read" in visible
+
+    # The #302 floor holds in every exposure-limited mode, knob or no knob.
+    for mode in (ExecutionMode.DUAL_LLM, ExecutionMode.REFERENCE, ExecutionMode.SEALED):
+        visible = {t.name for t in filter_tools_for_mode(all_tools, mode, posture=raw_allowed)}
+        assert "inbox.read" not in visible, f"knob crossed the #302 floor in {mode.value}"
+        assert "quarantined.extract_inbox" in visible
+
+    # And a posture that keeps the secure default behaves like no posture.
+    secure = Posture(id="secure").validate()
+    for mode in ExecutionMode:
+        with_posture = {t.name for t in filter_tools_for_mode(all_tools, mode, posture=secure)}
+        without = {t.name for t in filter_tools_for_mode(all_tools, mode)}
+        assert with_posture == without
+        assert "inbox.read" not in with_posture
+
+
+@pytest.mark.asyncio
 async def test_loop_level_planner_cannot_reach_raw_inbox_in_turn_level(tmp_path: Path) -> None:
     """#359 loop-level regression: drive a REAL TURN_LEVEL turn in an email-only
     session (untrusted Axis-B provenance, no confidential Axis-A category). Even
@@ -171,3 +209,61 @@ async def test_quarantined_extract_inbox_error_paths(tmp_path: Path) -> None:
     errored = await tool.handler({"message_id": "m1", "schema": "ContactInfo"}, ctx)
     assert errored.output["found"] is True
     assert "error" in errored.output
+
+
+@pytest.mark.asyncio
+async def test_active_posture_reaches_select_mode_in_a_driven_turn(tmp_path: Path) -> None:
+    """#305 loop-level wiring: `PolicyContext.active_posture` flows from the
+    App's tool client into `select_mode` on a real driven turn — the mode
+    reason is posture-attributed, not the legacy heuristic. Uses the
+    `low-friction-practical` preset, whose regulated→TURN_LEVEL dial overrides
+    the legacy confidential→DUAL_LLM heuristic (the observable difference)."""
+    from dataclasses import replace
+
+    from capabledeputy.agent.loop import run_turn
+    from capabledeputy.audit.events import EventType
+    from capabledeputy.policy.context import PolicyContext
+    from capabledeputy.policy.labels import CategoryTag
+    from capabledeputy.policy.posture import BUILTIN_POSTURES
+    from capabledeputy.policy.tiers import Tier
+
+    fake = FakeLLMClient([LLMResponse(content="done", finish_reason=FinishReason.STOP)])
+    app = App(
+        state_db_path=tmp_path / "state.db",
+        audit_log_path=tmp_path / "audit.jsonl",
+        quarantined_llm=fake,
+        policy_context=PolicyContext(
+            active_posture=BUILTIN_POSTURES["low-friction-practical"],
+        ),
+    )
+    await app.startup()
+    s = await app.graph.new(intent="work with regulated data")
+    # A regulated confidential category: the LEGACY heuristic would pick
+    # DUAL_LLM (a quarantined extractor is registered); the posture dial says
+    # regulated → TURN_LEVEL.
+    app.graph._sessions[s.id] = replace(
+        s,
+        label_state=LabelState(
+            a=frozenset(
+                {CategoryTag("personal", Tier.REGULATED, assignment_provenance="source-declared")},
+            ),
+        ),
+    )
+
+    result = await run_turn(
+        session_id=s.id,
+        user_message="hello",
+        llm=fake,
+        tool_client=app.tool_client,
+        registry=app.registry,
+        graph=app.graph,
+        audit=app.audit,
+    )
+    assert result.content == "done"
+
+    events = await app.audit.tail(limit=40)
+    mode_events = [e for e in events if e.event_type == EventType.MODE_SELECTED]
+    assert mode_events, "expected a MODE_SELECTED audit event"
+    payload = mode_events[-1].payload
+    assert payload["mode"] == ExecutionMode.TURN_LEVEL.value
+    assert "posture 'low-friction-practical'" in payload["reason"]

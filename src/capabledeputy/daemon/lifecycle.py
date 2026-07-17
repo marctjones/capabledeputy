@@ -395,6 +395,72 @@ def build_policy_context_from_configs(
     ), purposes
 
 
+def apply_posture_from_config(
+    raw_cfg: dict[str, Any],
+    policy_context: Any,
+    configs_dir: Path | None = None,
+) -> tuple[Any, list[str]]:
+    """#305 — apply an operator `posture: <id>` daemon-config key.
+
+    Selects a shipped preset (strict / high-security-useful /
+    low-friction-practical) or a custom posture from configs/postures.yaml
+    and BINDS the existing dials (a posture is a named value-binding, docs in
+    policy/posture.py): risk_preference, clearance_max_tier (when the posture
+    sets one), the flow-pattern defaults consumed by select_mode via
+    `active_posture`, the projection-only knob, and the inspector_set filter
+    over the configured decision inspectors.
+
+    Fail-closed (Principle VI): an unknown id, a custom posture shadowing a
+    preset id, an invalid postures.yaml, or an unknown inspector_set name
+    raises — the daemon refuses to start. Absent `posture:` key ⇒ returned
+    context is unchanged and every consumer keeps legacy behavior
+    (select_mode heuristic, projection-only default, all configured
+    inspectors active).
+
+    Returns (policy_context, log_messages).
+    """
+    posture_key = raw_cfg.get("posture")
+    if posture_key is None:
+        return policy_context, []
+
+    from capabledeputy.policy.decision_inspector_loader import (
+        select_inspectors_for_posture,
+    )
+    from capabledeputy.policy.posture import load_postures, resolve_posture
+
+    custom_path = _resolve_v09_configs_dir(configs_dir) / "postures.yaml"
+    custom = load_postures(custom_path) if custom_path.is_file() else {}
+    active = resolve_posture(str(posture_key), custom)
+    # The posture's inspector_set names which inspectors are ACTIVE — it
+    # filters the configured set, auto-instantiates known builtins with safe
+    # defaults (warning), and fail-closes on unknown names.
+    active_inspectors, inspector_warnings = select_inspectors_for_posture(
+        policy_context.decision_inspectors,
+        active.inspector_set,
+    )
+    policy_context = dataclasses.replace(
+        policy_context,
+        active_posture=active,
+        decision_inspectors=active_inspectors,
+        risk_preference=active.risk_preference,
+        clearance_max_tier=(
+            active.clearance_max_tier
+            if active.clearance_max_tier is not None
+            else policy_context.clearance_max_tier
+        ),
+    )
+    messages = [f"[posture] WARNING: {w}" for w in inspector_warnings]
+    messages.append(
+        f"[posture] {active.id!r} active — "
+        f"risk={active.risk_preference.value} "
+        f"projection_only={active.projection_only} "
+        f"inspectors=[{', '.join(active.inspector_set)}] "
+        f"retention={active.retention.value} (recorded; retention "
+        "enforcement lands with the daily-driver retention machinery)",
+    )
+    return policy_context, messages
+
+
 async def run_daemon(
     socket_path: Path | None = None,
     state_db_path: Path | None = None,
@@ -489,6 +555,14 @@ async def run_daemon(
                 f"{', '.join(getattr(i, 'name', '?') for i in inspectors)}",
                 file=_sys_di.stderr,
             )
+
+        # #305 — security-posture selection from the daemon config.
+        policy_context, posture_messages = apply_posture_from_config(
+            raw_cfg,
+            policy_context,
+        )
+        for message in posture_messages:
+            print(message, file=_sys_di.stderr)
 
     # Precedence: explicit arg (CLI flag) > CAPDEP_POLICY_PREVIEW env >
     # default on. The env var is off only for explicit falsey values.

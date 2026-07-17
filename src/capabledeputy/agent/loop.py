@@ -746,6 +746,10 @@ async def run_turn_streaming(
     # (the Pattern ⑤ precondition). We read it off the policy context.
     pc = tool_client.policy_context
     has_sandbox_actuator = bool(pc is not None and pc.sandbox_actuator_wired)
+    # #305 — the operator-selected security posture (None ⇒ legacy behavior).
+    # Drives select_mode's per-tier flow-pattern defaults and the
+    # projection-only knob in the tool-surface filters below.
+    active_posture = pc.active_posture if pc is not None else None
     try:
         mode, mode_reason = select_mode(
             session.label_state,
@@ -754,6 +758,7 @@ async def run_turn_streaming(
             force_mode=force_mode,
             has_sandbox_actuator=has_sandbox_actuator,
             session=session,
+            posture=active_posture,
         )
     except ModeSelectionError as e:
         # FR-047 fail-closed (#52): the session reached restricted tier
@@ -796,7 +801,7 @@ async def run_turn_streaming(
         )
         prog_llm = llm
         if model_pool is not None:
-            visible_for_route = visible_tools(registry, session, mode)
+            visible_for_route = visible_tools(registry, session, mode, active_posture)
             prog_llm, routing = model_pool.resolve_planner(
                 ModelRoutingContext(
                     purpose_handle=session.purpose_handle,
@@ -854,7 +859,7 @@ async def run_turn_streaming(
         ),
     )
 
-    visible_all = visible_tools(registry, session, mode)
+    visible_all = visible_tools(registry, session, mode, active_posture)
     conversational = is_conversational_turn(user_message)
 
     families_cfg = tool_families or load_tool_families()
@@ -1591,6 +1596,7 @@ async def run_turn_streaming(
                         force_mode=force_mode,
                         has_sandbox_actuator=has_sandbox_actuator,
                         session=session,
+                        posture=active_posture,
                     )
                 except ModeSelectionError as e:
                     await audit.write(
@@ -1626,7 +1632,7 @@ async def run_turn_streaming(
 
                 prior_selected_names = {tool.name for tool in tool_surface.selected}
                 prior_selected_names.update(response_tool_names)
-                visible_all = visible_tools(registry, session, mode)
+                visible_all = visible_tools(registry, session, mode, active_posture)
                 tool_surface = await select_tools_for_turn_async(
                     registry,
                     session,

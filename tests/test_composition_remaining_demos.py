@@ -337,3 +337,57 @@ def test_integrity_floor_admits_above_floor_input() -> None:
         now=_NOW,
     )
     assert result.rule != INTEGRITY_FLOOR_REFUSED_RULE
+
+
+def test_posture_selection_changes_the_envelope_dial_decision() -> None:
+    """#305 stored→consumed proof: selecting `strict` vs
+    `low-friction-practical` produces DIFFERENT DECISIONS on the same action —
+    the posture-bound risk_preference is consumed by the envelope dial at
+    decide() time, not merely stored on PolicyContext. (The tool client threads
+    `policy_context.risk_preference` into decide(); this test composes
+    posture→PolicyContext→decide with the same cell as demo #1.)"""
+    from capabledeputy.daemon.lifecycle import apply_posture_from_config
+    from capabledeputy.policy.context import PolicyContext
+
+    labels, _, axis_d = _principal_axes()
+    cell = CellKey(
+        category="proprietary_work",
+        effect="data.write_scratch",
+        decision_context_canonical="principal:alice",
+        reversibility="reversible",
+    )
+    envset = EnvelopeSet(
+        by_cell={
+            cell: OutcomeEnvelope(
+                cell=cell,
+                strictest=RuleOutcome.REQUIRE_APPROVAL,
+                loosest=RuleOutcome.AUTO,
+            ),
+        },
+    )
+
+    def _decide_under(posture_id: str) -> Decision:
+        pc, _ = apply_posture_from_config({"posture": posture_id}, PolicyContext())
+        return decide(
+            frozenset({_wide_cap()}),
+            Action(kind=CapabilityKind.WRITE_FS, target="/x"),
+            labels=labels,
+            axis_d=axis_d,
+            effect_class="data.write_scratch",
+            rules_v2=DecisionRules(rules=()),
+            effective_reversibility=ReversibilityLabel(
+                degree=ReversibilityDegree.REVERSIBLE,
+                agent=ReversalAgent.SYSTEM,
+            ),
+            envelope_set=envset,
+            risk_preference=pc.risk_preference,
+            now=_NOW,
+        ).decision
+
+    strict_decision = _decide_under("strict")
+    low_friction_decision = _decide_under("low-friction-practical")
+    assert strict_decision == Decision.REQUIRE_APPROVAL  # cautious → strictest
+    assert strict_decision != low_friction_decision, (
+        "strict and low-friction-practical must differ on the envelope dial — "
+        "a posture that doesn't change decisions is a cosmetic preset"
+    )

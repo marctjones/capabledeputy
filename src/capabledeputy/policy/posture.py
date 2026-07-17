@@ -114,6 +114,92 @@ class Posture:
 DEFAULT_POSTURE = Posture(id="__default__").validate()
 
 
+# --- #305 — the three shipped presets ---------------------------------
+#
+# Three postures differing by DIAL and PATTERN-DEFAULT, never by floor: all
+# three inherit identical structural DENY floors (credential exfil,
+# untrusted→egress, irreversible-delete, the restricted Pattern-3/5 floor) —
+# that invariant is what the #306 conformance harness fuzzes. All three keep
+# `projection_only=True` (the #359 secure default): raw-allowed-with-taint is
+# an explicit operator override via a custom posture, never a shipped preset.
+
+BUILTIN_POSTURES: dict[str, Posture] = {
+    # Pure security-model compliance: Pattern 3/5 for anything labeled,
+    # tighteners only, metadata-only retention. Every egress gates.
+    "strict": Posture(
+        id="strict",
+        risk_preference=RiskPreference.CAUTIOUS,
+        flow_pattern_defaults={
+            Tier.NONE: ExecutionMode.TURN_LEVEL,
+            Tier.SENSITIVE: ExecutionMode.REFERENCE,
+            Tier.REGULATED: ExecutionMode.REFERENCE,
+            Tier.RESTRICTED: ExecutionMode.REFERENCE,
+            Tier.PROHIBITED: ExecutionMode.SEALED,
+        },
+        projection_only=True,
+        inspector_set=("after_hours_purchase_tightener",),
+        retention=Retention.METADATA,
+    ).validate(),
+    # Pattern 3/5 for restricted, Pattern 2 (dual-LLM) for regulated, safe
+    # relaxers active, redacted retention.
+    "high-security-useful": Posture(
+        id="high-security-useful",
+        risk_preference=RiskPreference.BALANCED,
+        flow_pattern_defaults={
+            Tier.NONE: ExecutionMode.TURN_LEVEL,
+            Tier.SENSITIVE: ExecutionMode.TURN_LEVEL,
+            Tier.REGULATED: ExecutionMode.DUAL_LLM,
+            Tier.RESTRICTED: ExecutionMode.REFERENCE,
+            Tier.PROHIBITED: ExecutionMode.SEALED,
+        },
+        projection_only=True,
+        inspector_set=("self_egress_relaxer", "after_hours_purchase_tightener"),
+        retention=Retention.REDACTED,
+    ).validate(),
+    # Pattern 1 for regulated + 3/5 for restricted, broader relaxers, artifact
+    # retention. NB: projection_only stays True even here — the low-friction
+    # dial never silently reopens #359 turn-1 steering.
+    "low-friction-practical": Posture(
+        id="low-friction-practical",
+        risk_preference=RiskPreference.PERMISSIVE,
+        flow_pattern_defaults={
+            Tier.NONE: ExecutionMode.TURN_LEVEL,
+            Tier.SENSITIVE: ExecutionMode.TURN_LEVEL,
+            Tier.REGULATED: ExecutionMode.TURN_LEVEL,
+            Tier.RESTRICTED: ExecutionMode.REFERENCE,
+            Tier.PROHIBITED: ExecutionMode.SEALED,
+        },
+        projection_only=True,
+        inspector_set=("self_egress_relaxer", "after_hours_purchase_tightener"),
+        retention=Retention.ARTIFACT,
+    ).validate(),
+}
+
+
+def resolve_posture(
+    posture_id: str,
+    custom: dict[str, Posture] | None = None,
+) -> Posture:
+    """Resolve a posture id against the shipped presets plus any operator
+    postures. Fail-closed (Principle VI): an unknown id refuses rather than
+    silently falling back to a default, and a custom posture may not shadow a
+    builtin preset id (so `strict` always means the shipped strict)."""
+    custom = custom or {}
+    shadowed = set(custom) & set(BUILTIN_POSTURES)
+    if shadowed:
+        raise PostureError(
+            f"custom posture(s) {sorted(shadowed)} shadow builtin preset ids; "
+            "rename them — builtin preset semantics must be stable.",
+        )
+    available = {**BUILTIN_POSTURES, **custom}
+    posture = available.get(posture_id)
+    if posture is None:
+        raise PostureError(
+            f"unknown posture {posture_id!r}; known postures: {sorted(available)}",
+        )
+    return posture
+
+
 def _parse_flow_pattern_defaults(raw: object, *, posture_id: str) -> dict[Tier, ExecutionMode]:
     if raw is None:
         return dict(DEFAULT_FLOW_PATTERN_DEFAULTS)

@@ -20,6 +20,7 @@ callers and audit tooling don't have to special-case the mode.
 from __future__ import annotations
 
 import re
+from typing import Any
 from uuid import UUID
 
 from capabledeputy.agent.loop import AgentTurnResult
@@ -90,9 +91,10 @@ def _format_tool_descriptions_for_prompt(
     registry: ToolRegistry,
     session: Session,
     mode: ExecutionMode = ExecutionMode.PROGRAMMATIC,
+    posture: Any = None,
 ) -> str:
     lines = ["Available tools (call via `call('tool_name', kwarg=value)`):"]
-    for tool in visible_tools(registry, session, mode):
+    for tool in visible_tools(registry, session, mode, posture):
         lines.append(f"  - {tool.name} — {tool.description}")
     return "\n".join(lines)
 
@@ -144,10 +146,15 @@ async def run_programmatic_turn(
     )
     session = await graph.add_turn(session_id, user_turn)
 
+    # #305 — thread the active posture so the projection-only knob applies to
+    # the programmatic tool surface too (PROGRAMMATIC is a raw-exposure mode).
+    pc = getattr(tool_client, "policy_context", None)
+    active_posture = getattr(pc, "active_posture", None) if pc is not None else None
     tool_block = _format_tool_descriptions_for_prompt(
         registry,
         session,
         ExecutionMode.PROGRAMMATIC,
+        active_posture,
     )
     full_prompt = f"{system_prompt}\n\n{tool_block}"
 

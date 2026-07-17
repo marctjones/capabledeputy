@@ -403,12 +403,88 @@ def load_decision_inspectors(
     return tuple(inspectors)
 
 
+# --- #305 — posture inspector_set application -------------------------
+#
+# A selected posture's `inspector_set` names which inspectors are ACTIVE.
+# Canonical names are the snake_case builtin ids (the same tokens the
+# `decision_inspectors:` config uses); script inspectors go by their
+# configured name. Runtime builtin instances carry class-style `.name`
+# attributes, so map them back to the canonical ids for matching.
+
+_BUILTIN_CANONICAL_NAMES: dict[str, str] = {
+    "SelfEgressRelaxer": "self_egress_relaxer",
+    "AfterHoursPurchaseTightener": "after_hours_purchase_tightener",
+}
+
+# Default-parameterized builtins for a preset that names an inspector the
+# operator has not configured. INVARIANT: every factory here must be
+# tighten-or-inert with its defaults — anything in this dict is
+# auto-instantiated UNCONFIGURED when a posture names it, so a default that
+# relaxed anything would loosen policy without an operator declaration.
+# Today: the tightener only ratchets stricter, and the relaxer with an empty
+# self-address set relaxes nothing (inert until the operator parameterizes
+# it via a `decision_inspectors:` entry).
+_BUILTIN_DEFAULT_FACTORIES: dict[str, Any] = {
+    "self_egress_relaxer": lambda: SelfEgressRelaxer(self_addresses=frozenset()),
+    "after_hours_purchase_tightener": AfterHoursPurchaseTightener,
+}
+
+
+def canonical_inspector_name(inspector: Any) -> str:
+    """The posture-facing name of a loaded inspector (snake_case builtin id,
+    or the script's configured name)."""
+    name = str(getattr(inspector, "name", type(inspector).__name__))
+    return _BUILTIN_CANONICAL_NAMES.get(name, name)
+
+
+def select_inspectors_for_posture(
+    inspectors: tuple[Any, ...],
+    inspector_set: tuple[str, ...],
+) -> tuple[tuple[Any, ...], list[str]]:
+    """Apply a posture's `inspector_set` to the loaded inspector tuple.
+
+    Semantics (#305):
+      - a loaded inspector whose canonical name is IN the set stays active
+        (with its operator parameterization);
+      - a loaded inspector NOT in the set is deactivated (e.g. `strict`
+        drops a configured relaxer — tighteners only);
+      - a name in the set with NO loaded match: a known builtin is
+        instantiated with safe defaults (returned warning tells the operator
+        to parameterize it), anything else is fail-closed — a typo'd preset
+        must not silently ship with fewer inspectors than it declares.
+
+    Returns (active_inspectors, warnings).
+    """
+    wanted = set(inspector_set)
+    active = [i for i in inspectors if canonical_inspector_name(i) in wanted]
+    matched = {canonical_inspector_name(i) for i in active}
+    warnings: list[str] = []
+    for name in inspector_set:  # preserve posture-declared order for defaults
+        if name in matched:
+            continue
+        factory = _BUILTIN_DEFAULT_FACTORIES.get(name)
+        if factory is None:
+            raise DecisionInspectorConfigError(
+                f"posture inspector_set names unknown inspector {name!r}; known "
+                f"builtins: {sorted(_BUILTIN_DEFAULT_FACTORIES)}, plus any "
+                "configured `decision_inspectors:` entry names.",
+            )
+        active.append(factory())
+        warnings.append(
+            f"posture inspector {name!r} has no `decision_inspectors:` entry; "
+            "instantiated with safe defaults — add an entry to parameterize it.",
+        )
+    return tuple(active), warnings
+
+
 # Exposed so the chokepoint can detect & await async inspectors without
 # importing this module's adapter directly.
 __all__ = [
     "DecisionInspectorConfigError",
     "DecisionInspectorScriptError",
     "ScriptDecisionInspector",
+    "canonical_inspector_name",
     "isawaitable",
     "load_decision_inspectors",
+    "select_inspectors_for_posture",
 ]

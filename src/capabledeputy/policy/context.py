@@ -48,6 +48,11 @@ class PolicyContext:
     purposes: Any = None
     relationship_groups: Any = None
     relationship_groups_path: Any = None
+    # #305 — the operator-selected security posture (None ⇒ legacy behavior
+    # everywhere: select_mode heuristic, projection-only default, all
+    # configured inspectors active). Typed Any to keep this module free of a
+    # posture import; the daemon resolves and validates it at startup.
+    active_posture: Any = None
 
     @property
     def sandbox_actuator_wired(self) -> bool:
