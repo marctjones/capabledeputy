@@ -13,10 +13,13 @@ dict access. The orphan audit is a static check.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+import yaml
+
+from capabledeputy.policy.config_format import resolve_config_path as _resolve_config_path
 
 
 class RiskRegisterError(RuntimeError):
@@ -179,13 +182,18 @@ class RiskRegister:
 
 
 def load(path: Path) -> RiskRegister:
-    """Load configs/risk_register.json. Fail-closed on missing file,
-    malformed JSON, or malformed entry shape."""
+    """Load the risk register. Fail-closed on missing file, malformed content, or
+    malformed entry shape.
+
+    #384 — format-agnostic: parsed as YAML (a JSON superset), so the file may be
+    `.json` (legacy) or `.yaml`; an absent path falls back to its sibling with
+    the other extension so the file can migrate without touching call sites."""
+    path = _resolve_config_path(path)
     if not path.is_file():
         raise RiskRegisterError(f"risk register missing: {path}")
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
         raise RiskRegisterError(f"risk register unparseable: {path} — {e}") from e
 
     if not isinstance(raw, dict):

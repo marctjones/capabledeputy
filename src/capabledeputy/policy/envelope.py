@@ -20,7 +20,6 @@ Both are operator-curated and AI-read-only.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -28,6 +27,7 @@ from typing import Any
 
 import yaml
 
+from capabledeputy.policy.config_format import resolve_config_path as _resolve_config_path
 from capabledeputy.policy.decision_rules import RuleOutcome
 
 
@@ -187,15 +187,22 @@ def load_envelopes(path: Path) -> EnvelopeSet:
 
 
 def load_risk_preference(path: Path) -> RiskPreferenceProfile:
-    """Load configs/risk_preference.json. Fail-closed on missing/
-    unparseable. The `value` field is required and must be one of
-    cautious/balanced/permissive (case-sensitive)."""
+    """Load the risk-preference profile. Fail-closed on missing/unparseable. The
+    `value` field is required and must be one of cautious/balanced/permissive.
+
+    #384 — format-agnostic: the body is parsed as YAML (a JSON superset), so the
+    file may be either `.json` (legacy) or `.yaml` (the single-format target). If
+    the given path is absent, its `.yaml`/`.json` sibling is tried, so operators
+    can migrate the file without touching call sites."""
+    path = _resolve_config_path(path)
     if not path.is_file():
         raise EnvelopeError(f"risk_preference config missing: {path}")
     try:
-        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
+        data: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
         raise EnvelopeError(f"unparseable: {path} — {e}") from e
+    if not isinstance(data, dict):
+        raise EnvelopeError(f"risk_preference config must be a mapping: {path}")
     try:
         value = RiskPreference(str(data["value"]))
     except (KeyError, ValueError) as e:
