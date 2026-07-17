@@ -263,13 +263,17 @@ def compile_envelope(index: int, raw: object) -> OutcomeEnvelope:
     if "range" not in raw:
         raise ConfigError(f"{where} missing required: 'range' [strictest, loosest]")
     predicate = parse_when(raw["when"], where=where)
+    category = predicate.axis_a_category
+    effect = predicate.effect_class
+    initiator = predicate.axis_d_initiator
+    reversibility = predicate.axis_d_reversibility_degree
     missing = [
         name
         for name, val in (
-            ("category", predicate.axis_a_category),
-            ("effect", predicate.effect_class),
-            ("initiator", predicate.axis_d_initiator),
-            ("reversibility", predicate.axis_d_reversibility_degree),
+            ("category", category),
+            ("effect", effect),
+            ("initiator", initiator),
+            ("reversibility", reversibility),
         )
         if val is None
     ]
@@ -278,16 +282,21 @@ def compile_envelope(index: int, raw: object) -> OutcomeEnvelope:
             f"{where}: envelope 'when' must set every cell coordinate; missing {missing} "
             "(need a single category + effect:/initiator:/reversibility:)",
         )
+    # Every coordinate is present (the check above); narrow for the type checker.
+    assert category is not None
+    assert effect is not None
+    assert initiator is not None
+    assert reversibility is not None
     band = raw["range"]
     if not isinstance(band, list) or len(band) != 2:
         raise ConfigError(f"{where}: 'range' must be a 2-item [strictest, loosest] list")
     strictest = _outcome(band[0], where)
     loosest = _outcome(band[1], where)
     cell = CellKey(
-        category=predicate.axis_a_category,
-        effect=predicate.effect_class,
-        decision_context_canonical=predicate.axis_d_initiator,
-        reversibility=predicate.axis_d_reversibility_degree,
+        category=category,
+        effect=effect,
+        decision_context_canonical=initiator,
+        reversibility=reversibility,
     )
     try:
         return OutcomeEnvelope(cell=cell, strictest=strictest, loosest=loosest)

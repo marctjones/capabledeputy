@@ -109,7 +109,7 @@ def effect_class_for(kind: CapabilityKind) -> str:
     return _EFFECT_CLASS_FOR_KIND.get(kind, "data.read_file")
 
 
-def broad_capability(kind: CapabilityKind) -> frozenset[Capability]:
+def broad_capability(kind: CapabilityKind | str) -> frozenset[Capability]:
     """A wildcard, destructive-allowed, non-expiring capability for `kind`, so
     the legacy leg resolves to ALLOW and the composed floors — not a missing
     capability — are what any DENY is attributed to."""
