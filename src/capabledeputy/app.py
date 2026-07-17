@@ -83,6 +83,11 @@ class App:
             store=self.store,
             purposes=purposes,
             quarantined_available=_quarantined_resolved is not None,
+            # #379 precedence lattice: the active posture's dial is the baseline
+            # a purpose may only tighten at spawn. None when no posture selected.
+            posture_risk_preference=(
+                policy_context.risk_preference if policy_context is not None else None
+            ),
         )
         self.memory = LabeledMemoryStore(resolved_state_db_path)
         self.purchase_queue = PurchaseQueue()
