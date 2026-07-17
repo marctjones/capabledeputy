@@ -464,8 +464,16 @@ class LiveSession:
         )
 
     async def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> Any:
-        return await self._dispatch(
-            lambda: self._with_retry(
-                lambda s: s.call_tool(name, arguments=arguments),
+        # #320 — a hung upstream tool op is cancelled by an app-level deadline
+        # (the supervisor otherwise reacts only to detected death, not a hang).
+        from capabledeputy.reliability import default_tool_timeout_seconds, with_timeout
+
+        return await with_timeout(
+            default_tool_timeout_seconds(),
+            f"upstream tool {name!r}",
+            lambda: self._dispatch(
+                lambda: self._with_retry(
+                    lambda s: s.call_tool(name, arguments=arguments),
+                ),
             ),
         )
