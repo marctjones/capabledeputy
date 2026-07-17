@@ -16,8 +16,11 @@ human writes
         then: deny
         because: financial data may not be emailed to an external recipient
 
-instead of a nested `axis_a/axis_b/axis_c` block. Folding the remaining concepts
-(labels, envelopes, posture) onto this same surface is Phase 2 (#381-#383).
+instead of a nested `axis_a/axis_b/axis_c` block. Phase 2 folds the remaining
+concepts onto the same surface: outcome envelopes as range outcomes (#382), the
+Axis-A category catalog (#381), and the posture bundle (#383). Each compiles to
+the engine's existing typed structure; the source-matching label RULES
+(email/fs) are the one remaining sub-grammar.
 
 Fail-closed (#380 / Principle VI): all parse/compile errors are the single
 `ConfigError` — no per-file error types, one uniform failure contract.
@@ -30,6 +33,8 @@ from pathlib import Path
 
 import yaml
 
+from capabledeputy.daily_driver import Retention
+from capabledeputy.mode.dispatcher import ExecutionMode
 from capabledeputy.policy.decision_rules import (
     DecisionRule,
     DecisionRules,
@@ -41,7 +46,15 @@ from capabledeputy.policy.envelope import (
     EnvelopeError,
     EnvelopeSet,
     OutcomeEnvelope,
+    RiskPreference,
 )
+from capabledeputy.policy.posture import (
+    DEFAULT_FLOW_PATTERN_DEFAULTS,
+    Posture,
+    PostureError,
+)
+from capabledeputy.policy.resolution import Category
+from capabledeputy.policy.tiers import Tier
 
 
 class ConfigError(RuntimeError):
@@ -298,14 +311,125 @@ def compile_envelopes(section: object) -> EnvelopeSet:
     return EnvelopeSet(by_cell=by_cell)
 
 
+# --- labels: the Axis-A category catalog (#381) ---------------------------
+#
+# design §4 Labels: "what is this data?" The category catalog declares each
+# category's default tier + how profiles may move it. Compiles to the engine's
+# existing `dict[str, Category]`. (Source-matching label RULES — email/fs — are a
+# richer sub-grammar folded separately.)
+
+_RESOLUTION_MODES = ("fixed-high", "context-up", "context-resolved")
+
+
+def compile_category(index: int, raw: object) -> tuple[str, Category]:
+    where = f"labels[{index}]"
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{where} is not an object")
+    try:
+        cid = str(raw["category"])
+    except KeyError:
+        raise ConfigError(f"{where} missing required: 'category'") from None
+    try:
+        tier = Tier(str(raw.get("tier", "sensitive")))
+    except ValueError as e:
+        raise ConfigError(f"{where} ({cid!r}) bad tier: {e}") from e
+    resolution = str(raw.get("resolution", "context-up"))
+    if resolution not in _RESOLUTION_MODES:
+        raise ConfigError(
+            f"{where} ({cid!r}) bad resolution {resolution!r}; one of {list(_RESOLUTION_MODES)}",
+        )
+    return cid, Category(
+        id=cid,
+        default_tier=tier,
+        resolution_mode=resolution,  # type: ignore[arg-type]
+        risk_ids=tuple(str(r) for r in (raw.get("risk_ids") or [])),
+    )
+
+
+def compile_categories(section: object) -> dict[str, Category]:
+    """Compile the `labels:` category catalog into `dict[str, Category]`."""
+    if section is None:
+        return {}
+    if not isinstance(section, list):
+        raise ConfigError("labels: must be a list of category definitions")
+    out: dict[str, Category] = {}
+    for i, raw in enumerate(section):
+        cid, cat = compile_category(i, raw)
+        if cid in out:
+            raise ConfigError(f"labels[{i}]: duplicate category {cid!r}")
+        out[cid] = cat
+    return out
+
+
+# --- posture: the named bundle a human usually edits (#383) ----------------
+
+
+def _flow_patterns(raw: object, *, where: str) -> dict[Tier, ExecutionMode]:
+    out = dict(DEFAULT_FLOW_PATTERN_DEFAULTS)
+    if raw is None:
+        return out
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{where}: flow_patterns must be a mapping")
+    for tier_raw, mode_raw in raw.items():
+        try:
+            tier = Tier(str(tier_raw))
+        except ValueError as e:
+            raise ConfigError(f"{where}: bad tier {tier_raw!r}") from e
+        try:
+            out[tier] = ExecutionMode(str(mode_raw))
+        except ValueError as e:
+            raise ConfigError(f"{where}: bad flow pattern {mode_raw!r} for {tier.value}") from e
+    return out
+
+
+def compile_posture(section: object) -> Posture | None:
+    """Compile the `posture:` section into a `Posture` (validated fail-closed —
+    a sub-floor flow pattern refuses). `None` when no posture section is present."""
+    if section is None:
+        return None
+    if not isinstance(section, dict):
+        raise ConfigError("posture: must be a mapping")
+    try:
+        pid = str(section["id"])
+    except KeyError:
+        raise ConfigError("posture: missing required: 'id'") from None
+    where = f"posture ({pid!r})"
+    try:
+        dial = RiskPreference(str(section.get("dial", section.get("risk_preference", "cautious"))))
+        retention = Retention(str(section.get("retention", "metadata")))
+        clearance = (
+            Tier(str(section["clearance_max_tier"])) if section.get("clearance_max_tier") else None
+        )
+    except ValueError as e:
+        raise ConfigError(f"{where}: {e}") from e
+    flow = _flow_patterns(section.get("flow_patterns"), where=where)
+    inspectors = tuple(str(s) for s in (section.get("inspectors") or ()))
+    projection_only = bool(section.get("projection_only", True))
+    try:
+        return Posture(
+            id=pid,
+            clearance_max_tier=clearance,
+            risk_preference=dial,
+            flow_pattern_defaults=flow,
+            projection_only=projection_only,
+            inspector_set=inspectors,
+            retention=retention,
+        ).validate()
+    except PostureError as e:
+        raise ConfigError(f"{where}: {e}") from e
+
+
 @dataclass(frozen=True)
 class CompiledPolicy:
-    """The compiled output of the unified authoring surface. Grows a field per
-    concept as Phase 2 folds them in; today it carries the compiled decision
-    rules and outcome envelopes."""
+    """The compiled output of the unified authoring surface — today: decision
+    rules, outcome envelopes, the Axis-A category catalog, and the active
+    posture. One document, one grammar, compiled to the engine's typed
+    structures."""
 
     rules: DecisionRules = field(default_factory=lambda: DecisionRules(rules=()))
     envelopes: EnvelopeSet = field(default_factory=lambda: EnvelopeSet(by_cell={}))
+    categories: dict[str, Category] = field(default_factory=dict)
+    posture: Posture | None = None
 
 
 def compile_document(doc: object) -> CompiledPolicy:
@@ -318,6 +442,8 @@ def compile_document(doc: object) -> CompiledPolicy:
     return CompiledPolicy(
         rules=compile_rules(doc.get("rules")),
         envelopes=compile_envelopes(doc.get("envelopes")),
+        categories=compile_categories(doc.get("labels")),
+        posture=compile_posture(doc.get("posture")),
     )
 
 

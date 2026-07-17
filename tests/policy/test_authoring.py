@@ -283,3 +283,103 @@ def test_compile_document_includes_envelopes() -> None:
     assert len(compiled.envelopes.by_cell) == 1
     cell = next(iter(compiled.envelopes.by_cell))
     assert cell.category == "financial"
+
+
+# --- #381: labels / category catalog --------------------------------------
+
+from capabledeputy.policy.authoring import (  # noqa: E402
+    compile_categories,
+    compile_posture,
+)
+
+
+def test_compile_categories_builds_engine_category() -> None:
+    cats = compile_categories(
+        [
+            {"category": "financial", "tier": "restricted", "resolution": "fixed-high"},
+            {"category": "news", "tier": "sensitive", "risk_ids": ["R-1"]},
+        ],
+    )
+    assert set(cats) == {"financial", "news"}
+    assert cats["financial"].default_tier == Tier.RESTRICTED
+    assert cats["financial"].resolution_mode == "fixed-high"
+    assert cats["news"].risk_ids == ("R-1",)
+
+
+def test_compile_categories_fail_closed() -> None:
+    with pytest.raises(ConfigError, match="missing required: 'category'"):
+        compile_categories([{"tier": "restricted"}])
+    with pytest.raises(ConfigError, match="bad tier"):
+        compile_categories([{"category": "x", "tier": "nonsense"}])
+    with pytest.raises(ConfigError, match="bad resolution"):
+        compile_categories([{"category": "x", "resolution": "wat"}])
+    with pytest.raises(ConfigError, match="duplicate category"):
+        compile_categories([{"category": "x"}, {"category": "x"}])
+    with pytest.raises(ConfigError, match="must be a list"):
+        compile_categories({"category": "x"})
+
+
+# --- #383: posture bundle -------------------------------------------------
+
+
+def test_compile_posture_builds_validated_posture() -> None:
+    from capabledeputy.daily_driver import Retention
+    from capabledeputy.mode.dispatcher import ExecutionMode
+    from capabledeputy.policy.envelope import RiskPreference
+
+    p = compile_posture(
+        {
+            "id": "strict",
+            "dial": "cautious",
+            "projection_only": True,
+            "clearance_max_tier": "restricted",
+            "retention": "metadata",
+            "inspectors": ["after_hours_purchase_tightener"],
+            "flow_patterns": {"regulated": "reference", "restricted": "reference"},
+        },
+    )
+    assert p is not None
+    assert p.id == "strict"
+    assert p.risk_preference == RiskPreference.CAUTIOUS
+    assert p.clearance_max_tier == Tier.RESTRICTED
+    assert p.retention == Retention.METADATA
+    assert p.inspector_set == ("after_hours_purchase_tightener",)
+    assert p.flow_pattern_for(Tier.REGULATED) == ExecutionMode.REFERENCE
+
+
+def test_compile_posture_none_when_absent() -> None:
+    assert compile_posture(None) is None
+
+
+def test_compile_posture_rejects_sub_floor_via_config_error() -> None:
+    # restricted -> turn_level is below the REFERENCE/SEALED floor; validate()
+    # raises PostureError, surfaced as the uniform ConfigError.
+    with pytest.raises(ConfigError, match="floor"):
+        compile_posture({"id": "broken", "flow_patterns": {"restricted": "turn_level"}})
+
+
+def test_compile_posture_fail_closed_fields() -> None:
+    with pytest.raises(ConfigError, match="missing required: 'id'"):
+        compile_posture({"dial": "cautious"})
+    with pytest.raises(ConfigError, match="must be a mapping"):
+        compile_posture([1, 2])
+    with pytest.raises(ConfigError):
+        compile_posture({"id": "x", "dial": "bogus-dial"})
+
+
+def test_compile_document_full_unified_doc() -> None:
+    """A single unified document compiles ALL folded concepts together —
+    rules, envelopes, labels, and the posture — to typed engine structures."""
+    from capabledeputy.policy.authoring import compile_document
+
+    doc = {
+        "posture": {"id": "strict", "dial": "cautious"},
+        "labels": [{"category": "financial", "tier": "restricted"}],
+        "rules": [{"id": "r", "when": "financial + send_email", "then": "deny"}],
+        "envelopes": [_env_entry()],
+    }
+    compiled = compile_document(doc)
+    assert compiled.posture is not None and compiled.posture.id == "strict"
+    assert set(compiled.categories) == {"financial"}
+    assert len(compiled.rules.rules) == 1
+    assert len(compiled.envelopes.by_cell) == 1
