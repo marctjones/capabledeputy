@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 from pathlib import Path
 from typing import Any
 
@@ -125,9 +124,11 @@ def idle_shutdown_seconds() -> float | None:
 # (e.g., labels.yaml category shape) lands per-feature in Phases 2+;
 # T005 only enforces *presence + parseability* of the eleven files.
 
-_V09_CONFIG_FILES_JSON: tuple[str, ...] = (
-    "risk_register.json",
-    "risk_preference.json",
+# Formerly JSON (#384) — now YAML, parsed format-agnostically. A legacy `.json`
+# sibling still satisfies the presence check via `resolve_config_path`.
+_V09_CONFIG_FILES_FORMER_JSON: tuple[str, ...] = (
+    "risk_register.yaml",
+    "risk_preference.yaml",
 )
 _V09_CONFIG_FILES_YAML: tuple[str, ...] = (
     "purposes.yaml",
@@ -175,14 +176,18 @@ def load_v09_configs(configs_dir: Path | None = None) -> dict[str, Any]:
             "or run the daemon from a directory with a configs/ tree.",
         )
 
+    from capabledeputy.policy.config_format import resolve_config_path
+
     loaded: dict[str, Any] = {}
-    for name in _V09_CONFIG_FILES_JSON:
-        path = base / name
+    for name in _V09_CONFIG_FILES_FORMER_JSON:
+        # #384 — format-agnostic: accept `.yaml` (target) or a legacy `.json`
+        # sibling, parsed as YAML (a JSON superset).
+        path = resolve_config_path(base / name)
         if not path.is_file():
             raise V09ConfigError(f"v0.9 config missing: {path}")
         try:
-            loaded[path.stem] = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
+            loaded[path.stem] = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError as e:
             raise V09ConfigError(f"v0.9 config unparseable: {path} — {e}") from e
 
     for name in _V09_CONFIG_FILES_YAML:
@@ -338,7 +343,7 @@ def build_policy_context_from_configs(
     bindings = raw_bindings if raw_bindings.bindings else None
     overrides = load_overrides(base / "override_policy.yaml")
     envelope_set = load_envelopes(base / "envelopes.yaml")
-    risk_pref = load_risk_preference(base / "risk_preference.json")
+    risk_pref = load_risk_preference(base / "risk_preference.yaml")
     purposes_path = base / "purposes.yaml"
     # Q1 (FR-030, 2026-05-25): pass the legacy risk_preference.json
     # path so purposes that omit `risk_preference_dial` fall back
@@ -347,7 +352,7 @@ def build_policy_context_from_configs(
     purposes = (
         load_purposes(
             purposes_path,
-            legacy_risk_preference_path=base / "risk_preference.json",
+            legacy_risk_preference_path=base / "risk_preference.yaml",
         )
         if purposes_path.is_file()
         else None

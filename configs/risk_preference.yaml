@@ -1,0 +1,7 @@
+_comment: 003 Risk-Preference Profile (FR-030). Single owner-set value (cautious |
+  balanced | permissive) plus version + signature. AI-read-only. Frozen snapshot copied
+  into sessions.risk_preference_at_spawn at spawn for replayability. The dial selects
+  the outcome inside each cell's envelope; never crosses a hard floor.
+value: cautious
+version: 1
+signature: null
