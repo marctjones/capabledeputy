@@ -507,6 +507,50 @@ def enforce_requirements_from_config(
     )
 
 
+def overlay_unified_policy_from_config(
+    policy_context: Any,
+    configs_dir: Path | None = None,
+) -> tuple[Any, list[str]]:
+    """Migration step (epic #377): if a unified `configs/capdep.yaml` exists,
+    compile it and OVERLAY the decision structures it declares onto the
+    per-file-built PolicyContext — the authoring surface becomes the source of
+    truth for the sections it authors, while unauthored sections keep the legacy
+    per-file loaders (incremental adapter migration, design §10).
+
+    Overlaid when declared: the decision `rules` and outcome `envelopes`.
+    Validated at start via the #385 gate; a compile failure or any error-severity
+    problem refuses daemon start (fail-closed, Principle VI).
+
+    Absent `capdep.yaml` ⇒ no-op (returns the context unchanged), so existing
+    per-file deployments are untouched.
+    """
+    path = _resolve_v09_configs_dir(configs_dir) / "capdep.yaml"
+    if not path.is_file():
+        return policy_context, []
+
+    from capabledeputy.policy.authoring import ConfigError, load_config
+    from capabledeputy.policy.policy_check import check_policy, has_errors
+
+    compiled = load_config(path)  # fail-closed ConfigError propagates
+    problems = check_policy(compiled)
+    if has_errors(problems):
+        lines = "\n".join(f"  - {p.where}: {p.message}" for p in problems if p.severity == "error")
+        raise ConfigError(f"{path} failed policy check:\n{lines}")
+
+    changes: dict[str, Any] = {}
+    if compiled.rules.rules:
+        changes["rules_v2"] = compiled.rules
+    if compiled.envelopes.by_cell:
+        changes["envelope_set"] = compiled.envelopes
+    if not changes:
+        return policy_context, []
+    policy_context = dataclasses.replace(policy_context, **changes)
+    return policy_context, [
+        f"[capdep.yaml] unified policy active — overlaid {sorted(changes)} "
+        f"({len(problems)} check note(s))",
+    ]
+
+
 async def run_daemon(
     socket_path: Path | None = None,
     state_db_path: Path | None = None,
@@ -532,6 +576,14 @@ async def run_daemon(
     policy_context, purposes_registry = build_policy_context_from_configs(
         state_db_path=effective_db,
     )
+
+    # Migration (epic #377): overlay a unified configs/capdep.yaml, when present,
+    # onto the per-file-built context (opt-in; absent file ⇒ no-op).
+    import sys as _sys_overlay
+
+    policy_context, _overlay_messages = overlay_unified_policy_from_config(policy_context)
+    for _m in _overlay_messages:
+        print(_m, file=_sys_overlay.stderr)
 
     # 004 U034/U035: same config can declare a `sandbox:` block with
     # region specs for the Podman provider. Construct the actuator
