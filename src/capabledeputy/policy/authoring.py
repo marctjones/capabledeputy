@@ -30,8 +30,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
+
+if TYPE_CHECKING:
+    from capabledeputy.policy.fs_labeling import FsLabeler, FsLabelRule
 
 from capabledeputy.daily_driver import Retention
 from capabledeputy.mode.dispatcher import ExecutionMode
@@ -355,6 +359,49 @@ def compile_category(index: int, raw: object) -> tuple[str, Category]:
     )
 
 
+def compile_label_rule(index: int, raw: object) -> FsLabelRule:
+    """Compile one `label_rules:` entry (a source→label binding) into an
+    `FsLabelRule`. Source facets: `path:` (prefix), `glob:` (filename). This is
+    the `capdep label bind` fold-in for filesystem sources; email/message source
+    binding is a follow-up sub-grammar."""
+    from capabledeputy.policy.fs_labeling import (
+        FsLabelRule,
+        FsLabelRuleError,
+        label_string_to_state,
+    )
+
+    where = f"label_rules[{index}]"
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{where} is not an object")
+    if "label" not in raw:
+        raise ConfigError(f"{where} missing required: 'label'")
+    path = raw.get("path")
+    glob = raw.get("glob")
+    if not path and not glob:
+        raise ConfigError(f"{where}: a label rule needs a 'path:' prefix or a 'glob:'")
+    try:
+        labels = label_string_to_state(str(raw["label"]))
+    except FsLabelRuleError as e:
+        raise ConfigError(f"{where}: {e}") from e
+    return FsLabelRule(
+        labels=labels,
+        path_prefixes=(str(path),) if path else (),
+        filename_globs=(str(glob),) if glob else (),
+    )
+
+
+def compile_label_rules(section: object) -> FsLabeler:
+    """Compile the `label_rules:` section into an `FsLabeler` (raise-only source
+    labeling). Empty/missing ⇒ a labeler with no rules."""
+    from capabledeputy.policy.fs_labeling import FsLabeler
+
+    if section is None:
+        return FsLabeler(rules=())
+    if not isinstance(section, list):
+        raise ConfigError("label_rules: must be a list")
+    return FsLabeler(rules=tuple(compile_label_rule(i, raw) for i, raw in enumerate(section)))
+
+
 def compile_categories(section: object) -> dict[str, Category]:
     """Compile the `labels:` category catalog into `dict[str, Category]`."""
     if section is None:
@@ -451,6 +498,7 @@ class CompiledPolicy:
     envelopes: EnvelopeSet = field(default_factory=lambda: EnvelopeSet(by_cell={}))
     categories: dict[str, Category] = field(default_factory=dict)
     posture: Posture | None = None
+    label_rules: FsLabeler | None = None
 
 
 def compile_document(doc: object) -> CompiledPolicy:
@@ -460,11 +508,13 @@ def compile_document(doc: object) -> CompiledPolicy:
         return CompiledPolicy()
     if not isinstance(doc, dict):
         raise ConfigError("policy document root must be a mapping of sections")
+    label_rules = compile_label_rules(doc.get("label_rules")) if doc.get("label_rules") else None
     return CompiledPolicy(
         rules=compile_rules(doc.get("rules")),
         envelopes=compile_envelopes(doc.get("envelopes")),
         categories=compile_categories(doc.get("labels")),
         posture=compile_posture(doc.get("posture")),
+        label_rules=label_rules,
     )
 
 

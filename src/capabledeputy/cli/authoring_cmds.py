@@ -192,8 +192,8 @@ def label_add(
 ) -> None:
     """Declare a new Axis-A category in the label catalog (write-through).
 
-    (Binding a specific source/address to a label — `label bind` — awaits the
-    source-matching label-rule sub-grammar; this adds the category definition.)"""
+    This adds the category *definition*; use `capdep label bind` to bind a
+    filesystem source to a label."""
 
     def _mutate(doc: dict) -> None:
         labels = doc.setdefault("labels", [])
@@ -204,3 +204,38 @@ def label_add(
         labels.append({"category": category, "tier": tier})
 
     _apply_and_write(path, _mutate, f"category {category!r} added at tier {tier!r}")
+
+
+@label_app.command("bind")
+def label_bind(
+    source: Annotated[
+        str,
+        typer.Argument(help="A filesystem path prefix, or a glob (e.g. '*.key')."),
+    ],
+    label: Annotated[
+        str,
+        typer.Argument(help="Label string, e.g. confidential.financial / untrusted.external."),
+    ],
+    path: Annotated[Path, typer.Option("--file", help="Unified policy document.")] = DEFAULT_DOC,
+) -> None:
+    """Bind a filesystem source to a label — a raise-only source-labeling rule
+    (write-through). A `*` in `source` is treated as a filename glob; otherwise a
+    path prefix.
+
+    (Email/message sender binding is a follow-up sub-grammar.)"""
+    facet = "glob" if "*" in source else "path"
+
+    def _mutate(doc: dict) -> None:
+        rules = doc.setdefault("label_rules", [])
+        entry = {facet: source, "label": label}
+        if entry in rules:
+            raise MutationRefusedError(
+                [
+                    PolicyProblem(
+                        f"label_rule {source!r}", "identical binding already exists", "error"
+                    )
+                ],
+            )
+        rules.append(entry)
+
+    _apply_and_write(path, _mutate, f"bound {facet} {source!r} → {label!r}")

@@ -148,6 +148,34 @@ def test_label_add_bad_tier_refuses(tmp_path: Path) -> None:
     assert not p.exists()
 
 
+# --- CLI: capdep label bind (source -> label) -----------------------------
+
+
+def test_label_bind_path_writes_rule(tmp_path: Path) -> None:
+    p = tmp_path / "capdep.yaml"
+    result = runner.invoke(
+        label_app, ["bind", "/home/op/tax", "confidential.financial", "--file", str(p)]
+    )
+    assert result.exit_code == 0
+    doc = yaml.safe_load(p.read_text())
+    assert doc["label_rules"][0] == {"path": "/home/op/tax", "label": "confidential.financial"}
+
+
+def test_label_bind_glob_detected(tmp_path: Path) -> None:
+    p = tmp_path / "capdep.yaml"
+    result = runner.invoke(label_app, ["bind", "*.key", "untrusted.external", "--file", str(p)])
+    assert result.exit_code == 0
+    doc = yaml.safe_load(p.read_text())
+    assert doc["label_rules"][0] == {"glob": "*.key", "label": "untrusted.external"}
+
+
+def test_label_bind_duplicate_refused(tmp_path: Path) -> None:
+    p = tmp_path / "capdep.yaml"
+    args = ["bind", "/home/op/tax", "confidential.financial", "--file", str(p)]
+    assert runner.invoke(label_app, args).exit_code == 0
+    assert runner.invoke(label_app, args).exit_code == 1  # identical binding refused
+
+
 # --- end-to-end: a sequence of mutations composes and stays valid ---------
 
 

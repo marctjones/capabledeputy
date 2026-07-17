@@ -367,6 +367,52 @@ def test_compile_posture_fail_closed_fields() -> None:
         compile_posture({"id": "x", "dial": "bogus-dial"})
 
 
+# --- source-matching label rules (label bind) -----------------------------
+
+from capabledeputy.policy.authoring import compile_label_rule, compile_label_rules  # noqa: E402
+
+
+def test_compile_label_rule_path_and_glob() -> None:
+    r = compile_label_rule(0, {"path": "/home/op/tax", "label": "confidential.financial"})
+    assert r.path_prefixes == ("/home/op/tax",)
+    assert r.filename_globs == ()
+    assert {t.category for t in r.labels.a} == {"financial"}
+
+    g = compile_label_rule(0, {"glob": "*.key", "label": "untrusted.external"})
+    assert g.filename_globs == ("*.key",)
+    assert any(True for _ in g.labels.b)  # provenance label present
+
+
+def test_compile_label_rules_labeler_actually_labels() -> None:
+    labeler = compile_label_rules(
+        [{"path": "/home/op/tax", "label": "confidential.financial"}],
+    )
+    hit = labeler.labels_for("/home/op/tax/2025.pdf")
+    assert {t.category for t in hit.a} == {"financial"}
+    assert labeler.labels_for("/home/op/photos/x.jpg").a == frozenset()
+
+
+def test_compile_label_rules_fail_closed() -> None:
+    with pytest.raises(ConfigError, match="missing required: 'label'"):
+        compile_label_rules([{"path": "/x"}])
+    with pytest.raises(ConfigError, match="needs a 'path:' prefix or a 'glob:'"):
+        compile_label_rules([{"label": "untrusted.external"}])
+    with pytest.raises(ConfigError, match="must be a list"):
+        compile_label_rules({"path": "/x"})
+
+
+def test_compile_document_includes_label_rules() -> None:
+    from capabledeputy.policy.authoring import compile_document
+
+    compiled = compile_document(
+        {"label_rules": [{"path": "/home/op/tax", "label": "confidential.financial"}]},
+    )
+    assert compiled.label_rules is not None
+    assert {t.category for t in compiled.label_rules.labels_for("/home/op/tax/x").a} == {
+        "financial"
+    }
+
+
 def test_compile_document_full_unified_doc() -> None:
     """A single unified document compiles ALL folded concepts together —
     rules, envelopes, labels, and the posture — to typed engine structures."""
