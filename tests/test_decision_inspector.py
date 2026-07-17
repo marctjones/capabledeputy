@@ -250,3 +250,100 @@ def test_after_hours_tightener_skips_non_purchase() -> None:
         proposed_outcome=_FakeDecision(decision=Decision.ALLOW),
     )
     assert result is None
+
+
+# --- #305 — posture inspector_set application --------------------------
+
+
+def _loaded_builtins():
+    from capabledeputy.substrate.decision_inspectors_builtin import (
+        AfterHoursPurchaseTightener,
+        SelfEgressRelaxer,
+    )
+
+    return (
+        SelfEgressRelaxer(self_addresses=frozenset({"me@example.com"})),
+        AfterHoursPurchaseTightener(start_hour_utc=23, end_hour_utc=5),
+    )
+
+
+def test_posture_inspector_set_filters_configured_inspectors() -> None:
+    """`strict` (tighteners only) deactivates a configured relaxer while
+    keeping the configured tightener WITH its operator parameterization."""
+    from capabledeputy.policy.decision_inspector_loader import (
+        select_inspectors_for_posture,
+    )
+
+    active, warnings = select_inspectors_for_posture(
+        _loaded_builtins(),
+        ("after_hours_purchase_tightener",),
+    )
+    assert [type(i).__name__ for i in active] == ["AfterHoursPurchaseTightener"]
+    assert active[0].start_hour_utc == 23  # operator parameterization kept
+    assert warnings == []
+
+
+def test_posture_inspector_set_auto_instantiates_missing_builtin_with_warning() -> None:
+    """A preset naming a builtin the operator has NOT configured gets a
+    safe-default instance plus a warning telling the operator to parameterize
+    it — never a silent drop."""
+    from capabledeputy.policy.decision_inspector_loader import (
+        select_inspectors_for_posture,
+    )
+
+    active, warnings = select_inspectors_for_posture(
+        (),
+        ("self_egress_relaxer", "after_hours_purchase_tightener"),
+    )
+    assert {type(i).__name__ for i in active} == {
+        "SelfEgressRelaxer",
+        "AfterHoursPurchaseTightener",
+    }
+    # The default relaxer is INERT (empty self-address set relaxes nothing).
+    relaxer = next(i for i in active if type(i).__name__ == "SelfEgressRelaxer")
+    assert relaxer.self_addresses == frozenset()
+    assert len(warnings) == 2
+    assert all("safe defaults" in w for w in warnings)
+
+
+def test_posture_inspector_set_unknown_name_fails_closed() -> None:
+    """A typo'd inspector name refuses daemon start rather than silently
+    shipping the posture with fewer inspectors than it declares."""
+    from capabledeputy.policy.decision_inspector_loader import (
+        DecisionInspectorConfigError,
+        select_inspectors_for_posture,
+    )
+
+    with pytest.raises(DecisionInspectorConfigError, match="unknown inspector"):
+        select_inspectors_for_posture(_loaded_builtins(), ("self_egres_relaxer",))
+
+
+def test_posture_inspector_set_matches_script_inspectors_by_name() -> None:
+    """Script inspectors go by their configured name; an inspector_set naming
+    one keeps it active."""
+    from capabledeputy.policy.decision_inspector_loader import (
+        select_inspectors_for_posture,
+    )
+
+    class _FakeScriptInspector:
+        name = "my_custom_policy"
+
+    active, warnings = select_inspectors_for_posture(
+        (_FakeScriptInspector(),),
+        ("my_custom_policy",),
+    )
+    assert [i.name for i in active] == ["my_custom_policy"]
+    assert warnings == []
+
+
+def test_posture_empty_inspector_set_deactivates_all() -> None:
+    """An explicitly selected posture with an empty inspector_set means 'no
+    refinement layer' — deliberate, not an accident (posture=None keeps all
+    configured inspectors; that path never calls this function)."""
+    from capabledeputy.policy.decision_inspector_loader import (
+        select_inspectors_for_posture,
+    )
+
+    active, warnings = select_inspectors_for_posture(_loaded_builtins(), ())
+    assert active == ()
+    assert warnings == []

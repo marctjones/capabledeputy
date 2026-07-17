@@ -79,18 +79,25 @@ _RAW_LABELED_DATA_TOOLS: frozenset[str] = frozenset(
 # planner reaches inbox content ONLY via `quarantined.extract_inbox` (a
 # schema-validated projection: EmailTriageItem / EmailForwardable / …).
 # `inbox.list` metadata (id/sender/subject) stays visible for message selection.
-# NB: projection-only is the default posture; a v0.56 profile knob
-# (`planner_projection_only`) will be able to allow raw untrusted reads
-# (raw-allowed-with-taint) per profile. Scope: inbox.read today; web.fetch is a
-# follow-up (it needs a fetch-and-project tool, which does not exist yet).
+# NB: projection-only is the default; a selected posture (#305) can set
+# `projection_only: false` (raw-allowed-with-taint) — but that knob only
+# governs the raw-exposure modes (TURN_LEVEL/PROGRAMMATIC). In the
+# exposure-limited modes these readers are hidden unconditionally (see
+# `filter_tools_for_mode` layer 2 — the #302 floor). No shipped preset sets
+# the knob false. Scope: inbox.read today; web.fetch is a follow-up (it needs
+# a fetch-and-project tool, which does not exist yet).
 UNTRUSTED_SOURCE_RAW_READERS: frozenset[str] = frozenset({"inbox.read"})
 
 
-def planner_projection_only() -> bool:
-    """Whether untrusted-source raw readers are hidden from the planner by
-    default (projection-only posture). Single choke point so v0.56 profiles can
-    make this profile-driven; today it is the secure default, always True."""
-    return True
+def planner_projection_only(posture: Posture | None = None) -> bool:
+    """Whether untrusted-source raw readers are hidden from the planner
+    (projection-only posture). Single choke point, now posture-driven (#305):
+    the secure default (True) holds unless an explicitly selected posture sets
+    `projection_only: false` (raw-allowed-with-taint — an operator override; no
+    shipped preset does this). NB: this knob governs TURN_LEVEL/PROGRAMMATIC
+    only — in the exposure-limited modes `filter_tools_for_mode` hides the
+    untrusted-source raw readers regardless (the #302 floor)."""
+    return True if posture is None else posture.projection_only
 
 
 def select_mode(
@@ -224,6 +231,7 @@ def select_mode(
 def filter_tools_for_mode(
     tools: list[ToolDefinition],
     mode: ExecutionMode,
+    posture: Posture | None = None,
 ) -> list[ToolDefinition]:
     """Hide raw readers from the planner.
 
@@ -232,13 +240,18 @@ def filter_tools_for_mode(
          mode under the projection-only posture (the default), so an injected
          email body can never reach the planner raw — not even on the first read
          of a fresh TURN_LEVEL session. The planner uses the quarantined
-         projection instead.
+         projection instead. #305: a selected posture with
+         `projection_only: false` (raw-allowed-with-taint) disables THIS layer
+         only — the operator accepts turn-1 steering risk, relying on the
+         taint→egress floor.
       2. #302 — raw labeled-data readers (`memory.read`/`fs.read`/`web.fetch`)
-         are hidden additionally in the exposure-limited modes (DUAL_LLM /
-         REFERENCE / SEALED), i.e. once the session carries a confidential
-         Axis-A category.
+         AND the untrusted-source raw readers are hidden in the exposure-limited
+         modes (DUAL_LLM / REFERENCE / SEALED), i.e. once the session carries a
+         confidential Axis-A category. This layer is knob-independent: no
+         posture can re-expose a raw reader in an exposure-limited mode (the
+         #302 CaMeL invariant is a floor).
     """
-    if planner_projection_only():
+    if planner_projection_only(posture):
         tools = [t for t in tools if t.name not in UNTRUSTED_SOURCE_RAW_READERS]
     if mode not in {
         ExecutionMode.DUAL_LLM,
@@ -246,7 +259,8 @@ def filter_tools_for_mode(
         ExecutionMode.SEALED,
     }:
         return tools
-    return [t for t in tools if t.name not in _RAW_LABELED_DATA_TOOLS]
+    hidden = _RAW_LABELED_DATA_TOOLS | UNTRUSTED_SOURCE_RAW_READERS
+    return [t for t in tools if t.name not in hidden]
 
 
 # --- T105 — restricted-tier mode floor (FR-047) ---------------------
@@ -372,6 +386,7 @@ def visible_tools(
     registry: ToolRegistry,
     session: Session,
     mode: ExecutionMode,
+    posture: Posture | None = None,
 ) -> list[ToolDefinition]:
     """Tools the LLM should see for this turn.
 
@@ -379,8 +394,12 @@ def visible_tools(
       1. It survives the mode filter (raw readers hidden in dual-LLM).
       2. The session holds at least one capability whose kind matches
          the tool's capability_kind.
+
+    `posture` threads the #305 projection-only knob into the mode filter.
+    Callers that omit it get the secure default (projection-only) — a missing
+    thread fails closed, never open.
     """
-    mode_filtered = filter_tools_for_mode(registry.list(), mode)
+    mode_filtered = filter_tools_for_mode(registry.list(), mode, posture)
     return [
         t
         for t in mode_filtered
