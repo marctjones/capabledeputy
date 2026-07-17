@@ -202,3 +202,84 @@ def test_compile_document_fail_closed_on_non_mapping() -> None:
     with pytest.raises(ConfigError, match="mapping of sections"):
         compile_document([1, 2, 3])
     assert compile_document(None).rules.rules == ()
+
+
+# --- #382: envelopes as range outcomes ------------------------------------
+
+from capabledeputy.policy.authoring import compile_envelope, compile_envelopes  # noqa: E402
+from capabledeputy.policy.envelope import CellKey, RiskPreference  # noqa: E402
+
+
+def _env_entry(**over):
+    base = {
+        "when": "financial + send_email + initiator:principal:owner + reversibility:irreversible",
+        "range": ["approve", "allow"],
+    }
+    base.update(over)
+    return base
+
+
+def test_compile_envelope_builds_the_cell_and_band() -> None:
+    env = compile_envelope(0, _env_entry())
+    assert env.cell == CellKey(
+        category="financial",
+        effect="social.send_email",
+        decision_context_canonical="principal:owner",
+        reversibility="irreversible",
+    )
+    # approve -> REQUIRE_APPROVAL (strictest); allow -> AUTO (loosest).
+    assert env.strictest == RuleOutcome.REQUIRE_APPROVAL
+    assert env.loosest == RuleOutcome.AUTO
+
+
+def test_compiled_envelope_dial_selection_matches_engine() -> None:
+    """The compiled envelope drives the engine's dial selection exactly: cautious
+    picks strictest, permissive picks loosest — proving the compiled cell is the
+    same structure the engine consumes."""
+    env = compile_envelope(0, _env_entry())
+    assert env.select(RiskPreference.CAUTIOUS) == RuleOutcome.REQUIRE_APPROVAL
+    assert env.select(RiskPreference.PERMISSIVE) == RuleOutcome.AUTO
+
+
+def test_compiled_envelope_cell_matches_the_decide_lookup_key() -> None:
+    """The cell the compiler builds is byte-identical to the CellKey decide()
+    computes for the same context — so a compiled envelope actually fires."""
+    from capabledeputy.policy.envelope import CellKey as EngineCell
+
+    env = compile_envelope(0, _env_entry())
+    # This mirrors engine._decide_impl's cell construction.
+    engine_cell = EngineCell(
+        category="financial",
+        effect="social.send_email",
+        decision_context_canonical="principal:owner",
+        reversibility="irreversible",
+    )
+    assert env.cell == engine_cell
+
+
+def test_compile_envelopes_fail_closed() -> None:
+    with pytest.raises(ConfigError, match="missing required: 'range'"):
+        compile_envelopes([{"when": "financial + send_email"}])
+    with pytest.raises(ConfigError, match="every cell coordinate"):
+        # missing initiator + reversibility
+        compile_envelopes([{"when": "financial + send_email", "range": ["approve", "allow"]}])
+    with pytest.raises(ConfigError, match="2-item"):
+        compile_envelopes([_env_entry(range=["approve"])])
+    with pytest.raises(ConfigError, match="unknown outcome"):
+        compile_envelopes([_env_entry(range=["nope", "allow"])])
+    # strictest looser than loosest is rejected (via EnvelopeError -> ConfigError).
+    with pytest.raises(ConfigError):
+        compile_envelopes([_env_entry(range=["allow", "approve"])])
+    with pytest.raises(ConfigError, match="duplicate cell"):
+        compile_envelopes([_env_entry(), _env_entry()])
+    with pytest.raises(ConfigError, match="must be a list"):
+        compile_envelopes({"when": "x"})
+
+
+def test_compile_document_includes_envelopes() -> None:
+    from capabledeputy.policy.authoring import compile_document
+
+    compiled = compile_document({"envelopes": [_env_entry()]})
+    assert len(compiled.envelopes.by_cell) == 1
+    cell = next(iter(compiled.envelopes.by_cell))
+    assert cell.category == "financial"

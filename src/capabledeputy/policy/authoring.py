@@ -36,6 +36,12 @@ from capabledeputy.policy.decision_rules import (
     RuleOutcome,
     RulePredicate,
 )
+from capabledeputy.policy.envelope import (
+    CellKey,
+    EnvelopeError,
+    EnvelopeSet,
+    OutcomeEnvelope,
+)
 
 
 class ConfigError(RuntimeError):
@@ -116,6 +122,8 @@ def parse_when(expr: str, *, where: str) -> RulePredicate:
     effect_class: str | None = None
     target: str | None = None
     time_window: tuple[int, int] | None = None
+    initiator: str | None = None
+    reversibility: str | None = None
 
     for term in terms:
         low = term.lower()
@@ -130,6 +138,10 @@ def parse_when(expr: str, *, where: str) -> RulePredicate:
                 categories.append(val)
             elif key == "effect":
                 effect_class = val
+            elif key == "initiator":
+                initiator = val
+            elif key == "reversibility":
+                reversibility = val
             else:
                 raise ConfigError(f"{where}: unknown term key {key!r} in 'when'")
             continue
@@ -155,6 +167,10 @@ def parse_when(expr: str, *, where: str) -> RulePredicate:
         predicate_kwargs["target"] = target
     if time_window is not None:
         predicate_kwargs["axis_d_time_window"] = time_window
+    if initiator is not None:
+        predicate_kwargs["axis_d_initiator"] = initiator
+    if reversibility is not None:
+        predicate_kwargs["axis_d_reversibility_degree"] = reversibility
     if not predicate_kwargs:
         raise ConfigError(f"{where}: 'when' matched no facets (empty predicate)")
     return RulePredicate(**predicate_kwargs)
@@ -208,13 +224,88 @@ def compile_rules(section: object) -> DecisionRules:
     return DecisionRules(rules=tuple(out))
 
 
+# --- envelopes: a rule whose outcome is a RANGE (#382) --------------------
+#
+# design §4: "an envelope is just a rule whose outcome is a range the dial picks
+# within." The compact `when` supplies the four cell coordinates (category,
+# effect, initiator, reversibility); `range: [strictest, loosest]` supplies the
+# band. Compiles to the engine's existing OutcomeEnvelope / EnvelopeSet.
+
+
+def _outcome(word: str, where: str) -> RuleOutcome:
+    low = str(word).lower()
+    if low not in _OUTCOME_ALIASES:
+        raise ConfigError(f"{where}: unknown outcome {word!r}; one of {sorted(_OUTCOME_ALIASES)}")
+    return _OUTCOME_ALIASES[low]
+
+
+def compile_envelope(index: int, raw: object) -> OutcomeEnvelope:
+    """Compile one compact envelope entry into an `OutcomeEnvelope`. The cell key
+    requires all four coordinates so the engine's exact-match lookup can fire."""
+    where = f"envelopes[{index}]"
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{where} is not an object")
+    if "when" not in raw:
+        raise ConfigError(f"{where} missing required: 'when'")
+    if "range" not in raw:
+        raise ConfigError(f"{where} missing required: 'range' [strictest, loosest]")
+    predicate = parse_when(raw["when"], where=where)
+    missing = [
+        name
+        for name, val in (
+            ("category", predicate.axis_a_category),
+            ("effect", predicate.effect_class),
+            ("initiator", predicate.axis_d_initiator),
+            ("reversibility", predicate.axis_d_reversibility_degree),
+        )
+        if val is None
+    ]
+    if missing:
+        raise ConfigError(
+            f"{where}: envelope 'when' must set every cell coordinate; missing {missing} "
+            "(need a single category + effect:/initiator:/reversibility:)",
+        )
+    band = raw["range"]
+    if not isinstance(band, list) or len(band) != 2:
+        raise ConfigError(f"{where}: 'range' must be a 2-item [strictest, loosest] list")
+    strictest = _outcome(band[0], where)
+    loosest = _outcome(band[1], where)
+    cell = CellKey(
+        category=predicate.axis_a_category,
+        effect=predicate.effect_class,
+        decision_context_canonical=predicate.axis_d_initiator,
+        reversibility=predicate.axis_d_reversibility_degree,
+    )
+    try:
+        return OutcomeEnvelope(cell=cell, strictest=strictest, loosest=loosest)
+    except EnvelopeError as e:
+        # strictest-looser-than-loosest etc. Re-raise as the uniform ConfigError.
+        raise ConfigError(f"{where}: {e}") from e
+
+
+def compile_envelopes(section: object) -> EnvelopeSet:
+    """Compile the `envelopes:` section into the engine's `EnvelopeSet`."""
+    if section is None:
+        return EnvelopeSet(by_cell={})
+    if not isinstance(section, list):
+        raise ConfigError("envelopes: must be a list")
+    by_cell: dict[CellKey, OutcomeEnvelope] = {}
+    for i, raw in enumerate(section):
+        env = compile_envelope(i, raw)
+        if env.cell in by_cell:
+            raise ConfigError(f"envelopes[{i}]: duplicate cell {env.cell}")
+        by_cell[env.cell] = env
+    return EnvelopeSet(by_cell=by_cell)
+
+
 @dataclass(frozen=True)
 class CompiledPolicy:
     """The compiled output of the unified authoring surface. Grows a field per
-    concept as Phase 2 folds them in (labels, envelopes, posture); today it
-    carries the compiled decision rules."""
+    concept as Phase 2 folds them in; today it carries the compiled decision
+    rules and outcome envelopes."""
 
     rules: DecisionRules = field(default_factory=lambda: DecisionRules(rules=()))
+    envelopes: EnvelopeSet = field(default_factory=lambda: EnvelopeSet(by_cell={}))
 
 
 def compile_document(doc: object) -> CompiledPolicy:
@@ -224,7 +315,10 @@ def compile_document(doc: object) -> CompiledPolicy:
         return CompiledPolicy()
     if not isinstance(doc, dict):
         raise ConfigError("policy document root must be a mapping of sections")
-    return CompiledPolicy(rules=compile_rules(doc.get("rules")))
+    return CompiledPolicy(
+        rules=compile_rules(doc.get("rules")),
+        envelopes=compile_envelopes(doc.get("envelopes")),
+    )
 
 
 def load_config(path: Path) -> CompiledPolicy:
