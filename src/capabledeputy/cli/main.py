@@ -17,6 +17,7 @@ from capabledeputy.cli.image import image_app
 from capabledeputy.cli.init_cmd import init_command
 from capabledeputy.cli.maintenance import maintenance_app
 from capabledeputy.cli.override_cmd import override_app
+from capabledeputy.cli.authoring_cmds import label_app, posture_app, rule_app
 from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.scripting import scripting_app
 from capabledeputy.cli.session import session_app
@@ -44,6 +45,9 @@ app.add_typer(session_app, name="session")
 app.add_typer(scripting_app, name="scripting")
 app.add_typer(audit_app, name="audit")
 app.add_typer(policy_app, name="policy")
+app.add_typer(posture_app, name="posture")
+app.add_typer(rule_app, name="rule")
+app.add_typer(label_app, name="label")
 app.add_typer(tool_app, name="tool")
 app.add_typer(approval_app, name="approval")
 app.add_typer(override_app, name="override")

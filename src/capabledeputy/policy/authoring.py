@@ -384,15 +384,27 @@ def _flow_patterns(raw: object, *, where: str) -> dict[Tier, ExecutionMode]:
 
 def compile_posture(section: object) -> Posture | None:
     """Compile the `posture:` section into a `Posture` (validated fail-closed —
-    a sub-floor flow pattern refuses). `None` when no posture section is present."""
+    a sub-floor flow pattern refuses). `None` when no posture section is present.
+
+    Two forms:
+      - `{use: <preset-id>}` — reference a shipped preset by id (the form
+        `capdep posture use` writes). Fail-closed on an unknown id.
+      - a full definition (`id`, `dial`, `flow_patterns`, …)."""
     if section is None:
         return None
     if not isinstance(section, dict):
         raise ConfigError("posture: must be a mapping")
+    if "use" in section:
+        from capabledeputy.policy.posture import resolve_posture
+
+        try:
+            return resolve_posture(str(section["use"]))
+        except PostureError as e:
+            raise ConfigError(f"posture: {e}") from e
     try:
         pid = str(section["id"])
     except KeyError:
-        raise ConfigError("posture: missing required: 'id'") from None
+        raise ConfigError("posture: missing required: 'id' (or 'use: <preset>')") from None
     where = f"posture ({pid!r})"
     try:
         dial = RiskPreference(str(section.get("dial", section.get("risk_preference", "cautious"))))
