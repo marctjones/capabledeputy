@@ -1,0 +1,89 @@
+# Operator requirement DSL (#307) — worked examples.
+#
+# Copy to `configs/requirements.yaml` to activate. These are the OPERATOR
+# CUSTOM requirements, checked ADDITIVELY on top of the project's built-in hard
+# requirements — the three UNCONDITIONAL floors, always checked, non-disableable:
+#
+#   builtin.untrusted-never-egress        external-untrusted provenance never egresses
+#   builtin.untrusted-source-quarantined  untrusted-source raw readers never reach the planner
+#   builtin.restricted-mode-floor         restricted data never runs planner-exposing
+#
+# Health/financial DENY-egress are deliberately NOT built-in: the engine's
+# `personal`-profile + human-ratified `crosses_floor` path can suppress those
+# floors over the operator's OWN data (a designed autonomy feature). Asserting
+# them as absolute would be a false guarantee. Declare them below as CUSTOM
+# requirements if your deployment wants them.
+#
+# Every requirement is VERIFIED at daemon start against the active posture, its
+# decision-inspectors, and the loaded rules — including the effective decision
+# AFTER inspectors run. An unmet requirement refuses start (fail-closed). So a
+# `SelfEgressRelaxer` that would relax a confidential email to ALLOW is caught
+# here if it conflicts with a `never_silent_egress` requirement below.
+#
+# NB (v1 scope): the daemon-start gate checks the DEFAULT MANAGED profile —
+# the runtime does not yet carry a static `trust_profile_is_personal` for the
+# startup checker, so a health-deny requirement is verified against managed
+# behavior at start. The full personal-profile check (which reports a health-deny
+# requirement UNMET when a ratified crossing rule would breach it) is available
+# via the `verify_requirements(..., trust_profile_is_personal=True, rules_v2=...)`
+# API for CI. TODO: thread personal-ness into the startup gate.
+#
+# Requirement kinds:
+#   never_silent_egress             category MUST never egress on a bare ALLOW
+#                                   (any channel). Requires: category.
+#   deny_egress                     category MUST be hard-DENIED on the named
+#                                   channels. Requires: category, channels.
+#   planner_blind_to_untrusted_source  the planner MUST never see untrusted-source
+#                                   raw readers in ANY mode (i.e. projection_only
+#                                   must be true) — closes the CaMeL turn-1 window.
+#   channels: send_email | send_message | queue_purchase | web_fetch
+#
+# --- Worked examples, aligned to the three shipped presets ------------------
+
+requirements:
+  # Hard anti-injection stance: forbid raw untrusted-source readers reaching the
+  # planner even in TURN_LEVEL. The three shipped presets all keep
+  # projection_only=true, so this holds for them; a custom posture running
+  # projection_only=false (raw-allowed-with-taint) would fail this and refuse
+  # start. Drop this requirement if that trade-off is intended for your deployment.
+  - id: op.planner-blind-to-untrusted-source
+    kind: planner_blind_to_untrusted_source
+    description: The planner never sees untrusted-source raw readers (no turn-1 steering).
+
+  # strict / high-security-useful: the operator's own hard line — credentials
+  # and proprietary work never leave without a human or a floor in the path.
+  - id: op.credentials-never-silent-egress
+    kind: never_silent_egress
+    category: credentials
+    description: >
+      A credential label must never reach an egress channel on a bare ALLOW.
+      (Verifies no enabled relaxer opens a silent path for self-addressed mail.)
+
+  - id: op.proprietary-work-never-silent-egress
+    kind: never_silent_egress
+    category: proprietary_work
+    description: Proprietary work product never egresses without a human/floor.
+
+  # Health / financial hard-DENY on the confidentiality channels — the floors
+  # that used to look "built-in" but are actually conditional on the trust
+  # profile. Declared here so the checker verifies them against THIS deployment
+  # (they hold under the default managed profile; a personal profile with a
+  # ratified crossing rule would report them UNMET, which is the point).
+  - id: op.health-deny-egress
+    kind: deny_egress
+    category: health
+    channels: [send_email, send_message, queue_purchase]
+    description: Health data may never egress on a communication or purchase channel.
+
+  - id: op.financial-deny-comm-egress
+    kind: deny_egress
+    category: financial
+    channels: [send_email, send_message]
+    description: Financial data may never egress on a communication channel.
+
+  # Tighten financial purchase from the default REQUIRE_APPROVAL to a hard DENY.
+  - id: op.financial-deny-purchase
+    kind: deny_egress
+    category: financial
+    channels: [queue_purchase]
+    description: Financial data may never drive a purchase egress, even with approval.

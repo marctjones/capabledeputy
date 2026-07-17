@@ -461,6 +461,52 @@ def apply_posture_from_config(
     return policy_context, messages
 
 
+def enforce_requirements_from_config(
+    policy_context: Any,
+    configs_dir: Path | None = None,
+) -> list[str]:
+    """#307 — verify the built-in hard requirements PLUS any operator custom
+    requirements (`configs/requirements.yaml`) against the ACTIVE posture and
+    its decision-inspectors, and RAISE `RequirementViolationError` if any is unmet —
+    the daemon-start gate.
+
+    A no-op (returns `[]`) when no posture is active: the requirement DSL is a
+    posture-scoped guarantee, and an unconfigured legacy runtime keeps its
+    prior startup behavior — the three built-in floors are STRUCTURALLY enforced
+    by the engine regardless; this gate is the tripwire that proves the selected
+    posture + inspectors don't undermine them. Fail-closed (Principle VI): an
+    unparseable requirements.yaml or an unmet requirement refuses start.
+
+    Requirements are checked against the loaded `rules_v2` (the policy context
+    carries them) and the deployment's trust profile. NB: PolicyContext does not
+    yet carry a static `trust_profile_is_personal`, so the startup gate reflects
+    the DEFAULT MANAGED profile; the personal-profile check is reachable via the
+    `verify_requirements(..., trust_profile_is_personal=True)` API for CI.
+    TODO: thread personal-ness into the startup gate when it becomes available.
+    """
+    active = getattr(policy_context, "active_posture", None)
+    if active is None:
+        return []
+
+    from capabledeputy.policy.requirements import (
+        enforce_requirements,
+        load_requirements,
+    )
+
+    req_path = _resolve_v09_configs_dir(configs_dir) / "requirements.yaml"
+    custom = load_requirements(req_path) if req_path.is_file() else ()
+    return enforce_requirements(
+        posture=active,
+        decision_inspectors=tuple(getattr(policy_context, "decision_inspectors", ()) or ()),
+        clearance_max_tier=getattr(policy_context, "clearance_max_tier", None),
+        custom=custom,
+        trust_profile_is_personal=bool(
+            getattr(policy_context, "trust_profile_is_personal", False),
+        ),
+        rules_v2=getattr(policy_context, "rules_v2", None),
+    )
+
+
 async def run_daemon(
     socket_path: Path | None = None,
     state_db_path: Path | None = None,
@@ -562,6 +608,12 @@ async def run_daemon(
             policy_context,
         )
         for message in posture_messages:
+            print(message, file=_sys_di.stderr)
+
+        # #307 — operator requirement DSL. Verify the built-in hard requirements
+        # plus any configs/requirements.yaml against the active posture +
+        # inspectors; RequirementViolationError refuses start (fail-closed).
+        for message in enforce_requirements_from_config(policy_context):
             print(message, file=_sys_di.stderr)
 
     # Precedence: explicit arg (CLI flag) > CAPDEP_POLICY_PREVIEW env >
