@@ -12,12 +12,12 @@ from rich.console import Console
 from capabledeputy.cli.approval import approval_app
 from capabledeputy.cli.audit import audit_app, watch_command
 from capabledeputy.cli.audit_cmd import storage_shape_command
+from capabledeputy.cli.authoring_cmds import label_app, posture_app, rule_app
 from capabledeputy.cli.chat import chat_command, demo_app
 from capabledeputy.cli.image import image_app
 from capabledeputy.cli.init_cmd import init_command
 from capabledeputy.cli.maintenance import maintenance_app
 from capabledeputy.cli.override_cmd import override_app
-from capabledeputy.cli.authoring_cmds import label_app, posture_app, rule_app
 from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.scripting import scripting_app
 from capabledeputy.cli.session import session_app

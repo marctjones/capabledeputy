@@ -3,8 +3,6 @@ policy, reporting ALL problems at once + running the #307 requirement gate."""
 
 from __future__ import annotations
 
-import pytest
-
 from capabledeputy.policy.authoring import compile_document
 from capabledeputy.policy.policy_check import PolicyProblem, check_policy, has_errors
 from capabledeputy.policy.requirements import Requirement, RequirementKind
