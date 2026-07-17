@@ -28,7 +28,7 @@ Fail-closed (#380 / Principle VI): all parse/compile errors are the single
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import yaml
@@ -458,3 +458,32 @@ def load_config(path: Path) -> CompiledPolicy:
     except yaml.YAMLError as e:
         raise ConfigError(f"policy config unparseable: {path} — {e}") from e
     return compile_document(doc)
+
+
+# --- layered defaults (#388) ----------------------------------------------
+#
+# design §7/§11: ship sane built-in defaults so a fresh install runs without
+# hand-authoring every section; operators override only the deltas. Only the
+# posture has a meaningful default — the shipped 'strict' preset, the safe
+# choice — so an unauthored deployment starts locked-down rather than refusing
+# to start. rules / envelopes / labels default empty (never-auto + no catalog).
+
+
+def apply_defaults(compiled: CompiledPolicy) -> CompiledPolicy:
+    """Fill unset sections with safe built-in defaults. Today: an absent posture
+    defaults to the shipped `strict` preset."""
+    from capabledeputy.policy.posture import BUILTIN_POSTURES
+
+    if compiled.posture is None:
+        return replace(compiled, posture=BUILTIN_POSTURES["strict"])
+    return compiled
+
+
+def load_config_with_defaults(path: Path | None) -> CompiledPolicy:
+    """Compile the operator's unified document layered over the built-in
+    defaults. A missing/None path yields the pure defaults, so a fresh install
+    runs from a safe (strict) posture without authoring anything. An EXISTING but
+    unparseable/invalid file still fails closed."""
+    if path is None or not path.is_file():
+        return apply_defaults(CompiledPolicy())
+    return apply_defaults(load_config(path))

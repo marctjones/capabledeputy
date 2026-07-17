@@ -295,3 +295,41 @@ def policy_test(
     matched = result["matched_capability"]
     if matched:
         console.print(f"matched capability: {matched['kind']}({matched['pattern']})")
+
+
+@policy_app.command("check")
+def policy_check_command(
+    path: Annotated[
+        Path,
+        typer.Argument(help="Unified policy document (defaults to configs/capdep.yaml)."),
+    ] = Path("configs/capdep.yaml"),
+) -> None:
+    """#385 — validate a unified policy document in one pass: cross-references
+    (a rule's crosses_floor is a real floor, categories are declared, a posture's
+    inspector_set names known inspectors) plus the #307 requirement gate against
+    the selected posture. Reports ALL problems; exits non-zero on any error.
+
+    A missing file compiles the built-in defaults (the shipped `strict` posture),
+    so `capdep policy check` on a fresh install still runs.
+    """
+    from capabledeputy.policy.authoring import (
+        ConfigError,
+        load_config_with_defaults,
+    )
+    from capabledeputy.policy.policy_check import check_policy, has_errors
+
+    try:
+        compiled = load_config_with_defaults(path if path.is_file() else None)
+    except ConfigError as e:
+        err_console.print(f"[red]config error[/red] {e}")
+        raise typer.Exit(2) from None
+
+    problems = check_policy(compiled)
+    if not problems:
+        console.print("[green]policy check passed[/green] — no problems")
+        return
+    for problem in problems:
+        color = "red" if problem.severity == "error" else "yellow"
+        console.print(f"[{color}]{problem.severity}[/{color}] {problem.where}: {problem.message}")
+    if has_errors(problems):
+        raise typer.Exit(1)
