@@ -1,0 +1,50 @@
+# Unified policy document (epic #377) — worked example.
+#
+# Copy to `configs/capdep.yaml` to activate. When present, the daemon compiles
+# this at start, validates it (`capdep policy check`), and OVERLAYS the sections
+# it declares (today: rules + envelopes) onto the per-file configs — the
+# authoring surface becomes the source of truth for what it authors, while
+# unauthored concepts keep their legacy per-file loaders (incremental migration).
+#
+# Everything here is the same sentence: `when <match> → <outcome>`. One grammar
+# for the whole policy (docs/policy-authoring-design.md).
+#
+# Validate before starting the daemon:  capdep policy check
+# Author routine changes without editing YAML:
+#   capdep posture use strict
+#   capdep rule add no-ext-fin "financial + send_email + external -> deny"
+#   capdep label add financial --tier restricted
+
+# The active security posture — a named bundle. `use:` references a shipped
+# preset (strict / high-security-useful / low-friction-practical).
+posture:
+  use: strict
+
+# Axis-A category catalog — "what is this data?"
+labels:
+  - category: financial
+    tier: restricted
+  - category: personal
+    tier: regulated
+
+# Decision rules — "what may happen to labeled data?"  when <match> -> <outcome>
+# outcomes: allow | deny | approve | override | suggest
+# when terms (AND): a category, an action (send_email/send_message/purchase/
+# web_fetch), `external`/`untrusted`, `to:<glob>`, `time:HH-HH`.
+rules:
+  - id: no-external-financial
+    when: financial + send_email + external
+    then: deny
+    because: financial data may never be emailed to an external recipient
+
+  - id: after-hours-purchase
+    when: purchase + time:22-6
+    then: approve
+    because: late-night purchases get a human check
+    human_ratified_by: owner
+
+# Outcome envelopes — a rule whose outcome is a RANGE the posture dial picks
+# within: [strictest, loosest]. The `when` supplies all four cell coordinates.
+envelopes:
+  - when: personal + send_email + initiator:principal:owner + reversibility:reversible
+    range: [approve, allow]

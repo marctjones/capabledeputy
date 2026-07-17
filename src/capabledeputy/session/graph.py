@@ -25,7 +25,9 @@ from capabledeputy.policy.capabilities import (
 from capabledeputy.policy.capabilities import (
     kind_name as _kind_name_of,
 )
+from capabledeputy.policy.envelope import RiskPreference
 from capabledeputy.policy.labels import LabelState, most_restrictive_inherit
+from capabledeputy.policy.precedence import resolve_risk_preference
 from capabledeputy.policy.purposes import (
     UNSET_PURPOSE_HANDLE,
     Purposes,
@@ -40,6 +42,23 @@ from capabledeputy.session.model import (
     merge_session_artifacts,
 )
 from capabledeputy.session.store import SessionStore
+
+
+def _resolve_spawn_dial(base: RiskPreference | None, purpose_dial: str) -> str:
+    """#379 — resolve a session's spawn dial from the posture baseline and the
+    purpose's dial. The posture BINDS the baseline; the purpose may only TIGHTEN
+    it (never loosen). Without a posture baseline (`base is None`, legacy), the
+    purpose's dial is used directly. Returns the string form the Session stores.
+
+    Fail-safe: a purpose dial that doesn't parse (shouldn't happen — validated at
+    load) falls back to the stricter baseline when one exists."""
+    if base is None:
+        return purpose_dial
+    try:
+        purpose_pref = RiskPreference(purpose_dial)
+    except ValueError:
+        return base.value
+    return resolve_risk_preference(base, purpose_pref).value
 
 
 class SessionNotFoundError(KeyError):
@@ -121,12 +140,17 @@ class SessionGraph:
         store: SessionStore | None = None,
         purposes: Purposes | None = None,
         quarantined_available: bool = True,
+        posture_risk_preference: RiskPreference | None = None,
     ) -> None:
         self._sessions: dict[UUID, Session] = {}
         self._audit = audit
         self._provenance = ProvenanceRecorder(audit)
         self._store = store
         self._purposes = purposes
+        # #379 precedence lattice: the active posture's dial is the BASELINE a
+        # purpose may only TIGHTEN, never loosen. None = no posture selected
+        # (legacy: a purpose's dial is used directly).
+        self._posture_risk_preference = posture_risk_preference
         # True when App.quarantined_llm is wired. Used by .new() to
         # fail-closed when a Purpose recommends Pattern ② DUAL_LLM but
         # no quarantined LLM is available — Principle VI requires we
@@ -280,7 +304,13 @@ class SessionGraph:
             if purpose is not None:
                 if purpose.default_capabilities:
                     default_caps = frozenset(purpose.default_capabilities)
-                risk_preference_at_spawn = purpose.risk_preference_dial
+                # #379: a posture BINDS the baseline dial; the purpose may only
+                # TIGHTEN it. Without an active posture (legacy), the purpose's
+                # dial is used directly.
+                risk_preference_at_spawn = _resolve_spawn_dial(
+                    self._posture_risk_preference,
+                    purpose.risk_preference_dial,
+                )
                 # Pattern ② precondition (Principle VI fail-closed): a
                 # Purpose that recommends pattern_2_dual_llm requires
                 # the quarantined LLM. Without it, the planner would

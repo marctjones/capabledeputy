@@ -461,6 +461,96 @@ def apply_posture_from_config(
     return policy_context, messages
 
 
+def enforce_requirements_from_config(
+    policy_context: Any,
+    configs_dir: Path | None = None,
+) -> list[str]:
+    """#307 — verify the built-in hard requirements PLUS any operator custom
+    requirements (`configs/requirements.yaml`) against the ACTIVE posture and
+    its decision-inspectors, and RAISE `RequirementViolationError` if any is unmet —
+    the daemon-start gate.
+
+    A no-op (returns `[]`) when no posture is active: the requirement DSL is a
+    posture-scoped guarantee, and an unconfigured legacy runtime keeps its
+    prior startup behavior — the three built-in floors are STRUCTURALLY enforced
+    by the engine regardless; this gate is the tripwire that proves the selected
+    posture + inspectors don't undermine them. Fail-closed (Principle VI): an
+    unparseable requirements.yaml or an unmet requirement refuses start.
+
+    Requirements are checked against the loaded `rules_v2` (the policy context
+    carries them) and the deployment's trust profile. NB: PolicyContext does not
+    yet carry a static `trust_profile_is_personal`, so the startup gate reflects
+    the DEFAULT MANAGED profile; the personal-profile check is reachable via the
+    `verify_requirements(..., trust_profile_is_personal=True)` API for CI.
+    TODO: thread personal-ness into the startup gate when it becomes available.
+    """
+    active = getattr(policy_context, "active_posture", None)
+    if active is None:
+        return []
+
+    from capabledeputy.policy.requirements import (
+        enforce_requirements,
+        load_requirements,
+    )
+
+    req_path = _resolve_v09_configs_dir(configs_dir) / "requirements.yaml"
+    custom = load_requirements(req_path) if req_path.is_file() else ()
+    return enforce_requirements(
+        posture=active,
+        decision_inspectors=tuple(getattr(policy_context, "decision_inspectors", ()) or ()),
+        clearance_max_tier=getattr(policy_context, "clearance_max_tier", None),
+        custom=custom,
+        trust_profile_is_personal=bool(
+            getattr(policy_context, "trust_profile_is_personal", False),
+        ),
+        rules_v2=getattr(policy_context, "rules_v2", None),
+    )
+
+
+def overlay_unified_policy_from_config(
+    policy_context: Any,
+    configs_dir: Path | None = None,
+) -> tuple[Any, list[str]]:
+    """Migration step (epic #377): if a unified `configs/capdep.yaml` exists,
+    compile it and OVERLAY the decision structures it declares onto the
+    per-file-built PolicyContext — the authoring surface becomes the source of
+    truth for the sections it authors, while unauthored sections keep the legacy
+    per-file loaders (incremental adapter migration, design §10).
+
+    Overlaid when declared: the decision `rules` and outcome `envelopes`.
+    Validated at start via the #385 gate; a compile failure or any error-severity
+    problem refuses daemon start (fail-closed, Principle VI).
+
+    Absent `capdep.yaml` ⇒ no-op (returns the context unchanged), so existing
+    per-file deployments are untouched.
+    """
+    path = _resolve_v09_configs_dir(configs_dir) / "capdep.yaml"
+    if not path.is_file():
+        return policy_context, []
+
+    from capabledeputy.policy.authoring import ConfigError, load_config
+    from capabledeputy.policy.policy_check import check_policy, has_errors
+
+    compiled = load_config(path)  # fail-closed ConfigError propagates
+    problems = check_policy(compiled)
+    if has_errors(problems):
+        lines = "\n".join(f"  - {p.where}: {p.message}" for p in problems if p.severity == "error")
+        raise ConfigError(f"{path} failed policy check:\n{lines}")
+
+    changes: dict[str, Any] = {}
+    if compiled.rules.rules:
+        changes["rules_v2"] = compiled.rules
+    if compiled.envelopes.by_cell:
+        changes["envelope_set"] = compiled.envelopes
+    if not changes:
+        return policy_context, []
+    policy_context = dataclasses.replace(policy_context, **changes)
+    return policy_context, [
+        f"[capdep.yaml] unified policy active — overlaid {sorted(changes)} "
+        f"({len(problems)} check note(s))",
+    ]
+
+
 async def run_daemon(
     socket_path: Path | None = None,
     state_db_path: Path | None = None,
@@ -486,6 +576,14 @@ async def run_daemon(
     policy_context, purposes_registry = build_policy_context_from_configs(
         state_db_path=effective_db,
     )
+
+    # Migration (epic #377): overlay a unified configs/capdep.yaml, when present,
+    # onto the per-file-built context (opt-in; absent file ⇒ no-op).
+    import sys as _sys_overlay
+
+    policy_context, _overlay_messages = overlay_unified_policy_from_config(policy_context)
+    for _m in _overlay_messages:
+        print(_m, file=_sys_overlay.stderr)
 
     # 004 U034/U035: same config can declare a `sandbox:` block with
     # region specs for the Podman provider. Construct the actuator
@@ -562,6 +660,12 @@ async def run_daemon(
             policy_context,
         )
         for message in posture_messages:
+            print(message, file=_sys_di.stderr)
+
+        # #307 — operator requirement DSL. Verify the built-in hard requirements
+        # plus any configs/requirements.yaml against the active posture +
+        # inspectors; RequirementViolationError refuses start (fail-closed).
+        for message in enforce_requirements_from_config(policy_context):
             print(message, file=_sys_di.stderr)
 
     # Precedence: explicit arg (CLI flag) > CAPDEP_POLICY_PREVIEW env >

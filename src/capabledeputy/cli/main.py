@@ -12,6 +12,7 @@ from rich.console import Console
 from capabledeputy.cli.approval import approval_app
 from capabledeputy.cli.audit import audit_app, watch_command
 from capabledeputy.cli.audit_cmd import storage_shape_command
+from capabledeputy.cli.authoring_cmds import label_app, posture_app, rule_app
 from capabledeputy.cli.chat import chat_command, demo_app
 from capabledeputy.cli.image import image_app
 from capabledeputy.cli.init_cmd import init_command
@@ -44,6 +45,9 @@ app.add_typer(session_app, name="session")
 app.add_typer(scripting_app, name="scripting")
 app.add_typer(audit_app, name="audit")
 app.add_typer(policy_app, name="policy")
+app.add_typer(posture_app, name="posture")
+app.add_typer(rule_app, name="rule")
+app.add_typer(label_app, name="label")
 app.add_typer(tool_app, name="tool")
 app.add_typer(approval_app, name="approval")
 app.add_typer(override_app, name="override")
