@@ -10,9 +10,7 @@ runner = CliRunner()
 
 
 def test_why_untrusted_email_is_denied_at_floor() -> None:
-    result = runner.invoke(
-        policy_app, ["why", "SEND_EMAIL", "--to", "bob@x.com", "--untrusted"]
-    )
+    result = runner.invoke(policy_app, ["why", "SEND_EMAIL", "--to", "bob@x.com", "--untrusted"])
     assert result.exit_code == 0
     assert "DENY" in result.stdout
     assert "untrusted-meets-egress" in result.stdout

@@ -386,9 +386,7 @@ def policy_why(
         "personal": Tier.REGULATED,
         "proprietary_work": Tier.REGULATED,
     }
-    tags = frozenset(
-        CategoryTag(c, _tier_for.get(c, Tier.SENSITIVE)) for c in (category or [])
-    )
+    tags = frozenset(CategoryTag(c, _tier_for.get(c, Tier.SENSITIVE)) for c in (category or []))
     prov = (
         frozenset({ProvenanceTag(ProvenanceLevel.EXTERNAL_UNTRUSTED)}) if untrusted else frozenset()
     )

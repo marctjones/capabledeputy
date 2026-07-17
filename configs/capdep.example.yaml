@@ -27,6 +27,14 @@ labels:
   - category: personal
     tier: regulated
 
+# Source→label bindings (raise-only). Bind a filesystem path prefix or a glob
+# to a label. Author with:  capdep label bind /home/op/tax confidential.financial
+label_rules:
+  - path: /home/op/tax
+    label: confidential.financial
+  - glob: "*.key"
+    label: untrusted.external
+
 # Decision rules — "what may happen to labeled data?"  when <match> -> <outcome>
 # outcomes: allow | deny | approve | override | suggest
 # when terms (AND): a category, an action (send_email/send_message/purchase/
