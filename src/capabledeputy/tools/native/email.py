@@ -1,12 +1,13 @@
 """Email tools — send + draft workflow (DESIGN.md §7.4).
 
-Send remains a stub that records to an EmailOutbox; drafts are an
-in-memory DraftBox separate from the outbox. The split matters
-structurally: drafts are LOCAL (non-egressing) so they don't trip the
-social-commitment gate. The send action is what crosses the boundary.
-
-Phase 7+ ships an upstream Gmail MCP server adapter that subsumes
-both.
+Send records to an EmailOutbox for audit AND (de-stubbed in #324) delivers via
+SMTP when the operator configures it — inert record-only otherwise. The
+policy-carrying `email.send` ToolDefinition stays NATIVE deliberately: spike #312
+found that wiring send through the upstream adapter would drop the send/commit
+contract (social_commitment, approval_route body preview, irreversibility), so
+only the actuator is de-stubbed (see `email_delivery.py`). Drafts are an
+in-memory DraftBox separate from the outbox: they are LOCAL (non-egressing) so
+they don't trip the social-commitment gate; the send action crosses the boundary.
 """
 
 from __future__ import annotations
@@ -16,10 +17,13 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from anyio import to_thread
+
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
+from capabledeputy.tools.native.email_delivery import DeliveryResult, deliver
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
 
@@ -106,6 +110,15 @@ class DraftBox:
 
 
 def make_email_tools(outbox: EmailOutbox, drafts: DraftBox) -> list[ToolDefinition]:
+    async def _record_and_deliver(sent: SentEmail) -> DeliveryResult:
+        """#324 — record for audit, then attempt real SMTP delivery (or
+        record-only when SMTP is unconfigured). Delivery runs in a worker thread
+        (smtplib blocks). Never raises: the result carries the honest status."""
+        outbox.append(sent)
+        return await to_thread.run_sync(
+            lambda: deliver(to=sent.to, subject=sent.subject, body=sent.body)
+        )
+
     async def email_send(args: dict[str, Any], context: ToolContext) -> ToolResult:
         sent = SentEmail(
             id=uuid4(),
@@ -115,10 +128,15 @@ def make_email_tools(outbox: EmailOutbox, drafts: DraftBox) -> list[ToolDefiniti
             body=str(args.get("body", "")),
             sent_at=datetime.now(UTC),
         )
-        outbox.append(sent)
+        result = await _record_and_deliver(sent)
         return ToolResult(
             output={
+                # `sent` = recorded for audit (unchanged); `delivered` = did it
+                # actually leave the machine. Honest either way.
                 "sent": True,
+                "delivered": result.delivered,
+                "transport": result.transport,
+                "delivery_detail": result.detail,
                 "id": str(sent.id),
                 "to": sent.to,
                 "subject": sent.subject,
@@ -172,11 +190,14 @@ def make_email_tools(outbox: EmailOutbox, drafts: DraftBox) -> list[ToolDefiniti
             body=draft.body,
             sent_at=datetime.now(UTC),
         )
-        outbox.append(sent)
+        result = await _record_and_deliver(sent)
         drafts.discard(draft_id)
         return ToolResult(
             output={
                 "sent": True,
+                "delivered": result.delivered,
+                "transport": result.transport,
+                "delivery_detail": result.detail,
                 "id": str(sent.id),
                 "to": sent.to,
                 "subject": sent.subject,
@@ -190,8 +211,10 @@ def make_email_tools(outbox: EmailOutbox, drafts: DraftBox) -> list[ToolDefiniti
             operations=(Operation(EffectClass.COMMUNICATE, subtype="email.send"),),
             risk_ids=("RISK-DATA-EXFIL-AGENT-TOOLS", "RISK-IRREVERSIBLE-SEND"),
             description=(
-                "Send an email. Stub: records the send for audit but "
-                "does not actually deliver. Required args: to, subject, body."
+                "Send an email. Records the send for audit AND delivers it via "
+                "SMTP when the operator has configured CAPDEP_SMTP_HOST/_FROM; "
+                "otherwise records-only (the result's `delivered` flag is honest "
+                "either way). Required args: to, subject, body."
             ),
             capability_kind=CapabilityKind.SEND_EMAIL,
             handler=email_send,
