@@ -549,6 +549,38 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
+    /// #319 — run a daemon RPC so it rides out a transient daemon bounce
+    /// (restart / socket-move) per the shared reconnect contract
+    /// (`ReconnectPolicy`, mirroring `ipc/reconnect.py`), relaunching the daemon
+    /// (client-owned process launch) between attempts. A real RPC error
+    /// propagates at once; a persistent outage surfaces after the budget is
+    /// exhausted instead of hanging on a raw "daemon not running".
+    ///
+    /// Closure-based (rather than method+params) so the request dictionary is
+    /// constructed fresh inside `operation`, keeping it out of a cross-actor
+    /// "sent" position (Swift 6 strict concurrency).
+    func withReconnect(
+        budget: ReconnectBudget,
+        _ operation: () async throws -> Any,
+    ) async throws -> Any {
+        var lastError: Error?
+        for attempt in 0 ..< budget.maxAttempts {
+            do {
+                return try await operation()
+            } catch {
+                lastError = error
+                guard ReconnectPolicy.isTransient(error), attempt < budget.maxAttempts - 1 else {
+                    throw error
+                }
+                setDaemonConnection(.reconnecting, detail: "Reconnecting to the daemon…")
+                await ensureDaemonRunning()
+                let delay = ReconnectPolicy.backoffSeconds(attempt: attempt, budget: budget)
+                try? await Task.sleep(for: .seconds(delay))
+            }
+        }
+        throw lastError ?? DaemonClientError.responseClosed
+    }
+
     func approve(_ approval: Approval) async {
         await decide(approval, approved: true)
     }
@@ -1073,15 +1105,20 @@ final class CapDepAppModel: ObservableObject {
             )
         }
         do {
-            let start = try await client.call(
-                method: "session.turn.start",
-                params: [
-                    "session_id": sessionID,
-                    "message": message,
-                    "client_id": "CapDepMac",
-                    "heartbeat_timeout_seconds": 300,
-                ],
-            ) as? [String: Any]
+            // #319 — the user's explicit send rides out a transient daemon
+            // bounce (SEND budget) instead of surfacing a raw "daemon not
+            // running" mid-turn.
+            let start = try await withReconnect(budget: .send) {
+                try await self.client.call(
+                    method: "session.turn.start",
+                    params: [
+                        "session_id": sessionID,
+                        "message": message,
+                        "client_id": "CapDepMac",
+                        "heartbeat_timeout_seconds": 300,
+                    ],
+                )
+            } as? [String: Any]
             let turn = start?["turn"] as? [String: Any] ?? [:]
             let turnID = turn["id"] as? String ?? ""
             guard !turnID.isEmpty else {
@@ -2450,18 +2487,11 @@ final class CapDepAppModel: ObservableObject {
     }
 
     private func shouldRecoverDaemon(after error: Error) -> Bool {
-        if isRecoveringDaemon {
-            return false
-        }
-        guard let clientError = error as? DaemonClientError else {
-            return false
-        }
-        switch clientError {
-        case .connectFailed, .responseClosed:
-            return true
-        default:
-            return false
-        }
+        // #319 — consume the shared reconnect contract's transient
+        // classification (ReconnectPolicy) instead of an ad-hoc client rule.
+        // docs/architecture.md: recovery rules are daemon-side; the client
+        // mirrors, it does not reinvent.
+        !isRecoveringDaemon && ReconnectPolicy.isTransient(error)
     }
 }
 
