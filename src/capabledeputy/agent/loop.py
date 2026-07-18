@@ -249,6 +249,37 @@ def _has_capability(session: Session, kind: CapabilityKind, pattern: str) -> boo
     return any(cap.kind is kind and cap.pattern == pattern for cap in session.capability_set)
 
 
+def _scrub_leaked_tool_call_json(content: str) -> str:
+    """Never surface a raw tool-call envelope as chat text (#419).
+
+    A JSON-tools planner (local MLX etc.) sometimes emits a
+    `{"tool_calls": [...]}` blob that the loop could not dispatch — typically a
+    truncated/malformed stream. The single parse-retry can still come back with
+    the same unparseable blob, and it then reaches final output as literal JSON.
+    The daemon must never emit unparsed tool-calls to any client, so replace a
+    leaked envelope with a clean, honest message.
+
+    Conservative by design: only fires when the content *is* essentially the
+    envelope (optionally ```json-fenced), so legitimate prose that merely
+    mentions tool_calls is left untouched.
+    """
+    if not content:
+        return content
+    candidate = content.strip()
+    if candidate.startswith("```"):
+        candidate = candidate.strip("`")
+        if candidate[:4].lower() == "json":
+            candidate = candidate[4:]
+        candidate = candidate.strip()
+    if candidate.startswith("{") and '"tool_calls"' in candidate:
+        return (
+            "I wasn't able to run that as a tool call — the model's tool-call "
+            "reply didn't parse (it may have been cut off mid-stream). Please "
+            "try again."
+        )
+    return content
+
+
 def _repair_foreground_recovery_leak(
     content: str,
     *,
@@ -1429,6 +1460,9 @@ async def run_turn_streaming(
                 session=session,
                 outcomes=tool_outcomes,
             )
+            # #419 — last line of defense: never emit a raw tool-call envelope
+            # to any client, on any surface.
+            final_content = _scrub_leaked_tool_call_json(final_content)
             agent_turn = Turn(
                 turn_id=len(session.history),
                 role="agent",
