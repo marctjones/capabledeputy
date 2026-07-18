@@ -6,12 +6,37 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-07-08 — v0.53.0 is the current stable release,
-covering natural web search, daily-driver validation/defaults, security
-assurance proofing, measured model quality planning, and updated MLX/MFLUX
-model candidates. v1.0 remains unscheduled.
+**Last refreshed:** 2026-07-18 — **v0.58.0** is the current head of `main`.
+Milestones v0.54–v0.58 are complete (v0.58 shipped scoped — see below). Since
+v0.53 the project shipped the egress-complete chokepoint (v0.54), reachable
+safe-handling flow patterns for restricted data (v0.55), named security-posture
+profiles with a floor-invariance conformance harness plus the unified
+policy-authoring stack (v0.56), daemon reliability/supervision/data-safety
+(v0.57), and real assistant capabilities + a safe default surface (v0.58:
+web.fetch, email SEND, tasks, image-safety default, zero-config surface — all
+real and verified in-repo). v0.58 shipped **scoped**: credential-gated work
+(live calendar/inbox reads #325, first-class GWS + GitHub connect #328, the
+Swift reconnect tail #319) was deferred to **v0.59** rather than faked, and
+Microsoft 365 / Notion (#329) were marked not-supported-for-v1.0. v1.0 remains
+unscheduled.
 
-## Product Ladder — v0.35 → v0.53
+### Current and upcoming milestones
+
+| GitHub milestone | Status |
+|---|---|
+| **24 — v0.54.0 — Egress-complete chokepoint** | ✅ Complete |
+| **25 — v0.55.0 — Reachable safe-handling flow patterns** | ✅ Complete |
+| **26 — v0.56.0 — Posture profiles + conformance harness** (+ policy-authoring epic #377) | ✅ Complete |
+| **27 — v0.57.0 — Daemon reliability, supervision, data safety** | ✅ Complete (CLI/TUI reconnect shipped; Swift tail #319 → v0.59) |
+| **28 — v0.58.0 — Real assistant capabilities + safe default surface** | ✅ Complete (scoped): web.fetch, email SEND, tasks, image-safety, zero-config surface shipped; #329 marked not-supported-for-v1.0; #325 calendar/inbox + #328 GWS+GitHub deferred to v0.59 (credential-gated) |
+| **29 — v0.59.0 — CapDepMac production UX completeness** | ⏳ Open (#331–#334, + carried #319/#325/#328) |
+| **30 — v0.60.0 — In-session vision and multimodal** | ⏳ Open (#335–#337; spike #313) |
+| **31 — v0.61.0 — Model runtime quality and provisioning** | ⏳ Open (#338–#341; spike #311) |
+| **v0.62.0 — Flow-aware planning** | ⏳ Open (#363–#370) |
+| **33 — v0.63.0 — v1.0 hardening and daily-driver acceptance** | ⏳ Open (#346–#349) |
+| **Distribution, packaging and updates** | ⛔ Deferred per owner decision 2026-07-12 (#310, #342–#345) |
+
+## Product Ladder — v0.35 → v0.58
 
 ```mermaid
 flowchart LR
@@ -34,7 +59,12 @@ flowchart LR
   v51[v0.51 Daily-driver policy defaults + workflow gates]
   v52[v0.52 Daily-driver workflow validation]
   v53[v0.53 Natural web search]
-  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48 --> v49 --> v50 --> v51 --> v52 --> v53
+  v54[v0.54 Egress-complete chokepoint]
+  v55[v0.55 Reachable safe-handling patterns]
+  v56[v0.56 Posture profiles + policy authoring]
+  v57[v0.57 Daemon reliability + supervision]
+  v58[v0.58 Real assistant caps + safe surface]
+  v35 --> v36 --> v37 --> v38 --> v39 --> v40 --> v41 --> v42 --> v43 --> v44 --> v45 --> v46 --> v47 --> v48 --> v49 --> v50 --> v51 --> v52 --> v53 --> v54 --> v55 --> v56 --> v57 --> v58
 ```
 
 | GitHub milestone | Goal | Spec / tracker |
@@ -58,6 +88,11 @@ flowchart LR
 | **21 Product — v0.51.0 — Daily-driver policy defaults and desktop workflow gates** | Productized default policies for normal OpenClaw-style desktop workflows with clear approval, override, denial, readiness, UX, and retention gates | #271, #272, #275–#282 |
 | **22 Product — v0.52.0 — Daily-driver workflow validation** | Validate the daily-driver preset against concrete user-facing workflows, setup diagnostics, source bindings, and review gates | #283–#287 |
 | **23 Product — v0.53.0 — Natural web search** | Make read-only web/news search feel native in daily-driver chat with standing search grants, GUI-mediated recovery, provider readiness, and regression coverage | #288–#291 |
+| **24 Product — v0.54.0 — Egress-complete chokepoint** | Structural exfiltration closure: route every outbound effect through the single information-flow chokepoint | #350–#357 |
+| **25 Product — v0.55.0 — Reachable safe-handling flow patterns** | Make reference/handle routing and sealed-sandbox patterns reachable so restricted data can be used without planner exposure | #299, #302, #358–#361 |
+| **26 Product — v0.56.0 — Posture profiles + conformance harness** | Named posture profiles, floor-invariance conformance harness, requirement DSL, and the unified policy-authoring stack | #304–#307, #377–#389 |
+| **27 Product — v0.57.0 — Daemon reliability, supervision, data safety** | Supervised auto-restart, mid-session reconnect, timeouts/circuit-breaking, non-destructive state-DB lifecycle, `capdep doctor`, telemetry | #318–#323 |
+| **28 Product — v0.58.0 — Real assistant capabilities + safe default surface** | De-stub email/calendar/inbox/tasks/web.fetch, ship a zero-config safe surface, image-safety default, promote GWS + GitHub | #324–#330 |
 
 ## Tracker Coverage
 
@@ -66,6 +101,11 @@ completed and closed work follows:
 
 | GitHub milestone | Issues | Status / role |
 |---|---|---|
+| **28 Product — v0.58.0 — Real assistant capabilities + safe default surface** | #324–#330 | **Complete (scoped).** Shipped + verified: #326 native web.fetch (SSRF-guarded), #324 email SEND (real SMTP), #325 tasks (SQLite persistent store), #330 image-safety default, #327 zero-config assistant surface. #329 M365 / Notion closed as not-supported-for-v1.0 (send guards + markers on disk). Deferred to v0.59, credential-gated: #325 calendar/inbox (Google OAuth), #328 GWS + GitHub first-class (real accounts + GitHub token). |
+| **27 Product — v0.57.0 — Daemon reliability, supervision, data safety** | #318–#323 | Complete on main: #318 supervised auto-restart, #320 timeouts/circuit-break, #321 non-destructive state-DB lifecycle, #322 `capdep doctor`, #323 telemetry, #319 CLI/TUI reconnect. Only the Swift/CapDepMac reconnect third of #319 remains open (needs Xcode). |
+| **26 Product — v0.56.0 — Posture profiles + conformance harness** | #304–#307, #377–#389 | Complete on main: posture manifests + three shipped presets, floor-invariance conformance harness + requirement DSL, and the full unified policy-authoring stack (compiler, precedence lattice, `policy check`/`why`, mutation CLI, layered defaults). |
+| **25 Product — v0.55.0 — Reachable safe-handling flow patterns** | #299, #302, #358–#361 | Complete on main: reference/handle routing and sealed-sandbox patterns reachable in the default config, CaMeL dual-LLM + projection-only quarantine, Podman sealed sandbox, sandbox first-run. |
+| **24 Product — v0.54.0 — Egress-complete chokepoint** | #350–#357 | Complete on main: every outbound effect routed through the single information-flow chokepoint; information-flow taint blocks egress with no remaining bypass path. |
 | **23 Product — v0.53.0 — Natural web search** | #288–#291 | Closed/released: read-only search grants, GUI-mediated recovery, provider readiness diagnostics, Kagi setup alignment, and natural-search regression coverage are implemented. |
 | **22 Product — v0.52.0 — Daily-driver workflow validation** | #283–#287 | Closed/released: workflow validation report, preset drift fixes, source binding scheme coverage, setup output integration, docs, and regression tests are implemented. |
 | **21 Product — v0.51.0 — Daily-driver policy defaults and desktop workflow gates** | #271, #272, #275–#282 | Closed/released: daily-driver preset/approval matrix, curated tool catalog/readiness, relationship setup, browser/screen gates, draft-first messaging/calendar mutation, staged filesystem/office mutation, approval UX, data minimization/retention, and policy docs/diagnostics/regression tests are implemented. |

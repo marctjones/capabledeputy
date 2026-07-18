@@ -6,6 +6,117 @@ breaking changes).
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-07-18
+
+Real assistant capabilities and a safe default surface (milestone #28), shipped
+**scoped**: the de-stub and safe-surface work that is real and verified in-repo.
+Integrations whose acceptance requires live credentials/accounts are deferred to
+v0.59 rather than faked; Microsoft 365 / Notion are marked not-supported-for-v1.0.
+This mirrors the v0.54–v0.57 pattern of shipping honest, verified increments.
+
+### Shipped and verified
+
+- **#330 image-safety default** — `Posture.image_filters`
+  (`forced_on` | `default_on_optout_ok`, no "off"); strict/high-security force
+  the safety floor on at image-subprocess spawn, low-friction defaults it on
+  with opt-out; enforced in `policy/image_safety.py` +
+  `daemon/lifecycle._apply_image_safety_floor`. Detector fails open (limitation
+  on record).
+- **#327 zero-config safe surface** — `capdep init` auto-wires the default
+  assistant surface (fs/memory/git/fetch/search + sandbox-if-podman) into
+  `~/.config/capabledeputy/daemon.yaml`; `--no-assistant-surface` opts out.
+- **#326 native web.fetch** — de-stubbed to a real bounded, SSRF-guarded
+  HTTP(S) fetch behind the unchanged contract (`tools/native/web.py`); WebMock
+  kept as the offline test override. Egress floor survives (keys on
+  kind + target + labels).
+- **#324 email SEND** — real SMTP delivery (`tools/native/email_delivery.py`)
+  behind the unchanged `email.send` contract; inert record-only without
+  `CAPDEP_SMTP_*` config, honest `delivered` flag.
+- **#325 tasks slice** — native task list de-stubbed to a SQLite-backed
+  persistent store on the shared `state.db` (additive table, lazy connect;
+  `TaskStore()` still `:memory:` for back-compat). Survives daemon restart.
+
+### Marked "not supported yet" for v1.0 (#329, closed)
+
+- **Microsoft 365 / Notion** curated configs carry a `⚠️ NOT CONNECTABLE AS
+  SHIPPED` marker (placeholder `example.*` endpoints) and, for M365, a
+  `disabled_kinds: [SEND_EMAIL]` send guard matching Gmail's. Sourcing +
+  live-verifying real Graph/Notion MCP endpoints is resource-gated and out of
+  scope for v0.58.
+
+### Deferred to v0.59 (credential/resource-gated, not faked)
+
+- **#325 calendar + inbox** — real Google upstream infra exists; acceptance
+  ("read today's *real* calendar/inbox") needs live Google OAuth.
+- **#328 promote Google Workspace + GitHub to first-class** — guided-connect UX
+  is in-repo; acceptance ("connect *real* accounts") needs a Google account and
+  a GitHub token.
+- **#319 Swift/CapDepMac reconnect tail** — CLI/TUI reconnect shipped in v0.57;
+  the Swift client third needs an Xcode build to verify.
+
+## [0.57.0] - 2026-07-17
+
+Daemon reliability, supervision, and data safety (milestone #27). Makes the
+daemon a dependable background service.
+
+- **#318 supervised auto-restart** — `capdep service`, launchd
+  `KeepAlive={SuccessfulExit:false}` + systemd `Restart=on-failure`. On restart,
+  `App.startup()` → `graph.load()` rehydrates sessions for real continuity.
+- **#319 graceful mid-session reconnect** — reconnect-aware `_call`/`_rpc` with
+  AMBIENT-vs-SEND budgets (`ipc/reconnect.py`) for CLI and TUI. The
+  Swift/CapDepMac client reconnect remains open (needs Xcode).
+- **#320 timeouts + circuit-breaking** on hung tool/LLM calls.
+- **#321 non-destructive state-DB lifecycle** — snapshot / quarantine / migrate
+  replaces the silent wipe-on-mismatch.
+- **#322 `capdep doctor`** — unified end-to-end health check.
+- **#323 live telemetry** — dependency-free structured JSON logging
+  (`observability/structured_log.py`, `log_event`), gauges
+  (`approval.queue_depth`, `upstream.servers_healthy/total`), and file-export
+  OTLP metrics (`observability/otlp_metrics.py`). Live OTLP network push is
+  deliberately deferred to avoid adding a network dependency to the TCB.
+
+Research spikes resolved (docs/spike-31{2,4,5,6,7}-*.md): #312 de-stub
+build-vs-wire strategy, #314 daemon supervision mechanism, #315 DB
+migration/backup, #316 Podman opportunistic sandbox, #317 image-safety posture.
+
+## [0.56.0] - 2026-07-17
+
+Security posture profiles, policy-conformance harness, and the unified
+policy-authoring stack (milestone #26 + the policy-authoring epic #377).
+
+- **Posture profiles (#304/#305)** — named security-posture manifests (strict /
+  high-security-useful / low-friction-practical) composed from the existing
+  dials (clearance, envelope, risk-preference, flow-pattern default,
+  decision-inspectors, retention), with the three shipped presets.
+- **Conformance harness (#306/#307)** — floor-invariance fuzz harness proving
+  every profile and inspector preserves the structural DENY floors, plus an
+  operator requirement DSL (`policy/requirements.py`) enforced at daemon start.
+- **Policy authoring, Phases 1–3 (#378–#389)** — one unified when→outcome
+  grammar and schema-driven compiler (`policy/authoring.py`), a single
+  precedence lattice (`policy/precedence.py`, purpose may only tighten posture),
+  format-agnostic loaders, layered defaults, and operator ergonomics:
+  `capdep policy check`, `capdep policy why` (offline explain), and the mutation
+  CLI (`capdep posture use` / `rule add` / `label add`). Legacy per-file loaders
+  are kept as the incremental adapter path; a unified `configs/capdep.yaml`
+  overlays at daemon start when present.
+
+## [0.55.0] - 2026-07-14
+
+Reachable safe-handling flow patterns (milestone #25). Makes Patterns 3
+(reference/handle routing) and 5 (sealed sandbox) reachable in the default
+config so restricted-tier data (financial/health) can be *used* without being
+exposed to the planner or refusing the turn — fixing the usefulness cliff while
+shrinking the exfil surface. Includes CaMeL dual-LLM quarantine (#302),
+projection-only quarantine (#359), Podman sealed sandbox (#299), and sandbox
+first-run handling (#361).
+
+## [0.54.0] - 2026-07-13
+
+Egress-complete chokepoint (milestone #24). Structural exfiltration closure:
+routes every outbound effect through the single information-flow chokepoint so
+information-flow taint blocks egress of data a session has read, with no
+remaining bypass path.
+
 ## [0.53.0] - 2026-07-08
 
 Stable release for natural web search, daily-driver workflow validation and
