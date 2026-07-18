@@ -302,6 +302,31 @@ def preferred_image_markdown_from_outcomes(outcomes: list[Any]) -> str | None:
     return None
 
 
+def image_generation_failure_report_from_outcomes(outcomes: list[Any]) -> str | None:
+    """#417 — a faithful, specific message when the image tool RAN but did not
+    produce an image (the pipeline returned ``ok: False``).
+
+    Returns the backend/model's own error verbatim so the user learns what
+    actually happened — a real failure, the model's own refusal, a missing
+    backend — instead of a generic or moralizing paraphrase from the planner.
+    Returns None when no image-generation tool ran, or it succeeded.
+    """
+    from capabledeputy.policy.rules import Decision
+
+    for outcome in outcomes:
+        if not _is_image_generate_tool_name(outcome.tool_name):
+            continue
+        if outcome.decision != Decision.ALLOW:
+            continue
+        output = outcome.output or {}
+        if not isinstance(output, dict):
+            continue
+        if output.get("ok") is False:
+            error = str(output.get("error") or "").strip() or "the image backend reported no detail"
+            return f"Image generation did not produce an image. The image tool reported: {error}"
+    return None
+
+
 def repair_hallucinated_image_markdown(
     content: str,
     *,

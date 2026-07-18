@@ -733,6 +733,7 @@ async def run_turn_streaming(
         collect_prior_work_image_paths,
         has_probable_image_generation_intent,
         image_generate_tool_names_in,
+        image_generation_failure_report_from_outcomes,
         is_conversational_turn,
         looks_like_hallucinated_image_markdown,
         looks_like_image_generation_refusal,
@@ -1455,6 +1456,12 @@ async def run_turn_streaming(
                     allowed_paths=allowed_image_paths,
                     outcomes=tool_outcomes,
                 )
+                # #417 — if the image tool RAN and failed (ok:False), report the
+                # backend/model's actual error verbatim rather than let a generic
+                # or moralizing paraphrase stand in for what really happened.
+                image_failure = image_generation_failure_report_from_outcomes(tool_outcomes)
+                if image_failure is not None:
+                    final_content = image_failure
             final_content = _repair_foreground_recovery_leak(
                 final_content,
                 session=session,
