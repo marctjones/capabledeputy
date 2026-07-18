@@ -66,6 +66,18 @@ struct ChatView: View {
                 openWindow(id: "capability-grant-card")
             }
         }
+        .onChange(of: model.isOnboardingPresented) { _, presented in
+            if presented {
+                openWindow(id: "onboarding-wizard")
+            }
+        }
+        .task {
+            // First-run wizard may have been requested during model.start()
+            // before this view began observing.
+            if model.isOnboardingPresented {
+                openWindow(id: "onboarding-wizard")
+            }
+        }
     }
 
     private var conversationArea: some View {

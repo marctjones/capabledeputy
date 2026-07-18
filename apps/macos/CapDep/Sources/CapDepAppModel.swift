@@ -15,6 +15,8 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var setupPlan = SetupPlan(dictionary: [:])
     @Published var approvalWindowID: Int?
     @Published var grantPromptPresented = false
+    /// #333 — whether the first-run onboarding wizard is showing.
+    @Published var isOnboardingPresented = false
     /// Grant id whose detail the override card is showing, or "" to show the
     /// request form. `nil` closes the override card.
     @Published var overrideWindowID: String?
@@ -231,6 +233,7 @@ final class CapDepAppModel: ObservableObject {
         await notifications.requestAuthorizationIfNeeded()
         await ensureDaemonRunning()
         await refresh()
+        autoPresentOnboardingIfNeeded()
         seedDemoImageIfNeeded()
         startGuiTestCommandHookIfNeeded()
         Task {
@@ -574,6 +577,45 @@ final class CapDepAppModel: ObservableObject {
         focusedApprovalID = id
         approvalWindowID = id
         selectedSection = .approvals
+    }
+
+    // MARK: - First-run onboarding (#333)
+
+    private static let onboardingCompletedKey = "capdep.onboarding.completed.v1"
+
+    /// Whether the user has finished (or dismissed) the first-run wizard.
+    var onboardingCompleted: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.onboardingCompletedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.onboardingCompletedKey) }
+    }
+
+    /// Auto-present the wizard on first launch, but never in front of a user
+    /// who is already set up (a returning user with a ready daemon). Called
+    /// after the first refresh so `setupPlan` reflects real state.
+    func autoPresentOnboardingIfNeeded() {
+        if OnboardingLogic.shouldAutoPresent(completed: onboardingCompleted, planReady: setupPlan.ready) {
+            isOnboardingPresented = true
+        }
+    }
+
+    func presentOnboarding() {
+        isOnboardingPresented = true
+    }
+
+    func dismissOnboarding() {
+        isOnboardingPresented = false
+    }
+
+    /// Mark onboarding done (persisted) so it stops auto-presenting, and close it.
+    func completeOnboarding() {
+        onboardingCompleted = true
+        isOnboardingPresented = false
+    }
+
+    /// Run a setup action surfaced inside the wizard, then refresh readiness.
+    func runOnboardingSetupAction(_ action: SetupAction) async {
+        await runSetupAction(action)
+        await refresh()
     }
 
     func focusSession(_ session: CapDepSession) {

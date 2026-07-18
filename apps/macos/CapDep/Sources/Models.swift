@@ -575,6 +575,24 @@ struct UpstreamServerStatus: Identifiable, Hashable {
     }
 }
 
+/// #333 — pure first-run onboarding decisions, kept out of the view/model so
+/// they can be unit-tested without a running app.
+enum OnboardingLogic {
+    /// Auto-present the wizard only on a genuine first run: not yet completed
+    /// AND the daemon isn't already fully ready (a returning, set-up user is
+    /// never interrupted).
+    static func shouldAutoPresent(completed: Bool, planReady: Bool) -> Bool {
+        !completed && !planReady
+    }
+
+    /// A blocking setup step counts as satisfied only when its status is "ok"
+    /// (the daemon's convention). Any blocking step that isn't "ok" holds up
+    /// "you can start chatting."
+    static func blockingStepsRemain(_ steps: [SetupPlanStep]) -> Bool {
+        steps.contains { $0.blocking && $0.status.lowercased() != "ok" }
+    }
+}
+
 struct SetupPlan: Hashable {
     let ready: Bool
     let workflowReady: Bool
