@@ -276,14 +276,15 @@ def _repair_foreground_recovery_leak(
     blocked = [
         outcome
         for outcome in outcomes
-        if outcome.decision in {Decision.DENY, Decision.REQUIRE_APPROVAL}
+        if outcome.decision
+        in {Decision.DENY, Decision.REQUIRE_APPROVAL, Decision.OVERRIDE_REQUIRED}
     ]
     if blocked:
         names = ", ".join(sorted({o.tool_name or "tool" for o in blocked}))
         return (
             f"The runtime blocked or queued {names}. CapDepMac should show the "
-            "structured approval or recovery control for that action; I will "
-            "not ask you to type slash commands into chat."
+            "structured approval, override, or recovery control for that action; "
+            "I will not ask you to type slash commands into chat."
         )
     return (
         "I do not have a valid runtime recovery action for this turn. "

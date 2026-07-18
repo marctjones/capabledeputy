@@ -15,6 +15,9 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var setupPlan = SetupPlan(dictionary: [:])
     @Published var approvalWindowID: Int?
     @Published var grantPromptPresented = false
+    /// Grant id whose detail the override card is showing, or "" to show the
+    /// request form. `nil` closes the override card.
+    @Published var overrideWindowID: String?
     @Published private(set) var turnStatusLine = ""
     @Published private(set) var gmailOAuthStatus = GmailOAuthStatus.empty
     @Published private(set) var googleOAuthStatuses: [String: GoogleOAuthStatus] = [:]
@@ -2264,6 +2267,87 @@ final class CapDepAppModel: ObservableObject {
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    /// Request an override grant from the GUI (dual-control step 1). Returns
+    /// true when the daemon issued a grant, false on refusal/error (with the
+    /// reason surfaced via `lastError`). Mirrors `capdep override request`.
+    @discardableResult
+    func requestOverride(_ draft: OverrideRequestDraft) async -> Bool {
+        do {
+            let result = try await client.call(
+                method: "override.request",
+                params: draft.paramsDictionary(),
+            ) as? [String: Any]
+            if let result, result["refused"] as? Bool == true {
+                lastError = "Override refused: \(overrideRefusalDetail(result))"
+                await refresh()
+                return false
+            }
+            await refresh()
+            // Surface the freshly-issued grant's detail if we can find it.
+            if let newID = result?["id"] as? String {
+                overrideWindowID = newID
+            }
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Dual-control attestation (step 2) by a distinct attester. `confirm:false`
+    /// records a refusal. Mirrors `capdep override attest`.
+    func attestOverride(_ grant: OverrideGrantViewData, attester: String, confirm: Bool) async {
+        do {
+            let result = try await client.call(
+                method: "override.attest",
+                params: ["grant_id": grant.id, "attester": attester, "confirmed": confirm],
+            ) as? [String: Any]
+            if let result, result["refused"] as? Bool == true {
+                lastError = "Attestation refused: \(overrideRefusalDetail(result))"
+            }
+            await refresh()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func overrideRefusalDetail(_ result: [String: Any]) -> String {
+        (result["detail"] as? String)
+            ?? (result["reason"] as? String)
+            ?? "the runtime declined this override."
+    }
+
+    /// The first tool outcome in the current turn that the engine gated with
+    /// OVERRIDE_REQUIRED, if any. Drives the chat override banner (#331) so an
+    /// override-gated turn is resolvable in the GUI instead of dead-ending.
+    var pendingOverrideRequired: ToolOutcome? {
+        currentToolOutcomes.first { $0.decision.lowercased() == "override_required" }
+    }
+
+    /// A request draft prefilled with the current session id. Only the session
+    /// is prefilled: the daemon validates `action_kind` against `CapabilityKind`
+    /// and `floor` against `HardFloor`, and a tool name ("email.send") is not a
+    /// CapabilityKind ("SEND_EMAIL") — so the user supplies those in the form
+    /// (the pending tool/rule are shown as hints, not injected as values).
+    func overrideDraftFromPendingTurn() -> OverrideRequestDraft {
+        var draft = OverrideRequestDraft()
+        draft.sessionID = currentSessionID ?? ""
+        return draft
+    }
+
+    func presentOverrideGrant(_ grant: OverrideGrantViewData) {
+        overrideWindowID = grant.id
+    }
+
+    /// Open the override card on the request form (empty grant id).
+    func presentOverrideRequest() {
+        overrideWindowID = ""
+    }
+
+    func dismissOverrideCard() {
+        overrideWindowID = nil
     }
 
     func pauseCurrentSession() async {

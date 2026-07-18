@@ -57,6 +57,21 @@ struct MenuBarView: View {
             }
 
             Button {
+                if let pending = model.overrideGrants.first(where: { $0.awaitsAttestation }) {
+                    model.presentOverrideGrant(pending)
+                } else {
+                    model.presentOverrideRequest()
+                }
+                openWindow(id: "override-card")
+            } label: {
+                if model.overrideGrants.isEmpty {
+                    Label("Override control", systemImage: "exclamationmark.shield")
+                } else {
+                    Label("Override control (\(model.overrideGrants.count))", systemImage: "exclamationmark.shield.fill")
+                }
+            }
+
+            Button {
                 openWindow(id: "console")
             } label: {
                 Label("Console", systemImage: "rectangle.3.group")
