@@ -22,6 +22,7 @@ from capabledeputy.cli.metrics_cmd import metrics_command
 from capabledeputy.cli.override_cmd import override_app
 from capabledeputy.cli.policy import policy_app
 from capabledeputy.cli.scripting import scripting_app
+from capabledeputy.cli.service_cmd import service_app
 from capabledeputy.cli.session import session_app
 from capabledeputy.cli.skill import skill_app
 from capabledeputy.cli.tool import tool_app
@@ -72,6 +73,7 @@ google_oauth_app = typer.Typer(
 oauth_app.add_typer(google_oauth_app, name="google")
 app.command("chat")(chat_command)
 app.command("doctor")(doctor_command)
+app.add_typer(service_app, name="service")
 app.command("metrics")(metrics_command)
 app.command("init")(init_command)
 app.command("watch")(watch_command)
