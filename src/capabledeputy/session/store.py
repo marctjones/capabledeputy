@@ -9,7 +9,6 @@ block writes.
 from __future__ import annotations
 
 import json
-import shutil
 import sqlite3
 import sys
 from collections.abc import Iterator
@@ -20,8 +19,15 @@ from uuid import UUID
 from anyio.to_thread import run_sync as run_in_thread
 
 from capabledeputy.session.model import Session
+from capabledeputy.store import Migration, prepare_managed_db
 
 SCHEMA_VERSION = 9
+
+# Forward-only migrations, `{from_version: fn(conn)}` (#315). Empty today: the
+# four-axis cutover has no faithful legacy migration, so an older DB is
+# snapshotted-then-recreated rather than migrated. Future incompatible changes
+# add a version bump + one migration function here instead of a wipe.
+_MIGRATIONS: dict[int, Migration] = {}
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -144,9 +150,11 @@ class SessionStore:
     def __init__(self, path: Path) -> None:
         self._path = path
         self._initialized = False
-        # #321 — the path of the last snapshot taken before a wipe (None if no
-        # wipe happened). Surfaced so the operator can recover prior state.
-        self.last_backup_path: Path | None = None
+        # #321/#315 — prior state preserved by the managed lifecycle (None when
+        # nothing was preserved). Surfaced so the operator can recover.
+        self.last_backup_path: Path | None = None  # snapshot before a wipe/migrate
+        self.last_quarantine_path: Path | None = None  # corrupt/newer DB set aside
+        self.last_recovery_action: str | None = None
 
     @property
     def path(self) -> Path:
@@ -159,93 +167,28 @@ class SessionStore:
         self._initialized = True
 
     def _initialize_sync(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        # No backwards compatibility (label-model redesign, §R6). The
-        # four-axis cutover (schema v7) removes every legacy read path;
-        # a db at any other schema version is WIPED, not migrated —
-        # single-operator, local, no migration. Old sessions carried the
-        # fused flat `label_set`; there is no faithful four-axis
-        # reconstruction worth preserving, so we start clean.
-        if self._needs_wipe():
-            # #321 — snapshot-before-touch: NEVER delete the operator's state DB
-            # without first copying it aside. The four-axis cutover still can't
-            # faithfully migrate old sessions, so the live DB is recreated clean —
-            # but the prior bytes are preserved for manual recovery / forensics
-            # instead of silently lost.
-            self.last_backup_path = self._snapshot_before_wipe()
-            self._path.unlink(missing_ok=True)
-            for suffix in ("-wal", "-shm"):
-                self._path.with_name(self._path.name + suffix).unlink(missing_ok=True)
-        with self._connect() as conn:
-            conn.executescript(_SCHEMA_SQL)
-            row = conn.execute("SELECT version FROM schema_version").fetchone()
-            if row is None:
-                conn.execute(
-                    "INSERT INTO schema_version (version) VALUES (?)",
-                    (SCHEMA_VERSION,),
-                )
-
-    def _needs_wipe(self) -> bool:
-        """True iff an existing db is at any schema version other than
-        the current one (or is unreadable). A fresh/absent db never needs
-        a wipe — it is created clean from `_SCHEMA_SQL`."""
-        if not self._path.exists():
-            return False
-        try:
-            with self._connect() as conn:
-                row = conn.execute("SELECT version FROM schema_version").fetchone()
-        except sqlite3.DatabaseError:
-            return True  # corrupt / not-a-db / missing schema_version table
-        if row is None:
-            return True
-        return bool(row["version"] != SCHEMA_VERSION)
-
-    def _snapshot_before_wipe(self) -> Path | None:
-        """Copy the existing DB (and any WAL/SHM sidecars) to a non-colliding
-        backup before it is wiped. Returns the backup path, or None if there was
-        nothing to back up. Best-effort: a copy failure logs and proceeds (the
-        wipe must still be able to recover a broken DB), but never overwrites a
-        prior backup."""
-        if not self._path.exists():
-            return None
-        # Include the old schema version in the name when we can read it.
-        old_version = "unknown"
-        try:
-            with self._connect() as conn:
-                row = conn.execute("SELECT version FROM schema_version").fetchone()
-                if row is not None:
-                    old_version = str(row["version"])
-        except sqlite3.DatabaseError:
-            old_version = "corrupt"
-
-        n = 0
-        while True:
-            suffix = f".pre-wipe-v{old_version}" + (f".{n}" if n else "") + ".bak"
-            backup = self._path.with_name(self._path.name + suffix)
-            if not backup.exists():
-                break
-            n += 1
-
-        try:
-            shutil.copy2(self._path, backup)
-            # Copy the WAL/SHM too so an uncheckpointed DB stays recoverable.
-            for sidecar in ("-wal", "-shm"):
-                src = self._path.with_name(self._path.name + sidecar)
-                if src.exists():
-                    shutil.copy2(src, backup.with_name(backup.name + sidecar))
-        except OSError as e:  # pragma: no cover — disk-full / perms
+        # #315/#321 — non-destructive lifecycle: snapshot-before-touch,
+        # corruption -> quarantine (never delete), schema-mismatch -> migrate
+        # when a path exists else last-resort wipe (still snapshotted), newer DB
+        # -> fail-closed quarantine. The four-axis cutover (§R6) has no faithful
+        # legacy migration, so `_MIGRATIONS` is empty and an old DB hits the
+        # snapshot-then-wipe branch — but the prior bytes are always preserved.
+        outcome = prepare_managed_db(
+            self._path,
+            schema_version=SCHEMA_VERSION,
+            schema_sql=_SCHEMA_SQL,
+            migrations=_MIGRATIONS,
+        )
+        self.last_backup_path = outcome.backup_path
+        self.last_quarantine_path = outcome.quarantine_path
+        self.last_recovery_action = outcome.action
+        if outcome.action not in ("fresh", "opened"):
+            preserved = outcome.backup_path or outcome.quarantine_path
             print(
-                f"[session-store] WARNING: could not snapshot {self._path} before "
-                f"wipe ({e}); proceeding with the wipe",
+                f"[session-store] recovered state DB ({outcome.action}); prior "
+                f"state preserved at {preserved}",
                 file=sys.stderr,
             )
-            return None
-        print(
-            f"[session-store] state DB at a different schema version was backed up "
-            f"to {backup} before recreating a clean DB (recover manually if needed)",
-            file=sys.stderr,
-        )
-        return backup
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:

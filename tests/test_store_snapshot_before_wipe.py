@@ -55,13 +55,16 @@ def test_matching_version_is_not_touched(tmp_path: Path) -> None:
     assert store2.last_backup_path is None
 
 
-def test_corrupt_db_is_backed_up(tmp_path: Path) -> None:
+def test_corrupt_db_is_quarantined_not_deleted(tmp_path: Path) -> None:
+    # #315 — corruption now QUARANTINES (rename, forensics preserved) rather than
+    # the old copy-then-delete. The live DB is recreated clean.
     db = tmp_path / "state.db"
     db.write_bytes(b"not a sqlite database at all")
     store = SessionStore(db)
     anyio.run(store.initialize)
-    assert store.last_backup_path is not None
-    assert store.last_backup_path.read_bytes() == b"not a sqlite database at all"
+    assert store.last_recovery_action == "quarantined-corrupt"
+    assert store.last_quarantine_path is not None
+    assert store.last_quarantine_path.read_bytes() == b"not a sqlite database at all"
 
 
 def test_backups_do_not_collide(tmp_path: Path) -> None:
