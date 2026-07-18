@@ -1438,11 +1438,14 @@ final class CapDepAppModel: ObservableObject {
             let reason = payload["reason"] as? String ?? ""
             return "Selected \(modelRoleTitle(role)) model\(reason.isEmpty ? "" : " (\(reason))")…"
         case "llm_request_sent":
+            // #420 — `n_tools` is the count SELECTED for this turn (per-turn
+            // relevance selection), not the session's admitted capabilities.
+            // "available" read as "the assistant lost all its tools"; say "selected".
             let tools = payload["n_tools"] as? Int ?? 0
             if !currentResolvedModelRole.isEmpty {
-                return "Asking \(modelRoleTitle(currentResolvedModelRole)) model (\(tools) tools available)…"
+                return "Asking \(modelRoleTitle(currentResolvedModelRole)) model (\(tools) tools selected)…"
             }
-            return "Asking \(selectedChatModelMode.title) model (\(tools) tools available)…"
+            return "Asking \(selectedChatModelMode.title) model (\(tools) tools selected)…"
         case "llm_token":
             return "Writing response…"
         case "llm_response_received":

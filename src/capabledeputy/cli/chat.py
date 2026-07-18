@@ -1473,7 +1473,9 @@ def _send_message_streaming(
                 state["iter"] = payload.get("n_messages", state["iter"])
                 n_tools = payload.get("n_tools", state["n_tools"])
                 state["n_tools"] = n_tools
-                state["line"] = f"asking LLM ({state['n_tools']} tools available)..."
+                # #420 — n_tools is the count SELECTED for this turn, not the
+                # session's admitted tools; "available" misread as capability loss.
+                state["line"] = f"asking LLM ({state['n_tools']} tools selected)..."
             elif et == "llm_response_received":
                 clen = payload.get("content_length", 0)
                 n_tc = payload.get("n_tool_calls", 0)
