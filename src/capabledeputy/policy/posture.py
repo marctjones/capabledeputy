@@ -39,6 +39,17 @@ class PostureError(RuntimeError):
     """Fail-closed posture load/validation error (Principle VI)."""
 
 
+# #330 (spike #317) — image-generation safety dials, posture-tiered.
+#   forced_on            — both dials forced ON, non-negotiable (no opt-out).
+#   default_on_optout_ok — default ON, but an explicit operator opt-out is honored.
+# There is deliberately NO "off" value: a security product never ships image
+# generation unsafe-by-default; the ONLY route to unfiltered output is the
+# operator's explicit opt-out under the one permissive posture.
+IMAGE_SAFETY_FORCED_ON = "forced_on"
+IMAGE_SAFETY_DEFAULT_ON_OPTOUT_OK = "default_on_optout_ok"
+_VALID_IMAGE_FILTERS = frozenset({IMAGE_SAFETY_FORCED_ON, IMAGE_SAFETY_DEFAULT_ON_OPTOUT_OK})
+
+
 # Planner-exposure strength of each flow pattern. Anti-injection strength rises:
 # the less the planner can see, the less an injected instruction can exfiltrate
 # or steer. TURN_LEVEL/PROGRAMMATIC expose raw values (exposure class 0);
@@ -90,11 +101,21 @@ class Posture:
     projection_only: bool = True  # #359 default: hide untrusted-source raw readers
     inspector_set: tuple[str, ...] = ()
     retention: Retention = Retention.METADATA
+    # #330 (spike #317) — image-generation safety. Defaults to default_on_optout_ok
+    # so an UNCONFIGURED runtime is still safe-by-default (filters on), while the
+    # permissive posture can honor an explicit opt-out.
+    image_filters: str = IMAGE_SAFETY_DEFAULT_ON_OPTOUT_OK
 
     def flow_pattern_for(self, tier: Tier) -> ExecutionMode:
         """The posture's default flow pattern for `tier` (falls back to the
         shipped default for a tier the posture didn't override)."""
         return self.flow_pattern_defaults.get(tier, DEFAULT_FLOW_PATTERN_DEFAULTS[tier])
+
+    def image_safety_forced(self) -> bool:
+        """#330 — True when this posture forces the image dials ON with no
+        opt-out (strict / high-security-useful). The daemon then overrides the
+        image subprocess env at spawn regardless of the on-disk config."""
+        return self.image_filters == IMAGE_SAFETY_FORCED_ON
 
     def validate(self) -> Posture:
         """Fail-closed: a posture may only ratchet STRICTER than the structural
@@ -107,6 +128,12 @@ class Posture:
                     f"{_FLOOR_PATTERN[tier].value!r}; a posture may only ratchet "
                     "stricter, never below the floor (FR-047).",
                 )
+        if self.image_filters not in _VALID_IMAGE_FILTERS:
+            raise PostureError(
+                f"posture {self.id!r}: image_filters {self.image_filters!r} invalid; "
+                f"must be one of {sorted(_VALID_IMAGE_FILTERS)} — a posture may never "
+                "ship image generation unsafe-by-default (spike #317).",
+            )
         return self
 
 
@@ -139,6 +166,7 @@ BUILTIN_POSTURES: dict[str, Posture] = {
         projection_only=True,
         inspector_set=("after_hours_purchase_tightener",),
         retention=Retention.METADATA,
+        image_filters=IMAGE_SAFETY_FORCED_ON,
     ).validate(),
     # Pattern 3/5 for restricted, Pattern 2 (dual-LLM) for regulated, safe
     # relaxers active, redacted retention.
@@ -155,6 +183,7 @@ BUILTIN_POSTURES: dict[str, Posture] = {
         projection_only=True,
         inspector_set=("self_egress_relaxer", "after_hours_purchase_tightener"),
         retention=Retention.REDACTED,
+        image_filters=IMAGE_SAFETY_FORCED_ON,
     ).validate(),
     # Pattern 1 for regulated + 3/5 for restricted, broader relaxers, artifact
     # retention. NB: projection_only stays True even here — the low-friction
@@ -172,6 +201,9 @@ BUILTIN_POSTURES: dict[str, Posture] = {
         projection_only=True,
         inspector_set=("self_egress_relaxer", "after_hours_purchase_tightener"),
         retention=Retention.ARTIFACT,
+        # The one posture where an explicit operator opt-out reaches the wired
+        # NSFW/local-model path — never the shipped default (spike #317).
+        image_filters=IMAGE_SAFETY_DEFAULT_ON_OPTOUT_OK,
     ).validate(),
 }
 
@@ -237,6 +269,9 @@ def _parse_posture(index: int, raw: object) -> Posture:
     inspector_set = tuple(str(s) for s in (raw.get("inspector_set") or []))
     projection_only = bool(raw.get("projection_only", True))
     flow_defaults = _parse_flow_pattern_defaults(raw.get("flow_pattern_defaults"), posture_id=pid)
+    # #330 — default_on_optout_ok when unspecified (safe-by-default). validate()
+    # rejects any other value than the two on-by-default modes.
+    image_filters = str(raw.get("image_filters", IMAGE_SAFETY_DEFAULT_ON_OPTOUT_OK))
     return Posture(
         id=pid,
         clearance_max_tier=clearance,
@@ -245,6 +280,7 @@ def _parse_posture(index: int, raw: object) -> Posture:
         projection_only=projection_only,
         inspector_set=inspector_set,
         retention=retention,
+        image_filters=image_filters,
     ).validate()
 
 

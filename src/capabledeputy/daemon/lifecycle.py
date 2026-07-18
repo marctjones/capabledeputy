@@ -556,6 +556,30 @@ def overlay_unified_policy_from_config(
     ]
 
 
+def _apply_image_safety_floor(upstream_configs, policy_context):
+    """#330 (spike #317) — when the active posture forces image safety on, inject
+    `CAPDEP_IMAGE_*=on` into every image-GENERATION server config, overriding the
+    on-disk config env so a stale `off` cannot defeat the floor. Non-forcing
+    postures (and no posture) are returned unchanged — the safe code/config
+    defaults govern, and a permissive-posture opt-out is left in place."""
+    active = getattr(policy_context, "active_posture", None)
+    if active is None or not active.image_safety_forced():
+        return upstream_configs
+    from capabledeputy.policy.image_safety import (
+        forced_image_safety_env,
+        is_image_generation_command,
+    )
+
+    override = forced_image_safety_env()
+    out = []
+    for cfg in upstream_configs:
+        if is_image_generation_command(cfg.command):
+            out.append(dataclasses.replace(cfg, env={**cfg.env, **override}))
+        else:
+            out.append(cfg)
+    return out
+
+
 async def run_daemon(
     socket_path: Path | None = None,
     state_db_path: Path | None = None,
@@ -879,6 +903,13 @@ async def run_daemon(
         # registration runs, so custom kinds are visible to the
         # chokepoint from turn 1.
         upstream_configs = upstream_configs + [c.server_config for c in merged]
+
+    # #330 (spike #317) — if the ACTIVE posture forces image safety on
+    # (strict / high-security-useful), override the image-generation server's
+    # CAPDEP_IMAGE_* env at spawn so a stale `off` in the on-disk config cannot
+    # defeat the floor. Non-forcing postures rely on the safe code/config
+    # defaults + honor an explicit operator opt-out.
+    upstream_configs = _apply_image_safety_floor(upstream_configs, policy_context)
 
     # Always install the registry (even if empty) so policy code can
     # consult it without a None check.
