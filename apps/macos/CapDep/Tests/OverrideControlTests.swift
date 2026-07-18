@@ -1,6 +1,24 @@
 import XCTest
 @testable import CapDepMac
 
+/// #332 — the approval notification category/action identifiers are the shared
+/// contract between the bridge (which posts + categorizes) and the delegate
+/// (which handles taps/actions). If they drift or collide, the actionable
+/// banner silently stops working. Pin them distinct + non-empty.
+final class ApprovalNotificationContractTests: XCTestCase {
+    func testIdentifiersAreDistinctAndNonEmpty() {
+        let ids = [
+            ApprovalNotification.category,
+            ApprovalNotification.reviewAction,
+            ApprovalNotification.denyAction,
+        ]
+        XCTAssertEqual(Set(ids).count, ids.count, "identifiers must be distinct")
+        for id in ids {
+            XCTAssertFalse(id.isEmpty)
+        }
+    }
+}
+
 /// #331 — pure-logic coverage for the GUI override control. GUI *behavior*
 /// (banner → card → request/attest) needs a running app to verify; these pin
 /// the parsing + RPC-marshalling logic that behavior rests on.
