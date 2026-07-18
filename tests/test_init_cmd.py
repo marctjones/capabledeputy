@@ -65,6 +65,34 @@ def test_non_interactive_writes_defaults(
     assert (config_dir / "policies").is_dir()
 
 
+def test_init_wires_safe_assistant_surface_by_default(
+    tmp_path: Path, runner: CliRunner, monkeypatch: Any
+) -> None:
+    """#327 — a fresh install comes up with the curated safe surface (fs read,
+    memory, web search, fetch) already wired, so day one is useful with no extra
+    `capdep-setup assistant-surface --apply`."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    result = runner.invoke(app, ["init", "--non-interactive"])
+    assert result.exit_code == 0, result.output
+    daemon_yaml = tmp_path / "capabledeputy" / "daemon.yaml"
+    assert daemon_yaml.is_file()  # the daemon's user-default config
+    body = daemon_yaml.read_text()
+    # The read/summarize/search surface the acceptance names.
+    for block in ("bundled-fs", "bundled-memory", "bundled-search", "bundled-fetch"):
+        assert block in body, f"{block} not wired into the default surface"
+
+
+def test_init_can_skip_the_assistant_surface(
+    tmp_path: Path, runner: CliRunner, monkeypatch: Any
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    result = runner.invoke(app, ["init", "--non-interactive", "--no-assistant-surface"])
+    assert result.exit_code == 0, result.output
+    # config still written, but the daemon surface is not.
+    assert (tmp_path / "capabledeputy" / "config.yaml").is_file()
+    assert not (tmp_path / "capabledeputy" / "daemon.yaml").exists()
+
+
 def test_refuses_overwrite_without_force(
     tmp_path: Path,
     runner: CliRunner,

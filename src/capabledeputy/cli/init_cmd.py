@@ -170,6 +170,24 @@ def _write_config(
     return config_path
 
 
+def _write_assistant_surface(command_runner: Any = None) -> tuple[Path, list[str]]:
+    """#327 — wire the curated SAFE default assistant surface (fs read + memory +
+    web search + fetch + chart/native, sandbox iff Podman is ready) into the
+    user-default daemon config, so a fresh install is useful on day one WITHOUT
+    an extra `capdep-setup assistant-surface --apply`. Idempotent (managed
+    blocks); returns the daemon-config path plus per-block status messages."""
+    from capabledeputy.cli._managed_config import (
+        register_default_assistant_surface,
+        user_default_daemon_config_path,
+    )
+
+    path = user_default_daemon_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # include_sandbox=None → auto: written iff Podman is ready (deep check).
+    messages = register_default_assistant_surface(path)
+    return path, messages
+
+
 def init_command(
     force: Annotated[
         bool,
@@ -185,10 +203,19 @@ def init_command(
             help="Skip prompts; write defaults. Useful for CI / scripted installs.",
         ),
     ] = False,
+    no_assistant_surface: Annotated[
+        bool,
+        typer.Option(
+            "--no-assistant-surface",
+            help="Don't auto-wire the bundled safe assistant surface (#327).",
+        ),
+    ] = False,
 ) -> None:
     """First-run onboarding wizard.
 
-    Seven prompts. Writes config under $XDG_CONFIG_HOME/capabledeputy/.
+    Seven prompts. Writes config under $XDG_CONFIG_HOME/capabledeputy/, and
+    (unless --no-assistant-surface) wires the curated safe default assistant
+    surface so `capdep chat` is useful immediately.
     """
     config_dir = _config_home()
     config_path = config_dir / "config.yaml"
@@ -339,6 +366,19 @@ def init_command(
         enable_social_tools=enable_social_tools,
     )
 
+    # #327 — wire the safe default assistant surface so day one is useful.
+    surface_path: Path | None = None
+    surface_messages: list[str] = []
+    if not no_assistant_surface:
+        surface_path, surface_messages = _write_assistant_surface()
+
+    surface_block = ""
+    if surface_path is not None:
+        surface_block = (
+            f"\n\n[bold]Assistant surface[/bold] (wired → {surface_path}):\n"
+            + "\n".join(f"  [dim]· {m}[/dim]" for m in surface_messages)
+        )
+
     console.print(
         Panel(
             (
@@ -346,6 +386,7 @@ def init_command(
                 f"  {written}\n"
                 f"  {config_dir}/policies/  (empty)"
                 + (f"\n  {key_path}" if key_path else "")
+                + surface_block
                 + "\n\n"
                 "[bold]Next steps:[/bold]\n"
                 + (
