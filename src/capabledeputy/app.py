@@ -12,6 +12,7 @@ from capabledeputy.llm.client import LLMClient
 
 if TYPE_CHECKING:
     from capabledeputy.llm.pool import ModelPool
+from capabledeputy.observability import log_event
 from capabledeputy.onguard import OnguardStore
 from capabledeputy.paths import default_audit_log_path, default_state_db_path
 from capabledeputy.policy.context import PolicyContext
@@ -228,10 +229,27 @@ class App:
 
     async def startup(self) -> None:
         await self.store.initialize()
+        self._log_store_recovery()
         await self.onguard.initialize()
         await self.mcp_admissions.initialize()
         await self.graph.load()
         self._maybe_start_devbox_reaper()
+        # #323 — a structured "up" line so an operator/log processor can see the
+        # daemon started (and how much state it rehydrated) without the audit log.
+        log_event("info", "daemon.started", sessions_loaded=len(self.graph))
+
+    def _log_store_recovery(self) -> None:
+        """#323 — if the state DB was quarantined/migrated/wiped on init (#321),
+        surface it as a structured warning so silent data-recovery is visible."""
+        action = self.store.last_recovery_action
+        if action and action not in ("open", "fresh"):
+            log_event(
+                "warning",
+                "store.recovery",
+                action=action,
+                backup=str(self.store.last_backup_path or ""),
+                quarantine=str(self.store.last_quarantine_path or ""),
+            )
 
     def _maybe_start_devbox_reaper(self) -> None:
         """Spawn the periodic devbox idle-reaper if a PodmanDevbox is

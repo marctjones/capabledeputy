@@ -19,6 +19,7 @@ from capabledeputy.approval.signer import (
 )
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.audit.writer import AuditWriter
+from capabledeputy.observability import get_metrics, log_event
 from capabledeputy.policy.capabilities import Capability
 from capabledeputy.policy.labels import LabelState
 from capabledeputy.provenance import (
@@ -78,6 +79,18 @@ class ApprovalQueue:
 
     def __len__(self) -> int:
         return len(self._requests)
+
+    def _pending_depth(self) -> int:
+        return sum(1 for r in self._requests.values() if r.status == ApprovalStatus.PENDING)
+
+    def _record_queue_depth(self) -> int:
+        """#323 — publish the pending-approval count as a gauge so a backed-up
+        approval queue (operator not attending) is observable in `capdep
+        metrics` / `capdep doctor` without reading the audit log. Returns the
+        depth for callers that want to log it too."""
+        depth = self._pending_depth()
+        get_metrics().set_gauge("approval.queue_depth", depth)
+        return depth
 
     def get(self, request_id: int) -> ApprovalRequest:
         try:
@@ -144,6 +157,7 @@ class ApprovalQueue:
         )
         self._requests[expired.id] = expired
         self._schedule_expired_audit(expired)
+        self._record_queue_depth()
         return expired
 
     def _sweep_expired_sync(self, *, now: datetime | None = None) -> None:
@@ -348,6 +362,17 @@ class ApprovalQueue:
                 decision_scope={"matched_rule": str(matched.id)},
             )
             return self._requests[request.id]
+        # #323 — a newly-queued approval is a health-relevant event (the agent
+        # is blocked on the operator); publish the depth + a structured line.
+        depth = self._record_queue_depth()
+        log_event(
+            "info",
+            "approval.queued",
+            approval_id=request.id,
+            action=action.value,
+            target=target,
+            queue_depth=depth,
+        )
         return request
 
     async def submit_elicitation(
@@ -607,6 +632,7 @@ class ApprovalQueue:
                 kind="decided",
                 event_audit_id=event.audit_id,
             )
+        self._record_queue_depth()  # #323 — queue drained by one
         return updated
 
     async def deny(
@@ -661,6 +687,7 @@ class ApprovalQueue:
                 kind="decided",
                 event_audit_id=event.audit_id,
             )
+        self._record_queue_depth()  # #323 — queue drained by one
         return updated
 
     async def defer(self, request_id: int) -> ApprovalRequest:
