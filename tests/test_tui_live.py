@@ -438,7 +438,13 @@ async def test_console_daemon_down_is_handled(fake_daemon) -> None:
     async with app.run_test() as pilot:
         await _settle(pilot)
         await pilot.press(*"hi", "enter")
-        await _settle(pilot)
+        # #319 — the send now retries once (SEND_RECONNECT) before giving up, so
+        # wait real time for the outage to surface (still sub-second).
+        for _ in range(20):
+            await pilot.pause(0.1)
+            text = " ".join(s.text for s in app.query_one("#log", RichLog).lines)
+            if "daemon not running" in text:
+                break
         text = " ".join(s.text for s in app.query_one("#log", RichLog).lines)
         assert "daemon not running" in text  # surfaced, not crashed
 

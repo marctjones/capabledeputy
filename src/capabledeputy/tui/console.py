@@ -23,8 +23,10 @@ entirely server-side — this only calls `session.send` /
 
 from __future__ import annotations
 
+import contextlib
 import json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import uuid4
 
 from rich.markup import escape
@@ -35,6 +37,11 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, Input, RichLog, Static
 
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
+from capabledeputy.ipc.reconnect import (
+    AMBIENT_RECONNECT,
+    SEND_RECONNECT,
+    call_with_reconnect,
+)
 from capabledeputy.ipc.socket_path import default_socket_path
 from capabledeputy.tui.app import ApprovalDetailScreen
 from capabledeputy.tui.console_model import (
@@ -71,6 +78,40 @@ class CapDepConsole(App[None]):
         self._client = DaemonClient(default_socket_path())
         self._pending: list[int] = []
         self._history_loaded = False
+
+    async def _rpc(
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
+        *,
+        budget: dict[str, Any] | None = None,
+    ) -> Any:
+        """One-shot RPC, reconnect-aware (#319). A transient daemon bounce (a
+        #318 supervisor restart / socket move) is retried with backoff so the
+        console survives a restart instead of dropping to a dead pane. The
+        retry is side-effect-free: `DaemonNotRunningError` fires at connect
+        time, before any bytes are sent, so a retried `session.send` never
+        double-runs a turn. `budget` defaults to `AMBIENT_RECONNECT` (a few
+        seconds for navigation/status); the message-send passes `SEND_RECONNECT`
+        (one sub-second retry). A reconnect writes one dim notice to the log."""
+
+        def _on_reconnect(_attempt: int) -> None:
+            if _attempt == 0:  # one notice per bounce
+                self._safe_log("[dim]daemon unavailable — reconnecting…[/dim]")
+
+        return await call_with_reconnect(
+            self._client,
+            method,
+            params,
+            on_reconnect=_on_reconnect,
+            **(budget or AMBIENT_RECONNECT),
+        )
+
+    def _safe_log(self, markup: str) -> None:
+        """Write to the log pane if it's mounted; no-op otherwise (a reconnect
+        notice must never crash the RPC that triggered it)."""
+        with contextlib.suppress(Exception):
+            self.query_one("#log", RichLog).write(markup)
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -176,7 +217,7 @@ class CapDepConsole(App[None]):
 
     async def _cmd_session(self, arg: str, log: RichLog) -> None:
         target = arg.strip() or self._session_id
-        result = await self._client.call("session.get", {"session_id": target})
+        result = await self._rpc("session.get", {"session_id": target})
         log.write(
             f"[bold]session[/bold] {escape(str(result.get('id', target))[:8])} "
             f"[dim]status={escape(str(result.get('status', '?')))}[/dim]",
@@ -190,18 +231,18 @@ class CapDepConsole(App[None]):
         intent = " ".join(p for p in parts if p != "--bare").strip()
         if not intent:
             intent = "user-spawned clean session"
-        new = await self._client.call(
+        new = await self._rpc(
             "session.new",
             {"intent": intent, "parent": self._session_id},
         )
         new_id = str(new["id"])
-        await self._client.call(
+        await self._rpc(
             "session.add_labels",
             {"session_id": new_id, "labels": ["trusted.user_direct"]},
         )
         inherited = 0
         if not bare:
-            parent = await self._client.call("session.get", {"session_id": self._session_id})
+            parent = await self._rpc("session.get", {"session_id": self._session_id})
             for cap in parent.get("capability_set", []):
                 cap_copy = {
                     "kind": cap["kind"],
@@ -213,7 +254,7 @@ class CapDepConsole(App[None]):
                     "allows_destructive": False,
                     "revoked_by": [],
                 }
-                await self._client.call(
+                await self._rpc(
                     "session.grant_capability",
                     {"session_id": new_id, "capability": cap_copy},
                 )
@@ -255,14 +296,14 @@ class CapDepConsole(App[None]):
         }
         if expires_at is not None:
             cap["expires_at"] = expires_at
-        await self._client.call(
+        await self._rpc(
             "session.grant_capability",
             {"session_id": self._session_id, "capability": cap},
         )
         log.write(f"[green]✓ granted[/green] {escape(kind)} {escape(pattern)}")
 
     async def _cmd_status(self, log: RichLog, *, only: str | None = None) -> None:
-        result = await self._client.call("session.get", {"session_id": self._session_id})
+        result = await self._rpc("session.get", {"session_id": self._session_id})
         if only == "labels":
             log.write(f"[bold]labels[/bold] {escape(str(result.get('label_set', [])))}")
             return
@@ -281,7 +322,7 @@ class CapDepConsole(App[None]):
             log.write(escape(line))
 
     async def _cmd_schemas(self, log: RichLog) -> None:
-        result = await self._client.call("extract.schemas", {})
+        result = await self._rpc("extract.schemas", {})
         schemas = result.get("schemas", [])
         if not schemas:
             log.write("[dim]no schemas available[/dim]")
@@ -293,7 +334,7 @@ class CapDepConsole(App[None]):
         if len(parts) < 2:
             log.write("[red]usage:[/red] /extract <message_id> <schema>")
             return
-        result = await self._client.call(
+        result = await self._rpc(
             "extract.inbox_message",
             {"message_id": parts[0], "schema": parts[1]},
         )
@@ -306,7 +347,7 @@ class CapDepConsole(App[None]):
         )
 
     async def _cmd_approvals(self, log: RichLog) -> None:
-        result = await self._client.call("approval.list", {"status": "pending"})
+        result = await self._rpc("approval.list", {"status": "pending"})
         approvals = result.get("approvals", [])
         if not approvals:
             log.write("[dim]no pending approvals[/dim]")
@@ -338,7 +379,7 @@ class CapDepConsole(App[None]):
         if not isinstance(response_value, dict):
             log.write("[red]response must be a JSON object[/red]")
             return
-        await self._client.call(
+        await self._rpc(
             "approval.respond_elicitation",
             {
                 "id": approval_id,
@@ -353,23 +394,31 @@ class CapDepConsole(App[None]):
             log.write("[red]usage:[/red] /deny <id>")
             return
         approval_id = int(arg.strip())
-        await self._client.call(
+        await self._rpc(
             "approval.deny",
             {"id": approval_id, "reason": "denied via console"},
         )
         log.write(f"[yellow]denied[/yellow] approval #{approval_id}")
 
     async def _refresh_status_now(self) -> None:
-        full = await self._client.call("session.get", {"session_id": self._session_id})
+        full = await self._rpc("session.get", {"session_id": self._session_id})
         self.query_one("#status", Static).update("\n".join(status_lines(full)))
 
     @work(exclusive=True)
     async def _send(self, message: str) -> None:
         log = self.query_one("#log", RichLog)
         try:
-            result = await self._client.call(
+            # #319 — the message-send gets ONE sub-second retry (SEND_RECONNECT):
+            # a socket-move / fast-restart blip recovers transparently (the
+            # headline reconnect case), while a real outage surfaces in ~150ms
+            # rather than hanging the pane on the full ambient budget. The retry
+            # is side-effect-free (DaemonNotRunningError fires at connect time,
+            # before the turn starts); the daemon rehydrates the session on
+            # restart, so if it does surface the operator's resend just works.
+            result = await self._rpc(
                 "session.send",
                 {"session_id": self._session_id, "message": message},
+                budget=SEND_RECONNECT,
             )
         except DaemonNotRunningError:
             log.write("[red]daemon not running[/red]")
@@ -393,7 +442,7 @@ class CapDepConsole(App[None]):
     @work(exclusive=False)
     async def _refresh_status(self) -> None:
         try:
-            full = await self._client.call(
+            full = await self._rpc(
                 "session.get",
                 {"session_id": self._session_id},
             )
@@ -413,6 +462,13 @@ class CapDepConsole(App[None]):
 
     @work(exclusive=False)
     async def _event_stream(self) -> None:
+        # #319 note: the live audit feed is NOT auto-resubscribed after a daemon
+        # bounce — a clean end of `subscribe()` is indistinguishable from a
+        # socket-closed-by-restart, and blindly re-subscribing risks a busy
+        # loop against a quiet/short stream. The feed simply stops on a bounce;
+        # the sidebar re-syncs on the next reconnect-aware command (`_rpc` →
+        # session.get), so status is never wrong for long. Transparent
+        # feed-resume across a restart is a follow-up.
         try:
             async for ev in await self._client.subscribe(["audit"]):
                 data = ev.get("data") or {}
@@ -430,7 +486,7 @@ class CapDepConsole(App[None]):
     @work(exclusive=False)
     async def _open_approval(self, approval_id: int) -> None:
         try:
-            full = await self._client.call(
+            full = await self._rpc(
                 "approval.show",
                 {"id": approval_id},
             )
@@ -450,7 +506,7 @@ class CapDepConsole(App[None]):
                 return
             try:
                 if decision == "approve":
-                    res = await self._client.call(
+                    res = await self._rpc(
                         "approval.approve",
                         {"id": approval_id},
                     )
@@ -463,7 +519,7 @@ class CapDepConsole(App[None]):
                             f"({d.get('decision', '?')})[/dim]",
                         )
                 else:
-                    await self._client.call(
+                    await self._rpc(
                         "approval.deny",
                         {"id": approval_id},
                     )

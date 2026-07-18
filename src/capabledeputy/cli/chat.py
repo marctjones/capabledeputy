@@ -52,6 +52,7 @@ message — the only path through the LLM is the non-slash one.
 from __future__ import annotations
 
 import contextlib
+import functools
 import re
 import shutil
 import sys
@@ -92,6 +93,11 @@ from capabledeputy.cli.styles import (
     STYLE_WARNING,
 )
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
+from capabledeputy.ipc.reconnect import (
+    AMBIENT_RECONNECT,
+    SEND_RECONNECT,
+    call_with_reconnect,
+)
 from capabledeputy.ipc.socket_path import default_socket_path
 from capabledeputy.presentation import (
     DENY_RECOVERY,
@@ -170,8 +176,51 @@ def _client() -> DaemonClient:
     return DaemonClient(default_socket_path())
 
 
-def _call(method: str, params: dict[str, Any] | None = None) -> Any:
-    return anyio.run(_client().call, method, params or {})
+def _call(
+    method: str,
+    params: dict[str, Any] | None = None,
+    *,
+    reconnect: bool = True,
+    budget: dict[str, Any] | None = None,
+) -> Any:
+    """One-shot RPC to the daemon.
+
+    #319 — reconnect-aware by default: a transient daemon bounce (a #318
+    supervisor restart, or a socket move) surfaces as `DaemonNotRunningError`
+    at connect time, before any bytes are sent, so retrying with backoff is
+    side-effect-free — the interactive REPL command recovers instead of
+    erroring. `session.*` turns are idempotent under this retry for the same
+    reason (a not-yet-connected call never started a turn).
+
+    `budget` selects the retry envelope (defaults to `AMBIENT_RECONNECT`; the
+    message-send passes `SEND_RECONNECT` for one sub-second retry so it recovers
+    a blip transparently without hanging on a real outage). Probe sites that
+    must fail *fast* — the daemon-running check and the autostart poll loop —
+    pass `reconnect=False`.
+    """
+    return anyio.run(
+        functools.partial(_call_async, method, params or {}, reconnect, budget or AMBIENT_RECONNECT)
+    )
+
+
+async def _call_async(
+    method: str, params: dict[str, Any], reconnect: bool, budget: dict[str, Any]
+) -> Any:
+    client = _client()
+    if not reconnect:
+        return await client.call(method, params)
+    notified = {"shown": False}
+
+    def _on_reconnect(_attempt: int) -> None:
+        # One notice per bounce, not one per retry.
+        if not notified["shown"]:
+            err_console.print("[dim]daemon unavailable — reconnecting…[/dim]")
+            notified["shown"] = True
+
+    result = await call_with_reconnect(client, method, params, on_reconnect=_on_reconnect, **budget)
+    if notified["shown"]:
+        err_console.print("[dim]daemon reconnected.[/dim]")
+    return result
 
 
 def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
@@ -232,7 +281,10 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
         )
 
     try:
-        _call("ping")
+        # Probe: must fail fast — this is the "is the daemon up?" check that
+        # decides whether to autostart. Reconnect-retry here would spend the
+        # whole backoff budget before reporting a genuinely-absent daemon.
+        _call("ping", reconnect=False)
         if resolved_path is not None:
             console.print(
                 f"[dim]daemon already running (config when started would have been "
@@ -305,7 +357,9 @@ def _ensure_daemon(autostart: bool = False, config: str | None = None) -> None:
             )
             raise typer.Exit(code=2) from None
         try:
-            _call("ping")
+            # Autostart poll: fail fast so each 0.2s tick re-probes; reconnect
+            # backoff here would stall the readiness loop.
+            _call("ping", reconnect=False)
             console.print("[green]daemon ready[/green]")
             return
         except DaemonNotRunningError:
@@ -1342,7 +1396,9 @@ def _send_message(
     params: dict[str, Any] = {"session_id": session_id, "message": message}
     if max_iterations is not None:
         params["max_iterations"] = max_iterations
-    return _call("session.send", params)
+    # #319 — the message-send gets one sub-second retry (SEND_RECONNECT): a
+    # blip recovers transparently; a real outage surfaces fast, no long hang.
+    return _call("session.send", params, budget=SEND_RECONNECT)
 
 
 def _send_message_streaming(
@@ -1393,7 +1449,17 @@ def _send_message_streaming(
             return Group(spinner)
 
         rpc_client = _client()
-        turn_start = await rpc_client.call("session.turn.start", params)
+        # #319 — the message-send gets ONE sub-second retry (SEND_RECONNECT): a
+        # socket-move / fast-restart blip recovers transparently (the headline
+        # reconnect case), while a real outage surfaces in ~150ms instead of
+        # hanging the UI on the full ambient budget. DaemonNotRunningError fires
+        # at connect time (no turn started yet), so the retry is side-effect-
+        # free. This runs before the Live region starts, so a notice prints
+        # cleanly. The daemon rehydrates the session on restart, so if it does
+        # surface, the operator's resend just works.
+        turn_start = await call_with_reconnect(
+            rpc_client, "session.turn.start", params, **SEND_RECONNECT
+        )
         turn = turn_start.get("turn") or {}
         turn_id = str(turn.get("id") or "")
         turn_stream = str(turn.get("stream") or f"turn:{turn_id}")
