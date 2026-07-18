@@ -120,3 +120,88 @@ def test_size_and_timeout_bounds_are_set() -> None:
     assert webmod._MAX_FETCH_BYTES <= 10 * 1024 * 1024
     assert webmod._FETCH_TIMEOUT_SECONDS <= 60
     assert webmod._ALLOWED_SCHEMES == ("http", "https")
+
+
+# --- real _fetch_url_text body (urlopen + getaddrinfo mocked, no network) -----
+
+_PUBLIC_ADDRINFO = [(2, 1, 6, "", ("93.184.216.34", 0))]  # example.com, public
+
+
+class _FakeHeaders:
+    def __init__(self, charset: str | None, ctype: str) -> None:
+        self._charset = charset
+        self._ctype = ctype
+
+    def get_content_charset(self) -> str | None:
+        return self._charset
+
+    def get_content_type(self) -> str:
+        return self._ctype
+
+
+class _FakeResp:
+    def __init__(
+        self,
+        body: bytes,
+        *,
+        status: int = 200,
+        charset: str | None = "utf-8",
+        ctype: str = "text/html",
+    ) -> None:
+        self._body = body
+        self.status = status
+        self.headers = _FakeHeaders(charset, ctype)
+
+    def read(self, n: int) -> bytes:
+        return self._body[:n]
+
+    def __enter__(self) -> _FakeResp:
+        return self
+
+    def __exit__(self, *_a: object) -> bool:
+        return False
+
+
+def _patch_public(monkeypatch: pytest.MonkeyPatch, resp_or_exc: Any) -> None:
+    monkeypatch.setattr(webmod.socket, "getaddrinfo", lambda *a, **k: _PUBLIC_ADDRINFO)
+
+    def _urlopen(req: Any, timeout: float = 0) -> Any:
+        if isinstance(resp_or_exc, Exception):
+            raise resp_or_exc
+        return resp_or_exc
+
+    monkeypatch.setattr(webmod.urllib.request, "urlopen", _urlopen)
+
+
+def test_fetch_success_body_is_decoded(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_public(monkeypatch, _FakeResp(b"hello world"))
+    out = webmod._fetch_url_text("https://example.com/")
+    assert out["body"] == "hello world"
+    assert out["status"] == 200
+    assert out["content_type"] == "text/html"
+    assert out["truncated"] is False
+
+
+def test_fetch_truncates_oversized_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    big = b"x" * (webmod._MAX_FETCH_BYTES + 100)
+    _patch_public(monkeypatch, _FakeResp(big, charset=None))  # charset None -> utf-8 fallback
+    out = webmod._fetch_url_text("https://example.com/big")
+    assert out["truncated"] is True
+    assert len(out["body"]) == webmod._MAX_FETCH_BYTES
+
+
+def test_fetch_wraps_urlerror(monkeypatch: pytest.MonkeyPatch) -> None:
+    import urllib.error
+
+    _patch_public(monkeypatch, urllib.error.URLError("dns boom"))
+    with pytest.raises(WebFetchError, match="fetch failed"):
+        webmod._fetch_url_text("https://example.com/")
+
+
+def test_guard_wraps_resolution_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(*_a: object, **_k: object) -> Any:
+        raise OSError("name resolution failed")
+
+    monkeypatch.setattr(webmod.socket, "getaddrinfo", _boom)
+    with pytest.raises(WebFetchError, match="could not resolve"):
+        webmod._fetch_url_text("https://nonexistent.invalid/")
