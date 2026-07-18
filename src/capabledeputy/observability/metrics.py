@@ -48,10 +48,14 @@ class HistogramSummary:
 class MetricsSnapshot:
     counters: dict[str, int]
     histograms: dict[str, HistogramSummary]
+    # Point-in-time values (approval queue depth, upstream-server health): the
+    # #323-named signals that are levels, not rates. Last-write-wins.
+    gauges: dict[str, float] = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return {
             "counters": dict(self.counters),
+            "gauges": dict(self.gauges),
             "histograms": {
                 k: {"count": h.count, "p50": h.p50, "p95": h.p95, "p99": h.p99, "max": h.max}
                 for k, h in self.histograms.items()
@@ -63,6 +67,7 @@ class MetricsSnapshot:
 class Metrics:
     _counters: dict[str, int] = field(default_factory=dict)
     _histograms: dict[str, list[float]] = field(default_factory=dict)
+    _gauges: dict[str, float] = field(default_factory=dict)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def incr(self, name: str, amount: int = 1) -> None:
@@ -75,6 +80,12 @@ class Metrics:
             series.append(value)
             if len(series) > _MAX_SAMPLES:
                 del series[0 : len(series) - _MAX_SAMPLES]
+
+    def set_gauge(self, name: str, value: float) -> None:
+        """Record a point-in-time level (queue depth, healthy-upstream count).
+        Last-write-wins; unlike a counter this can go down."""
+        with self._lock:
+            self._gauges[name] = value
 
     @contextmanager
     def timer(self, name: str, *, error_counter: str | None = None) -> Iterator[None]:
@@ -93,6 +104,7 @@ class Metrics:
     def snapshot(self) -> MetricsSnapshot:
         with self._lock:
             counters = dict(self._counters)
+            gauges = dict(self._gauges)
             histograms: dict[str, HistogramSummary] = {}
             for name, samples in self._histograms.items():
                 s = sorted(samples)
@@ -103,7 +115,7 @@ class Metrics:
                     p99=_percentile(s, 0.99),
                     max=s[-1] if s else 0.0,
                 )
-        return MetricsSnapshot(counters=counters, histograms=histograms)
+        return MetricsSnapshot(counters=counters, histograms=histograms, gauges=gauges)
 
 
 _METRICS = Metrics()

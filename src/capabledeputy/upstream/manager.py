@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Any
 
+from capabledeputy.observability import get_metrics, log_event
 from capabledeputy.tools.registry import ToolRegistry
 from capabledeputy.upstream.adapter import LabeledMcpAdapter
 from capabledeputy.upstream.config import UpstreamServerConfig
@@ -77,6 +78,16 @@ class UpstreamManager:
         # Per-server status tracker (operator visibility via /server).
         self._status: dict[str, UpstreamServerStatus] = {}
 
+    def _record_health(self) -> None:
+        """#323 — publish upstream-server health as gauges so a failed MCP
+        server (its tools silently missing) is observable in `capdep metrics` /
+        `capdep doctor` without reading the audit log."""
+        total = len(self._status)
+        healthy = sum(1 for s in self._status.values() if s.state == "registered")
+        m = get_metrics()
+        m.set_gauge("upstream.servers_total", total)
+        m.set_gauge("upstream.servers_healthy", healthy)
+
     async def __aenter__(self) -> UpstreamManager:
         for config in self._configs:
             try:
@@ -106,6 +117,15 @@ class UpstreamManager:
                     "daemon after fixing the config.",
                     file=sys.stderr,
                 )
+                # #323 — structured line so a degraded upstream is machine-
+                # observable, not just a human stderr print.
+                log_event(
+                    "error",
+                    "upstream.spawn_failed",
+                    server=config.name,
+                    transport=config.transport,
+                    error=str(e)[:500],
+                )
                 # Record the failure so /server surfaces it. Truncate
                 # the error to keep the RPC payload sane.
                 self._status[config.name] = UpstreamServerStatus(
@@ -117,6 +137,7 @@ class UpstreamManager:
                     transport=config.transport,
                     url=config.url,
                 )
+        self._record_health()
         return self
 
     async def __aexit__(
@@ -169,6 +190,7 @@ class UpstreamManager:
         if adapter is not None and adapter in self._adapters:
             self._adapters.remove(adapter)
         self._status.pop(name, None)
+        self._record_health()
         return self._registry.unregister_prefix(f"{name}.")
 
     async def reload_server(self, config: UpstreamServerConfig) -> UpstreamServerStatus:
@@ -199,6 +221,14 @@ class UpstreamManager:
                 url=config.url,
             )
         self._status[config.name] = status
+        if status.state == "failed":
+            log_event(
+                "error",
+                "upstream.reload_failed",
+                server=config.name,
+                error=status.error,
+            )
+        self._record_health()
         return status
 
     @property
