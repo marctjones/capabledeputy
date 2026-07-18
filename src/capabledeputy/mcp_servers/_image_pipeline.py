@@ -484,8 +484,10 @@ def load_image_gen_config(*, profile_name: str | None = None) -> ImageGenConfig:
         default_width=int(os.environ.get("CAPDEP_IMAGE_WIDTH", "768")),
         default_height=int(os.environ.get("CAPDEP_IMAGE_HEIGHT", "768")),
         default_steps=int(_profile_value(profile, "steps", "CAPDEP_IMAGE_STEPS") or "20"),
-        safety_enabled=_truthy(os.environ.get("CAPDEP_IMAGE_SAFETY"), default=False),
-        prompt_filter_enabled=_truthy(os.environ.get("CAPDEP_IMAGE_PROMPT_FILTER"), default=False),
+        # #330 (spike #317) — safe-by-default: an ABSENT env var now means ON, so
+        # a security product never ships image generation unfiltered by omission.
+        safety_enabled=_truthy(os.environ.get("CAPDEP_IMAGE_SAFETY"), default=True),
+        prompt_filter_enabled=_truthy(os.environ.get("CAPDEP_IMAGE_PROMPT_FILTER"), default=True),
         checkpoints=checkpoints,
     )
 
