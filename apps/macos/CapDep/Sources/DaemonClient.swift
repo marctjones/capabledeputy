@@ -37,7 +37,11 @@ struct DaemonClient {
         return "/tmp/capdep-\(getuid()).sock"
     }
 
-    func call(method: String, params: [String: Any] = [:]) async throws -> Any {
+    // `params` is `sending`: the caller hands ownership of the request dict to
+    // the client, which serializes it on a background queue. This keeps
+    // `[String: Any]` (non-Sendable) from being flagged as a data race when
+    // passed from an actor-isolated caller (Swift 6.2+ strict concurrency).
+    func call(method: String, params: sending [String: Any] = [:]) async throws -> Any {
         let request: [String: Any] = [
             "jsonrpc": "2.0",
             "method": method,
