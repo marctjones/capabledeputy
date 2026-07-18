@@ -2273,7 +2273,7 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
-    func testTool(_ tool: DaemonToolViewData, sessionID: String, args: [String: Any]) async -> [String: Any]? {
+    func testTool(_ tool: DaemonToolViewData, sessionID: String, args: sending [String: Any]) async -> [String: Any]? {
         do {
             return try await client.call(
                 method: "tool.test",
@@ -2285,7 +2285,7 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
-    func callTool(_ tool: DaemonToolViewData, sessionID: String, args: [String: Any]) async -> [String: Any]? {
+    func callTool(_ tool: DaemonToolViewData, sessionID: String, args: sending [String: Any]) async -> [String: Any]? {
         do {
             return try await client.call(
                 method: "tool.call",
