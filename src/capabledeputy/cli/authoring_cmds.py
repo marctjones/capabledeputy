@@ -115,6 +115,91 @@ def _posture_root() -> None:
     """Select the active security posture (keeps `use` as a named subcommand)."""
 
 
+# #309 — plain-language, non-expert explanations of what each preset ACTUALLY
+# changes. The honest framing: all three enforce the SAME security floor; the
+# choice only trades approval frequency for autonomy INSIDE the floors.
+_PRESET_EXPLANATIONS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "strict": (
+        "Most approvals, least autonomy.",
+        (
+            "The agent asks you before almost any consequential action.",
+            "Nothing auto-runs beyond safe reads; every egress is gated.",
+            "Sensitive/regulated data is handled via reference handles — the "
+            "planner never sees raw values.",
+        ),
+    ),
+    "high-security-useful": (
+        "Balanced — fewer approvals than strict, still tight.",
+        (
+            "Some safe actions auto-run (e.g. emailing yourself).",
+            "Regulated data routes through a quarantined dual-LLM projection.",
+            "Restricted data still uses reference handles.",
+        ),
+    ),
+    "low-friction-practical": (
+        "Fewest approvals, most autonomy inside the floors.",
+        (
+            "More actions auto-run; you are prompted less often.",
+            "Regulated data may be handled turn-level (raw) for convenience.",
+            "Restricted data STILL uses reference handles — the floor holds.",
+        ),
+    ),
+}
+
+_FLOOR_NOTE = (
+    "All three presets enforce the SAME security floor: credential / health / "
+    "financial data can never silently egress, untrusted content can never "
+    "egress, and restricted data never reaches the planner raw. The choice only "
+    "trades approval frequency for autonomy INSIDE those floors."
+)
+
+
+def _render_preset(pid: str) -> None:
+    from capabledeputy.policy.posture import BUILTIN_POSTURES
+
+    posture = BUILTIN_POSTURES[pid]
+    headline, bullets = _PRESET_EXPLANATIONS[pid]
+    console.print(f"[bold]{pid}[/bold] — {headline}")
+    for b in bullets:
+        console.print(f"  • {b}")
+    console.print(
+        f"  [dim]dial={posture.risk_preference.value}  "
+        f"retention={posture.retention.value}  "
+        f"inspectors={list(posture.inspector_set) or 'none'}[/dim]",
+    )
+
+
+@posture_app.command("list")
+def posture_list() -> None:
+    """Show the three shipped presets with a plain-language explanation of what
+    each ACTUALLY changes, and the honest note that the security floor is
+    identical across all three (#309)."""
+    from capabledeputy.policy.posture import BUILTIN_POSTURES
+
+    for pid in BUILTIN_POSTURES:
+        _render_preset(pid)
+        console.print("")
+    console.print(f"[yellow]{_FLOOR_NOTE}[/yellow]")
+    console.print(
+        "\nSelect one:  [bold]capdep posture use <id>[/bold]   "
+        "then validate:  [bold]capdep policy check[/bold]",
+    )
+
+
+@posture_app.command("explain")
+def posture_explain(
+    posture_id: Annotated[str, typer.Argument(help="Preset id to explain.")],
+) -> None:
+    """Explain one preset in plain language (#309)."""
+    if posture_id not in _PRESET_EXPLANATIONS:
+        err_console.print(
+            f"[red]unknown preset[/red] {posture_id!r}; one of {sorted(_PRESET_EXPLANATIONS)}",
+        )
+        raise typer.Exit(2)
+    _render_preset(posture_id)
+    console.print(f"\n[yellow]{_FLOOR_NOTE}[/yellow]")
+
+
 @posture_app.command("use")
 def posture_use(
     posture_id: Annotated[

@@ -198,3 +198,28 @@ def test_mutation_sequence_composes(tmp_path: Path) -> None:
     assert doc["posture"] == {"use": "strict"}
     assert doc["labels"][0]["category"] == "financial"
     assert doc["rules"][0]["id"] == "r"
+
+
+# --- #309: posture list / explain (plain-language selection UX) ------------
+
+
+def test_posture_list_shows_all_presets_and_floor_note() -> None:
+    result = runner.invoke(posture_app, ["list"])
+    assert result.exit_code == 0
+    for pid in ("strict", "high-security-useful", "low-friction-practical"):
+        assert pid in result.stdout
+    assert "SAME security floor" in result.stdout
+    assert "capdep posture use" in result.stdout
+
+
+def test_posture_explain_one_preset() -> None:
+    result = runner.invoke(posture_app, ["explain", "low-friction-practical"])
+    assert result.exit_code == 0
+    assert "Fewest approvals" in result.stdout
+    assert "floor holds" in result.stdout
+
+
+def test_posture_explain_unknown_exits_2() -> None:
+    result = runner.invoke(posture_app, ["explain", "nope"])
+    assert result.exit_code == 2
+    assert "unknown preset" in result.stdout
