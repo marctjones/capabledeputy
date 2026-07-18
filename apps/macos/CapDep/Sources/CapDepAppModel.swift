@@ -556,6 +556,20 @@ final class CapDepAppModel: ObservableObject {
         selectedSection = .approvals
     }
 
+    /// Decide an approval addressed only by id (#332 notification actions).
+    /// Deny is safe to do from a notification (fail-closed). Approve is
+    /// intentionally NOT offered as a notification action — approving should
+    /// happen from the card where the payload/labels are visible — so this is
+    /// used only for deny; unknown ids are ignored.
+    func denyApprovalByID(_ id: Int) async {
+        guard let approval = pendingApprovals.first(where: { $0.id == id }) else {
+            // Already resolved or not loaded yet — refresh so the queue is current.
+            await refresh()
+            return
+        }
+        await deny(approval)
+    }
+
     func presentApproval(id: Int) {
         focusedApprovalID = id
         approvalWindowID = id

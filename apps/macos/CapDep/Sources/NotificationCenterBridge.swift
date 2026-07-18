@@ -1,6 +1,20 @@
 import Foundation
 import UserNotifications
 
+/// #332 — stable identifiers shared by the notification bridge (which posts and
+/// categorizes) and the delegate (which handles taps/actions). An actionable
+/// approval notification is the surface that reliably reaches the user when NO
+/// CapDep window is open, satisfying "with the main window closed, a new
+/// approval still pops an actionable prompt."
+enum ApprovalNotification {
+    static let category = "CAPDEP_APPROVAL"
+    /// Opens the full approval card (foreground) — approving happens there, with
+    /// payload + labels visible, never blind from the banner.
+    static let reviewAction = "CAPDEP_APPROVAL_REVIEW"
+    /// Deny straight from the banner — safe/fail-closed without the full card.
+    static let denyAction = "CAPDEP_APPROVAL_DENY"
+}
+
 @MainActor
 final class NotificationCenterBridge {
     private var permissionRequested = false
@@ -13,6 +27,7 @@ final class NotificationCenterBridge {
             return
         }
         permissionRequested = true
+        registerApprovalCategory()
         do {
             _ = try await UNUserNotificationCenter.current().requestAuthorization(
                 options: [.alert, .sound, .badge],
@@ -20,6 +35,28 @@ final class NotificationCenterBridge {
         } catch {
             // Notification permission is advisory. The daemon and GUI stay usable without it.
         }
+    }
+
+    /// Register the actionable approval category so the notification carries
+    /// Review + Deny buttons. Idempotent (setNotificationCategories replaces).
+    private func registerApprovalCategory() {
+        let review = UNNotificationAction(
+            identifier: ApprovalNotification.reviewAction,
+            title: "Review",
+            options: [.foreground],
+        )
+        let deny = UNNotificationAction(
+            identifier: ApprovalNotification.denyAction,
+            title: "Deny",
+            options: [.destructive],
+        )
+        let category = UNNotificationCategory(
+            identifier: ApprovalNotification.category,
+            actions: [review, deny],
+            intentIdentifiers: [],
+            options: [],
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([category])
     }
 
     func notifyPendingApproval(count: Int, approvalID: Int) async {
@@ -36,6 +73,7 @@ final class NotificationCenterBridge {
             : "\(count) actions are waiting for review. Open approval #\(approvalID)."
         content.sound = .default
         content.userInfo = ["approval_id": approvalID]
+        content.categoryIdentifier = ApprovalNotification.category
         let request = UNNotificationRequest(
             identifier: "capdep.pending-approval.\(approvalID)",
             content: content,
