@@ -122,6 +122,10 @@ struct ChatView: View {
                         capabilityGrantBanner(step: grantStep, sessionID: sessionID)
                     }
 
+                    if model.pendingOverrideRequired != nil {
+                        overrideBanner
+                    }
+
                     if !model.currentToolOutcomes.isEmpty {
                         ToolOutcomesPanel(outcomes: model.currentToolOutcomes)
                     }
@@ -222,6 +226,29 @@ struct ChatView: View {
         }
         .padding(14)
         .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var overrideBanner: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Override required")
+                    .font(.headline)
+                Text("This action crosses a hard security floor. It can only proceed through an explicit, dual-controlled override — never a normal approval.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Open the override control to request it, then have a distinct principal attest.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Open override control") {
+                model.presentOverrideRequest()
+                openWindow(id: "override-card")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(14)
+        .background(.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private func capabilityGrantBanner(step: RecoveryStep, sessionID: String) -> some View {

@@ -88,6 +88,16 @@ struct CapDepMacApp: App {
         }
         .windowResizability(.contentSize)
 
+        Window("Override", id: "override-card") {
+            OverrideCardWindow()
+                .environmentObject(model)
+                .frame(minWidth: 640, minHeight: 560)
+                .task {
+                    await model.start()
+                }
+        }
+        .windowResizability(.contentSize)
+
         Window("Google Account Setup", id: "google-oauth-wizard") {
             GoogleOAuthWizardView()
                 .environmentObject(model)

@@ -1103,6 +1103,7 @@ struct OverrideGrantViewData: Identifiable, Hashable {
     let target: String
     let state: String
     let expiresAt: String
+    let invokerPrincipal: String
 
     init(dictionary: [String: Any]) {
         self.id = dictionary["id"] as? String ?? UUID().uuidString
@@ -1111,6 +1112,49 @@ struct OverrideGrantViewData: Identifiable, Hashable {
         self.target = dictionary["target"] as? String ?? ""
         self.state = dictionary["state"] as? String ?? ""
         self.expiresAt = dictionary["expires_at"] as? String ?? ""
+        self.invokerPrincipal = dictionary["invoker_principal"] as? String ?? ""
+    }
+
+    /// True while the grant is awaiting the second (distinct) attester in the
+    /// dual-control flow — the state in which the GUI attest control is live.
+    var awaitsAttestation: Bool {
+        state.uppercased().contains("PENDING_ATTESTATION")
+    }
+}
+
+/// A GUI-authored override request. `paramsDictionary()` marshals to the exact
+/// `override.request` RPC contract (see `cli/override_cmd.py`), so the daemon
+/// consults the resulting grant on the next `engine.decide()`.
+struct OverrideRequestDraft: Equatable {
+    var sessionID: String = ""
+    var actionKind: String = ""
+    var target: String = ""
+    var floor: String = ""
+    var invoker: String = ""
+    var category: String = "unknown"
+    var tier: String = "restricted"
+    var frictionConfirmed: Bool = false
+
+    /// The daemon requires session, action kind, floor, and invoker to issue a
+    /// grant; category/tier carry defaults matching the CLI.
+    var isSubmittable: Bool {
+        !sessionID.trimmingCharacters(in: .whitespaces).isEmpty
+            && !actionKind.trimmingCharacters(in: .whitespaces).isEmpty
+            && !floor.trimmingCharacters(in: .whitespaces).isEmpty
+            && !invoker.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    func paramsDictionary() -> [String: Any] {
+        [
+            "session_id": sessionID,
+            "action_kind": actionKind,
+            "target": target,
+            "floor": floor,
+            "invoker": invoker,
+            "category": category.isEmpty ? "unknown" : category,
+            "tier": tier.isEmpty ? "restricted" : tier,
+            "friction_confirmed": frictionConfirmed,
+        ]
     }
 }
 
