@@ -103,15 +103,14 @@ def _img_cfg(env: dict[str, str] | None = None) -> UpstreamServerConfig:
     )
 
 
-def test_forced_posture_forces_output_safety_only() -> None:
-    # A stale `off` for OUTPUT safety must NOT survive a forced_on posture...
+def test_no_posture_forces_image_content_filtering() -> None:
+    # #416 + #428 — CapDep does not content-filter image generation; NO posture
+    # forces any dial. A forced_on posture leaves the config values exactly as-is.
     cfg = _img_cfg({"CAPDEP_IMAGE_SAFETY": "off", "CAPDEP_IMAGE_PROMPT_FILTER": "off"})
     out = _apply_image_safety_floor([cfg], _Ctx(BUILTIN_POSTURES["strict"]))
-    assert out[0].env["CAPDEP_IMAGE_SAFETY"] == "on"
-    # #416 — the PROMPT filter is NOT posture-forced (CapDep is silent on content);
-    # a config value for it is left exactly as-is.
-    assert out[0].env["CAPDEP_IMAGE_PROMPT_FILTER"] == "off"
-    assert forced_image_safety_env() == {"CAPDEP_IMAGE_SAFETY": "on"}
+    assert out[0].env["CAPDEP_IMAGE_SAFETY"] == "off"  # untouched
+    assert out[0].env["CAPDEP_IMAGE_PROMPT_FILTER"] == "off"  # untouched
+    assert forced_image_safety_env() == {}
 
 
 def test_non_forcing_posture_leaves_optout_in_place() -> None:
@@ -136,29 +135,28 @@ def test_forced_posture_does_not_touch_non_image_servers() -> None:
 # --- safe-by-omission code default -------------------------------------------
 
 
-def test_absent_env_output_safety_on_prompt_filter_off(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_absent_env_no_image_content_filtering(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in ("CAPDEP_IMAGE_SAFETY", "CAPDEP_IMAGE_PROMPT_FILTER"):
         monkeypatch.delenv(var, raising=False)
     from capabledeputy.mcp_servers._image_pipeline import load_image_gen_config
 
     cfg = load_image_gen_config()
-    # #330 — OUTPUT safety on by omission (never ships unsafe by default).
-    assert cfg.safety_enabled is True
+    # #428 — OUTPUT safety off by default; the model's real output passes through.
+    assert cfg.safety_enabled is False
     # #416 — PROMPT filter off by default; prompts pass through unmodified.
     assert cfg.prompt_filter_enabled is False
 
 
-def test_shipped_on_token_actually_parses_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The whole floor rests on the producer→consumer contract: every surface
-    emits the literal string 'on', and the consumer must read 'on' as enabled.
-    The 'on'→True direction is the fail-OPEN one (break it and we ship unsafe
-    while claiming safe), so pin BOTH directions against the real loader."""
+def test_on_off_tokens_parse_for_the_opt_in_dials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The dials are now off-by-default, opt-in operator controls. Pin the
+    producer→consumer parse contract in BOTH directions so an operator who
+    explicitly opts in ('on') really enables, and 'off' really disables."""
     from capabledeputy.mcp_servers._image_pipeline import load_image_gen_config
 
     monkeypatch.setenv("CAPDEP_IMAGE_SAFETY", "on")
     monkeypatch.setenv("CAPDEP_IMAGE_PROMPT_FILTER", "on")
     on = load_image_gen_config()
-    assert on.safety_enabled is True  # forced/shipped 'on' really enables
+    assert on.safety_enabled is True  # explicit opt-in really enables
     assert on.prompt_filter_enabled is True
 
     monkeypatch.setenv("CAPDEP_IMAGE_SAFETY", "off")
@@ -171,13 +169,13 @@ def test_shipped_on_token_actually_parses_enabled(monkeypatch: pytest.MonkeyPatc
 # --- shipped managed config --------------------------------------------------
 
 
-def test_shipped_managed_config_output_safety_on_prompt_filter_off() -> None:
+def test_shipped_managed_config_ships_image_filters_off() -> None:
     from capabledeputy.cli import _managed_config as mc
 
     for body in (mc.BUNDLED_IMAGE_GENERATE_BLOCK_BODY, mc.BUNDLED_IMAGES_BLOCK_BODY):
-        # OUTPUT safety ships ON (#330); never off by default.
-        assert 'CAPDEP_IMAGE_SAFETY: "on"' in body
-        assert 'CAPDEP_IMAGE_SAFETY: "off"' not in body
-        # #416 — the PROMPT filter ships OFF: CapDep does not content-filter prompts.
+        # #428 + #416 — CapDep does not content-filter image generation: the
+        # shipped config disables BOTH the output checker and the prompt filter.
+        assert 'CAPDEP_IMAGE_SAFETY: "off"' in body
+        assert 'CAPDEP_IMAGE_SAFETY: "on"' not in body
         assert 'CAPDEP_IMAGE_PROMPT_FILTER: "off"' in body
         assert 'CAPDEP_IMAGE_PROMPT_FILTER: "on"' not in body
