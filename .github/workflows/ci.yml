@@ -59,3 +59,25 @@ jobs:
         with:
           name: coverage-xml
           path: coverage.xml
+
+  swift:
+    # CapDepMac is a Swift 6 (tools-version 6.0) SwiftPM package. Build + test it
+    # on the same macOS Apple Silicon runner so Swift changes self-verify in CI
+    # instead of relying on manual local builds (#344). Scope: build/test only —
+    # the signed/notarized release-artifact pipeline stays deferred.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Select newest Xcode (Swift 6+)
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          swift --version
+
+      - name: Build (swift)
+        working-directory: apps/macos/CapDep
+        run: swift build
+
+      - name: Test (swift)
+        working-directory: apps/macos/CapDep
+        run: swift test
