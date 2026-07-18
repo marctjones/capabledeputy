@@ -39,12 +39,15 @@ class PostureError(RuntimeError):
     """Fail-closed posture load/validation error (Principle VI)."""
 
 
-# #330 (spike #317) — image-generation safety dials, posture-tiered.
-#   forced_on            — both dials forced ON, non-negotiable (no opt-out).
+# #330 (spike #317) — image-generation OUTPUT-safety dial, posture-tiered.
+#   forced_on            — output safety checker forced ON, non-negotiable.
 #   default_on_optout_ok — default ON, but an explicit operator opt-out is honored.
 # There is deliberately NO "off" value: a security product never ships image
-# generation unsafe-by-default; the ONLY route to unfiltered output is the
-# operator's explicit opt-out under the one permissive posture.
+# OUTPUT generation unsafe-by-default; the ONLY route to disabling the output
+# checker is the operator's explicit opt-out under the one permissive posture.
+# #416 — this governs the OUTPUT safety checker only. CapDep does NOT
+# content-filter image PROMPTS (governance-scope: silent on content); the prompt
+# filter is an off-by-default, opt-in operator dial, not posture-forced.
 IMAGE_SAFETY_FORCED_ON = "forced_on"
 IMAGE_SAFETY_DEFAULT_ON_OPTOUT_OK = "default_on_optout_ok"
 _VALID_IMAGE_FILTERS = frozenset({IMAGE_SAFETY_FORCED_ON, IMAGE_SAFETY_DEFAULT_ON_OPTOUT_OK})

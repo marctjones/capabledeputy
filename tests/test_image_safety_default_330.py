@@ -103,16 +103,15 @@ def _img_cfg(env: dict[str, str] | None = None) -> UpstreamServerConfig:
     )
 
 
-def test_forced_posture_overrides_image_env() -> None:
-    # A stale `off` in the on-disk config must NOT survive a forced_on posture.
+def test_forced_posture_forces_output_safety_only() -> None:
+    # A stale `off` for OUTPUT safety must NOT survive a forced_on posture...
     cfg = _img_cfg({"CAPDEP_IMAGE_SAFETY": "off", "CAPDEP_IMAGE_PROMPT_FILTER": "off"})
     out = _apply_image_safety_floor([cfg], _Ctx(BUILTIN_POSTURES["strict"]))
     assert out[0].env["CAPDEP_IMAGE_SAFETY"] == "on"
-    assert out[0].env["CAPDEP_IMAGE_PROMPT_FILTER"] == "on"
-    assert forced_image_safety_env() == {
-        "CAPDEP_IMAGE_PROMPT_FILTER": "on",
-        "CAPDEP_IMAGE_SAFETY": "on",
-    }
+    # #416 — the PROMPT filter is NOT posture-forced (CapDep is silent on content);
+    # a config value for it is left exactly as-is.
+    assert out[0].env["CAPDEP_IMAGE_PROMPT_FILTER"] == "off"
+    assert forced_image_safety_env() == {"CAPDEP_IMAGE_SAFETY": "on"}
 
 
 def test_non_forcing_posture_leaves_optout_in_place() -> None:
@@ -137,14 +136,16 @@ def test_forced_posture_does_not_touch_non_image_servers() -> None:
 # --- safe-by-omission code default -------------------------------------------
 
 
-def test_absent_env_defaults_dials_on(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_absent_env_output_safety_on_prompt_filter_off(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in ("CAPDEP_IMAGE_SAFETY", "CAPDEP_IMAGE_PROMPT_FILTER"):
         monkeypatch.delenv(var, raising=False)
     from capabledeputy.mcp_servers._image_pipeline import load_image_gen_config
 
     cfg = load_image_gen_config()
+    # #330 — OUTPUT safety on by omission (never ships unsafe by default).
     assert cfg.safety_enabled is True
-    assert cfg.prompt_filter_enabled is True
+    # #416 — PROMPT filter off by default; prompts pass through unmodified.
+    assert cfg.prompt_filter_enabled is False
 
 
 def test_shipped_on_token_actually_parses_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -170,10 +171,13 @@ def test_shipped_on_token_actually_parses_enabled(monkeypatch: pytest.MonkeyPatc
 # --- shipped managed config --------------------------------------------------
 
 
-def test_shipped_managed_config_ships_dials_on() -> None:
+def test_shipped_managed_config_output_safety_on_prompt_filter_off() -> None:
     from capabledeputy.cli import _managed_config as mc
 
     for body in (mc.BUNDLED_IMAGE_GENERATE_BLOCK_BODY, mc.BUNDLED_IMAGES_BLOCK_BODY):
+        # OUTPUT safety ships ON (#330); never off by default.
         assert 'CAPDEP_IMAGE_SAFETY: "on"' in body
-        assert 'CAPDEP_IMAGE_PROMPT_FILTER: "on"' in body
         assert 'CAPDEP_IMAGE_SAFETY: "off"' not in body
+        # #416 — the PROMPT filter ships OFF: CapDep does not content-filter prompts.
+        assert 'CAPDEP_IMAGE_PROMPT_FILTER: "off"' in body
+        assert 'CAPDEP_IMAGE_PROMPT_FILTER: "on"' not in body
