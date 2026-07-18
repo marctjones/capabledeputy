@@ -1,15 +1,18 @@
 # Curated upstream config -- Notion MCP mapping fixture.
 #
+# ⚠️  NOT CONNECTABLE AS SHIPPED (#329): the `url` below is a placeholder
+#     (`mcp.notion.example`). This file is capability-mapping SCAFFOLDING ONLY —
+#     a strict security mapping (unmapped tools refused until reviewed + pinned)
+#     that cannot connect until Notion's real MCP endpoint is sourced and put in
+#     `url`. Treat as "not supported yet" for v1.0 until then.
+#
 # Producer: Notion MCP-compatible remote server.
 # Transport: streamable HTTP with OAuth bearer tokens from CapDep's native
 # browser PKCE flow.
 #
-# Endpoint note: replace `url` with Notion's current MCP endpoint before
-# loading this config. This file is intentionally a strict security mapping:
-# new/unmapped tools are refused until reviewed and pinned here.
-#
 #   export NOTION_MCP_CLIENT_ID=...
 #   export NOTION_MCP_CLIENT_SECRET=...
+#   # (after replacing the placeholder url with a real endpoint)
 #   capdep oauth login --config configs/curated/notion.yaml --server notion
 
 upstream_servers:

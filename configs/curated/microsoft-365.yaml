@@ -1,17 +1,21 @@
 # Curated upstream config -- Microsoft 365 / Microsoft Graph MCP mapping fixture.
 #
+# ⚠️  NOT CONNECTABLE AS SHIPPED (#329): the `url` below is a placeholder
+#     (`mcp.microsoft.example`). Microsoft does not publish a first-party
+#     Graph MCP endpoint at a stable URL yet, so this file is capability-mapping
+#     SCAFFOLDING ONLY — it pins known Microsoft 365 workflow tools to CapDep
+#     capability kinds (so unmapped upstream tools are refused during admission),
+#     but it cannot connect until a real Microsoft-hosted or organization-hosted
+#     MCP endpoint is sourced and put in `url`. Treat as "not supported yet" for
+#     v1.0 until then.
+#
 # Producer: Microsoft 365 / Microsoft Graph MCP-compatible remote server.
 # Transport: streamable HTTP with OAuth bearer tokens from CapDep's native
 # browser PKCE flow.
 #
-# Endpoint note: replace `url` with the current Microsoft-hosted or
-# organization-hosted MCP endpoint before loading this config. This file is a
-# strict capability-mapping fixture: it pins known Microsoft 365 workflow tools
-# to CapDep capability kinds so new/unmapped upstream tools are refused during
-# admission.
-#
 #   export MICROSOFT_MCP_CLIENT_ID=...
 #   export MICROSOFT_MCP_CLIENT_SECRET=...
+#   # (after replacing the placeholder url with a real endpoint)
 #   capdep oauth login --config configs/curated/microsoft-365.yaml --server microsoft-365
 
 upstream_servers:
@@ -40,12 +44,20 @@ upstream_servers:
         prompt: consent
     inherent_labels: ["confidential.personal", "untrusted.user_input"]
     strict: true
+    # #329 — outbound send is DISABLED by default, matching google-workspace.yaml
+    # (which disables SEND_EMAIL and exposes drafts only). Without this guard the
+    # send_mail override below would register a live SEND_EMAIL tool, giving M365
+    # an outbound-send surface Gmail deliberately withholds. Compose via
+    # create_mail_draft; enable send explicitly only after human review.
+    disabled_kinds: ["SEND_EMAIL"]
     tool_overrides:
       # Outlook mail.
       list_messages: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
       get_message: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
       search_messages: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
       create_mail_draft: {capability_kind: GMAIL_DRAFT, additional_labels: ["confidential.personal"], target_arg: to}
+      # send_mail maps to SEND_EMAIL but is refused at admission by disabled_kinds
+      # above (kept mapped so it's pinned/known, not silently unmapped).
       send_mail: {capability_kind: SEND_EMAIL, additional_labels: ["confidential.personal"], target_arg: to}
 
       # Outlook calendar.

@@ -68,6 +68,31 @@ def test_official_google_workspace_uses_gmail_draft_capability() -> None:
     )
 
 
+def test_microsoft_365_disables_outbound_send_like_gmail() -> None:
+    """#329 — M365 must not ship a live outbound-send surface Gmail withholds.
+    send_mail stays mapped (pinned/known) but SEND_EMAIL is disabled at
+    admission, exactly as google-workspace.yaml does for Gmail."""
+    [m365] = load_config_file(_CURATED / "microsoft-365.yaml")
+    assert "SEND_EMAIL" in m365.disabled_kinds
+    # Still pinned so an unmapped send_* can't slip through unnoticed.
+    assert m365.tool_overrides["send_mail"].capability_kind is not None
+    assert m365.tool_overrides["send_mail"].capability_kind.value == "SEND_EMAIL"
+    # Gmail (the reference posture) disables the same kind.
+    gmail = next(
+        c for c in load_config_file(_CURATED / "google-workspace.yaml") if c.name == "google-gmail"
+    )
+    assert "SEND_EMAIL" in gmail.disabled_kinds
+
+
+def test_placeholder_endpoints_are_marked_not_connectable() -> None:
+    """#329 — M365 + Notion use example.* placeholder URLs; the header must say
+    so honestly rather than implying a connectable integration."""
+    for name in ("microsoft-365.yaml", "notion.yaml"):
+        text = (_CURATED / name).read_text(encoding="utf-8")
+        assert ".example" in text  # still a placeholder
+        assert "NOT CONNECTABLE AS SHIPPED" in text  # and honestly labeled
+
+
 def test_legacy_news_server_removed() -> None:
     assert not (
         Path(__file__).parent.parent / "src" / "capabledeputy" / "mcp_servers" / "news.py"
