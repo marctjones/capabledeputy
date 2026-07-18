@@ -22,6 +22,7 @@ from capabledeputy.llm.types import (
     ToolCall,
     ToolDescription,
 )
+from capabledeputy.observability import get_metrics
 from capabledeputy.reliability import default_llm_timeout_seconds, with_timeout
 
 
@@ -136,10 +137,14 @@ class LiteLLMClient:
             kwargs["tools"] = payload_tools
 
         name_map = {_sanitize_tool_name(t.name): t.name for t in tools}
-        # #320 — a hung acompletion is cancelled and surfaced, never stalls the turn.
-        raw = await with_timeout(
-            self._timeout_seconds,
-            f"LLM completion ({self._model})",
-            lambda: litellm.acompletion(**kwargs),
-        )
+        # #323 — record latency + error rate; #320 — a hung acompletion is
+        # cancelled and surfaced, never stalls the turn.
+        metrics = get_metrics()
+        metrics.incr("llm.calls")
+        with metrics.timer("llm.latency_seconds", error_counter="llm.errors"):
+            raw = await with_timeout(
+                self._timeout_seconds,
+                f"LLM completion ({self._model})",
+                lambda: litellm.acompletion(**kwargs),
+            )
         return _response_from_openai(raw, name_map)
