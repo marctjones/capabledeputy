@@ -22,6 +22,8 @@ from capabledeputy.llm.types import (
     ToolCall,
     ToolDescription,
 )
+from capabledeputy.observability import get_metrics
+from capabledeputy.reliability import default_llm_timeout_seconds, with_timeout
 
 
 def _sanitize_tool_name(name: str) -> str:
@@ -99,9 +101,19 @@ def _response_from_openai(raw: Any, name_map: dict[str, str]) -> LLMResponse:
 
 
 class LiteLLMClient:
-    def __init__(self, model: str = "claude-haiku-4-5", **completion_kwargs: Any) -> None:
+    def __init__(
+        self,
+        model: str = "claude-haiku-4-5",
+        *,
+        timeout_seconds: float | None = None,
+        **completion_kwargs: Any,
+    ) -> None:
         self._model = model
         self._kwargs = completion_kwargs
+        # #320 — app-level hard deadline. None ⇒ the operator-configured default.
+        self._timeout_seconds = (
+            timeout_seconds if timeout_seconds is not None else default_llm_timeout_seconds()
+        )
 
     async def respond(
         self,
@@ -116,11 +128,23 @@ class LiteLLMClient:
         kwargs: dict[str, Any] = {
             "model": self._model,
             "messages": payload_messages,
+            # Pass litellm's own client-level timeout too (belt and suspenders);
+            # the anyio deadline below is the hard app-level guarantee.
+            "timeout": self._timeout_seconds,
             **self._kwargs,
         }
         if payload_tools:
             kwargs["tools"] = payload_tools
 
         name_map = {_sanitize_tool_name(t.name): t.name for t in tools}
-        raw = await litellm.acompletion(**kwargs)
+        # #323 — record latency + error rate; #320 — a hung acompletion is
+        # cancelled and surfaced, never stalls the turn.
+        metrics = get_metrics()
+        metrics.incr("llm.calls")
+        with metrics.timer("llm.latency_seconds", error_counter="llm.errors"):
+            raw = await with_timeout(
+                self._timeout_seconds,
+                f"LLM completion ({self._model})",
+                lambda: litellm.acompletion(**kwargs),
+            )
         return _response_from_openai(raw, name_map)
