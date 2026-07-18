@@ -142,6 +142,12 @@ web):
 5. CapDep does not classify or enforce content categories for generated
    images. It routes the request to the operator-selected local backend and
    returns the generated artifact.
+6. Report the tool's ACTUAL result faithfully. On success, include its
+   `markdown`. If the tool returns `ok: false`, tell the user exactly what the
+   image tool reported (its `error` — e.g. a backend/model failure or the
+   model's own refusal). Never substitute a vague "there was an issue" or add
+   your own judgement about whether the request was appropriate — that is not
+   your call, and CapDep is silent on content.
 
 ## Images and information from Wikipedia / the web
 
