@@ -14,6 +14,7 @@ from capabledeputy.cli.audit import audit_app, watch_command
 from capabledeputy.cli.audit_cmd import storage_shape_command
 from capabledeputy.cli.authoring_cmds import label_app, posture_app, rule_app
 from capabledeputy.cli.chat import chat_command, demo_app
+from capabledeputy.cli.doctor import doctor_command
 from capabledeputy.cli.image import image_app
 from capabledeputy.cli.init_cmd import init_command
 from capabledeputy.cli.maintenance import maintenance_app
@@ -69,6 +70,7 @@ google_oauth_app = typer.Typer(
 )
 oauth_app.add_typer(google_oauth_app, name="google")
 app.command("chat")(chat_command)
+app.command("doctor")(doctor_command)
 app.command("init")(init_command)
 app.command("watch")(watch_command)
 audit_app.command("storage-shape")(storage_shape_command)
