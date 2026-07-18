@@ -1,13 +1,20 @@
-"""Personal task / reminder stub tool.
+"""Personal task / reminder tool — a real, LOCAL, persistent to-do list.
 
-Closes the only priority-workflow gap: a lightweight to-do list so the
-"task & reminder management" workflow (Notion/Things/Trello-class) can
-be exercised end-to-end deterministically. Real deployments wrap a
-Google Tasks / Todoist MCP server via `upstream/` so the same labels and
-gates apply.
+#325 — de-stubbed from an in-memory dict to a SQLite-backed store so a reminder
+survives a daemon restart (the "create a real reminder" acceptance, met locally
+with NO external credentials). Per spike #312 tasks stays NATIVE: no production
+Google Tasks / Todoist MCP server exists to wire, and the workflow is entirely
+local user state. A future upstream provider can still be wired behind the same
+labels and gates.
 
-Tasks are personal user state, so list contents carry
-`confidential.personal`. Capability mapping is granular on purpose:
+Storage joins the shared state DB additively (`CREATE TABLE IF NOT EXISTS`, same
+convention as onguard / memory / admission), so it inherits that file's #321
+non-destructive lifecycle without owning a schema-version of its own. Connection
+is lazy: the first task operation happens mid-turn, long after the session
+store's startup lifecycle has settled the file.
+
+Tasks are personal user state, so list contents carry `confidential.personal`.
+Capability mapping is granular on purpose:
 
   - `tasks.add`      -> CREATE_FS  (non-destructive: a new item)
   - `tasks.list`     -> READ_FS
@@ -21,8 +28,11 @@ Tasks are personal user state, so list contents carry
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+import sqlite3
+import threading
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -34,6 +44,18 @@ from capabledeputy.policy.labels import (
 )
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
+
+# Additive: no schema_version row — the session store (#321) owns the shared
+# state.db's version; tasks is a peer table like onguard/memory/admission.
+_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    done INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+"""
 
 _PERSONAL_TAGS = LabelState(
     a=frozenset(
@@ -55,9 +77,35 @@ class Task:
     created_at: datetime
 
 
+def _row_to_task(row: sqlite3.Row) -> Task:
+    return Task(
+        id=row["id"],
+        title=row["title"],
+        notes=row["notes"],
+        done=bool(row["done"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
 class TaskStore:
-    def __init__(self) -> None:
-        self._tasks: dict[str, Task] = {}
+    """SQLite-backed personal task list. `db_path` defaults to an in-memory DB
+    (ephemeral — the prior stub's behavior, kept for tests + no-arg callers);
+    the daemon passes the shared state.db path for persistence across restarts."""
+
+    def __init__(self, db_path: Path | str = ":memory:") -> None:
+        self._db_path = str(db_path)
+        self._lock = threading.Lock()
+        self._con: sqlite3.Connection | None = None
+
+    def _conn(self) -> sqlite3.Connection:
+        # Lazy connect + additive table create. Must be called under _lock.
+        if self._con is None:
+            con = sqlite3.connect(self._db_path, check_same_thread=False)
+            con.row_factory = sqlite3.Row
+            con.executescript(_SCHEMA_SQL)
+            con.commit()
+            self._con = con
+        return self._con
 
     def add(self, title: str, notes: str = "") -> Task:
         task = Task(
@@ -67,21 +115,31 @@ class TaskStore:
             done=False,
             created_at=datetime.now(UTC),
         )
-        self._tasks[task.id] = task
+        with self._lock:
+            con = self._conn()
+            con.execute(
+                "INSERT INTO tasks (id, title, notes, done, created_at) VALUES (?, ?, ?, ?, ?)",
+                (task.id, task.title, task.notes, int(task.done), task.created_at.isoformat()),
+            )
+            con.commit()
         return task
 
     def all(self) -> list[Task]:
-        return sorted(self._tasks.values(), key=lambda t: t.created_at)
+        with self._lock:
+            rows = self._conn().execute("SELECT * FROM tasks ORDER BY created_at, id").fetchall()
+        return [_row_to_task(r) for r in rows]
 
     def get(self, task_id: str) -> Task | None:
-        return self._tasks.get(task_id)
+        with self._lock:
+            row = self._conn().execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return _row_to_task(row) if row is not None else None
 
     def complete(self, task_id: str) -> bool:
-        existing = self._tasks.get(task_id)
-        if existing is None:
-            return False
-        self._tasks[task_id] = replace(existing, done=True)
-        return True
+        with self._lock:
+            con = self._conn()
+            cur = con.execute("UPDATE tasks SET done = 1 WHERE id = ?", (task_id,))
+            con.commit()
+            return cur.rowcount > 0
 
     def edit(
         self,
@@ -90,21 +148,31 @@ class TaskStore:
         title: str | None = None,
         notes: str | None = None,
     ) -> bool:
-        existing = self._tasks.get(task_id)
-        if existing is None:
-            return False
-        updates: dict[str, Any] = {}
-        if title is not None:
-            updates["title"] = title
-        if notes is not None:
-            updates["notes"] = notes
-        if not updates:
+        with self._lock:
+            con = self._conn()
+            exists = con.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            if exists is None:
+                return False
+            sets: list[str] = []
+            params: list[Any] = []
+            if title is not None:
+                sets.append("title = ?")
+                params.append(title)
+            if notes is not None:
+                sets.append("notes = ?")
+                params.append(notes)
+            if sets:  # a no-field edit is a no-op success (matches prior behavior)
+                params.append(task_id)
+                con.execute(f"UPDATE tasks SET {', '.join(sets)} WHERE id = ?", params)
+                con.commit()
             return True
-        self._tasks[task_id] = replace(existing, **updates)
-        return True
 
     def remove(self, task_id: str) -> bool:
-        return self._tasks.pop(task_id, None) is not None
+        with self._lock:
+            con = self._conn()
+            cur = con.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            con.commit()
+            return cur.rowcount > 0
 
 
 def make_tasks_tools(store: TaskStore) -> list[ToolDefinition]:
