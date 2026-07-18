@@ -21,6 +21,15 @@ from capabledeputy.ipc.client import DaemonNotRunningError
 
 _MAX_BACKOFF = 2.0
 
+# #319 reconnect budgets for the interactive clients (CLI REPL / TUI console).
+# AMBIENT — status/list/navigation queries: a few seconds to ride out a
+#   transient bounce transparently, then surface (worst case ~3.1s).
+# SEND — the user's explicit message-send: ONE sub-second retry, so a
+#   socket-move / fast-restart blip recovers transparently while a real outage
+#   surfaces in ~150ms rather than hanging the UI on the full budget.
+AMBIENT_RECONNECT = {"max_attempts": 6, "base_delay": 0.1}
+SEND_RECONNECT = {"max_attempts": 2, "base_delay": 0.15}
+
 
 class RpcCaller(Protocol):
     """Anything with an async `call(method, params)` — `DaemonClient` and test
