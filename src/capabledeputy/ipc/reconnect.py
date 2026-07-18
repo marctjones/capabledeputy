@@ -13,17 +13,24 @@ client's subscribe+resubscribe path is the integration layer.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Protocol
 
 import anyio
 
-from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
+from capabledeputy.ipc.client import DaemonNotRunningError
 
 _MAX_BACKOFF = 2.0
 
 
+class RpcCaller(Protocol):
+    """Anything with an async `call(method, params)` — `DaemonClient` and test
+    doubles both satisfy this structurally."""
+
+    async def call(self, method: str, params: dict[str, Any] | None = None) -> Any: ...
+
+
 async def call_with_reconnect(
-    client: DaemonClient,
+    client: RpcCaller,
     method: str,
     params: dict[str, Any] | None = None,
     *,

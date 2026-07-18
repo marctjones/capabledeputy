@@ -91,7 +91,7 @@ async def test_litellm_client_times_out_a_hung_completion(monkeypatch: pytest.Mo
     async def _hang(**_kwargs):
         await anyio.sleep(100)
 
-    fake.acompletion = _hang
+    fake.acompletion = _hang  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "litellm", fake)
 
     client = LiteLLMClient(model="test-model", timeout_seconds=0.05)
