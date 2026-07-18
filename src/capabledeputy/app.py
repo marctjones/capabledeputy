@@ -97,7 +97,9 @@ class App:
         self.calendar = CalendarStore()
         self.inbox = Inbox()
         self.web = WebMock()
-        self.tasks = TaskStore()
+        # #325 — persistent local task list on the shared state DB (survives
+        # daemon restarts). Additive table; no external backend/credentials.
+        self.tasks = TaskStore(resolved_state_db_path)
         # Operator-published resources (configs/resources.yaml). Empty
         # publisher when the operator hasn't declared any; the
         # resources.list / resources.read tools register either way
