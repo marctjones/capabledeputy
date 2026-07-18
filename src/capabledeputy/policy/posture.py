@@ -39,15 +39,16 @@ class PostureError(RuntimeError):
     """Fail-closed posture load/validation error (Principle VI)."""
 
 
-# #330 (spike #317) — image-generation OUTPUT-safety dial, posture-tiered.
-#   forced_on            — output safety checker forced ON, non-negotiable.
-#   default_on_optout_ok — default ON, but an explicit operator opt-out is honored.
-# There is deliberately NO "off" value: a security product never ships image
-# OUTPUT generation unsafe-by-default; the ONLY route to disabling the output
-# checker is the operator's explicit opt-out under the one permissive posture.
-# #416 — this governs the OUTPUT safety checker only. CapDep does NOT
-# content-filter image PROMPTS (governance-scope: silent on content); the prompt
-# filter is an off-by-default, opt-in operator dial, not posture-forced.
+# #330 (spike #317) — image-generation safety dial, posture-tiered. NOW INERT.
+#
+# #416 + #428 — CapDep does NOT content-filter image generation, prompt OR
+# output (docs/governance-scope.md: silent by design on content). Both the
+# prompt filter and the output safety checker default off and are opt-in
+# operator dials; no posture forces them. `forced_image_safety_env()` returns
+# {}, so `forces_image_safety_on` has no effect. This `image_filters` field is
+# retained for config back-compat but is VESTIGIAL — its removal (with the rest
+# of the #330 scaffolding) is a tracked follow-up. The values below are kept so
+# existing posture configs/presets still validate.
 IMAGE_SAFETY_FORCED_ON = "forced_on"
 IMAGE_SAFETY_DEFAULT_ON_OPTOUT_OK = "default_on_optout_ok"
 _VALID_IMAGE_FILTERS = frozenset({IMAGE_SAFETY_FORCED_ON, IMAGE_SAFETY_DEFAULT_ON_OPTOUT_OK})

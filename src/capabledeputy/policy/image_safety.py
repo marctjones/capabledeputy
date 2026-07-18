@@ -18,16 +18,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-# Forced ON by a `forced_on` posture: the OUTPUT image-safety checker only.
+# CapDep does NOT content-filter image generation — no dial is posture-forced.
 #
-# #416 — CapDep does NOT content-filter prompts (docs/governance-scope.md: it
-# governs effects/flows structurally and is "silent by design on content
-# safety"). #330 originally also forced `CAPDEP_IMAGE_PROMPT_FILTER` on, i.e.
-# imposed prompt content moderation — out of the stated scope. That dial is no
-# longer forced (and defaults off, see `_image_pipeline.load_image_gen_config`);
-# it remains an off-by-default, opt-in operator filter. The output-safety dial
-# (`CAPDEP_IMAGE_SAFETY`) is unchanged.
-_FORCED_IMAGE_ENV = {"CAPDEP_IMAGE_SAFETY": "on"}
+# #416 removed forced PROMPT filtering; #428 removes forced OUTPUT filtering.
+# docs/governance-scope.md: CapDep governs effects/flows structurally and is
+# "silent by design on content safety". #330 forced both the prompt filter and
+# the output image-safety checker on — content moderation, out of the stated
+# scope. Both dials now default off (see `_image_pipeline.load_image_gen_config`)
+# and remain off-by-default, opt-in operator dials; no posture forces them.
+#
+# This helper (and the posture `image_filters` forcing that calls it) is now
+# vestigial — retained returning {} pending removal of the #330 scaffolding.
+_FORCED_IMAGE_ENV: dict[str, str] = {}
 
 # Command heads / module markers that identify an image-GENERATION server (the
 # one governed by the safety dials). image-fetch is a downloader, not a

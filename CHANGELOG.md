@@ -8,16 +8,18 @@ breaking changes).
 
 ### Changed
 
-- **#416 — image generation no longer content-filters prompts.** CapDep governs
-  effects and information flow structurally and is silent by design on content
-  (docs/governance-scope.md), so the `CAPDEP_IMAGE_PROMPT_FILTER` prompt-rejection
-  dial is no longer posture-forced and defaults **off**: prompts pass to the
-  image model unmodified, and CapDep reports the model's actual result
-  (including the model's own refusal). This revises the prompt-filter aspect of
-  the v0.58 `#330` image-safety default. The separate **output** image-safety
-  checker (`CAPDEP_IMAGE_SAFETY`) is unchanged — still on by default, forced on
-  by strict/high-security postures. The prompt filter remains an off-by-default,
-  opt-in operator dial.
+- **#416 + #428 — CapDep no longer content-filters image generation, prompt OR
+  output.** CapDep governs effects and information flow structurally and is
+  silent by design on content (docs/governance-scope.md). Both the
+  `CAPDEP_IMAGE_PROMPT_FILTER` (prompt-rejection) and `CAPDEP_IMAGE_SAFETY`
+  (output NSFW/safety checker) dials are no longer posture-forced and default
+  **off**: prompts pass to the image model unmodified and the model's real
+  output comes through unfiltered. CapDep reports the model's actual result,
+  including the model's own refusal (#417). This reverses the v0.58 `#330`
+  image-safety default. Both dials remain off-by-default, opt-in operator
+  controls. The now-vestigial `#330` posture scaffolding
+  (`Posture.image_filters`, `_apply_image_safety_floor`) is retained inert
+  pending removal.
 
 ## [0.58.0] - 2026-07-18
 
