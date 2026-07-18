@@ -2,10 +2,26 @@
 
 Living plan that organizes GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
-rationale*. Last refreshed 2026-07-08 — **v0.53.0** is the current stable
-release.
+rationale*. Last refreshed 2026-07-18 — **v0.58.0** is the current head of
+`main` (milestones v0.54–v0.58 complete; v0.58 shipped scoped).
 
-Recently completed stable release: **v0.53.0**.
+Recently completed milestones since v0.53: **24 — v0.54.0 — Egress-complete
+chokepoint** · **25 — v0.55.0 — Reachable safe-handling flow patterns** ·
+**26 — v0.56.0 — Posture profiles + conformance harness** (with the
+policy-authoring epic #377, Phases 1–3) · **27 — v0.57.0 — Daemon reliability,
+supervision, and data safety** · **28 — v0.58.0 — Real assistant capabilities
+and safe default surface** (scoped: web.fetch, email SEND, tasks, image-safety
+default, zero-config surface shipped; #329 marked not-supported-for-v1.0).
+
+Deferred to v0.59 from earlier milestones (credential/resource-gated, not
+faked): #319 Swift/CapDepMac reconnect (Xcode), #325 calendar/inbox (Google
+OAuth), #328 GWS + GitHub first-class connect (real accounts + GitHub token).
+
+Next milestones (sequenced, open): **29 — v0.59.0 — CapDepMac production UX** ·
+**30 — v0.60.0 — In-session vision** · **31 — v0.61.0 — Model runtime quality**
+· **v0.62.0 — Flow-aware planning** · **33 — v0.63.0 — v1.0 hardening**.
+Distribution/packaging (#310, #342–#345) is deferred per owner decision
+2026-07-12. Open research spikes: #311 (default model/latency), #313 (vision).
 
 Included product milestones: **12 Product — v0.42.0 — Local media/model
 operations reliability** · **13 Product — v0.43.0 — CommonMark rendering
@@ -20,8 +36,9 @@ Daily-driver policy defaults and desktop workflow gates** · **22 Product —
 v0.52.0 — Daily-driver workflow validation** · **23 Product — v0.53.0 —
 Natural web search**.
 
-Next implementation milestone: none currently opened. v1.0 remains
-unscheduled.
+Next implementation milestone: **28 — v0.58.0** (in progress). v1.0 remains
+unscheduled; **33 — v0.63.0 — v1.0 hardening and daily-driver acceptance** is
+the tracked road to 1.0.
 
 Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
 reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical
