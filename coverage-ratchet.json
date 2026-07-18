@@ -645,6 +645,14 @@
       "min_percent": 88.61,
       "statements": 79
     },
+    "tools.native.email-delivery": {
+      "covered": 67,
+      "files": [
+        "src/capabledeputy/tools/native/email_delivery.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 67
+    },
     "tools.native.extract": {
       "covered": 23,
       "files": [
