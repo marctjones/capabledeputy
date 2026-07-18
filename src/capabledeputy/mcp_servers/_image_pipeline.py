@@ -484,10 +484,13 @@ def load_image_gen_config(*, profile_name: str | None = None) -> ImageGenConfig:
         default_width=int(os.environ.get("CAPDEP_IMAGE_WIDTH", "768")),
         default_height=int(os.environ.get("CAPDEP_IMAGE_HEIGHT", "768")),
         default_steps=int(_profile_value(profile, "steps", "CAPDEP_IMAGE_STEPS") or "20"),
-        # #330 (spike #317) — safe-by-default: an ABSENT env var now means ON, so
-        # a security product never ships image generation unfiltered by omission.
+        # #330: OUTPUT image safety is safe-by-default — an ABSENT env var means
+        # ON, so the checker is never disabled by omission.
         safety_enabled=_truthy(os.environ.get("CAPDEP_IMAGE_SAFETY"), default=True),
-        prompt_filter_enabled=_truthy(os.environ.get("CAPDEP_IMAGE_PROMPT_FILTER"), default=True),
+        # #416: CapDep does NOT content-filter prompts (governance-scope: silent
+        # on content). The prompt filter defaults OFF and is an opt-in operator
+        # dial; an absent env var means prompts pass through unmodified.
+        prompt_filter_enabled=_truthy(os.environ.get("CAPDEP_IMAGE_PROMPT_FILTER"), default=False),
         checkpoints=checkpoints,
     )
 

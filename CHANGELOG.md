@@ -6,6 +6,19 @@ breaking changes).
 
 ## [Unreleased]
 
+### Changed
+
+- **#416 — image generation no longer content-filters prompts.** CapDep governs
+  effects and information flow structurally and is silent by design on content
+  (docs/governance-scope.md), so the `CAPDEP_IMAGE_PROMPT_FILTER` prompt-rejection
+  dial is no longer posture-forced and defaults **off**: prompts pass to the
+  image model unmodified, and CapDep reports the model's actual result
+  (including the model's own refusal). This revises the prompt-filter aspect of
+  the v0.58 `#330` image-safety default. The separate **output** image-safety
+  checker (`CAPDEP_IMAGE_SAFETY`) is unchanged — still on by default, forced on
+  by strict/high-security postures. The prompt filter remains an off-by-default,
+  opt-in operator dial.
+
 ## [0.58.0] - 2026-07-18
 
 Real assistant capabilities and a safe default surface (milestone #28), shipped
