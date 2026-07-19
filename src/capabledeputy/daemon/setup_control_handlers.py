@@ -51,25 +51,30 @@ def make_setup_control_handlers(
             return _native_action(
                 "config.validate",
                 "Run config.validate from the client and display the structured result.",
+                directive="validate_config",
             )
         if action_id == "config.log_locations":
             return _native_action(
                 "config.log_locations",
                 "Run config.log_locations and open the returned path in the client.",
+                directive="show_log_locations",
             )
         if action_id in {"google_gmail.configure_oauth", "setup.google_gmail.configure_oauth"}:
             return _native_action(
                 "setup.google_gmail.configure_oauth",
                 "Show the Gmail OAuth client form; the daemon stores secrets.",
+                directive="open_oauth_wizard",
             )
         if action_id.startswith("setup.google.") and action_id.endswith(".configure_oauth"):
             return _native_action(
                 "setup.google.configure_oauth",
                 "Show the Google OAuth client form; the daemon stores secrets.",
+                directive="open_oauth_wizard",
             )
         if action_id == "source_binding.list":
             return {
                 "action_id": action_id,
+                "client_directive": "show_section",
                 "kind": "client_navigation",
                 "section": "trust",
                 "enabled": True,
@@ -78,6 +83,7 @@ def make_setup_control_handlers(
             status = google_oauth_status(GOOGLE_GMAIL_SERVER)
             return {
                 "action_id": action_id,
+                "client_directive": "open_oauth_wizard",
                 "kind": "daemon_rpc",
                 "method": "setup.google_gmail.oauth_login",
                 "enabled": bool(
@@ -90,6 +96,7 @@ def make_setup_control_handlers(
             status = google_oauth_status(service_id)
             return {
                 "action_id": action_id,
+                "client_directive": "open_oauth_wizard",
                 "kind": "daemon_rpc",
                 "method": "setup.google.oauth_login",
                 "enabled": bool(
@@ -107,6 +114,7 @@ def make_setup_control_handlers(
         }:
             return {
                 "action_id": action_id,
+                "client_directive": "open_url",
                 "kind": "open_url",
                 "url": "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation",
                 "label": "Open macOS Automation Privacy Settings",
@@ -288,9 +296,14 @@ def _set_runtime_state(app: App, state: dict[str, Any]) -> None:
     app._runtime_controls = dict(state)  # type: ignore[attr-defined]
 
 
-def _native_action(method: str, detail: str) -> dict[str, Any]:
+def _native_action(method: str, detail: str, *, directive: str) -> dict[str, Any]:
+    # #422 — `client_directive` is the typed instruction the client executes
+    # (open a window, validate config, …). Clients must branch on this, not on
+    # the daemon `method` string (kept for back-compat / audit). The daemon owns
+    # what the client should do; the client just renders it.
     return {
         "kind": "client_action",
+        "client_directive": directive,
         "method": method,
         "detail": detail,
         "enabled": True,

@@ -65,6 +65,15 @@ async def test_setup_run_action_returns_safe_descriptors(app: App) -> None:
     assert calendar_form["method"] == "setup.google.configure_oauth"
     assert source_bindings["section"] == "trust"
 
+    # #422 — every action carries a typed client_directive the client branches
+    # on, so the client never interprets daemon method-name strings.
+    assert validate["client_directive"] == "validate_config"
+    assert logs["client_directive"] == "show_log_locations"
+    assert macos["client_directive"] == "open_url"
+    assert gmail_form["client_directive"] == "open_oauth_wizard"
+    assert calendar_form["client_directive"] == "open_oauth_wizard"
+    assert source_bindings["client_directive"] == "show_section"
+
 
 async def test_setup_run_action_describes_google_login_state(
     app: App,

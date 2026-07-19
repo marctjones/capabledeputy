@@ -1908,33 +1908,32 @@ final class CapDepAppModel: ObservableObject {
                 method: "setup.run_action",
                 params: ["action_id": action.id],
             ) as? [String: Any]
-            if let method = result?["method"] as? String {
-                if method == "setup.google.configure_oauth"
-                    || method == "setup.google_gmail.configure_oauth"
-                {
-                    let serviceID = (result?["params"] as? [String: Any])?["service_id"] as? String
-                        ?? Self.serviceIDFromSetupAction(action.id)
-                    presentGoogleOAuthWizard(serviceID: serviceID)
-                } else if method == "config.validate" {
-                    await validateConfiguration()
-                } else if method == "config.log_locations" {
-                    await refreshLogLocations()
-                } else if method == "setup.google_gmail.oauth_login" {
-                    presentGoogleOAuthWizard(serviceID: "google-gmail")
-                } else if method == "setup.google.oauth_login",
-                          let serviceID = (result?["params"] as? [String: Any])?["service_id"]
-                            as? String
-                {
-                    presentGoogleOAuthWizard(serviceID: serviceID)
+            // #422 — branch on the daemon's typed `client_directive`, not on
+            // daemon method-name strings. The client renders the directive; it
+            // does not interpret daemon internals.
+            switch result?["client_directive"] as? String {
+            case "open_oauth_wizard":
+                let serviceID = (result?["params"] as? [String: Any])?["service_id"] as? String
+                    ?? Self.serviceIDFromSetupAction(action.id)
+                presentGoogleOAuthWizard(serviceID: serviceID)
+            case "validate_config":
+                await validateConfiguration()
+            case "show_log_locations":
+                await refreshLogLocations()
+            case "open_url":
+                if let url = result?["url"] as? String, let target = URL(string: url) {
+                    NSWorkspace.shared.open(target)
                 }
-            } else if let url = result?["url"] as? String, let target = URL(string: url) {
-                NSWorkspace.shared.open(target)
-            } else if let section = result?["section"] as? String {
-                if section == "trust" {
-                    selectedSection = .trust
-                } else if section == "setup" {
-                    selectedSection = .setup
+            case "show_section":
+                if let section = result?["section"] as? String {
+                    if section == "trust" {
+                        selectedSection = .trust
+                    } else if section == "setup" {
+                        selectedSection = .setup
+                    }
                 }
+            default:
+                break
             }
             await refresh()
         } catch {
