@@ -311,6 +311,61 @@ final class CapDepAppModel: ObservableObject {
             Task {
                 await processPromptQueue()
             }
+        case "open_override":
+            // #331 — drive the override control open (the banner/menu-bar entry point).
+            presentOverrideRequest()
+            ChatDebugLog.log(
+                "gui_test_hook_open_override",
+                metadata: ["override_window": overrideWindowID ?? "nil"],
+            )
+        case "request_override":
+            // #331 — drive the dual-control request through the exact model path
+            // the override card uses; log the outcome the card would show.
+            var draft = OverrideRequestDraft()
+            draft.sessionID = raw["session_id"] as? String ?? (currentSessionID ?? "")
+            draft.actionKind = raw["action_kind"] as? String ?? ""
+            draft.target = raw["target"] as? String ?? ""
+            draft.floor = raw["floor"] as? String ?? ""
+            draft.invoker = raw["invoker"] as? String ?? ""
+            if let category = raw["category"] as? String { draft.category = category }
+            if let tier = raw["tier"] as? String { draft.tier = tier }
+            draft.frictionConfirmed = raw["friction_confirmed"] as? Bool ?? false
+            let ok = await requestOverride(draft)
+            ChatDebugLog.log(
+                "gui_test_hook_request_override",
+                metadata: [
+                    "ok": ok ? "true" : "false",
+                    "grants": String(overrideGrants.count),
+                    "last_error": lastError ?? "",
+                ],
+            )
+        case "open_onboarding":
+            // #333 — drive the first-run wizard open + report readiness.
+            presentOnboarding()
+            ChatDebugLog.log(
+                "gui_test_hook_open_onboarding",
+                metadata: [
+                    "presented": isOnboardingPresented ? "true" : "false",
+                    "plan_ready": setupPlan.ready ? "true" : "false",
+                    "steps": String(setupPlan.steps.count),
+                ],
+            )
+        case "present_approval":
+            // #332 — surface a specific pending approval (what the notification/banner does).
+            let id = (raw["approval_id"] as? Int) ?? Int(raw["approval_id"] as? String ?? "") ?? -1
+            presentApproval(id: id)
+            ChatDebugLog.log(
+                "gui_test_hook_present_approval",
+                metadata: ["approval_window": approvalWindowID.map(String.init) ?? "nil"],
+            )
+        case "deny_approval":
+            // #332 — the fail-closed decision the notification "Deny" action drives.
+            let id = (raw["approval_id"] as? Int) ?? Int(raw["approval_id"] as? String ?? "") ?? -1
+            await denyApprovalByID(id)
+            ChatDebugLog.log(
+                "gui_test_hook_deny_approval",
+                metadata: ["approval_id": String(id), "pending": String(pendingApprovals.count)],
+            )
         default:
             ChatDebugLog.log("gui_test_hook_unknown_command", metadata: ["command": command])
         }
