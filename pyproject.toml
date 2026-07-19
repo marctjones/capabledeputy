@@ -25,7 +25,7 @@ dependencies = [
     "typer>=0.12",
     "rich>=13.7",
     "litellm>=1.50",
-    "mcp>=1.0",
+    "mcp>=1.28.1",
     # Pinned to a bounded range: SVG snapshot baselines
     # (tests/__snapshots__) are sensitive to Textual's renderer; a
     # major bump would churn them. Widen deliberately, with a
