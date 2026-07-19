@@ -346,6 +346,38 @@ def repair_hallucinated_image_markdown(
     return content
 
 
+def ensure_generated_image_markdown_present(
+    content: str,
+    *,
+    outcomes: list[Any],
+) -> str:
+    """Guarantee a successfully generated image reaches the user.
+
+    When an admitted ``image.generate`` call produced an image but the model's
+    final text omits it — empty content, or prose without the image markdown —
+    inject the tool's own markdown so the client renders the real file. The
+    generated image exists and is admitted; losing it to an empty or
+    image-less final turn is the display bug where a 74s generation completes
+    yet the chat shows nothing.
+
+    No-ops when no admitted image was generated, or when the final content
+    already cites the generated image (so ``repair_hallucinated_image_markdown``
+    and a well-behaved model are never double-injected).
+    """
+    preferred = preferred_image_markdown_from_outcomes(outcomes)
+    if not preferred:
+        return content
+    generated = {normalize_image_path(p) for p in extract_markdown_image_paths(preferred)}
+    if not generated:
+        return content
+    already = {normalize_image_path(p) for p in extract_markdown_image_paths(content)}
+    if generated & already:
+        return content
+    if not content.strip():
+        return preferred
+    return f"{content.rstrip()}\n\n{preferred}"
+
+
 def looks_like_image_generation_refusal(content: str) -> bool:
     """True when the model declined in prose instead of calling image.generate."""
     stripped = content.strip()

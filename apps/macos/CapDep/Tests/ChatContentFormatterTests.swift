@@ -24,6 +24,19 @@ final class ChatContentFormatterTests: XCTestCase {
         XCTAssertFalse(formatted.contains("1. [Cat"))
     }
 
+    func testDisplayTextPreservesGeneratedImageMarkdown() {
+        // #440: the daemon injects the real image markdown into the final turn
+        // when the model's text omits it. displayText is the last transform
+        // before the image renderer — it must not strip or mangle the markdown,
+        // whether the image stands alone or trails prose.
+        let path = "~/.capdep/work/images/4a5c08248e304442a14dcc7ff61c31cb.png"
+        let standalone = "![a red apple on a table](\(path))"
+        XCTAssertEqual(ChatContentFormatter.displayText(standalone), standalone)
+
+        let withProse = "Here is your image:\n\n\(standalone)"
+        XCTAssertTrue(ChatContentFormatter.displayText(withProse).contains(standalone))
+    }
+
     func testAttributedMarkdownPreservesLink() {
         let rendered = ChatContentFormatter.attributedMarkdown(
             from: "Read more at [Wikipedia](https://en.wikipedia.org/wiki/Cat).",
