@@ -109,6 +109,13 @@ async def test_image_job_lifecycle_emits_status_events(
         "capabledeputy.daemon.image_ops_handlers.generate_image",
         fake_generate_image,
     )
+    # #433: when `.venv-images` exists the daemon spawns the worker subprocess
+    # and bypasses this in-process monkeypatch (real generation → timeout). Force
+    # the in-process path so the fake drives the job deterministically anywhere.
+    monkeypatch.setattr(
+        "capabledeputy.daemon.image_ops_handlers._image_runtime_python",
+        lambda: None,
+    )
 
     async with anyio.create_task_group() as tg:
         daemon = FakeDaemon(tg)
@@ -172,6 +179,13 @@ async def test_image_job_cancel_marks_completed_generation_canceled(
         "capabledeputy.daemon.image_ops_handlers.generate_image",
         slow_generate_image,
     )
+    # #433: when `.venv-images` exists the daemon spawns the worker subprocess
+    # and bypasses this in-process monkeypatch (real generation → timeout). Force
+    # the in-process path so the fake drives the job deterministically anywhere.
+    monkeypatch.setattr(
+        "capabledeputy.daemon.image_ops_handlers._image_runtime_python",
+        lambda: None,
+    )
 
     async with anyio.create_task_group() as tg:
         daemon = FakeDaemon(tg)
@@ -225,6 +239,13 @@ async def test_image_job_failed_result_surfaces_actionable_error(
     monkeypatch.setattr(
         "capabledeputy.daemon.image_ops_handlers.generate_image",
         fake_generate_image,
+    )
+    # #433: when `.venv-images` exists the daemon spawns the worker subprocess
+    # and bypasses this in-process monkeypatch (real generation → timeout). Force
+    # the in-process path so the fake drives the job deterministically anywhere.
+    monkeypatch.setattr(
+        "capabledeputy.daemon.image_ops_handlers._image_runtime_python",
+        lambda: None,
     )
 
     async with anyio.create_task_group() as tg:

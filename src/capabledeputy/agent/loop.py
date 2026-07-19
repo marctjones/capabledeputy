@@ -731,6 +731,7 @@ async def run_turn_streaming(
         IMAGE_PATH_HALLUCINATION_RETRY_NOTICE,
         allowed_image_generate_paths,
         collect_prior_work_image_paths,
+        ensure_generated_image_markdown_present,
         has_probable_image_generation_intent,
         image_generate_tool_names_in,
         image_generation_failure_report_from_outcomes,
@@ -1470,6 +1471,16 @@ async def run_turn_streaming(
             # #419 — last line of defense: never emit a raw tool-call envelope
             # to any client, on any surface.
             final_content = _scrub_leaked_tool_call_json(final_content)
+            # Display fix: an admitted image.generate can succeed (the file is
+            # written + admitted) while the model's final text comes back empty
+            # or image-less — leaving the chat blank despite a real image. Run
+            # LAST so no earlier transform drops the injected markdown, and
+            # unconditionally so it also covers turns where image intent went
+            # undetected but the tool still ran.
+            final_content = ensure_generated_image_markdown_present(
+                final_content,
+                outcomes=tool_outcomes,
+            )
             agent_turn = Turn(
                 turn_id=len(session.history),
                 role="agent",
