@@ -351,38 +351,19 @@ struct RecoveryStep: Identifiable, Hashable {
         args.contains("--one-shot")
     }
 
-    /// Widen one-shot engine recovery patterns so a GUI grant covers the
-    /// directory subtree, not only a single file path.
+    /// The grant pattern to offer in the GUI. The daemon owns grant scope
+    /// (#421 — a READ_FS recovery grant already covers the directory subtree by
+    /// the time it reaches the client). The client renders the recovery step's
+    /// pattern VERBATIM and never widens it itself.
     func guiGrantPattern() -> String? {
-        guard let kind = grantKind, let pattern = grantPattern else {
+        guard grantKind != nil else {
             return nil
         }
-        return RecoveryStep.widenedGrantPattern(kind: kind, pattern: pattern)
-    }
-
-    static func widenedGrantPattern(kind: String, pattern: String) -> String {
-        guard kind == "READ_FS" else {
-            return pattern
-        }
-        if pattern == "*" || pattern.hasSuffix("/*") || pattern.hasSuffix("/**") {
-            return pattern
-        }
-        var path = pattern
-        if path.hasSuffix("/") {
-            path = String(path.dropLast())
-        }
-        let basename = (path as NSString).lastPathComponent
-        if basename.contains("."), !basename.hasPrefix(".") {
-            let parent = (path as NSString).deletingLastPathComponent
-            if !parent.isEmpty {
-                path = parent
-            }
-        }
-        return path + "/*"
+        return grantPattern
     }
 
     var isWebSearchGrant: Bool {
-        grantKind == "WEB_FETCH" && (guiGrantPattern() ?? grantPattern) == "*"
+        grantKind == "WEB_FETCH" && grantPattern == "*"
     }
 
     var prefersSessionGrantFromGUI: Bool {

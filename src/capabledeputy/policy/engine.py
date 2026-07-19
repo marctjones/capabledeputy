@@ -723,6 +723,26 @@ def _decide_legacy(
     )
 
 
+def _widen_read_fs_grant_target(kind: str, target: str) -> str:
+    """#421 — a READ_FS recovery grant covers the file's *directory* subtree, not
+    only the single file, so one grant unblocks sibling reads. Owned by the
+    daemon here (not any client) so every surface offers the identical scope —
+    clients render the recovery grant verbatim and must not widen it themselves.
+
+    Only READ_FS widens; an already-glob target or a non-file basename (a
+    directory, or a dotfile) is left as-is with a trailing ``/*``.
+    """
+    if kind != "READ_FS":
+        return target
+    if target == "*" or target.endswith("/*") or target.endswith("/**"):
+        return target
+    path = target.rstrip("/") or target
+    parent, _, basename = path.rpartition("/")
+    if "." in basename and not basename.startswith(".") and parent:
+        path = parent
+    return f"{path}/*"
+
+
 def _synthesize_recovery_steps(
     *,
     decision: Decision,
@@ -745,6 +765,10 @@ def _synthesize_recovery_steps(
 
     kind = kind_name(action.kind) if action.kind else "READ_FS"
     target = action.target or "*"
+    # #421 — the daemon owns grant scope: READ_FS grants cover the directory
+    # subtree. `grant_target` feeds the /grant args; `target` stays in the
+    # human-facing rationale (it names the file that was denied).
+    grant_target = _widen_read_fs_grant_target(kind, target)
 
     # Reason-based fallback: the legacy "no matching capability" path
     # returns rule=None but a stable reason string. Detect via reason
@@ -755,7 +779,7 @@ def _synthesize_recovery_steps(
             return (
                 RecoveryStep(
                     command="/grant",
-                    args=(kind, target, "--one-shot"),
+                    args=(kind, grant_target, "--one-shot"),
                     rationale=f"Session lacks a capability for {kind} on {target}.",
                 ),
             )
@@ -766,7 +790,7 @@ def _synthesize_recovery_steps(
         return (
             RecoveryStep(
                 command="/grant",
-                args=(kind, target, "--one-shot"),
+                args=(kind, grant_target, "--one-shot"),
                 rationale=f"Session lacks a capability for {kind} on {target}.",
             ),
         )
@@ -776,7 +800,7 @@ def _synthesize_recovery_steps(
         return (
             RecoveryStep(
                 command="/grant",
-                args=(kind, target, "--one-shot", "--ttl", "3600"),
+                args=(kind, grant_target, "--one-shot", "--ttl", "3600"),
                 rationale="Previous capability's deadline passed; grant a fresh one.",
             ),
         )
@@ -786,7 +810,7 @@ def _synthesize_recovery_steps(
         return (
             RecoveryStep(
                 command="/grant",
-                args=(kind, target, "--one-shot", "--destructive"),
+                args=(kind, grant_target, "--one-shot", "--destructive"),
                 rationale="Action is destructive; grant must explicitly authorize it.",
             ),
         )
@@ -796,7 +820,7 @@ def _synthesize_recovery_steps(
         return (
             RecoveryStep(
                 command="/grant",
-                args=(kind, target, "--one-shot", "--rate", "10/hour"),
+                args=(kind, grant_target, "--one-shot", "--rate", "10/hour"),
                 rationale="Rate window exhausted; grant a higher-rate cap or wait.",
             ),
         )
@@ -815,7 +839,7 @@ def _synthesize_recovery_steps(
             ),
             RecoveryStep(
                 command="/grant",
-                args=(kind, target, "--one-shot"),
+                args=(kind, grant_target, "--one-shot"),
                 rationale="Grant the capability in the fresh session.",
             ),
         )
@@ -842,7 +866,7 @@ def _synthesize_recovery_steps(
             ),
             RecoveryStep(
                 command="/grant",
-                args=(kind, target, "--one-shot"),
+                args=(kind, grant_target, "--one-shot"),
                 rationale="Grant the capability in the fresh session.",
             ),
             RecoveryStep(

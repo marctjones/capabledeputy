@@ -190,3 +190,36 @@ def test_decide_allow_has_no_recovery_steps() -> None:
     )
     assert result.decision == Decision.ALLOW
     assert result.recovery_steps == ()
+
+
+def test_read_fs_grant_widens_to_directory() -> None:
+    # #421 — the daemon offers a READ_FS grant scoped to the file's directory.
+    steps = _synthesize_recovery_steps(
+        decision=Decision.DENY,
+        rule="no-matching-capability",
+        action=_act(kind=CapabilityKind.READ_FS, target="/tmp/foo/bar.txt"),
+        effect_class=None,
+    )
+    assert steps[0].command == "/grant"
+    assert "READ_FS" in steps[0].args
+    assert "/tmp/foo/*" in steps[0].args  # directory subtree, not the single file
+    # The rationale still names the original file that was denied.
+    assert "/tmp/foo/bar.txt" in steps[0].rationale
+
+
+def test_widen_read_fs_grant_target_cases() -> None:
+    from capabledeputy.policy.engine import _widen_read_fs_grant_target as widen
+
+    # A file → its parent directory subtree.
+    assert widen("READ_FS", "/tmp/foo/bar.txt") == "/tmp/foo/*"
+    # A directory (no file extension) → its own subtree.
+    assert widen("READ_FS", "/Volumes/External") == "/Volumes/External/*"
+    assert widen("READ_FS", "/Volumes/External/") == "/Volumes/External/*"
+    # A dotfile is treated as a directory-ish leaf (not a widenable file).
+    assert widen("READ_FS", "/home/u/.config") == "/home/u/.config/*"
+    # Already-glob targets are left as-is.
+    assert widen("READ_FS", "*") == "*"
+    assert widen("READ_FS", "/a/b/*") == "/a/b/*"
+    assert widen("READ_FS", "/a/b/**") == "/a/b/**"
+    # Non-READ_FS kinds are never widened.
+    assert widen("SEND_EMAIL", "dad@example.com") == "dad@example.com"

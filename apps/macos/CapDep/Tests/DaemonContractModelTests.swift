@@ -58,14 +58,16 @@ final class DaemonContractModelTests: XCTestCase {
             "rule": "no-matching-capability",
             "reason": "no matching capability for READ_FS on /tmp/foo",
             "tool_name": "fs.read",
+            // #421 — the daemon owns grant scope and already widened READ_FS to
+            // the directory subtree; the client renders the pattern verbatim.
             "recovery_steps": [[
                 "command": "/grant",
-                "args": ["READ_FS", "/tmp/foo", "--one-shot"],
-                "rationale": "Session lacks a capability for READ_FS on /tmp/foo.",
+                "args": ["READ_FS", "/tmp/foo/*", "--one-shot"],
+                "rationale": "Session lacks a capability for READ_FS on /tmp/foo/bar.txt.",
             ]],
         ])
         XCTAssertEqual(outcome.grantRecoveryStep?.grantKind, "READ_FS")
-        XCTAssertEqual(outcome.grantRecoveryStep?.grantPattern, "/tmp/foo")
+        XCTAssertEqual(outcome.grantRecoveryStep?.grantPattern, "/tmp/foo/*")
         XCTAssertTrue(outcome.grantRecoveryStep?.isOneShot == true)
         XCTAssertEqual(
             outcome.grantRecoveryStep?.guiGrantPattern(),
@@ -250,19 +252,14 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(restored.first?.status, .running)
     }
 
-    func testRecoveryStepWidensFilePathToParentDirectory() {
-        XCTAssertEqual(
-            RecoveryStep.widenedGrantPattern(kind: "READ_FS", pattern: "/tmp/foo/bar.txt"),
-            "/tmp/foo/*",
-        )
-        XCTAssertEqual(
-            RecoveryStep.widenedGrantPattern(kind: "READ_FS", pattern: "/Volumes/External/"),
-            "/Volumes/External/*",
-        )
-        XCTAssertEqual(
-            RecoveryStep.widenedGrantPattern(kind: "SEND_EMAIL", pattern: "dad@example.com"),
-            "dad@example.com",
-        )
+    func testGuiGrantPatternRendersDaemonPatternVerbatim() {
+        // #421 — the daemon owns grant scope (it already widened READ_FS to the
+        // directory). The client renders the recovery-step pattern VERBATIM and
+        // never widens/narrows it itself.
+        let readFs = RecoveryStep(dictionary: ["command": "/grant", "args": ["READ_FS", "/tmp/foo/*"]])
+        XCTAssertEqual(readFs.guiGrantPattern(), "/tmp/foo/*")
+        let email = RecoveryStep(dictionary: ["command": "/grant", "args": ["SEND_EMAIL", "dad@example.com"]])
+        XCTAssertEqual(email.guiGrantPattern(), "dad@example.com")
     }
 
     func testOnguardDaemonModelsParseCoordinationState() {
