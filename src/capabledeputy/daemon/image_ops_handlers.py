@@ -30,6 +30,78 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def _run_image_generation(
+    *,
+    prompt: str,
+    style: str | None,
+    negative_prompt: str | None,
+    width: int | None,
+    height: int | None,
+    steps: int | None,
+    seed: int | None,
+    alt: str | None,
+    filename: str | None,
+    profile: str | None,
+) -> dict[str, Any]:
+    """Generate an image, in the isolated `.venv-images` when available.
+
+    Fixes the env split where the daemon (`.venv`, no mflux) ran `generate_image`
+    in-process and failed with "No module named 'mflux'". Spawns the one-shot
+    `image_gen_worker` in `.venv-images`; falls back to in-process when no image
+    venv is configured. A spawn/worker failure is returned as an ``ok: False``
+    result so #417 faithful reporting surfaces it verbatim.
+
+    Reuses `_image_runtime_python()` — the same resolver the readiness path uses
+    (CAPDEP_IMAGE_PYTHON override, then `.venv-images/bin/python`).
+    """
+    runtime = _image_runtime_python()
+    images_python = str(runtime) if runtime is not None else None
+    if images_python is None:
+        return generate_image(
+            prompt=prompt,
+            style=style,
+            negative_prompt=negative_prompt,
+            width=width,
+            height=height,
+            steps=steps,
+            seed=seed,
+            alt=alt,
+            filename=filename,
+            config=load_image_gen_config(profile_name=profile),
+        )
+    payload = {
+        "prompt": prompt,
+        "style": style,
+        "negative_prompt": negative_prompt,
+        "width": width,
+        "height": height,
+        "steps": steps,
+        "seed": seed,
+        "alt": alt,
+        "filename": filename,
+        "profile": profile,
+    }
+    try:
+        proc = subprocess.run(
+            [images_python, "-m", "capabledeputy.mcp_servers.image_gen_worker"],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
+        )
+    except Exception as exc:  # spawn error / timeout
+        return {"ok": False, "error": f"image worker spawn failed: {exc}"}
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        detail = detail[-800:] if detail else f"exit code {proc.returncode}"
+        return {"ok": False, "error": f"image worker failed: {detail}"}
+    try:
+        return json.loads(proc.stdout)
+    except (ValueError, TypeError) as exc:
+        return {"ok": False, "error": f"image worker returned invalid output: {exc}"}
+
+
 def _image_runtime_python() -> Path | None:
     explicit = os.environ.get("CAPDEP_IMAGE_PYTHON", "").strip()
     if explicit:
@@ -215,7 +287,7 @@ class ImageJobManager:
                 return
             await self._set_status(job_id, "running")
             result = await anyio.to_thread.run_sync(
-                lambda: generate_image(
+                lambda: _run_image_generation(
                     prompt=job.prompt,
                     style=job.style,
                     negative_prompt=str(params.get("negative_prompt") or "").strip() or None,
@@ -225,7 +297,7 @@ class ImageJobManager:
                     seed=int(params["seed"]) if params.get("seed") is not None else None,
                     alt=str(params.get("alt") or "").strip() or None,
                     filename=str(params.get("filename") or "").strip() or None,
-                    config=load_image_gen_config(profile_name=job.profile),
+                    profile=job.profile,
                 ),
                 abandon_on_cancel=False,
             )
