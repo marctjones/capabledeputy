@@ -57,19 +57,22 @@ struct ApprovalCardWindow: View {
     }
 }
 
-@main
-struct CapDepMacApp: App {
+// No `@main` here: the SwiftPM launcher target and the Xcode app shell each
+// provide the entry point and call `CapDepMacApp.main()`.
+public struct CapDepMacApp: App {
     private static let singleInstanceGuard = SingleInstanceGuard(name: "capdepmac")
     @StateObject private var model = CapDepAppModel()
     private let notificationDelegate = CapDepNotificationDelegate()
+    @NSApplicationDelegateAdaptor(CapDepScriptingDelegate.self)
+    private var scriptingDelegate
 
-    init() {
+    public init() {
         if !Self.singleInstanceGuard.didAcquire {
             Foundation.exit(0)
         }
     }
 
-    var body: some Scene {
+    public var body: some Scene {
         WindowGroup("CapDep", id: "main") {
             ChatView()
                 .environmentObject(model)

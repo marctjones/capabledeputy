@@ -1,0 +1,44 @@
+# XcodeGen spec for the CapDepMac app shell. The app logic lives in the
+# SwiftPM package one directory up (library product CapDepMacKit); this
+# target is a thin bundle wrapper so the app is a standard Xcode app with a
+# real Info.plist, the AppleScript dictionary in Resources, and Xcode-native
+# run/debug. Regenerate with: xcodegen generate --spec project.yml
+# (the generated CapDepMac.xcodeproj is committed, so xcodegen is only
+# needed when this spec changes).
+name: CapDep
+options:
+  deploymentTarget:
+    macOS: "14.0"
+packages:
+  CapDepMacPackage:
+    path: ..
+targets:
+  CapDep:
+    type: application
+    platform: macOS
+    sources:
+      - path: Shell
+      - path: ../CapDep.sdef
+        buildPhase: resources
+    dependencies:
+      - package: CapDepMacPackage
+        product: CapDepMacKit
+    info:
+      path: Shell/Info.plist
+      properties:
+        CFBundleName: CapDep
+        CFBundleShortVersionString: "0.58.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "14.0"
+        NSHighResolutionCapable: true
+        NSAppleScriptEnabled: true
+        OSAScriptingDefinition: CapDep.sdef
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: local.capabledeputy.CapDepMac
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        SWIFT_VERSION: "6.0"
+        ENABLE_HARDENED_RUNTIME: false
+    scheme:
+      testTargets: []

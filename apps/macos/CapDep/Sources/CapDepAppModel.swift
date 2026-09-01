@@ -134,8 +134,14 @@ final class CapDepAppModel: ObservableObject {
         return "\(last.id)-\(last.content.count)-\(last.isStreaming)"
     }
 
+    /// The model instance backing the running app, for entry points that
+    /// cannot receive it via SwiftUI environment (the AppleScript command
+    /// classes, which Cocoa scripting instantiates by ObjC class name).
+    private(set) static weak var shared: CapDepAppModel?
+
     init() {
         restorePendingPromptRuns()
+        Self.shared = self
         Task {
             await start()
         }
