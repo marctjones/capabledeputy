@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<!--
+  CapDep AppleScript terminology (owner decision 2026-09-01,
+  docs/adr-0001-applescript-ui-scripting.md). The `cocoa` class and key
+  names must match Sources/AppleScriptSupport.swift exactly — Cocoa
+  scripting resolves them through the ObjC runtime with no useful error
+  when they drift.
+-->
+<dictionary title="CapDep Terminology">
+  <suite name="CapDep Suite" code="CapD"
+         description="Control the CapDep assistant UI.">
+
+    <class name="application" code="capp" description="The CapDep application.">
+      <cocoa class="NSApplication"/>
+      <property name="daemon connected" code="pDcn" type="boolean" access="r"
+                description="Whether the app currently has a live daemon connection.">
+        <cocoa key="daemonConnected"/>
+      </property>
+      <property name="current session id" code="pSid" type="text" access="r"
+                description="The id of the current chat session, or empty text when none.">
+        <cocoa key="currentSessionID"/>
+      </property>
+      <property name="pending approval ids" code="pAid" access="r"
+                description="Ids of the approvals currently awaiting a decision.">
+        <type type="integer" list="yes"/>
+        <cocoa key="pendingApprovalIDs"/>
+      </property>
+    </class>
+
+    <command name="send prompt" code="CapDPrmt"
+             description="Send a chat prompt and wait for the daemon to accept it.">
+      <cocoa class="CapDepSendPromptCommand"/>
+      <direct-parameter type="text" description="The prompt text."/>
+      <parameter name="in session" code="inSs" type="text" optional="yes"
+                 description="Target session id; defaults to the current chat session.">
+        <cocoa key="inSession"/>
+      </parameter>
+      <result type="boolean"
+              description="true when the daemon accepted the prompt."/>
+    </command>
+
+    <command name="approve approval" code="CapDApro"
+             description="Approve the pending approval with the given id.">
+      <cocoa class="CapDepApproveCommand"/>
+      <direct-parameter type="integer" description="The approval id."/>
+      <result type="boolean"
+              description="true when the approval was pending and is now approved."/>
+    </command>
+
+    <command name="deny approval" code="CapDDeny"
+             description="Deny the pending approval with the given id.">
+      <cocoa class="CapDepDenyCommand"/>
+      <direct-parameter type="integer" description="The approval id."/>
+      <result type="boolean"
+              description="true when the approval was pending and is now denied."/>
+    </command>
+
+    <command name="refresh state" code="CapDRfsh"
+             description="Re-pull daemon state so property reads are current.">
+      <cocoa class="CapDepRefreshCommand"/>
+      <result type="boolean" description="Always true once the refresh completes."/>
+    </command>
+
+  </suite>
+</dictionary>

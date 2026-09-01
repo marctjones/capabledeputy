@@ -85,3 +85,13 @@ jobs:
       - name: Test (swift)
         working-directory: apps/macos/CapDep
         run: swift test
+
+      - name: Build app shell (xcodebuild)
+        # The committed Xcode project in App/ is the canonical app bundle
+        # (Info.plist scripting keys + CapDep.sdef in Resources). Build it
+        # unsigned so project/package drift fails CI, not the user's Xcode.
+        working-directory: apps/macos/CapDep/App
+        run: |
+          xcodebuild -project CapDep.xcodeproj -scheme CapDep \
+            -configuration Debug -derivedDataPath .derived \
+            build CODE_SIGNING_ALLOWED=NO

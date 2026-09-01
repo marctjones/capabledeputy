@@ -50,6 +50,43 @@ scripts/run-local-daemon-tmux.sh logs
 scripts/run-local-daemon-tmux.sh stop
 ```
 
+## Open in Xcode
+
+The package splits into the `CapDepMac` library target (all app code), a thin
+SwiftPM launcher executable (used by `run-local-app.sh` and CI `swift build`),
+and a standard Xcode app shell:
+
+```bash
+open App/CapDep.xcodeproj
+```
+
+The Xcode target builds `CapDep.app` with a real Info.plist and the AppleScript
+dictionary in Resources — it is the canonical bundle for scripting and
+debugging. `App/CapDep.xcodeproj` is committed; it is generated from
+`App/project.yml` with XcodeGen, so regenerate (`xcodegen generate --spec
+project.yml`) only when that spec changes.
+
+## AppleScript
+
+The UI is natively scriptable, in production builds included (owner decision —
+see `docs/adr-0001-applescript-ui-scripting.md`), so interactive flows can be
+driven by automated test suites:
+
+```applescript
+tell application "CapDep"
+    get daemon connected
+    get pending approval ids
+    send prompt "hello" in session "sess-123"
+    approve approval 42
+end tell
+```
+
+Terminology is defined in `CapDep.sdef`, implemented in
+`Sources/AppleScriptSupport.swift`; commands block until the daemon round-trip
+completes. `scripts/verify-applescript.sh` is the smoke test — it needs a
+running app and an Automation/TCC grant, so it runs on a permissioned machine,
+not headless CI.
+
 ## GUI Smoke and Coverage
 
 Swift unit/model coverage is separate from Python coverage:

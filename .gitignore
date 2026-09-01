@@ -70,3 +70,6 @@ client_secret*.json
 configs/*-local.yaml
 configs/*-local.yml
 configs/*-local.json
+
+# Xcode app-shell build output
+apps/macos/CapDep/App/.derived/

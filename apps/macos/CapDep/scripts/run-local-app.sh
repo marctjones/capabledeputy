@@ -84,9 +84,16 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <string>14.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>NSAppleScriptEnabled</key>
+  <true/>
+  <key>OSAScriptingDefinition</key>
+  <string>CapDep.sdef</string>
 </dict>
 </plist>
 PLIST
+
+mkdir -p "$APP/Contents/Resources"
+cp "$ROOT/CapDep.sdef" "$APP/Contents/Resources/CapDep.sdef"
 
 pkill -f "CapDepMac.app/Contents/MacOS/CapDepMac" 2>/dev/null || true
 sleep 0.5
