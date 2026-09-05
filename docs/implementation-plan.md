@@ -2,8 +2,10 @@
 
 Living plan that organizes GitHub issues into sequenced milestones
 with dependencies. Authoritative status is GitHub; this doc is the *sequencing
-rationale*. Last refreshed 2026-07-18 — **v0.58.0** is the current head of
-`main` (milestones v0.54–v0.58 complete; v0.58 shipped scoped).
+rationale*. Last refreshed **2026-09-05**. `main` still carries the
+**v0.58.0** release line, but the active tracker is now split across:
+the residual dogfood/reliability sprint, **29 — v0.59.0 — CapDepMac production
+UX completeness**, and the separate credential-gated integrations bucket.
 
 Recently completed milestones since v0.53: **24 — v0.54.0 — Egress-complete
 chokepoint** · **25 — v0.55.0 — Reachable safe-handling flow patterns** ·
@@ -13,11 +15,20 @@ supervision, and data safety** · **28 — v0.58.0 — Real assistant capabiliti
 and safe default surface** (scoped: web.fetch, email SEND, tasks, image-safety
 default, zero-config surface shipped; #329 marked not-supported-for-v1.0).
 
-Deferred to v0.59 from earlier milestones (credential/resource-gated, not
-faked): #319 Swift/CapDepMac reconnect (Xcode), #325 calendar/inbox (Google
-OAuth), #328 GWS + GitHub first-class connect (real accounts + GitHub token).
+As of **2026-07-18** and still true on **2026-08-15**, the tracker no longer
+groups every open item under v0.59:
+
+- `NOW — dogfood-ready sprint` carries the immediate daily-use fixes.
+  The remaining open issue there is `#319` (Graceful mid-session client
+  reconnect).
+- **29 — v0.59.0 — CapDepMac production UX completeness** carries the GUI-only
+  blockers: `#331-334`.
+- `Real assistant integrations — Google Workspace + GitHub (credential-gated)`
+  now holds `#325` and `#328` because those are real-account readiness tasks,
+  not GUI-completeness tasks.
 
 Next milestones (sequenced, open): **29 — v0.59.0 — CapDepMac production UX** ·
+`Real assistant integrations — Google Workspace + GitHub (credential-gated)` ·
 **30 — v0.60.0 — In-session vision** · **31 — v0.61.0 — Model runtime quality**
 · **v0.62.0 — Flow-aware planning** · **33 — v0.63.0 — v1.0 hardening**.
 Distribution/packaging (#310, #342–#345) is deferred per owner decision
@@ -36,9 +47,11 @@ Daily-driver policy defaults and desktop workflow gates** · **22 Product —
 v0.52.0 — Daily-driver workflow validation** · **23 Product — v0.53.0 —
 Natural web search**.
 
-Next implementation milestone: **28 — v0.58.0** (in progress). v1.0 remains
-unscheduled; **33 — v0.63.0 — v1.0 hardening and daily-driver acceptance** is
-the tracked road to 1.0.
+Near-term implementation target: finish the remaining daily-use and GUI-only
+stabilization work (`#319`, `#331-334`) and the real-account integration
+bucket (`#325`, `#328`) before starting net-new `v0.60+` feature work. v1.0
+remains unscheduled; **33 — v0.63.0 — v1.0 hardening and daily-driver
+acceptance** is still the tracked road to 1.0.
 
 Recently completed product milestones: **11 Product — v0.41.0 — CapDepMac
 reliability and safe scripting UX** · **06 Product — v0.40.0 — Safe practical

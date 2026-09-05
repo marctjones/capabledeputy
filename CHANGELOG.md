@@ -8,6 +8,20 @@ breaking changes).
 
 ### Changed
 
+- Opt-in offline MLX smoke profile uses Qwen2.5 0.5B Instruct for every role,
+  with short role defaults; deterministic tests continue using fake models.
+
+- Stabilization: explicit-socket daemon shutdown no longer reads or signals the
+  default daemon PID; lifecycle tests use isolated upstream configuration.
+- Override CLI commands require the daemon and no longer fall back to local grants.
+- MLX keeps one resident weights pair, serializes generation, and stops cancelled
+  streams at the next token boundary. Cached-model measurement mode now records
+  actual protocol-probe latency, memory, and output correctness.
+- Audit tail and provenance queries avoid rebuilding unrelated audit events.
+- CapDepMac defaults to host-owned daemon startup; TUI refresh tolerates screens
+  removed during an RPC. GUI parity requires bounded RPCs and exact successful output.
+
+
 - **#416 + #428 — CapDep no longer content-filters image generation, prompt OR
   output.** CapDep governs effects and information flow structurally and is
   silent by design on content (docs/governance-scope.md). Both the

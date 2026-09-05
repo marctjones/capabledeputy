@@ -6,8 +6,10 @@ shell commands, and other important information, read the current plan:
 
 ## Project status & roadmap
 
-Current head of `main` is **v0.57.0** (milestones v0.54–v0.57 complete);
-**v0.58** (real assistant capabilities + safe default surface) is in progress.
+The current release line is **v0.58.0**, shipped with scoped capabilities.
+The active work is stabilization: **#319**, GUI acceptance **#331–334**,
+and credential-gated integrations **#325/#328**. See
+`docs/stabilization-plan.md` and `docs/release-checklist-mvp.md`.
 The canonical, up-to-date roadmap is `ROADMAP.md`; per-version detail is in
 `CHANGELOG.md`; sequencing rationale is in `docs/implementation-plan.md`.
 Authoritative issue/milestone status lives in the GitHub tracker.
@@ -17,9 +19,9 @@ Authoritative issue/milestone status lives in the GitHub tracker.
 - CI runs the FULL `uv run pyright` (including test files), `uv run ruff check`,
   and `ruff format --check` — local `uv run pytest` catches none of these. Run
   all three over the whole tree before every push.
-- Deselect the two known live-daemon flakes
-  (`test_run_status_stop_lifecycle`, `test_tui_spectator_mounts_against_live_daemon`)
-  and rerun a lone red rather than chasing app logic.
+- Run the live-daemon lifecycle and spectator tests in the default suite.
+  Lifecycle tests use explicit empty upstream configuration and isolated sockets;
+  never point tests at user integrations or the default daemon PID.
 - A new module must be added to the per-module 100% coverage ratchet baseline
   (`scripts/coverage_ratchet.py` + `coverage-ratchet.json`).
 - Merge style: `gh pr merge <n> --merge --delete-branch` after green CI.

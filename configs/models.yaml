@@ -1,7 +1,7 @@
 # Operator-owned MLX model roles and deterministic routing (v0.35+).
 # Load with CAPDEP_CONFIGS_DIR or the repo configs/ directory.
 #
-# HF weights: prefetch with `ai-fetch <org/model>` into $AI_MODELS_DIR.
+# Model assets are managed by capdep-setup models; AI_MODELS_DIR is not implemented.
 
 default_backend: mlx
 

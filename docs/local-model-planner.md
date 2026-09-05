@@ -119,8 +119,8 @@ In CapableDeputy two LLMs participate in dual-LLM mode (DESIGN.md §5.2):
   context. In turn-level mode it also sees labeled values directly
   (subject to capability filtering).
 - **Quarantined extractor** — sees raw labeled data, has no tools, and
-  produces only schema-validated output. Its responses are the
-  declassification gate.
+  produces only schema-validated output. Its schema-bounded responses are subject to the configured
+  declassification policy; schema validity alone does not authorize disclosure.
 
 If both run on a frontier API, every PHI/financial value the harness
 touches in turn-level mode crosses the network. Pinning the planner to
@@ -180,8 +180,8 @@ capdep daemon start
 
 The runtime behaviour is identical regardless of provider. The policy
 engine, label propagation, audit log, MCP server surface, and CLI all
-work the same way. What changes is purely the data path: with the
-local-planner config, no labeled value ever leaves the host.
+work the same way. What changes is purely the data path: with both models local, inference does not require network egress. Tool
+actions may still send data when explicitly authorized by policy.
 
 ## Performance notes
 
@@ -213,8 +213,9 @@ labeled spaces — those should stay on-machine end to end.
 
 The reverse — frontier planner with local quarantined — is **also
 useful**: the planner never sees labeled bytes (because the extractor
-gates the declassification), so even a cloud planner on a sensitive
-session is safe by construction. Use this when you want the planner's
+gates the declassification), but any projected fields sent to a cloud planner still require an
+authorized disclosure policy. A schema can constrain output shape without
+proving that its contents are safe to disclose. Use this when you want the planner's
 quality without sending PHI off the box:
 
 ```bash
@@ -225,3 +226,60 @@ export CAPDEP_QUARANTINED_LLM_MODEL="ollama/phi3:mini"
 This relies on the architecture from §5.2: the schema-validated output
 of the extractor is the only thing that crosses the boundary, and the
 planner sees only typed fields, never raw labeled text.
+
+
+## Stabilization runtime contract (2026-09-05)
+
+MLX generation is serialized across roles and sessions. At most one weights
+pair remains in the shared model cache; switching models releases the prior
+cache entry and clears the Metal allocator cache before loading. Cancellation
+stops generation at the next token boundary, not in the middle of a GPU kernel.
+A cold model load itself is not interruptible. This favors bounded memory over
+parallel generation and may increase role-switch latency.
+
+Existing role defaults remain provisional. On the 24 GB development Mac, use
+the 14B tool role as an integration baseline, not a measured winner. Do not
+promote a model or download a large challenger until the host has adequate
+space and measured workflow evidence. A cached 8B model is available for local
+protocol measurements; that does not establish comparative superiority.
+
+The measurement command now runs inference (the default command still writes
+only the plan):
+
+```bash
+.venv/bin/python scripts/benchmark_model_quality.py --run \
+  --model /path/to/cached/mlx-model --repeats 3 \
+  --results benchmark-results/model-quality/measured-unique.jsonl
+```
+
+This command refuses downloads and refuses to overwrite an existing results
+file. It measures synthetic exact-response and tool-selection cases through
+CapDep's actual MLX adapter. These are protocol probes, not completed research,
+document-editing, or inbox workflows. Model promotion additionally requires
+those workflows, cancellation/recovery, and latency under normal desktop load.
+
+### Lightweight infrastructure testing
+
+Use `FakeLLMClient` for deterministic unit/policy tests: no model load or GPU work.
+For live MLX adapter testing, download the small instruct model once:
+
+```sh
+.venv/bin/hf download mlx-community/Qwen2.5-0.5B-Instruct-4bit
+sh scripts/with-smoke-model.sh .venv/bin/capdep daemon start
+```
+
+Apply the wrapper to a fresh test daemon process; it cannot reconfigure an
+already-running daemon. It changes only its child's environment, forces all five
+roles onto the same tiny model, disables thinking, and requires cached assets.
+It does not isolate state or connectors: use the existing isolated daemon test
+fixtures when testing lifecycle or mutation behavior.
+`CAPDEP_MODELS_CONFIG` overrides the model configuration independently of security
+configuration. A missing explicit profile fails instead of loading larger defaults.
+The smoke profile has 128-token role defaults; explicit per-call limits still
+apply (conversational chat currently requests 512). Keep live smoke inputs short.
+
+Measured on this Mac: 3.17 s cold, 0.18–0.41 s warm, 0.40 GB peak MLX allocation.
+Six tool probes passed; three exact-text probes failed due to capitalization.
+This profile exercises loading, streaming, and parsing, not production quality.
+Keep strict expected-output tests and real workflow quality evaluation separate.
+See [raw measurements](evidence/model-qwen25-05b-2026-09-05.jsonl).

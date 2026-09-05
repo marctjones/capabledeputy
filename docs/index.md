@@ -35,6 +35,14 @@ the LLM — controls capability dispatch.
   capabilities, and component specs.
 - **[Architecture](architecture.md)** — current implementation seams for
   policy pipelines, tool descriptors, runtime manifests, and named hooks.
+- **[Stabilization plan](stabilization-plan.md)** — concrete checklist for
+  converging on a stable MVP and the gates that define "done".
+- **[Stabilization evidence](stabilization-evidence-2026-09-05.md)** — measured
+  runtime results, completed checks, and remaining acceptance gates.
+- **[Stable MVP release checklist](release-checklist-mvp.md)** — the ship gate
+  for calling the current product line stable.
+- **[Design traceability](design-traceability.md)** — map from active design
+  contracts to code and tests.
 - **[Roadmap](../ROADMAP.md)** — release-era implementation history and
   longer-term plan.
 - **[Workflow index](workflow-index.md)** — categorized map of the

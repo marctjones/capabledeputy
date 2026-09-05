@@ -1,5 +1,10 @@
 # Implementation Plan: Labeling Framework
 
+> Historical implementation plan. Platform, Python version, migration strategy,
+> and rollout status below describe the original feature effort. Current runtime
+> authority is documented in `docs/architecture.md`, `docs/design-traceability.md`,
+> and `pyproject.toml`; do not apply historical database-wipe instructions.
+
 **Branch**: `003-labeling-framework` | **Date**: 2026-05-25 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/003-labeling-framework/spec.md`
 
