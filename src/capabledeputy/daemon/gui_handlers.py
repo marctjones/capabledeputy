@@ -210,7 +210,9 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
 
     async def provenance_graph(params: dict[str, Any]) -> dict[str, Any]:
         session_id = str(params.get("session_id", ""))
-        events = await app.audit.read_all()
+        events = await app.audit.read_event_types(
+            frozenset({EventType.PROVENANCE_NODE.value, EventType.PROVENANCE_EDGE.value})
+        )
         nodes: dict[str, dict[str, Any]] = {}
         edges: list[dict[str, Any]] = []
         for event in events:

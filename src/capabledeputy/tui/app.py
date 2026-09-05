@@ -39,9 +39,10 @@ from typing import Any
 
 from rich.text import Text
 from textual import on, work
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, ScreenStackError
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 
@@ -1191,7 +1192,12 @@ class CapDepTUI(App[None]):
             )
             convo_lines = [header, "", *convo_lines]
 
-        convo_log = self.query_one("#conversation", RichLog)
+        try:
+            convo_log = self.query_one("#conversation", RichLog)
+            trace = self.query_one("#trace", Static)
+        except (NoMatches, ScreenStackError):
+            # The RPC may finish after the screen has been unmounted.
+            return
         convo_log.clear()
         if convo_lines:
             for line in convo_lines:
@@ -1271,9 +1277,7 @@ class CapDepTUI(App[None]):
             header.append("[bold]capabilities[/bold]: [dim]none[/dim]")
         header.append("")
 
-        self.query_one("#trace", Static).update(
-            "\n".join(header) + trace_text,
-        )
+        trace.update("\n".join(header) + trace_text)
 
     def on_data_table_row_highlighted(self, event: Any) -> None:
         # Pyright can't narrow Textual events here; accept Any.

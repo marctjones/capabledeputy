@@ -10,7 +10,7 @@ enum DaemonSupervisorError: Error, LocalizedError {
         case .commandFailed(let message):
             return message
         case .launcherOwnedDaemonUnavailable:
-            return "daemon is not reachable; this app was launched in launcher-owned daemon mode, so restart it with scripts/run-local-app.sh"
+            return "daemon is not reachable; the host owns the daemon lifecycle. Start the daemon with capdep-setup macos-daemon --apply --verify, then retry"
         case .startTimedOut(let logPath):
             return "daemon failed to start; log: \(logPath)"
         }
@@ -158,9 +158,12 @@ final class DaemonSupervisor {
     }
 
     private func ownsDaemonLifecycle() -> Bool {
-        let raw = ProcessInfo.processInfo.environment["CAPDEP_GUI_OWNS_DAEMON"] ?? "1"
-        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return !["0", "false", "no", "off"].contains(normalized)
+        Self.lifecycleOwnership(ProcessInfo.processInfo.environment["CAPDEP_GUI_OWNS_DAEMON"])
+    }
+
+    static func lifecycleOwnership(_ value: String?) -> Bool {
+        let normalized = (value ?? "0").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ["1", "true", "yes", "on"].contains(normalized)
     }
 
     private func repositoryRoot() -> String {

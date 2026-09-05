@@ -20,6 +20,7 @@ import contextlib
 import hashlib
 import json
 import os
+from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -239,10 +240,43 @@ class AuditWriter:
         after_audit_id: str | None = None,
         limit: int = 100,
     ) -> list[Event]:
-        events = await self.read_all()
-        if after_audit_id is None:
-            return events[-limit:]
-        for i, ev in enumerate(events):
-            if str(ev.audit_id) == after_audit_id:
-                return events[i + 1 : i + 1 + limit]
-        return []
+        if limit <= 0 or not self._path.exists():
+            return []
+        return await run_in_thread(self._tail_sync, after_audit_id, limit)
+
+    def _tail_sync(self, after_audit_id: str | None, limit: int) -> list[Event]:
+        # Scan lines, but only reconstruct the requested events. Rebuilding every
+        # LabelState in a mature audit log makes GUI polling starve other work.
+        with self._path.open(encoding="utf-8") as source:
+            if after_audit_id is None:
+                lines = deque((line for line in source if line.strip()), maxlen=limit)
+                return [Event.from_dict(json.loads(line)) for line in lines]
+            found = False
+            events = []
+            for line in source:
+                if not line.strip():
+                    continue
+                if not found:
+                    if after_audit_id in line:
+                        found = str(json.loads(line).get("audit_id")) == after_audit_id
+                    continue
+                events.append(Event.from_dict(json.loads(line)))
+                if len(events) >= limit:
+                    break
+            return events
+
+    async def read_event_types(self, event_types: frozenset[str]) -> list[Event]:
+        """Project selected event types without reconstructing unrelated payloads."""
+        if not self._path.exists():
+            return []
+        return await run_in_thread(self._read_event_types_sync, event_types)
+
+    def _read_event_types_sync(self, event_types: frozenset[str]) -> list[Event]:
+        events = []
+        with self._path.open(encoding="utf-8") as source:
+            for line in source:
+                if line.strip():
+                    data = json.loads(line)
+                    if data.get("event_type") in event_types:
+                        events.append(Event.from_dict(data))
+        return events

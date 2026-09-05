@@ -497,3 +497,12 @@ async def test_console_audit_event_triggers_status_refresh(
         # on_mount refresh + the scripted audit event each call session.get
         n = sum(1 for m, _ in app._client.calls if m == "session.get")
         assert n >= 2
+
+
+async def test_late_session_detail_response_after_unmount_is_ignored(monkeypatch) -> None:
+    from unittest.mock import AsyncMock
+
+    app = CapDepTUI(poll_interval=999.0)
+    monkeypatch.setattr(app._client, "call", AsyncMock(side_effect=[{"history": []}, {}]))
+    # No screen widgets remain; a completed in-flight RPC must not crash the worker.
+    await app._update_session_detail("departed-session", [])

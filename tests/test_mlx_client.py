@@ -7,8 +7,11 @@ depend on host GPU visibility and cached model weights.
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from importlib import import_module
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -303,3 +306,69 @@ def test_client_rejects_empty_mlx_spec() -> None:
         from capabledeputy.llm.factory import make_llm_client
 
         make_llm_client("mlx/")
+
+
+def test_model_replacement_releases_previous_weights(monkeypatch) -> None:
+    import weakref
+
+    class Weights:
+        pass
+
+    loaded = []
+
+    def load(name, **kwargs):
+        # Previous weights must be gone before allocating the next model.
+        assert not loaded or loaded[-1]() is None
+        weights = Weights()
+        loaded.append(weakref.ref(weights))
+        return weights, object()
+
+    clear_cache = Mock()
+    monkeypatch.setattr(MLXLLMClient, "_loaded_models", {})
+    monkeypatch.setattr(
+        "capabledeputy.llm.mlx_client.import_module",
+        lambda name: (
+            SimpleNamespace(load=load)
+            if name == "mlx_lm"
+            else SimpleNamespace(clear_cache=clear_cache)
+        ),
+    )
+    first = MLXLLMClient("first")
+    first._load_model_sync()
+    first._load_model_sync()
+    assert len(loaded) == 1  # warm reuse
+    MLXLLMClient("second")._load_model_sync()
+    assert loaded[0]() is None
+    assert len(loaded) == 2
+    assert clear_cache.call_count == 2
+
+
+async def test_closing_stream_stops_generation_at_next_token(monkeypatch) -> None:
+    client = MLXLLMClient("test")
+    release = threading.Event()
+    finished = threading.Event()
+    generated = []
+
+    def stream(*args, **kwargs):
+        try:
+            yield SimpleNamespace(text="first")
+            assert release.wait(5)
+            for index in range(100):
+                generated.append(index)
+                yield SimpleNamespace(text="later")
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(client, "_load_model_sync", lambda: (object(), object()))
+    monkeypatch.setattr(
+        "capabledeputy.llm.mlx_client.import_module",
+        lambda name: SimpleNamespace(stream_generate=stream),
+    )
+    response = client.respond_streaming([Message(role=Role.USER, content="hi")], [])
+    try:
+        assert await asyncio.wait_for(anext(response), 5) == "first"
+        await response.aclose()
+    finally:
+        release.set()
+    assert await asyncio.to_thread(finished.wait, 5)
+    assert len(generated) <= 1

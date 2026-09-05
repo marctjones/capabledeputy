@@ -15,10 +15,11 @@ keeps almost all local planning/extraction traffic on-device.
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import re
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from importlib import import_module
 from typing import Any, ClassVar
 from uuid import uuid4
@@ -329,6 +330,8 @@ def parse_mlx_response(text: str, *, model: str) -> LLMResponse:
 
 
 class MLXLLMClient:
+    # Serialize Metal generation and model replacement across roles/sessions.
+    _generation_lock: ClassVar[threading.Lock] = threading.Lock()
     _cache_lock: ClassVar[threading.Lock] = threading.Lock()
     _loaded_models: ClassVar[dict[str, tuple[Any, Any]]] = {}
 
@@ -367,11 +370,12 @@ class MLXLLMClient:
         tools: list[ToolDescription],
         *,
         max_tokens: int | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncGenerator[str, None]:
         """Yield incremental text deltas as MLX generates them."""
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[str | None | BaseException] = asyncio.Queue()
         limit = max_tokens if max_tokens is not None else self._max_tokens
+        cancelled = threading.Event()
 
         trace_ctx = None
         try:
@@ -381,8 +385,19 @@ class MLXLLMClient:
         except Exception:
             trace_ctx = None
 
-        def worker() -> None:
+        def publish(item: str | None | BaseException) -> None:
+            if cancelled.is_set():
+                return
             try:
+                loop.call_soon_threadsafe(queue.put_nowait, item)
+            except RuntimeError:
+                # The client event loop may close while a Metal kernel finishes.
+                cancelled.set()
+
+        def generate() -> None:
+            try:
+                if cancelled.is_set():
+                    return
                 model, tokenizer = self._load_model_sync()
                 prompt = self._render_prompt(tokenizer, messages, tools)
                 stream_generate = import_module("mlx_lm").stream_generate
@@ -393,6 +408,8 @@ class MLXLLMClient:
                     prompt,
                     max_tokens=limit,
                 ):
+                    if cancelled.is_set():
+                        break
                     # mlx_lm yields detokenizer.last_segment per token — not
                     # cumulative text. Slicing against a running prefix corrupts
                     # output into the garbled "Ihaveolsableision..." strings.
@@ -412,19 +429,27 @@ class MLXLLMClient:
                                 )
                             except Exception:
                                 pass
-                        loop.call_soon_threadsafe(queue.put_nowait, delta)
-                loop.call_soon_threadsafe(queue.put_nowait, None)
+                        publish(delta)
+                publish(None)
             except BaseException as exc:
-                loop.call_soon_threadsafe(queue.put_nowait, exc)
+                publish(exc)
+
+        def worker() -> None:
+            with self._generation_lock:
+                generate()
 
         threading.Thread(target=worker, daemon=True).start()
-        while True:
-            item = await queue.get()
-            if item is None:
-                return
-            if isinstance(item, BaseException):
-                raise item
-            yield item
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    return
+                if isinstance(item, BaseException):
+                    raise item
+                yield item
+        finally:
+            # MLX cannot interrupt an in-flight kernel; stop at the next token.
+            cancelled.set()
 
     def _generate_sync(self, model: Any, tokenizer: Any, prompt: str) -> str:
         try:
@@ -485,6 +510,11 @@ class MLXLLMClient:
                     "the current process cannot access a Metal device.",
                 ) from e
 
+            # Keep only one resident model. Role clients are cheap descriptors;
+            # retaining one weights object per role exhausts laptop memory.
+            self._loaded_models.clear()
+            gc.collect()
+            import_module("mlx.core").clear_cache()
             loaded = load(
                 self._model,
                 tokenizer_config={"trust_remote_code": self._trust_remote_code},

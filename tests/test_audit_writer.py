@@ -124,3 +124,38 @@ async def test_persistence_across_writers(audit_path: Path) -> None:
     events = await w2.read_all()
     assert len(events) == 1
     assert events[0].event_type == EventType.SESSION_CREATED
+
+
+async def test_tail_reconstructs_only_requested_events(audit_path: Path, monkeypatch) -> None:
+    from unittest.mock import Mock
+
+    writer = AuditWriter(audit_path)
+    for index in range(25):
+        await writer.write(Event(event_type=EventType.SESSION_CREATED, payload={"i": index}))
+    decode = Mock(wraps=Event.from_dict)
+    monkeypatch.setattr(Event, "from_dict", decode)
+    result = await writer.tail(limit=2)
+    assert [event.payload["i"] for event in result] == [23, 24]
+    assert decode.call_count == 2
+    assert await writer.tail(limit=0) == []
+
+
+async def test_filtered_audit_preserves_order_without_decoding_other_types(
+    audit_path: Path, monkeypatch
+) -> None:
+    from unittest.mock import Mock
+
+    writer = AuditWriter(audit_path)
+    assert await writer.read_event_types(frozenset({"provenance.node"})) == []
+    for kind in [EventType.SESSION_CREATED, EventType.PROVENANCE_NODE, EventType.PROVENANCE_EDGE]:
+        await writer.write(Event(event_type=kind))
+    decode = Mock(wraps=Event.from_dict)
+    monkeypatch.setattr(Event, "from_dict", decode)
+    result = await writer.read_event_types(
+        frozenset({EventType.PROVENANCE_NODE.value, EventType.PROVENANCE_EDGE.value})
+    )
+    assert [event.event_type for event in result] == [
+        EventType.PROVENANCE_NODE,
+        EventType.PROVENANCE_EDGE,
+    ]
+    assert decode.call_count == 2
