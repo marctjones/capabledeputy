@@ -1,14 +1,13 @@
 """`capdep override` CLI (003 US6 T080).
 
 Operator-facing surface for the Override workflow. The CLI is the
-ONLY path that invokes request/attest — the planner has no access
+operator path that invokes request/attest — the planner has no access
 to these subcommands (Principle I + V isolation).
 
 The CLI talks to the running daemon over the IPC socket so grants
 land in the daemon's persistent OverrideGrantStore (read by
-engine.decide() at every dispatch). If the daemon isn't running the
-CLI falls back to a local in-memory store — useful for unit tests
-and dry-runs, but operator workflows MUST run against a live daemon.
+engine.decide() at every dispatch). If the daemon is unavailable, commands
+fail explicitly; the client never issues grants into an ephemeral local store.
 
 Subcommands:
   request — initial request (single-authorized: → ACTIVE; dual-
@@ -32,11 +31,7 @@ from rich.table import Table
 from capabledeputy.ipc.client import DaemonClient, DaemonNotRunningError
 from capabledeputy.ipc.socket_path import default_socket_path
 from capabledeputy.policy.capabilities import CapabilityKind
-from capabledeputy.policy.overrides import (
-    HardFloor,
-    OverrideGrantStore,
-    OverridePolicies,
-)
+from capabledeputy.policy.overrides import HardFloor
 
 override_app = typer.Typer(
     help="Operator override workflow (FR-032/036/038). Distinct from approval.",
@@ -44,41 +39,8 @@ override_app = typer.Typer(
 )
 
 
-# Local fallback store + policies, used only when the daemon is not
-# reachable. Tests can also inject via `_set_test_doubles` to bypass
-# IPC entirely. Production operator workflows ALWAYS go through the
-# daemon's RPC handlers (override_handlers.py).
-_FALLBACK_STORE: OverrideGrantStore = OverrideGrantStore()
-_FALLBACK_POLICIES: OverridePolicies = OverridePolicies(by_floor={})
-_FORCE_FALLBACK: bool = False
-
-
-def _set_test_doubles(
-    *,
-    store: OverrideGrantStore | None = None,
-    policies: OverridePolicies | None = None,
-    force_fallback: bool = True,
-) -> None:
-    """Test hook: swap in alternative store/policies + skip IPC."""
-    global _FALLBACK_STORE, _FALLBACK_POLICIES, _FORCE_FALLBACK
-    if store is not None:
-        _FALLBACK_STORE = store
-    if policies is not None:
-        _FALLBACK_POLICIES = policies
-    _FORCE_FALLBACK = force_fallback
-
-
-def _reset_test_doubles() -> None:
-    """Restore daemon-IPC mode for subsequent tests."""
-    global _FALLBACK_STORE, _FALLBACK_POLICIES, _FORCE_FALLBACK
-    _FALLBACK_STORE = OverrideGrantStore()
-    _FALLBACK_POLICIES = OverridePolicies(by_floor={})
-    _FORCE_FALLBACK = False
-
-
 async def _rpc(method: str, params: dict[str, Any]) -> Any:
-    """Make an RPC call to the daemon. Caller handles
-    DaemonNotRunningError to fall back to local store."""
+    """Make an RPC call to the authoritative daemon."""
     client = DaemonClient(socket_path=default_socket_path())
     return await client.call(method, params)
 
@@ -138,7 +100,7 @@ def request_command(
         "tier": tier,
         "friction_confirmed": friction_confirmed,
     }
-    result = _dispatch("override.request", params, _local_request)
+    result = _dispatch("override.request", params)
     if result.get("refused"):
         _print_refusal(result, console)
         raise typer.Exit(1)
@@ -165,7 +127,7 @@ def attest_command(
         console.print(f"[red]invalid grant_id:[/red] {e}")
         raise typer.Exit(2) from e
     params = {"grant_id": grant_id, "attester": attester, "confirmed": confirm}
-    result = _dispatch("override.attest", params, _local_attest)
+    result = _dispatch("override.attest", params)
     if result.get("refused"):
         _print_refusal(result, console)
         raise typer.Exit(1)
@@ -177,7 +139,7 @@ def attest_command(
 def list_command() -> None:
     """List every grant the daemon holds, oldest first."""
     console = Console()
-    result = _dispatch("override.list", {}, _local_list)
+    result = _dispatch("override.list", {})
     grants = result.get("grants", [])
     if not grants:
         console.print("[yellow]no grants[/yellow]")
@@ -213,7 +175,7 @@ def show_command(
     except ValueError as e:
         console.print(f"[red]invalid grant_id:[/red] {e}")
         raise typer.Exit(2) from e
-    result = _dispatch("override.show", {"grant_id": grant_id}, _local_show)
+    result = _dispatch("override.show", {"grant_id": grant_id})
     if result.get("refused"):
         _print_refusal(result, console)
         raise typer.Exit(1)
@@ -231,7 +193,7 @@ def refuse_command(
     except ValueError as e:
         console.print(f"[red]invalid grant_id:[/red] {e}")
         raise typer.Exit(2) from e
-    result = _dispatch("override.refuse", {"grant_id": grant_id}, _local_refuse)
+    result = _dispatch("override.refuse", {"grant_id": grant_id})
     if result.get("refused"):
         _print_refusal(result, console)
         raise typer.Exit(1)
@@ -242,63 +204,13 @@ def refuse_command(
 # --- dispatch helper -----------------------------------------------
 
 
-def _dispatch(
-    method: str,
-    params: dict[str, Any],
-    local_fallback: Any,
-) -> Any:
-    """Try IPC first; fall back to the local store when the daemon
-    isn't running OR _FORCE_FALLBACK is set (tests)."""
-    if _FORCE_FALLBACK:
-        return local_fallback(params)
+def _dispatch(method: str, params: dict[str, Any]) -> Any:
+    """Never substitute client-local authority for an unavailable daemon."""
     try:
-        from collections.abc import Coroutine
-        from typing import cast
-
-        coro = cast(
-            Coroutine[Any, Any, Any],
-            _rpc(method, params),
+        return asyncio.run(_rpc(method, params))
+    except DaemonNotRunningError as exc:
+        Console(stderr=True).print(
+            "[red]Daemon unavailable.[/red] Start the daemon and retry; "
+            "no override state was changed."
         )
-        return asyncio.run(coro)
-    except DaemonNotRunningError:
-        return local_fallback(params)
-
-
-# --- local fallbacks (also used by unit tests) ---------------------
-
-
-def _run_handler(method: str, params: dict[str, Any]) -> dict[str, Any]:
-    """Dispatch to the daemon-side handler in-process. Used when the
-    daemon isn't running (tests, dry-runs). The handlers are async
-    coroutines; asyncio.run drives them to completion."""
-    from collections.abc import Coroutine
-    from typing import cast
-
-    from capabledeputy.daemon.override_handlers import make_override_handlers
-
-    handlers = make_override_handlers(_FALLBACK_STORE, _FALLBACK_POLICIES)
-    coro = cast(
-        Coroutine[Any, Any, dict[str, Any]],
-        handlers[method](params),
-    )
-    return asyncio.run(coro)
-
-
-def _local_request(params: dict[str, Any]) -> dict[str, Any]:
-    return _run_handler("override.request", params)
-
-
-def _local_attest(params: dict[str, Any]) -> dict[str, Any]:
-    return _run_handler("override.attest", params)
-
-
-def _local_list(_params: dict[str, Any]) -> dict[str, Any]:
-    return _run_handler("override.list", {})
-
-
-def _local_show(params: dict[str, Any]) -> dict[str, Any]:
-    return _run_handler("override.show", params)
-
-
-def _local_refuse(params: dict[str, Any]) -> dict[str, Any]:
-    return _run_handler("override.refuse", params)
+        raise typer.Exit(1) from exc

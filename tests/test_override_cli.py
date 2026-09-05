@@ -7,8 +7,7 @@ End-to-end via Typer's CliRunner. Exercises:
   - attest self ⇒ refused
   - list / show subcommands
 
-The grant store is module-level in override_cmd; tests reset it via
-`_set_test_doubles` so each test starts clean.
+Tests inject an RPC transport backed by isolated daemon handlers.
 """
 
 from __future__ import annotations
@@ -18,10 +17,8 @@ from uuid import uuid4
 import pytest
 from typer.testing import CliRunner
 
-from capabledeputy.cli.override_cmd import (
-    _set_test_doubles,
-    override_app,
-)
+from capabledeputy.cli.override_cmd import override_app
+from capabledeputy.daemon.override_handlers import make_override_handlers
 from capabledeputy.policy.overrides import (
     HardFloor,
     OverrideGrantStore,
@@ -32,11 +29,11 @@ from capabledeputy.policy.overrides import (
 
 
 @pytest.fixture(autouse=True)
-def _reset_store() -> None:
+def _reset_store(monkeypatch) -> None:
     """Per-test clean store + policies."""
-    _set_test_doubles(
-        store=OverrideGrantStore(),
-        policies=OverridePolicies(
+    handlers = make_override_handlers(
+        OverrideGrantStore(),
+        OverridePolicies(
             by_floor={
                 HardFloor.MAX_TIER_CLEARANCE: OverridePolicyEntry(
                     floor=HardFloor.MAX_TIER_CLEARANCE,
@@ -58,6 +55,11 @@ def _reset_store() -> None:
             },
         ),
     )
+
+    async def rpc(method, params):
+        return await handlers[method](params)
+
+    monkeypatch.setattr("capabledeputy.cli.override_cmd._rpc", rpc)
 
 
 def _runner() -> CliRunner:
@@ -275,3 +277,37 @@ def test_refuse_marks_grant_refused() -> None:
     result = runner.invoke(override_app, ["refuse", grant_id])
     assert result.exit_code == 0
     assert "refused" in result.output
+
+
+@pytest.mark.parametrize("command", ["list", "request", "attest", "show", "refuse"])
+def test_daemon_outage_never_reports_local_override_success(monkeypatch, command) -> None:
+    from capabledeputy.ipc.client import DaemonNotRunningError
+
+    async def unavailable(method, params):
+        raise DaemonNotRunningError("offline")
+
+    monkeypatch.setattr("capabledeputy.cli.override_cmd._rpc", unavailable)
+    args = [command]
+    if command == "request":
+        args += [
+            "--session-id",
+            str(uuid4()),
+            "--action-kind",
+            "SEND_EMAIL",
+            "--target",
+            "alice@example.com",
+            "--floor",
+            "max-tier-clearance",
+            "--invoker",
+            "alice",
+        ]
+    elif command == "attest":
+        args += ["--grant-id", str(uuid4()), "--attester", "bob"]
+    elif command in {"show", "refuse"}:
+        args += [str(uuid4())]
+    result = _runner().invoke(override_app, args)
+    assert result.exit_code == 1
+    assert "Daemon unavailable" in result.output
+    assert "no override state was changed" in result.output
+    assert "grant issued" not in result.output
+    assert "no grants" not in result.output

@@ -199,6 +199,8 @@ def test_runtime_reports_include_refusals_and_manifest_errors(capsys) -> None:
 
 async def test_run_status_stop_lifecycle(tmp_path: Path) -> None:
     socket_path = short_socket_path("lifecycle.sock")
+    config_path = tmp_path / "daemon.yaml"
+    config_path.write_text("upstream_servers: []\n")
 
     async with anyio.create_task_group() as tg:
         # Pin the state DB + audit log to tmp_path: the default paths are
@@ -209,6 +211,10 @@ async def test_run_status_stop_lifecycle(tmp_path: Path) -> None:
             socket_path,
             tmp_path / "state.db",
             tmp_path / "audit.jsonl",
+            None,
+            False,
+            None,
+            config_path,
         )
         await _wait_for_socket(socket_path)
 
@@ -220,3 +226,18 @@ async def test_run_status_stop_lifecycle(tmp_path: Path) -> None:
         assert "image.jobs.start" in methods["methods"]
 
         assert await stop_daemon(socket_path) is True
+
+
+async def test_stop_explicit_live_socket_never_touches_default_pidfile(monkeypatch) -> None:
+    from unittest.mock import AsyncMock, Mock
+
+    from capabledeputy.ipc import pidfile
+
+    forbidden = Mock(side_effect=AssertionError("unrelated default daemon touched"))
+    for name in ("read_pidfile", "wait_for_exit", "terminate_with_escalation", "remove_pidfile"):
+        monkeypatch.setattr(pidfile, name, forbidden)
+    rpc = AsyncMock(return_value={"ok": True})
+    monkeypatch.setattr(DaemonClient, "call", rpc)
+    assert await stop_daemon(short_socket_path("explicit-live.sock")) is True
+    rpc.assert_awaited_once_with("shutdown")
+    forbidden.assert_not_called()

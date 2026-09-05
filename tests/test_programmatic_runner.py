@@ -29,8 +29,8 @@ from capabledeputy.programmatic import (
 )
 
 
-async def test_dry_run_clean_program_predicts_calls() -> None:
-    app = App()
+async def test_dry_run_clean_program_predicts_calls(tmp_path: Path) -> None:
+    app = App(state_db_path=tmp_path / "state.db", audit_log_path=tmp_path / "audit.jsonl")
     src = """
 note = call("memory.read", key="grocery_list")
 saved = call("memory.write", key="copy", value=note)
@@ -43,7 +43,7 @@ saved = call("memory.write", key="copy", value=note)
     assert report.ok
 
 
-async def test_dry_run_health_then_egress_predicts_violation() -> None:
+async def test_dry_run_health_then_egress_predicts_violation(tmp_path: Path) -> None:
     """The v0.3 done-when scenario in test form.
 
     Reading from a memory key that the registry's memory.read tool
@@ -51,7 +51,7 @@ async def test_dry_run_health_then_egress_predicts_violation() -> None:
     purchase egress, must be flagged at dry-run time as a conflict
     on health-meets-egress without any tool handler running.
     """
-    app = App()
+    app = App(state_db_path=tmp_path / "state.db", audit_log_path=tmp_path / "audit.jsonl")
     # memory.read inherits no labels by default; we supply the labeled
     # value through initial_scope to model "this value came from a
     # health-tagged source". This keeps the dry-run analysis source-
@@ -87,16 +87,16 @@ result = call("purchase.queue", vendor="amazon", item=labeled_input, amount=50)
     assert violation.rule == "health-meets-egress"
 
 
-async def test_dry_run_parse_error_reported() -> None:
-    app = App()
+async def test_dry_run_parse_error_reported(tmp_path: Path) -> None:
+    app = App(state_db_path=tmp_path / "state.db", audit_log_path=tmp_path / "audit.jsonl")
     report = await dry_run_program("import os\n", app.registry)
     assert report.parse_error is not None
     assert "import" in report.parse_error.lower() or "Import" in report.parse_error
     assert not report.ok
 
 
-async def test_dry_run_unknown_tool_flagged() -> None:
-    app = App()
+async def test_dry_run_unknown_tool_flagged(tmp_path: Path) -> None:
+    app = App(state_db_path=tmp_path / "state.db", audit_log_path=tmp_path / "audit.jsonl")
     report = await dry_run_program('call("nope.tool", x=1)\n', app.registry)
     assert not report.ok
     [violation] = report.violations
@@ -104,8 +104,8 @@ async def test_dry_run_unknown_tool_flagged() -> None:
     assert violation.decision == Decision.DENY
 
 
-async def test_dry_run_uses_source_label_lookup_for_memory_egress() -> None:
-    app = App()
+async def test_dry_run_uses_source_label_lookup_for_memory_egress(tmp_path: Path) -> None:
+    app = App(state_db_path=tmp_path / "state.db", audit_log_path=tmp_path / "audit.jsonl")
     app.memory.write(
         "labs",
         "lisinopril 10mg",
@@ -129,8 +129,8 @@ purchase = call("purchase.queue", vendor="pharmacy", item=labs, amount=50)
     assert report.violations[0].rule == "health-meets-egress"
 
 
-async def test_dry_run_predicts_restricted_source_floor() -> None:
-    app = App()
+async def test_dry_run_predicts_restricted_source_floor(tmp_path: Path) -> None:
+    app = App(state_db_path=tmp_path / "state.db", audit_log_path=tmp_path / "audit.jsonl")
     app.memory.write(
         "secret",
         "restricted raw",
@@ -261,12 +261,12 @@ from capabledeputy.policy.engine import (  # noqa: E402
 _AID = "44444444-4444-4444-4444-444444444444"
 
 
-async def test_dry_run_ignores_capability_constraints_boundary() -> None:
+async def test_dry_run_ignores_capability_constraints_boundary(tmp_path: Path) -> None:
     """A plain read program dry-runs ALLOW with NO capability model at
     all — the dry-run never consults grants, expiry, rate, or
     revocation. (Label conflict rules are the only thing it predicts.)
     """
-    app = App()
+    app = App(state_db_path=tmp_path / "state.db", audit_log_path=tmp_path / "audit.jsonl")
     report = await dry_run_program(
         'note = call("memory.read", key="x")\n',
         app.registry,

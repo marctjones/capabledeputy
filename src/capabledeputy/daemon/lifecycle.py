@@ -1068,7 +1068,7 @@ async def stop_daemon(socket_path: Path | None = None) -> bool:
 
     explicit_socket = socket_path is not None
     client = DaemonClient(socket_path or default_socket_path())
-    target_pid = read_pidfile()
+    target_pid = None if explicit_socket else read_pidfile()
 
     # 1. Try the polite RPC path first.
     rpc_sent = False
@@ -1084,8 +1084,10 @@ async def stop_daemon(socket_path: Path | None = None) -> bool:
         # daemon instance.
         pass
 
-    if explicit_socket and not rpc_sent:
-        return False
+    if explicit_socket:
+        # A successful RPC identifies only this socket, never the process in
+        # the default daemon pidfile. Do not wait, signal, or remove that file.
+        return rpc_sent
 
     # 2. If RPC succeeded and we know the PID, give the daemon a brief
     #    moment to exit cleanly. If we don't have a PID, trust the RPC
