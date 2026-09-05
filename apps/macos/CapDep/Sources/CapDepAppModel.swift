@@ -989,7 +989,7 @@ final class CapDepAppModel: ObservableObject {
                 sessionID: session.id,
                 promptID: run.id,
             )
-            if succeeded {
+            if succeeded, promptRuns.first(where: { $0.id == run.id })?.status == .running {
                 markPromptRun(run.id, status: .completed)
             } else if promptRuns.first(where: { $0.id == run.id })?.status == .running {
                 markPromptRun(run.id, status: .failed, error: lastError ?? "Turn failed.")
@@ -1396,6 +1396,7 @@ final class CapDepAppModel: ObservableObject {
             collectTurnApprovalIDs(from: currentToolOutcomes)
             return true
         case "interrupted":
+            markCurrentPromptInterrupted()
             let content = resolvedAssistantContent(
                 partial: payload["partial_content"] as? String,
                 fallback: "[turn interrupted: \(payload["reason"] as? String ?? "cancelled")]",
@@ -1463,6 +1464,7 @@ final class CapDepAppModel: ObservableObject {
                 return
             }
             if status == "interrupted" {
+                markCurrentPromptInterrupted()
                 let content = resolvedAssistantContent(
                     partial: observedTurn["partial_content"] as? String,
                     fallback: "[turn interrupted: \(observedTurn["cancel_reason"] as? String ?? "cancelled")]",
@@ -2151,6 +2153,12 @@ final class CapDepAppModel: ObservableObject {
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    private func markCurrentPromptInterrupted() {
+        guard let currentTurnID,
+              let run = promptRuns.first(where: { $0.turnID == currentTurnID }) else { return }
+        markPromptRun(run.id, status: .interrupted)
     }
 
     func cancelCurrentTurn() async {

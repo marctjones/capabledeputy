@@ -168,6 +168,7 @@ enum ChatPromptStatus: String, Hashable, Codable {
     case queued
     case running
     case completed
+    case interrupted
     case failed
 
     var title: String {
@@ -175,6 +176,7 @@ enum ChatPromptStatus: String, Hashable, Codable {
         case .queued: "Queued"
         case .running: "Running"
         case .completed: "Completed"
+        case .interrupted: "Interrupted"
         case .failed: "Failed"
         }
     }
@@ -211,7 +213,7 @@ struct ChatPromptRun: Identifiable, Hashable, Codable {
     }
 
     var isTerminal: Bool {
-        status == .completed || status == .failed
+        status == .completed || status == .failed || status == .interrupted
     }
 }
 

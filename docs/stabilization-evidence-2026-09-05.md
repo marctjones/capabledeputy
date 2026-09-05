@@ -165,3 +165,37 @@ Completed; these do not count as cancellation acceptance. A fresh-session story
 prompt also received a model refusal. Full GUI cancellation remains open.
 System memory pressure returned to warning at the end of this check, so the
 running daemon was not restarted to load the queued-cancellation patch.
+
+## Model-free GUI cancellation and immediate completion
+
+Added a manual harness: `.venv/bin/python -m tests.manual_gui_fake` from the repo
+root. It refuses a live socket, uses a temporary state/audit directory, registers
+real handlers without upstream servers, and assigns a scripted fake model.
+`[slow]` yields a partial response and waits 120 seconds; other prompts finish
+immediately. The shared integration fixture now supplies method discovery,
+image readiness handlers, skill handlers, and policy-backed override handlers
+needed for an honest GUI handshake. This is a test harness, not a production mode.
+Do not use connector/setup/file-effect controls during this chat-only harness;
+not every handler's ancillary configuration path is redirected by the fixture.
+
+Actual GUI Stop closed the fake stream and the daemon reported `interrupted`
+with reason `operator_stop`. The old GUI incorrectly displayed Completed. The
+Swift source now preserves an Interrupted prompt status for streamed and polled
+results rather than overwriting it with Completed. **Build/visual verification
+of that label fix is pending:** a two-job Swift build was terminated when system
+memory pressure remained at warning; no passing Swift result is claimed.
+
+An immediate fake reply exposed a separate delivery race: completion could occur
+before the GUI subscribed, leaving it on Starting turn indefinitely. The daemon
+now joins a turn subscription before reading terminal state and sends the
+terminal snapshot to that subscriber if already finished. A racing live terminal
+event and snapshot may both arrive; clients should treat terminal state as
+idempotent. This does not replay historical intermediate events or mutate turns.
+A deterministic late-subscriber regression passes.
+
+With the backend fix active, the actual GUI completed an immediate reply, stopped
+a slow fake response, then completed a follow-up in the same session. RPC status
+confirmed completed / interrupted(operator_stop) / completed. **29 tests passed**
+across IPC, lifecycle, client-turn stress, and ownership. Ruff and whitespace checks
+passed. No real model was loaded, and no external connector actions were used.
+The fake daemon was shut down after testing; the normal model daemon remains off.

@@ -158,6 +158,10 @@ final class DaemonContractModelTests: XCTestCase {
         run.status = .completed
         XCTAssertTrue(run.isTerminal)
 
+        run.status = .interrupted
+        XCTAssertTrue(run.isTerminal)
+        XCTAssertEqual(run.status.title, "Interrupted")
+
         run.status = .failed
         run.error = "daemon disconnected"
         XCTAssertTrue(run.isTerminal)

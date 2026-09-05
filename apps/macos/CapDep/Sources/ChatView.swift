@@ -628,6 +628,7 @@ private struct PromptQueuePanel: View {
         case .queued: "clock"
         case .running: "arrow.triangle.2.circlepath"
         case .completed: "checkmark.circle"
+        case .interrupted: "stop.circle"
         case .failed: "exclamationmark.triangle"
         }
     }
@@ -637,6 +638,7 @@ private struct PromptQueuePanel: View {
         case .queued: .secondary
         case .running: .blue
         case .completed: .green
+        case .interrupted: .orange
         case .failed: .red
         }
     }

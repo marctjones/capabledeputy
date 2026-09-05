@@ -20,3 +20,11 @@ to improve completion scores. Never send a message as a smoke-test side effect.
   CapDepMac reconnected automatically and completed a synthetic note summary.
 - Long-form tiny-model output repeated; GUI cancellation remains unverified.
 - Full research/document/inbox workflows and seven-day acceptance remain open.
+
+### Model-free GUI follow-up
+
+- Actual Stop interrupted a deliberately slow fake response; a following instant
+  response completed in the same GUI session after fixing missed terminal delivery.
+- Found and patched misleading Completed labeling for interrupted prompts;
+  Swift build was stopped under host memory pressure, so label verification is pending.
+- This supervised check does not count as a real-model quality or full dogfood day.
