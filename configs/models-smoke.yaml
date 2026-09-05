@@ -1,0 +1,18 @@
+# Opt-in infrastructure testing; not a model-quality baseline.
+default_backend: mlx
+roles:
+  planner.fast: &tiny
+    mlx: mlx-community/Qwen2.5-0.5B-Instruct-4bit
+    max_tokens: 128
+  planner.tools: *tiny
+  planner.quality: *tiny
+  planner.coder: *tiny
+  extractor: *tiny
+routing:
+  - default:
+      role: planner.fast
+      reason: infrastructure_smoke
+tool_selection:
+  mode: retrieve
+  retrieval_top_k: 5
+  max_selected: 5

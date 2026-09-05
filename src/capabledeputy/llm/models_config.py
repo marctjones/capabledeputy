@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -108,7 +109,10 @@ def _parse_routing(raw_rules: list[Any]) -> tuple[RoutingRule, ...]:
 
 
 def load_models_config(path: Path | None = None) -> ModelsConfig:
-    config_path = path or DEFAULT_MODELS_PATH
+    override = os.environ.get("CAPDEP_MODELS_CONFIG", "").strip()
+    config_path = Path(override) if override else (path or DEFAULT_MODELS_PATH)
+    if override and not config_path.is_file():
+        raise FileNotFoundError(config_path)
     if not config_path.is_file():
         return _builtin_defaults()
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
