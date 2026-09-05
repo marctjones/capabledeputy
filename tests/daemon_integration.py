@@ -98,6 +98,25 @@ def build_test_handlers(app: App, paths: DaemonTestPaths) -> dict[str, Any]:
     handlers.update(make_settings_handlers(app, config_path=paths.config))
     handlers.update(make_demo_handlers(app))
     handlers.update(make_extract_handlers(app))
+    from capabledeputy.daemon.image_ops_handlers import make_image_ops_handlers
+    from capabledeputy.daemon.override_handlers import make_override_handlers
+    from capabledeputy.daemon.skill_handlers import make_skill_handlers
+    from capabledeputy.policy.overrides import OverridePolicies
+
+    handlers.update(make_image_ops_handlers(app))
+    handlers.update(make_skill_handlers(app))
+    if app.policy_context is not None and app.policy_context.override_grants is not None:
+        handlers.update(
+            make_override_handlers(
+                app.policy_context.override_grants,
+                app.policy_context.override_policies or OverridePolicies(by_floor={}),
+            )
+        )
+
+    async def daemon_methods(params: dict[str, Any]) -> dict[str, Any]:
+        return {"methods": sorted(handlers)}
+
+    handlers["daemon.methods"] = daemon_methods
     return handlers
 
 

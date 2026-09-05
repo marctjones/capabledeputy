@@ -263,6 +263,48 @@ class Daemon:
                 result={"subscribed": list(streams_to_join)},
             )
             await stream.send(response.encode())
+            # A fast turn may finish before its client subscribes. Joining
+            # first, then reading terminal state closes that delivery gap.
+            get_turn = self._handlers.get("session.turn.get")
+            if get_turn is not None:
+                for name in streams_to_join:
+                    if not str(name).startswith("turn:"):
+                        continue
+                    turn_id = str(name).removeprefix("turn:")
+                    try:
+                        observed = await get_turn({"turn_id": turn_id})
+                    except Exception:
+                        continue
+                    turn = observed.get("turn", {})
+                    status = turn.get("status")
+                    if status not in {"completed", "interrupted", "error"}:
+                        continue
+                    payload = {
+                        "result": turn.get("result"),
+                        "partial_content": turn.get("partial_content", ""),
+                        "partial_outcomes": turn.get("partial_outcomes", []),
+                        "reason": turn.get("cancel_reason"),
+                        "message": turn.get("error"),
+                    }
+                    await stream.send(
+                        (
+                            json.dumps(
+                                {
+                                    "jsonrpc": JSONRPC_VERSION,
+                                    "method": "event",
+                                    "params": {
+                                        "stream": str(name),
+                                        "data": {
+                                            "turn_id": turn_id,
+                                            "type": status,
+                                            "payload": payload,
+                                        },
+                                    },
+                                }
+                            )
+                            + "\n"
+                        ).encode("utf-8")
+                    )
             return
 
         if request.method == "unsubscribe":

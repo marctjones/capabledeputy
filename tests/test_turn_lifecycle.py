@@ -278,3 +278,28 @@ async def test_cancel_before_scope_registration_skips_model_and_allows_next_turn
         )
         done = await _wait_for_status(running, next_turn["turn"]["id"], "completed")
         assert done["turn"]["result"]["content"] == "streamed"
+
+
+async def test_late_subscriber_receives_completed_turn(tmp_path: Path) -> None:
+    async with running_daemon(tmp_path) as running:
+        running.app.llm_client = _TokenStreamingLLM()  # type: ignore[assignment]
+        session_id = await _new_session(running)
+        started = await running.client.call(
+            "session.turn.start",
+            {
+                "session_id": session_id,
+                "message": "instant",
+                "client_id": "late-client",
+                "heartbeat_enabled": False,
+            },
+        )
+        turn_id = started["turn"]["id"]
+        await _wait_for_status(running, turn_id, "completed")
+        events = await running.client.subscribe([started["turn"]["stream"]])
+        try:
+            with anyio.fail_after(2):
+                event = await events.__anext__()
+            assert event["data"]["type"] == "completed"
+            assert event["data"]["payload"]["result"]["content"] == "streamed"
+        finally:
+            await events.aclose()
