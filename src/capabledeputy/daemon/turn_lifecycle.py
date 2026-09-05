@@ -589,15 +589,8 @@ class TurnLifecycleManager:
                 payload={"turn_id": turn_id, "reason": reason},
             ),
         )
-        await self._emit(
-            turn_id,
-            "interrupted",
-            {
-                "reason": reason,
-                "partial_content": merged_partial,
-                "partial_outcomes": list(outcomes),
-            },
-        )
+        # Publish state before notification so a late subscriber can recover
+        # the interruption even if it misses the live event.
         async with self._lock:
             turn = self._turns[turn_id]
             if turn.status in {"completed", "interrupted", "error"}:
@@ -610,6 +603,16 @@ class TurnLifecycleManager:
                 partial_outcomes=outcomes,
                 updated_at=datetime.now(UTC),
             )
+
+        await self._emit(
+            turn_id,
+            "interrupted",
+            {
+                "reason": reason,
+                "partial_content": merged_partial,
+                "partial_outcomes": list(outcomes),
+            },
+        )
 
     async def _finish_error(self, turn_id: str, exc: BaseException) -> None:
         async with self._lock:

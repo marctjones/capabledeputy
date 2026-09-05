@@ -199,3 +199,20 @@ confirmed completed / interrupted(operator_stop) / completed. **29 tests passed*
 across IPC, lifecycle, client-turn stress, and ownership. Ruff and whitespace checks
 passed. No real model was loaded, and no external connector actions were used.
 The fake daemon was shut down after testing; the normal model daemon remains off.
+
+## Terminal ordering and model-free approval assurance
+
+Interruption state is now stored before its notification is published. Previously,
+a subscriber could join after the interruption event but before the state update,
+missing both the live event and terminal replay. Tests assert the stored status
+already reads Interrupted when notification begins, and verify late replay for
+both operator interruption and genuine startup failure. Model-response exceptions
+are intentionally represented by the existing interrupted/llm_error contract.
+
+Validation: **31 passed** for lifecycle, IPC, client-turn stress, and ownership;
+**44 passed** for destructive approval execution, approval dispatch registration,
+expiry, adversarial workflows, and security-alignment probes. These checks use
+temporary data and fake tools; no real model, network, or messages are involved.
+Changed Swift sources also passed a syntax-only parse. Full Swift typechecking,
+tests, and visual verification of the interrupted activity label remain pending
+because host memory pressure was still at warning. No daemon was started.

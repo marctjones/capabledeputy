@@ -303,3 +303,58 @@ async def test_late_subscriber_receives_completed_turn(tmp_path: Path) -> None:
             assert event["data"]["payload"]["result"]["content"] == "streamed"
         finally:
             await events.aclose()
+
+
+@pytest.mark.parametrize("terminal", ["interrupted", "error"])
+async def test_late_subscriber_receives_non_success_terminal_state(
+    tmp_path: Path, terminal: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with running_daemon(tmp_path) as running:
+        running.app.llm_client = _SlowStreamingLLM()  # type: ignore[assignment]
+        session_id = await _new_session(running)
+        original_emit = running.app.turns._emit
+
+        async def checked_emit(turn_id, event_type, payload):
+            if event_type == "interrupted":
+                observed = await running.app.turns.get(turn_id)
+                assert observed["turn"]["status"] == "interrupted"
+            await original_emit(turn_id, event_type, payload)
+
+        monkeypatch.setattr(running.app.turns, "_emit", checked_emit)
+        if terminal == "error":
+
+            async def fail_acquire(self, session_id):
+                raise RuntimeError("scripted startup failure")
+
+            monkeypatch.setattr(type(running.app.session_coordinator), "acquire_turn", fail_acquire)
+        started = await running.client.call(
+            "session.turn.start",
+            {
+                "session_id": session_id,
+                "message": "hello",
+                "client_id": "late-terminal",
+                "heartbeat_enabled": False,
+            },
+        )
+        turn_id = started["turn"]["id"]
+        if terminal == "interrupted":
+            await _wait_for_status(running, turn_id, "running")
+            await running.client.call(
+                "session.turn.cancel",
+                {
+                    "turn_id": turn_id,
+                    "reason": "late-stop",
+                },
+            )
+        await _wait_for_status(running, turn_id, terminal)
+        events = await running.client.subscribe([started["turn"]["stream"]])
+        try:
+            with anyio.fail_after(2):
+                event = await events.__anext__()
+            assert event["data"]["type"] == terminal
+            if terminal == "interrupted":
+                assert event["data"]["payload"]["reason"] == "late-stop"
+            else:
+                assert "scripted startup failure" in event["data"]["payload"]["message"]
+        finally:
+            await events.aclose()
