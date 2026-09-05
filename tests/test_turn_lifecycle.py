@@ -223,3 +223,58 @@ async def test_turn_ack_rejects_non_owner(tmp_path: Path) -> None:
                 "session.turn.ack",
                 {"turn_id": started["turn"]["id"], "client_id": "other"},
             )
+
+
+async def test_cancel_before_scope_registration_skips_model_and_allows_next_turn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with running_daemon(tmp_path) as running:
+        llm = _ToolThenAnswerLLM()
+        running.app.llm_client = llm  # type: ignore[assignment]
+        session_id = await _new_session(running)
+        coordinator = running.app.session_coordinator
+        original = type(coordinator).acquire_turn
+        waiting = anyio.Event()
+        proceed = anyio.Event()
+
+        async def gated_acquire(self, sid):
+            waiting.set()
+            await proceed.wait()
+            return await original(self, sid)
+
+        monkeypatch.setattr(type(coordinator), "acquire_turn", gated_acquire)
+        started = await running.client.call(
+            "session.turn.start",
+            {
+                "session_id": session_id,
+                "message": "hello",
+                "client_id": "cancel-race",
+                "heartbeat_enabled": False,
+            },
+        )
+        with anyio.fail_after(2):
+            await waiting.wait()
+        turn_id = started["turn"]["id"]
+        await running.client.call(
+            "session.turn.cancel",
+            {
+                "turn_id": turn_id,
+                "reason": "stop-before-start",
+            },
+        )
+        proceed.set()
+        interrupted = await _wait_for_status(running, turn_id, "interrupted")
+        assert interrupted["turn"]["cancel_reason"] == "stop-before-start"
+        assert llm._calls == 0
+        running.app.llm_client = _TokenStreamingLLM()  # type: ignore[assignment]
+        next_turn = await running.client.call(
+            "session.turn.start",
+            {
+                "session_id": session_id,
+                "message": "hello again",
+                "client_id": "cancel-race",
+                "heartbeat_enabled": False,
+            },
+        )
+        done = await _wait_for_status(running, next_turn["turn"]["id"], "completed")
+        assert done["turn"]["result"]["content"] == "streamed"

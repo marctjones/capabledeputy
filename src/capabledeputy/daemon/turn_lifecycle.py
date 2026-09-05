@@ -327,9 +327,16 @@ class TurnLifecycleManager:
             async with anyio.create_task_group() as tg:
                 async with self._lock:
                     self._cancel_scopes[turn_id] = scope
+                    # Stop may arrive while queued, before this scope exists.
+                    # Register and replay it under the same lock as cancel().
+                    if turn_id in self._cancel_reasons:
+                        scope.cancel()
                 if turn.heartbeat_enabled:
                     tg.start_soon(self._heartbeat_watch, turn_id, scope)
                 with scope:
+                    # Do not enter model/tool execution for a cancelled turn,
+                    # even when the generator yields before its first await.
+                    await anyio.lowlevel.checkpoint()
                     async for event in run_turn_streaming(
                         session_id=turn.session_id,
                         user_message=turn.message,

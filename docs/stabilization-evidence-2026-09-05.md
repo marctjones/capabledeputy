@@ -143,3 +143,25 @@ tests run both commands against isolated fake launch tools and check that the
 existing plist is byte-for-byte unchanged. Launcher, guard, and setup-domain
 checks: **23 passed**. Lint and shell syntax passed. No full-suite rerun was needed
 for this shell-only behavior change.
+
+## Queued cancellation race
+
+A deterministic isolated-daemon test held startup before cancellation-scope
+registration, issued Stop, then released startup. Before the fix the turn invoked
+the model and completed despite carrying `cancel_reason=stop-before-start`.
+Registration now replays pending cancellation under the same lock used by Stop,
+and checks cancellation before entering model/tool execution. The regression
+verifies zero model calls, an interrupted result, and successful completion of
+the next turn in the same session.
+
+Broader focused validation: **31 passed** (turn lifecycle, streaming, client-turn
+stress, workstream ownership, watchdog). An earlier combined run hit an OS
+PermissionError when signalling a watchdog test child; the isolated host-permitted
+rerun passed, but the cause of that intermittent permission error is not proven.
+Lint and patch whitespace checks passed.
+
+Further real-GUI Stop attempts raced with short model responses and ended in
+Completed; these do not count as cancellation acceptance. A fresh-session story
+prompt also received a model refusal. Full GUI cancellation remains open.
+System memory pressure returned to warning at the end of this check, so the
+running daemon was not restarted to load the queued-cancellation patch.
