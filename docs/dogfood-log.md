@@ -12,3 +12,11 @@ inbox triage with drafts. Record the exact revision and model configuration.
 A denied unauthorized variant is an assurance success but not a completed user
 workflow. Record the useful authorized path separately. Do not loosen policy
 to improve completion scores. Never send a message as a smoke-test side effect.
+
+### 2026-09-05 — supervised stabilization check (not a full dogfood day)
+
+- Observed resource watchdog stop on sustained system memory warning.
+- After memory recovered, restarted with preserved tiny-model/watchdog settings;
+  CapDepMac reconnected automatically and completed a synthetic note summary.
+- Long-form tiny-model output repeated; GUI cancellation remains unverified.
+- Full research/document/inbox workflows and seven-day acceptance remain open.

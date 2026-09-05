@@ -117,3 +117,29 @@ continue using scripted fake clients.
 Follow-up validation: 22 focused model routing, profile, version, and quality-plan
 tests passed; launcher role inspection confirmed all five clients use the tiny
 model with 128-token defaults. Shell syntax and changed Python lint/format passed.
+
+## Guarded GUI follow-up
+
+The resource watchdog triggered on sustained system memory warning (15 seconds)
+while the daemon group was approximately 36 MiB resident. CapDepMac showed
+Disconnected. This is a real safety-stop observation, not a unit-test simulation;
+it does not establish that CapDep caused the system pressure. Other research
+processes were active. The daemon was restarted only after pressure returned to
+normal, with its tiny-model watchdog configuration intact. The GUI automatically
+returned to Connected 0.58.0 without relaunching the app.
+
+The actual GUI accepted a synthetic note and completed an accurate one-sentence
+summary. This verifies conversational UI operation, not the full local-document
+workflow with reviewed file effects. A counting probe completed at its response
+limit before cancellation was confirmed. A longer story probe showed repetitive
+small-model output; the attempted UI cancellation did not establish an interrupted
+terminal state. GUI cancellation acceptance remains open. During these probes,
+sampled process-group RSS stayed below approximately 620 MiB and memory pressure
+was normal. No external messages were sent.
+
+Routine `run-local-daemon-launchd.sh start/restart` now preserves an existing
+LaunchAgent, preventing loss of operator model or watchdog settings. Regression
+tests run both commands against isolated fake launch tools and check that the
+existing plist is byte-for-byte unchanged. Launcher, guard, and setup-domain
+checks: **23 passed**. Lint and shell syntax passed. No full-suite rerun was needed
+for this shell-only behavior change.

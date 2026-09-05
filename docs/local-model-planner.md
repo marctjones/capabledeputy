@@ -306,9 +306,9 @@ around `with-smoke-model.sh` and the daemon. KeepAlive is false, so a safety sto
 will not trigger an immediate restart loop. Monitoring continues after the Codex
 turn ends. Logs: `~/.capdep/resource-guard.log`; original plist backup:
 `~/.capdep/backups/daemon-before-resource-guard-*.plist`.
-The generic `run-local-daemon-launchd.sh` setup command regenerates the plist and
-would replace this local guarded configuration; do not rerun it to restart this
-setup. Use launchctl with the existing plist instead.
+The `run-local-daemon-launchd.sh` start/restart commands preserve an existing
+operator-owned plist, including the watchdog and model settings. A missing plist
+is generated on first use; `CAPDEP_LAUNCHD_PLIST` can select an explicit location.
 
 Initial live verification: all three chat requests completed (2.53 s cold,
 0.50 s warm), peak sampled process-group RSS 584 MiB, peak CPU 51%, and normal

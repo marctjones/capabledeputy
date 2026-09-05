@@ -6,7 +6,7 @@ CAPDEP="$REPO_ROOT/.venv/bin/capdep"
 DEV_BIN="$REPO_ROOT/.venv/bin"
 LABEL="${CAPDEP_LAUNCHD_LABEL:-local.capabledeputy.daemon}"
 DOMAIN="gui/$(id -u)"
-PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+PLIST="${CAPDEP_LAUNCHD_PLIST:-$HOME/Library/LaunchAgents/$LABEL.plist}"
 OUT_LOG="${CAPDEP_DAEMON_STDOUT_LOG:-/tmp/capdep-launchd.out.log}"
 ERR_LOG="${CAPDEP_DAEMON_STDERR_LOG:-/tmp/capdep-launchd.err.log}"
 PATH_VALUE="$DEV_BIN:${CAPDEP_DAEMON_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
@@ -16,6 +16,7 @@ usage() {
 usage: $0 [start|stop|restart|status]
 
 Starts the local CapableDeputy daemon as a per-user launchd agent.
+Existing LaunchAgent configuration is preserved, including model and watchdog settings.
 Logs:
   stdout: $OUT_LOG
   stderr: $ERR_LOG
@@ -41,6 +42,11 @@ case "$command" in
 esac
 
 write_plist() {
+  # Operator-owned configuration may wrap the daemon with resource protections.
+  # A routine start/restart must never silently remove them.
+  if [[ -e "$PLIST" ]]; then
+    return 0
+  fi
   mkdir -p "$(dirname "$PLIST")"
   cat > "$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
