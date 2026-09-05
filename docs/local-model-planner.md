@@ -283,3 +283,35 @@ Six tool probes passed; three exact-text probes failed due to capitalization.
 This profile exercises loading, streaming, and parsing, not production quality.
 Keep strict expected-output tests and real workflow quality evaluation separate.
 See [raw measurements](evidence/model-qwen25-05b-2026-09-05.jsonl).
+
+### Persistent resource watchdog (macOS)
+
+`scripts/guard-daemon-resources.py COMMAND ...` starts an owned process group,
+checks it every two seconds, and terminates the group if any of these occur:
+
+- 2,048 MiB aggregate resident memory;
+- critical macOS memory pressure immediately, or warning pressure for 15 seconds;
+- at least 200% aggregate CPU (two cores) for 30 seconds;
+- failure to obtain monitoring telemetry.
+
+It sends TERM, allows five seconds, then sends KILL to remaining group members.
+Short CPU bursts are allowed. This is a conservative watchdog, not a hard memory
+or GPU allocation limit: sampling can miss spikes, RSS does not capture every GPU
+allocation, and the monitor cannot act while macOS is unable to schedule it.
+Children that create independent process groups are outside its group accounting.
+Global memory pressure still triggers a stop even if another app caused it.
+
+On Marc's Mac the existing LaunchAgent now runs this watchdog at nice priority 10
+around `with-smoke-model.sh` and the daemon. KeepAlive is false, so a safety stop
+will not trigger an immediate restart loop. Monitoring continues after the Codex
+turn ends. Logs: `~/.capdep/resource-guard.log`; original plist backup:
+`~/.capdep/backups/daemon-before-resource-guard-*.plist`.
+The generic `run-local-daemon-launchd.sh` setup command regenerates the plist and
+would replace this local guarded configuration; do not rerun it to restart this
+setup. Use launchctl with the existing plist instead.
+
+Initial live verification: all three chat requests completed (2.53 s cold,
+0.50 s warm), peak sampled process-group RSS 584 MiB, peak CPU 51%, and normal
+system memory pressure. All GUI RPC checks passed, but the strict parity chat
+check failed on capitalization/punctuation (`Parity-ok.`). Unit tests exercise
+actual owned-child termination for critical pressure and telemetry failure.
