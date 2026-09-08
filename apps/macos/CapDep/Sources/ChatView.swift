@@ -51,11 +51,6 @@ struct ChatView: View {
                 }
             }
         }
-        .onChange(of: model.isGoogleOAuthWizardPresented) { _, presented in
-            if presented {
-                openWindow(id: "google-oauth-wizard")
-            }
-        }
         .onChange(of: model.approvalWindowID) { _, approvalID in
             if approvalID != nil {
                 openWindow(id: "approval-card")

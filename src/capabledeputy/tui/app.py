@@ -197,179 +197,6 @@ class DaemonRPCWorkbenchScreen(ModalScreen[None]):
         )
 
 
-class GoogleWorkspaceSetupScreen(ModalScreen[None]):
-    """Operator setup surface for daemon-owned Google Workspace OAuth."""
-
-    BINDINGS = [  # noqa: RUF012
-        Binding("ctrl+s", "save_client", "Save client", show=True),
-        Binding("l", "login", "Authorize", show=True),
-        Binding("v", "revoke", "Revoke", show=True),
-        Binding("r", "refresh_status", "Refresh", show=True),
-        Binding("escape", "close", "Close", show=True),
-        Binding("q", "close", "Close"),
-    ]
-
-    DEFAULT_CSS = """
-    GoogleWorkspaceSetupScreen { align: center middle; }
-    #google-setup-box {
-        width: 90%;
-        max-width: 110;
-        height: auto;
-        border: thick $primary;
-        padding: 1 2;
-        background: $surface;
-    }
-    #google-status {
-        height: auto;
-        max-height: 18;
-        overflow: auto;
-        background: $boost;
-        padding: 1;
-        border: solid $accent;
-    }
-    Input { margin-top: 1; }
-    """
-
-    def __init__(self, client: DaemonClient) -> None:
-        super().__init__()
-        self._client = client
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="google-setup-box"):
-            yield Static("[bold]Google Workspace MCP OAuth[/bold]")
-            yield Static(
-                "Service IDs: google-gmail, google-calendar, google-drive\n"
-                "Credentials and tokens are stored only by the daemon.",
-            )
-            yield Static("(loading status...)", id="google-status")
-            yield Input(value="google-gmail", placeholder="service id", id="service-id")
-            yield Input(placeholder="OAuth client ID", id="client-id")
-            yield Input(placeholder="OAuth client secret", password=True, id="client-secret")
-            yield Static(
-                "[dim]ctrl+s save client  ·  l authorize in browser  ·  v revoke token  "
-                "·  r refresh  ·  esc close[/dim]",
-            )
-
-    def on_mount(self) -> None:
-        self.run_worker(self._refresh_status(), exclusive=False)
-
-    @on(Input.Submitted, "#client-secret")
-    def _client_secret_submitted(self, event: Input.Submitted) -> None:
-        if event.value.strip():
-            self.action_save_client()
-
-    def action_refresh_status(self) -> None:
-        self.run_worker(self._refresh_status(), exclusive=False)
-
-    def action_save_client(self) -> None:
-        service_id = self._service_id()
-        client_id = self.query_one("#client-id", Input).value.strip()
-        client_secret = self.query_one("#client-secret", Input).value.strip()
-        if not service_id:
-            self.notify("service id is required", severity="warning")
-            return
-        if not client_id or not client_secret:
-            self.notify("client ID and secret are required", severity="warning")
-            return
-        self.run_worker(
-            self._call_google_setup(
-                "setup.google.configure_oauth",
-                {
-                    "service_id": service_id,
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                },
-                "OAuth client saved",
-            ),
-            exclusive=False,
-        )
-
-    def action_login(self) -> None:
-        service_id = self._service_id()
-        if not service_id:
-            self.notify("service id is required", severity="warning")
-            return
-        self.run_worker(
-            self._call_google_setup(
-                "setup.google.oauth_login",
-                {
-                    "service_id": service_id,
-                    "open_browser": True,
-                    "timeout_seconds": 180,
-                },
-                "OAuth browser login completed",
-            ),
-            exclusive=False,
-        )
-
-    def action_revoke(self) -> None:
-        service_id = self._service_id()
-        if not service_id:
-            self.notify("service id is required", severity="warning")
-            return
-        self.run_worker(
-            self._call_google_setup(
-                "setup.google.oauth_revoke",
-                {"service_id": service_id},
-                "OAuth token revoked",
-            ),
-            exclusive=False,
-        )
-
-    def action_close(self) -> None:
-        self.dismiss(None)
-
-    async def _call_google_setup(
-        self,
-        method: str,
-        params: dict[str, Any],
-        success_message: str,
-    ) -> None:
-        try:
-            result = await self._client.call(method, params)
-        except Exception as e:
-            self.notify(f"{method} failed: {e}", severity="error")
-            return
-        self.query_one("#client-secret", Input).value = ""
-        self._render_google_status(result)
-        self.notify(success_message)
-
-    async def _refresh_status(self) -> None:
-        try:
-            result = await self._client.call("setup.google.oauth_status", {})
-        except Exception as e:
-            self.query_one("#google-status", Static).update(f"[red]status failed:[/red] {e}")
-            return
-        self._render_google_status(result)
-
-    def _render_google_status(self, result: dict[str, Any]) -> None:
-        services = result.get("services")
-        rows = services if isinstance(services, list) else [result]
-        lines: list[str] = []
-        for status in rows:
-            if not isinstance(status, dict):
-                continue
-            name = status.get("display_name") or status.get("service_id") or status.get("server")
-            configured = "yes" if status.get("configured") else "no"
-            client = (
-                "yes"
-                if status.get("client_id_configured") and status.get("client_secret_configured")
-                else "no"
-            )
-            token = "yes" if status.get("token_configured") else "no"
-            lines.append(
-                f"[bold]{name}[/bold]  configured={configured}  client={client}  token={token}",
-            )
-            if status.get("server_yaml"):
-                lines.append(f"  [dim]server config: {status['server_yaml']}[/dim]")
-        self.query_one("#google-status", Static).update(
-            "\n".join(lines) if lines else "[dim]No Google OAuth status returned.[/dim]",
-        )
-
-    def _service_id(self) -> str:
-        return self.query_one("#service-id", Input).value.strip()
-
-
 def _approval_needs_touch_id(approval: dict[str, Any]) -> bool:
     return bool(
         approval.get("requires_strong_auth") and approval.get("touch_id_policy_enabled"),
@@ -797,7 +624,6 @@ class CapDepTUI(App[None]):
         Binding("c", "cancel_session", "Cancel turn", show=True),
         Binding("e", "defer_approval", "Defer", show=True),
         Binding("A", "approve_group", "Approve group", show=True),
-        Binding("w", "google_setup", "Workspace setup", show=True),
         Binding("s", "setup_assistant", "Setup", show=True),
         Binding("W", "workflow_library", "Workflows", show=True),
         Binding("B", "bundle_runner", "Bundle", show=True),
@@ -896,9 +722,6 @@ class CapDepTUI(App[None]):
             "graph view: on" if self._graph_view else "graph view: off",
         )
         self.refresh_now()
-
-    def action_google_setup(self) -> None:
-        self.push_screen(GoogleWorkspaceSetupScreen(self._client))
 
     def action_setup_assistant(self) -> None:
         self.push_screen(SetupAssistantScreen(self._client))

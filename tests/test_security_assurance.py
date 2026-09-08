@@ -54,7 +54,6 @@ def test_substrate_contracts_are_non_destructive_by_default() -> None:
     contracts = substrate_contracts()
 
     assert {contract.substrate_id for contract in contracts} >= {
-        "google-workspace",
         "imap",
         "office-automation",
         "sandbox",

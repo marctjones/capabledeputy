@@ -110,16 +110,6 @@ struct MenuBarView: View {
                 }
             }
 
-            if needsGoogleSetup {
-                Divider()
-                Button {
-                    model.presentGoogleOAuthWizard()
-                    openWindow(id: "google-oauth-wizard")
-                } label: {
-                    Label("Set Up Google Account…", systemImage: "person.crop.circle.badge.plus")
-                }
-            }
-
             Divider()
 
             HStack {
@@ -143,18 +133,6 @@ struct MenuBarView: View {
         }
         .padding()
         .frame(width: 360)
-        .onChange(of: model.isGoogleOAuthWizardPresented) { _, presented in
-            if presented {
-                openWindow(id: "google-oauth-wizard")
-            }
-        }
-    }
-
-    private var needsGoogleSetup: Bool {
-        model.setupChecks.contains(where: { $0.id == "google-oauth" && $0.status != "ok" })
-            || model.connectorStatuses.contains(where: {
-                $0.id.hasPrefix("google-") && $0.status != "connected"
-            })
     }
 
     private var statusTitle: String {

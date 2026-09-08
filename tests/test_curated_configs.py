@@ -1,15 +1,12 @@
 """Guard: the shipped curated MCP catalog stays parseable and locked.
 
 These configs let CapableDeputy drive real upstream MCP servers behind
-the policy engine. The catalog's security guarantee rests on three
+the policy engine. The catalog's security guarantee rests on two
 invariants this test pins:
 
   - every config parses (no CapabilityKind / Label typo silently
-    dropping a tool override),
-  - every server is strict (fail-closed admission), and
-  - the Google Workspace configs have explicit
-    override for every tool it declares (nothing destructive there may
-    ride on inference).
+    dropping a tool override), and
+  - every server is strict (fail-closed admission).
 """
 
 from __future__ import annotations
@@ -40,48 +37,15 @@ def test_curated_config_parses_and_is_strict(path: Path) -> None:
             assert c.url, f"{path.name}:{c.name} has empty remote url"
 
 
-@pytest.mark.parametrize(
-    "filename",
-    ["google-workspace.yaml", "google-workspace-community.yaml"],
-)
-def test_google_workspace_pins_every_declared_tool(filename: str) -> None:
-    """Workspace producers can evolve; nothing may rely on inference."""
-    configs = load_config_file(_CURATED / filename)
-    for c in configs:
-        assert c.tool_overrides, f"{c.name} declares no explicit tool overrides"
-        for name, ov in c.tool_overrides.items():
-            assert ov.capability_kind is not None, (
-                f"{c.name}.{name} override has no capability_kind"
-            )
-
-
-def test_official_google_workspace_uses_gmail_draft_capability() -> None:
-    configs = load_config_file(_CURATED / "google-workspace.yaml")
-    gmail = next(config for config in configs if config.name == "google-gmail")
-    calendar = next(config for config in configs if config.name == "google-calendar")
-
-    assert gmail.tool_overrides["create_draft"].capability_kind is not None
-    assert gmail.tool_overrides["create_draft"].capability_kind.value == "GMAIL_DRAFT"
-    assert gmail.tool_overrides["create_draft"].target_arg == "to"
-    assert calendar.tool_overrides["create_event"].target_template == (
-        "gcal://calendar/{calendar_id}/events/attendees/{attendees}"
-    )
-
-
-def test_microsoft_365_disables_outbound_send_like_gmail() -> None:
-    """#329 — M365 must not ship a live outbound-send surface Gmail withholds.
+def test_microsoft_365_disables_outbound_send() -> None:
+    """#329 — M365 must not ship a live outbound-send surface.
     send_mail stays mapped (pinned/known) but SEND_EMAIL is disabled at
-    admission, exactly as google-workspace.yaml does for Gmail."""
+    admission."""
     [m365] = load_config_file(_CURATED / "microsoft-365.yaml")
     assert "SEND_EMAIL" in m365.disabled_kinds
     # Still pinned so an unmapped send_* can't slip through unnoticed.
     assert m365.tool_overrides["send_mail"].capability_kind is not None
     assert m365.tool_overrides["send_mail"].capability_kind.value == "SEND_EMAIL"
-    # Gmail (the reference posture) disables the same kind.
-    gmail = next(
-        c for c in load_config_file(_CURATED / "google-workspace.yaml") if c.name == "google-gmail"
-    )
-    assert "SEND_EMAIL" in gmail.disabled_kinds
 
 
 def test_placeholder_endpoints_are_marked_not_connectable() -> None:
@@ -118,7 +82,6 @@ def test_legacy_github_config_replaced_by_official_remote() -> None:
 def test_tier1_curated_mappings_cover_core_providers() -> None:
     assert {
         "github.yaml",
-        "google-workspace.yaml",
         "microsoft-365.yaml",
         "notion.yaml",
     } <= {path.name for path in _FILES}
@@ -228,3 +191,28 @@ def test_bundled_python_config_includes_specialized_macos_servers() -> None:
     assert powerpoint.tool_overrides["powerpoint.start_slideshow"].target_template == (
         "powerpoint://frontmost"
     )
+
+
+def test_bundled_fs_git_memory_declare_target_arg() -> None:
+    """A tool_override with no target_arg/target_template falls back to
+    looking up `args["target"]` (adapter.py), which fs/git/memory tools
+    never set — every call's capability check then scopes against an
+    empty target and a path-scoped grant (e.g. the foreground chat
+    defaults' `READ_FS` on `~/Desktop/*`) can never match. This silently
+    denies every bundled-fs/git/memory call regardless of the session's
+    actual capabilities, with no admission warning (READ_FS isn't a
+    destructive/egress kind) to flag it."""
+    configs = load_config_file(_CURATED / "bundled-python-servers.yaml")
+
+    fs = next(config for config in configs if config.name == "bundled-fs")
+    for tool in ("fs.read", "fs.list", "fs.create", "fs.write", "fs.delete"):
+        assert fs.tool_overrides[tool].target_arg == "path", tool
+
+    git = next(config for config in configs if config.name == "bundled-git")
+    for tool in ("git.status", "git.log", "git.diff", "git.show", "git.branch_list"):
+        assert git.tool_overrides[tool].target_arg == "repo_path", tool
+
+    memory = next(config for config in configs if config.name == "bundled-memory")
+    for tool in ("memory.create", "memory.read", "memory.update", "memory.delete"):
+        assert memory.tool_overrides[tool].target_arg == "key", tool
+    assert memory.tool_overrides["memory.list"].target_arg == "prefix"

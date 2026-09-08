@@ -152,7 +152,7 @@ def test_kind_add_labels_custom() -> None:
 def test_kind_add_labels_built_in_returns_empty() -> None:
     """Built-in kinds get their label propagation from the policy
     engine's hardcoded rules — kind_add_tags returns empty for them."""
-    assert kind_add_tags(CapabilityKind.GMAIL_READ) == LabelState()
+    assert kind_add_tags(CapabilityKind.IMAP_READ) == LabelState()
     assert kind_add_tags(CapabilityKind.READ_FS) == LabelState()
 
 
@@ -323,5 +323,5 @@ def test_built_in_kind_does_not_satisfy_custom_kind() -> None:
     )
     # READ_FS capability does NOT match a slack:read action.
     # The back-compat union only covers built-in granular read kinds
-    # (GMAIL_READ, IMAP_READ, DRIVE_READ), not arbitrary custom kinds.
+    # (IMAP_READ, CLOUD_FILE_READ, CHAT_READ), not arbitrary custom kinds.
     assert not cap.matches("slack:read", "any-target")  # type: ignore[arg-type]

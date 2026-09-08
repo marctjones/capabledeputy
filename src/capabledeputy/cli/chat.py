@@ -382,15 +382,9 @@ _SESSION_MAX_ITERS: dict[str, int] = {"value": 50}
 
 
 _TOOL_ICONS: tuple[tuple[str, str], ...] = (
-    # Ordered prefix→icon map. Longer prefixes first so `gws.gmail_*`
-    # wins over `gws.*`. The point isn't taxonomic correctness — it's
-    # that the icon gives a one-glance read on what kind of work the
-    # agent just did.
-    ("gws.gmail", "📧"),
-    ("gws.drive", "📂"),
-    ("gws.calendar", "📅"),
-    ("gws.docs", "📄"),
-    ("gws.sheets", "📊"),
+    # Ordered prefix→icon map. Longer, more specific prefixes first.
+    # The point isn't taxonomic correctness — it's that the icon
+    # gives a one-glance read on what kind of work the agent just did.
     ("mail.", "📧"),
     ("email.", "✉️"),
     ("calendar.", "📅"),
@@ -477,73 +471,6 @@ def _parse_json_text(output: Any) -> Any:
         return None
 
 
-def _fmt_gmail_messages_get(output: Any) -> str | None:
-    """Gmail message → `From: <sender> · Subject: <subject>`.
-
-    Pulls the canonical headers (From, Subject) out of the
-    `payload.headers` array. Common case: a substack newsletter
-    renders as `From: The Capitalist · "Legendary automaker..."`,
-    which is much more useful than a 30k-char byte count."""
-    parsed = _parse_json_text(output)
-    if not isinstance(parsed, dict):
-        return None
-    headers = (parsed.get("payload") or {}).get("headers") or []
-    if not isinstance(headers, list):
-        return None
-    h: dict[str, str] = {}
-    for entry in headers:
-        if isinstance(entry, dict):
-            name = entry.get("name", "")
-            value = entry.get("value", "")
-            if isinstance(name, str) and isinstance(value, str):
-                h[name.lower()] = value
-    sender_raw = h.get("from") or "?"
-    sender = sender_raw.split("<")[0].strip().strip('"') or sender_raw[:40]
-    if len(sender) > 30:
-        sender = sender[:27] + "…"
-    subj = h.get("subject") or "(no subject)"
-    if len(subj) > 50:
-        subj = subj[:47] + "…"
-    return f'[dim]From: {sender} · "{subj}"[/dim]'
-
-
-def _fmt_gmail_messages_list(output: Any) -> str | None:
-    """Gmail thread/message list → `N messages`. The bare list
-    response carries only ids + threadIds (no subjects), so we
-    can't do better without a follow-up fetch. Keep the count and
-    let the agent supply the narrative."""
-    parsed = _parse_json_text(output)
-    if not isinstance(parsed, dict):
-        return None
-    msgs = parsed.get("messages")
-    if isinstance(msgs, list):
-        return f"[dim]{len(msgs)} messages[/dim]"
-    return None
-
-
-def _fmt_drive_files_list(output: Any) -> str | None:
-    """Drive file list → `3 files: report.pdf, notes.md, slides.key…`."""
-    parsed = _parse_json_text(output)
-    if not isinstance(parsed, dict):
-        return None
-    files = parsed.get("files")
-    if not isinstance(files, list):
-        return None
-    names: list[str] = []
-    for f in files[:3]:
-        if isinstance(f, dict):
-            n = f.get("name")
-            if isinstance(n, str):
-                names.append(n)
-    if not names:
-        return f"[dim]{len(files)} files[/dim]"
-    suffix = ", …" if len(files) > 3 else ""
-    joined = ", ".join(names)
-    if len(joined) > 60:
-        joined = joined[:57] + "…"
-    return f"[dim]{len(files)} files: {joined}{suffix}[/dim]"
-
-
 def _fmt_fs_read(output: Any) -> str | None:
     """File read → `<N> lines · <bytes>`. Counts newlines in the
     returned content; bytes shown from explicit length or string len."""
@@ -582,13 +509,10 @@ def _fmt_fetch(output: Any) -> str | None:
 # Per-tool result formatters. Keyed by exact tool name. Formatters
 # return None when they can't extract a useful preview, in which
 # case `_summarize_tool_output` falls through to the generic
-# byte-count/item-count rendering. The point: a 30k-char gmail
-# message renders as `From: ... · "Subject..."` not
-# `30,054 chars`, which is what a human actually wants to scan.
+# byte-count/item-count rendering. The point: a formatter can render
+# a domain-specific one-liner instead of a raw `30,054 chars` dump,
+# which is what a human actually wants to scan.
 _TOOL_RESULT_FORMATTERS: dict[str, Any] = {
-    "gws.gmail_messages_get": _fmt_gmail_messages_get,
-    "gws.gmail_messages_list": _fmt_gmail_messages_list,
-    "gws.drive_files_list": _fmt_drive_files_list,
     "fs.read": _fmt_fs_read,
     "bundled-fetch.fetch": _fmt_fetch,
     "fetch.fetch": _fmt_fetch,
@@ -600,8 +524,7 @@ def _summarize_tool_output(outcome: dict[str, Any]) -> str:
 
     1. Decision short-circuits (deny / require_approval / error).
     2. Per-tool formatter from `_TOOL_RESULT_FORMATTERS` — pulls
-       domain-specific fields (gmail Subject, drive filenames,
-       fs line count, fetch status).
+       domain-specific fields (fs line count, fetch status).
     3. Truncation marker if the upstream adapter capped the output.
     4. Generic shape-based fallback (byte count for text, item count
        for list-keyed dicts, field count as a last resort).
@@ -670,7 +593,7 @@ def _render_outcomes_table(outcomes: list[dict[str, Any]]) -> None:
     """Per-tool-call inline cards (Claude-Code-style) instead of a
     full Rich Table. Each call renders as:
 
-        📧 gws.gmail_messages_list(q=after:..., maxResults=20)
+        📧 mail.messages_list(q=after:..., maxResults=20)
                  → 8 messages
 
     where the icon comes from the tool prefix, the args are an
@@ -4142,16 +4065,14 @@ def _grant_default_read_caps(session_id: str) -> None:
         ("READ_FS", f"{home}/Desktop/*"),
         ("READ_FS", "/tmp/*"),
         # Personal-assistant reads (Issue #33 partial fix) — granular
-        # kinds so the operator's email / drive access doesn't depend
-        # on a sketchy "READ_FS *" or "READ_FS gmail:*" hack. These are
-        # read-only and inherently safe to default-grant; sensitive
-        # operations like SEND_EMAIL / DELETE / share stay behind
-        # explicit /grant per the destructive-kinds rule.
-        ("GMAIL_READ", "*"),
+        # kinds so the operator's email access doesn't depend on a
+        # sketchy "READ_FS *" hack. These are read-only and inherently
+        # safe to default-grant; sensitive operations like SEND_EMAIL /
+        # DELETE / share stay behind explicit /grant per the
+        # destructive-kinds rule.
         ("IMAP_READ", "*"),
-        ("DRIVE_READ", "*"),
         ("CHAT_READ", "*"),
-        ("PEOPLE_READ", "*"),
+        ("CLOUD_FILE_READ", "*"),
         ("CALENDAR_READ", "*"),
         ("WEB_FETCH", "*"),
         # Sandbox + scratch workspace creation

@@ -80,7 +80,21 @@ final class CapDepSendPromptCommand: NSScriptCommand {
             guard let model = CapDepAppModel.shared else {
                 return false
             }
-            let sessionID = requestedSession ?? model.currentSessionID ?? ""
+            // An explicit `in session` targets exactly that id — fail if it's
+            // invalid rather than silently substituting another session.
+            // With no explicit target, go through `ensureSession` like the
+            // normal chat-input path does: `currentSessionID` can be stale
+            // (e.g. left over from a different daemon instance) and sending
+            // straight to it fails deep inside the turn with a session-not-
+            // found error instead of recovering.
+            let sessionID: String
+            if let requestedSession {
+                sessionID = requestedSession
+            } else if let session = await model.ensureSession(intent: text, purpose: .general) {
+                sessionID = session.id
+            } else {
+                return false
+            }
             guard !sessionID.isEmpty else {
                 return false
             }

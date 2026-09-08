@@ -255,15 +255,6 @@ DAILY_DRIVER_TOOL_CATALOG: tuple[ToolCatalogEntry, ...] = (
         repair_hint="Enable a read-only SourcePort/screen context server when available.",
     ),
     ToolCatalogEntry(
-        tool_id="gmail",
-        family="messaging",
-        server_names=("google-gmail",),
-        capability_kinds=(CapabilityKind.GMAIL_READ, CapabilityKind.GMAIL_DRAFT),
-        inherent_labels=("confidential.personal", "untrusted.user_input"),
-        target_requirement="draft tools must extract recipient as target",
-        repair_hint="Run capdep-setup google-workspace --services gmail --apply and connect OAuth.",
-    ),
-    ToolCatalogEntry(
         tool_id="apple-mail",
         family="messaging",
         server_names=("bundled-apple-mail",),
@@ -284,31 +275,10 @@ DAILY_DRIVER_TOOL_CATALOG: tuple[ToolCatalogEntry, ...] = (
     ToolCatalogEntry(
         tool_id="direct-send",
         family="messaging",
-        server_names=("google-gmail", "chat", "slack", "outlook"),
+        server_names=("chat", "slack", "outlook"),
         capability_kinds=(CapabilityKind.SEND_EMAIL, CapabilityKind.SEND_MESSAGE),
         intentionally_disabled=True,
         repair_hint="Keep direct sends disabled by default; use draft/preview plus approval.",
-    ),
-    ToolCatalogEntry(
-        tool_id="calendar",
-        family="calendar",
-        server_names=("google-calendar",),
-        capability_kinds=(
-            CapabilityKind.CALENDAR_READ,
-            CapabilityKind.CREATE_CAL,
-            CapabilityKind.MODIFY_CAL,
-            CapabilityKind.DELETE_CAL,
-        ),
-        target_requirement="mutation tools must materialize calendar/event/attendee targets",
-        repair_hint="Connect Google Calendar and verify mutation scopes before enabling writes.",
-    ),
-    ToolCatalogEntry(
-        tool_id="drive-docs",
-        family="documents",
-        server_names=("google-drive",),
-        capability_kinds=(CapabilityKind.DRIVE_READ,),
-        inherent_labels=("confidential.personal", "untrusted.user_input"),
-        repair_hint="Run capdep-setup google-workspace --services drive --apply and connect OAuth.",
     ),
     ToolCatalogEntry(
         tool_id="office-documents",
@@ -637,8 +607,8 @@ def approval_patterns_yaml(
     for address in sorted(set(self_addresses)):
         patterns.append(
             {
-                "name": f"self-gmail-draft-{address}",
-                "action": "GMAIL_DRAFT",
+                "name": f"self-external-mail-draft-{address}",
+                "action": "EXTERNAL_MAIL_DRAFT",
                 "target_pattern": address,
                 "ttl_hours": ttl_hours,
                 "created_by": "setup:daily-driver",
@@ -656,8 +626,8 @@ def approval_patterns_yaml(
     for address in sorted(set(trusted_draft_recipients)):
         patterns.append(
             {
-                "name": f"trusted-gmail-draft-{address}",
-                "action": "GMAIL_DRAFT",
+                "name": f"trusted-external-mail-draft-{address}",
+                "action": "EXTERNAL_MAIL_DRAFT",
                 "target_pattern": address,
                 "ttl_hours": ttl_hours,
                 "created_by": "setup:daily-driver",

@@ -14,7 +14,6 @@ struct OnboardingWizardView: View {
         case welcome
         case daemon
         case setup
-        case connect
         case ready
 
         var title: String {
@@ -22,7 +21,6 @@ struct OnboardingWizardView: View {
             case .welcome: return "Welcome"
             case .daemon: return "Daemon"
             case .setup: return "Setup"
-            case .connect: return "Connect"
             case .ready: return "Ready"
             }
         }
@@ -71,7 +69,6 @@ struct OnboardingWizardView: View {
         case .welcome: welcomeStep
         case .daemon: daemonStep
         case .setup: setupStep
-        case .connect: connectStep
         case .ready: readyStep
         }
     }
@@ -144,22 +141,6 @@ struct OnboardingWizardView: View {
         }
     }
 
-    private var connectStep: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Connect an account (optional)")
-                .font(.headline)
-            Text("Connect Google (Gmail / Calendar / Drive) to work with real mail and calendar. You can skip this and do it later from Setup.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Connect Google account…") {
-                model.presentGoogleOAuthWizard()
-                openWindow(id: "google-oauth-wizard")
-            }
-            .buttonStyle(.borderedProminent)
-        }
-    }
-
     private var readyStep: some View {
         VStack(alignment: .leading, spacing: 12) {
             if model.setupPlan.ready {
@@ -217,7 +198,6 @@ struct OnboardingWizardView: View {
         case .welcome: return true
         case .daemon: return model.connected
         case .setup: return !OnboardingLogic.blockingStepsRemain(model.setupPlan.steps)
-        case .connect: return true
         case .ready: return true
         }
     }

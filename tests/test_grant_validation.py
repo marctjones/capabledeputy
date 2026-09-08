@@ -11,7 +11,7 @@ Tests cover:
   - WEB_FETCH with '*' wildcard accepted
   - CALENDAR_* with absolute path warns
   - EXECUTE_SANDBOX with URL or path warns
-  - GMAIL_READ with absolute path warns
+  - IMAP_READ with absolute path warns
   - Custom namespaced kinds (slack:dm.send) skip validation
   - Unrecognized kind strings skip validation (no warning, no crash)
   - All five FS kinds share the same validator
@@ -262,29 +262,29 @@ def test_apple_mail_draft_uses_recipient_shape() -> None:
     assert validate_grant_pattern(CapabilityKind.APPLE_MAIL_DRAFT, "spouse@example.com") == []
 
 
-def test_gmail_draft_uses_recipient_shape() -> None:
-    warnings = validate_grant_pattern(CapabilityKind.GMAIL_DRAFT, "/Users/marc/drafts")
+def test_external_mail_draft_uses_recipient_shape() -> None:
+    warnings = validate_grant_pattern(CapabilityKind.EXTERNAL_MAIL_DRAFT, "/Users/marc/drafts")
     assert len(warnings) == 1
     assert "has no '@'" in warnings[0]
-    assert validate_grant_pattern(CapabilityKind.GMAIL_DRAFT, "spouse@example.com") == []
+    assert validate_grant_pattern(CapabilityKind.EXTERNAL_MAIL_DRAFT, "spouse@example.com") == []
 
 
 # --- External read kinds ------------------------------------------------
 
 
-def test_gmail_read_with_path_warns() -> None:
+def test_imap_read_with_path_warns() -> None:
     warnings = validate_grant_pattern(
-        CapabilityKind.GMAIL_READ,
+        CapabilityKind.IMAP_READ,
         "/home/marc/inbox",
     )
     assert len(warnings) == 1
     assert "filesystem path" in warnings[0]
 
 
-def test_gmail_read_with_query_accepted() -> None:
+def test_imap_read_with_query_accepted() -> None:
     assert (
         validate_grant_pattern(
-            CapabilityKind.GMAIL_READ,
+            CapabilityKind.IMAP_READ,
             "from:boss@example.com",
         )
         == []

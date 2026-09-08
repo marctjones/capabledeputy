@@ -65,7 +65,7 @@ _EGRESS_LIKE_KINDS: frozenset[CapabilityKind] = frozenset(
     {
         CapabilityKind.SEND_EMAIL,
         CapabilityKind.SEND_MESSAGE,
-        CapabilityKind.GMAIL_DRAFT,
+        CapabilityKind.EXTERNAL_MAIL_DRAFT,
         CapabilityKind.APPLE_MAIL_DRAFT,
         CapabilityKind.CALENDAR_WRITE,
         CapabilityKind.CREATE_CAL,

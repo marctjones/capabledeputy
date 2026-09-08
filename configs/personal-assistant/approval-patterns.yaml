@@ -9,10 +9,10 @@
 
 patterns:
   # Self-addressed drafts. Replace me@example.com with YOUR actual address.
-  # Direct SEND_EMAIL is disabled in the default Gmail server config; these
-  # patterns cover the practical draft-and-review workflow.
-  - name: self-gmail-draft
-    action: GMAIL_DRAFT
+  # Direct SEND_EMAIL is disabled by default; these patterns cover the
+  # practical draft-and-review workflow.
+  - name: self-external-mail-draft
+    action: EXTERNAL_MAIL_DRAFT
     target_pattern: "me@example.com"
     ttl_hours: 720  # 30 days
     created_by: "preset:personal-assistant"
@@ -26,14 +26,14 @@ patterns:
   # Trusted draft preparation. Replace the placeholder addresses with exact
   # family/work recipients you already trust for draft review. These still do
   # not enable SEND_EMAIL.
-  - name: trusted-family-gmail-draft
-    action: GMAIL_DRAFT
+  - name: trusted-family-external-mail-draft
+    action: EXTERNAL_MAIL_DRAFT
     target_pattern: "spouse@example.com"
     ttl_hours: 720
     created_by: "preset:personal-assistant"
 
-  - name: trusted-work-gmail-draft
-    action: GMAIL_DRAFT
+  - name: trusted-work-external-mail-draft
+    action: EXTERNAL_MAIL_DRAFT
     target_pattern: "coworker@example.com"
     ttl_hours: 720
     created_by: "preset:personal-assistant"

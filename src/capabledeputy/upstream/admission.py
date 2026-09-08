@@ -21,7 +21,7 @@ _EGRESS_KINDS: frozenset[CapabilityKind] = frozenset(
         CapabilityKind.SEND_MESSAGE,
         CapabilityKind.WEB_FETCH,
         CapabilityKind.QUEUE_PURCHASE,
-        CapabilityKind.GMAIL_DRAFT,
+        CapabilityKind.EXTERNAL_MAIL_DRAFT,
         CapabilityKind.APPLE_MAIL_DRAFT,
         CapabilityKind.CREATE_CAL,
         CapabilityKind.MODIFY_CAL,

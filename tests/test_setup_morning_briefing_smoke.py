@@ -102,6 +102,7 @@ async def test_morning_briefing_live_daemon_e2e(tmp_path: Path) -> None:
         assert check["first_workflow"] == FIRST_WORKFLOW_ID
 
         template = first_workflow_template()
+        assert template is not None
         listed = next(item for item in workflows["templates"] if item["id"] == FIRST_WORKFLOW_ID)
         assert listed["purpose_handle"] == template["purpose_handle"]
         assert listed["turn_message"] == workflow_turn_message(template)
@@ -116,8 +117,8 @@ async def test_morning_briefing_live_daemon_e2e(tmp_path: Path) -> None:
         )
         session_id = str(session["id"])
         cap_kinds = {cap["kind"] for cap in session.get("capability_set", [])}
-        assert CapabilityKind.GMAIL_READ.value in cap_kinds
-        assert CapabilityKind.CALENDAR_READ.value in cap_kinds
+        assert CapabilityKind.WEB_FETCH.value in cap_kinds
+        assert CapabilityKind.CLOUD_FILE_READ.value in cap_kinds
         assert CapabilityKind.SEND_EMAIL.value not in cap_kinds
 
         read_outcome = await running.client.call(

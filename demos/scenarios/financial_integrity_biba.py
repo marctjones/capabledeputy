@@ -128,7 +128,7 @@ def _register_financial_tools(app: Any, ledger: Ledger) -> None:
         ToolDefinition(
             name="email.statement.read",
             description="Read a statement attached to an email.",
-            capability_kind=CapabilityKind.GMAIL_READ,
+            capability_kind=CapabilityKind.IMAP_READ,
             handler=email_statement_read,
             target_arg="message_id",
             operations=(Operation(EffectClass.FETCH, subtype="email.statement.read"),),
@@ -191,7 +191,7 @@ async def test_financial_integrity_biba_demo(tmp_path: Any) -> None:
     caps = frozenset(
         {
             Capability(kind=CapabilityKind.WEB_FETCH, pattern="bank:*"),
-            Capability(kind=CapabilityKind.GMAIL_READ, pattern="msg-*"),
+            Capability(kind=CapabilityKind.IMAP_READ, pattern="msg-*"),
             Capability(
                 kind=CapabilityKind.MODIFY_FS,
                 pattern="ledger:*",

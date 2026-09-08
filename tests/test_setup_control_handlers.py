@@ -1,19 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
-from capabledeputy.daemon.google_gmail_setup import configure_google_oauth_client
 from capabledeputy.daemon.settings_store import update_settings
-from capabledeputy.daemon.setup_control_handlers import (
-    _service_id_from_action,
-    make_setup_control_handlers,
-)
+from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
 
 
 @pytest.fixture
@@ -48,12 +43,6 @@ async def test_setup_run_action_returns_safe_descriptors(app: App) -> None:
     validate = await handlers["setup.run_action"]({"action_id": "config.validate"})
     logs = await handlers["setup.run_action"]({"action_id": "config.log_locations"})
     macos = await handlers["setup.run_action"]({"action_id": "macos.automation_settings"})
-    gmail_form = await handlers["setup.run_action"](
-        {"action_id": "setup.google_gmail.configure_oauth"},
-    )
-    calendar_form = await handlers["setup.run_action"](
-        {"action_id": "setup.google.google-calendar.configure_oauth"},
-    )
     source_bindings = await handlers["setup.run_action"]({"action_id": "source_binding.list"})
 
     assert validate["method"] == "config.validate"
@@ -61,8 +50,6 @@ async def test_setup_run_action_returns_safe_descriptors(app: App) -> None:
     assert logs["method"] == "config.log_locations"
     assert macos["kind"] == "open_url"
     assert macos["url"].startswith("x-apple.systempreferences:")
-    assert gmail_form["method"] == "setup.google_gmail.configure_oauth"
-    assert calendar_form["method"] == "setup.google.configure_oauth"
     assert source_bindings["section"] == "trust"
 
     # #422 — every action carries a typed client_directive the client branches
@@ -70,58 +57,23 @@ async def test_setup_run_action_returns_safe_descriptors(app: App) -> None:
     assert validate["client_directive"] == "validate_config"
     assert logs["client_directive"] == "show_log_locations"
     assert macos["client_directive"] == "open_url"
-    assert gmail_form["client_directive"] == "open_oauth_wizard"
-    assert calendar_form["client_directive"] == "open_oauth_wizard"
     assert source_bindings["client_directive"] == "show_section"
 
 
-async def test_setup_run_action_describes_google_login_state(
-    app: App,
-    tmp_path: Path,
-) -> None:
+async def test_setup_run_action_rejects_unknown_action(app: App) -> None:
     handlers = make_setup_control_handlers(app)
-
-    disabled = await handlers["setup.run_action"](
-        {"action_id": "setup.google.google-calendar.oauth_login"},
-    )
-    configure_google_oauth_client(
-        "google-calendar",
-        client_id="client-id",
-        client_secret="client-secret",
-        config_home=tmp_path / "xdg",
-    )
-    enabled = await handlers["setup.run_action"](
-        {"action_id": "setup.google.google-calendar.oauth_login"},
-    )
-    legacy = await handlers["setup.run_action"]({"action_id": "google_gmail.oauth_login"})
-
-    assert disabled["enabled"] is False
-    assert enabled["enabled"] is True
-    assert enabled["method"] == "setup.google.oauth_login"
-    assert enabled["params"]["service_id"] == "google-calendar"
-    assert legacy["method"] == "setup.google_gmail.oauth_login"
-
-
-async def test_setup_run_action_rejects_unknown_google_service(app: App) -> None:
-    handlers = make_setup_control_handlers(app)
-
-    with pytest.raises(ValueError, match="unknown Google OAuth service"):
-        await handlers["setup.run_action"]({"action_id": "setup.google.google-photos.oauth_login"})
 
     with pytest.raises(ValueError, match="unknown setup action"):
-        _service_id_from_action("setup.google")
+        await handlers["setup.run_action"]({"action_id": "does.not.exist"})
 
 
-async def test_connector_status_reports_google_and_local_apps(app: App) -> None:
+async def test_connector_status_reports_local_apps(app: App) -> None:
     handlers = make_setup_control_handlers(app)
 
     result = await handlers["connector.status"]({})
 
     ids = {connector["id"] for connector in result["connectors"]}
     assert {
-        "google-gmail",
-        "google-calendar",
-        "google-drive",
         "apple-mail",
         "apple-pages",
         "apple-numbers",
@@ -130,61 +82,11 @@ async def test_connector_status_reports_google_and_local_apps(app: App) -> None:
         "microsoft-word",
         "microsoft-powerpoint",
     } <= ids
-    gmail = next(c for c in result["connectors"] if c["id"] == "google-gmail")
-    assert gmail["status"] == "missing_credentials"
-    assert gmail["actions"][0]["id"] == "setup.google.google-gmail.configure_oauth"
-    calendar = next(c for c in result["connectors"] if c["id"] == "google-calendar")
-    assert calendar["actions"][1]["id"] == "setup.google.google-calendar.oauth_login"
+    mail = next(c for c in result["connectors"] if c["id"] == "apple-mail")
+    assert mail["status"] == "permission_needed"
+    assert mail["actions"][0]["id"] == "macos.automation_settings"
     word = next(c for c in result["connectors"] if c["id"] == "microsoft-word")
     assert word["bundle_id"] == "com.microsoft.Word"
-
-
-async def test_connector_status_reports_google_runtime_states(
-    app: App,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    configure_google_oauth_client(
-        "google-gmail",
-        client_id="gmail-id",
-        client_secret="gmail-secret",
-        config_home=tmp_path / "xdg",
-    )
-    calendar = configure_google_oauth_client(
-        "google-calendar",
-        client_id="calendar-id",
-        client_secret="calendar-secret",
-        config_home=tmp_path / "xdg",
-    )
-    drive = configure_google_oauth_client(
-        "google-drive",
-        client_id="drive-id",
-        client_secret="drive-secret",
-        config_home=tmp_path / "xdg",
-    )
-    for status in (calendar, drive):
-        token_cache = Path(status["token_cache"])
-        token_cache.parent.mkdir(parents=True, exist_ok=True)
-        token_cache.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(
-        app,
-        "upstream_manager",
-        SimpleNamespace(
-            server_status={
-                "drive": SimpleNamespace(name="google-drive"),
-            },
-        ),
-        raising=False,
-    )
-    handlers = make_setup_control_handlers(app)
-
-    result = await handlers["connector.status"]({})
-    connectors = {connector["id"]: connector for connector in result["connectors"]}
-
-    assert connectors["google-gmail"]["status"] == "reauth_needed"
-    assert connectors["google-calendar"]["status"] == "restart_needed"
-    assert connectors["google-drive"]["status"] == "connected"
-    assert connectors["google-drive"]["actions"][2]["enabled"] is True
 
 
 async def test_source_binding_upsert_preview_and_delete(app: App, tmp_path: Path) -> None:

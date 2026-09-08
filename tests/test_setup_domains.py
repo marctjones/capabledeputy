@@ -10,7 +10,6 @@ from capabledeputy.cli.setup_cli import app as setup_app
 from capabledeputy.cli.setup_domains import (
     setup_assistant_surface,
     setup_daily_driver,
-    setup_google_workspace_register,
     setup_images,
     setup_imap_register,
     setup_macos_daemon,
@@ -31,7 +30,6 @@ def test_setup_domains_dry_run_does_not_write_real_or_temp_paths(tmp_path: Path)
         setup_assistant_surface(config_path=config),
         setup_daily_driver(config_path=config, output_dir=tmp_path / "daily-driver"),
         setup_imap_register(config_path=config),
-        setup_google_workspace_register(config_path=config, services="gmail"),
         setup_images(repo_root=tmp_path / "repo", venv_path=image_venv),
         setup_models(cache_home=hf_home),
         setup_macos_daemon(repo_root=tmp_path / "repo"),
@@ -48,20 +46,12 @@ def test_setup_domains_apply_uses_injected_paths(tmp_path: Path) -> None:
 
     assistant = setup_assistant_surface(apply=True, config_path=config, no_sandbox=True)
     imap = setup_imap_register(apply=True, config_path=config)
-    workspace = setup_google_workspace_register(
-        apply=True,
-        config_path=config,
-        services="gmail,calendar",
-    )
 
     text = config.read_text(encoding="utf-8")
     assert assistant.apply is True
     assert imap.apply is True
-    assert workspace.apply is True
     assert "bundled-fs" in text
     assert "name: mail" in text
-    assert "google-gmail" in text
-    assert "google-calendar" in text
 
 
 def test_setup_images_apply_uses_fake_runner_and_fake_venv(tmp_path: Path) -> None:
@@ -93,7 +83,6 @@ def test_capdep_setup_list_includes_consolidated_domains() -> None:
     assert result.exit_code == 0
     assert "assistant-surface" in result.stdout
     assert "daily-driver" in result.stdout
-    assert "google-cloud" in result.stdout
     assert "images" in result.stdout
     assert "models" in result.stdout
     assert "macos-daemon" in result.stdout
@@ -103,7 +92,7 @@ def test_capdep_setup_domains_are_dry_run_by_default(tmp_path: Path) -> None:
     config = tmp_path / "daemon.yaml"
     result = runner.invoke(
         setup_app,
-        ["google-workspace", "--services", "gmail", "--config", str(config), "--json"],
+        ["imap", "--config", str(config), "--json"],
     )
 
     assert result.exit_code == 0

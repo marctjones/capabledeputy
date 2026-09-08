@@ -43,8 +43,6 @@ def test_control_tools_include_daemon_client_surface() -> None:
     assert "mcp_admission_disable" in names
     assert "mcp_admission_list" in names
     assert "mcp_admission_audit" in names
-    assert "google_oauth_status" in names
-    assert "gmail_oauth_login" in names
     assert "provenance_graph" in names
     assert "onguard_schedule_create" in names
     assert "onguard_queue_enqueue" in names
@@ -240,24 +238,6 @@ async def test_control_approval_approve_dispatches(fake_daemon) -> None:
     ]
 
 
-async def test_control_gmail_oauth_login_dispatches(fake_daemon) -> None:
-    client = fake_daemon({"setup.google_gmail.oauth_login": {"token_configured": True}})
-
-    result = await dispatch_control_tool(
-        client,
-        "gmail_oauth_login",
-        {"open_browser": True, "timeout_seconds": 90},
-    )
-
-    assert result.isError is False
-    assert client.calls == [
-        (
-            "setup.google_gmail.oauth_login",
-            {"open_browser": True, "timeout_seconds": 90},
-        ),
-    ]
-
-
 async def test_control_workflow_launch_dispatches(fake_daemon) -> None:
     client = fake_daemon({"workflow.launch": {"turn": {"id": "t1"}}})
 
@@ -369,33 +349,6 @@ async def test_control_workstream_sweep_expired_dispatches(fake_daemon) -> None:
 
     assert result.isError is False
     assert client.calls == [("workstream.sweep_expired", None)]
-
-
-async def test_control_google_oauth_tools_dispatch_to_generic_daemon_rpc(fake_daemon) -> None:
-    client = fake_daemon(
-        {
-            "setup.google.oauth_status": {"service_id": "google-calendar"},
-            "setup.google.oauth_revoke": {"token_configured": False},
-        },
-    )
-
-    status = await dispatch_control_tool(
-        client,
-        "google_oauth_status",
-        {"service_id": "google-calendar"},
-    )
-    revoke = await dispatch_control_tool(
-        client,
-        "google_oauth_revoke",
-        {"service_id": "google-drive"},
-    )
-
-    assert status.isError is False
-    assert revoke.isError is False
-    assert client.calls == [
-        ("setup.google.oauth_status", {"service_id": "google-calendar"}),
-        ("setup.google.oauth_revoke", {"service_id": "google-drive"}),
-    ]
 
 
 async def test_control_onguard_tools_dispatch_to_daemon_rpc(fake_daemon) -> None:

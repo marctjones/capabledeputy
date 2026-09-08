@@ -347,77 +347,52 @@ def test_assistant_surface_autodetect_uses_deep_readiness(
     assert "sandbox" in path2.read_text(encoding="utf-8")
 
 
-# --- Google Workspace block via official `gws mcp` ----
-
-
-def test_gworkspace_block_writes_managed_section(xdg_tmp: Path) -> None:
+def test_bundled_fs_git_memory_fetch_declare_target_arg() -> None:
+    """A tool_override with no target_arg/target_template falls back to
+    looking up `args["target"]` (adapter.py's registration path), which
+    fs/git/memory/fetch tools never set — the capability check then scopes
+    against an empty target string, so a path-scoped grant (e.g. the
+    foreground chat defaults' `READ_FS` on `~/Desktop/*`) can never match.
+    This silently denies every one of these calls regardless of the
+    session's actual capabilities."""
     from capabledeputy.cli._managed_config import (
-        GWORKSPACE_BLOCK_BODY,
-        GWORKSPACE_BLOCK_ID,
+        BUNDLED_FETCH_BLOCK_BODY,
+        BUNDLED_FS_BLOCK_BODY,
+        BUNDLED_GIT_BLOCK_BODY,
+        BUNDLED_MEMORY_BLOCK_BODY,
     )
 
-    path = user_default_daemon_config_path()
-    replaced, changed = write_managed_block(path, GWORKSPACE_BLOCK_ID, GWORKSPACE_BLOCK_BODY)
-    assert replaced is False
-    assert changed is True
-    text = path.read_text(encoding="utf-8")
-    assert "# BEGIN capdep-managed: gworkspace" in text
-    assert "# END capdep-managed: gworkspace" in text
-    parsed = yaml.safe_load(text)
-    # Official Google Workspace is registered as separate remote MCP servers.
-    names = [s["name"] for s in parsed["upstream_servers"]]
-    assert {
-        "google-gmail",
-        "google-drive",
-        "google-calendar",
-        "google-chat",
-        "google-people",
-    }.issubset(names)
-    gmail_entry = next(s for s in parsed["upstream_servers"] if s["name"] == "google-gmail")
-    assert gmail_entry["transport"] == "streamable_http"
-    assert gmail_entry["url"] == "https://gmailmcp.googleapis.com/mcp/v1"
-    assert gmail_entry["auth"]["type"] == "oauth2"
-    assert gmail_entry["auth"]["client_id_env"] == "GOOGLE_MCP_CLIENT_ID"
-    assert gmail_entry["auth"]["extra_authorize_params"]["access_type"] == "offline"
-    assert gmail_entry["tool_overrides"]["create_draft"]["capability_kind"] == "GMAIL_DRAFT"
-    assert gmail_entry["tool_overrides"]["create_draft"]["target_arg"] == "to"
-    assert gmail_entry["tool_overrides"]["search_threads"]["capability_kind"] == "GMAIL_READ"
-    calendar_entry = next(s for s in parsed["upstream_servers"] if s["name"] == "google-calendar")
-    assert calendar_entry["tool_overrides"]["create_event"]["target_template"] == (
-        "gcal://calendar/{calendar_id}/events/attendees/{attendees}"
-    )
-    chat_entry = next(s for s in parsed["upstream_servers"] if s["name"] == "google-chat")
-    assert chat_entry["tool_overrides"]["send_message"]["capability_kind"] == "SEND_MESSAGE"
+    fs = yaml.safe_load("upstream_servers:\n" + BUNDLED_FS_BLOCK_BODY)["upstream_servers"][0]
+    for tool in ("fs.read", "fs.list", "fs.create", "fs.write", "fs.delete"):
+        assert fs["tool_overrides"][tool]["target_arg"] == "path", tool
+
+    fetch = yaml.safe_load("upstream_servers:\n" + BUNDLED_FETCH_BLOCK_BODY)["upstream_servers"][0]
+    assert fetch["tool_overrides"]["fetch.get"]["target_arg"] == "url"
+
+    git = yaml.safe_load("upstream_servers:\n" + BUNDLED_GIT_BLOCK_BODY)["upstream_servers"][0]
+    for tool in ("git.status", "git.log", "git.diff", "git.show", "git.branch_list"):
+        assert git["tool_overrides"][tool]["target_arg"] == "repo_path", tool
+
+    memory = yaml.safe_load("upstream_servers:\n" + BUNDLED_MEMORY_BLOCK_BODY)["upstream_servers"][
+        0
+    ]
+    for tool in ("memory.create", "memory.read", "memory.update", "memory.delete"):
+        assert memory["tool_overrides"][tool]["target_arg"] == "key", tool
+    assert memory["tool_overrides"]["memory.list"]["target_arg"] == "prefix"
 
 
-def test_gworkspace_community_block_still_available() -> None:
-    from capabledeputy.cli._managed_config import GWORKSPACE_COMMUNITY_BLOCK_BODY
-
-    parsed = yaml.safe_load("upstream_servers:\n" + GWORKSPACE_COMMUNITY_BLOCK_BODY)
-    [entry] = parsed["upstream_servers"]
-    assert entry["name"] == "gws"
-    assert entry["command"][0] == "npx"
-    assert entry["command"][1] == "gws-mcp-server"
-    assert entry["tool_overrides"]["drive_delete_file"]["capability_kind"] == "DELETE_FS"
-
-
-def test_gworkspace_block_coexists_with_imap_and_bundled(xdg_tmp: Path) -> None:
-    """All three setup commands write into the same daemon.yaml and
-    their managed blocks must not collide."""
-    from capabledeputy.cli._managed_config import (
-        GWORKSPACE_BLOCK_BODY,
-        GWORKSPACE_BLOCK_ID,
-        register_default_assistant_surface,
-    )
+def test_managed_blocks_coexist_with_imap_and_bundled(xdg_tmp: Path) -> None:
+    """The bundled-assistant-surface and imap setup commands write into
+    the same daemon.yaml and their managed blocks must not collide."""
+    from capabledeputy.cli._managed_config import register_default_assistant_surface
 
     path = user_default_daemon_config_path()
     write_managed_block(path, "imap", IMAP_BLOCK_BODY)
     register_default_assistant_surface(path, include_sandbox=False)
-    write_managed_block(path, GWORKSPACE_BLOCK_ID, GWORKSPACE_BLOCK_BODY)
 
     parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
     names = {s["name"] for s in parsed["upstream_servers"]}
-    # Bundled five + imap (named `mail`) + official Google Workspace servers.
+    # Bundled five + imap (named `mail`).
     assert {
         "mail",
         "bundled-fs",
@@ -425,23 +400,7 @@ def test_gworkspace_block_coexists_with_imap_and_bundled(xdg_tmp: Path) -> None:
         "bundled-git",
         "bundled-fetch",
         "bundled-search",
-        "google-gmail",
-        "google-drive",
-        "google-calendar",
-        "google-chat",
-        "google-people",
     }.issubset(names)
-
-
-def test_gws_cli_available_returns_false_when_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import shutil
-
-    from capabledeputy.cli._managed_config import gws_cli_available
-
-    monkeypatch.setattr(shutil, "which", lambda name: None)
-    assert gws_cli_available() is False
 
 
 def test_resolve_upstream_spawn_command_splits_image_servers() -> None:

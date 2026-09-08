@@ -515,14 +515,19 @@ BUNDLED_FS_BLOCK_BODY = """\
     tool_overrides:
       "fs.read":
         capability_kind: READ_FS
+        target_arg: path
       "fs.list":
         capability_kind: READ_FS
+        target_arg: path
       "fs.create":
         capability_kind: CREATE_FS
+        target_arg: path
       "fs.write":
         capability_kind: WRITE_FS
+        target_arg: path
       "fs.delete":
         capability_kind: DELETE_FS
+        target_arg: path
     strict: true
 """
 
@@ -534,6 +539,7 @@ BUNDLED_FETCH_BLOCK_BODY = """\
     tool_overrides:
       "fetch.get":
         capability_kind: WEB_FETCH
+        target_arg: url
       "wikipedia.lookup":
         capability_kind: WEB_FETCH
         target_template: "wikipedia://{title}"
@@ -660,14 +666,19 @@ BUNDLED_MEMORY_BLOCK_BODY = """\
     tool_overrides:
       "memory.create":
         capability_kind: CREATE_FS
+        target_arg: key
       "memory.read":
         capability_kind: READ_FS
+        target_arg: key
       "memory.update":
         capability_kind: WRITE_FS
+        target_arg: key
       "memory.delete":
         capability_kind: DELETE_FS
+        target_arg: key
       "memory.list":
         capability_kind: READ_FS
+        target_arg: prefix
     strict: true
 """
 
@@ -679,14 +690,19 @@ BUNDLED_GIT_BLOCK_BODY = """\
     tool_overrides:
       "git.status":
         capability_kind: READ_FS
+        target_arg: repo_path
       "git.log":
         capability_kind: READ_FS
+        target_arg: repo_path
       "git.diff":
         capability_kind: READ_FS
+        target_arg: repo_path
       "git.show":
         capability_kind: READ_FS
+        target_arg: repo_path
       "git.branch_list":
         capability_kind: READ_FS
+        target_arg: repo_path
     strict: true
 """
 
@@ -703,336 +719,6 @@ DEFAULT_ASSISTANT_BUNDLED_BLOCKS: tuple[tuple[str, str], ...] = (
     (BUNDLED_IMAGE_FETCH_BLOCK_ID, BUNDLED_IMAGE_FETCH_BLOCK_BODY),
     (BUNDLED_IMAGE_GENERATE_BLOCK_ID, BUNDLED_IMAGE_GENERATE_BLOCK_BODY),
 )
-
-
-# ---- Google Workspace via official remote MCP servers ----
-#
-# Google's official Workspace MCP servers are remote HTTP endpoints,
-# one per product. CapDep authenticates them with its native OAuth2
-# browser/PKCE flow and then applies its own policy gates around every
-# discovered MCP tool.
-
-GWORKSPACE_BLOCK_ID = "gworkspace"
-GWORKSPACE_DEFAULT_OFFICIAL_SERVICES = "gmail,drive,calendar,chat,people"
-
-_GWORKSPACE_OFFICIAL_BLOCKS: dict[str, str] = {
-    "gmail": """\
-  - name: google-gmail
-    transport: streamable_http
-    url: "https://gmailmcp.googleapis.com/mcp/v1"
-    auth:
-      type: oauth2
-      client_id_env: GOOGLE_MCP_CLIENT_ID
-      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
-      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
-      token_url: "https://oauth2.googleapis.com/token"
-      scopes:
-        - "https://www.googleapis.com/auth/gmail.readonly"
-        - "https://www.googleapis.com/auth/gmail.compose"
-      extra_authorize_params:
-        access_type: offline
-        prompt: consent
-    inherent_labels: ["confidential.personal", "untrusted.user_input"]
-    disabled_kinds: ["SEND_EMAIL"]
-    tool_overrides:
-      create_draft:
-        capability_kind: GMAIL_DRAFT
-        additional_labels: ["confidential.personal"]
-        target_arg: to
-      create_label:
-        capability_kind: MODIFY_FS
-        additional_labels: ["confidential.personal"]
-      get_thread:
-        capability_kind: GMAIL_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      label_message:
-        capability_kind: MODIFY_FS
-        additional_labels: ["confidential.personal"]
-      label_thread:
-        capability_kind: MODIFY_FS
-        additional_labels: ["confidential.personal"]
-      list_drafts:
-        capability_kind: GMAIL_READ
-        additional_labels: ["confidential.personal"]
-      list_labels:
-        capability_kind: GMAIL_READ
-        additional_labels: ["confidential.personal"]
-      search_threads:
-        capability_kind: GMAIL_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      unlabel_message:
-        capability_kind: MODIFY_FS
-        additional_labels: ["confidential.personal"]
-      unlabel_thread:
-        capability_kind: MODIFY_FS
-        additional_labels: ["confidential.personal"]
-    strict: true
-""",
-    "drive": """\
-  - name: google-drive
-    transport: streamable_http
-    url: "https://drivemcp.googleapis.com/mcp/v1"
-    auth:
-      type: oauth2
-      client_id_env: GOOGLE_MCP_CLIENT_ID
-      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
-      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
-      token_url: "https://oauth2.googleapis.com/token"
-      scopes:
-        - "https://www.googleapis.com/auth/drive.readonly"
-        - "https://www.googleapis.com/auth/drive.file"
-      extra_authorize_params:
-        access_type: offline
-        prompt: consent
-    inherent_labels: ["confidential.personal", "untrusted.user_input"]
-    tool_overrides:
-      copy_file:
-        capability_kind: CREATE_FS
-        additional_labels: ["confidential.personal"]
-      create_file:
-        capability_kind: CREATE_FS
-        additional_labels: ["confidential.personal"]
-      download_file_content:
-        capability_kind: DRIVE_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      get_file_metadata:
-        capability_kind: DRIVE_READ
-        additional_labels: ["confidential.personal"]
-      get_file_permissions:
-        capability_kind: DRIVE_READ
-        additional_labels: ["confidential.personal"]
-      list_recent_files:
-        capability_kind: DRIVE_READ
-        additional_labels: ["confidential.personal"]
-      read_file_content:
-        capability_kind: DRIVE_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      search_files:
-        capability_kind: DRIVE_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-    strict: true
-""",
-    "calendar": """\
-  - name: google-calendar
-    transport: streamable_http
-    url: "https://calendarmcp.googleapis.com/mcp/v1"
-    auth:
-      type: oauth2
-      client_id_env: GOOGLE_MCP_CLIENT_ID
-      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
-      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
-      token_url: "https://oauth2.googleapis.com/token"
-      scopes:
-        - "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
-        - "https://www.googleapis.com/auth/calendar.events.freebusy"
-        - "https://www.googleapis.com/auth/calendar.events.readonly"
-      extra_authorize_params:
-        access_type: offline
-        prompt: consent
-    inherent_labels: ["confidential.personal", "untrusted.user_input"]
-    tool_overrides:
-      create_event:
-        capability_kind: CREATE_CAL
-        additional_labels: ["confidential.personal"]
-        target_template: "gcal://calendar/{calendar_id}/events/attendees/{attendees}"
-      delete_event:
-        capability_kind: DELETE_CAL
-        additional_labels: ["confidential.personal"]
-        target_template: "gcal://calendar/{calendar_id}/event/{event_id}"
-      get_event:
-        capability_kind: CALENDAR_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      list_calendars:
-        capability_kind: CALENDAR_READ
-        additional_labels: ["confidential.personal"]
-      list_events:
-        capability_kind: CALENDAR_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      respond_to_event:
-        capability_kind: MODIFY_CAL
-        additional_labels: ["confidential.personal"]
-        target_template: "gcal://calendar/{calendar_id}/event/{event_id}"
-      suggest_time:
-        capability_kind: CALENDAR_READ
-        additional_labels: ["confidential.personal"]
-      update_event:
-        capability_kind: MODIFY_CAL
-        additional_labels: ["confidential.personal"]
-        target_template: "gcal://calendar/{calendar_id}/event/{event_id}/attendees/{attendees}"
-    strict: true
-""",
-    "chat": """\
-  - name: google-chat
-    transport: streamable_http
-    url: "https://chatmcp.googleapis.com/mcp/v1"
-    auth:
-      type: oauth2
-      client_id_env: GOOGLE_MCP_CLIENT_ID
-      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
-      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
-      token_url: "https://oauth2.googleapis.com/token"
-      scopes:
-        - "https://www.googleapis.com/auth/chat.spaces.readonly"
-        - "https://www.googleapis.com/auth/chat.memberships.readonly"
-        - "https://www.googleapis.com/auth/chat.messages.readonly"
-        - "https://www.googleapis.com/auth/chat.messages.create"
-        - "https://www.googleapis.com/auth/chat.users.readstate.readonly"
-      extra_authorize_params:
-        access_type: offline
-        prompt: consent
-    inherent_labels: ["confidential.personal", "untrusted.user_input"]
-    tool_overrides:
-      list_messages:
-        capability_kind: CHAT_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      search_conversations:
-        capability_kind: CHAT_READ
-        additional_labels: ["confidential.personal"]
-      search_messages:
-        capability_kind: CHAT_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      send_message:
-        capability_kind: SEND_MESSAGE
-        additional_labels: ["confidential.personal"]
-    strict: true
-""",
-    "people": """\
-  - name: google-people
-    transport: streamable_http
-    url: "https://people.googleapis.com/mcp/v1"
-    auth:
-      type: oauth2
-      client_id_env: GOOGLE_MCP_CLIENT_ID
-      client_secret_env: GOOGLE_MCP_CLIENT_SECRET
-      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
-      token_url: "https://oauth2.googleapis.com/token"
-      scopes:
-        - "https://www.googleapis.com/auth/directory.readonly"
-        - "https://www.googleapis.com/auth/userinfo.profile"
-        - "https://www.googleapis.com/auth/contacts.readonly"
-      extra_authorize_params:
-        access_type: offline
-        prompt: consent
-    inherent_labels: ["confidential.personal"]
-    tool_overrides:
-      get_user_profile:
-        capability_kind: PEOPLE_READ
-        additional_labels: ["confidential.personal"]
-      search_contacts:
-        capability_kind: PEOPLE_READ
-        additional_labels: ["confidential.personal"]
-      search_directory_people:
-        capability_kind: PEOPLE_READ
-        additional_labels: ["confidential.personal"]
-    strict: true
-""",
-}
-
-
-def google_workspace_official_block_body(
-    services: str = GWORKSPACE_DEFAULT_OFFICIAL_SERVICES,
-) -> str:
-    """Build the official Google Workspace managed block for selected services."""
-    requested = [s.strip().lower() for s in services.split(",") if s.strip()]
-    unknown = [s for s in requested if s not in _GWORKSPACE_OFFICIAL_BLOCKS]
-    if unknown:
-        raise ValueError(
-            "unknown official Google Workspace MCP service(s): "
-            + ", ".join(unknown)
-            + ". Expected any of: "
-            + ", ".join(_GWORKSPACE_OFFICIAL_BLOCKS),
-        )
-    return "\n".join(_GWORKSPACE_OFFICIAL_BLOCKS[s].rstrip("\n") for s in requested) + "\n"
-
-
-GWORKSPACE_BLOCK_BODY = google_workspace_official_block_body()
-
-
-# ---- Legacy Google Workspace via `gws-mcp-server` community wrapper ----
-#
-# Kept for operators who already authenticated through `gws auth login` or
-# need Docs/Sheets tools that are not in the official remote MCP preview.
-
-GWORKSPACE_COMMUNITY_BLOCK_BODY = """\
-  - name: gws
-    command: ["npx", "gws-mcp-server", "--services", "drive,sheets,calendar,docs,gmail"]
-    inherent_labels: ["confidential.personal"]
-    disabled_kinds: ["SEND_EMAIL"]
-    tool_overrides:
-      drive_delete_file:
-        capability_kind: DELETE_FS
-        additional_labels: ["confidential.personal"]
-      drive_update_file:
-        capability_kind: MODIFY_FS
-        additional_labels: ["confidential.personal"]
-      drive_create_file: {capability_kind: CREATE_FS}
-      drive_copy_file: {capability_kind: CREATE_FS}
-      drive_share_file:
-        capability_kind: MODIFY_FS
-        additional_labels: ["confidential.personal"]
-      calendar_delete_event:
-        capability_kind: DELETE_CAL
-        additional_labels: ["confidential.personal"]
-      calendar_update_event:
-        capability_kind: MODIFY_CAL
-        additional_labels: ["confidential.personal"]
-      calendar_insert_event: {capability_kind: CREATE_CAL}
-      sheets_write_values:
-        capability_kind: MODIFY_FS
-        additional_labels: ["confidential.personal"]
-      sheets_append_values:
-        capability_kind: MODIFY_FS
-        additional_labels: ["confidential.personal"]
-      docs_batch_update:
-        capability_kind: MODIFY_FS
-        additional_labels: ["confidential.personal"]
-      docs_create_document: {capability_kind: CREATE_FS}
-      gmail_messages_list:
-        capability_kind: GMAIL_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      gmail_messages_get:
-        capability_kind: GMAIL_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      gmail_threads_list:
-        capability_kind: GMAIL_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-      gmail_threads_get:
-        capability_kind: GMAIL_READ
-        additional_labels: ["confidential.personal", "untrusted.user_input"]
-    strict: false
-"""
-
-
-def gws_cli_available() -> bool:
-    """True iff the `gws` binary is on PATH. Used by the setup command
-    to refuse a register-only flow before the user has installed the
-    Workspace CLI."""
-    import shutil
-    import subprocess
-
-    bin_path = shutil.which("gws")
-    if bin_path is None:
-        return False
-    try:
-        result = subprocess.run(
-            [bin_path, "--version"],
-            capture_output=True,
-            timeout=3,
-            check=False,
-        )
-        return result.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-
-
-def gws_mcp_server_available() -> bool:
-    """True iff `gws-mcp-server` is installed (npm global or accessible
-    via `npx`). We check for the binary directly; if it's not there,
-    `npx` will fetch it on first run, but warning the operator up
-    front gives them a cleaner story."""
-    import shutil
-
-    return shutil.which("gws-mcp-server") is not None
 
 
 # ---- top-level `sandbox:` block ----

@@ -63,8 +63,7 @@ def load_tool_families(path: Path | None = None) -> ToolFamiliesConfig:
 
 def _builtin_defaults() -> ToolFamiliesConfig:
     kinds_inbox = {
-        CapabilityKind.GMAIL_READ,
-        CapabilityKind.GMAIL_DRAFT,
+        CapabilityKind.EXTERNAL_MAIL_DRAFT,
         CapabilityKind.IMAP_READ,
     }
     return ToolFamiliesConfig(

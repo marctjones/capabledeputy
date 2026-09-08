@@ -18,10 +18,10 @@ from capabledeputy.policy.bindings import load as load_bindings
 from capabledeputy.policy.capabilities import CapabilityKind, kind_name
 from capabledeputy.policy.purposes import load as load_purposes
 
-_MAIL_READ_KINDS = frozenset({CapabilityKind.GMAIL_READ.value, CapabilityKind.IMAP_READ.value})
+_MAIL_READ_KINDS = frozenset({CapabilityKind.IMAP_READ.value})
 _MUTATING_KINDS = frozenset(
     {
-        CapabilityKind.GMAIL_DRAFT.value,
+        CapabilityKind.EXTERNAL_MAIL_DRAFT.value,
         CapabilityKind.APPLE_MAIL_DRAFT.value,
         CapabilityKind.OUTLOOK_DRAFT.value,
         CapabilityKind.CREATE_CAL.value,
@@ -58,10 +58,8 @@ _DENIED_DEFAULT_KINDS = frozenset(
     }
 )
 _SOURCE_PORT_EXAMPLES: dict[str, str] = {
-    "gmail": "gmail://thread/example",
     "imap": "imap://inbox/message/example",
-    "google-calendar": "gcal://primary/event/example",
-    "google-drive": "gdrive://file/example",
+    "calendar": "calendar://event/example",
     "browser.current-page": "browser://active/page",
     "macos.frontmost-app": "macos://app/com.apple.TextEdit",
     "apple-mail": "applemail://inbox/message/example",

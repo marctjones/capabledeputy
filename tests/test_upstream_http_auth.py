@@ -10,7 +10,6 @@ import pytest
 from capabledeputy.upstream.config import UpstreamAuthConfig
 from capabledeputy.upstream.http_auth import (
     BearerTokenAuth,
-    GoogleAdcAuth,
     OAuth2TokenAuth,
     discover_oauth2_endpoints,
     httpx_auth_from_config,
@@ -36,16 +35,6 @@ def test_bearer_auth_can_load_token_from_env(monkeypatch: pytest.MonkeyPatch) ->
 def test_bearer_auth_requires_token() -> None:
     with pytest.raises(ValueError, match="non-empty token"):
         httpx_auth_from_config(UpstreamAuthConfig(type="bearer"))
-
-
-def test_google_adc_auth_config_builds_auth_object() -> None:
-    auth = httpx_auth_from_config(
-        UpstreamAuthConfig(
-            type="google_adc",
-            scopes=("https://www.googleapis.com/auth/gmail.readonly",),
-        )
-    )
-    assert isinstance(auth, GoogleAdcAuth)
 
 
 def test_oauth2_auth_reads_access_token_from_cache(tmp_path) -> None:

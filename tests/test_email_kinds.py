@@ -1,14 +1,20 @@
-"""Tests for granular email / drive CapabilityKinds (Issue #33 partial).
+"""Tests for granular external-read CapabilityKinds (Issue #33 partial).
 
 Verifies:
-1. New kinds GMAIL_READ, GMAIL_DRAFT, IMAP_READ, DRIVE_READ exist
+1. The granular kinds (IMAP_READ, EXTERNAL_MAIL_DRAFT, CLOUD_FILE_READ,
+   APPLE_MAIL_READ) exist
 2. Capability.matches() backward-compat union: a legacy READ_FS cap
    still satisfies actions whose kind is the granular variant
 3. Upstream MCP adapter's _infer_capability_kind correctly classifies
-   Gmail / Drive / IMAP tool names
+   IMAP tool names
 
 These are the gates that "I have READ_FS but can't read my email by
 default" — fixed by adding the granular kinds + remapping.
+
+Google-specific kinds (GMAIL_READ, GMAIL_DRAFT, DRIVE_READ, PEOPLE_READ)
+and the adapter's gmail/drive tool-name classification were removed along
+with Google Workspace integration; EXTERNAL_MAIL_DRAFT and CLOUD_FILE_READ
+are the surviving generic kinds (shared with Microsoft 365).
 """
 
 from __future__ import annotations
@@ -37,67 +43,30 @@ def _cap(kind: CapabilityKind, pattern: str = "*") -> Capability:
 
 
 def test_new_kinds_exist() -> None:
-    """The granular email/drive kinds must be present."""
-    assert CapabilityKind.GMAIL_READ.value == "GMAIL_READ"
-    assert CapabilityKind.GMAIL_DRAFT.value == "GMAIL_DRAFT"
+    """The granular external-read/draft kinds must be present."""
     assert CapabilityKind.IMAP_READ.value == "IMAP_READ"
-    assert CapabilityKind.DRIVE_READ.value == "DRIVE_READ"
+    assert CapabilityKind.EXTERNAL_MAIL_DRAFT.value == "EXTERNAL_MAIL_DRAFT"
+    assert CapabilityKind.CLOUD_FILE_READ.value == "CLOUD_FILE_READ"
     assert CapabilityKind.APPLE_MAIL_READ.value == "APPLE_MAIL_READ"
 
 
-def test_gmail_read_cap_matches_gmail_read_action() -> None:
-    cap = _cap(CapabilityKind.GMAIL_READ, "*")
-    assert cap.matches(CapabilityKind.GMAIL_READ, "any-target")
-
-
-def test_legacy_read_fs_still_matches_gmail_action() -> None:
+def test_legacy_read_fs_still_matches_external_read_actions() -> None:
     """Back-compat: operators with an existing `/grant READ_FS *`
-    keep working for Gmail tools. The matches() function treats
+    keep working for external-read tools. The matches() function treats
     READ_FS as a union over the granular external-read kinds."""
     cap = _cap(CapabilityKind.READ_FS, "*")
-    assert cap.matches(CapabilityKind.GMAIL_READ, "any-target")
     assert cap.matches(CapabilityKind.IMAP_READ, "any-target")
-    assert cap.matches(CapabilityKind.DRIVE_READ, "any-target")
+    assert cap.matches(CapabilityKind.CLOUD_FILE_READ, "any-target")
     assert cap.matches(CapabilityKind.APPLE_MAIL_READ, "any-target")
 
 
-def test_gmail_read_cap_does_not_match_filesystem_action() -> None:
-    """Asymmetric: a GMAIL_READ cap does NOT satisfy a READ_FS action.
-    Operators who grant GMAIL_READ shouldn't also be granting
+def test_imap_read_cap_does_not_match_filesystem_action() -> None:
+    """Asymmetric: an IMAP_READ cap does NOT satisfy a READ_FS action.
+    Operators who grant IMAP_READ shouldn't also be granting
     filesystem reads. The backward-compat union is one-directional:
     legacy READ_FS → granular kinds, but not the reverse."""
-    cap = _cap(CapabilityKind.GMAIL_READ, "*")
+    cap = _cap(CapabilityKind.IMAP_READ, "*")
     assert not cap.matches(CapabilityKind.READ_FS, "/etc/passwd")
-
-
-def test_infer_gmail_read_from_name() -> None:
-    """gws-mcp-server / google-mcp tool names like
-    'gmail.users.messages.list' should classify as GMAIL_READ."""
-    assert _infer_capability_kind(None, "gmail.users.messages.list") == CapabilityKind.GMAIL_READ
-    assert _infer_capability_kind(None, "gmail.users.threads.get") == CapabilityKind.GMAIL_READ
-    assert _infer_capability_kind(None, "gmail.search") == CapabilityKind.GMAIL_READ
-
-
-def test_infer_gmail_send_distinguished_from_read() -> None:
-    """A name containing 'gmail' AND 'send' is SEND_EMAIL, not read."""
-    assert _infer_capability_kind(None, "gmail.users.messages.send") == CapabilityKind.SEND_EMAIL
-
-
-def test_infer_gmail_draft_distinguished_from_filesystem_create() -> None:
-    """Gmail draft creation is not a filesystem create capability."""
-    assert _infer_capability_kind(None, "gmail.create_draft") == CapabilityKind.GMAIL_DRAFT
-    assert _infer_capability_kind(None, "gmail.users.drafts.create") == CapabilityKind.GMAIL_DRAFT
-
-
-def test_infer_drive_read_from_name() -> None:
-    """Drive tool names like 'drive.files.list' classify as DRIVE_READ."""
-    assert _infer_capability_kind(None, "drive.files.list") == CapabilityKind.DRIVE_READ
-    assert _infer_capability_kind(None, "drive.search") == CapabilityKind.DRIVE_READ
-
-
-def test_infer_drive_create_distinguished() -> None:
-    """A Drive tool name with 'create' classifies as CREATE_FS."""
-    assert _infer_capability_kind(None, "drive.files.create") == CapabilityKind.CREATE_FS
 
 
 def test_infer_imap_read_from_name() -> None:
@@ -130,19 +99,6 @@ def test_infer_browser_and_iwork_kinds_from_name() -> None:
         _infer_capability_kind(None, "powerpoint.start_slideshow")
         == CapabilityKind.POWERPOINT_PRESENT
     )
-
-
-def test_voicemail_not_mistaken_for_gmail() -> None:
-    """Earlier bug: substring 'mail' matched 'voicemail' / 'mailbox' /
-    'gmail' alike. Now 'gmail' specifically routes to GMAIL_*; bare
-    'mail' tools don't trigger the email branch."""
-    # 'voicemail' contains 'mail' but isn't a Gmail tool — should not
-    # classify as GMAIL_READ. The classifier's gmail branch checks
-    # for 'gmail' specifically, so 'voicemail' falls through to
-    # ordinary filesystem-style classification.
-    result = _infer_capability_kind(None, "voicemail.list")
-    # Should be READ_FS (or None), but definitely NOT GMAIL_READ.
-    assert result != CapabilityKind.GMAIL_READ
 
 
 def test_calendar_unchanged() -> None:

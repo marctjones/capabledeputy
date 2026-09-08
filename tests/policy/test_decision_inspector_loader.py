@@ -773,7 +773,7 @@ async def test_sensitive_egress_confirm_tightens_restricted_draft() -> None:
         label_state = LabelState(a=frozenset({CategoryTag("finance", Tier.RESTRICTED)}))
 
     out = await insp.inspect(
-        action=Action(kind=CapabilityKind.GMAIL_DRAFT, target="x@y.com"),
+        action=Action(kind=CapabilityKind.EXTERNAL_MAIL_DRAFT, target="x@y.com"),
         session=_S(),
         proposed_outcome=_proposed(Decision.ALLOW),
     )
@@ -818,7 +818,7 @@ async def test_local_app_confirm_allows_trusted_inbox_draft_first_use() -> None:
         label_state=LabelState(a=frozenset({CategoryTag("email", Tier.SENSITIVE)})),
     )
     action = SimpleNamespace(
-        kind=CapabilityKind.GMAIL_DRAFT,
+        kind=CapabilityKind.EXTERNAL_MAIL_DRAFT,
         target="me@example.com",
         amount=None,
         relationship_group_ids=frozenset({"self", "trusted-draft"}),
@@ -850,7 +850,7 @@ async def test_local_app_confirm_still_tightens_high_tier_trusted_draft() -> Non
         label_state=LabelState(a=frozenset({CategoryTag("finance", Tier.RESTRICTED)})),
     )
     action = SimpleNamespace(
-        kind=CapabilityKind.GMAIL_DRAFT,
+        kind=CapabilityKind.EXTERNAL_MAIL_DRAFT,
         target="me@example.com",
         amount=None,
         relationship_group_ids=frozenset({"self", "trusted-draft"}),

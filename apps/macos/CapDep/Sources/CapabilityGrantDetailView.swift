@@ -145,12 +145,8 @@ enum PolicyPromptCopy {
             return "Send email"
         case "WEB_FETCH":
             return "Search and fetch web pages"
-        case "GMAIL_READ":
-            return "Read Gmail"
         case "CALENDAR_READ":
             return "Read calendar"
-        case "DRIVE_READ":
-            return "Read Google Drive"
         default:
             return kind.replacingOccurrences(of: "_", with: " ").capitalized
         }

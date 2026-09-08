@@ -91,19 +91,24 @@ class CapabilityKind(StrEnum):
     # email by default"). Previously every read-shaped tool was
     # mapped to READ_FS regardless of whether it actually read the
     # filesystem; that was a category confusion that prevented
-    # operators from granting "read Gmail without granting
+    # operators from granting "read external mail without granting
     # read-local-files." These kinds let operators distinguish.
     #
-    # Backward-compat: a `READ_FS *` capability still matches GMAIL_READ
-    # / IMAP_READ / DRIVE_READ actions (see _READ_UNION_MATCHES below).
+    # Backward-compat: a `READ_FS *` capability still matches IMAP_READ
+    # / CLOUD_FILE_READ actions (see _READ_UNION_MATCHES below).
     # Existing /grant READ_FS * grants for legacy reasons keep working;
     # new sessions get granular caps by default.
-    GMAIL_READ = "GMAIL_READ"
-    GMAIL_DRAFT = "GMAIL_DRAFT"
+    #
+    # EXTERNAL_MAIL_DRAFT / CLOUD_FILE_READ were named GMAIL_DRAFT /
+    # DRIVE_READ until Google integration was removed; Microsoft 365
+    # (configs/curated/microsoft-365.yaml) reuses these same generic
+    # kinds for Outlook drafts and OneDrive/SharePoint reads.
     IMAP_READ = "IMAP_READ"
-    DRIVE_READ = "DRIVE_READ"
+    EXTERNAL_MAIL_DRAFT = "EXTERNAL_MAIL_DRAFT"
+    CLOUD_FILE_READ = "CLOUD_FILE_READ"
+    # Not Google-only: the real, connectable Slack integration
+    # (configs/curated/slack.yaml) uses this for message/channel/file reads.
     CHAT_READ = "CHAT_READ"
-    PEOPLE_READ = "PEOPLE_READ"
 
     # Semantic media kinds — disk cache paths are implementation details inside
     # the images MCP server, not what operators grant.
@@ -147,11 +152,9 @@ _WRITE_UNION_MATCHES: dict[CapabilityKind, frozenset[CapabilityKind]] = {
     # keep working. New default grants use the granular kinds.
     CapabilityKind.READ_FS: frozenset(
         {
-            CapabilityKind.GMAIL_READ,
             CapabilityKind.IMAP_READ,
-            CapabilityKind.DRIVE_READ,
+            CapabilityKind.CLOUD_FILE_READ,
             CapabilityKind.CHAT_READ,
-            CapabilityKind.PEOPLE_READ,
             CapabilityKind.APPLE_MAIL_READ,
             CapabilityKind.KEYNOTE_READ,
             CapabilityKind.PAGES_READ,

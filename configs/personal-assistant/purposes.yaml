@@ -27,13 +27,9 @@ purposes:
         pattern: "/Users/*/notes/scratch/**"
       - kind: WEB_FETCH
         pattern: "*"
-      - kind: GMAIL_READ
-        pattern: "*"
-      - kind: DRIVE_READ
+      - kind: CLOUD_FILE_READ
         pattern: "*"
       - kind: CALENDAR_READ
-        pattern: "*"
-      - kind: PEOPLE_READ
         pattern: "*"
       - kind: APPLE_MAIL_READ
         pattern: "*"
@@ -78,9 +74,7 @@ purposes:
     default_capabilities:
       # Issue #33 — granular email/drive kinds replace the blanket
       # `READ_FS *` that conflated filesystem reads with email reads.
-      - kind: GMAIL_READ
-        pattern: "*"
-      - kind: GMAIL_DRAFT
+      - kind: EXTERNAL_MAIL_DRAFT
         pattern: "*"
       - kind: IMAP_READ
         pattern: "*"
@@ -92,11 +86,9 @@ purposes:
         pattern: "*"
       - kind: OUTLOOK_DRAFT
         pattern: "*"
-      - kind: DRIVE_READ
+      - kind: CLOUD_FILE_READ
         pattern: "*"
       - kind: CALENDAR_READ
-        pattern: "*"
-      - kind: PEOPLE_READ
         pattern: "*"
       - kind: CREATE_FS
         pattern: "/Users/*/notes/inbox-summaries/**"
@@ -115,11 +107,9 @@ purposes:
         pattern: "*"
       - kind: MODIFY_CAL
         pattern: "*"
-      - kind: GMAIL_READ
+      - kind: CLOUD_FILE_READ
         pattern: "*"
-      - kind: DRIVE_READ
-        pattern: "*"
-      - kind: PEOPLE_READ
+      - kind: IMAP_READ
         pattern: "*"
       - kind: READ_FS
         pattern: "/Users/*/notes/**"
@@ -138,7 +128,7 @@ purposes:
         pattern: "/Users/*/notes/**"
       - kind: MODIFY_FS
         pattern: "/Users/*/Documents/drafts/**"
-      - kind: DRIVE_READ
+      - kind: CLOUD_FILE_READ
         pattern: "*"
       - kind: PAGES_READ
         pattern: "*"
@@ -187,7 +177,7 @@ purposes:
         pattern: "/Users/*/notes/research/**"
       - kind: READ_FS
         pattern: "/Users/*/Documents/**"
-      - kind: DRIVE_READ
+      - kind: CLOUD_FILE_READ
         pattern: "*"
       - kind: BROWSER_READ
         pattern: "https://*"

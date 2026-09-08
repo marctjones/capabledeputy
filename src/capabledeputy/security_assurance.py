@@ -215,11 +215,6 @@ def substrate_contracts() -> tuple[SubstrateContract, ...]:
     )
     return (
         SubstrateContract(
-            substrate_id="google-workspace",
-            surfaces=("gmail", "calendar", "drive"),
-            required_assertions=(*common, "oauth_state_daemon_owned"),
-        ),
-        SubstrateContract(
             substrate_id="imap",
             surfaces=("mail.read", "mail.search"),
             required_assertions=(*common, "no_secret_in_audit"),

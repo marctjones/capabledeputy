@@ -44,11 +44,9 @@ purposes:
     risk_preference_dial: balanced
     default_capabilities:
       # --- Profile A: pure reads, auto ---
-      - kind: GMAIL_READ
-        pattern: "*"
       - kind: CALENDAR_READ
         pattern: "*"
-      - kind: DRIVE_READ
+      - kind: CLOUD_FILE_READ
         pattern: "*"
       - kind: WEB_FETCH
         pattern: "*"
@@ -78,7 +76,7 @@ purposes:
   # Personal-finance — banking, subscriptions, tax. Compartment-
   # isolated from daily-life via the inadmissible_categories list
   # on this purpose AND the personal one. A session spawned here
-  # cannot read personal email (no GMAIL_READ); a daily-life
+  # cannot read personal email (no IMAP_READ grant); a daily-life
   # session cannot read finance.
   - purpose_id: personal-finance
     label: "Personal finance — banking, subscriptions, tax"
@@ -92,10 +90,6 @@ purposes:
     risk_preference_dial: cautious
     default_capabilities:
       # Reads only — financial-write is purpose-gated separately.
-      - kind: GMAIL_READ
-        pattern: "from:*@bank.example.com"   # narrow to known financial senders
-      - kind: GMAIL_READ
-        pattern: "from:*@statements.example.com"
       - kind: READ_FS
         pattern: "/home/marc/Documents/Finance/*"
       - kind: WEB_FETCH
@@ -117,10 +111,6 @@ purposes:
     recommended_pattern: pattern_3_handle    # PHI fields as handles
     risk_preference_dial: cautious
     default_capabilities:
-      - kind: GMAIL_READ
-        pattern: "from:*@clinic.example.com"
-      - kind: GMAIL_READ
-        pattern: "from:*@insurance.example.com"
       - kind: READ_FS
         pattern: "/home/marc/Documents/Health/*"
 
@@ -179,13 +169,9 @@ purposes:
         pattern: "/Users/*/notes/scratch/**"
       - kind: WEB_FETCH
         pattern: "*"
-      - kind: GMAIL_READ
-        pattern: "*"
-      - kind: DRIVE_READ
+      - kind: CLOUD_FILE_READ
         pattern: "*"
       - kind: CALENDAR_READ
-        pattern: "*"
-      - kind: PEOPLE_READ
         pattern: "*"
       - kind: APPLE_MAIL_READ
         pattern: "*"
@@ -211,9 +197,7 @@ purposes:
     admissible_categories: [personal, work, email, public]
     risk_preference_dial: balanced
     default_capabilities:
-      - kind: GMAIL_READ
-        pattern: "*"
-      - kind: GMAIL_DRAFT
+      - kind: EXTERNAL_MAIL_DRAFT
         pattern: "*"
       - kind: IMAP_READ
         pattern: "*"
@@ -225,11 +209,9 @@ purposes:
         pattern: "*"
       - kind: OUTLOOK_DRAFT
         pattern: "*"
-      - kind: DRIVE_READ
+      - kind: CLOUD_FILE_READ
         pattern: "*"
       - kind: CALENDAR_READ
-        pattern: "*"
-      - kind: PEOPLE_READ
         pattern: "*"
       - kind: CREATE_FS
         pattern: "/Users/*/notes/inbox-summaries/**"
@@ -244,8 +226,6 @@ purposes:
       - kind: CREATE_CAL
         pattern: "*"
       - kind: MODIFY_CAL
-        pattern: "*"
-      - kind: PEOPLE_READ
         pattern: "*"
       - kind: READ_FS
         pattern: "/Users/*/notes/**"
@@ -265,7 +245,7 @@ purposes:
         pattern: "/Users/*/notes/**"
       - kind: MODIFY_FS
         pattern: "/Users/*/Documents/drafts/**"
-      - kind: DRIVE_READ
+      - kind: CLOUD_FILE_READ
         pattern: "*"
       - kind: PAGES_READ
         pattern: "*"
@@ -305,7 +285,7 @@ purposes:
         pattern: "/Users/*/notes/research/**"
       - kind: READ_FS
         pattern: "/Users/*/Documents/**"
-      - kind: DRIVE_READ
+      - kind: CLOUD_FILE_READ
         pattern: "*"
       - kind: PAGES_READ
         pattern: "*"

@@ -723,10 +723,9 @@ not exist and will be refused. When telling the user to /grant
 something, use one of these exact strings:
 
   Filesystem:  READ_FS, WRITE_FS, CREATE_FS, MODIFY_FS, DELETE_FS
-  Email:       GMAIL_READ, GMAIL_DRAFT, IMAP_READ, SEND_EMAIL
-  Drive:       DRIVE_READ
+  Email:       EXTERNAL_MAIL_DRAFT, IMAP_READ, SEND_EMAIL
+  Cloud files: CLOUD_FILE_READ
   Chat:        CHAT_READ, SEND_MESSAGE
-  People:      PEOPLE_READ
   Calendar:    CALENDAR_READ, CALENDAR_WRITE, CREATE_CAL, MODIFY_CAL, DELETE_CAL
   Web:         WEB_FETCH
   Browser:     BROWSER_READ, BROWSER_NAVIGATE, BROWSER_INTERACT, BROWSER_SCRIPT, BROWSER_FILE
@@ -739,11 +738,9 @@ something, use one of these exact strings:
 {custom_kinds_section}
 
 Examples:
-- Read Gmail messages: `/grant GMAIL_READ *` (or `/grant GMAIL_READ from:boss@*`)
-- Create a Gmail draft: `/grant GMAIL_DRAFT recipient@example.com --one-shot`
-- Read Google Drive: `/grant DRIVE_READ *`
-- Read Google Chat: `/grant CHAT_READ *`
-- Read People/Contacts: `/grant PEOPLE_READ *`
+- Create an external mail draft: `/grant EXTERNAL_MAIL_DRAFT recipient@example.com --one-shot`
+- Read a cloud file provider: `/grant CLOUD_FILE_READ *`
+- Read a connected chat service: `/grant CHAT_READ *`
 - Read IMAP inbox: `/grant IMAP_READ *`
 - Send email: `/grant SEND_EMAIL recipient@example.com --one-shot`
 - Send chat message: `/grant SEND_MESSAGE spaces/* --one-shot`
@@ -757,7 +754,7 @@ Examples:
 - Edit a Numbers spreadsheet: `/grant NUMBERS_EDIT * --one-shot`
 
 Note: a legacy `/grant READ_FS *` capability ALSO satisfies
-GMAIL_READ / IMAP_READ / DRIVE_READ / CHAT_READ / PEOPLE_READ /
+IMAP_READ / CLOUD_FILE_READ /
 APPLE_MAIL_READ / KEYNOTE_READ / PAGES_READ / NUMBERS_READ /
 BROWSER_READ / MACOS_CLIPBOARD_READ. Legacy `/grant BROWSER_AUTOMATION *`
 and `/grant MACOS_AUTOMATION *` also satisfy their narrow sub-kinds.

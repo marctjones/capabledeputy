@@ -66,11 +66,6 @@ app.add_typer(oauth_app, name="oauth")
 app.add_typer(workflow_app, name="workflow")
 app.add_typer(image_app, name="image")
 app.add_typer(skill_app, name="skill")
-google_oauth_app = typer.Typer(
-    help="Configure daemon-owned Google Workspace MCP OAuth.",
-    no_args_is_help=True,
-)
-oauth_app.add_typer(google_oauth_app, name="google")
 app.command("chat")(chat_command)
 app.command("doctor")(doctor_command)
 app.add_typer(service_app, name="service")
@@ -372,203 +367,6 @@ def onguard_handoff_command(
     console.print(f"[green]handoff session:[/green] {session.get('id')}")
 
 
-@google_oauth_app.command("status")
-def google_oauth_status_command(
-    service_id: Annotated[
-        str | None,
-        typer.Argument(help="Google MCP service id, e.g. google-gmail or google-calendar."),
-    ] = None,
-    socket_path: Annotated[
-        str | None,
-        typer.Option("--socket", help="Override daemon socket path."),
-    ] = None,
-    json_output: Annotated[
-        bool,
-        typer.Option("--json", help="Emit JSON instead of a status summary."),
-    ] = False,
-) -> None:
-    """Show daemon-owned Google Workspace OAuth setup status."""
-    import json as _json
-
-    params = {"service_id": service_id} if service_id else {}
-    try:
-        result = anyio.run(
-            lambda: _onguard_call("setup.google.oauth_status", params, socket_path=socket_path)
-        )
-    except DaemonNotRunningError as e:
-        err_console.print(f"[red]{e}[/red]")
-        raise typer.Exit(code=2) from e
-
-    if json_output:
-        console.print(_json.dumps(result, indent=2))
-        return
-    _print_google_oauth_status(result)
-
-
-@google_oauth_app.command("configure")
-def google_oauth_configure_command(
-    service_id: Annotated[
-        str,
-        typer.Argument(help="Google MCP service id, e.g. google-gmail or google-calendar."),
-    ],
-    client_id: Annotated[
-        str,
-        typer.Option("--client-id", prompt=True, help="Google OAuth client ID."),
-    ],
-    client_secret: Annotated[
-        str,
-        typer.Option(
-            "--client-secret",
-            prompt=True,
-            hide_input=True,
-            help="Google OAuth client secret.",
-        ),
-    ],
-    socket_path: Annotated[
-        str | None,
-        typer.Option("--socket", help="Override daemon socket path."),
-    ] = None,
-    json_output: Annotated[
-        bool,
-        typer.Option("--json", help="Emit JSON instead of a status summary."),
-    ] = False,
-) -> None:
-    """Persist a Google OAuth client through the daemon."""
-    import json as _json
-
-    params = {
-        "service_id": service_id,
-        "client_id": client_id,
-        "client_secret": client_secret,
-    }
-    try:
-        result = anyio.run(
-            lambda: _onguard_call("setup.google.configure_oauth", params, socket_path=socket_path)
-        )
-    except DaemonNotRunningError as e:
-        err_console.print(f"[red]{e}[/red]")
-        raise typer.Exit(code=2) from e
-
-    if json_output:
-        console.print(_json.dumps(result, indent=2))
-        return
-    _print_google_oauth_status(result)
-
-
-@google_oauth_app.command("connect")
-@google_oauth_app.command("login")
-def google_oauth_login_command(
-    service_id: Annotated[
-        str,
-        typer.Argument(help="Google MCP service id, e.g. google-gmail or google-calendar."),
-    ],
-    no_browser: Annotated[
-        bool,
-        typer.Option("--no-browser", help="Print the authorization URL without opening it."),
-    ] = False,
-    timeout: Annotated[
-        int,
-        typer.Option("--timeout", help="Seconds to wait for the local OAuth callback."),
-    ] = 180,
-    socket_path: Annotated[
-        str | None,
-        typer.Option("--socket", help="Override daemon socket path."),
-    ] = None,
-    json_output: Annotated[
-        bool,
-        typer.Option("--json", help="Emit JSON instead of a status summary."),
-    ] = False,
-) -> None:
-    """Launch Google OAuth login through the daemon."""
-    import json as _json
-
-    params = {
-        "service_id": service_id,
-        "open_browser": not no_browser,
-        "timeout_seconds": timeout,
-    }
-    try:
-        result = anyio.run(
-            lambda: _onguard_call("setup.google.oauth_login", params, socket_path=socket_path)
-        )
-    except DaemonNotRunningError as e:
-        err_console.print(f"[red]{e}[/red]")
-        raise typer.Exit(code=2) from e
-
-    if json_output:
-        console.print(_json.dumps(result, indent=2))
-        return
-    _print_google_oauth_status(result)
-
-
-@google_oauth_app.command("disconnect")
-@google_oauth_app.command("revoke")
-def google_oauth_revoke_command(
-    service_id: Annotated[
-        str,
-        typer.Argument(help="Google MCP service id, e.g. google-gmail or google-calendar."),
-    ],
-    socket_path: Annotated[
-        str | None,
-        typer.Option("--socket", help="Override daemon socket path."),
-    ] = None,
-    json_output: Annotated[
-        bool,
-        typer.Option("--json", help="Emit JSON instead of a status summary."),
-    ] = False,
-) -> None:
-    """Remove a daemon-owned Google OAuth token cache."""
-    import json as _json
-
-    try:
-        result = anyio.run(
-            lambda: _onguard_call(
-                "setup.google.oauth_revoke",
-                {"service_id": service_id},
-                socket_path=socket_path,
-            )
-        )
-    except DaemonNotRunningError as e:
-        err_console.print(f"[red]{e}[/red]")
-        raise typer.Exit(code=2) from e
-
-    if json_output:
-        console.print(_json.dumps(result, indent=2))
-        return
-    _print_google_oauth_status(result)
-
-
-def _print_google_oauth_status(result: dict[str, Any]) -> None:
-    services = result.get("services")
-    if isinstance(services, list):
-        for service in services:
-            if isinstance(service, dict):
-                _print_google_oauth_service_status(service)
-        return
-    _print_google_oauth_service_status(result)
-
-
-def _print_google_oauth_service_status(status: dict[str, Any]) -> None:
-    name = status.get("display_name") or status.get("service_id") or status.get("server")
-    configured = "yes" if status.get("configured") else "no"
-    client = (
-        "yes"
-        if status.get("client_id_configured") and status.get("client_secret_configured")
-        else "no"
-    )
-    token = "yes" if status.get("token_configured") else "no"
-    console.print(f"[bold]{name}[/bold]: configured={configured} client={client} token={token}")
-    account = status.get("token_account")
-    if account:
-        console.print(f"  account: {account}")
-    missing_scopes = status.get("missing_scopes") or []
-    if missing_scopes:
-        console.print(f"  [yellow]missing scopes:[/yellow] {', '.join(missing_scopes)}")
-    server_yaml = status.get("server_yaml")
-    if server_yaml:
-        console.print(f"  server config: {server_yaml}")
-
-
 @oauth_app.command("login")
 def oauth_login_command(
     server: Annotated[
@@ -641,15 +439,13 @@ def config_doctor_command(
 
     Checks:
     - daemon.yaml or servers.d/*.yaml present and parseable
-    - Gmail read/draft tools use GMAIL_READ / GMAIL_DRAFT (not legacy READ_FS)
     - IMAP tools use IMAP_READ
-    - Drive tools use DRIVE_READ where appropriate
     - servers.d/ files validate (namespace, no collisions)
-    - Default auto-grant set covers GMAIL_READ / IMAP_READ / DRIVE_READ
+    - Default auto-grant set covers IMAP_READ
 
     Prints a status report; exits 0 if everything checks out, 1
-    otherwise. Operator runs this after `capdep gworkspace-setup`
-    / `capdep imap-setup` to confirm the wiring is current.
+    otherwise. Operator runs this after `capdep imap-setup` to
+    confirm the wiring is current.
     """
     from pathlib import Path
 
@@ -666,8 +462,7 @@ def config_doctor_command(
     if not src_path.is_file():
         console.print(f"[red]✗[/red] daemon.yaml not found at {src_path}")
         console.print(
-            "[dim]  Run [bold]capdep gworkspace-setup[/bold] / [bold]capdep imap-setup[/bold] "
-            "to create one, or specify --config.[/dim]",
+            "[dim]  Run [bold]capdep imap-setup[/bold] to create one, or specify --config.[/dim]",
         )
         raise typer.Exit(code=1)
     ok.append(f"daemon.yaml found at {src_path}")
@@ -688,23 +483,11 @@ def config_doctor_command(
             kind = ov.get("capability_kind") if isinstance(ov, dict) else None
             if not kind:
                 continue
-            # Gmail tools should be GMAIL_READ, GMAIL_DRAFT, SEND_EMAIL,
-            # or explicit mutation kinds.
             tl = tool_name.lower()
-            if "gmail" in tl and kind == "READ_FS":
-                issues.append(
-                    f"server '{name}' tool '{tool_name}': uses legacy READ_FS; "
-                    f"should be GMAIL_READ. Re-run capdep gworkspace-setup to update."
-                )
-            elif "imap" in tl and kind == "READ_FS":
+            if "imap" in tl and kind == "READ_FS":
                 issues.append(
                     f"server '{name}' tool '{tool_name}': uses legacy READ_FS; "
                     f"should be IMAP_READ. Re-run capdep imap-setup to update."
-                )
-            elif tl.startswith("drive_") and "list" in tl and kind == "READ_FS":
-                notes.append(
-                    f"server '{name}' tool '{tool_name}': READ_FS works via "
-                    f"back-compat union; consider DRIVE_READ for clarity."
                 )
 
     if servers:
@@ -734,20 +517,13 @@ def config_doctor_command(
         notes.append("no servers.d/ directory (legacy daemon.yaml layout only)")
 
     # 4. Check upstream adapter inference — sanity-check that
-    # gmail tool names classify correctly
+    # generically-named tools still classify correctly
     from capabledeputy.policy.capabilities import CapabilityKind
     from capabledeputy.upstream.adapter import _infer_capability_kind
 
     test_cases = [
-        ("gmail.users.messages.list", CapabilityKind.GMAIL_READ),
-        ("gmail_messages_get", CapabilityKind.GMAIL_READ),
-        ("gmail.users.drafts.create", CapabilityKind.GMAIL_DRAFT),
         ("imap.fetch", CapabilityKind.IMAP_READ),
-        ("drive.files.list", CapabilityKind.DRIVE_READ),
-        ("gmail.users.messages.send", CapabilityKind.SEND_EMAIL),
-        ("chat.search_messages", CapabilityKind.CHAT_READ),
         ("chat.send_message", CapabilityKind.SEND_MESSAGE),
-        ("people.search_contacts", CapabilityKind.PEOPLE_READ),
     ]
     classifier_issues = []
     for tool_name, expected in test_cases:
@@ -759,7 +535,7 @@ def config_doctor_command(
             "Upstream classifier regression: " + "; ".join(classifier_issues),
         )
     else:
-        ok.append("upstream classifier correctly maps gmail/imap/drive tools")
+        ok.append("upstream classifier correctly maps imap/chat tools")
 
     # 5. Report
     console.print()
@@ -2138,147 +1914,9 @@ smtp:
         console.print(f"  [dim]·[/dim] {msg}")
 
     console.print(
-        "\n[bold]next:[/bold] [bold]capdep chat[/bold] — Gmail + fs + memory + "
+        "\n[bold]next:[/bold] [bold]capdep chat[/bold] — fs + memory + "
         "git + fetch + search tools will be available automatically.",
     )
-
-
-@app.command("gworkspace-setup")
-def gworkspace_setup(
-    mode: Annotated[
-        str,
-        typer.Option(
-            "--mode",
-            help=(
-                "Integration mode: official remote Google MCP servers, or community gws-mcp-server."
-            ),
-        ),
-    ] = "official",
-    register_only: Annotated[
-        bool,
-        typer.Option(
-            "--register-only",
-            help=(
-                "Skip the install/auth checklist; only add/refresh the "
-                "Google Workspace block in the user-local daemon config. "
-                "Use after Google Cloud APIs and OAuth tokens are already configured."
-            ),
-        ),
-    ] = False,
-    services: Annotated[
-        str,
-        typer.Option(
-            "--services",
-            "-s",
-            help=(
-                "Comma-separated services. Official mode supports "
-                "gmail,drive,calendar,chat,people. Community mode supports "
-                "drive,sheets,calendar,docs,gmail."
-            ),
-        ),
-    ] = "",
-) -> None:
-    """Wire Google Workspace tools into CapDep.
-
-    Default mode registers Google's official remote MCP servers over
-    streamable HTTP using CapDep's native OAuth2 browser flow.
-    Use `--mode community` only for the legacy local `gws-mcp-server`
-    wrapper around the `gws` CLI.
-    """
-    import shutil
-
-    from capabledeputy.cli._managed_config import (
-        GWORKSPACE_BLOCK_ID,
-        GWORKSPACE_COMMUNITY_BLOCK_BODY,
-        GWORKSPACE_DEFAULT_OFFICIAL_SERVICES,
-        google_workspace_official_block_body,
-        gws_cli_available,
-        gws_mcp_server_available,
-        user_default_daemon_config_path,
-        write_managed_block,
-    )
-
-    mode = mode.strip().lower()
-    if mode not in {"official", "community"}:
-        err_console.print("[red]--mode must be 'official' or 'community'[/red]")
-        raise typer.Exit(code=2)
-
-    if mode == "official":
-        services = services or GWORKSPACE_DEFAULT_OFFICIAL_SERVICES
-        try:
-            block_body = google_workspace_official_block_body(services)
-        except ValueError as e:
-            err_console.print(f"[red]{e}[/red]")
-            raise typer.Exit(code=2) from None
-    else:
-        default_services = "drive,sheets,calendar,docs,gmail"
-        services = services or default_services
-        block_body = GWORKSPACE_COMMUNITY_BLOCK_BODY
-        if services != default_services:
-            block_body = block_body.replace(
-                f'"--services", "{default_services}"',
-                f'"--services", "{services}"',
-            )
-
-    if not register_only:
-        console.print(f"[bold]Google Workspace setup ({mode})[/bold]\n")
-        if mode == "official":
-            if shutil.which("gcloud"):
-                console.print("  [green]✓[/green] `gcloud` binary on PATH")
-            else:
-                console.print(
-                    "  [yellow]·[/yellow] `gcloud` not found. Install Google Cloud CLI, "
-                    "then enable the Workspace APIs/MCP services.",
-                )
-            console.print(
-                "  [dim]required auth:[/dim] export "
-                "[bold]GOOGLE_MCP_CLIENT_ID[/bold] and "
-                "[bold]GOOGLE_MCP_CLIENT_SECRET[/bold], then run "
-                "[bold]capdep oauth login --server google-gmail[/bold] "
-                "(repeat for each enabled Workspace server).",
-            )
-        else:
-            have_gws = gws_cli_available()
-            have_mcp_server = gws_mcp_server_available()
-            if have_gws:
-                console.print("  [green]✓[/green] `gws` binary on PATH")
-            else:
-                console.print(
-                    "  [yellow]·[/yellow] `gws` not found. Install + auth:\n"
-                    "      [bold]npm install -g @googleworkspace/cli[/bold]\n"
-                    "      [bold]gws auth setup[/bold]\n"
-                    "      [bold]gws auth login -s drive,gmail,calendar,docs,sheets[/bold]",
-                )
-            if have_mcp_server:
-                console.print("  [green]✓[/green] `gws-mcp-server` installed")
-            else:
-                console.print(
-                    "  [yellow]·[/yellow] `gws-mcp-server` not found. Install with:\n"
-                    "      [bold]npm install -g gws-mcp-server[/bold]",
-                )
-        console.print()
-
-    daemon_yaml = user_default_daemon_config_path()
-    replaced, changed = write_managed_block(daemon_yaml, GWORKSPACE_BLOCK_ID, block_body)
-    if changed and replaced:
-        console.print(f"[green]refreshed gworkspace block in {daemon_yaml}[/green]")
-    elif changed:
-        console.print(f"[green]registered gworkspace block in {daemon_yaml}[/green]")
-    else:
-        console.print(f"[dim]gworkspace block in {daemon_yaml} already up to date[/dim]")
-
-    if mode == "official":
-        console.print(
-            "\n[bold]next:[/bold] [bold]capdep daemon stop && capdep chat[/bold] — "
-            f"official Workspace tools ({services}) will register automatically. "
-            "Run [bold]/server[/bold] and [bold]/tools google-[/bold] in the REPL.",
-        )
-    else:
-        console.print(
-            "\n[bold]next:[/bold] finish any missing install steps above, then "
-            "[bold]capdep daemon stop && capdep chat[/bold]. Run "
-            "[bold]/tools gws[/bold] to see loaded community-wrapper tools.",
-        )
 
 
 @app.command("compliance-emit-ssp")

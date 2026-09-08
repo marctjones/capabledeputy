@@ -92,38 +92,6 @@ def test_swift_gui_implements_manifested_methods() -> None:
             assert f'"{method}"' in swift_text, f"Swift GUI missing {method}"
 
 
-def test_cli_implements_google_oauth_manifested_methods() -> None:
-    manifest = _parity()["rpc_methods"]
-    cli_text = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (ROOT / "src" / "capabledeputy" / "cli").glob("*.py")
-    )
-    for method in (
-        "setup.google.configure_oauth",
-        "setup.google.oauth_login",
-        "setup.google.oauth_revoke",
-        "setup.google.oauth_status",
-    ):
-        assert manifest[method]["cli"] == "implemented"
-        assert f'"{method}"' in cli_text, f"CLI missing {method}"
-
-
-def test_tui_implements_google_oauth_manifested_methods() -> None:
-    manifest = _parity()["rpc_methods"]
-    tui_text = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (ROOT / "src" / "capabledeputy" / "tui").glob("*.py")
-    )
-    for method in (
-        "setup.google.configure_oauth",
-        "setup.google.oauth_login",
-        "setup.google.oauth_revoke",
-        "setup.google.oauth_status",
-    ):
-        assert manifest[method]["tui"] == "implemented"
-        assert f'"{method}"' in tui_text, f"TUI missing {method}"
-
-
 def test_swift_gui_has_generic_daemon_rpc_workbench() -> None:
     swift_text = "\n".join(
         path.read_text(encoding="utf-8")

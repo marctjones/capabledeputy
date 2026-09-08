@@ -14,24 +14,7 @@ from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction, ApprovalStatus
 from capabledeputy.approval.strong_auth import approval_to_client_dict
 from capabledeputy.artifacts import ArtifactError, TypedArtifact, artifact_review_card
-from capabledeputy.audit.events import Event, EventType
-from capabledeputy.daemon.google_gmail_setup import (
-    GOOGLE_GMAIL_SERVER,
-    GOOGLE_OAUTH_SERVICES,
-    configure_gmail_oauth_client,
-    configure_google_oauth_client,
-    gmail_oauth_status,
-    google_oauth_all_diagnostics,
-    google_oauth_diagnostics,
-    google_oauth_server_config,
-    google_oauth_status_with_runtime,
-    google_oauth_statuses_with_runtime,
-    redacted_gmail_oauth_payload,
-    redacted_google_oauth_payload,
-    revoke_google_oauth_token,
-    run_gmail_oauth_login,
-    run_google_oauth_login,
-)
+from capabledeputy.audit.events import EventType
 from capabledeputy.daemon.handlers import Handler
 from capabledeputy.daemon.settings_store import load_settings
 from capabledeputy.daemon.setup_plan import build_setup_check, build_setup_checks, build_setup_plan
@@ -243,123 +226,6 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
     async def macos_frontmost_context(params: dict[str, Any]) -> dict[str, Any]:
         return _frontmost_context()
 
-    async def google_gmail_oauth_status(params: dict[str, Any]) -> dict[str, Any]:
-        return gmail_oauth_status()
-
-    async def google_oauth_status_handler(params: dict[str, Any]) -> dict[str, Any]:
-        service_id = str(params.get("service_id") or "")
-        if service_id:
-            return google_oauth_status_with_runtime(
-                service_id,
-                upstream_manager=getattr(app, "upstream_manager", None),
-            )
-        return google_oauth_statuses_with_runtime(
-            upstream_manager=getattr(app, "upstream_manager", None),
-        )
-
-    async def google_oauth_diagnostics_handler(params: dict[str, Any]) -> dict[str, Any]:
-        service_id = str(params.get("service_id") or "")
-        if service_id:
-            return google_oauth_diagnostics(service_id)
-        return google_oauth_all_diagnostics()
-
-    async def google_configure_oauth(params: dict[str, Any]) -> dict[str, Any]:
-        service_id = str(params.get("service_id") or GOOGLE_GMAIL_SERVER)
-        status = configure_google_oauth_client(
-            service_id,
-            client_id=str(params.get("client_id") or ""),
-            client_secret=str(params.get("client_secret") or ""),
-        )
-        await app.audit.write(
-            Event(
-                event_type=EventType.SETUP_CHANGED,
-                payload={
-                    "action": "google.configure_oauth",
-                    "service_id": service_id,
-                    "status": redacted_google_oauth_payload(status),
-                },
-            ),
-        )
-        await _reload_google_service(app, service_id, enable=False)
-        return google_oauth_status_with_runtime(
-            service_id,
-            upstream_manager=getattr(app, "upstream_manager", None),
-        )
-
-    async def google_oauth_login(params: dict[str, Any]) -> dict[str, Any]:
-        service_id = str(params.get("service_id") or GOOGLE_GMAIL_SERVER)
-        status = await run_google_oauth_login(
-            service_id,
-            open_browser=bool(params.get("open_browser", True)),
-            timeout_seconds=int(params.get("timeout_seconds") or 180),
-        )
-        await app.audit.write(
-            Event(
-                event_type=EventType.SETUP_CHANGED,
-                payload={
-                    "action": "google.oauth_login",
-                    "service_id": service_id,
-                    "status": redacted_google_oauth_payload(status),
-                },
-            ),
-        )
-        await _reload_google_service(app, service_id, enable=True)
-        return google_oauth_status_with_runtime(
-            service_id,
-            upstream_manager=getattr(app, "upstream_manager", None),
-        )
-
-    async def google_oauth_revoke(params: dict[str, Any]) -> dict[str, Any]:
-        service_id = str(params.get("service_id") or GOOGLE_GMAIL_SERVER)
-        status = revoke_google_oauth_token(service_id)
-        await app.audit.write(
-            Event(
-                event_type=EventType.SETUP_CHANGED,
-                payload={
-                    "action": "google.oauth_revoke",
-                    "service_id": service_id,
-                    "status": redacted_google_oauth_payload(status),
-                },
-            ),
-        )
-        await _reload_google_service(app, service_id, enable=False)
-        return google_oauth_status_with_runtime(
-            service_id,
-            upstream_manager=getattr(app, "upstream_manager", None),
-        )
-
-    async def google_gmail_configure_oauth(params: dict[str, Any]) -> dict[str, Any]:
-        status = configure_gmail_oauth_client(
-            client_id=str(params.get("client_id") or ""),
-            client_secret=str(params.get("client_secret") or ""),
-        )
-        await app.audit.write(
-            Event(
-                event_type=EventType.SETUP_CHANGED,
-                payload={
-                    "action": "google_gmail.configure_oauth",
-                    "status": redacted_gmail_oauth_payload(status),
-                },
-            ),
-        )
-        return status
-
-    async def google_gmail_oauth_login(params: dict[str, Any]) -> dict[str, Any]:
-        status = await run_gmail_oauth_login(
-            open_browser=bool(params.get("open_browser", True)),
-            timeout_seconds=int(params.get("timeout_seconds") or 180),
-        )
-        await app.audit.write(
-            Event(
-                event_type=EventType.SETUP_CHANGED,
-                payload={
-                    "action": "google_gmail.oauth_login",
-                    "status": redacted_gmail_oauth_payload(status),
-                },
-            ),
-        )
-        return status
-
     return {
         "app.status": app_status,
         "setup.status": setup_status,
@@ -367,36 +233,11 @@ def make_gui_handlers(app: App) -> dict[str, Handler]:
         "setup.check": setup_check,
         "workflow.templates": workflow_templates,
         "workflow.launch": workflow_launch,
-        "setup.google.oauth_status": google_oauth_status_handler,
-        "setup.google.oauth_diagnostics": google_oauth_diagnostics_handler,
-        "setup.google.configure_oauth": google_configure_oauth,
-        "setup.google.oauth_login": google_oauth_login,
-        "setup.google.oauth_revoke": google_oauth_revoke,
-        "setup.google_gmail.oauth_status": google_gmail_oauth_status,
-        "setup.google_gmail.configure_oauth": google_gmail_configure_oauth,
-        "setup.google_gmail.oauth_login": google_gmail_oauth_login,
         "policy.explain": policy_explain,
         "approval.detail": approval_detail,
         "provenance.graph": provenance_graph,
         "macos.frontmost_context": macos_frontmost_context,
     }
-
-
-async def _reload_google_service(app: App, service_id: str, *, enable: bool) -> None:
-    manager = getattr(app, "upstream_manager", None)
-    if manager is None:
-        return
-    if enable:
-        config = google_oauth_server_config(service_id)
-        if config is None:
-            return
-        reload_server = getattr(manager, "reload_server", None)
-        if reload_server is not None:
-            await reload_server(config)
-        return
-    unload_server = getattr(manager, "unload_server", None)
-    if unload_server is not None:
-        await unload_server(service_id)
 
 
 def _review_artifact_from_approval_payload(payload: str) -> dict[str, Any] | None:
@@ -470,81 +311,6 @@ def _has_mlx() -> bool:
         return bool(mx.metal.is_available())
     except Exception:
         return False
-
-
-def _gmail_setup_check_status(
-    gmail_status: dict[str, Any],
-    upstream: list[dict[str, Any]],
-) -> str:
-    if any(server.get("name") == "google-gmail" for server in upstream) and gmail_status.get(
-        "token_configured",
-    ):
-        return "ok"
-    if gmail_status.get("client_id_configured") and gmail_status.get("client_secret_configured"):
-        return "manual"
-    return "warning"
-
-
-def _gmail_setup_check_detail(
-    gmail_status: dict[str, Any],
-    upstream: list[dict[str, Any]],
-) -> str:
-    running = any(server.get("name") == "google-gmail" for server in upstream)
-    if running and gmail_status.get("token_configured"):
-        return "Gmail MCP is configured, authorized, and loaded by the daemon."
-    if gmail_status.get("token_configured"):
-        return "Gmail OAuth token is configured. Restart the daemon to load Gmail MCP."
-    if gmail_status.get("client_id_configured") and gmail_status.get("client_secret_configured"):
-        return "Gmail OAuth client is saved. Authorize Gmail to create the token cache."
-    if gmail_status.get("configured"):
-        return "Gmail MCP server config exists, but OAuth client files are incomplete."
-    return "Gmail MCP OAuth is not configured."
-
-
-def _google_setup_check_detail(
-    statuses: list[dict[str, Any]],
-    upstream: list[dict[str, Any]],
-) -> str:
-    configured = sum(1 for status in statuses if status.get("configured"))
-    authorized = sum(1 for status in statuses if status.get("token_configured"))
-    loaded = sum(
-        1
-        for status in statuses
-        if status.get("server") in {server.get("name") for server in upstream}
-    )
-    if configured == authorized == loaded == len(statuses):
-        return "Google Workspace MCP connectors are configured, authorized, and loaded."
-    return (
-        f"{configured}/{len(statuses)} configured, "
-        f"{authorized}/{len(statuses)} authorized, {loaded}/{len(statuses)} loaded."
-    )
-
-
-def _google_setup_actions(statuses: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    actions: list[dict[str, Any]] = []
-    for status in statuses:
-        service_id = str(status.get("service_id") or status.get("server") or "")
-        display_name = str(status.get("display_name") or service_id)
-        actions.append(
-            {
-                "id": f"setup.google.{service_id}.configure_oauth",
-                "label": f"Configure {display_name} OAuth",
-                "kind": "daemon_form",
-                "enabled": service_id in GOOGLE_OAUTH_SERVICES,
-            },
-        )
-        actions.append(
-            {
-                "id": f"setup.google.{service_id}.oauth_login",
-                "label": f"Authorize {display_name}",
-                "kind": "daemon_browser_oauth",
-                "enabled": (
-                    bool(status.get("client_id_configured"))
-                    and bool(status.get("client_secret_configured"))
-                ),
-            },
-        )
-    return actions
 
 
 def _plain_policy_explanation(decision: str, rule: str, reason: str) -> str:

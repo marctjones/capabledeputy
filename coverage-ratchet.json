@@ -10,7 +10,6 @@
         "src/capabledeputy/cli/audit_cmd.py",
         "src/capabledeputy/cli/chat.py",
         "src/capabledeputy/cli/completer.py",
-        "src/capabledeputy/cli/google_cloud_setup.py",
         "src/capabledeputy/cli/image.py",
         "src/capabledeputy/cli/init_cmd.py",
         "src/capabledeputy/cli/main.py",
@@ -71,7 +70,6 @@
         "src/capabledeputy/daemon/demo_handlers.py",
         "src/capabledeputy/daemon/devbox_handlers.py",
         "src/capabledeputy/daemon/extract_handlers.py",
-        "src/capabledeputy/daemon/google_gmail_setup.py",
         "src/capabledeputy/daemon/gui_handlers.py",
         "src/capabledeputy/daemon/handlers.py",
         "src/capabledeputy/daemon/image_attachments.py",
@@ -169,14 +167,6 @@
       ],
       "min_percent": 88.89,
       "statements": 27
-    },
-    "daemon.file.google-gmail-setup": {
-      "covered": 187,
-      "files": [
-        "src/capabledeputy/daemon/google_gmail_setup.py"
-      ],
-      "min_percent": 89.9,
-      "statements": 208
     },
     "daemon.file.gui-handlers": {
       "covered": 227,

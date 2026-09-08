@@ -16,7 +16,7 @@
 def _threshold_for(kind, purpose):
     if kind in ["SEND_EMAIL", "SEND_MESSAGE", "QUEUE_PURCHASE"]:
         return 5
-    if kind in ["GMAIL_DRAFT", "APPLE_MAIL_DRAFT", "OUTLOOK_DRAFT"]:
+    if kind in ["EXTERNAL_MAIL_DRAFT", "APPLE_MAIL_DRAFT", "OUTLOOK_DRAFT"]:
         if purpose in ["inbox", "writing"]:
             return 25
         return 10

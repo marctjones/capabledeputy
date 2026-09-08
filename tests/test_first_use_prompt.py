@@ -6,7 +6,7 @@ Tests cover:
   - Engine: ALLOW becomes REQUIRE_APPROVAL when first_use_prompt_enabled
     AND kind is promptable AND not in used_kinds
   - Subsequent dispatch (kind already in used_kinds) passes through
-  - Read kinds (GMAIL_READ, READ_FS) NEVER prompt — too noisy
+  - Read kinds (IMAP_READ, READ_FS) NEVER prompt — too noisy
   - Flag OFF → no prompting even on first use
   - Non-ALLOW outcomes pass through unchanged (we don't make denies
     even stricter)
@@ -92,11 +92,11 @@ def test_second_use_passes_through() -> None:
 
 
 def test_read_kind_never_prompts() -> None:
-    """Read kinds (READ_FS, GMAIL_READ, etc.) are excluded from the
+    """Read kinds (READ_FS, IMAP_READ, etc.) are excluded from the
     promptable set — they don't change state and would create
     fatigue from every new mailbox label / file path."""
     assert CapabilityKind.READ_FS not in _PROMPTABLE_FIRST_USE_KINDS
-    assert CapabilityKind.GMAIL_READ not in _PROMPTABLE_FIRST_USE_KINDS
+    assert CapabilityKind.IMAP_READ not in _PROMPTABLE_FIRST_USE_KINDS
     assert CapabilityKind.BROWSER_READ not in _PROMPTABLE_FIRST_USE_KINDS
     assert CapabilityKind.PAGES_READ not in _PROMPTABLE_FIRST_USE_KINDS
     result = decide(
@@ -169,7 +169,7 @@ def test_promptable_set_covers_destructive_and_egress() -> None:
         CapabilityKind.MACOS_APP_CONTROL,
         CapabilityKind.MACOS_CLIPBOARD_WRITE,
         CapabilityKind.APPLE_MAIL_DRAFT,
-        CapabilityKind.GMAIL_DRAFT,
+        CapabilityKind.EXTERNAL_MAIL_DRAFT,
         CapabilityKind.KEYNOTE_PRESENT,
         CapabilityKind.PAGES_EDIT,
         CapabilityKind.PAGES_EXPORT,

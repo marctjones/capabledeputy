@@ -244,52 +244,6 @@ clients never become policy authorities.
 - README/config docs, `ROADMAP.md`, tracker issues, and the standard test suite
   agree on the default policy matrix.
 
-## Completed Focus — v0.45.0 Dead-simple Google Account Connection
-
-Goal: make connecting Gmail and Google Workspace accounts simple enough for a
-normal user to complete from CapDepMac or the CLI without first learning the
-Google Cloud Console. The daemon remains the owner of OAuth setup, token
-storage, upstream server configuration, tool registration, status, and audit.
-OAuth login proves account access only; it does not grant CapDep action
-authority or bypass MCP admission, policy labels, approvals, provenance, or
-scope checks.
-
-### v0.45.0 scope
-
-| Issue | Work | Local status |
-|---|---|---|
-| #224 | EPIC: dead-simple Google account connection | Done locally |
-| #226 | Decide and implement default Google OAuth identity strategy | Done locally |
-| #225 | One-click CapDepMac Google account wizard | Done locally |
-| #227 | Daemon hot-reload after Google OAuth token changes | Done locally |
-| #228 | Google OAuth preflight, postflight, and repair diagnostics | Done locally |
-| #229 | Unified Google scope presets and account selection | Done locally |
-| #230 | CLI parity for Google connect, status, and disconnect | Done locally |
-| #231 | Automated tests for Google OAuth setup state machine | Done locally |
-| #232 | Update Google Workspace docs for simple and advanced setup | Done locally |
-
-### v0.45.0 done-when
-
-- A normal user chooses a Google preset in CapDepMac; the daemon keeps the
-  underlying Gmail, Calendar, and Drive services least-privilege and separate.
-- The bring-your-own OAuth client path remains available and clearly separated
-  from account sign-in; CapDep still does not ship a hosted multi-user Google
-  OAuth client.
-- Token create, revoke, scope change, and account change events update daemon
-  upstream configuration and tool availability with live reload/unload where
-  the running upstream manager is available, otherwise with an explicit restart
-  requirement.
-- Status and repair surfaces show account identity, service readiness, scopes,
-  and actionable repair steps without exposing tokens or client secrets.
-- CLI commands can connect, report status, and disconnect Google accounts using
-  the same daemon APIs as CapDepMac.
-- Tests cover the OAuth setup state machine with fake providers, including
-  success, denial, expired tokens, revoked tokens, scope mismatch, config
-  reload, and secret redaction.
-- README and Google Workspace docs make the simple path primary, keep advanced
-  setup available, and explicitly state that OAuth login is not a CapDep
-  capability grant.
-
 ## Completed Focus — v0.46.0 Consolidated Setup Automation
 
 Goal: keep CapDep's daemon and clients focused on runtime authority by moving

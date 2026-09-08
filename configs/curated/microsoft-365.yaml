@@ -55,7 +55,7 @@ upstream_servers:
       list_messages: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
       get_message: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
       search_messages: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
-      create_mail_draft: {capability_kind: GMAIL_DRAFT, additional_labels: ["confidential.personal"], target_arg: to}
+      create_mail_draft: {capability_kind: EXTERNAL_MAIL_DRAFT, additional_labels: ["confidential.personal"], target_arg: to}
       # send_mail maps to SEND_EMAIL but is refused at admission by disabled_kinds
       # above (kept mapped so it's pinned/known, not silently unmapped).
       send_mail: {capability_kind: SEND_EMAIL, additional_labels: ["confidential.personal"], target_arg: to}
@@ -69,9 +69,9 @@ upstream_servers:
       delete_event: {capability_kind: DELETE_CAL, additional_labels: ["confidential.personal"], target_template: "msgraph://calendar/{calendar_id}/event/{event_id}"}
 
       # OneDrive / SharePoint files.
-      list_files: {capability_kind: DRIVE_READ, additional_labels: ["confidential.personal"]}
-      search_files: {capability_kind: DRIVE_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
-      read_file: {capability_kind: DRIVE_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      list_files: {capability_kind: CLOUD_FILE_READ, additional_labels: ["confidential.personal"]}
+      search_files: {capability_kind: CLOUD_FILE_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      read_file: {capability_kind: CLOUD_FILE_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
       create_file: {capability_kind: CREATE_FS, additional_labels: ["confidential.personal"], target_template: "msgraph://drive/items"}
       update_file: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"], target_template: "msgraph://drive/items/{item_id}"}
       delete_file: {capability_kind: DELETE_FS, additional_labels: ["confidential.personal"], target_template: "msgraph://drive/items/{item_id}"}

@@ -35,9 +35,6 @@ dependencies = [
     "prompt-toolkit>=3.0",
     "pypdf>=6.13.3",
     "httpx>=0.28.1",
-    "google-api-python-client>=2.196.0",
-    "google-auth-oauthlib>=1.4.0",
-    "google-auth-httplib2>=0.4.0",
     "mlx-lm>=0.31.3; platform_system == 'Darwin' and platform_machine == 'arm64'",
 ]
 
@@ -61,7 +58,6 @@ starlark = ["starlark-pyo3>=2026.1"]
 [project.scripts]
 capdep = "capabledeputy.cli.main:app"
 capdep-setup = "capabledeputy.cli.setup_cli:app"
-capdep-google-cloud-setup = "capabledeputy.cli.google_cloud_setup:app"
 
 [build-system]
 requires = ["uv_build>=0.11.21,<0.12.0"]

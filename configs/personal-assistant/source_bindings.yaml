@@ -79,47 +79,9 @@ bindings:
     default_tier: none
     assignment_provenance: operator-declared
 
-  # ---------------- Google Workspace ----------------
-
-  - name: gmail-content
-    scope_pattern_canonical: "gmail://**"
-    category: email
-    default_tier: sensitive
-    assignment_provenance: operator-declared
-
   - name: imap-content
     scope_pattern_canonical: "imap://**"
     category: email
-    default_tier: sensitive
-    assignment_provenance: operator-declared
-
-  - name: gdocs-content
-    scope_pattern_canonical: "gdoc://**"
-    category: personal
-    default_tier: sensitive
-    assignment_provenance: operator-declared
-
-  - name: gdrive-content
-    scope_pattern_canonical: "gdrive://**"
-    category: personal
-    default_tier: sensitive
-    assignment_provenance: operator-declared
-
-  - name: gcal-content
-    scope_pattern_canonical: "gcal://**"
-    category: personal
-    default_tier: sensitive
-    assignment_provenance: operator-declared
-
-  - name: gchat-content
-    scope_pattern_canonical: "gchat://**"
-    category: work
-    default_tier: sensitive
-    assignment_provenance: operator-declared
-
-  - name: people-content
-    scope_pattern_canonical: "people://**"
-    category: personal
     default_tier: sensitive
     assignment_provenance: operator-declared
 
@@ -128,6 +90,12 @@ bindings:
   - name: apple-mail-content
     scope_pattern_canonical: "applemail://**"
     category: email
+    default_tier: sensitive
+    assignment_provenance: operator-declared
+
+  - name: calendar-content
+    scope_pattern_canonical: "calendar://**"
+    category: personal
     default_tier: sensitive
     assignment_provenance: operator-declared
 

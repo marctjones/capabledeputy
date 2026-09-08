@@ -87,6 +87,34 @@ def test_session_round_trip_through_dict() -> None:
     assert decoded == s
 
 
+def test_session_from_dict_drops_retired_capability_kind() -> None:
+    """A capability kind can be retired (e.g. Google integration's
+    GMAIL_READ was deleted, GMAIL_DRAFT renamed) after a session already
+    persisted a grant using the old name. Loading that session must drop
+    the stale capability, not raise — an UnknownKindError/ValueError here
+    used to crash `SessionGraph.load()` for *every* session in the store,
+    taking the whole daemon down on any operator's upgrade."""
+    kept = Capability(kind=CapabilityKind.WEB_FETCH, pattern="*")
+    retired = Capability(kind=CapabilityKind.READ_FS, pattern="*").to_dict()
+    retired["kind"] = "GMAIL_READ"  # retired kind, no longer in CapabilityKind
+    s = Session.new(capability_set=frozenset({kept}))
+    raw = s.to_dict()
+    raw["capability_set"] = [*raw["capability_set"], retired]
+    decoded = Session.from_dict(raw)
+    assert decoded.capability_set == frozenset({kept})
+
+
+def test_session_from_dict_drops_retired_used_kind() -> None:
+    """Same tolerance for `used_kinds`, which does a bare
+    `CapabilityKind(k)` call (not `resolve_kind`) and so raises a plain
+    ValueError, not UnknownKindError — both must be caught."""
+    s = Session.new()
+    raw = s.to_dict()
+    raw["used_kinds"] = ["WEB_FETCH", "GMAIL_DRAFT"]  # GMAIL_DRAFT retired/renamed
+    decoded = Session.from_dict(raw)
+    assert decoded.used_kinds == frozenset({CapabilityKind.WEB_FETCH})
+
+
 def test_session_artifacts_persist_in_reference_handles(tmp_path) -> None:
     image_path = tmp_path / ".capdep" / "work" / "images" / "out.png"
     image_path.parent.mkdir(parents=True)

@@ -21,9 +21,6 @@ final class CapDepAppModel: ObservableObject {
     /// request form. `nil` closes the override card.
     @Published var overrideWindowID: String?
     @Published private(set) var turnStatusLine = ""
-    @Published private(set) var gmailOAuthStatus = GmailOAuthStatus.empty
-    @Published private(set) var googleOAuthStatuses: [String: GoogleOAuthStatus] = [:]
-    @Published private(set) var googleOAuthPresets: [GoogleOAuthPreset] = []
     @Published private(set) var daemonSettings = DaemonSettings.empty
     @Published private(set) var imageProfiles: [ImageProfile] = []
     @Published private(set) var imageReadiness = ImageReadiness.empty
@@ -63,7 +60,6 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var turnPendingApprovalIDs: [Int] = []
     @Published private(set) var pendingGrantRetryMessage: String?
     @Published private(set) var isRecoveringDaemon = false
-    @Published private(set) var isConfiguringGoogleOAuth = false
     @Published var selectedSection: DashboardSection = .today
     @Published var selectedPurpose: Purpose = .general
     @Published var selectedChatModelMode: ChatModelMode = CapDepAppModel.storedChatModelMode() {
@@ -77,8 +73,6 @@ final class CapDepAppModel: ObservableObject {
     @Published var contextChips: [ContextChip] = []
     @Published var taskPanelPinned = false
     @Published var lastError: String?
-    @Published var googleOAuthWizardServiceID: String?
-    @Published var isGoogleOAuthWizardPresented = false
 
     let client = DaemonClient(socketPath: DaemonClient.defaultSocketPath())
     @Published private(set) var workflows: [WorkflowTemplate] = []
@@ -429,7 +423,6 @@ final class CapDepAppModel: ObservableObject {
             async let statusResult = client.call(method: "app.status")
             async let setupResult = client.call(method: "setup.plan")
             async let workflowsResult = client.call(method: "workflow.templates")
-            async let googleOAuthResult = client.call(method: "setup.google.oauth_status")
             async let settingsResult = client.call(method: "settings.get")
             async let imageProfilesResult = client.call(method: "image.profiles")
             async let imageReadinessResult = client.call(method: "image.readiness")
@@ -467,7 +460,6 @@ final class CapDepAppModel: ObservableObject {
             let statusObject = try await statusResult as? [String: Any]
             let setupObject = try await setupResult as? [String: Any]
             let workflowsObject = try await workflowsResult as? [String: Any]
-            let googleOAuthObject = try await googleOAuthResult as? [String: Any]
             let settingsObject = try await settingsResult as? [String: Any]
             let imageProfilesObject = try await imageProfilesResult as? [String: Any]
             let imageReadinessObject = try await imageReadinessResult as? [String: Any]
@@ -506,16 +498,6 @@ final class CapDepAppModel: ObservableObject {
                 .map(SetupCheck.init(dictionary:))
             workflows = (workflowsObject?["templates"] as? [[String: Any]] ?? [])
                 .map(WorkflowTemplate.init(dictionary:))
-            let googleStatuses = (
-                googleOAuthObject?["services"] as? [[String: Any]] ?? []
-            ).map(GoogleOAuthStatus.init(dictionary:))
-            googleOAuthStatuses = Dictionary(
-                uniqueKeysWithValues: googleStatuses.map { ($0.serviceID, $0) },
-            )
-            googleOAuthPresets = (
-                googleOAuthObject?["presets"] as? [[String: Any]] ?? []
-            ).map(GoogleOAuthPreset.init(dictionary:))
-            gmailOAuthStatus = googleOAuthStatuses["google-gmail"] ?? GmailOAuthStatus.empty
             daemonSettings = DaemonSettings(
                 dictionary: settingsObject?["settings"] as? [String: Any] ?? [:],
             )
@@ -1705,31 +1687,6 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
-    func googleOAuthStatus(for serviceID: String) -> GoogleOAuthStatus {
-        googleOAuthStatuses[serviceID] ?? GoogleOAuthStatus(
-            dictionary: ["service_id": serviceID, "display_name": serviceID],
-        )
-    }
-
-    func presentGoogleOAuthWizard(serviceID: String? = nil) {
-        googleOAuthWizardServiceID = serviceID ?? preferredGoogleOAuthServiceID()
-        isGoogleOAuthWizardPresented = true
-    }
-
-    func dismissGoogleOAuthWizard() {
-        isGoogleOAuthWizardPresented = false
-        googleOAuthWizardServiceID = nil
-    }
-
-    func preferredGoogleOAuthServiceID() -> String {
-        for connector in connectorStatuses where connector.id.hasPrefix("google-") {
-            if connector.status != "connected" {
-                return connector.id
-            }
-        }
-        return connectorStatuses.first(where: { $0.id.hasPrefix("google-") })?.id ?? "google-gmail"
-    }
-
     func restartDaemon() async {
         guard !isRecoveringDaemon else {
             return
@@ -1747,46 +1704,6 @@ final class CapDepAppModel: ObservableObject {
             setDaemonConnection(.disconnected, detail: error.localizedDescription)
             lastError = error.localizedDescription
         }
-    }
-
-    func configureGoogleOAuth(
-        serviceID: String,
-        clientID: String,
-        clientSecret: String,
-    ) async {
-        guard !isConfiguringGoogleOAuth else {
-            return
-        }
-        isConfiguringGoogleOAuth = true
-        defer {
-            isConfiguringGoogleOAuth = false
-        }
-        do {
-            let result = try await client.call(
-                method: "setup.google.configure_oauth",
-                params: [
-                    "service_id": serviceID,
-                    "client_id": clientID,
-                    "client_secret": clientSecret,
-                ],
-            ) as? [String: Any]
-            let status = GoogleOAuthStatus(dictionary: result ?? [:])
-            googleOAuthStatuses[status.serviceID] = status
-            if status.serviceID == "google-gmail" {
-                gmailOAuthStatus = status
-            }
-            await refresh()
-        } catch {
-            lastError = error.localizedDescription
-        }
-    }
-
-    func configureGmailOAuth(clientID: String, clientSecret: String) async {
-        await configureGoogleOAuth(
-            serviceID: "google-gmail",
-            clientID: clientID,
-            clientSecret: clientSecret,
-        )
     }
 
     func updateSettings(_ settings: DaemonSettings) async {
@@ -1844,73 +1761,7 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
-    func authorizeGoogleOAuth(serviceID: String) async {
-        guard !isConfiguringGoogleOAuth else {
-            return
-        }
-        isConfiguringGoogleOAuth = true
-        defer {
-            isConfiguringGoogleOAuth = false
-        }
-        do {
-            let result = try await client.call(
-                method: "setup.google.oauth_login",
-                params: [
-                    "service_id": serviceID,
-                    "open_browser": true,
-                    "timeout_seconds": 180,
-                ],
-            ) as? [String: Any]
-            let status = GoogleOAuthStatus(dictionary: result ?? [:])
-            googleOAuthStatuses[status.serviceID] = status
-            if status.serviceID == "google-gmail" {
-                gmailOAuthStatus = status
-            }
-            await refresh()
-        } catch {
-            lastError = error.localizedDescription
-        }
-    }
-
-    func authorizeGmailOAuth() async {
-        await authorizeGoogleOAuth(serviceID: "google-gmail")
-    }
-
-    func revokeGoogleOAuth(serviceID: String) async {
-        guard !isConfiguringGoogleOAuth else {
-            return
-        }
-        isConfiguringGoogleOAuth = true
-        defer {
-            isConfiguringGoogleOAuth = false
-        }
-        do {
-            let result = try await client.call(
-                method: "setup.google.oauth_revoke",
-                params: ["service_id": serviceID],
-            ) as? [String: Any]
-            let status = GoogleOAuthStatus(dictionary: result ?? [:])
-            googleOAuthStatuses[status.serviceID] = status
-            if status.serviceID == "google-gmail" {
-                gmailOAuthStatus = status
-            }
-            await refresh()
-        } catch {
-            lastError = error.localizedDescription
-        }
-    }
-
     func runSetupAction(_ action: SetupAction) async {
-        if let serviceID = Self.serviceIDFromSetupAction(action.id),
-           action.kind == "daemon_form"
-               || action.kind == "daemon_browser_oauth"
-               || action.id.contains("configure_oauth")
-               || action.id.contains("oauth_login")
-        {
-            presentGoogleOAuthWizard(serviceID: serviceID)
-            return
-        }
-
         do {
             let result = try await client.call(
                 method: "setup.run_action",
@@ -1920,10 +1771,6 @@ final class CapDepAppModel: ObservableObject {
             // daemon method-name strings. The client renders the directive; it
             // does not interpret daemon internals.
             switch result?["client_directive"] as? String {
-            case "open_oauth_wizard":
-                let serviceID = (result?["params"] as? [String: Any])?["service_id"] as? String
-                    ?? Self.serviceIDFromSetupAction(action.id)
-                presentGoogleOAuthWizard(serviceID: serviceID)
             case "validate_config":
                 await validateConfiguration()
             case "show_log_locations":
@@ -2542,19 +2389,6 @@ final class CapDepAppModel: ObservableObject {
         } catch {
             lastError = error.localizedDescription
         }
-    }
-
-    private static func serviceIDFromSetupAction(_ actionID: String) -> String? {
-        let prefix = "setup.google."
-        guard actionID.hasPrefix(prefix) else {
-            return nil
-        }
-        let remainder = actionID.dropFirst(prefix.count)
-        guard let dot = remainder.firstIndex(of: ".") else {
-            return nil
-        }
-        let serviceID = String(remainder[..<dot])
-        return serviceID.isEmpty ? nil : serviceID
     }
 
     private func shouldRecoverDaemon(after error: Error) -> Bool {

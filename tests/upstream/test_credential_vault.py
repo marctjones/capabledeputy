@@ -24,7 +24,7 @@ def test_parse_and_lookup() -> None:
                 {
                     "server": "gmail",
                     "env": {"TOKEN": "s3cret", "OTHER": "x"},
-                    "capability_kinds": ["GMAIL_READ"],
+                    "capability_kinds": ["IMAP_READ"],
                 },
             ],
         },
@@ -80,5 +80,5 @@ def test_shipped_example_parses(tmp_path) -> None:
     p.write_text(src)
     p.chmod(0o600)
     v = load_credential_vault(p)
-    assert "gmail" in v.entries
-    assert v.refs_for("gmail") == ["gmail:GOOGLE_OAUTH_TOKEN"]
+    assert "some-api" in v.entries
+    assert v.refs_for("some-api") == ["some-api:SOME_API_KEY"]

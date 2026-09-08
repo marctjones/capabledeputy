@@ -69,7 +69,6 @@ class UpstreamAuthConfig:
     Supported types:
       - none: no auth
       - bearer: static bearer token, preferably loaded from token_env
-      - google_adc: Google Application Default Credentials bearer auth
       - oauth2: local browser authorization-code + PKCE flow with
         cached/refreshable bearer tokens
     """
@@ -78,7 +77,6 @@ class UpstreamAuthConfig:
     token: str = ""
     token_env: str = ""
     scopes: tuple[str, ...] = ()
-    quota_project_id: str = ""
     client_id: str = ""
     client_id_env: str = ""
     client_id_file: str = ""
@@ -180,14 +178,13 @@ def _parse_auth(raw: Any) -> UpstreamAuthConfig | None:
         return None
     if auth_type == "oauth":
         auth_type = "oauth2"
-    if auth_type not in {"bearer", "google_adc", "oauth2"}:
+    if auth_type not in {"bearer", "oauth2"}:
         raise ValueError(f"unsupported upstream auth.type: {auth_type}")
     return UpstreamAuthConfig(
         type=auth_type,
         token=expand_env_value(str(raw.get("token") or "")),
         token_env=str(raw.get("token_env") or ""),
         scopes=tuple(str(s) for s in (raw.get("scopes") or ())),
-        quota_project_id=str(raw.get("quota_project_id") or ""),
         client_id=expand_env_value(str(raw.get("client_id") or "")),
         client_id_env=str(raw.get("client_id_env") or ""),
         client_id_file=expand_env_value(str(raw.get("client_id_file") or "")),

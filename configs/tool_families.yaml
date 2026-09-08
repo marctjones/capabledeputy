@@ -8,8 +8,7 @@ families:
   inbox:
     purpose_handles: [inbox]
     include_kinds:
-      - GMAIL_READ
-      - GMAIL_DRAFT
+      - EXTERNAL_MAIL_DRAFT
       - IMAP_READ
       - APPLE_MAIL_READ
       - APPLE_MAIL_DRAFT

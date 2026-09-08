@@ -60,11 +60,9 @@ def foreground_chat_default_capabilities(
         (
             _make_cap(CapabilityKind.CREATE_FS, f"{resolved_home}/.capdep/work/*"),
             _make_cap(CapabilityKind.CREATE_FS, "/tmp/*"),
-            _make_cap(CapabilityKind.GMAIL_READ, "*"),
             _make_cap(CapabilityKind.IMAP_READ, "*"),
-            _make_cap(CapabilityKind.DRIVE_READ, "*"),
+            _make_cap(CapabilityKind.CLOUD_FILE_READ, "*"),
             _make_cap(CapabilityKind.CHAT_READ, "*"),
-            _make_cap(CapabilityKind.PEOPLE_READ, "*"),
             _make_cap(CapabilityKind.CALENDAR_READ, "*"),
             _make_cap(CapabilityKind.WEB_FETCH, "*"),
             _make_cap(CapabilityKind.GENERATE_IMAGE, "*"),

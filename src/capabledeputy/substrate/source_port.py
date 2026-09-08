@@ -24,7 +24,7 @@ from abc import ABC, abstractmethod
 
 
 class SourcePort(ABC):
-    """Port interface. Provider impls (Gmail, SharePoint, S3, ...)
+    """Port interface. Provider impls (SharePoint, S3, ...)
     live in spec 004."""
 
     surfaces_destination_id: bool = True
@@ -41,7 +41,7 @@ class SourcePort(ABC):
         (e.g., a resource-id resolved from a path)."""
 
 
-# Provider registry. New source substrates (gmail, sharepoint, s3, …)
+# Provider registry. New source substrates (sharepoint, s3, …)
 # add a branch here + a module implementing `SourcePort`; callers select
 # by `kind` (e.g. from daemon.yaml). The port import stays free of the
 # concrete impls (lazy import) so there is no cycle.
@@ -56,18 +56,6 @@ def get_source_port(kind: str, **kwargs: object) -> SourcePort:
         from capabledeputy.substrate.script_workspace import ScriptWorkspaceSourcePort
 
         return ScriptWorkspaceSourcePort(**kwargs)  # type: ignore[arg-type]
-    if kind in {"gmail", "google_gmail", "google-gmail"}:
-        from capabledeputy.substrate.google_source import GmailSourcePort
-
-        return GmailSourcePort(**kwargs)  # type: ignore[arg-type]
-    if kind in {"drive", "google_drive", "google-drive", "gdrive"}:
-        from capabledeputy.substrate.google_source import GoogleDriveSourcePort
-
-        return GoogleDriveSourcePort(**kwargs)  # type: ignore[arg-type]
-    if kind in {"calendar", "google_calendar", "google-calendar"}:
-        from capabledeputy.substrate.google_source import GoogleCalendarSourcePort
-
-        return GoogleCalendarSourcePort(**kwargs)  # type: ignore[arg-type]
     if kind in {"browser", "browser.current-page", "browser-current-page"}:
         from capabledeputy.substrate.active_context import BrowserCurrentPageSourcePort
 
@@ -95,9 +83,6 @@ def get_source_port(kind: str, **kwargs: object) -> SourcePort:
     known = [
         "git",
         "script-workspace",
-        "gmail",
-        "google-drive",
-        "google-calendar",
         "browser.current-page",
         "macos.frontmost-app",
         "apple-mail",

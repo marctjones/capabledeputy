@@ -35,6 +35,21 @@ if TYPE_CHECKING:
     from capabledeputy.app import App
 
 
+def _unwrap_error(exc: BaseException) -> tuple[str, str]:
+    """Describe the real failure behind an anyio TaskGroup ExceptionGroup.
+
+    `_run_turn` runs the turn body and its heartbeat watcher inside
+    `anyio.create_task_group()`; anyio reports any single child failure as
+    `BaseExceptionGroup("unhandled errors in a TaskGroup", [exc])`, which
+    otherwise reaches the turn's `error` field and hides what actually broke
+    (e.g. `SessionNotFoundError`). Groups with more than one sub-exception
+    are left as-is — there is no single "real" cause to pick.
+    """
+    if isinstance(exc, BaseExceptionGroup) and len(exc.exceptions) == 1:
+        return _unwrap_error(exc.exceptions[0])
+    return type(exc).__name__, str(exc)
+
+
 def _outcome_to_dict(outcome: Any) -> dict[str, Any]:
     return {
         "decision": outcome.decision.value,
@@ -615,15 +630,16 @@ class TurnLifecycleManager:
         )
 
     async def _finish_error(self, turn_id: str, exc: BaseException) -> None:
+        error_type, message = _unwrap_error(exc)
         async with self._lock:
             turn = self._turns[turn_id]
             self._turns[turn_id] = replace(
                 turn,
                 status="error",
-                error=f"{type(exc).__name__}: {exc}",
+                error=f"{error_type}: {message}",
                 updated_at=datetime.now(UTC),
             )
-        await self._emit(turn_id, "error", {"error_type": type(exc).__name__, "message": str(exc)})
+        await self._emit(turn_id, "error", {"error_type": error_type, "message": message})
 
     async def _emit(self, turn_id: str, event_type: str, payload: dict[str, Any]) -> None:
         async with self._lock:

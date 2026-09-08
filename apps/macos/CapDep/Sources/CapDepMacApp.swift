@@ -134,18 +134,6 @@ public struct CapDepMacApp: App {
         }
         .windowResizability(.contentSize)
 
-        Window("Google Account Setup", id: "google-oauth-wizard") {
-            GoogleOAuthWizardView()
-                .environmentObject(model)
-                .task {
-                    await model.start()
-                }
-                .onDisappear {
-                    model.dismissGoogleOAuthWizard()
-                }
-        }
-        .windowResizability(.contentSize)
-
         Window("Set Up CapDep", id: "onboarding-wizard") {
             OnboardingWizardView()
                 .environmentObject(model)
@@ -272,10 +260,6 @@ struct CapDepCommands: Commands {
             Button("First-Run Setup…") {
                 model.presentOnboarding()
                 openWindow(id: "onboarding-wizard")
-            }
-            Button("Set Up Google Account…") {
-                model.presentGoogleOAuthWizard()
-                openWindow(id: "google-oauth-wizard")
             }
             Button("Open Setup Assistant") {
                 model.selectedSection = .setup

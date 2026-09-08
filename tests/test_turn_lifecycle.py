@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 import anyio
 import pytest
@@ -46,6 +47,17 @@ class _SlowStreamingLLM:
         yield "partial "
         await anyio.sleep(5)
         yield "answer"
+
+
+class _UnreachableLLM:
+    """`session.turn.start` never validates the session id up front, so a
+    turn for an unknown session fails before ever reaching the LLM."""
+
+    _model = "unreachable"
+
+    async def respond_streaming(self, messages, tools, *, max_tokens=None):
+        raise AssertionError("LLM should not be called for an unknown session")
+        yield ""  # unreachable; keeps this an async generator function
 
 
 async def _new_session(running, intent: str = "turn lifecycle") -> str:
@@ -358,3 +370,30 @@ async def test_late_subscriber_receives_non_success_terminal_state(
                 assert "scripted startup failure" in event["data"]["payload"]["message"]
         finally:
             await events.aclose()
+
+
+async def test_task_group_error_is_unwrapped_to_real_exception(tmp_path: Path) -> None:
+    """`_run_turn` runs the turn body inside `anyio.create_task_group()`, so a
+    failure there (e.g. the session lookup in `run_turn_streaming` raising
+    `SessionNotFoundError` for a session unknown to the daemon) arrives at
+    `_finish_error` wrapped in a `BaseExceptionGroup`. The surfaced turn error
+    must be the real exception, not anyio's generic 'unhandled errors in a
+    TaskGroup' wrapper message."""
+    async with running_daemon(tmp_path) as running:
+        running.app.llm_client = _UnreachableLLM()  # type: ignore[assignment]
+        unknown_session_id = uuid4()
+        started = await running.client.call(
+            "session.turn.start",
+            {
+                "session_id": str(unknown_session_id),
+                "message": "hello",
+                "client_id": "unwrap-test",
+                "heartbeat_enabled": False,
+            },
+        )
+        turn_id = started["turn"]["id"]
+        observed = await _wait_for_status(running, turn_id, "error")
+        error = observed["turn"]["error"]
+        assert "SessionNotFoundError" in error
+        assert str(unknown_session_id) in error
+        assert "TaskGroup" not in error

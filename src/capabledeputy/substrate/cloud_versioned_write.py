@@ -10,7 +10,6 @@ closed with a clear error.
 from __future__ import annotations
 
 import hashlib
-import io
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -126,100 +125,3 @@ class S3ObjectLockVersionedWritePort:
         if not version_id:
             return None
         return f"s3-object-lock://{self.bucket}/{quote(key)}?versionId={quote(str(version_id))}"
-
-
-@dataclass(frozen=True)
-class GoogleDriveRevisionVersionedWritePort:
-    """Google Drive provider using revisions as retained prior versions."""
-
-    drive_service: Any | None = None
-    keep_forever: bool = True
-
-    def __post_init__(self) -> None:
-        if self.drive_service is None:
-            raise VersionedWritePortError(
-                "google-drive-revisions requires an injected Google Drive service",
-            )
-
-    def write(self, *, target: str, content: bytes) -> WriteResult:
-        file_id = _safe_target(target.removeprefix("google-drive:file:"))
-        prior_revision = self._latest_revision(file_id)
-        prior_handle = (
-            f"google-drive-revisions://{quote(file_id)}?revisionId={quote(prior_revision)}"
-            if prior_revision
-            else None
-        )
-        media_body = _media_upload(content)
-        assert self.drive_service is not None
-        response = (
-            self.drive_service.files()
-            .update(
-                fileId=file_id,
-                media_body=media_body,
-                fields="id,version,headRevisionId",
-            )
-            .execute()
-        )
-        if self.keep_forever:
-            revision_id = response.get("headRevisionId") or self._latest_revision(file_id)
-            if revision_id:
-                self.drive_service.revisions().update(
-                    fileId=file_id,
-                    revisionId=revision_id,
-                    body={"keepForever": True},
-                    fields="id,keepForever",
-                ).execute()
-        return WriteResult(
-            prior_version_handle=prior_handle,
-            post_state_hash=_hash_bytes(content),
-            attestation=(
-                f"google-drive-revisions:file={file_id}:"
-                f"version={response.get('version', '')}:keepForever={self.keep_forever}"
-            ),
-        )
-
-    def read_prior_version_hash(self, prior_version_handle: str) -> str | None:
-        parsed = urlparse(prior_version_handle)
-        if parsed.scheme != "google-drive-revisions":
-            return None
-        file_id = unquote(parsed.netloc or parsed.path.lstrip("/"))
-        revision_id = (parse_qs(parsed.query).get("revisionId") or [""])[0]
-        if not file_id or not revision_id:
-            return None
-        assert self.drive_service is not None
-        try:
-            response = (
-                self.drive_service.revisions()
-                .get(
-                    fileId=file_id,
-                    revisionId=revision_id,
-                    alt="media",
-                )
-                .execute()
-            )
-        except Exception:
-            return None
-        return _hash_bytes(_body_bytes(response))
-
-    def _latest_revision(self, file_id: str) -> str | None:
-        assert self.drive_service is not None
-        response = (
-            self.drive_service.revisions()
-            .list(
-                fileId=file_id,
-                fields="revisions(id,keepForever,modifiedTime)",
-            )
-            .execute()
-        )
-        revisions = response.get("revisions") or []
-        if not revisions:
-            return None
-        return str(revisions[-1].get("id") or "") or None
-
-
-def _media_upload(content: bytes) -> Any:
-    try:
-        from googleapiclient.http import MediaIoBaseUpload  # type: ignore[import-not-found]
-    except ImportError:
-        return content
-    return MediaIoBaseUpload(io.BytesIO(content), mimetype="application/octet-stream")

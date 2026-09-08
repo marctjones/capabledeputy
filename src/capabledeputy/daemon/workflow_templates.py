@@ -10,7 +10,7 @@ import yaml
 
 from capabledeputy.policy.capabilities import CapabilityKind
 
-DEFAULT_FIRST_WORKFLOW_TEMPLATE_ID = "morning-briefing"
+DEFAULT_FIRST_WORKFLOW_TEMPLATE_ID: str | None = None
 WORKFLOW_SCHEMA_VERSION = 1
 
 _REQUIRED_SCHEMA_FIELDS: frozenset[str] = frozenset(
@@ -44,10 +44,8 @@ _ALLOWED_ARTIFACT_TYPES: frozenset[str] = frozenset(
 )
 _ALLOWED_SOURCE_PORTS: frozenset[str] = frozenset(
     {
-        "gmail",
         "imap",
-        "google-calendar",
-        "google-drive",
+        "calendar",
         "browser.current-page",
         "macos.frontmost-app",
         "apple-mail",
@@ -69,48 +67,7 @@ _DEFAULT_RETENTION: dict[str, str] = {
     "audit": "durable",
 }
 
-_BUILTIN_WORKFLOWS: tuple[dict[str, Any], ...] = (
-    {
-        "id": "morning-briefing",
-        "title": "Morning Briefing",
-        "subtitle": "Calendar, inbox, notes, conflicts, and action items.",
-        "purpose_handle": "general",
-        "prompt": (
-            "Prepare my morning briefing: today's calendar conflicts, urgent messages "
-            "from the last day, and action items I still owe."
-        ),
-        "system_image": "sunrise",
-        "requires_foreground_review": False,
-        "capabilities": [
-            CapabilityKind.GMAIL_READ.value,
-            CapabilityKind.IMAP_READ.value,
-            CapabilityKind.CALENDAR_READ.value,
-        ],
-        "flow_pattern": "background_read_review",
-        "source_ports": ["gmail", "imap", "google-calendar"],
-        "artifact_types": ["research"],
-        "approval_policy": _DEFAULT_APPROVAL_POLICY,
-        "retention": _DEFAULT_RETENTION,
-    },
-    {
-        "id": "inbox-triage",
-        "title": "Inbox Triage",
-        "subtitle": "Summarize and classify messages; draft replies without sending.",
-        "purpose_handle": "inbox",
-        "prompt": (
-            "Triage my inbox into Urgent, Needs reply soon, Waiting, and FYI. "
-            "Prepare reply drafts only for items that need a response; do not send."
-        ),
-        "system_image": "tray.full",
-        "requires_foreground_review": False,
-        "capabilities": [CapabilityKind.GMAIL_READ.value, CapabilityKind.IMAP_READ.value],
-        "flow_pattern": "background_read_review",
-        "source_ports": ["gmail", "imap"],
-        "artifact_types": ["email_draft", "research"],
-        "approval_policy": _DEFAULT_APPROVAL_POLICY,
-        "retention": _DEFAULT_RETENTION,
-    },
-)
+_BUILTIN_WORKFLOWS: tuple[dict[str, Any], ...] = ()
 
 
 class WorkflowConfigError(ValueError):
@@ -179,7 +136,7 @@ def _normalize_workflow(
     return normalized
 
 
-def _load_workflow_config(path: Path) -> tuple[str, tuple[dict[str, Any], ...]]:
+def _load_workflow_config(path: Path) -> tuple[str | None, tuple[dict[str, Any], ...]]:
     if not path.is_file():
         return (
             DEFAULT_FIRST_WORKFLOW_TEMPLATE_ID,
@@ -290,7 +247,7 @@ def _normalize_retention(raw: Any) -> dict[str, str]:
     return retention
 
 
-def _workflow_catalog() -> tuple[str, tuple[dict[str, Any], ...]]:
+def _workflow_catalog() -> tuple[str | None, tuple[dict[str, Any], ...]]:
     path = _resolve_configs_dir() / "workflows.yaml"
     return _load_workflow_config(path)
 
@@ -312,7 +269,7 @@ def _public_template(template: dict[str, Any]) -> dict[str, Any]:
     return public
 
 
-def first_workflow_template_id() -> str:
+def first_workflow_template_id() -> str | None:
     first_id, _ = _workflow_catalog()
     return first_id
 
@@ -334,9 +291,12 @@ def workflow_template_by_id(template_id: str) -> dict[str, Any] | None:
     return None
 
 
-def first_workflow_template() -> dict[str, Any]:
+def first_workflow_template() -> dict[str, Any] | None:
+    """The catalog's designated starter workflow, or `None` when the
+    catalog is empty (e.g. no `configs/workflows.yaml` and no built-in
+    workflows — the daemon has no default first workflow to suggest)."""
     first_id, workflows = _workflow_catalog()
     for template in workflows:
         if template["id"] == first_id:
             return _public_template(template)
-    return _public_template(workflows[0])
+    return _public_template(workflows[0]) if workflows else None

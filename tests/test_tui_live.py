@@ -14,7 +14,6 @@ from capabledeputy.ipc.client import DaemonNotRunningError
 from capabledeputy.tui.app import (
     CapDepTUI,
     DaemonRPCWorkbenchScreen,
-    GoogleWorkspaceSetupScreen,
     WorkflowLibraryScreen,
 )
 from capabledeputy.tui.console import CapDepConsole
@@ -188,126 +187,6 @@ async def test_spectator_renders_onguard_coordination_summary(fake_daemon) -> No
                 "events": 1,
             }
         ]
-
-
-async def test_tui_google_workspace_setup_dispatches_daemon_oauth_rpcs(fake_daemon) -> None:
-    client = fake_daemon(
-        {
-            "session.list": {"sessions": []},
-            "approval.list": {"approvals": []},
-            "audit.tail": {"events": []},
-            "client.registry.list": {"clients": []},
-            "client.queue.list": {"commands": []},
-            "schedule.list": {"schedules": []},
-            "artifact.list": {"artifacts": []},
-            "client.events.list": {"events": []},
-            "setup.google.oauth_status": {
-                "services": [
-                    {
-                        "service_id": "google-gmail",
-                        "display_name": "Google Gmail",
-                        "configured": False,
-                        "client_id_configured": False,
-                        "client_secret_configured": False,
-                        "token_configured": False,
-                    }
-                ]
-            },
-            "setup.google.configure_oauth": {
-                "service_id": "google-gmail",
-                "display_name": "Google Gmail",
-                "configured": True,
-                "client_id_configured": True,
-                "client_secret_configured": True,
-                "token_configured": False,
-            },
-            "setup.google.oauth_login": {
-                "service_id": "google-gmail",
-                "display_name": "Google Gmail",
-                "configured": True,
-                "client_id_configured": True,
-                "client_secret_configured": True,
-                "token_configured": True,
-            },
-            "setup.google.oauth_revoke": {
-                "service_id": "google-gmail",
-                "display_name": "Google Gmail",
-                "configured": True,
-                "client_id_configured": True,
-                "client_secret_configured": True,
-                "token_configured": False,
-            },
-        }
-    )
-    app = CapDepTUI(poll_interval=999.0)
-    app._client = client
-    async with app.run_test() as pilot:
-        await _settle(pilot)
-        await pilot.press("w")
-        await _settle(pilot)
-
-        screen = cast(GoogleWorkspaceSetupScreen, app.screen)
-        screen.query_one("#service-id", Input).value = "google-gmail"
-        screen.query_one("#client-id", Input).value = "cid"
-        screen.query_one("#client-secret", Input).value = "secret"
-        screen.action_save_client()
-        await _settle(pilot)
-        assert screen.query_one("#client-secret", Input).value == ""
-
-        screen.action_login()
-        await _settle(pilot)
-        screen.action_revoke()
-        await _settle(pilot)
-
-    assert ("setup.google.oauth_status", {}) in client.calls
-    assert (
-        "setup.google.configure_oauth",
-        {"service_id": "google-gmail", "client_id": "cid", "client_secret": "secret"},
-    ) in client.calls
-    assert (
-        "setup.google.oauth_login",
-        {"service_id": "google-gmail", "open_browser": True, "timeout_seconds": 180},
-    ) in client.calls
-    assert ("setup.google.oauth_revoke", {"service_id": "google-gmail"}) in client.calls
-
-
-async def test_tui_google_workspace_setup_renders_status_without_secrets(fake_daemon) -> None:
-    client = fake_daemon(
-        {
-            "session.list": {"sessions": []},
-            "approval.list": {"approvals": []},
-            "audit.tail": {"events": []},
-            "client.registry.list": {"clients": []},
-            "client.queue.list": {"commands": []},
-            "schedule.list": {"schedules": []},
-            "artifact.list": {"artifacts": []},
-            "client.events.list": {"events": []},
-            "setup.google.oauth_status": {
-                "services": [
-                    {
-                        "service_id": "google-calendar",
-                        "display_name": "Google Calendar",
-                        "configured": True,
-                        "client_id_configured": True,
-                        "client_secret_configured": True,
-                        "token_configured": False,
-                        "server_yaml": "/tmp/google-calendar.yaml",
-                    }
-                ]
-            },
-        }
-    )
-    app = CapDepTUI(poll_interval=999.0)
-    app._client = client
-    async with app.run_test() as pilot:
-        await _settle(pilot)
-        await pilot.press("w")
-        await _settle(pilot)
-        status = _text(app.screen, "#google-status")
-        assert "Google Calendar" in status
-        assert "client=yes" in status
-        assert "token=no" in status
-        assert "client_secret" not in status
 
 
 async def test_tui_daemon_rpc_workbench_calls_arbitrary_daemon_method(fake_daemon) -> None:

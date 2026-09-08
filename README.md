@@ -154,8 +154,6 @@ not live in the daemon or client surfaces:
 capdep-setup list
 capdep-setup assistant-surface --apply
 capdep-setup daily-driver --self you@example.com --trusted-draft assistant@example.com
-capdep-setup google-cloud --project PROJECT_ID --services gmail,drive,calendar
-capdep-setup google-workspace --services gmail,drive,calendar
 capdep-setup images
 capdep-setup models
 capdep-setup models --apply --download
@@ -184,12 +182,6 @@ relationship groups plus draft approval patterns. It does not enable direct
 sends, generic browser scripting, generic desktop automation, or broad shell
 authority. Its JSON details include the daily-driver workflow validation report
 described in [docs/daily-driver-validation.md](docs/daily-driver-validation.md).
-
-Google account setup is preset-first in CapDepMac: users choose Gmail,
-Gmail + Calendar, or Gmail + Calendar + Drive, while the daemon keeps the
-underlying MCP services separately scoped, audited, and reloadable. Advanced
-bring-your-own Google OAuth client setup remains available; OAuth sign-in only
-proves account access and never grants CapDep action authority by itself.
 
 Native desktop Office automation is bounded by app-specific MCP servers and
 SKILL.md guidance packages. CapDep includes Apple Mail, Pages, Numbers,

@@ -186,41 +186,6 @@ def test_parse_config_without_isolation_leaves_field_none() -> None:
     assert isinstance(cfg.tool_overrides["fetch"], UpstreamToolOverride)
 
 
-def test_parse_config_streamable_http_with_google_adc_auth() -> None:
-    raw = {
-        "upstream_servers": [
-            {
-                "name": "google-gmail",
-                "transport": "streamable_http",
-                "url": "https://gmailmcp.googleapis.com/mcp/v1",
-                "auth": {
-                    "type": "google_adc",
-                    "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
-                },
-                "headers": {"X-Test": "ok"},
-                "inherent_labels": ["confidential.personal", "untrusted.user_input"],
-                "tool_overrides": {
-                    "search_threads": {
-                        "capability_kind": "GMAIL_READ",
-                        "additional_labels": ["confidential.personal"],
-                    },
-                },
-            },
-        ],
-    }
-    [cfg] = parse_config(raw)
-    assert cfg.transport == "streamable_http"
-    assert cfg.url == "https://gmailmcp.googleapis.com/mcp/v1"
-    assert cfg.command == ()
-    assert cfg.auth is not None
-    assert cfg.auth.type == "google_adc"
-    assert cfg.auth.scopes == ("https://www.googleapis.com/auth/gmail.readonly",)
-    assert cfg.headers == {"X-Test": "ok"}
-    assert any(tag.category == "personal" for tag in cfg.inherent_tags.a)
-    assert cfg.tool_overrides["search_threads"].capability_kind is not None
-    assert cfg.tool_overrides["search_threads"].capability_kind.value == "GMAIL_READ"
-
-
 def test_parse_config_streamable_http_with_oauth2_auth() -> None:
     raw = {
         "upstream_servers": [

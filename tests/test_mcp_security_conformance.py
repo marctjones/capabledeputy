@@ -152,8 +152,7 @@ def test_conformance_admin_and_control_mcp_surfaces_are_separated() -> None:
     control_tools = discover_control_tools()
 
     assert {tool.name for tool in admin_tools} >= {
-        "google_configure_oauth_client",
-        "google_oauth_login",
+        "setup_status",
     }
     assert {tool.name for tool in control_tools} >= {
         "session_new",

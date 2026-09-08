@@ -21,11 +21,6 @@
 # global env, the audit log, and the LLM context.
 
 credentials:
-  - server: gmail
-    env:
-      GOOGLE_OAUTH_TOKEN: "REPLACE-WITH-REAL-TOKEN"
-    capability_kinds: [GMAIL_READ, SEND_EMAIL]
-
   - server: some-api
     env:
       SOME_API_KEY: "REPLACE-WITH-REAL-KEY"

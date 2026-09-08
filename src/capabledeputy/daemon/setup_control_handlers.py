@@ -17,11 +17,6 @@ from capabledeputy.app import App
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.cli._managed_config import user_config_dir
 from capabledeputy.cli.setup_domains import OFFICE_AUTOMATION_APPS
-from capabledeputy.daemon.google_gmail_setup import (
-    GOOGLE_GMAIL_SERVER,
-    GOOGLE_OAUTH_SERVICES,
-    google_oauth_status,
-)
 from capabledeputy.daemon.handlers import Handler
 from capabledeputy.daemon.settings_store import update_settings
 from capabledeputy.policy.bindings import (
@@ -59,18 +54,6 @@ def make_setup_control_handlers(
                 "Run config.log_locations and open the returned path in the client.",
                 directive="show_log_locations",
             )
-        if action_id in {"google_gmail.configure_oauth", "setup.google_gmail.configure_oauth"}:
-            return _native_action(
-                "setup.google_gmail.configure_oauth",
-                "Show the Gmail OAuth client form; the daemon stores secrets.",
-                directive="open_oauth_wizard",
-            )
-        if action_id.startswith("setup.google.") and action_id.endswith(".configure_oauth"):
-            return _native_action(
-                "setup.google.configure_oauth",
-                "Show the Google OAuth client form; the daemon stores secrets.",
-                directive="open_oauth_wizard",
-            )
         if action_id == "source_binding.list":
             return {
                 "action_id": action_id,
@@ -78,35 +61,6 @@ def make_setup_control_handlers(
                 "kind": "client_navigation",
                 "section": "trust",
                 "enabled": True,
-            }
-        if action_id in {"google_gmail.oauth_login", "setup.google_gmail.oauth_login"}:
-            status = google_oauth_status(GOOGLE_GMAIL_SERVER)
-            return {
-                "action_id": action_id,
-                "client_directive": "open_oauth_wizard",
-                "kind": "daemon_rpc",
-                "method": "setup.google_gmail.oauth_login",
-                "enabled": bool(
-                    status["client_id_configured"] and status["client_secret_configured"],
-                ),
-                "params": {"open_browser": True, "timeout_seconds": 180},
-            }
-        if action_id.startswith("setup.google.") and action_id.endswith(".oauth_login"):
-            service_id = _service_id_from_action(action_id)
-            status = google_oauth_status(service_id)
-            return {
-                "action_id": action_id,
-                "client_directive": "open_oauth_wizard",
-                "kind": "daemon_rpc",
-                "method": "setup.google.oauth_login",
-                "enabled": bool(
-                    status["client_id_configured"] and status["client_secret_configured"],
-                ),
-                "params": {
-                    "service_id": service_id,
-                    "open_browser": True,
-                    "timeout_seconds": 180,
-                },
             }
         if action_id in {
             "macos.automation_settings",
@@ -124,19 +78,8 @@ def make_setup_control_handlers(
         raise ValueError(f"unknown setup action: {action_id}")
 
     async def connector_status(params: dict[str, Any]) -> dict[str, Any]:
-        status_map = getattr(getattr(app, "upstream_manager", None), "server_status", {}) or {}
-        upstream_names = {getattr(status, "name", "") for status in status_map.values()}
         return {
-            "connectors": [
-                _google_connector(
-                    service_id,
-                    service.display_name,
-                    google_oauth_status(service_id),
-                    upstream_names,
-                )
-                for service_id, service in GOOGLE_OAUTH_SERVICES.items()
-            ]
-            + [_office_connector(app_info) for app_info in OFFICE_AUTOMATION_APPS],
+            "connectors": [_office_connector(app_info) for app_info in OFFICE_AUTOMATION_APPS],
         }
 
     async def runtime_status(params: dict[str, Any]) -> dict[str, Any]:
@@ -310,55 +253,6 @@ def _native_action(method: str, detail: str, *, directive: str) -> dict[str, Any
     }
 
 
-def _google_connector(
-    connector_id: str,
-    name: str,
-    status: dict[str, Any],
-    upstream_names: set[str],
-) -> dict[str, Any]:
-    if status["token_configured"] and connector_id in upstream_names:
-        state = "connected"
-        detail = "OAuth token exists and upstream MCP server is loaded."
-    elif status["token_configured"]:
-        state = "restart_needed"
-        detail = "OAuth token exists; restart daemon to load the MCP server."
-    elif status["client_id_configured"] and status["client_secret_configured"]:
-        state = "reauth_needed"
-        detail = "OAuth client exists; browser authorization is still needed."
-    else:
-        state = "missing_credentials"
-        detail = "OAuth client ID and secret are not configured."
-    return {
-        "id": connector_id,
-        "name": name,
-        "type": "oauth_mcp",
-        "status": state,
-        "detail": detail,
-        "actions": [
-            {
-                "id": f"setup.google.{connector_id}.configure_oauth",
-                "label": "Save OAuth Client",
-                "kind": "daemon_form",
-                "enabled": True,
-            },
-            {
-                "id": f"setup.google.{connector_id}.oauth_login",
-                "label": f"Authorize {name.removeprefix('Google ')}",
-                "kind": "daemon_browser_oauth",
-                "enabled": bool(
-                    status["client_id_configured"] and status["client_secret_configured"],
-                ),
-            },
-            {
-                "id": f"setup.google.{connector_id}.oauth_revoke",
-                "label": "Revoke Token",
-                "kind": "daemon_rpc",
-                "enabled": bool(status["token_configured"]),
-            },
-        ],
-    }
-
-
 def _office_connector(app_info: dict[str, str]) -> dict[str, Any]:
     return {
         "id": app_info["id"],
@@ -372,16 +266,6 @@ def _office_connector(app_info: dict[str, str]) -> dict[str, Any]:
         ),
         "actions": [_open_macos_automation_action()],
     }
-
-
-def _service_id_from_action(action_id: str) -> str:
-    parts = action_id.split(".")
-    if len(parts) < 4:
-        raise ValueError(f"unknown setup action: {action_id}")
-    service_id = parts[2]
-    if service_id not in GOOGLE_OAUTH_SERVICES:
-        raise ValueError(f"unknown Google OAuth service: {service_id}")
-    return service_id
 
 
 def _open_macos_automation_action() -> dict[str, Any]:

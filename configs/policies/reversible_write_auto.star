@@ -8,7 +8,7 @@
 _WRITE_KINDS = [
     "CREATE_FS",
     "MODIFY_FS",
-    "GMAIL_DRAFT",
+    "EXTERNAL_MAIL_DRAFT",
     "APPLE_MAIL_DRAFT",
     "OUTLOOK_DRAFT",
     "PAGES_EDIT",

@@ -1,4 +1,4 @@
-"""Regression tests for the macOS/Google personal-assistant preset."""
+"""Regression tests for the macOS personal-assistant preset."""
 
 from __future__ import annotations
 
@@ -28,11 +28,12 @@ def _cap_pairs(purpose_id: str) -> set[tuple[CapabilityKind, str]]:
     return pairs
 
 
-def test_personal_assistant_daemon_uses_official_google_and_macos_servers() -> None:
+def test_personal_assistant_daemon_uses_bundled_and_macos_servers() -> None:
     configs = load_config_file(_PRESET / "daemon.yaml")
     names = {config.name for config in configs}
 
     assert "gws" not in names
+    assert not any(name.startswith("google-") for name in names)
     assert {
         "bundled-apple-mail",
         "bundled-keynote",
@@ -42,32 +43,8 @@ def test_personal_assistant_daemon_uses_official_google_and_macos_servers() -> N
         "bundled-outlook",
         "bundled-word",
         "bundled-powerpoint",
-        "google-gmail",
-        "google-drive",
-        "google-calendar",
-        "google-chat",
-        "google-people",
     } <= names
     assert all(config.strict is True for config in configs)
-
-    gmail = next(config for config in configs if config.name == "google-gmail")
-    assert gmail.transport == "streamable_http"
-    assert gmail.auth is not None
-    assert gmail.auth.type == "oauth2"
-    assert gmail.auth.client_id_env == "GOOGLE_MCP_CLIENT_ID"
-    assert "SEND_EMAIL" in gmail.disabled_kinds
-    assert gmail.tool_overrides["create_draft"].capability_kind == CapabilityKind.GMAIL_DRAFT
-    assert gmail.tool_overrides["create_draft"].target_arg == "to"
-
-    calendar = next(config for config in configs if config.name == "google-calendar")
-    assert (
-        calendar.tool_overrides["create_event"].target_template
-        == "gcal://calendar/{calendar_id}/events/attendees/{attendees}"
-    )
-    assert (
-        calendar.tool_overrides["update_event"].target_template
-        == "gcal://calendar/{calendar_id}/event/{event_id}/attendees/{attendees}"
-    )
 
     apple_mail = next(config for config in configs if config.name == "bundled-apple-mail")
     assert apple_mail.tool_overrides["apple_mail.create_draft"].target_arg == "to"
@@ -107,6 +84,24 @@ def test_personal_assistant_daemon_uses_official_google_and_macos_servers() -> N
         == CapabilityKind.POWERPOINT_PRESENT
     )
 
+    # A tool_override with no target_arg/target_template falls back to
+    # `args["target"]` (adapter.py), which fs/git/memory/fetch tools never
+    # set — the capability check then scopes against an empty target, so a
+    # path-scoped grant (e.g. the foreground chat defaults' READ_FS on
+    # `~/Desktop/*`) can never match and every call is silently denied.
+    fs = next(config for config in configs if config.name == "bundled-fs")
+    for tool in ("fs.read", "fs.list", "fs.create", "fs.write", "fs.delete"):
+        assert fs.tool_overrides[tool].target_arg == "path", tool
+    fetch = next(config for config in configs if config.name == "bundled-fetch")
+    assert fetch.tool_overrides["fetch.get"].target_arg == "url"
+    git = next(config for config in configs if config.name == "bundled-git")
+    for tool in ("git.status", "git.log", "git.diff", "git.show", "git.branch_list"):
+        assert git.tool_overrides[tool].target_arg == "repo_path", tool
+    memory = next(config for config in configs if config.name == "bundled-memory")
+    for tool in ("memory.create", "memory.read", "memory.update", "memory.delete"):
+        assert memory.tool_overrides[tool].target_arg == "key", tool
+    assert memory.tool_overrides["memory.list"].target_arg == "prefix"
+
 
 def test_personal_assistant_enables_conservative_starlark_inspectors() -> None:
     raw = yaml.safe_load((_PRESET / "daemon.yaml").read_text(encoding="utf-8"))
@@ -138,7 +133,7 @@ def test_personal_assistant_enables_conservative_starlark_inspectors() -> None:
     ]
 
 
-def test_personal_assistant_purposes_are_macos_google_and_apple_ready() -> None:
+def test_personal_assistant_purposes_are_macos_and_apple_ready() -> None:
     combined = (
         (_PRESET / "purposes.yaml").read_text(encoding="utf-8")
         + "\n"
@@ -150,8 +145,7 @@ def test_personal_assistant_purposes_are_macos_google_and_apple_ready() -> None:
     general = _cap_pairs("general")
     assert (CapabilityKind.READ_FS, "/Users/*/Documents/**") in general
     assert (CapabilityKind.READ_FS, "/Users/*/Documents/GitHub/**") in general
-    assert (CapabilityKind.GMAIL_READ, "*") in general
-    assert (CapabilityKind.DRIVE_READ, "*") in general
+    assert (CapabilityKind.CLOUD_FILE_READ, "*") in general
     assert (CapabilityKind.APPLE_MAIL_READ, "*") in general
     assert (CapabilityKind.OUTLOOK_READ, "*") in general
     assert (CapabilityKind.PAGES_READ, "*") in general
@@ -161,17 +155,17 @@ def test_personal_assistant_purposes_are_macos_google_and_apple_ready() -> None:
     assert (CapabilityKind.MACOS_CLIPBOARD_READ, "*") in general
 
     inbox = _cap_pairs("inbox")
-    assert (CapabilityKind.GMAIL_DRAFT, "*") in inbox
+    assert (CapabilityKind.EXTERNAL_MAIL_DRAFT, "*") in inbox
+    assert (CapabilityKind.IMAP_READ, "*") in inbox
     assert (CapabilityKind.APPLE_MAIL_DRAFT, "*") in inbox
     assert (CapabilityKind.OUTLOOK_DRAFT, "*") in inbox
-    assert (CapabilityKind.PEOPLE_READ, "*") in inbox
+    assert (CapabilityKind.CLOUD_FILE_READ, "*") in inbox
 
     calendar = _cap_pairs("calendar")
     assert (CapabilityKind.CALENDAR_READ, "*") in calendar
     assert (CapabilityKind.CREATE_CAL, "*") in calendar
     assert (CapabilityKind.MODIFY_CAL, "*") in calendar
-    assert (CapabilityKind.GMAIL_READ, "*") in calendar
-    assert (CapabilityKind.DRIVE_READ, "*") in calendar
+    assert (CapabilityKind.CLOUD_FILE_READ, "*") in calendar
 
     writing = _cap_pairs("writing")
     assert (CapabilityKind.PAGES_EDIT, "*") in writing
@@ -194,12 +188,7 @@ def test_personal_assistant_source_bindings_cover_service_uri_schemes() -> None:
         bindings.resolve("file:///Users/marc/Documents/GitHub/capdep/README.md").category == "code"
     )
     assert bindings.resolve("file:///Users/marc/Desktop/todo.txt").category == "personal"
-    assert bindings.resolve("gmail://thread/123").category == "email"
     assert bindings.resolve("imap://inbox/message/123").category == "email"
-    assert bindings.resolve("gdrive://file/abc").category == "personal"
-    assert bindings.resolve("gcal://primary/event/abc").category == "personal"
-    assert bindings.resolve("gchat://spaces/abc/messages/def").category == "work"
-    assert bindings.resolve("people://contacts/abc").category == "personal"
     assert bindings.resolve("applemail://inbox/message/123").category == "email"
     assert bindings.resolve("outlook://accounts").category == "email"
     assert bindings.resolve("pages://frontmost").category == "personal"

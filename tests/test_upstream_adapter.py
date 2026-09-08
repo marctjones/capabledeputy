@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import Any
 
 import mcp.types as mcp_types
-import pytest
 from mcp.server.lowlevel import Server
 from mcp.shared.memory import create_connected_server_and_client_session
 
@@ -106,7 +105,7 @@ async def test_register_tools_creates_namespaced_entries() -> None:
 async def test_disabled_tools_are_never_registered() -> None:
     """Operator hard-disable: a tool in `disabled_tools` is refused even
     when an override (or inference) would otherwise classify it. This is
-    how outbound Gmail send is forbidden — it never enters the registry,
+    how an outbound-send tool is forbidden — it never enters the registry,
     so the planner can't propose it and no grant can enable it."""
     server = _build_fake_server()
     registry = ToolRegistry()
@@ -188,39 +187,6 @@ async def test_upstream_override_controls_policy_target_extraction() -> None:
         registry.get("fakefs.fetch").extract_target({"query": "capdep"})
         == "https://search.example/capdep"
     )
-
-
-async def test_gws_config_disables_outbound_send() -> None:
-    """End-to-end config check: the shipped Google Workspace config
-    declares the Gmail send tools as disabled, so they can never register."""
-    from pathlib import Path
-
-    from capabledeputy.upstream.config import load_config_file
-
-    repo = Path(__file__).resolve().parents[1]
-    cfg_path = repo / "configs" / "google-workspace-local.yaml"
-    if not cfg_path.is_file():
-        # google-workspace-local.yaml is the operator's own instance config
-        # (gitignored); absent in a clean checkout / CI. The disable LOGIC is
-        # covered by test_managed_gws_block_disables_send + test_email_kinds.
-        pytest.skip("google-workspace-local.yaml (local-only, gitignored) not present")
-    cfg = load_config_file(cfg_path)[0]
-    assert "send_gmail_message" in cfg.disabled_tools
-    assert "send_gmail_draft" in cfg.disabled_tools
-    # Name-independent guard: no SEND_EMAIL tool can register at all.
-    assert "SEND_EMAIL" in cfg.disabled_kinds
-
-
-async def test_managed_gws_block_disables_send() -> None:
-    """The gworkspace-setup managed block forbids SEND_EMAIL, so a re-run
-    of setup can never (re-)enable outbound Gmail."""
-    import yaml
-
-    from capabledeputy.cli._managed_config import GWORKSPACE_BLOCK_BODY
-
-    parsed = yaml.safe_load(GWORKSPACE_BLOCK_BODY)
-    gws = parsed[0]
-    assert "SEND_EMAIL" in gws.get("disabled_kinds", [])
 
 
 async def test_imap_configs_disable_outbound_send() -> None:

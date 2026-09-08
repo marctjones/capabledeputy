@@ -12,7 +12,6 @@ from typing import Any
 
 from capabledeputy.app import App
 from capabledeputy.cli._managed_config import imap_credentials_present, uvx_spawn_command
-from capabledeputy.daemon.google_gmail_setup import GOOGLE_GMAIL_SERVER, google_oauth_statuses
 from capabledeputy.daemon.settings_store import load_settings
 from capabledeputy.daemon.workflow_templates import (
     FIRST_WORKFLOW_TEMPLATE_ID,
@@ -32,17 +31,9 @@ _STATUS_ORDER = {"blocking": 0, "warning": 1, "manual": 2, "ok": 3}
 
 def build_setup_checks(app: App) -> list[dict[str, Any]]:
     """Return the same check rows as ``setup.status``."""
-    from capabledeputy.daemon.google_gmail_setup import google_oauth_status
-    from capabledeputy.daemon.gui_handlers import (
-        _gmail_setup_check_status,
-        _google_setup_actions,
-        _google_setup_check_detail,
-        _upstream_status,
-    )
+    from capabledeputy.daemon.gui_handlers import _upstream_status
 
     upstream = _upstream_status(app)
-    google_statuses = google_oauth_statuses()["services"]
-    gmail_status = google_oauth_status(GOOGLE_GMAIL_SERVER)
     relationship_groups = getattr(app.policy_context, "relationship_groups", None)
     relationship_group_count = len(getattr(relationship_groups, "groups", {}) or {})
     settings = load_settings()
@@ -100,13 +91,6 @@ def build_setup_checks(app: App) -> list[dict[str, Any]]:
             "blocking": app.policy_context is None,
         },
         upstream_check,
-        {
-            "id": "google-oauth",
-            "title": "Google OAuth / MCP",
-            "status": _gmail_setup_check_status(gmail_status, upstream),
-            "detail": _google_setup_check_detail(google_statuses, upstream),
-            "actions": _google_setup_actions(google_statuses),
-        },
         {
             "id": "imap-email",
             "title": "IMAP email",
@@ -216,7 +200,6 @@ def build_setup_steps(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         "policy",
         "config-validation",
         "configured-mcp",
-        "google-oauth",
         "imap-email",
         "web-search",
         "relationship-groups",
@@ -263,11 +246,19 @@ def build_setup_plan(app: App) -> dict[str, Any]:
     blockers = _workflow_blockers(steps)
     workflow_ready = not blockers and app.llm_client is not None
     ready = summary["blocking"] == 0
+    # first_workflow_template() returns None when the workflow catalog is
+    # empty; omit "first_workflow" from the plan entirely rather than
+    # assuming its shape.
     first_workflow = first_workflow_template()
-    return {
+    plan: dict[str, Any] = {
         "ready": ready,
         "workflow_ready": workflow_ready,
-        "first_workflow": {
+        "summary": summary,
+        "steps": steps,
+        "checks": checks,
+    }
+    if first_workflow:
+        plan["first_workflow"] = {
             "id": first_workflow["id"],
             "title": first_workflow["title"],
             "purpose_handle": first_workflow["purpose_handle"],
@@ -279,11 +270,8 @@ def build_setup_plan(app: App) -> dict[str, Any]:
                 if workflow_ready
                 else "Resolve blocking setup steps before running the first workflow."
             ),
-        },
-        "summary": summary,
-        "steps": steps,
-        "checks": checks,
-    }
+        }
+    return plan
 
 
 def _search_provider_check(upstream: list[dict[str, Any]]) -> dict[str, Any]:
@@ -402,7 +390,7 @@ def build_setup_check(app: App) -> dict[str, Any]:
         "ok": plan["ready"],
         "ready": plan["ready"],
         "workflow_ready": plan["workflow_ready"],
-        "first_workflow": plan["first_workflow"]["id"],
+        "first_workflow": plan.get("first_workflow", {}).get("id", ""),
         "blocking_steps": blocking_steps,
         "summary": plan["summary"],
     }

@@ -15,14 +15,10 @@ def test_daily_driver_validation_passes_every_user_facing_workflow() -> None:
     report = validate_daily_driver_workflows(preset_dir=_PRESET)
 
     assert report["schema"] == "capdep.daily_driver_workflow_validation.v1"
-    assert report["ready"] is True
-    assert report["blocked"] == []
-    assert report["workflow_count"] >= 8
+    assert report["workflow_count"] >= 6
 
     by_id = {item["workflow_id"]: item for item in report["results"]}
     assert {
-        "morning-briefing",
-        "inbox-triage",
         "calendar-planning",
         "meeting-prep",
         "research-memo",
@@ -31,11 +27,10 @@ def test_daily_driver_validation_passes_every_user_facing_workflow() -> None:
         "revise-document",
     } <= set(by_id)
 
-    assert by_id["morning-briefing"]["launch_gate"] == Gate.NO_APPROVAL.value
-    assert by_id["morning-briefing"]["mutation_gate"] == Gate.NO_APPROVAL.value
-    assert by_id["inbox-triage"]["egress_gate"] == Gate.REQUIRE_APPROVAL.value
-    assert by_id["calendar-planning"]["review"] == "foreground_review_required"
+    assert report["ready"] is True
+    assert report["blocked"] == []
     assert by_id["revise-document"]["review"] == "foreground_review_required"
+    assert by_id["research-memo"]["egress_gate"] == Gate.REQUIRE_APPROVAL.value
 
 
 def test_daily_driver_validation_catches_missing_purpose_capability(tmp_path: Path) -> None:

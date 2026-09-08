@@ -115,7 +115,7 @@ _PROMPTABLE_FIRST_USE_KINDS: frozenset[CapabilityKind] = frozenset(
         CapabilityKind.MACOS_APP_CONTROL,
         CapabilityKind.MACOS_CLIPBOARD_WRITE,
         CapabilityKind.APPLE_MAIL_DRAFT,
-        CapabilityKind.GMAIL_DRAFT,
+        CapabilityKind.EXTERNAL_MAIL_DRAFT,
         CapabilityKind.KEYNOTE_PRESENT,
         CapabilityKind.PAGES_EDIT,
         CapabilityKind.PAGES_EXPORT,

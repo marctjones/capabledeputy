@@ -165,7 +165,7 @@ def test_visible_tools_aligns_with_dispatch_capability_matching() -> None:
         ToolDefinition(
             name="drive.read",
             description="read drive",
-            capability_kind=CapabilityKind.DRIVE_READ,
+            capability_kind=CapabilityKind.CLOUD_FILE_READ,
             handler=_handler,
             target_arg="path",
             operations=(Operation(EffectClass.FETCH, subtype="drive.read"),),
@@ -179,7 +179,7 @@ def test_visible_tools_aligns_with_dispatch_capability_matching() -> None:
         capability_set=frozenset({Capability(kind=CapabilityKind.READ_FS, pattern="*")}),
     )
     assert Capability(kind=CapabilityKind.READ_FS, pattern="*").matches(
-        CapabilityKind.DRIVE_READ,
+        CapabilityKind.CLOUD_FILE_READ,
         "doc",
     )
     visible_names = [t.name for t in visible_tools(registry, session, ExecutionMode.TURN_LEVEL)]

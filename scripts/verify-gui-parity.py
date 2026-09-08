@@ -40,7 +40,6 @@ GUI_METHODS: tuple[tuple[str, dict[str, Any]], ...] = (
     ("artifact.list", {}),
     ("client.events.list", {"limit": 10}),
     ("client.config.list", {}),
-    ("setup.google.oauth_status", {}),
     ("macos.frontmost_context", {}),
 )
 

@@ -25,7 +25,7 @@ def _has_group(action, group_ids):
     return False
 
 def _low_friction_draft(action, session):
-    if action["kind"] not in ["GMAIL_DRAFT", "APPLE_MAIL_DRAFT", "OUTLOOK_DRAFT"]:
+    if action["kind"] not in ["EXTERNAL_MAIL_DRAFT", "APPLE_MAIL_DRAFT", "OUTLOOK_DRAFT"]:
         return False
     if _has_high_tier(session):
         return False
@@ -55,7 +55,7 @@ def inspect(action, session, proposed_outcome):
         "MACOS_CLIPBOARD_WRITE",
         "APPLE_MAIL_DRAFT",
         "OUTLOOK_DRAFT",
-        "GMAIL_DRAFT",
+        "EXTERNAL_MAIL_DRAFT",
         "KEYNOTE_PRESENT",
         "POWERPOINT_PRESENT",
         "PAGES_EDIT",

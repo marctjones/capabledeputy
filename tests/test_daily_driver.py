@@ -38,17 +38,14 @@ upstream_servers:
     inherent_labels: [untrusted.external]
     tool_overrides:
       search.web: {capability_kind: WEB_FETCH, target_arg: query}
-  - name: google-gmail
-    disabled_kinds: [SEND_EMAIL]
+  - name: bundled-outlook
     tool_overrides:
-      gmail.search: {capability_kind: GMAIL_READ}
-      gmail.create_draft: {capability_kind: GMAIL_DRAFT, target_arg: to}
-  - name: google-calendar
+      outlook.read: {capability_kind: OUTLOOK_READ}
+      outlook.create_draft: {capability_kind: OUTLOOK_DRAFT, target_arg: to}
+  - name: bundled-apple-mail
     tool_overrides:
-      calendar.read: {capability_kind: CALENDAR_READ}
-      calendar.create: {capability_kind: CREATE_CAL, target_template: "gcal://{calendar_id}/{event_id}"}
-      calendar.update: {capability_kind: MODIFY_CAL, target_template: "gcal://{calendar_id}/{event_id}"}
-      calendar.delete: {capability_kind: DELETE_CAL, target_template: "gcal://{calendar_id}/{event_id}"}
+      apple_mail.read: {capability_kind: APPLE_MAIL_READ}
+      apple_mail.create_draft: {capability_kind: APPLE_MAIL_DRAFT, target_arg: to}
 """,
         encoding="utf-8",
     )
@@ -86,8 +83,8 @@ def test_daily_driver_readiness_reports_available_degraded_and_disabled(tmp_path
 
     assert by_id["local-files"].status == "available"
     assert by_id["web-search-fetch"].status == "available"
-    assert by_id["gmail"].status == "available"
-    assert by_id["calendar"].status == "available"
+    assert by_id["outlook"].status == "available"
+    assert by_id["apple-mail"].status == "available"
     assert by_id["direct-send"].status == "disabled_by_policy"
     assert by_id["browser"].status == "optional_missing"
     assert summary["ready"] is True
@@ -110,8 +107,8 @@ def test_approval_preview_and_audit_payload_redact_secrets() -> None:
     preview = approval_preview(
         action="SEND_EMAIL",
         target="client@example.com",
-        tool="gmail.create_draft",
-        capability="GMAIL_DRAFT",
+        tool="outlook.create_draft",
+        capability="EXTERNAL_MAIL_DRAFT",
         labels=("confidential.personal",),
         payload="subject\nbody access_token=abc123 sk-abcdefghijklmnopqrstuvwxyz",
     )
@@ -145,7 +142,11 @@ def test_setup_daily_driver_dry_run_does_not_write(tmp_path: Path) -> None:
     assert result.apply is False
     assert result.status == "dry_run"
     assert result.details["readiness"]["ready"] is True
+    assert result.details["workflow_validation"]["schema"] == (
+        "capdep.daily_driver_workflow_validation.v1"
+    )
     assert result.details["workflow_validation"]["ready"] is True
+    assert result.details["workflow_validation"]["blocked"] == []
     assert "me@example.com" in result.details["relationship_groups_yaml"]
     assert not output.exists()
 

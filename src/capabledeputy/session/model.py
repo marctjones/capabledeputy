@@ -14,6 +14,7 @@ from enum import StrEnum
 from typing import Any, Self
 from uuid import UUID, uuid4
 
+from capabledeputy.observability.structured_log import log_event
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import AxisD, LabelState
 
@@ -255,6 +256,49 @@ class DeclassEvent:
         )
 
 
+def _load_capability_set(raw: Any, *, session_id: str) -> frozenset[Capability]:
+    """Deserialize a persisted capability set, dropping (not crashing on)
+    any entry whose kind no longer exists — e.g. a capability kind
+    retired or renamed by a later release. Losing a stale grant only
+    reduces a session's authority (fail-closed); refusing to load the
+    session at all would take down the whole daemon for every operator
+    who ever held that grant."""
+    caps: set[Capability] = set()
+    for c in raw:
+        try:
+            caps.add(Capability.from_dict(c))
+        except ValueError as e:
+            # UnknownKindError (from the `kind` field) is a ValueError
+            # subclass; a retired kind in `revoked_by` raises a plain
+            # ValueError from CapabilityKind(k) directly. Either way,
+            # drop just this one capability rather than the whole session.
+            log_event(
+                "warning",
+                "session.capability_dropped",
+                session_id=session_id,
+                kind=c.get("kind"),
+                reason=str(e),
+            )
+    return frozenset(caps)
+
+
+def _load_used_kinds(raw: Any, *, session_id: str) -> frozenset[CapabilityKind]:
+    """Same tolerance as `_load_capability_set`, for the `used_kinds`
+    revocation-tracking set."""
+    kinds: set[CapabilityKind] = set()
+    for k in raw:
+        try:
+            kinds.add(CapabilityKind(k))
+        except ValueError:
+            log_event(
+                "warning",
+                "session.used_kind_dropped",
+                session_id=session_id,
+                kind=k,
+            )
+    return frozenset(kinds)
+
+
 @dataclass(frozen=True)
 class Session:
     id: UUID
@@ -416,7 +460,7 @@ class Session:
             id=UUID(d["id"]),
             parent=UUID(d["parent"]) if d.get("parent") else None,
             status=SessionStatus(d["status"]),
-            capability_set=frozenset(Capability.from_dict(c) for c in d["capability_set"]),
+            capability_set=_load_capability_set(d["capability_set"], session_id=d["id"]),
             history=tuple(Turn.from_dict(t) for t in d["history"]),
             declassification_log=tuple(
                 DeclassEvent.from_dict(de) for de in d["declassification_log"]
@@ -427,7 +471,7 @@ class Session:
             intent=d.get("intent"),
             tool_aliasing=bool(d.get("tool_aliasing", False)),
             prefer_programmatic=bool(d.get("prefer_programmatic", False)),
-            used_kinds=frozenset(CapabilityKind(k) for k in d.get("used_kinds", ())),
+            used_kinds=_load_used_kinds(d.get("used_kinds", ()), session_id=d["id"]),
             cap_uses={
                 aid: tuple(datetime.fromisoformat(ts) for ts in stamps)
                 for aid, stamps in d.get("cap_uses", {}).items()

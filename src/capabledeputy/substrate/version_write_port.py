@@ -53,11 +53,5 @@ def get_versioned_write_port(kind: str, **kwargs: object) -> VersionedWritePort:
         )
 
         return S3ObjectLockVersionedWritePort(**kwargs)  # type: ignore[arg-type]
-    if kind in {"google-drive", "google-drive-revisions", "gdrive-revisions"}:
-        from capabledeputy.substrate.cloud_versioned_write import (
-            GoogleDriveRevisionVersionedWritePort,
-        )
-
-        return GoogleDriveRevisionVersionedWritePort(**kwargs)  # type: ignore[arg-type]
-    known = ["git", "s3-object-lock", "google-drive-revisions"]
+    known = ["git", "s3-object-lock"]
     raise ValueError(f"unknown versioned-write provider {kind!r}; known: {known}")

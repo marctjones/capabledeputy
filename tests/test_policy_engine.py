@@ -30,7 +30,7 @@ _GLOB_CAPABILITIES: frozenset[Capability] = frozenset(
         # gate. Tests of the gate itself live in test_destructive_ops.py.
         Capability(kind=CapabilityKind.WRITE_FS, pattern="*", allows_destructive=True),
         Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*"),
-        Capability(kind=CapabilityKind.GMAIL_DRAFT, pattern="*"),
+        Capability(kind=CapabilityKind.EXTERNAL_MAIL_DRAFT, pattern="*"),
         Capability(kind=CapabilityKind.SEND_MESSAGE, pattern="*"),
         Capability(kind=CapabilityKind.BROWSER_AUTOMATION, pattern="*"),
         Capability(kind=CapabilityKind.MACOS_AUTOMATION, pattern="*", allows_destructive=True),
@@ -59,7 +59,7 @@ def _action(kind: CapabilityKind) -> Action:
         return Action(kind=kind, target="amazon", amount=50)
     if kind == CapabilityKind.SEND_EMAIL:
         return Action(kind=kind, target="alice@example.com")
-    if kind == CapabilityKind.GMAIL_DRAFT:
+    if kind == CapabilityKind.EXTERNAL_MAIL_DRAFT:
         return Action(kind=kind, target="alice@example.com")
     if kind == CapabilityKind.SEND_MESSAGE:
         return Action(kind=kind, target="spaces/AAA")

@@ -13,7 +13,7 @@ groups:
       - me@example.com
 
   # Counterparties trusted for draft preparation. Direct SEND_EMAIL remains
-  # disabled/gated; this group only helps GMAIL_DRAFT / APPLE_MAIL_DRAFT avoid
+  # disabled/gated; this group only helps EXTERNAL_MAIL_DRAFT / APPLE_MAIL_DRAFT avoid
   # first-use prompts when no restricted/regulated/prohibited data is present.
   - group_id: trusted-draft
     member_principal_ids:

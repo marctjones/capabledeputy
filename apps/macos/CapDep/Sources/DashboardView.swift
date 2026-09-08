@@ -2,7 +2,6 @@ import SwiftUI
 
 struct DashboardView: View {
     @EnvironmentObject private var model: CapDepAppModel
-    @Environment(\.openWindow) private var openWindow
     @State private var selectedApproval: Approval?
     @State private var selectedSession: CapDepSession?
 
@@ -63,11 +62,6 @@ struct DashboardView: View {
             selectedSession = model.sessions.first { $0.id == id }
             Task {
                 await model.refreshSecurityContext(sessionID: id)
-            }
-        }
-        .onChange(of: model.isGoogleOAuthWizardPresented) { _, presented in
-            if presented {
-                openWindow(id: "google-oauth-wizard")
             }
         }
     }
@@ -529,34 +523,12 @@ private struct TrustView: View {
 
 private struct SetupAssistantView: View {
     @EnvironmentObject private var model: CapDepAppModel
-    @Environment(\.openWindow) private var openWindow
-
-    private var googleOAuthCheck: SetupCheck? {
-        model.setupChecks.first(where: { $0.id == "google-oauth" })
-    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Setup Assistant")
                     .font(.largeTitle.weight(.bold))
-                if googleOAuthCheck?.status != "ok" {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Connect Google Workspace so CapDep can read mail, calendar, and drive through MCP.")
-                            .foregroundStyle(.secondary)
-                        Button {
-                            model.presentGoogleOAuthWizard()
-                            openWindow(id: "google-oauth-wizard")
-                        } label: {
-                            Label("Set Up Google Account", systemImage: "person.crop.circle.badge.plus")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                    }
-                    .padding()
-                    .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-                }
                 if !model.setupPlan.firstWorkflowTitle.isEmpty {
                     SetupRow(
                         title: model.setupPlan.firstWorkflowTitle,
@@ -720,7 +692,6 @@ private struct ProvenanceView: View {
 
 private struct SetupRow: View {
     @EnvironmentObject private var model: CapDepAppModel
-    @Environment(\.openWindow) private var openWindow
     var checkID = ""
     let title: String
     let status: String
@@ -740,12 +711,7 @@ private struct SetupRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if checkID == "google-oauth" && !ok {
-                Button("Set Up Google Account") {
-                    model.presentGoogleOAuthWizard()
-                    openWindow(id: "google-oauth-wizard")
-                }
-            } else if let action = actions.first {
+            if let action = actions.first {
                 Button(action.displayLabel) {
                     Task {
                         await model.runSetupAction(action)

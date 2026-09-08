@@ -206,52 +206,51 @@ def test_legacy_tool_overrides_syntax_still_works(tmp_path: Path) -> None:
     d.mkdir()
     _write_yaml(
         d,
-        "gws.yaml",
+        "imap.yaml",
         """
 schema_version: 1
-name: gws
+name: imap
 command: ["x"]
 tool_overrides:
-  gmail.list:
-    capability_kind: GMAIL_READ
+  imap.fetch:
+    capability_kind: IMAP_READ
     additional_labels: [untrusted.external]
-    target_template: "gmail://thread/{thread_id}"
+    target_template: "imap://thread/{thread_id}"
 """,
     )
     configs, _, _ = load_servers_d(d)
-    assert "gmail.list" in configs[0].server_config.tool_overrides
-    ov = configs[0].server_config.tool_overrides["gmail.list"]
+    assert "imap.fetch" in configs[0].server_config.tool_overrides
+    ov = configs[0].server_config.tool_overrides["imap.fetch"]
     assert ov.capability_kind is not None
-    assert ov.capability_kind.value == "GMAIL_READ"
-    assert ov.target_template == "gmail://thread/{thread_id}"
+    assert ov.capability_kind.value == "IMAP_READ"
+    assert ov.target_template == "imap://thread/{thread_id}"
 
 
-def test_servers_d_accepts_remote_google_workspace_server(tmp_path: Path) -> None:
+def test_servers_d_accepts_remote_oauth2_server(tmp_path: Path) -> None:
     d = tmp_path / "servers.d"
     d.mkdir()
     _write_yaml(
         d,
-        "google-gmail.yaml",
+        "acme-mcp.yaml",
         """
 schema_version: 1
-name: google-gmail
+name: acme-mcp
 transport: streamable_http
-url: https://gmailmcp.googleapis.com/mcp/v1
+url: https://mcp.acme.example/mcp
 auth:
-  type: google_adc
-  scopes:
-    - https://www.googleapis.com/auth/gmail.readonly
+  type: oauth2
+  client_id_env: ACME_MCP_CLIENT_ID
 inherent_labels: [confidential.personal, untrusted.user_input]
 tool_mappings:
-  search_threads: GMAIL_READ
+  search_files: CLOUD_FILE_READ
 """,
     )
     configs, _, _ = load_servers_d(d)
     cfg = configs[0].server_config
     assert cfg.transport == "streamable_http"
-    assert cfg.url == "https://gmailmcp.googleapis.com/mcp/v1"
+    assert cfg.url == "https://mcp.acme.example/mcp"
     assert cfg.auth is not None
-    assert cfg.auth.type == "google_adc"
+    assert cfg.auth.type == "oauth2"
     assert cfg.command == ()
     assert any(tag.category == "personal" for tag in cfg.inherent_tags.a)
 

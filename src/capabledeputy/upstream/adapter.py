@@ -219,25 +219,8 @@ def _infer_capability_kind(
             return CapabilityKind.MACOS_NOTIFICATION
         return CapabilityKind.MACOS_APP_CONTROL
 
-    # Gmail (matches "gmail.*" but NOT just "mail" — otherwise
-    # "voicemail" / "mailbox" / etc. would be misclassified).
-    if "gmail" in lowered:
-        if "draft" in lowered:
-            return CapabilityKind.GMAIL_DRAFT
-        if "send" in lowered:
-            return CapabilityKind.SEND_EMAIL
-        if any(t in lowered for t in _DELETE_TOKENS):
-            return CapabilityKind.DELETE_FS  # email deletion — destructive
-        if read_only or has_read_token:
-            return CapabilityKind.GMAIL_READ
-        # Default Gmail tool with unclear hint: most-restrictive read.
-        return CapabilityKind.GMAIL_READ
-
-    # Generic email (IMAP, SMTP — not Gmail-specific). "email" /
-    # "imap" / "smtp" in the name.
-    if any(t in lowered for t in ("imap", "smtp")) or (
-        "email" in lowered and "gmail" not in lowered
-    ):
+    # Generic email (IMAP, SMTP). "email" / "imap" / "smtp" in the name.
+    if any(t in lowered for t in ("imap", "smtp")) or "email" in lowered:
         if "send" in lowered or "smtp" in lowered:
             return CapabilityKind.SEND_EMAIL
         # IMAP-specific read tokens. `fetch` is the IMAP read primitive.
@@ -248,34 +231,11 @@ def _infer_capability_kind(
         # marked via tool annotations.
         return CapabilityKind.IMAP_READ
 
-    # Google Drive (matches "drive.*"). Read by default; create/
-    # modify/delete distinguished by tokens.
-    if "drive" in lowered:
-        if any(t in lowered for t in _DELETE_TOKENS):
-            return CapabilityKind.DELETE_FS
-        if any(t in lowered for t in _CREATE_TOKENS):
-            return CapabilityKind.CREATE_FS
-        if destructive or any(t in lowered for t in _MODIFY_TOKENS):
-            return CapabilityKind.MODIFY_FS
-        if read_only or has_read_token:
-            return CapabilityKind.DRIVE_READ
-        return CapabilityKind.DRIVE_READ
-
-    # "send" alone (no Gmail) is generic SEND_EMAIL.
+    # "send" alone is generic SEND_EMAIL.
     if "send" in lowered:
         if "message" in lowered or "chat" in lowered:
             return CapabilityKind.SEND_MESSAGE
         return CapabilityKind.SEND_EMAIL
-
-    if "chat" in lowered or "conversation" in lowered or "message" in lowered:
-        if read_only or has_read_token:
-            return CapabilityKind.CHAT_READ
-        return None
-
-    if any(t in lowered for t in ("people", "contact", "profile", "directory")):
-        if read_only or has_read_token:
-            return CapabilityKind.PEOPLE_READ
-        return CapabilityKind.PEOPLE_READ
 
     if any(t in lowered for t in ("fetch", "web", "http", "url", "browse")):
         return CapabilityKind.WEB_FETCH

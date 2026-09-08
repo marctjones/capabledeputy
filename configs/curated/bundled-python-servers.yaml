@@ -19,14 +19,19 @@ upstream_servers:
     tool_overrides:
       "fs.read":
         capability_kind: READ_FS
+        target_arg: path
       "fs.list":
         capability_kind: READ_FS
+        target_arg: path
       "fs.create":
         capability_kind: CREATE_FS
+        target_arg: path
       "fs.write":
         capability_kind: WRITE_FS
+        target_arg: path
       "fs.delete":
         capability_kind: DELETE_FS
+        target_arg: path
 
   - name: bundled-fetch
     command: ["capdep", "mcp-server-fetch"]
@@ -60,14 +65,19 @@ upstream_servers:
     tool_overrides:
       "memory.create":
         capability_kind: CREATE_FS
+        target_arg: key
       "memory.read":
         capability_kind: READ_FS
+        target_arg: key
       "memory.update":
         capability_kind: WRITE_FS
+        target_arg: key
       "memory.delete":
         capability_kind: DELETE_FS
+        target_arg: key
       "memory.list":
         capability_kind: READ_FS
+        target_arg: prefix
 
   - name: bundled-git
     command: ["capdep", "mcp-server-git"]
@@ -77,14 +87,19 @@ upstream_servers:
     tool_overrides:
       "git.status":
         capability_kind: READ_FS
+        target_arg: repo_path
       "git.log":
         capability_kind: READ_FS
+        target_arg: repo_path
       "git.diff":
         capability_kind: READ_FS
+        target_arg: repo_path
       "git.show":
         capability_kind: READ_FS
+        target_arg: repo_path
       "git.branch_list":
         capability_kind: READ_FS
+        target_arg: repo_path
 
   - name: bundled-imap
     command: ["capdep", "mcp-server-imap"]

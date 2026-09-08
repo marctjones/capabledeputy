@@ -25,7 +25,7 @@ def inspect(action, session, proposed_outcome):
         "SEND_EMAIL",
         "SEND_MESSAGE",
         "QUEUE_PURCHASE",
-        "GMAIL_DRAFT",
+        "EXTERNAL_MAIL_DRAFT",
         "APPLE_MAIL_DRAFT",
         "OUTLOOK_DRAFT",
         "CREATE_CAL",

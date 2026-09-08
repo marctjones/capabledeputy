@@ -636,8 +636,6 @@ struct SetupCheck: Identifiable, Hashable {
             return "server.rack"
         case "model":
             return "cpu"
-        case "google-oauth":
-            return "person.crop.circle.badge.checkmark"
         case "relationship-groups":
             return "person.2"
         case "approval-patterns":
@@ -720,66 +718,6 @@ struct SourceBindingViewData: Identifiable, Hashable {
         self.defaultTier = dictionary["default_tier"] as? String ?? ""
         self.writeDiscipline = dictionary["write_discipline"] as? String ?? ""
         self.riskIDs = dictionary["risk_ids"] as? [String] ?? []
-    }
-}
-
-struct GmailOAuthStatus: Hashable {
-    let serviceID: String
-    let displayName: String
-    let configured: Bool
-    let clientIDConfigured: Bool
-    let clientSecretConfigured: Bool
-    let tokenConfigured: Bool
-    let serverYAML: String
-    let clientIDFile: String
-    let clientSecretFile: String
-    let tokenCache: String
-    let restartRequired: Bool
-
-    init(dictionary: [String: Any]) {
-        self.serviceID = dictionary["service_id"] as? String
-            ?? dictionary["server"] as? String
-            ?? "google-gmail"
-        self.displayName = dictionary["display_name"] as? String ?? "Google Gmail"
-        self.configured = dictionary["configured"] as? Bool ?? false
-        self.clientIDConfigured = dictionary["client_id_configured"] as? Bool ?? false
-        self.clientSecretConfigured = dictionary["client_secret_configured"] as? Bool ?? false
-        self.tokenConfigured = dictionary["token_configured"] as? Bool ?? false
-        self.serverYAML = dictionary["server_yaml"] as? String ?? ""
-        self.clientIDFile = dictionary["client_id_file"] as? String ?? ""
-        self.clientSecretFile = dictionary["client_secret_file"] as? String ?? ""
-        self.tokenCache = dictionary["token_cache"] as? String ?? ""
-        self.restartRequired = dictionary["restart_required"] as? Bool ?? false
-    }
-
-    static let empty = GmailOAuthStatus(dictionary: [:])
-}
-
-typealias GoogleOAuthStatus = GmailOAuthStatus
-
-struct GoogleOAuthPreset: Identifiable, Hashable {
-    let id: String
-    let displayName: String
-    let description: String
-    let serviceIDs: [String]
-    let grantsSummary: String
-    let configuredCount: Int
-    let connectedCount: Int
-    let totalCount: Int
-    let connected: Bool
-    let nextServiceID: String
-
-    init(dictionary: [String: Any]) {
-        self.id = dictionary["id"] as? String ?? ""
-        self.displayName = dictionary["display_name"] as? String ?? id
-        self.description = dictionary["description"] as? String ?? ""
-        self.serviceIDs = dictionary["service_ids"] as? [String] ?? []
-        self.grantsSummary = dictionary["grants_summary"] as? String ?? ""
-        self.configuredCount = dictionary["configured_count"] as? Int ?? 0
-        self.connectedCount = dictionary["connected_count"] as? Int ?? 0
-        self.totalCount = dictionary["total_count"] as? Int ?? serviceIDs.count
-        self.connected = dictionary["connected"] as? Bool ?? false
-        self.nextServiceID = dictionary["next_service_id"] as? String ?? serviceIDs.first ?? "google-gmail"
     }
 }
 

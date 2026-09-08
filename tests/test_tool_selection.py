@@ -42,13 +42,13 @@ def _session_with_caps(*kinds: CapabilityKind) -> Session:
 def test_full_surface_when_small_catalog() -> None:
     registry = ToolRegistry()
     tools = [
-        _tool("inbox.list", CapabilityKind.GMAIL_READ),
+        _tool("inbox.list", CapabilityKind.IMAP_READ),
         _tool("email.send", CapabilityKind.SEND_EMAIL),
         _tool("policy.preview", CapabilityKind.READ_FS),
     ]
     for tool in tools:
         registry.register(tool)
-    session = _session_with_caps(CapabilityKind.GMAIL_READ, CapabilityKind.SEND_EMAIL)
+    session = _session_with_caps(CapabilityKind.IMAP_READ, CapabilityKind.SEND_EMAIL)
     visible = tools
     result = select_tools_for_turn(
         registry,
@@ -65,13 +65,13 @@ def test_full_surface_when_small_catalog() -> None:
 def test_family_narrows_inbox_tools() -> None:
     registry = ToolRegistry()
     tools = (
-        [_tool(f"inbox.tool{i}", CapabilityKind.GMAIL_READ) for i in range(12)]
+        [_tool(f"inbox.tool{i}", CapabilityKind.IMAP_READ) for i in range(12)]
         + [_tool(f"calendar.tool{i}", CapabilityKind.CALENDAR_READ) for i in range(12)]
         + [_tool("policy.preview", CapabilityKind.READ_FS)]
     )
     for tool in tools:
         registry.register(tool)
-    session = _session_with_caps(CapabilityKind.GMAIL_READ, CapabilityKind.READ_FS)
+    session = _session_with_caps(CapabilityKind.IMAP_READ, CapabilityKind.READ_FS)
     families = ToolFamiliesConfig(
         mandatory_always=("policy.preview",),
         families={
@@ -97,8 +97,8 @@ def test_family_narrows_inbox_tools() -> None:
 
 def test_widen_adds_missing_tool() -> None:
     registry = ToolRegistry()
-    tools = [_tool("inbox.list", CapabilityKind.GMAIL_READ)]
-    session = _session_with_caps(CapabilityKind.GMAIL_READ)
+    tools = [_tool("inbox.list", CapabilityKind.IMAP_READ)]
+    session = _session_with_caps(CapabilityKind.IMAP_READ)
     base = select_tools_for_turn(
         registry,
         session,
@@ -114,16 +114,16 @@ def test_widen_adds_missing_tool() -> None:
 def test_broad_caps_respect_max_selected() -> None:
     registry = ToolRegistry()
     tools = (
-        [_tool(f"mail.tool{i}", CapabilityKind.GMAIL_READ) for i in range(20)]
+        [_tool(f"mail.tool{i}", CapabilityKind.IMAP_READ) for i in range(20)]
         + [_tool(f"fs.tool{i}", CapabilityKind.READ_FS) for i in range(20)]
         + [_tool("policy.preview", CapabilityKind.READ_FS)]
     )
     for tool in tools:
         registry.register(tool)
     session = _session_with_caps(
-        CapabilityKind.GMAIL_READ,
+        CapabilityKind.IMAP_READ,
         CapabilityKind.READ_FS,
-        CapabilityKind.DRIVE_READ,
+        CapabilityKind.CLOUD_FILE_READ,
         CapabilityKind.WEB_FETCH,
     )
     result = select_tools_for_turn(
@@ -141,7 +141,7 @@ def test_broad_caps_respect_max_selected() -> None:
 def test_web_search_intent_includes_kagi_and_search_tools() -> None:
     registry = ToolRegistry()
     tools = (
-        [_tool(f"mail.tool{i}", CapabilityKind.GMAIL_READ) for i in range(20)]
+        [_tool(f"mail.tool{i}", CapabilityKind.IMAP_READ) for i in range(20)]
         + [_tool(f"fs.tool{i}", CapabilityKind.READ_FS) for i in range(20)]
         + [
             _tool("kagi.kagi_search_fetch", CapabilityKind.WEB_FETCH),
@@ -152,7 +152,7 @@ def test_web_search_intent_includes_kagi_and_search_tools() -> None:
     )
     for tool in tools:
         registry.register(tool)
-    session = _session_with_caps(CapabilityKind.WEB_FETCH, CapabilityKind.GMAIL_READ)
+    session = _session_with_caps(CapabilityKind.WEB_FETCH, CapabilityKind.IMAP_READ)
     session = Session.new(capability_set=session.capability_set, purpose_handle="general")
     result = select_tools_for_turn(
         registry,
@@ -170,7 +170,7 @@ def test_web_search_intent_includes_kagi_and_search_tools() -> None:
 
 def test_kagi_hides_ddg_search_tools_for_general_lookup() -> None:
     registry = ToolRegistry()
-    tools = [_tool(f"mail.tool{i}", CapabilityKind.GMAIL_READ) for i in range(20)] + [
+    tools = [_tool(f"mail.tool{i}", CapabilityKind.IMAP_READ) for i in range(20)] + [
         _tool("kagi.kagi_search_fetch", CapabilityKind.WEB_FETCH),
         _tool("web.search", CapabilityKind.WEB_FETCH),
         _tool("bundled-search.search.web", CapabilityKind.WEB_FETCH),

@@ -214,17 +214,8 @@ and updated MLX/MFLUX model candidates.
 
 ## [0.48.0] - 2026-07-06
 
-Stable release for Google account connection, consolidated setup automation,
-native office automation skills, and native MLX/MFLUX model asset planning.
-
-### Google account connection
-
-- Added preset-first Gmail/Calendar/Drive setup flows with daemon-owned OAuth
-  state and scoped permissions.
-- Added live reload/unload where possible, redacted diagnostics, and CLI plus
-  CapDepMac parity for Google setup state.
-- Preserved advanced bring-your-own-client setup without moving OAuth authority
-  into clients.
+Stable release for consolidated setup automation, native office automation
+skills, and native MLX/MFLUX model asset planning.
 
 ### Consolidated setup automation
 
@@ -563,19 +554,6 @@ Connector setup, durable daemon memory, and local daemon lifecycle release.
   daemon recovery on application launch, and skips macOS notification setup
   when run as an unbundled SwiftPM debug executable.
 
-### Gmail MCP setup
-
-- Added daemon-owned Gmail MCP OAuth setup RPCs. The daemon can now save the
-  official Google Gmail MCP server config, store OAuth client values in
-  mode-0600 files, run the browser OAuth flow, and report setup status to
-  native clients.
-- Wired the CapDepMac Accounts settings tab to configure and authorize Gmail
-  OAuth through the daemon instead of keeping OAuth setup state in Swift.
-- Added `capdep mcp-admin-server`, a separate local admin MCP surface for
-  connector setup. It exposes Gmail OAuth status, OAuth client configuration,
-  and browser authorization through daemon RPCs without expanding the normal
-  session-bound MCP tool surface.
-
 ## [0.23.0] - 2026-06-20
 
 Native macOS GUI and practical personal-assistant hardening release.
@@ -633,19 +611,16 @@ Native macOS GUI and practical personal-assistant hardening release.
 
 ## [0.22.0] - 2026-06-19
 
-macOS and Google Workspace personal-assistant release.
+macOS personal-assistant release.
 
 ### Personal assistant and MCP integrations
 
-- **Official Google Workspace remote MCP support.** Gmail, Drive, Calendar,
-  Chat, and People can now use CapDep's native OAuth2 browser/PKCE login flow
-  with refreshable per-server token caches.
 - **First-class local Apple app automation.** Added bounded MCP servers and
   curated config coverage for Apple Mail, Keynote, Pages, Numbers, and general
   macOS automation without exposing arbitrary AppleScript execution.
 - **Mac-first personal-assistant preset.** The bundled preset now uses macOS
-  `/Users/*` paths, official Google Workspace remote MCP servers, local Apple
-  app servers, and practical read/draft/edit/export defaults.
+  `/Users/*` paths, local Apple app servers, and practical read/draft/edit/export
+  defaults.
 
 ### Security and capability model
 
@@ -653,18 +628,15 @@ macOS and Google Workspace personal-assistant release.
   split into narrower read, navigation, interaction, script, file, clipboard,
   notification, draft, present, edit, and export grants so operators no longer
   need coarse app-wide authority.
-- **Gmail drafts are first-class.** `GMAIL_DRAFT` separates creating a draft
-  from broad filesystem creation and from direct `SEND_EMAIL`; Gmail send
-  remains disabled by default in the official Workspace config.
 - **Service URI source bindings.** Source binding canonicalization now covers
-  Google and Apple app URI schemes used by the personal-assistant policy so
-  these sources participate in deterministic label resolution.
+  Apple app URI schemes used by the personal-assistant policy so these sources
+  participate in deterministic label resolution.
 
 ### Tests and validation
 
 - Added regression coverage for the personal-assistant preset, OAuth config
-  generation, Pages/Numbers bounded AppleScript tools, granular capability
-  inference, and Gmail draft policy behavior.
+  generation, Pages/Numbers bounded AppleScript tools, and granular capability
+  inference.
 
 ## [0.21.0] - 2026-06-19
 

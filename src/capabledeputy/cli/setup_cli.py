@@ -8,13 +8,11 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from capabledeputy.cli.google_cloud_setup import app as google_cloud_app
 from capabledeputy.cli.setup_domains import (
     SetupDomainResult,
     result_to_json,
     setup_assistant_surface,
     setup_daily_driver,
-    setup_google_workspace_register,
     setup_images,
     setup_imap_register,
     setup_macos_daemon,
@@ -33,12 +31,6 @@ app = typer.Typer(
         "adding configuration workflows to the main capdep command."
     ),
     no_args_is_help=True,
-)
-
-app.add_typer(
-    google_cloud_app,
-    name="google-cloud",
-    help="Prepare Google Cloud and Workspace API access for CapDep OAuth.",
 )
 
 
@@ -74,8 +66,6 @@ def list_setups() -> None:
     """List available setup automation domains."""
     typer.echo("assistant-surface\tBundled assistant MCP server config bootstrap")
     typer.echo("daily-driver\tDaily-driver policy readiness and relationship setup")
-    typer.echo("google-cloud\tGoogle Cloud / Workspace OAuth API enablement")
-    typer.echo("google-workspace\tGoogle Workspace daemon config registration")
     typer.echo("images\tImage-generation runtime venv setup")
     typer.echo("imap\tIMAP daemon config registration")
     typer.echo("macos-daemon\tmacOS daemon launch path and parity validation")
@@ -189,43 +179,6 @@ def imap_command(
 ) -> None:
     """Register the IMAP MCP server block without collecting credentials."""
     _print_result(setup_imap_register(apply=apply, config_path=config), json_output=json_output)
-
-
-@app.command("google-workspace")
-def google_workspace_command(
-    apply: Annotated[
-        bool,
-        typer.Option("--apply", help="Write the Google Workspace managed daemon block."),
-    ] = False,
-    mode: Annotated[
-        str,
-        typer.Option("--mode", help="Integration mode: official or community."),
-    ] = "official",
-    services: Annotated[
-        str,
-        typer.Option("--services", "-s", help="Comma-separated service list."),
-    ] = "",
-    config: Annotated[
-        Path | None,
-        typer.Option("--config", help="Daemon config path. Defaults to user-local daemon.yaml."),
-    ] = None,
-    json_output: Annotated[
-        bool,
-        typer.Option("--json", help="Print machine-readable JSON."),
-    ] = False,
-) -> None:
-    """Register Google Workspace MCP daemon config."""
-    try:
-        result = setup_google_workspace_register(
-            apply=apply,
-            config_path=config,
-            mode=mode,
-            services=services,
-        )
-    except ValueError as exc:
-        err_console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(code=2) from None
-    _print_result(result, json_output=json_output)
 
 
 @app.command("images")

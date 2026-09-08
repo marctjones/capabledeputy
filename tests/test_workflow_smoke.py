@@ -11,12 +11,10 @@ NON-DESTRUCTIVE BY CONSTRUCTION:
     memory.delete is also skipped.
   - Git: all calls are read-only (status, log, branch_list).
   - Fetch / search: smoke-only (registration); no live HTTP.
-  - Imap: covered by test_imap_server.py + the live-readonly suite
-    that opt-ins via CAPDEP_GWS_LIVE.
+  - Imap: covered by test_imap_server.py.
 
-This is path-1 (daemon RPC scripting) of the three-way test plan.
-Path 2 is the pexpect REPL driver; path 3 is the gws-readonly live
-test (CAPDEP_GWS_LIVE=1).
+This is path-1 (daemon RPC scripting) of the test plan; path 2 is the
+pexpect REPL driver (test_chat_repl_pexpect.py).
 """
 
 from __future__ import annotations

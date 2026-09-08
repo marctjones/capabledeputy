@@ -20,14 +20,10 @@ from pathlib import Path
 from typing import Any
 
 from capabledeputy.cli._managed_config import (
-    GWORKSPACE_BLOCK_ID,
-    GWORKSPACE_COMMUNITY_BLOCK_BODY,
-    GWORKSPACE_DEFAULT_OFFICIAL_SERVICES,
     IMAP_BLOCK_BODY,
     IMAP_BLOCK_ID,
     SANDBOX_BLOCK_BODY,
     SANDBOX_BLOCK_ID,
-    google_workspace_official_block_body,
     podman_readiness,
     register_default_assistant_surface,
     user_default_daemon_config_path,
@@ -280,53 +276,6 @@ def setup_imap_register(
         actions=(("refreshed" if replaced else "registered") + " IMAP block",),
         changed=changed,
         paths=_path_map(daemon_config=config_path),
-    )
-
-
-def setup_google_workspace_register(
-    *,
-    apply: bool = False,
-    config_path: Path | None = None,
-    mode: str = "official",
-    services: str = "",
-) -> SetupDomainResult:
-    config_path = config_path or user_default_daemon_config_path()
-    mode = mode.strip().lower()
-    if mode not in {"official", "community"}:
-        raise ValueError("--mode must be 'official' or 'community'")
-    if mode == "official":
-        services = services or GWORKSPACE_DEFAULT_OFFICIAL_SERVICES
-        block_body = google_workspace_official_block_body(services)
-        detail_services = tuple(s.strip() for s in services.split(",") if s.strip())
-    else:
-        services = services or "drive,sheets,calendar,docs,gmail"
-        block_body = GWORKSPACE_COMMUNITY_BLOCK_BODY
-        if services != "drive,sheets,calendar,docs,gmail":
-            block_body = block_body.replace(
-                '"--services", "drive,sheets,calendar,docs,gmail"',
-                f'"--services", "{services}"',
-            )
-        detail_services = tuple(s.strip() for s in services.split(",") if s.strip())
-    if not apply:
-        return SetupDomainResult(
-            domain="google-workspace",
-            apply=False,
-            status="dry_run",
-            summary=f"Would register Google Workspace MCP config in {mode} mode.",
-            actions=("register Google Workspace managed block",),
-            paths=_path_map(daemon_config=config_path),
-            details={"mode": mode, "services": detail_services},
-        )
-    replaced, changed = write_managed_block(config_path, GWORKSPACE_BLOCK_ID, block_body)
-    return SetupDomainResult(
-        domain="google-workspace",
-        apply=True,
-        status="applied",
-        summary=f"Registered Google Workspace MCP config in {mode} mode.",
-        actions=(("refreshed" if replaced else "registered") + " Google Workspace block",),
-        changed=changed,
-        paths=_path_map(daemon_config=config_path),
-        details={"mode": mode, "services": detail_services},
     )
 
 

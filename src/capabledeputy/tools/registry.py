@@ -286,12 +286,10 @@ def validate_tool_definition(
 # unclassifiable tools.
 _KIND_TO_EFFECT: dict[str, EffectClass] = {
     "READ_FS": EffectClass.FETCH,
-    "GMAIL_READ": EffectClass.FETCH,
-    "GMAIL_DRAFT": EffectClass.MUTATE_LOCAL,
+    "EXTERNAL_MAIL_DRAFT": EffectClass.MUTATE_LOCAL,
     "IMAP_READ": EffectClass.FETCH,
-    "DRIVE_READ": EffectClass.FETCH,
+    "CLOUD_FILE_READ": EffectClass.FETCH,
     "CHAT_READ": EffectClass.FETCH,
-    "PEOPLE_READ": EffectClass.FETCH,
     "CALENDAR_READ": EffectClass.FETCH,
     "WEB_FETCH": EffectClass.FETCH,
     "WRITE_FS": EffectClass.MUTATE_LOCAL,
