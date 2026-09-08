@@ -56,7 +56,13 @@ def main() -> int:
     def stop(signum=None, frame=None):
         nonlocal stopped
         stopped = True
-        with contextlib.suppress(ProcessLookupError):
+        # ProcessLookupError: the group is already gone. PermissionError:
+        # some sandboxes (CI, restricted test harnesses) refuse cross-group
+        # signals even to a child we spawned with start_new_session=True.
+        # Either way, this is best-effort — child.wait()/poll() below still
+        # observes the real exit, so a suppressed failure here doesn't mask
+        # a hung process.
+        with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(child.pid, signal.SIGTERM)
 
     signal.signal(signal.SIGTERM, stop)
@@ -89,7 +95,7 @@ def main() -> int:
         with contextlib.suppress(subprocess.TimeoutExpired):
             child.wait(timeout=5)
         # Also clean up upstream children after the daemon exits.
-        with contextlib.suppress(ProcessLookupError):
+        with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(child.pid, signal.SIGKILL)
         child.wait()
     emit(event="exited", returncode=child.returncode)

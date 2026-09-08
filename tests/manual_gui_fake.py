@@ -24,6 +24,11 @@ from tests.daemon_integration import build_test_daemon, daemon_test_paths
 class SlowFakeModel:
     _model = "scripted-gui-test"
 
+    async def respond(self, messages, tools):
+        # Never called: the agent loop prefers respond_streaming when
+        # present (see agent/loop.py). Only here to satisfy LLMClient.
+        raise NotImplementedError
+
     async def respond_streaming(self, messages, tools, *, max_tokens=None):
         prompt = next((m.content for m in reversed(messages) if m.role == "user"), "")
         if "[slow]" in prompt:

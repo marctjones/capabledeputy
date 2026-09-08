@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 import anyio
+import anyio.lowlevel
 
 from capabledeputy.agent.events import (
     LLMRequestSent,

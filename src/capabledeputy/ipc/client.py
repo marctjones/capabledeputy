@@ -11,7 +11,7 @@ Two patterns:
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -74,7 +74,7 @@ class DaemonClient:
         streams: list[str],
         *,
         cancel_turns_on_disconnect: list[str] | None = None,
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Open a long-lived connection and yield event notifications.
 
         Yields one dict per event with keys {stream, data}. Caller must
@@ -94,7 +94,7 @@ async def _subscribe_iter(
     streams: list[str],
     *,
     cancel_turns_on_disconnect: list[str] | None = None,
-) -> AsyncIterator[dict[str, Any]]:
+) -> AsyncGenerator[dict[str, Any], None]:
     try:
         stream = await anyio.connect_unix(str(socket_path))
     except (FileNotFoundError, ConnectionRefusedError) as e:
