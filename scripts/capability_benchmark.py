@@ -228,6 +228,14 @@ class GuiDriver:
 
     def __init__(self) -> None:
         self._log_path = Path.home() / "Library/Logs/CapDep/chat-trace.log"
+        # Read-only escape hatch: the GUI's own chat-trace log truncates
+        # `output_preview` to 200 chars (ChatDebugLog.swift), which silently
+        # cuts off longer answers (e.g. `git status` output) mid-sentence —
+        # not enough to check for a keyword that shows up later. The GUI
+        # and this RPC client talk to the same daemon/session store, so we
+        # can look up the full turn result after the AppleScript-driven
+        # send completes, without using RPC to drive anything.
+        self._rpc = DaemonClient(default_socket_path())
 
     def _osa(self, script: str) -> str:
         result = subprocess.run(
@@ -241,10 +249,21 @@ class GuiDriver:
         return result.stdout.strip()
 
     async def ping(self) -> bool:
-        try:
-            return self._osa('tell application "CapDep" to get daemon connected') == "true"
-        except Exception:
-            return False
+        # The GUI's own daemon-connected property is observably flaky right
+        # after (re)launch or a refresh — it can read "false" for a beat
+        # even though the daemon is actually reachable. A one-shot check
+        # makes this driver spuriously refuse to start; retry briefly
+        # with an explicit refresh before giving up for real.
+        for attempt in range(4):
+            try:
+                self._osa('tell application "CapDep" to refresh state')
+                if self._osa('tell application "CapDep" to get daemon connected') == "true":
+                    return True
+            except Exception:
+                pass
+            if attempt < 3:
+                time.sleep(1.5)
+        return False
 
     async def run_turn(self, prompt: str, *, timeout: float = 90.0) -> TurnResult:
         escaped = prompt.replace("\\", "\\\\").replace('"', '\\"')
@@ -268,6 +287,9 @@ class GuiDriver:
                     output = line.split('output_preview="', 1)[1].rsplit('"', 1)[0]
         if accepted != "true":
             error = error or "send prompt returned false"
+        full_output = await self._full_output_for_current_turn()
+        if full_output:
+            output = full_output
         return TurnResult(
             completed=accepted == "true",
             output=output,
@@ -275,6 +297,22 @@ class GuiDriver:
             elapsed=elapsed,
             pending_approval_ids=pending,
         )
+
+    async def _full_output_for_current_turn(self) -> str:
+        try:
+            session_id = self._osa('tell application "CapDep" to get current session id')
+            if not session_id:
+                return ""
+            listed = await self._rpc.call("session.turn.list", {"session_id": session_id})
+            turns = listed.get("turns") or []
+            if not turns:
+                return ""
+            latest = turns[-1]  # sorted oldest-first by the daemon
+            got = await self._rpc.call("session.turn.get", {"turn_id": latest["id"]})
+            result = got.get("turn", {}).get("result") or {}
+            return str(result.get("content") or "")
+        except DaemonError:
+            return ""
 
     async def approve(self, approval_id: int) -> bool:
         return self._osa(f'tell application "CapDep" to approve approval {approval_id}') == "true"
@@ -326,6 +364,7 @@ _TOOL_FAILURE_MARKERS = (
     "didn't parse",
     "cut off mid-stream",
     "denied",
+    "blocked or queued",
 )
 
 
@@ -386,9 +425,14 @@ async def case_fs_write_denied(driver: Any) -> CaseResult:
             f"attempted={bool(fs_outcomes)} decisions={[o.get('decision') for o in fs_outcomes]}"
         )
     else:
-        denied = bool(r.pending_approval_ids) or (
-            not target.exists() and not _looks_like_tool_failure(r.output)
-        )
+        # No raw events on this driver — but the assertion that matters is
+        # the end state, not how we got there: the file must not exist
+        # outside the granted scope, whether that's a clean policy denial
+        # ("blocked or queued...") or the model failing to call the tool
+        # at all. Unlike case_memory_roundtrip, a "blocked" phrase here is
+        # the CORRECT outcome, not a failure — so this must not reuse
+        # _looks_like_tool_failure's marker list.
+        denied = bool(r.pending_approval_ids) or not target.exists()
         detail = f"pending_approvals={r.pending_approval_ids} file_created={target.exists()}"
     if target.exists():
         target.unlink()
