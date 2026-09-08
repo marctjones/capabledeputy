@@ -178,17 +178,37 @@ class RpcDriver:
 
     async def approve(self, approval_id: int) -> bool:
         try:
-            await self.client.call("approval.approve", {"approval_id": approval_id})
+            await self.client.call("approval.approve", {"id": approval_id})
             return True
         except DaemonError:
             return False
 
     async def deny(self, approval_id: int) -> bool:
         try:
-            await self.client.call("approval.deny", {"approval_id": approval_id})
+            await self.client.call("approval.deny", {"id": approval_id})
             return True
         except DaemonError:
             return False
+
+    async def read_memory(self, key: str) -> dict[str, Any] | None:
+        """Direct, LLM-independent state check via the real tool.call RPC
+        (still goes through the policy engine — this is a genuine
+        memory.read dispatch, not a backdoor). Returns the raw output
+        dict ({"found": False} or {"found": True, "value": ...}); None
+        means the check itself failed to run cleanly (e.g. no session
+        yet or the read was itself denied) — the caller should treat
+        that as inconclusive, not as "key not found"."""
+        session_id = await self.ensure_session()
+        try:
+            result = await self.client.call(
+                "tool.call",
+                {"session_id": session_id, "tool": "memory.read", "args": {"key": key}},
+            )
+        except DaemonError:
+            return None
+        if result.get("decision") != "allow":
+            return None
+        return result.get("output") or {}
 
     async def launch_workflow(self, template_id: str, *, timeout: float = 90.0) -> TurnResult:
         start = time.monotonic()
@@ -319,6 +339,25 @@ class GuiDriver:
 
     async def deny(self, approval_id: int) -> bool:
         return self._osa(f'tell application "CapDep" to deny approval {approval_id}') == "true"
+
+    async def read_memory(self, key: str) -> dict[str, Any] | None:
+        """Same read-only RPC escape hatch as _full_output_for_current_turn:
+        the GUI's AppleScript surface has no "inspect tool state" verb, so
+        state checks after an approve/deny go through the real tool.call
+        RPC (still policy-enforced) against the GUI's own session."""
+        try:
+            session_id = self._osa('tell application "CapDep" to get current session id')
+            if not session_id:
+                return None
+            result = await self._rpc.call(
+                "tool.call",
+                {"session_id": session_id, "tool": "memory.read", "args": {"key": key}},
+            )
+        except (RuntimeError, DaemonError):
+            return None
+        if result.get("decision") != "allow":
+            return None
+        return result.get("output") or {}
 
     async def aclose(self) -> None:
         return None
@@ -471,7 +510,156 @@ async def case_web_fetch(driver: Any) -> CaseResult:
     return CaseResult("web.fetch", "web", ok, r.error or r.output[:200], r.elapsed)
 
 
-RPC_ONLY_CASES: list[str] = ["workflow.launch", "session.lifecycle"]
+async def _seed_memory_key(driver: Any, key: str, value: str) -> TurnResult:
+    return await driver.run_turn(
+        f"Use your memory tool to save the key '{key}' with value '{value}'.",
+    )
+
+
+async def _grant_memory_modify_capability(driver: Any) -> bool:
+    """Mints a non-destructive-authorized MEMORY_MODIFY grant via
+    session.grant_capability — the programmatic equivalent of a user
+    clicking "Allow access" on a capability-grant prompt (see
+    CapabilityGrantDetailView.swift's grantCapabilityAndRetry). This
+    alone does NOT let modifies through: session.grant_capability
+    refuses allows_destructive=True by construction (agent_handlers.py),
+    so all this does is move the next update attempt from an outright
+    "no matching capability" deny into the approval queue. There's no
+    AppleScript verb for this (no GUI affordance mints a capability
+    without also driving a live consent dialog), so this — and every
+    case built on it — is RPC-only.
+
+    Uses memory.update (MEMORY_MODIFY, "reversible-with-friction"), not
+    memory.delete (MEMORY_DELETE, declared "irreversible"): the two
+    destructive memory ops route through different gates.
+    reversibility-irreversible denies delete outright regardless of any
+    capability — only the separate override.request/override.attest
+    ceremony (a distinct attester, not a self-approval) can unlock it.
+    update's approval.approve path is the one this case exercises."""
+    from capabledeputy.policy.capabilities import Capability, CapabilityKind
+
+    session_id = await driver.ensure_session()
+    cap = Capability(kind=CapabilityKind.MEMORY_MODIFY, pattern="*")
+    try:
+        await driver.client.call(
+            "session.grant_capability",
+            {"session_id": session_id, "capability": cap.to_dict()},
+        )
+        return True
+    except DaemonError:
+        return False
+
+
+async def case_destructive_approval_flow(driver: Any) -> CaseResult:
+    """A session with a MEMORY_MODIFY grant that isn't allows_destructive
+    (the only kind session.grant_capability can mint) must have its
+    memory.update land in the approval queue rather than executing
+    outright, and approval.approve must accept it without erroring
+    (the RPC surface this case exercises — approve/deny previously sent
+    the wrong param name and silently no-opped on every call).
+
+    Whether the value actually changes afterward is reported as
+    diagnostic detail, not asserted: the declassified re-dispatch also
+    passes through the v2 rules-ratchet (engine.py's
+    FR-031 "v2 may only ratchet stricter, never relax"), which — with
+    no human-ratified rule for this cell in configs/rules.yaml —
+    defaults to SUGGEST and can re-collapse the one-shot
+    allows_destructive capability's ALLOW back to REQUIRE_APPROVAL.
+    That's a real, separately-scoped question about the v2/legacy
+    interaction, not something this benchmark should silently assert
+    past."""
+    if not hasattr(driver, "client"):
+        return CaseResult(
+            "approval.destructive_flow",
+            "approval",
+            False,
+            "not supported by this driver",
+            0.0,
+        )
+
+    key = f"approval_flow_{uuid.uuid4().hex[:8]}"
+    seed = await _seed_memory_key(driver, key, "original")
+    if not seed.completed:
+        detail = f"seed (memory.create) failed: {seed.error or seed.output[:150]}"
+        return CaseResult("approval.destructive_flow", "approval", False, detail, seed.elapsed)
+
+    if not await _grant_memory_modify_capability(driver):
+        detail = "session.grant_capability(MEMORY_MODIFY) failed"
+        return CaseResult("approval.destructive_flow", "approval", False, detail, seed.elapsed)
+
+    r = await driver.run_turn(f"Use your memory tool to update the key '{key}' to value 'changed'.")
+    total_elapsed = seed.elapsed + r.elapsed
+    if not r.pending_approval_ids:
+        detail = (
+            "expected a pending approval after granting a non-destructive "
+            f"MEMORY_MODIFY capability, got none. output={r.output[:150]}"
+        )
+        return CaseResult("approval.destructive_flow", "approval", False, detail, total_elapsed)
+
+    approval_id = r.pending_approval_ids[0]
+    approved = await driver.approve(approval_id)
+    after = await driver.read_memory(key)
+    value_after = (after or {}).get("value")
+    ok = approved  # RPC plumbing is the hard assertion; see docstring.
+    detail = f"approval_id={approval_id} approved={approved} value_after={value_after!r}"
+    return CaseResult("approval.destructive_flow", "approval", ok, detail, total_elapsed)
+
+
+async def case_destructive_deny_flow(driver: Any) -> CaseResult:
+    """Counterpart to case_destructive_approval_flow: denying a pending
+    memory.update must leave the key's value untouched. Unlike the
+    approve case this has no v2-ratchet ambiguity — deny short-circuits
+    before any re-dispatch, so "value unchanged" is a hard assertion
+    here."""
+    if not hasattr(driver, "client"):
+        return CaseResult(
+            "approval.destructive_deny_flow",
+            "approval",
+            False,
+            "not supported by this driver",
+            0.0,
+        )
+
+    key = f"deny_flow_{uuid.uuid4().hex[:8]}"
+    seed = await _seed_memory_key(driver, key, "should-survive")
+    if not seed.completed:
+        detail = f"seed (memory.create) failed: {seed.error or seed.output[:150]}"
+        return CaseResult("approval.destructive_deny_flow", "approval", False, detail, seed.elapsed)
+
+    if not await _grant_memory_modify_capability(driver):
+        detail = "session.grant_capability(MEMORY_MODIFY) failed"
+        return CaseResult(
+            "approval.destructive_deny_flow",
+            "approval",
+            False,
+            detail,
+            seed.elapsed,
+        )
+
+    r = await driver.run_turn(
+        f"Use your memory tool to update the key '{key}' to value 'should-not-apply'."
+    )
+    total_elapsed = seed.elapsed + r.elapsed
+    if not r.pending_approval_ids:
+        detail = (
+            "expected a pending approval after granting a non-destructive "
+            f"MEMORY_MODIFY capability, got none. output={r.output[:150]}"
+        )
+        return CaseResult(
+            "approval.destructive_deny_flow",
+            "approval",
+            False,
+            detail,
+            total_elapsed,
+        )
+
+    approval_id = r.pending_approval_ids[0]
+    denied = await driver.deny(approval_id)
+    after = await driver.read_memory(key)
+    value_after = (after or {}).get("value")
+    ok = denied and value_after == "should-survive"
+    detail = f"approval_id={approval_id} denied={denied} value_after={value_after!r}"
+    return CaseResult("approval.destructive_deny_flow", "approval", ok, detail, total_elapsed)
 
 
 async def case_workflow_launch(driver: Any) -> CaseResult:
@@ -517,7 +705,12 @@ PROMPT_CASES = [
     case_memory_roundtrip,
     case_web_fetch,
 ]
-RPC_ONLY = [case_workflow_launch, case_session_lifecycle]
+RPC_ONLY = [
+    case_workflow_launch,
+    case_session_lifecycle,
+    case_destructive_approval_flow,
+    case_destructive_deny_flow,
+]
 
 
 # --------------------------------------------------------------------------
