@@ -53,12 +53,12 @@ async def test_optimistic_burn_demo(tmp_path: Any) -> None:
         capabilities=frozenset(
             {
                 Capability(
-                    kind=CapabilityKind.CREATE_FS,
+                    kind=CapabilityKind.MEMORY_CREATE,
                     pattern="*",
                     origin=CapabilityOrigin.USER_APPROVED,
                 ),
                 Capability(
-                    kind=CapabilityKind.DELETE_FS,
+                    kind=CapabilityKind.MEMORY_DELETE,
                     pattern="*",
                     origin=CapabilityOrigin.USER_APPROVED,
                     allows_destructive=True,

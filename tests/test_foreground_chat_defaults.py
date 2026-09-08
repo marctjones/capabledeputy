@@ -45,6 +45,31 @@ def test_personal_assistant_web_fetch_allows_search_targets() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "purposes_path",
+    ["configs/purposes.yaml", "configs/personal-assistant/purposes.yaml"],
+)
+def test_general_purpose_grants_memory_read_create_write_but_not_modify_or_delete(
+    purposes_path: str,
+) -> None:
+    """Memory keys are arbitrary strings, not filesystem paths — a
+    "general" session must be able to read/create/write memory by
+    default without that also widening filesystem authority (the old
+    CREATE_FS/READ_FS/WRITE_FS overload made that impossible).
+    MEMORY_WRITE mirrors WRITE_FS (blind upsert, non-destructive);
+    MEMORY_MODIFY (modify-existing-only) and MEMORY_DELETE stay
+    ungranted by default, same as the other destructive kinds."""
+    purposes = load_purposes(Path(purposes_path))
+    general = purposes.get("general")
+    assert general is not None
+    granted = {kind_name(cap.kind): cap.pattern for cap in general.default_capabilities}
+    assert granted.get("MEMORY_READ") == "*"
+    assert granted.get("MEMORY_CREATE") == "*"
+    assert granted.get("MEMORY_WRITE") == "*"
+    assert "MEMORY_MODIFY" not in granted
+    assert "MEMORY_DELETE" not in granted
+
+
 def test_should_apply_foreground_defaults_for_gui_owner() -> None:
     assert should_apply_foreground_defaults(
         owner="CapDepMac",

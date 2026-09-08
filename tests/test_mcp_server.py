@@ -110,7 +110,7 @@ async def test_discover_tools_finds_native_tools(paths: dict[str, Path]) -> None
         assert memory_read.annotations is not None
         assert memory_read.annotations.readOnlyHint is True
         assert memory_read.meta is not None
-        assert memory_read.meta.get("io.capabledeputy/capability_kind") == "READ_FS"
+        assert memory_read.meta.get("io.capabledeputy/capability_kind") == "MEMORY_READ"
 
         purchase = next(t for t in tools if t.name == "purchase.queue")
         assert purchase.annotations is not None
@@ -120,7 +120,7 @@ async def test_discover_tools_finds_native_tools(paths: dict[str, Path]) -> None
 async def test_dispatch_tool_allow_returns_output(paths: dict[str, Path]) -> None:
     daemon, app = await _build_daemon(paths)
     s = await app.graph.new()
-    cap = Capability(kind=CapabilityKind.WRITE_FS, pattern="*")
+    cap = Capability(kind=CapabilityKind.MEMORY_WRITE, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
 
     async with _running_daemon(daemon, paths["socket"]) as client:

@@ -158,7 +158,7 @@ async def test_run_program_against_session_executes(tmp_path: Path) -> None:
     await app.startup()
     s = await app.graph.new(intent="programmatic test")
     read_cap = Capability(kind=CapabilityKind.READ_FS, pattern="*")
-    write_cap = Capability(kind=CapabilityKind.WRITE_FS, pattern="*")
+    write_cap = Capability(kind=CapabilityKind.MEMORY_WRITE, pattern="*")
     app.graph._sessions[s.id] = replace(
         s,
         capability_set=frozenset({read_cap, write_cap}),

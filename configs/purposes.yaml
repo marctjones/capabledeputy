@@ -191,6 +191,20 @@ purposes:
         pattern: "*"
       - kind: MACOS_NOTIFICATION
         pattern: "*"
+      # Memory keys are per-session-owner strings, not filesystem paths —
+      # "*" here only ever authorizes bundled-memory's read/create/write
+      # tools (MEMORY_READ/MEMORY_CREATE/MEMORY_WRITE are dedicated
+      # kinds, unlike the old CREATE_FS/READ_FS/WRITE_FS overload).
+      # MEMORY_WRITE mirrors WRITE_FS: a blind create-or-overwrite
+      # upsert, non-destructive by convention. MEMORY_MODIFY
+      # (modify-existing-only) and MEMORY_DELETE stay ungranted by
+      # default like other destructive kinds.
+      - kind: MEMORY_READ
+        pattern: "*"
+      - kind: MEMORY_CREATE
+        pattern: "*"
+      - kind: MEMORY_WRITE
+        pattern: "*"
 
   - purpose_id: inbox
     label: "Email triage and summarization"

@@ -65,7 +65,7 @@ SCENARIOS: list[Scenario] = [
         caps=frozenset(
             {
                 Capability(kind=K.READ_FS, pattern="*"),
-                Capability(kind=K.WRITE_FS, pattern="*"),
+                Capability(kind=K.MEMORY_WRITE, pattern="*"),
             },
         ),
         pre=_seed_clean_inbox,
@@ -150,7 +150,7 @@ SCENARIOS: list[Scenario] = [
         caps=frozenset(
             {
                 Capability(kind=K.WEB_FETCH, pattern="*"),
-                Capability(kind=K.WRITE_FS, pattern="*"),
+                Capability(kind=K.MEMORY_WRITE, pattern="*"),
             },
         ),
         pre=lambda app: app.web.serve(  # type: ignore[attr-defined]

@@ -117,7 +117,7 @@ async def test_local_doc_qa_demo(tmp_path: Any) -> None:
                     origin=CapabilityOrigin.USER_APPROVED,
                 ),
                 Capability(
-                    kind=CapabilityKind.CREATE_FS,
+                    kind=CapabilityKind.MEMORY_CREATE,
                     pattern="*",
                     origin=CapabilityOrigin.USER_APPROVED,
                 ),

@@ -54,7 +54,7 @@ saved = call("memory.write", key="copy", value=note["value"])
     caps = frozenset(
         {
             Capability(kind=CapabilityKind.READ_FS, pattern="*"),
-            Capability(kind=CapabilityKind.WRITE_FS, pattern="*"),
+            Capability(kind=CapabilityKind.MEMORY_WRITE, pattern="*"),
         },
     )
     app.graph._sessions[s.id] = replace(s, capability_set=caps)

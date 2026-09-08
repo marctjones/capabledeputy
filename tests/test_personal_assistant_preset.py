@@ -101,6 +101,13 @@ def test_personal_assistant_daemon_uses_bundled_and_macos_servers() -> None:
     for tool in ("memory.create", "memory.read", "memory.update", "memory.delete"):
         assert memory.tool_overrides[tool].target_arg == "key", tool
     assert memory.tool_overrides["memory.list"].target_arg == "prefix"
+    # Memory keys are arbitrary strings, not filesystem paths — dedicated
+    # kinds so a memory grant can't also widen filesystem authority.
+    assert memory.tool_overrides["memory.create"].capability_kind == CapabilityKind.MEMORY_CREATE
+    assert memory.tool_overrides["memory.read"].capability_kind == CapabilityKind.MEMORY_READ
+    assert memory.tool_overrides["memory.update"].capability_kind == CapabilityKind.MEMORY_MODIFY
+    assert memory.tool_overrides["memory.delete"].capability_kind == CapabilityKind.MEMORY_DELETE
+    assert memory.tool_overrides["memory.list"].capability_kind == CapabilityKind.MEMORY_READ
 
 
 def test_personal_assistant_enables_conservative_starlark_inspectors() -> None:

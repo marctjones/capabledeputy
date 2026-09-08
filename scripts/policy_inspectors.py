@@ -50,7 +50,7 @@ _READ = frozenset({Capability(kind=K.READ_FS, pattern="*")})
 _READ_WRITE = frozenset(
     {
         Capability(kind=K.READ_FS, pattern="*"),
-        Capability(kind=K.MODIFY_FS, pattern="*"),
+        Capability(kind=K.MEMORY_MODIFY, pattern="*"),
     },
 )
 _EMAIL = frozenset({Capability(kind=K.SEND_EMAIL, pattern="*")})
@@ -66,7 +66,7 @@ def _seed(app: object) -> None:
 
 _TIGHTEN_READ = """
 def inspect(action, session, proposed_outcome):
-    if proposed_outcome["decision"] == "allow" and action["kind"] == "READ_FS":
+    if proposed_outcome["decision"] == "allow" and action["kind"] == "MEMORY_READ":
         return tighten(to="require_approval", rule="read-confirm",
                        rationale="confirm reads this session")
     return abstain()

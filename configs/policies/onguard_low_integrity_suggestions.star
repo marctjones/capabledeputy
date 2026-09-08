@@ -17,6 +17,7 @@ def inspect(action, session, proposed_outcome):
         "WORD_EDIT",
         "POWERPOINT_EDIT",
         "MEMORY_WRITE",
+        "MEMORY_MODIFY",
         "PROFILE_UPDATE",
         "SOURCE_BINDING_UPDATE",
     ]

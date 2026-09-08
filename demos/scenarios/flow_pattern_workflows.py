@@ -596,7 +596,7 @@ async def _run_program_workflow(tmp_path: Path, idx: int, wf: ProgramWorkflow) -
     app = await _app(tmp_path, f"program-{idx}")
     session = await _session(
         app,
-        _cap(CapabilityKind.CREATE_FS),
+        _cap(CapabilityKind.MEMORY_CREATE),
         _cap(CapabilityKind.READ_FS),
         _cap(CapabilityKind.QUEUE_PURCHASE, max_amount=1000),
     )

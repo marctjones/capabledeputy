@@ -93,7 +93,7 @@ async def _research_run(tmp_path: Any, dial: RiskPreference) -> tuple[Any, Any]:
                     origin=CapabilityOrigin.USER_APPROVED,
                 ),
                 Capability(
-                    kind=CapabilityKind.CREATE_FS,
+                    kind=CapabilityKind.MEMORY_CREATE,
                     pattern="*",
                     origin=CapabilityOrigin.USER_APPROVED,
                 ),

@@ -63,6 +63,20 @@ purposes:
         pattern: "*"
       - kind: CREATE_FS
         pattern: "/Users/*/.capdep/work/**"
+      # Memory keys are per-session-owner strings, not filesystem paths —
+      # MEMORY_READ/MEMORY_CREATE/MEMORY_WRITE are dedicated kinds (not
+      # the old CREATE_FS/READ_FS/WRITE_FS overload), so "*" only ever
+      # authorizes bundled-memory's read/create/write tools.
+      # MEMORY_WRITE mirrors WRITE_FS: a blind create-or-overwrite
+      # upsert, non-destructive by convention. MEMORY_MODIFY
+      # (modify-existing-only) and MEMORY_DELETE stay ungranted by
+      # default like other destructive kinds.
+      - kind: MEMORY_READ
+        pattern: "*"
+      - kind: MEMORY_CREATE
+        pattern: "*"
+      - kind: MEMORY_WRITE
+        pattern: "*"
     bindings:
       - scope_pattern_canonical: "file:///Users/*/notes/scratch/**"
         category: scratch

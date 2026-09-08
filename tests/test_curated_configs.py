@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.upstream.config import load_config_file
 
 _CURATED = Path(__file__).parent.parent / "configs" / "curated"
@@ -216,3 +217,10 @@ def test_bundled_fs_git_memory_declare_target_arg() -> None:
     for tool in ("memory.create", "memory.read", "memory.update", "memory.delete"):
         assert memory.tool_overrides[tool].target_arg == "key", tool
     assert memory.tool_overrides["memory.list"].target_arg == "prefix"
+    # Memory keys are arbitrary strings, not filesystem paths — dedicated
+    # kinds so a memory grant can't also widen filesystem authority.
+    assert memory.tool_overrides["memory.create"].capability_kind == CapabilityKind.MEMORY_CREATE
+    assert memory.tool_overrides["memory.read"].capability_kind == CapabilityKind.MEMORY_READ
+    assert memory.tool_overrides["memory.update"].capability_kind == CapabilityKind.MEMORY_MODIFY
+    assert memory.tool_overrides["memory.delete"].capability_kind == CapabilityKind.MEMORY_DELETE
+    assert memory.tool_overrides["memory.list"].capability_kind == CapabilityKind.MEMORY_READ

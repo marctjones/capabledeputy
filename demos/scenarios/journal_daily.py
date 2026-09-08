@@ -58,7 +58,7 @@ async def test_journal_daily_demo(tmp_path: Any) -> None:
         models=(
             "FR-034 optimistic-auto",
             "FR-019 reversibility on fs.modify",
-            "destructive-op gate on DELETE_FS",
+            "destructive-op gate on MEMORY_DELETE",
             "FR-038 override origin",
         ),
         patterns=(
@@ -121,9 +121,9 @@ async def test_journal_daily_demo(tmp_path: Any) -> None:
                     origin=CapabilityOrigin.USER_APPROVED,
                     allows_destructive=True,
                 ),
-                # DELETE_FS WITHOUT allows_destructive — delete refuses.
+                # MEMORY_DELETE WITHOUT allows_destructive — delete refuses.
                 Capability(
-                    kind=CapabilityKind.DELETE_FS,
+                    kind=CapabilityKind.MEMORY_DELETE,
                     pattern="*",
                     origin=CapabilityOrigin.USER_APPROVED,
                 ),
@@ -221,12 +221,12 @@ async def test_journal_daily_demo(tmp_path: Any) -> None:
     policy_outcome(deleted)
 
     step(8, "Override the archive deletion")
-    user("override.request  →  DELETE_FS  draft-2026-04")
+    user("override.request  →  MEMORY_DELETE  draft-2026-04")
     handlers = make_override_handlers(override_grants, override_policies)
     req = await handlers["override.request"](
         {
             "session_id": str(s.id),
-            "action_kind": "DELETE_FS",
+            "action_kind": "MEMORY_DELETE",
             "target": "draft-2026-04",
             "floor": "max-tier-clearance",
             "invoker": "alice",

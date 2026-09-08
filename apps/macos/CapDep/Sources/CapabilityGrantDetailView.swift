@@ -141,6 +141,16 @@ enum PolicyPromptCopy {
             return "Modify files"
         case "WRITE_FS":
             return "Write files"
+        case "MEMORY_READ":
+            return "Read memory"
+        case "MEMORY_CREATE":
+            return "Create memory entries"
+        case "MEMORY_WRITE":
+            return "Write memory"
+        case "MEMORY_MODIFY":
+            return "Modify memory entries"
+        case "MEMORY_DELETE":
+            return "Delete memory entries"
         case "SEND_EMAIL":
             return "Send email"
         case "WEB_FETCH":

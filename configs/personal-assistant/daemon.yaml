@@ -97,19 +97,19 @@ upstream_servers:
     inherent_labels: []
     tool_overrides:
       "memory.create":
-        capability_kind: CREATE_FS
+        capability_kind: MEMORY_CREATE
         target_arg: key
       "memory.read":
-        capability_kind: READ_FS
+        capability_kind: MEMORY_READ
         target_arg: key
       "memory.update":
-        capability_kind: WRITE_FS
+        capability_kind: MEMORY_MODIFY
         target_arg: key
       "memory.delete":
-        capability_kind: DELETE_FS
+        capability_kind: MEMORY_DELETE
         target_arg: key
       "memory.list":
-        capability_kind: READ_FS
+        capability_kind: MEMORY_READ
         target_arg: prefix
 
   - name: bundled-git

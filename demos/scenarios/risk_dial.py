@@ -71,7 +71,7 @@ async def _run_at_dial(tmp_path: Any, dial: RiskPreference) -> Any:
         capabilities=frozenset(
             {
                 Capability(
-                    kind=CapabilityKind.CREATE_FS,
+                    kind=CapabilityKind.MEMORY_CREATE,
                     pattern="*",
                     origin=CapabilityOrigin.USER_APPROVED,
                 ),

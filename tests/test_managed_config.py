@@ -381,6 +381,26 @@ def test_bundled_fs_git_memory_fetch_declare_target_arg() -> None:
     assert memory["tool_overrides"]["memory.list"]["target_arg"] == "prefix"
 
 
+def test_bundled_memory_uses_dedicated_capability_kinds() -> None:
+    """Memory keys are arbitrary strings, not filesystem paths. Reusing
+    CREATE_FS/READ_FS/WRITE_FS/DELETE_FS meant a session's path-scoped
+    default grants could never match a bare key, and the only generic
+    fix (`CREATE_FS *`) would also grant unrestricted filesystem access
+    — these dedicated kinds fix that without widening filesystem
+    authority."""
+    from capabledeputy.cli._managed_config import BUNDLED_MEMORY_BLOCK_BODY
+
+    memory = yaml.safe_load("upstream_servers:\n" + BUNDLED_MEMORY_BLOCK_BODY)["upstream_servers"][
+        0
+    ]
+    overrides = memory["tool_overrides"]
+    assert overrides["memory.create"]["capability_kind"] == "MEMORY_CREATE"
+    assert overrides["memory.read"]["capability_kind"] == "MEMORY_READ"
+    assert overrides["memory.update"]["capability_kind"] == "MEMORY_MODIFY"
+    assert overrides["memory.delete"]["capability_kind"] == "MEMORY_DELETE"
+    assert overrides["memory.list"]["capability_kind"] == "MEMORY_READ"
+
+
 def test_managed_blocks_coexist_with_imap_and_bundled(xdg_tmp: Path) -> None:
     """The bundled-assistant-surface and imap setup commands write into
     the same daemon.yaml and their managed blocks must not collide."""

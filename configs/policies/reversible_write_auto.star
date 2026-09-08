@@ -19,7 +19,7 @@ _WRITE_KINDS = [
     "POWERPOINT_PRESENT",
     "CREATE_CAL",
     "MODIFY_CAL",
-    "MEMORY_WRITE",
+    "MEMORY_MODIFY",
 ]
 
 def inspect(action, session, proposed_outcome):

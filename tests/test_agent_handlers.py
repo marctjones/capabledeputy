@@ -129,7 +129,7 @@ async def test_session_send_returns_tool_outcomes(app: App) -> None:
     app.llm_client = fake
 
     s = await app.graph.new()
-    cap = Capability(kind=CapabilityKind.WRITE_FS, pattern="*")
+    cap = Capability(kind=CapabilityKind.MEMORY_WRITE, pattern="*")
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
 
     handlers = make_agent_handlers(app)

@@ -66,7 +66,7 @@ def _read_audit(audit_path: Path) -> list[dict]:
 async def memory_write_turn(tmp_path: Path):
     """One real agent turn driven through the daemon handler.
 
-    Pre-seeds a session with WRITE_FS so `memory.write` is allowed,
+    Pre-seeds a session with MEMORY_WRITE so `memory.write` is allowed,
     feeds the agent loop a canned two-message LLM response sequence
     (tool call → final answer), runs `session.send` via the real
     handler, and yields the resulting dict + audit path.
@@ -98,7 +98,7 @@ async def memory_write_turn(tmp_path: Path):
     await app.startup()
 
     session = await app.graph.new(intent="e2e-smoke")
-    cap = Capability(kind=CapabilityKind.WRITE_FS, pattern="*")
+    cap = Capability(kind=CapabilityKind.MEMORY_WRITE, pattern="*")
     # Direct insert mirrors how existing test_agent_handlers tests
     # seed capabilities (graph.grant_capability would also work but
     # this path is what the other tests use, for consistency).

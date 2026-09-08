@@ -334,8 +334,9 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
 
     async def memory_create(args: dict[str, Any], context: ToolContext) -> ToolResult:
         """Create-only write. Fails if the key already exists. Tagged
-        CREATE_FS so the policy engine's destructive-op gate doesn't
-        fire — creating a new key is non-destructive by definition."""
+        MEMORY_CREATE (not in DESTRUCTIVE_KINDS) so the policy engine's
+        destructive-op gate doesn't fire — creating a new key is
+        non-destructive by definition."""
         key = str(args["key"])
         value = args["value"]
         if store.read(key) is not None:
@@ -347,8 +348,9 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
 
     async def memory_update(args: dict[str, Any], context: ToolContext) -> ToolResult:
         """Modify-existing write. Fails if the key doesn't exist.
-        Tagged MODIFY_FS — the destructive-op gate fires unless the
-        capability has allows_destructive=True or the user approves."""
+        Tagged MEMORY_MODIFY (in DESTRUCTIVE_KINDS) — the destructive-op
+        gate fires unless the capability has allows_destructive=True or
+        the user approves."""
         key = str(args["key"])
         value = args["value"]
         if store.read(key) is None:
@@ -359,7 +361,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
         return ToolResult(output={"ok": True, "key": key, "modified": True})
 
     async def memory_delete(args: dict[str, Any], context: ToolContext) -> ToolResult:
-        """Remove a key from the store. Tagged DELETE_FS — the
+        """Remove a key from the store. Tagged MEMORY_DELETE — the
         destructive-op gate fires unless explicitly authorized."""
         key = str(args["key"])
         if store.read(key) is None:
@@ -379,7 +381,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
                 "Write a value to a key in the memory store (create or "
                 "overwrite). Required args: key (string), value (string)."
             ),
-            capability_kind=CapabilityKind.WRITE_FS,
+            capability_kind=CapabilityKind.MEMORY_WRITE,
             handler=memory_write,
             target_arg="key",
             effect_class="data.write_local",
@@ -406,7 +408,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
                 "handle-aware tool or sealed isolation for those values. "
                 "Required args: key (string)."
             ),
-            capability_kind=CapabilityKind.READ_FS,
+            capability_kind=CapabilityKind.MEMORY_READ,
             handler=memory_read,
             target_arg="key",
             effect_class="data.read_local",
@@ -434,7 +436,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
                 "that must flow into handle-aware tools. Required args: "
                 "key (string)."
             ),
-            capability_kind=CapabilityKind.READ_FS,
+            capability_kind=CapabilityKind.MEMORY_READ,
             handler=memory_handle,
             target_arg="key",
             effect_class="data.read_local",
@@ -459,7 +461,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
                 "Non-destructive: bypasses the destructive-op gate. "
                 "Required args: key (string), value (string)."
             ),
-            capability_kind=CapabilityKind.CREATE_FS,
+            capability_kind=CapabilityKind.MEMORY_CREATE,
             handler=memory_create,
             target_arg="key",
             effect_class="data.create_local",
@@ -484,7 +486,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
                 "Destructive: requires approval unless the capability has "
                 "allows_destructive=True. Required args: key, value."
             ),
-            capability_kind=CapabilityKind.MODIFY_FS,
+            capability_kind=CapabilityKind.MEMORY_MODIFY,
             effect_class="data.modify_local",
             default_reversibility={"degree": "reversible-with-friction", "agent": "human"},
             tool_provenance="operator-curated",
@@ -513,7 +515,7 @@ def make_memory_tools(store: LabeledMemoryStore) -> list[ToolDefinition]:
                 "requires approval unless the capability has "
                 "allows_destructive=True. Required args: key."
             ),
-            capability_kind=CapabilityKind.DELETE_FS,
+            capability_kind=CapabilityKind.MEMORY_DELETE,
             handler=memory_delete,
             target_arg="key",
             approval_route=_DESTRUCTIVE_ROUTE,

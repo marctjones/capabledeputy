@@ -64,11 +64,11 @@ SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         name="destructive-fs-gate",
-        why="MODIFY_FS / DELETE_FS without allows_destructive -> REQUIRE_APPROVAL.",
+        why="MEMORY_MODIFY / MEMORY_DELETE without allows_destructive -> REQUIRE_APPROVAL.",
         caps=frozenset(
             {
-                Capability(kind=K.MODIFY_FS, pattern="*"),
-                Capability(kind=K.DELETE_FS, pattern="*"),
+                Capability(kind=K.MEMORY_MODIFY, pattern="*"),
+                Capability(kind=K.MEMORY_DELETE, pattern="*"),
             },
         ),
         pre=_seed_mem,

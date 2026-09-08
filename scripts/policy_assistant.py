@@ -179,8 +179,8 @@ def _scenarios() -> list[Scenario]:
 
     # 3. NOTES/MEMORY — read (ALLOW) and destructive update/delete (GATED).
     rd_cap = frozenset({Capability(kind=K.READ_FS, pattern="*")})
-    mod_cap = frozenset({Capability(kind=K.MODIFY_FS, pattern="*")})
-    del_cap = frozenset({Capability(kind=K.DELETE_FS, pattern="*")})
+    mod_cap = frozenset({Capability(kind=K.MEMORY_MODIFY, pattern="*")})
+    del_cap = frozenset({Capability(kind=K.MEMORY_DELETE, pattern="*")})
 
     def seed(app: object) -> None:
         for k in _NOTE_KEYS:

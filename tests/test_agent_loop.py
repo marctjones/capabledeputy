@@ -94,7 +94,7 @@ async def test_history_records_user_and_agent_turns(writer: AuditWriter) -> None
 async def test_tool_call_followed_by_final_answer(writer: AuditWriter) -> None:
     graph, registry, client, memory, _ = await _setup(writer)
     s = await graph.new()
-    cap = Capability(kind=CapabilityKind.WRITE_FS, pattern="*")
+    cap = Capability(kind=CapabilityKind.MEMORY_WRITE, pattern="*")
     graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
 
     llm = FakeLLMClient(

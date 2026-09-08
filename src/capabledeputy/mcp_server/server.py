@@ -73,6 +73,10 @@ _ANNOTATIONS_BY_KIND: dict[str, dict[str, bool]] = {
     "CALENDAR_READ": {"readOnlyHint": True, "idempotentHint": True},
     "CALENDAR_WRITE": {"readOnlyHint": False, "destructiveHint": True},
     "QUEUE_PURCHASE": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
+    # Mirror the READ_FS/WRITE_FS display hints for their memory-store
+    # analogs (MEMORY_READ/MEMORY_WRITE).
+    "MEMORY_READ": {"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+    "MEMORY_WRITE": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
 }
 
 

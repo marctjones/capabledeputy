@@ -100,7 +100,7 @@ async def test_daily_briefing_demo(tmp_path: Any) -> None:
                     allows_destructive=True,
                 ),
                 Capability(
-                    kind=CapabilityKind.CREATE_FS,
+                    kind=CapabilityKind.MEMORY_CREATE,
                     pattern="*",
                     origin=CapabilityOrigin.USER_APPROVED,
                 ),

@@ -181,7 +181,7 @@ async def test_agent_loop_modify_blocked_by_default(tmp_path: Path) -> None:
     app.memory.write("notes.x", "original", LabelState())
 
     s = await app.graph.new()
-    cap = Capability(kind=CapabilityKind.MODIFY_FS, pattern="*")  # destructive default
+    cap = Capability(kind=CapabilityKind.MEMORY_MODIFY, pattern="*")  # destructive default
     app.graph._sessions[s.id] = replace(s, capability_set=frozenset({cap}))
 
     handlers = make_agent_handlers(app)
@@ -227,7 +227,7 @@ async def test_agent_loop_modify_allowed_with_destructive_flag(tmp_path: Path) -
 
     s = await app.graph.new()
     cap = Capability(
-        kind=CapabilityKind.MODIFY_FS,
+        kind=CapabilityKind.MEMORY_MODIFY,
         pattern="*",
         allows_destructive=True,
     )
@@ -286,8 +286,8 @@ async def test_agent_loop_create_then_delete_path(tmp_path: Path) -> None:
     s = await app.graph.new()
     caps = frozenset(
         {
-            Capability(kind=CapabilityKind.CREATE_FS, pattern="*"),
-            Capability(kind=CapabilityKind.DELETE_FS, pattern="*"),
+            Capability(kind=CapabilityKind.MEMORY_CREATE, pattern="*"),
+            Capability(kind=CapabilityKind.MEMORY_DELETE, pattern="*"),
         },
     )
     app.graph._sessions[s.id] = replace(s, capability_set=caps)

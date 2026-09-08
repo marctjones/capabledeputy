@@ -270,6 +270,13 @@ _CHECK_FOR_KIND: dict[CapabilityKind, callable] = {  # type: ignore[type-arg]
     CapabilityKind.IMAP_READ: _check_external_read,
     CapabilityKind.CLOUD_FILE_READ: _check_external_read,
     CapabilityKind.CHAT_READ: _check_external_read,
+    # Memory keys are arbitrary strings, not filesystem paths — same
+    # "don't type a path here" check as the other non-path read/write kinds.
+    CapabilityKind.MEMORY_CREATE: _check_external_read,
+    CapabilityKind.MEMORY_READ: _check_external_read,
+    CapabilityKind.MEMORY_WRITE: _check_external_read,
+    CapabilityKind.MEMORY_MODIFY: _check_external_read,
+    CapabilityKind.MEMORY_DELETE: _check_external_read,
     CapabilityKind.GENERATE_IMAGE: _check_web_fetch,
     CapabilityKind.FETCH_IMAGE: _check_web_fetch,
 }

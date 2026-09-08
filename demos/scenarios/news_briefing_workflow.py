@@ -143,7 +143,7 @@ async def _fetch_and_save(
                     origin=CapabilityOrigin.USER_APPROVED,
                 ),
                 Capability(
-                    kind=CapabilityKind.CREATE_FS,
+                    kind=CapabilityKind.MEMORY_CREATE,
                     pattern="*",
                     origin=CapabilityOrigin.USER_APPROVED,
                 ),

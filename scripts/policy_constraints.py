@@ -91,17 +91,21 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         name="capability-revoked-by-prior-use",
         why=(
-            "WRITE_FS capability revoked_by={READ_FS}: once a READ_FS "
-            "action has been dispatched in the session, the write is "
-            "DENIED (tool-identity counterpart to the label rules)."
+            "MEMORY_WRITE capability revoked_by={MEMORY_READ}: once a "
+            "memory.read action has been dispatched in the session, the "
+            "write is DENIED (tool-identity counterpart to the label "
+            "rules). revoked_by matches the literal dispatched action "
+            "kind, not the (possibly broader) capability that granted "
+            "it, so this targets MEMORY_READ rather than the legacy "
+            "READ_FS grant kind."
         ),
         caps=frozenset(
             {
                 Capability(kind=K.READ_FS, pattern="*"),
                 Capability(
-                    kind=K.WRITE_FS,
+                    kind=K.MEMORY_WRITE,
                     pattern="*",
-                    revoked_by=frozenset({K.READ_FS}),
+                    revoked_by=frozenset({K.MEMORY_READ}),
                 ),
             },
         ),

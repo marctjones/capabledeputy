@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from capabledeputy.patterns.reference_handle import ReferenceHandleStore
+from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import CategoryTag, LabelState, Tier
 from capabledeputy.tools.native.memory import LabeledMemoryStore, make_memory_tools
 from capabledeputy.tools.registry import ToolContext
@@ -166,6 +167,25 @@ def test_tool_metadata() -> None:
     assert by_name["memory.handle"].source_label_lookup is not None
     assert by_name["memory.handle"].forbid_restricted_source is False
     assert by_name["memory.write"].target_arg == "key"
+
+
+def test_tools_use_dedicated_memory_capability_kinds_not_filesystem_kinds() -> None:
+    """Memory keys are arbitrary strings, not filesystem paths — these
+    native tools used to be tagged with CREATE_FS/READ_FS/WRITE_FS/
+    MODIFY_FS/DELETE_FS (the same kinds real fs.* tools use), which made
+    a memory grant either useless (didn't match path-scoped grants) or
+    dangerous (a wildcard grant also unlocked real filesystem access).
+    memory.write (blind upsert) is MEMORY_WRITE, mirroring WRITE_FS;
+    memory.update (modify-existing-only) is the separate, destructive
+    MEMORY_MODIFY, mirroring MODIFY_FS."""
+    tools = make_memory_tools(LabeledMemoryStore())
+    by_name = {t.name: t for t in tools}
+    assert by_name["memory.write"].capability_kind == CapabilityKind.MEMORY_WRITE
+    assert by_name["memory.read"].capability_kind == CapabilityKind.MEMORY_READ
+    assert by_name["memory.handle"].capability_kind == CapabilityKind.MEMORY_READ
+    assert by_name["memory.create"].capability_kind == CapabilityKind.MEMORY_CREATE
+    assert by_name["memory.update"].capability_kind == CapabilityKind.MEMORY_MODIFY
+    assert by_name["memory.delete"].capability_kind == CapabilityKind.MEMORY_DELETE
 
 
 async def test_memory_handle_returns_reference_without_raw_value() -> None:

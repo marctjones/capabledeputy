@@ -140,7 +140,7 @@ async def test_destructive_outcome_carries_tool_envelope_submission(
     app.memory.write("k", "v", LabelState())
     s = await app.graph.new()
     cap = Capability(
-        kind=CapabilityKind.WRITE_FS,
+        kind=CapabilityKind.MEMORY_DELETE,
         pattern="*",
         allows_destructive=False,
     )

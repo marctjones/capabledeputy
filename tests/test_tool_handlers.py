@@ -105,7 +105,7 @@ async def test_tool_call_dispatches_when_allowed(writer: AuditWriter) -> None:
     assert "tool.call" in handlers
 
     s = await graph.new()
-    cap_w = Capability(kind=CapabilityKind.WRITE_FS, pattern="*")
+    cap_w = Capability(kind=CapabilityKind.MEMORY_WRITE, pattern="*")
     cap_r = Capability(kind=CapabilityKind.READ_FS, pattern="*")
     graph._sessions[s.id] = replace(s, capability_set=frozenset({cap_w, cap_r}))
 

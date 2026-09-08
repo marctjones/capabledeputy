@@ -110,6 +110,26 @@ class CapabilityKind(StrEnum):
     # (configs/curated/slack.yaml) uses this for message/channel/file reads.
     CHAT_READ = "CHAT_READ"
 
+    # Memory (bundled-memory, a local key-value store, NOT a filesystem
+    # path) used to be gated by CREATE_FS/READ_FS/WRITE_FS/MODIFY_FS/
+    # DELETE_FS with the memory key as `target` — the same kinds real
+    # filesystem tools use. That meant a session's path-scoped default
+    # grants (e.g. READ_FS on `~/Documents/**`) could never match a bare
+    # key like "my_key", so memory was denied by default everywhere, AND
+    # the only way to "fix" that generically (`CREATE_FS *`) would also
+    # grant unrestricted filesystem access. These are dedicated so a
+    # memory grant can never widen filesystem authority or vice versa.
+    # MEMORY_WRITE mirrors WRITE_FS (blind create-or-overwrite upsert,
+    # non-destructive by convention); MEMORY_MODIFY mirrors MODIFY_FS
+    # (modify-existing-only, gated) — the two need separate kinds
+    # because `memory.write` and `memory.update` have different
+    # destructiveness even though both are "writes".
+    MEMORY_CREATE = "MEMORY_CREATE"
+    MEMORY_READ = "MEMORY_READ"
+    MEMORY_WRITE = "MEMORY_WRITE"
+    MEMORY_MODIFY = "MEMORY_MODIFY"
+    MEMORY_DELETE = "MEMORY_DELETE"
+
     # Semantic media kinds — disk cache paths are implementation details inside
     # the images MCP server, not what operators grant.
     GENERATE_IMAGE = "GENERATE_IMAGE"
@@ -125,6 +145,8 @@ DESTRUCTIVE_KINDS: frozenset[CapabilityKind] = frozenset(
     {
         CapabilityKind.MODIFY_FS,
         CapabilityKind.DELETE_FS,
+        CapabilityKind.MEMORY_MODIFY,
+        CapabilityKind.MEMORY_DELETE,
         CapabilityKind.MODIFY_CAL,
         CapabilityKind.DELETE_CAL,
         CapabilityKind.MACOS_CLIPBOARD_WRITE,
@@ -155,6 +177,7 @@ _WRITE_UNION_MATCHES: dict[CapabilityKind, frozenset[CapabilityKind]] = {
             CapabilityKind.IMAP_READ,
             CapabilityKind.CLOUD_FILE_READ,
             CapabilityKind.CHAT_READ,
+            CapabilityKind.MEMORY_READ,
             CapabilityKind.APPLE_MAIL_READ,
             CapabilityKind.KEYNOTE_READ,
             CapabilityKind.PAGES_READ,

@@ -50,6 +50,17 @@ _GLOB_CAPABILITIES: frozenset[Capability] = frozenset(
         ),
         Capability(kind=CapabilityKind.EXECUTE_SANDBOX, pattern="*"),
         Capability(kind=CapabilityKind.EXECUTE_DEVBOX, pattern="*"),
+        # MEMORY_READ isn't listed explicitly — it's covered by the
+        # READ_FS union match, same as IMAP_READ/CLOUD_FILE_READ/CHAT_READ.
+        # MEMORY_CREATE/MEMORY_WRITE have no such union (dedicated kinds,
+        # not a legacy split), so they need their own grants here.
+        # MEMORY_WRITE (blind upsert) mirrors WRITE_FS and is
+        # non-destructive; MEMORY_MODIFY (modify-existing-only) mirrors
+        # MODIFY_FS and needs allows_destructive to auto-allow.
+        Capability(kind=CapabilityKind.MEMORY_CREATE, pattern="*"),
+        Capability(kind=CapabilityKind.MEMORY_WRITE, pattern="*"),
+        Capability(kind=CapabilityKind.MEMORY_MODIFY, pattern="*", allows_destructive=True),
+        Capability(kind=CapabilityKind.MEMORY_DELETE, pattern="*", allows_destructive=True),
     },
 )
 

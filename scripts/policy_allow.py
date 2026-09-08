@@ -65,7 +65,7 @@ SCENARIOS: list[Scenario] = [
         why="Read-only tools with their READ/CALENDAR_READ/WEB_FETCH caps -> ALLOW.",
         caps=frozenset(
             {
-                Capability(kind=K.CREATE_FS, pattern="*"),
+                Capability(kind=K.MEMORY_CREATE, pattern="*"),
                 Capability(kind=K.READ_FS, pattern="*"),
                 Capability(kind=K.CALENDAR_READ, pattern="*"),
                 Capability(kind=K.WEB_FETCH, pattern="*"),
@@ -113,10 +113,10 @@ SCENARIOS: list[Scenario] = [
     ),
     Scenario(
         name="write-family-allow",
-        why="Non-destructive writes with WRITE_FS / CREATE_CAL caps -> ALLOW.",
+        why="Non-destructive writes with MEMORY_WRITE / CREATE_CAL caps -> ALLOW.",
         caps=frozenset(
             {
-                Capability(kind=K.WRITE_FS, pattern="*"),
+                Capability(kind=K.MEMORY_WRITE, pattern="*"),
                 Capability(kind=K.CREATE_CAL, pattern="*"),
             },
         ),
@@ -147,8 +147,8 @@ SCENARIOS: list[Scenario] = [
         ),
         caps=frozenset(
             {
-                Capability(kind=K.MODIFY_FS, pattern="*", allows_destructive=True),
-                Capability(kind=K.DELETE_FS, pattern="*", allows_destructive=True),
+                Capability(kind=K.MEMORY_MODIFY, pattern="*", allows_destructive=True),
+                Capability(kind=K.MEMORY_DELETE, pattern="*", allows_destructive=True),
                 Capability(kind=K.MODIFY_CAL, pattern="*", allows_destructive=True),
                 Capability(kind=K.DELETE_CAL, pattern="*", allows_destructive=True),
             },

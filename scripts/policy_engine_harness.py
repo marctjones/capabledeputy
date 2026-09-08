@@ -37,7 +37,7 @@ SCENARIOS: list[Scenario] = [
         why="Held capability + no tainting labels -> ALLOW.",
         caps=frozenset(
             {
-                Capability(kind=CapabilityKind.WRITE_FS, pattern="*"),
+                Capability(kind=CapabilityKind.MEMORY_WRITE, pattern="*"),
                 Capability(kind=CapabilityKind.READ_FS, pattern="*"),
             },
         ),
