@@ -696,6 +696,119 @@ async def case_session_lifecycle(driver: Any) -> CaseResult:
     return CaseResult("session.lifecycle", "session", ok, detail, time.monotonic() - start)
 
 
+async def case_override_ceremony(driver: Any) -> CaseResult:
+    """memory.delete is declared "irreversible" (see
+    _grant_memory_modify_capability's docstring) — no capability grant,
+    however scoped or destructive-authorized, gets past the
+    reversibility floor. The ONLY path through it is
+    override.request/override.attest (FR-038): an active grant for
+    (session, action_kind, target) short-circuits decide() to ALLOW
+    before the reversibility check even runs (engine.py ~line 976).
+
+    Whether override.request itself succeeds depends entirely on the
+    daemon's loaded override_policy.yaml, which this case does NOT
+    assume:
+      - configs/override_policy.yaml (the base preset a bare `capdep
+        daemon start` loads from repo root) ships trust_profile=managed
+        with an empty policies list — its own comment documents that as
+        "refuses every override" by design (fail-closed default). A
+        refusal here IS the correct, testable behavior, not a failure.
+      - configs/personal-assistant/override_policy.yaml grants
+        max-tier-clearance as single-authorized (grant goes ACTIVE
+        immediately, no attest needed) — the operator is both invoker
+        and sole authorizer in single-user mode.
+      - A dual-control policy (see journal_daily.py's demo) would
+        instead come back PENDING_ATTESTATION, needing a distinct
+        override.attest call before use.
+    This case branches on whichever of those the live daemon actually
+    returns rather than assuming one, and only asserts a hard PASS/FAIL
+    on the parts that must hold either way: the pre-override baseline
+    deny, and — if a grant is obtained by any path — that it actually
+    executes the delete."""
+    if not hasattr(driver, "client"):
+        return CaseResult(
+            "override.ceremony", "override", False, "not supported by this driver", 0.0
+        )
+
+    start = time.monotonic()
+    session_id = await driver.ensure_session()
+    key = f"override_flow_{uuid.uuid4().hex[:8]}"
+    seed = await driver.client.call(
+        "tool.call",
+        {"session_id": session_id, "tool": "memory.create", "args": {"key": key, "value": "x"}},
+    )
+    if seed.get("decision") != "allow":
+        detail = f"seed (memory.create) failed: {seed}"
+        return CaseResult("override.ceremony", "override", False, detail, time.monotonic() - start)
+
+    # Baseline: delete must deny via the reversibility floor regardless
+    # of the (absent) capability — this holds under every override
+    # config, so it's a hard assertion.
+    baseline = await driver.client.call(
+        "tool.call",
+        {"session_id": session_id, "tool": "memory.delete", "args": {"key": key}},
+    )
+    if baseline.get("decision") != "deny":
+        detail = (
+            "expected baseline delete to deny via the reversibility floor, got "
+            f"{baseline.get('decision')}: {baseline.get('reason')}"
+        )
+        return CaseResult("override.ceremony", "override", False, detail, time.monotonic() - start)
+
+    requested = await driver.client.call(
+        "override.request",
+        {
+            "session_id": session_id,
+            "action_kind": "MEMORY_DELETE",
+            "target": key,
+            "floor": "max-tier-clearance",
+            "invoker": "capability-benchmark",
+            "category": "personal",
+            "tier": "sensitive",
+            "friction_confirmed": True,
+        },
+    )
+
+    if requested.get("refused"):
+        detail = (
+            f"baseline deny confirmed; override.request correctly refused "
+            f"under this daemon's override_policy.yaml: {requested.get('reason')}"
+        )
+        return CaseResult("override.ceremony", "override", True, detail, time.monotonic() - start)
+
+    grant_id = requested["id"]
+    if requested.get("state") == "pending_attestation":
+        attested = await driver.client.call(
+            "override.attest",
+            {
+                "grant_id": grant_id,
+                "attester": "capability-benchmark-attester",
+                "confirmed": True,
+            },
+        )
+        if attested.get("state") != "active":
+            detail = f"override.attest did not activate the grant: {attested}"
+            return CaseResult(
+                "override.ceremony", "override", False, detail, time.monotonic() - start
+            )
+
+    retried = await driver.client.call(
+        "tool.call",
+        {"session_id": session_id, "tool": "memory.delete", "args": {"key": key}},
+    )
+    ok = retried.get("decision") == "allow" and retried.get("rule") == "override-grant-active"
+    detail = (
+        f"grant_id={grant_id} initial_state={requested.get('state')} "
+        f"retried_decision={retried.get('decision')} rule={retried.get('rule')}"
+    )
+    if ok:
+        after = await driver.read_memory(key)
+        found = (after or {}).get("found")
+        ok = found is False
+        detail += f" key_still_exists={found}"
+    return CaseResult("override.ceremony", "override", ok, detail, time.monotonic() - start)
+
+
 PROMPT_CASES = [
     case_chat_basic,
     case_fs_read,
@@ -710,6 +823,7 @@ RPC_ONLY = [
     case_session_lifecycle,
     case_destructive_approval_flow,
     case_destructive_deny_flow,
+    case_override_ceremony,
 ]
 
 
