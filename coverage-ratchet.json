@@ -136,6 +136,14 @@
       "min_percent": 93.33,
       "statements": 30
     },
+    "daemon.file.authz": {
+      "covered": 4,
+      "files": [
+        "src/capabledeputy/daemon/authz.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 4
+    },
     "daemon.file.bundle-handlers": {
       "covered": 31,
       "files": [

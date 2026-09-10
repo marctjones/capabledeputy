@@ -25,6 +25,7 @@ from capabledeputy.ipc.rpc import (
     RpcRequest,
     parse_response,
 )
+from capabledeputy.ipc.socket_path import operator_token_path
 
 
 class DaemonError(RuntimeError):
@@ -36,8 +37,26 @@ class DaemonNotRunningError(DaemonError):
 
 
 class DaemonClient:
-    def __init__(self, socket_path: Path) -> None:
+    def __init__(self, socket_path: Path, *, trusted: bool = True) -> None:
+        """`trusted=True` (default) is for the operator's own surfaces —
+        CLI, TUI, the macOS app — and auto-attaches the daemon's
+        per-run operator token (see `daemon/authz.py`) when its file is
+        present, so operator-only RPCs keep working with no per-call
+        change. Any client that speaks for an external MCP host (an
+        agent's session-bound server, the admin server, the control
+        server) MUST be constructed with `trusted=False` so operator-only
+        methods are rejected by the daemon regardless of what that host's
+        tool curation happens to expose."""
         self._socket_path = socket_path
+        self._trusted = trusted
+
+    def _operator_token(self) -> str | None:
+        if not self._trusted:
+            return None
+        try:
+            return operator_token_path(self._socket_path).read_text().strip()
+        except OSError:
+            return None
 
     @asynccontextmanager
     async def _connect(self) -> AsyncIterator[SocketStream]:
@@ -53,7 +72,7 @@ class DaemonClient:
             await stream.aclose()
 
     async def call(self, method: str, params: dict[str, Any] | None = None) -> Any:
-        request = RpcRequest(method=method, params=params or {}, id=1)
+        request = RpcRequest(method=method, params=params or {}, id=1, auth=self._operator_token())
         async with self._connect() as stream:
             await stream.send(request.encode())
             buf = b""
@@ -86,6 +105,7 @@ class DaemonClient:
             self._socket_path,
             streams,
             cancel_turns_on_disconnect=cancel_turns_on_disconnect,
+            auth=self._operator_token(),
         )
 
 
@@ -94,6 +114,7 @@ async def _subscribe_iter(
     streams: list[str],
     *,
     cancel_turns_on_disconnect: list[str] | None = None,
+    auth: str | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
     try:
         stream = await anyio.connect_unix(str(socket_path))
@@ -101,21 +122,18 @@ async def _subscribe_iter(
         raise DaemonNotRunningError(f"daemon not running at {socket_path}") from e
 
     try:
-        sub = (
-            json.dumps(
-                {
-                    "jsonrpc": JSONRPC_VERSION,
-                    "method": "subscribe",
-                    "id": 1,
-                    "params": {
-                        "streams": streams,
-                        "cancel_turns_on_disconnect": cancel_turns_on_disconnect or [],
-                    },
-                },
-                separators=(",", ":"),
-            )
-            + "\n"
-        )
+        sub_payload: dict[str, Any] = {
+            "jsonrpc": JSONRPC_VERSION,
+            "method": "subscribe",
+            "id": 1,
+            "params": {
+                "streams": streams,
+                "cancel_turns_on_disconnect": cancel_turns_on_disconnect or [],
+            },
+        }
+        if auth is not None:
+            sub_payload["auth"] = auth
+        sub = json.dumps(sub_payload, separators=(",", ":")) + "\n"
         await stream.send(sub.encode("utf-8"))
 
         buf = b""

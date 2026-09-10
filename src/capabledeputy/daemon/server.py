@@ -8,8 +8,10 @@ are emitted via `Daemon.publish(stream, payload)`.
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
+import secrets
 import time
 from contextlib import suppress
 from pathlib import Path
@@ -17,6 +19,7 @@ from pathlib import Path
 import anyio
 from anyio.abc import SocketStream, TaskGroup
 
+from capabledeputy.daemon.authz import requires_operator
 from capabledeputy.daemon.handlers import Handler, default_handlers
 from capabledeputy.daemon.verbose_log import VerboseLogger
 from capabledeputy.ipc.rpc import (
@@ -24,10 +27,13 @@ from capabledeputy.ipc.rpc import (
     JSONRPC_VERSION,
     METHOD_NOT_FOUND,
     PARSE_ERROR,
+    PERMISSION_DENIED,
+    RpcRequest,
     RpcResponse,
     error,
     parse_request,
 )
+from capabledeputy.ipc.socket_path import operator_token_path
 from capabledeputy.upstream.supervisor import _is_task_cancellation
 
 
@@ -40,6 +46,10 @@ class Daemon:
         idle_shutdown_seconds: float | None = None,
     ) -> None:
         self._socket_path = socket_path
+        self._operator_token_path = operator_token_path(socket_path)
+        # Minted fresh per daemon process (see daemon/authz.py for what this
+        # does and doesn't prove). Never logged, never returned by any RPC.
+        self._operator_token = secrets.token_urlsafe(32)
         self._handlers = handlers or default_handlers()
         self._shutdown_event = anyio.Event()
         self._subscribers: dict[str, set[SocketStream]] = {}
@@ -152,10 +162,17 @@ class Daemon:
     async def serve(self) -> None:
         with suppress(FileNotFoundError):
             self._socket_path.unlink()
+        with suppress(FileNotFoundError):
+            self._operator_token_path.unlink()
 
         listener = await anyio.create_unix_listener(str(self._socket_path))
         try:
             os.chmod(self._socket_path, 0o600)
+            # Written immediately after bind, before the accept loop below
+            # starts pumping connections — same best-effort ordering as the
+            # chmod above, which has the identical bind-vs-permissions gap.
+            self._operator_token_path.write_text(self._operator_token)
+            os.chmod(self._operator_token_path, 0o600)
             async with anyio.create_task_group() as tg:
                 self._background_tg = tg
 
@@ -185,6 +202,8 @@ class Daemon:
             await listener.aclose()
             with suppress(FileNotFoundError):
                 self._socket_path.unlink()
+            with suppress(FileNotFoundError):
+                self._operator_token_path.unlink()
 
     async def _idle_shutdown_monitor(self) -> None:
         assert self._idle_shutdown_seconds is not None
@@ -233,6 +252,22 @@ class Daemon:
             with suppress(anyio.BrokenResourceError, anyio.ClosedResourceError):
                 await stream.aclose()
 
+    def _is_operator(self, request: RpcRequest) -> bool:
+        return request.auth is not None and hmac.compare_digest(
+            request.auth,
+            self._operator_token,
+        )
+
+    async def _reject_not_operator(self, stream: SocketStream, request: RpcRequest) -> None:
+        response = RpcResponse(
+            id=request.id,
+            error=error(
+                PERMISSION_DENIED,
+                f"method requires operator authorization: {request.method}",
+            ),
+        )
+        await stream.send(response.encode())
+
     async def _handle_line(self, stream: SocketStream, line: bytes) -> None:
         try:
             request = parse_request(line)
@@ -245,6 +280,9 @@ class Daemon:
             return
 
         if request.method == "shutdown":
+            if not self._is_operator(request):
+                await self._reject_not_operator(stream, request)
+                return
             response = RpcResponse(id=request.id, result={"ok": True})
             await stream.send(response.encode())
             self.request_shutdown()
@@ -312,6 +350,10 @@ class Daemon:
             await self._unsubscribe_stream(stream, stream_name)
             response = RpcResponse(id=request.id, result={"ok": True})
             await stream.send(response.encode())
+            return
+
+        if requires_operator(request.method) and not self._is_operator(request):
+            await self._reject_not_operator(stream, request)
             return
 
         handler = self._handlers.get(request.method)

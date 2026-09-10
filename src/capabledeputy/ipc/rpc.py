@@ -18,6 +18,8 @@ INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
+# Implementation-defined server-error range (-32000..-32099 per JSON-RPC 2.0).
+PERMISSION_DENIED = -32001
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,10 @@ class RpcRequest:
     params: dict[str, Any] = field(default_factory=dict)
     id: int | str | None = None
     jsonrpc: str = JSONRPC_VERSION
+    # Operator-proof token (see capabledeputy.daemon.authz). Carried as a
+    # top-level envelope field, never mixed into `params`, so handlers never
+    # see it and it can't be spoofed via a params key.
+    auth: str | None = None
 
     def encode(self) -> bytes:
         payload: dict[str, Any] = {"jsonrpc": self.jsonrpc, "method": self.method}
@@ -33,6 +39,8 @@ class RpcRequest:
             payload["params"] = self.params
         if self.id is not None:
             payload["id"] = self.id
+        if self.auth is not None:
+            payload["auth"] = self.auth
         return (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
 
 
@@ -58,11 +66,13 @@ def parse_request(line: bytes) -> RpcRequest:
         raise ValueError("expected JSON object")
     if "method" not in obj:
         raise ValueError("missing method")
+    auth = obj.get("auth")
     return RpcRequest(
         method=obj["method"],
         params=obj.get("params") or {},
         id=obj.get("id"),
         jsonrpc=obj.get("jsonrpc", JSONRPC_VERSION),
+        auth=str(auth) if auth is not None else None,
     )
 
 

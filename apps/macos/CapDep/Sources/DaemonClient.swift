@@ -37,17 +37,39 @@ struct DaemonClient {
         return "/tmp/capdep-\(getuid()).sock"
     }
 
+    // The macOS app is the operator's own trusted surface — it drives the
+    // literal operator-only affordances (grant destructive capability,
+    // set enforcement mode, promote a relationship tier) documented in
+    // capabledeputy.daemon.authz. It must attach the daemon's per-run
+    // operator token (0600 sibling file of the socket) on every request,
+    // the same way the Python DaemonClient(trusted=True) default does, or
+    // the daemon's dispatch-layer gate on those RPCs will reject it.
+    // Best-effort: an absent token file (older daemon, race at startup)
+    // degrades to the pre-existing unauthenticated behavior rather than
+    // failing every call.
+    private func operatorToken() -> String? {
+        let tokenPath = socketPath + ".operator-token"
+        guard let contents = try? String(contentsOfFile: tokenPath, encoding: .utf8) else {
+            return nil
+        }
+        let trimmed = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     // `params` is `sending`: the caller hands ownership of the request dict to
     // the client, which serializes it on a background queue. This keeps
     // `[String: Any]` (non-Sendable) from being flagged as a data race when
     // passed from an actor-isolated caller (Swift 6.2+ strict concurrency).
     func call(method: String, params: sending [String: Any] = [:]) async throws -> Any {
-        let request: [String: Any] = [
+        var request: [String: Any] = [
             "jsonrpc": "2.0",
             "method": method,
             "id": 1,
             "params": params,
         ]
+        if let token = operatorToken() {
+            request["auth"] = token
+        }
         var encodedRequest = try JSONSerialization.data(withJSONObject: request, options: [])
         encodedRequest.append(0x0A)
         let requestData = encodedRequest
@@ -90,7 +112,7 @@ struct DaemonClient {
                     connection.fd = fd
                     defer { connection.close() }
 
-                    let request: [String: Any] = [
+                    var request: [String: Any] = [
                         "jsonrpc": "2.0",
                         "method": "subscribe",
                         "id": 1,
@@ -99,6 +121,9 @@ struct DaemonClient {
                             "cancel_turns_on_disconnect": cancelTurnsOnDisconnect,
                         ],
                     ]
+                    if let token = operatorToken() {
+                        request["auth"] = token
+                    }
                     try sendRequest(fd: fd, request: request)
 
                     var buffer = Data()

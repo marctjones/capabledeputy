@@ -406,7 +406,8 @@ async def _watch_capability_changes(
 ) -> None:
     """Subscribe to the daemon's audit stream and emit MCP
     tools/list_changed when our bound session's capabilities change."""
-    client = DaemonClient(socket_path)
+    # Untrusted: agent-facing, same boundary as serve() below.
+    client = DaemonClient(socket_path, trusted=False)
     target = str(session_id)
     with suppress(Exception):
         async for event in await client.subscribe(["audit"]):
@@ -423,7 +424,10 @@ async def serve(session_id: UUID, socket_path: Path | None = None) -> None:
     import anyio as _anyio
 
     socket = socket_path or default_socket_path()
-    client = DaemonClient(socket)
+    # Untrusted: this is the session-bound MCP server external agent hosts
+    # (Claude Code, Codex, etc.) connect to. It must never carry operator
+    # authority — see daemon/authz.py.
+    client = DaemonClient(socket, trusted=False)
     server = await build_server(client, session_id)
     async with (
         stdio_server() as (read_stream, write_stream),

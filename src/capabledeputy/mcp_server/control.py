@@ -2124,7 +2124,11 @@ async def build_control_server(client: DaemonClient) -> Server:
 
 async def serve_control(socket_path: Path | None = None) -> None:
     socket = socket_path or default_socket_path()
-    client = DaemonClient(socket)
+    # Untrusted: this is the agent-facing control server an external MCP
+    # host connects to — must never hold operator authority, regardless of
+    # which RPC methods _CONTROL_TOOL_SPECS happens to curate. See
+    # daemon/authz.py.
+    client = DaemonClient(socket, trusted=False)
     server = await build_control_server(client)
     async with stdio_server() as (read_stream, write_stream):
         await server.run(

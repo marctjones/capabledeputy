@@ -105,7 +105,10 @@ async def build_admin_server(client: DaemonClient) -> Server:
 
 async def serve_admin(socket_path: Path | None = None) -> None:
     socket = socket_path or default_socket_path()
-    client = DaemonClient(socket)
+    # Untrusted: this stdio server is spawned by an MCP host (any agent,
+    # not proven-operator) exactly like the session-bound server — see
+    # daemon/authz.py.
+    client = DaemonClient(socket, trusted=False)
     server = await build_admin_server(client)
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
