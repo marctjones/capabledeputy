@@ -90,7 +90,7 @@ rules:
       axis_a:
         category: personal
       axis_c:
-        effect_class: send_email
+        effect_class: social.send_email
       axis_d:
         relationship_group_id: family
     outcome: suggest
@@ -111,7 +111,7 @@ rules:
       axis_a:
         category: proprietary_work
       axis_c:
-        effect_class: send_email
+        effect_class: social.send_email
       axis_d:
         relationship_group_id: work-team
     outcome: suggest
@@ -140,7 +140,7 @@ rules:
   #     axis_a:
   #       category: personal
   #     axis_c:
-  #       effect_class: send_email
+  #       effect_class: social.send_email
   #   outcome: deny
   #   rationale: kill switch — every personal-data egress requires manual override
   #   risk_ids: []
@@ -178,7 +178,7 @@ rules:
   - rule_id: purchases-under-threshold-auto
     when:
       axis_c:
-        effect_class: queue_purchase
+        effect_class: social.queue_purchase
       axis_d:
         reversibility: reversible
     outcome: auto
@@ -198,7 +198,7 @@ rules:
   - rule_id: send-after-hours-require-approval
     when:
       axis_c:
-        effect_class: send_email
+        effect_class: social.send_email
       axis_d:
         time_window: [22, 6]
     outcome: require-approval
@@ -219,7 +219,7 @@ rules:
       axis_a:
         category: phi
       axis_c:
-        effect_class: send_email
+        effect_class: social.send_email
     outcome: deny
     rationale: PHI never egresses without explicit OverrideGrant declassification (FR-038)
     risk_ids: []

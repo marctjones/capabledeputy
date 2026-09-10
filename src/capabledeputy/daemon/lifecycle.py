@@ -769,6 +769,17 @@ async def run_daemon(
 
     fs_labeler = load_fs_label_rules(_resolve_v09_configs_dir() / "fs_label_rules.yaml")
 
+    # FR-037 — operator's declared vendor reversibility allowlist for
+    # purchase.queue (absent ⇒ empty policy, static irreversible floor
+    # holds everywhere; see policy/purchase_reversibility.py). Opt-in,
+    # like fs_label_rules.yaml — NOT part of the fail-closed v0.9
+    # required-config set.
+    from capabledeputy.policy.purchase_reversibility import load_purchase_reversibility_policy
+
+    purchase_reversibility_policy = load_purchase_reversibility_policy(
+        _resolve_v09_configs_dir() / "purchase_reversibility.yaml",
+    )
+
     app = App(
         state_db_path=state_db_path,
         audit_log_path=audit_log_path,
@@ -780,6 +791,7 @@ async def run_daemon(
         policy_context=policy_context,
         purposes=purposes_registry,
         fs_labeler=fs_labeler,
+        purchase_reversibility_policy=purchase_reversibility_policy,
     )
     await app.startup()
 

@@ -364,7 +364,7 @@ class LabeledToolClient:
         # at the chokepoint, threaded into decide() AND reused as the
         # recorded use timestamp so the rate-limit window is consistent.
         dispatch_now = datetime.now(UTC)
-        v2_kwargs = self._build_v2_decide_kwargs(session, tool, action=action)
+        v2_kwargs = self._build_v2_decide_kwargs(session, tool, action=action, args=args)
         # 002 US2: pass the session's revoked_audit_ids so any
         # capability inert under cascade is denied at decide time.
         # Default-tolerant: pre-002 sessions deserialize with the
@@ -799,6 +799,7 @@ class LabeledToolClient:
         tool: ToolDefinition,
         *,
         action: Any | None = None,
+        args: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build the kw-only v2 args for engine.decide() from the
         session axes + tool definition + policy context. When the
@@ -851,14 +852,28 @@ class LabeledToolClient:
             kwargs["bindings"] = effective_bindings
         # T094 / Demo #4 — derive effective reversibility from the
         # tool's default_reversibility (when declared). The binding's
-        # mutability composition lands in a follow-up; today the
-        # tool's declaration is authoritative.
-        if tool.default_reversibility is not None:
+        # mutability composition lands in a follow-up.
+        #
+        # A tool may additionally declare a `reversibility_resolver`
+        # (per-call hook, mirrors `source_label_lookup`) — when it
+        # returns non-None for THIS call's args, that value overrides
+        # the static default (e.g. purchase.queue resolving the call's
+        # vendor against an operator-declared allowlist so a small
+        # reversible purchase can actually reach the AUTO rule in
+        # rules.yaml instead of the static irreversible floor denying
+        # it unconditionally). No resolver, or a resolver that declines
+        # to opine on these args, falls back to the static declaration.
+        resolved_reversibility = tool.default_reversibility
+        if tool.reversibility_resolver is not None and args is not None:
+            per_call = tool.reversibility_resolver(args)
+            if per_call is not None:
+                resolved_reversibility = per_call
+        if resolved_reversibility is not None:
             import contextlib
 
             with contextlib.suppress(KeyError, ValueError):
                 kwargs["effective_reversibility"] = ReversibilityLabel.from_dict(
-                    tool.default_reversibility,
+                    resolved_reversibility,
                 )
         # Sub-phases F/H — envelope dial + clearance/floor.
         if self._policy_context.envelope_set is not None:

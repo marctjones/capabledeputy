@@ -151,7 +151,7 @@ def test_personal_email_to_family_member_resolves_to_suggest() -> None:
         rules=rules,
         labels=labels,
         axis_d=axis_d,
-        effect_class="send_email",
+        effect_class="social.send_email",
         target="spouse@example.com",
         now_hour=14,  # business hours — after-hours rule does not fire
     )
@@ -180,7 +180,7 @@ def test_personal_email_to_non_family_falls_to_default_suggest() -> None:
         rules=rules,
         labels=labels,
         axis_d=axis_d,
-        effect_class="send_email",
+        effect_class="social.send_email",
         target="stranger@example.com",
         now_hour=14,  # business hours — after-hours rule does not fire
     )
@@ -206,7 +206,7 @@ def test_work_email_to_workteam_member_resolves_to_suggest() -> None:
         rules=rules,
         labels=labels,
         axis_d=axis_d,
-        effect_class="send_email",
+        effect_class="social.send_email",
         target="coworker@example.com",
         now_hour=14,  # business hours — after-hours rule does not fire
     )
@@ -234,7 +234,7 @@ def test_work_email_to_family_member_falls_to_default_suggest() -> None:
         rules=rules,
         labels=labels,
         axis_d=axis_d,
-        effect_class="send_email",
+        effect_class="social.send_email",
         target="spouse@example.com",
         now_hour=14,  # business hours — after-hours rule does not fire
     )
@@ -265,7 +265,7 @@ def test_send_at_night_escalates_to_require_approval() -> None:
         rules=rules,
         labels=labels,
         axis_d=axis_d,
-        effect_class="send_email",
+        effect_class="social.send_email",
         target="spouse@example.com",
         now_hour=23,  # within 22-06 after-hours window
     )
@@ -295,7 +295,7 @@ def test_phi_egress_denied_even_to_family() -> None:
         rules=rules,
         labels=labels,
         axis_d=axis_d,
-        effect_class="send_email",
+        effect_class="social.send_email",
         target="spouse@example.com",
         now_hour=14,
     )
@@ -323,7 +323,7 @@ def test_small_reversible_purchase_auto() -> None:
         rules=rules,
         labels=labels,
         axis_d=axis_d,
-        effect_class="queue_purchase",
+        effect_class="social.queue_purchase",
         target="amazon",
         now_hour=14,
     )
@@ -350,7 +350,7 @@ def test_irreversible_purchase_falls_to_default_suggest() -> None:
         rules=rules,
         labels=labels,
         axis_d=axis_d,
-        effect_class="queue_purchase",
+        effect_class="social.queue_purchase",
         target="ticketmaster",
         now_hour=14,
     )

@@ -1,0 +1,26 @@
+# Operator-declared vendor reversibility policy for purchase.queue
+# (FR-037). Optional / opt-in: absent file or empty list means no
+# vendor gets special treatment, and every purchase.queue call keeps
+# the tool's static, fail-closed default (irreversible/external) —
+# today's behavior, unchanged.
+#
+# A purchase whose `vendor` arg matches an entry's `vendor_glob` (case-
+# insensitive fnmatch) resolves to THAT entry's reversibility for this
+# call, overriding the static default. This is what lets
+# `purchases-under-threshold-auto` in rules.yaml actually fire instead
+# of being permanently dead — see rules.yaml's own comment on that
+# rule and docs/personal-workflow-policy-cookbook.md.
+#
+# Keep entries narrow and only for vendors with a real, relied-on
+# return/cancellation window the operator is vouching for personally —
+# this is a standing AUTO carve-out, not a suggestion.
+#
+# Shape:
+#   purchase_reversibility:
+#     - match:
+#         vendor_glob: <string-or-list>   # fnmatch pattern(s), case-insensitive
+#       reversibility:
+#         degree: reversible | reversible-with-friction | irreversible
+#         agent: system | human | external
+
+purchase_reversibility: []

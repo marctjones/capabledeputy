@@ -117,6 +117,15 @@ class ToolDefinition:
     # source data. When true, the chokepoint refuses those sources before
     # calling the handler; callers must use Pattern ③/⑤ instead.
     forbid_restricted_source: bool = False
+    # Per-call reversibility override. When set and it returns non-None
+    # for this call's args, its result REPLACES `default_reversibility`
+    # for this dispatch only (same shape: {"degree": ..., "agent": ...}).
+    # None (absent hook, or hook declines to opine on these args) falls
+    # back to the tool's static `default_reversibility` floor. Mirrors
+    # `source_label_lookup`'s per-call-hook shape. See
+    # `policy/purchase_reversibility.py` for the first real user
+    # (purchase.queue resolving a vendor allowlist).
+    reversibility_resolver: Callable[[dict[str, Any]], dict[str, str] | None] | None = None
 
     def extract_target(self, args: dict[str, Any]) -> str:
         if self.target_template is not None:

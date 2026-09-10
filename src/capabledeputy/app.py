@@ -16,6 +16,7 @@ from capabledeputy.observability import log_event
 from capabledeputy.onguard import OnguardStore
 from capabledeputy.paths import default_audit_log_path, default_state_db_path
 from capabledeputy.policy.context import PolicyContext
+from capabledeputy.policy.purchase_reversibility import PurchaseReversibilityPolicy
 from capabledeputy.policy.purposes import Purposes
 from capabledeputy.resources.static import StaticResourcePublisher
 from capabledeputy.session.coordination import SessionCoordinator, WorkstreamCoordinator
@@ -52,11 +53,17 @@ class App:
         purposes: Purposes | None = None,
         resources: StaticResourcePublisher | None = None,
         fs_labeler: Any = None,
+        purchase_reversibility_policy: PurchaseReversibilityPolicy | None = None,
     ) -> None:
         # Issue #5 — dynamic filesystem labeling. When provided (loaded
         # from configs/fs_label_rules.yaml), fs reads attach Axis-A
         # category labels so local-file data participates in IFC.
         self._fs_labeler = fs_labeler
+        # When provided (loaded from configs/purchase_reversibility.yaml),
+        # purchase.queue resolves a per-call reversibility override from
+        # the operator's declared vendor allowlist instead of always
+        # falling back to the tool's static irreversible/external floor.
+        self._purchase_reversibility_policy = purchase_reversibility_policy
         resolved_state_db_path = state_db_path or default_state_db_path()
         self.audit = AuditWriter(audit_log_path or default_audit_log_path())
         self.store = SessionStore(resolved_state_db_path)
@@ -158,7 +165,10 @@ class App:
     def _register_native_tools(self) -> None:
         for tool in make_memory_tools(self.memory):
             self.registry.register(tool)
-        for tool in make_purchase_tools(self.purchase_queue):
+        for tool in make_purchase_tools(
+            self.purchase_queue,
+            reversibility_policy=self._purchase_reversibility_policy,
+        ):
             self.registry.register(tool)
         for tool in make_email_tools(self.email_outbox, self.email_drafts):
             self.registry.register(tool)

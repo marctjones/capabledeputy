@@ -18,6 +18,7 @@ from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
+from capabledeputy.policy.purchase_reversibility import PurchaseReversibilityPolicy
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
 
@@ -43,7 +44,23 @@ class PurchaseQueue:
         self._queue.append(purchase)
 
 
-def make_purchase_tools(queue: PurchaseQueue) -> list[ToolDefinition]:
+def make_purchase_tools(
+    queue: PurchaseQueue,
+    reversibility_policy: PurchaseReversibilityPolicy | None = None,
+) -> list[ToolDefinition]:
+    def resolve_reversibility(args: dict[str, Any]) -> dict[str, str] | None:
+        """Per-call override for `default_reversibility` (FR-037). Looks
+        the call's `vendor` arg up against the operator's declared
+        vendor allowlist (`configs/purchase_reversibility.yaml`); a
+        match resolves to that entry's reversibility for THIS call, so
+        `purchases-under-threshold-auto` (configs/rules.yaml) can
+        actually fire. No match (or no policy wired) ⇒ None, and the
+        tool's static irreversible/external floor holds."""
+        if reversibility_policy is None:
+            return None
+        label = reversibility_policy.resolve_for_vendor(str(args.get("vendor", "")))
+        return label.to_dict() if label is not None else None
+
     async def purchase_queue_handler(
         args: dict[str, Any],
         context: ToolContext,
@@ -75,6 +92,7 @@ def make_purchase_tools(queue: PurchaseQueue) -> list[ToolDefinition]:
             risk_ids=("RISK-IRREVERSIBLE-SEND",),
             effect_class="social.queue_purchase",
             default_reversibility={"degree": "irreversible", "agent": "external"},
+            reversibility_resolver=resolve_reversibility,
             social_commitment=True,
             tool_provenance="operator-curated",
             surfaces_destination_id=True,
