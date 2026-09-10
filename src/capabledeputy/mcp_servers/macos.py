@@ -140,10 +140,10 @@ end run
         "timeout_seconds": 10,
         "argv": ["bundle_id"],
         "annotations": {
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": True,
+            "open_world_hint": False,
         },
         "input_schema": {
             "type": "object",
@@ -200,10 +200,10 @@ end run
         "timeout_seconds": 5,
         "argv": ["text"],
         "annotations": {
-            "readOnlyHint": False,
-            "destructiveHint": True,
-            "idempotentHint": False,
-            "openWorldHint": False,
+            "read_only_hint": False,
+            "destructive_hint": True,
+            "idempotent_hint": False,
+            "open_world_hint": False,
         },
         "input_schema": {
             "type": "object",
@@ -231,10 +231,10 @@ end run
         "timeout_seconds": 5,
         "argv": ["title", "message"],
         "annotations": {
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": False,
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": False,
+            "open_world_hint": False,
         },
         "input_schema": {
             "type": "object",

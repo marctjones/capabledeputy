@@ -411,12 +411,12 @@
       "statements": 30
     },
     "mcp.admin_server": {
-      "covered": 42,
+      "covered": 38,
       "files": [
         "src/capabledeputy/mcp_server/admin.py"
       ],
-      "min_percent": 68.85,
-      "statements": 61
+      "min_percent": 88.37,
+      "statements": 43
     },
     "mcp.resources_prompts": {
       "covered": 59,
@@ -428,12 +428,12 @@
       "statements": 62
     },
     "mcp.session_server": {
-      "covered": 93,
+      "covered": 113,
       "files": [
         "src/capabledeputy/mcp_server/server.py"
       ],
-      "min_percent": 67.39,
-      "statements": 138
+      "min_percent": 72.44,
+      "statements": 156
     },
     "mcp_server.bundled.apple-mail": {
       "covered": 14,

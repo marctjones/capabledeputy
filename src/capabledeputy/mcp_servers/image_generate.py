@@ -109,7 +109,11 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["prompt"],
             },
             handler=_generate,
-            annotations={"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+            annotations={
+                "read_only_hint": False,
+                "destructive_hint": True,
+                "open_world_hint": False,
+            },
         ),
     ]
 

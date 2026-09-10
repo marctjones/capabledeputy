@@ -8,11 +8,9 @@ flow rather than in CI.
 
 from __future__ import annotations
 
-from typing import Any
-
 import mcp.types as mcp_types
+from mcp.server.context import ServerRequestContext
 from mcp.server.lowlevel import Server
-from mcp.shared.memory import create_connected_server_and_client_session
 
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import LabelState, ProvenanceLevel, ProvenanceTag
@@ -24,61 +22,68 @@ from capabledeputy.upstream.adapter import (
     _maybe_truncate_output,
 )
 from capabledeputy.upstream.config import UpstreamServerConfig, UpstreamToolOverride
+from tests.mcp_conformance import create_connected_server_and_client_session
 
 
 def _build_fake_server() -> Server:
-    server: Server = Server("fake-upstream")
-
-    @server.list_tools()
-    async def _list_tools() -> list[mcp_types.Tool]:
-        return [
-            mcp_types.Tool(
-                name="read_file",
-                description="Read a file from the filesystem.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {"path": {"type": "string"}},
-                    "required": ["path"],
-                },
-                annotations=mcp_types.ToolAnnotations(readOnlyHint=True),
-            ),
-            mcp_types.Tool(
-                name="write_file",
-                description="Write a file.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "path": {"type": "string"},
-                        "content": {"type": "string"},
+    async def _on_list_tools(
+        ctx: ServerRequestContext,
+        params: mcp_types.PaginatedRequestParams | None,
+    ) -> mcp_types.ListToolsResult:
+        return mcp_types.ListToolsResult(
+            tools=[
+                mcp_types.Tool(
+                    name="read_file",
+                    description="Read a file from the filesystem.",
+                    input_schema={
+                        "type": "object",
+                        "properties": {"path": {"type": "string"}},
+                        "required": ["path"],
                     },
-                    "required": ["path", "content"],
-                },
-                annotations=mcp_types.ToolAnnotations(destructiveHint=True),
-            ),
-            mcp_types.Tool(
-                name="fetch",
-                description="HTTP fetch.",
-                inputSchema={"type": "object"},
-            ),
-        ]
+                    annotations=mcp_types.ToolAnnotations(read_only_hint=True),
+                ),
+                mcp_types.Tool(
+                    name="write_file",
+                    description="Write a file.",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string"},
+                            "content": {"type": "string"},
+                        },
+                        "required": ["path", "content"],
+                    },
+                    annotations=mcp_types.ToolAnnotations(destructive_hint=True),
+                ),
+                mcp_types.Tool(
+                    name="fetch",
+                    description="HTTP fetch.",
+                    input_schema={"type": "object"},
+                ),
+            ],
+        )
 
-    @server.call_tool()
-    async def _call_tool(
-        name: str,
-        arguments: dict[str, Any] | None,
+    async def _on_call_tool(
+        ctx: ServerRequestContext,
+        params: mcp_types.CallToolRequestParams,
     ) -> mcp_types.CallToolResult:
+        arguments = params.arguments
         return mcp_types.CallToolResult(
             content=[
                 mcp_types.TextContent(
                     type="text",
-                    text=f"called {name} with {arguments or {}}",
+                    text=f"called {params.name} with {arguments or {}}",
                 ),
             ],
-            structuredContent={"name": name, "args": arguments or {}},
-            isError=False,
+            structured_content={"name": params.name, "args": arguments or {}},
+            is_error=False,
         )
 
-    return server
+    return Server(
+        "fake-upstream",
+        on_list_tools=_on_list_tools,
+        on_call_tool=_on_call_tool,
+    )
 
 
 async def test_register_tools_creates_namespaced_entries() -> None:
@@ -307,34 +312,39 @@ def test_infer_capability_kind_destructive_maps_to_granular() -> None:
     assert _infer_capability_kind(None, "create_doc") == CapabilityKind.CREATE_FS
     assert _infer_capability_kind(None, "delete_event") == CapabilityKind.DELETE_CAL
 
-    destructive = mcp_types.ToolAnnotations(destructiveHint=True, readOnlyHint=False)
+    destructive = mcp_types.ToolAnnotations(destructive_hint=True, read_only_hint=False)
     assert _infer_capability_kind(destructive, "apply") == CapabilityKind.MODIFY_FS
 
 
 def _build_unclassifiable_server() -> Server:
-    server: Server = Server("mystery-upstream")
+    async def _on_list_tools(
+        ctx: ServerRequestContext,
+        params: mcp_types.PaginatedRequestParams | None,
+    ) -> mcp_types.ListToolsResult:
+        return mcp_types.ListToolsResult(
+            tools=[
+                mcp_types.Tool(
+                    name="do_stuff",
+                    description="Does unspecified stuff.",
+                    input_schema={"type": "object"},
+                ),
+            ],
+        )
 
-    @server.list_tools()
-    async def _list_tools() -> list[mcp_types.Tool]:
-        return [
-            mcp_types.Tool(
-                name="do_stuff",
-                description="Does unspecified stuff.",
-                inputSchema={"type": "object"},
-            ),
-        ]
-
-    @server.call_tool()
-    async def _call_tool(
-        name: str,
-        arguments: dict[str, Any] | None,
+    async def _on_call_tool(
+        ctx: ServerRequestContext,
+        params: mcp_types.CallToolRequestParams,
     ) -> mcp_types.CallToolResult:
         return mcp_types.CallToolResult(
             content=[mcp_types.TextContent(type="text", text="ok")],
-            isError=False,
+            is_error=False,
         )
 
-    return server
+    return Server(
+        "mystery-upstream",
+        on_list_tools=_on_list_tools,
+        on_call_tool=_on_call_tool,
+    )
 
 
 async def test_strict_mode_rejects_unclassifiable_tool() -> None:

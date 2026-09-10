@@ -111,7 +111,7 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["path"],
             },
             handler=_read,
-            annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+            annotations={"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
         ),
         ToolDescriptor(
             name="fs.list",
@@ -122,7 +122,7 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["path"],
             },
             handler=_list,
-            annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+            annotations={"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
         ),
         ToolDescriptor(
             name="fs.create",
@@ -139,7 +139,11 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["path", "content"],
             },
             handler=_create,
-            annotations={"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+            annotations={
+                "read_only_hint": False,
+                "destructive_hint": False,
+                "open_world_hint": False,
+            },
         ),
         ToolDescriptor(
             name="fs.write",
@@ -156,7 +160,11 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["path", "content"],
             },
             handler=_write,
-            annotations={"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+            annotations={
+                "read_only_hint": False,
+                "destructive_hint": True,
+                "open_world_hint": False,
+            },
         ),
         ToolDescriptor(
             name="fs.delete",
@@ -167,7 +175,11 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["path"],
             },
             handler=_delete,
-            annotations={"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+            annotations={
+                "read_only_hint": False,
+                "destructive_hint": True,
+                "open_world_hint": False,
+            },
         ),
     ]
 

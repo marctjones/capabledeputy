@@ -41,7 +41,6 @@ import anyio
 import anyio.abc
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from pydantic import AnyUrl
 
 if TYPE_CHECKING:
     from capabledeputy.upstream.config import UpstreamServerConfig
@@ -319,18 +318,28 @@ class LiveSession:
                 )
                 read, write = await stack.enter_async_context(stdio_client(params))
             elif self._config.transport == "streamable_http":
-                from mcp.client.streamable_http import streamablehttp_client
+                import httpx2
+                from mcp.client.streamable_http import streamable_http_client
 
                 from capabledeputy.upstream.http_auth import httpx_auth_from_config
 
-                read, write, _get_session_id = await stack.enter_async_context(
-                    streamablehttp_client(
-                        self._config.url,
+                # mcp 2.x's streamable_http_client takes a pre-built
+                # httpx2.AsyncClient (`http_client=`) instead of separate
+                # headers=/auth= kwargs; we build and own that client's
+                # lifecycle here so headers/auth still apply per-request.
+                http_client = await stack.enter_async_context(
+                    httpx2.AsyncClient(
                         headers=self._config.headers or None,
                         auth=httpx_auth_from_config(
                             self._config.auth,
                             server_name=self._config.name,
                         ),
+                    ),
+                )
+                read, write = await stack.enter_async_context(
+                    streamable_http_client(
+                        self._config.url,
+                        http_client=http_client,
                     ),
                 )
             else:  # pragma: no cover - config parser rejects this.
@@ -456,8 +465,8 @@ class LiveSession:
             lambda: self._with_retry(lambda s: s.list_resources()),
         )
 
-    async def read_resource(self, uri: AnyUrl) -> Any:
-        # Mirrors mcp.ClientSession.read_resource(uri: AnyUrl) so SessionLike
+    async def read_resource(self, uri: str) -> Any:
+        # Mirrors mcp.ClientSession.read_resource(uri: str) so SessionLike
         # (ClientSession | LiveSession) is a coherent union for callers.
         return await self._dispatch(
             lambda: self._with_retry(lambda s: s.read_resource(uri)),

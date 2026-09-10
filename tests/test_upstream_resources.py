@@ -20,7 +20,7 @@ class _FakeResource:
         self.uri = uri
         self.name = name
         self.description = description
-        self.mimeType = mime
+        self.mime_type = mime
         self.meta = meta or {}
 
 
@@ -32,7 +32,7 @@ class _FakeListResourcesResult:
 class _FakeContent:
     def __init__(self, text, mime="text/plain", meta=None):
         self.text = text
-        self.mimeType = mime
+        self.mime_type = mime
         self.meta = meta or {}
 
 

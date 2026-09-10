@@ -50,16 +50,16 @@ def test_control_tools_include_daemon_client_surface() -> None:
 
     tool_call = next(tool for tool in tools if tool.name == "tool_call")
     assert tool_call.annotations is not None
-    assert tool_call.annotations.readOnlyHint is False
-    assert tool_call.annotations.destructiveHint is True
-    assert tool_call.annotations.openWorldHint is True
+    assert tool_call.annotations.read_only_hint is False
+    assert tool_call.annotations.destructive_hint is True
+    assert tool_call.annotations.open_world_hint is True
 
     app_status = next(tool for tool in tools if tool.name == "app_status")
     assert app_status.annotations is not None
-    assert app_status.annotations.readOnlyHint is True
+    assert app_status.annotations.read_only_hint is True
 
     for tool in tools:
-        assert tool.outputSchema is not None
+        assert tool.output_schema is not None
         assert tool.meta is not None
         assert tool.meta["io.capabledeputy/surface"] == "control"
         assert tool.meta["io.capabledeputy/session_bound"] is False
@@ -70,9 +70,9 @@ async def test_control_status_dispatches_to_daemon(fake_daemon) -> None:
 
     result = await dispatch_control_tool(client, "app_status")
 
-    assert result.isError is False
-    assert result.structuredContent is not None
-    assert result.structuredContent["daemon"] == "running"
+    assert result.is_error is False
+    assert result.structured_content is not None
+    assert result.structured_content["daemon"] == "running"
     assert result.meta is not None
     assert result.meta["io.capabledeputy/surface"] == "control"
     assert client.calls == [("app.status", None)]
@@ -83,9 +83,9 @@ async def test_control_daemon_state_dispatches_to_daemon(fake_daemon) -> None:
 
     result = await dispatch_control_tool(client, "daemon_state")
 
-    assert result.isError is False
-    assert result.structuredContent is not None
-    assert result.structuredContent["schema_version"] == 1
+    assert result.is_error is False
+    assert result.structured_content is not None
+    assert result.structured_content["schema_version"] == 1
     assert client.calls == [("daemon.state", None)]
 
 
@@ -104,7 +104,7 @@ async def test_control_session_new_dispatches_params(fake_daemon) -> None:
         },
     )
 
-    assert result.isError is False
+    assert result.is_error is False
     assert client.calls == [
         (
             "session.new",
@@ -130,9 +130,9 @@ async def test_control_session_security_context_dispatches_to_daemon(fake_daemon
         {"session_id": "s1"},
     )
 
-    assert result.isError is False
-    assert result.structuredContent is not None
-    assert result.structuredContent["session"]["id"] == "s1"
+    assert result.is_error is False
+    assert result.structured_content is not None
+    assert result.structured_content["session"]["id"] == "s1"
     assert client.calls == [("session.security_context", {"session_id": "s1"})]
 
 
@@ -151,7 +151,7 @@ async def test_control_session_turn_start_dispatches_to_daemon(fake_daemon) -> N
         },
     )
 
-    assert result.isError is False
+    assert result.is_error is False
     assert client.calls == [
         (
             "session.turn.start",
@@ -185,8 +185,8 @@ async def test_control_session_turn_events_and_cancel_dispatch(fake_daemon) -> N
         {"turn_id": "t1", "reason": "operator", "client_id": "codex"},
     )
 
-    assert events.isError is False
-    assert cancel.isError is False
+    assert events.is_error is False
+    assert cancel.is_error is False
     assert client.calls == [
         ("session.turn.events", {"turn_id": "t1", "after": 3}),
         (
@@ -209,7 +209,7 @@ async def test_control_tool_call_dispatches_policy_gated_call(fake_daemon) -> No
         },
     )
 
-    assert result.isError is False
+    assert result.is_error is False
     assert "queued_approval" in _text(result)
     assert client.calls == [
         (
@@ -232,7 +232,7 @@ async def test_control_approval_approve_dispatches(fake_daemon) -> None:
         {"id": 42},
     )
 
-    assert result.isError is False
+    assert result.is_error is False
     assert client.calls == [
         ("approval.approve", {"id": 42, "decided_by": "mcp-control"}),
     ]
@@ -247,7 +247,7 @@ async def test_control_workflow_launch_dispatches(fake_daemon) -> None:
         {"template_id": "meeting-prep", "client_id": "codex"},
     )
 
-    assert result.isError is False
+    assert result.is_error is False
     assert client.calls == [
         ("workflow.launch", {"template_id": "meeting-prep", "client_id": "codex"}),
     ]
@@ -272,8 +272,8 @@ async def test_control_mcp_admission_dispatches_actor_defaults(fake_daemon) -> N
         {"server": "github", "tools": ["list_issues"]},
     )
 
-    assert preview.isError is False
-    assert approve.isError is False
+    assert preview.is_error is False
+    assert approve.is_error is False
     assert client.calls == [
         (
             "mcp.admission.preview",
@@ -308,7 +308,7 @@ async def test_control_workstream_claim_dispatches(fake_daemon) -> None:
         },
     )
 
-    assert result.isError is False
+    assert result.is_error is False
     assert client.calls == [
         (
             "workstream.claim",
@@ -333,7 +333,7 @@ async def test_control_workstream_release_client_dispatches(fake_daemon) -> None
         {"client_id": "gui-a", "reason": "heartbeat lost"},
     )
 
-    assert result.isError is False
+    assert result.is_error is False
     assert client.calls == [
         (
             "workstream.release_client",
@@ -347,7 +347,7 @@ async def test_control_workstream_sweep_expired_dispatches(fake_daemon) -> None:
 
     result = await dispatch_control_tool(client, "workstream_sweep_expired")
 
-    assert result.isError is False
+    assert result.is_error is False
     assert client.calls == [("workstream.sweep_expired", None)]
 
 
@@ -388,9 +388,9 @@ async def test_control_onguard_tools_dispatch_to_daemon_rpc(fake_daemon) -> None
         {"artifact_id": "art-1"},
     )
 
-    assert schedule.isError is False
-    assert queued.isError is False
-    assert promoted.isError is False
+    assert schedule.is_error is False
+    assert queued.is_error is False
+    assert promoted.is_error is False
     assert client.calls == [
         (
             "schedule.create",
@@ -425,7 +425,7 @@ async def test_control_unknown_tool_is_error(fake_daemon) -> None:
 
     result = await dispatch_control_tool(client, "missing")
 
-    assert result.isError is True
+    assert result.is_error is True
     assert "unknown control tool" in _text(result)
 
 

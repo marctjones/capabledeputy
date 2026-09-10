@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import mcp.types as mcp_types
+from mcp.server.context import ServerRequestContext
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
@@ -55,11 +56,12 @@ def build_server(server_name: str, tools: list[ToolDescriptor]) -> Server:
     ``create_connected_server_and_client_session`` without spawning
     a subprocess.
     """
-    server: Server = Server(server_name)
     tool_by_name: dict[str, ToolDescriptor] = {t.name: t for t in tools}
 
-    @server.list_tools()
-    async def _list_tools() -> list[mcp_types.Tool]:
+    async def _on_list_tools(
+        ctx: ServerRequestContext,
+        params: mcp_types.PaginatedRequestParams | None,
+    ) -> mcp_types.ListToolsResult:
         out: list[mcp_types.Tool] = []
         for t in tools:
             annotations = None
@@ -72,23 +74,27 @@ def build_server(server_name: str, tools: list[ToolDescriptor]) -> Server:
                 mcp_types.Tool(
                     name=t.name,
                     description=t.description,
-                    inputSchema=t.input_schema,
+                    input_schema=t.input_schema,
                     annotations=annotations,
                 ),
             )
-        return out
+        return mcp_types.ListToolsResult(tools=out)
 
-    @server.call_tool()
-    async def _call_tool(
-        name: str,
-        arguments: dict[str, Any] | None,
-    ) -> list[mcp_types.ContentBlock]:
-        if name not in tool_by_name:
-            raise ValueError(f"unknown tool: {name}")
-        args = arguments or {}
-        result = await tool_by_name[name].handler(args)
-        return _to_content_list(result)
+    async def _on_call_tool(
+        ctx: ServerRequestContext,
+        params: mcp_types.CallToolRequestParams,
+    ) -> mcp_types.CallToolResult:
+        if params.name not in tool_by_name:
+            raise ValueError(f"unknown tool: {params.name}")
+        args = params.arguments or {}
+        result = await tool_by_name[params.name].handler(args)
+        return mcp_types.CallToolResult(content=_to_content_list(result))
 
+    server: Server = Server(
+        server_name,
+        on_list_tools=_on_list_tools,
+        on_call_tool=_on_call_tool,
+    )
     return server
 
 

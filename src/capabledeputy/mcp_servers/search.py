@@ -58,7 +58,7 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["query"],
             },
             handler=_search_web,
-            annotations={"readOnlyHint": True, "openWorldHint": True, "idempotentHint": True},
+            annotations={"read_only_hint": True, "open_world_hint": True, "idempotent_hint": True},
         ),
     ]
 

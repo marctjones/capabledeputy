@@ -113,8 +113,8 @@ async def test_adapter_result_labeler_hook() -> None:
     lab = _lab([{"match": {"from_domain": "chase.com"}, "labels": ["confidential.financial"]}])
 
     msg = {"from": "alerts@chase.com", "subject": "statement"}
-    # Mimic the MCP SDK result shape (camelCase attrs come from the SDK).
-    upstream_result = SimpleNamespace(isError=False, content=[], structuredContent=msg)
+    # Mimic the MCP SDK result shape (snake_case attrs on mcp 2.x).
+    upstream_result = SimpleNamespace(is_error=False, content=[], structured_content=msg)
 
     class _Session:
         async def call_tool(self, name, arguments=None):

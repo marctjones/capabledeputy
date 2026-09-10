@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 import mcp.types as mcp_types
-from pydantic import AnyUrl
 
 from capabledeputy.mcp_server.admin import discover_admin_tools
 from capabledeputy.mcp_server.control import discover_control_tools
@@ -28,7 +27,7 @@ def _tool(
     return mcp_types.Tool(
         name=name,
         description=f"Conformance tool {name}",
-        inputSchema={"type": "object", "additionalProperties": True},
+        input_schema={"type": "object", "additionalProperties": True},
         annotations=annotations,
         _meta=meta,
     )
@@ -52,7 +51,7 @@ async def test_conformance_disabled_kind_blocks_renamed_send_tools() -> None:
         tools=[
             _tool(
                 "dispatch_customer_update",
-                annotations=mcp_types.ToolAnnotations(destructiveHint=True),
+                annotations=mcp_types.ToolAnnotations(destructive_hint=True),
             )
         ],
     )
@@ -76,7 +75,7 @@ async def test_conformance_tool_meta_and_config_labels_propagate_to_registered_t
         tools=[
             _tool(
                 "read_statement",
-                annotations=mcp_types.ToolAnnotations(readOnlyHint=True),
+                annotations=mcp_types.ToolAnnotations(read_only_hint=True),
                 meta={
                     "io.capabledeputy/inherent_tags": {
                         "a": [
@@ -110,10 +109,10 @@ async def test_conformance_resources_are_labeled_inputs() -> None:
     harness = InMemoryMcpConformanceHarness(
         resources=[
             mcp_types.Resource(
-                uri=AnyUrl("upstream://news/prompt-injection"),
+                uri="upstream://news/prompt-injection",
                 name="Injected article",
                 description="Article that attempts instruction override.",
-                mimeType="text/plain",
+                mime_type="text/plain",
                 _meta={
                     "io.capabledeputy/inherent_tags": {
                         "a": [

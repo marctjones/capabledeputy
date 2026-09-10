@@ -159,10 +159,10 @@ def test_infer_browser_and_iwork_kinds_from_name() -> None:
 def test_calendar_unchanged() -> None:
     """Existing CALENDAR_* classifications still work."""
 
-    # readOnlyHint=True path
+    # read_only_hint=True path
     class _Annotations:
-        readOnlyHint = True  # noqa: N815 (MCP tool-annotation protocol field name)
-        destructiveHint = False  # noqa: N815 (MCP tool-annotation protocol field name)
+        read_only_hint = True
+        destructive_hint = False
 
     assert (
         _infer_capability_kind(_Annotations(), "calendar.events.list")

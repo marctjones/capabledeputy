@@ -191,10 +191,10 @@ end run
         "timeout_seconds": 10,
         "argv": ["slide_number"],
         "annotations": {
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": False,
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": False,
+            "open_world_hint": False,
         },
         "input_schema": {
             "type": "object",
@@ -225,10 +225,10 @@ end run
         "output_format": "json",
         "timeout_seconds": 10,
         "annotations": {
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
+            "read_only_hint": False,
+            "destructive_hint": False,
+            "idempotent_hint": True,
+            "open_world_hint": False,
         },
         "input_schema": {
             "type": "object",

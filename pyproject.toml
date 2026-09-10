@@ -25,7 +25,13 @@ dependencies = [
     "typer>=0.12",
     "rich>=13.7",
     "litellm>=1.50",
-    "mcp>=1.0",
+    # >=1.28.1 for GHSA-vj7q-gjh5-988w / GHSA-jpw9-pfvf-9f58 /
+    # GHSA-hvrp-rf83-w775 (WebSocket transport Host/Origin validation,
+    # HTTP transport session-principal checks, cross-client experimental
+    # task access). On the 2.x line deliberately: verified the codebase
+    # doesn't use the WebSocket transport or experimental tasks API that
+    # 2.x removed.
+    "mcp>=2.2.0",
     # Pinned to a bounded range: SVG snapshot baselines
     # (tests/__snapshots__) are sensitive to Textual's renderer; a
     # major bump would churn them. Widen deliberately, with a

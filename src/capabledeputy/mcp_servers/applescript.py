@@ -105,11 +105,11 @@ class AppleScriptToolSpec:
         if not isinstance(annotations_raw, Mapping):
             raise CatalogError(f"{source_file}: tool {name!r} annotations must be a mapping")
         annotations = {str(k): bool(v) for k, v in annotations_raw.items()}
-        annotations.setdefault("readOnlyHint", read_only)
-        annotations.setdefault("destructiveHint", destructive)
+        annotations.setdefault("read_only_hint", read_only)
+        annotations.setdefault("destructive_hint", destructive)
         if read_only:
-            annotations.setdefault("idempotentHint", True)
-        annotations.setdefault("openWorldHint", False)
+            annotations.setdefault("idempotent_hint", True)
+        annotations.setdefault("open_world_hint", False)
 
         return cls(
             name=name,

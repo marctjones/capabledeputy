@@ -69,7 +69,7 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["url"],
             },
             handler=_fetch,
-            annotations={"readOnlyHint": True, "openWorldHint": True, "idempotentHint": True},
+            annotations={"read_only_hint": True, "open_world_hint": True, "idempotent_hint": True},
         ),
     ]
 

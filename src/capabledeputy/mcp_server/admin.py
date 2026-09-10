@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import mcp.types as mcp_types
+from mcp.server.context import ServerRequestContext
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
@@ -35,13 +36,13 @@ _ADMIN_TOOLS: tuple[mcp_types.Tool, ...] = (
         name="setup_status",
         title="Setup status",
         description="Return daemon-owned setup checks and remediation actions.",
-        inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
-        outputSchema=_GENERIC_OBJECT_OUTPUT,
+        input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+        output_schema=_GENERIC_OBJECT_OUTPUT,
         annotations=mcp_types.ToolAnnotations(
             title="Setup status",
-            readOnlyHint=True,
-            idempotentHint=True,
-            openWorldHint=False,
+            read_only_hint=True,
+            idempotent_hint=True,
+            open_world_hint=False,
         ),
         **{"_meta": _ADMIN_META},  # pyright: ignore[reportArgumentType]
     ),
@@ -73,33 +74,37 @@ def _ok_result(result: Any) -> mcp_types.CallToolResult:
     text = json.dumps(result, indent=2) if isinstance(result, dict | list) else str(result)
     return mcp_types.CallToolResult(
         content=[mcp_types.TextContent(type="text", text=text)],
-        structuredContent=structured,
-        isError=False,
-        **{"_meta": _ADMIN_META},
+        structured_content=structured,
+        is_error=False,
+        **{"_meta": _ADMIN_META},  # pyright: ignore[reportArgumentType]
     )
 
 
 def _error_result(message: str) -> mcp_types.CallToolResult:
     return mcp_types.CallToolResult(
         content=[mcp_types.TextContent(type="text", text=message)],
-        isError=True,
+        is_error=True,
     )
 
 
 async def build_admin_server(client: DaemonClient) -> Server:
-    server: Server = Server(SERVER_NAME)
+    async def _on_list_tools(
+        ctx: ServerRequestContext,
+        params: mcp_types.PaginatedRequestParams | None,
+    ) -> mcp_types.ListToolsResult:
+        return mcp_types.ListToolsResult(tools=discover_admin_tools())
 
-    @server.list_tools()
-    async def _list_tools() -> list[mcp_types.Tool]:
-        return discover_admin_tools()
-
-    @server.call_tool()
-    async def _call_tool(
-        name: str,
-        arguments: dict[str, Any] | None,
+    async def _on_call_tool(
+        ctx: ServerRequestContext,
+        params: mcp_types.CallToolRequestParams,
     ) -> mcp_types.CallToolResult:
-        return await dispatch_admin_tool(client, name, arguments)
+        return await dispatch_admin_tool(client, params.name, params.arguments)
 
+    server: Server = Server(
+        SERVER_NAME,
+        on_list_tools=_on_list_tools,
+        on_call_tool=_on_call_tool,
+    )
     return server
 
 

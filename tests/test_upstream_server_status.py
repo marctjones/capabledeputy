@@ -43,8 +43,8 @@ def _stub_tool(name: str, read_only: bool = True):
     return SimpleNamespace(
         name=name,
         description="stub",
-        annotations=SimpleNamespace(readOnlyHint=read_only, destructiveHint=False),
-        inputSchema={"type": "object"},
+        annotations=SimpleNamespace(read_only_hint=read_only, destructive_hint=False),
+        input_schema={"type": "object"},
         meta=None,
     )
 

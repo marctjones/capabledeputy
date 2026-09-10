@@ -106,7 +106,7 @@ def tools() -> list[ToolDescriptor]:
             description="git status --porcelain=v1 --branch on a repository.",
             input_schema=common_repo_schema,
             handler=_status,
-            annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+            annotations={"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
         ),
         ToolDescriptor(
             name="git.log",
@@ -128,7 +128,7 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["repo_path"],
             },
             handler=_log,
-            annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+            annotations={"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
         ),
         ToolDescriptor(
             name="git.diff",
@@ -145,7 +145,7 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["repo_path"],
             },
             handler=_diff,
-            annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+            annotations={"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
         ),
         ToolDescriptor(
             name="git.show",
@@ -159,14 +159,14 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["repo_path", "ref"],
             },
             handler=_show,
-            annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+            annotations={"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
         ),
         ToolDescriptor(
             name="git.branch_list",
             description="git branch --list -v on a repository.",
             input_schema=common_repo_schema,
             handler=_branch_list,
-            annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+            annotations={"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
         ),
     ]
 

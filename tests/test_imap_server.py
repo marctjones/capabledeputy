@@ -35,7 +35,7 @@ def test_all_expected_tools_registered() -> None:
 def test_imap_send_is_destructive() -> None:
     for t in imap.tools():
         if t.name == "imap.send":
-            assert t.annotations and t.annotations.get("destructiveHint") is True
+            assert t.annotations and t.annotations.get("destructive_hint") is True
             return
     raise AssertionError("imap.send not found")
 
@@ -43,7 +43,7 @@ def test_imap_send_is_destructive() -> None:
 def test_imap_archive_is_destructive() -> None:
     for t in imap.tools():
         if t.name == "imap.archive":
-            assert t.annotations and t.annotations.get("destructiveHint") is True
+            assert t.annotations and t.annotations.get("destructive_hint") is True
             return
     raise AssertionError("imap.archive not found")
 

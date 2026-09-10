@@ -29,7 +29,7 @@ async def test_mcp_control_onguard_tools_use_live_daemon(tmp_path: Path) -> None
                 "version": "test",
             },
         )
-        assert registered.isError is False
+        assert registered.is_error is False
 
         scheduled = await dispatch_control_tool(
             daemon.client,
@@ -43,9 +43,9 @@ async def test_mcp_control_onguard_tools_use_live_daemon(tmp_path: Path) -> None
                 "labels": ["personal.profile"],
             },
         )
-        assert scheduled.isError is False
-        assert scheduled.structuredContent is not None
-        schedule = scheduled.structuredContent["schedule"]
+        assert scheduled.is_error is False
+        assert scheduled.structured_content is not None
+        schedule = scheduled.structured_content["schedule"]
         assert schedule["client_id"] == "onguard.digest.daily"
         assert schedule["created_by"] == "mcp-control"
 
@@ -59,9 +59,9 @@ async def test_mcp_control_onguard_tools_use_live_daemon(tmp_path: Path) -> None
                 "labels": ["personal.profile"],
             },
         )
-        assert queued.isError is False
-        assert queued.structuredContent is not None
-        command = queued.structuredContent["command"]
+        assert queued.is_error is False
+        assert queued.structured_content is not None
+        command = queued.structured_content["command"]
         assert command["status"] == "queued"
         assert command["labels"] == ["personal.profile"]
 
@@ -116,10 +116,10 @@ async def test_security_context_is_available_to_cli_and_mcp_control(
         assert cli.exit_code == 0
         assert '"schema_version": 1' in cli.stdout
         assert '"pending_count": 1' in cli.stdout
-        assert mcp.isError is False
-        assert mcp.structuredContent is not None
-        assert mcp.structuredContent["session"]["id"] == created["id"]
-        assert mcp.structuredContent["approvals"]["pending_count"] == 1
+        assert mcp.is_error is False
+        assert mcp.structured_content is not None
+        assert mcp.structured_content["session"]["id"] == created["id"]
+        assert mcp.structured_content["approvals"]["pending_count"] == 1
 
 
 async def test_cli_onguard_read_paths_use_live_daemon(tmp_path: Path) -> None:

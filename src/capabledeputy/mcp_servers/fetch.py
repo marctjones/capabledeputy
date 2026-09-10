@@ -101,7 +101,7 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["url"],
             },
             handler=_fetch_get,
-            annotations={"readOnlyHint": True, "openWorldHint": True, "idempotentHint": True},
+            annotations={"read_only_hint": True, "open_world_hint": True, "idempotent_hint": True},
         ),
         ToolDescriptor(
             name="wikipedia.lookup",
@@ -129,7 +129,7 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["title"],
             },
             handler=_wikipedia_lookup,
-            annotations={"readOnlyHint": True, "openWorldHint": True, "idempotentHint": True},
+            annotations={"read_only_hint": True, "open_world_hint": True, "idempotent_hint": True},
         ),
     ]
 

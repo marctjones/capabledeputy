@@ -121,9 +121,9 @@ async def test_list_resources_exposes_memory_entries_with_labels(
         resources = await list_resources(client)
         assert len(resources) == 2
 
-        rx = next(r for r in resources if r.uri.path == "/rx" or "rx" in str(r.uri))
+        rx = next(r for r in resources if "rx" in str(r.uri))
         assert str(rx.uri).startswith(MEMORY_URI_PREFIX)
-        assert rx.mimeType == "application/json"
+        assert rx.mime_type == "application/json"
         assert rx.meta is not None
         assert "confidential.health" in rx.meta.get("io.capabledeputy/labels", [])
 

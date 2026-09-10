@@ -17,8 +17,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from pydantic import AnyUrl
-
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.labels import (
     CategoryTag,
@@ -121,17 +119,17 @@ def _infer_capability_kind(
     fail closed (strict) or fall back (non-strict).
 
     Security-relevant choices:
-      - destructive/modify/delete names and ``destructiveHint`` map to
+      - destructive/modify/delete names and ``destructive_hint`` map to
         the GRANULAR destructive kinds (MODIFY_*/DELETE_*), never the
         legacy ``WRITE_FS`` union — otherwise the policy engine's
         destructive-op gate would be silently bypassed.
       - an unrecognised tool returns ``None`` (no permissive default).
     """
     lowered = name.lower()
-    read_only = annotations is not None and getattr(annotations, "readOnlyHint", False)
+    read_only = annotations is not None and getattr(annotations, "read_only_hint", False)
     destructive = annotations is not None and getattr(
         annotations,
-        "destructiveHint",
+        "destructive_hint",
         False,
     )
 
@@ -336,7 +334,7 @@ class LabeledMcpAdapter:
                     "uri": uri,
                     "name": str(getattr(r, "name", "") or uri),
                     "description": str(getattr(r, "description", "") or ""),
-                    "mime_type": str(getattr(r, "mimeType", "") or "text/plain"),
+                    "mime_type": str(getattr(r, "mime_type", "") or "text/plain"),
                     "labels": sorted(_tag_to_str(t) for t in all_tags.a | all_tags.b),
                     "server": self._config.name,
                 },
@@ -351,7 +349,7 @@ class LabeledMcpAdapter:
         the upstream config.
         """
         try:
-            result = await self._session.read_resource(AnyUrl(uri))
+            result = await self._session.read_resource(uri)
         except Exception as e:
             return {"found": False, "uri": uri, "error": str(e)}
         contents = getattr(result, "contents", [])
@@ -373,7 +371,7 @@ class LabeledMcpAdapter:
             "uri": uri,
             "content": "\n".join(texts),
             "mime_type": str(
-                getattr(contents[0], "mimeType", "text/plain") if contents else "text/plain"
+                getattr(contents[0], "mime_type", "text/plain") if contents else "text/plain"
             ),
             "labels": sorted(_tag_to_str(t) for t in all_tags.a | all_tags.b),
             "server": self._config.name,
@@ -472,9 +470,9 @@ class LabeledMcpAdapter:
                     target_template=override.target_template if override else None,
                     amount_arg=override.amount_arg if override else None,
                     inherent_tags=inherent,
-                    parameters_schema=upstream_tool.inputSchema or {"type": "object"},
+                    parameters_schema=upstream_tool.input_schema or {"type": "object"},
                     output_schema=(
-                        getattr(upstream_tool, "outputSchema", None)
+                        getattr(upstream_tool, "output_schema", None)
                         or {"type": "object", "additionalProperties": True}
                     ),
                     operations=(op,),
@@ -488,7 +486,7 @@ class LabeledMcpAdapter:
     def _make_handler(self, upstream_name: str):
         async def handler(args: dict[str, Any], context: ToolContext) -> ToolResult:
             result = await self._session.call_tool(upstream_name, arguments=args)
-            structured = getattr(result, "structuredContent", None)
+            structured = getattr(result, "structured_content", None)
             if isinstance(structured, dict):
                 output = structured
             else:
@@ -500,7 +498,7 @@ class LabeledMcpAdapter:
                 output = {"text": "\n".join(texts)} if texts else {}
 
             additional = LabelState()
-            if getattr(result, "isError", False):
+            if getattr(result, "is_error", False):
                 output = {"upstream_error": True, **output}
             elif self._result_labeler is not None:
                 # Raise-only: merge any per-message labels the labeler

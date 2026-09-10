@@ -3,7 +3,7 @@
 The daemon must already be running. The server connects via the daemon's
 JSON-RPC socket, discovers tools via tool.list, and forwards tool calls
 through tool.call. Policy denials surface as tool execution errors
-(isError=true) so the calling agent (e.g. Claude Code) sees them and
+(is_error=true) so the calling agent (e.g. Claude Code) sees them and
 adapts in its own loop.
 
 The `--session-id` argument binds the server to a specific CapableDeputy
@@ -12,18 +12,18 @@ that session's state across the conversation.
 
 Spec leverage (per modelcontextprotocol.io/specification/2025-11-25):
 
-  - Real inputSchema per tool (not the empty `{"type": "object"}`
+  - Real input_schema per tool (not the empty `{"type": "object"}`
     placeholder).
-  - structuredContent + text fallback for dict outputs, per
+  - structured_content + text fallback for dict outputs, per
     "Structured Content" §.
-  - isError=true on policy denials and tool errors, per "Tool
+  - is_error=true on policy denials and tool errors, per "Tool
     Execution Errors" §.
-  - ToolAnnotations (readOnlyHint / destructiveHint / openWorldHint)
+  - ToolAnnotations (read_only_hint / destructive_hint / open_world_hint)
     derived from the capability kind so MCP hosts can render
     appropriate UI confirmations per spec security guidance.
-  - _meta carries CapableDeputy-specific capability metadata so
+  - meta carries CapableDeputy-specific capability metadata so
     capability-aware hosts can do further filtering.
-  - Resources for memory entries with labels in _meta.
+  - Resources for memory entries with labels in meta.
   - Prompts for canonical workflows.
   - Elicitation for in-flow approvals when the daemon chokepoint has
     already queued an approval object for a declassifiable action —
@@ -39,10 +39,19 @@ Known boundary:
     session.
   - All denials (including the v0.7 rules capability-expired /
     rate-limit-exceeded / capability-revoked-by-prior-use) DO surface
-    to the host as an isError tool result carrying rule + reason +
+    to the host as an is_error tool result carrying rule + reason +
     the shared deterministic recovery hint. Enforcement is unaffected
     — the daemon's `decide()` is the chokepoint; this proxy only
     relays decisions.
+
+mcp 2.x note: request handlers are passed to `Server(...)` at
+construction (`on_list_tools=`, `on_call_tool=`, ...) instead of
+registered via decorators, and each handler receives an explicit
+`ctx: ServerRequestContext` — there is no `server.request_context`
+contextvar anymore. `_watch_capability_changes` runs as a background
+task outside any request, so it can't rely on a handler's `ctx`; it
+waits on `_SessionHolder`, populated from the first request any real
+client makes (list_tools, during MCP initialization).
 """
 
 from __future__ import annotations
@@ -53,8 +62,11 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import anyio
 import mcp.types as mcp_types
+from mcp.server.context import ServerRequestContext
 from mcp.server.lowlevel import Server
+from mcp.server.session import ServerSession
 from mcp.server.stdio import stdio_server
 
 from capabledeputy.ipc.client import DaemonClient
@@ -66,18 +78,38 @@ SERVER_NAME = "capdep"
 
 
 _ANNOTATIONS_BY_KIND: dict[str, dict[str, bool]] = {
-    "READ_FS": {"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    "WRITE_FS": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
-    "SEND_EMAIL": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
-    "WEB_FETCH": {"readOnlyHint": True, "openWorldHint": True, "idempotentHint": True},
-    "CALENDAR_READ": {"readOnlyHint": True, "idempotentHint": True},
-    "CALENDAR_WRITE": {"readOnlyHint": False, "destructiveHint": True},
-    "QUEUE_PURCHASE": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
+    "READ_FS": {"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
+    "WRITE_FS": {"read_only_hint": False, "destructive_hint": True, "open_world_hint": False},
+    "SEND_EMAIL": {"read_only_hint": False, "destructive_hint": True, "open_world_hint": True},
+    "WEB_FETCH": {"read_only_hint": True, "open_world_hint": True, "idempotent_hint": True},
+    "CALENDAR_READ": {"read_only_hint": True, "idempotent_hint": True},
+    "CALENDAR_WRITE": {"read_only_hint": False, "destructive_hint": True},
+    "QUEUE_PURCHASE": {"read_only_hint": False, "destructive_hint": True, "open_world_hint": True},
     # Mirror the READ_FS/WRITE_FS display hints for their memory-store
     # analogs (MEMORY_READ/MEMORY_WRITE).
-    "MEMORY_READ": {"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    "MEMORY_WRITE": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+    "MEMORY_READ": {"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
+    "MEMORY_WRITE": {"read_only_hint": False, "destructive_hint": True, "open_world_hint": False},
 }
+
+
+class _SessionHolder:
+    """Captures the stdio connection's single `ServerSession` the first
+    time any request handler runs, so background tasks (which have no
+    `ctx` of their own) can still push server-to-client notifications."""
+
+    def __init__(self) -> None:
+        self._session: ServerSession | None = None
+        self._ready = anyio.Event()
+
+    def capture(self, session: ServerSession) -> None:
+        if self._session is None:
+            self._session = session
+            self._ready.set()
+
+    async def wait(self) -> ServerSession:
+        await self._ready.wait()
+        assert self._session is not None
+        return self._session
 
 
 def _annotations_for(tool: dict[str, Any]) -> mcp_types.ToolAnnotations | None:
@@ -107,12 +139,14 @@ async def discover_tools(client: DaemonClient) -> list[mcp_types.Tool]:
                 name=tool["name"],
                 title=tool["name"],
                 description=tool["description"],
-                inputSchema=schema,
-                outputSchema=tool.get("output_schema")
+                input_schema=schema,
+                output_schema=tool.get("output_schema")
                 or {"type": "object", "additionalProperties": True},
                 annotations=annotations,
-                # mcp `_meta` alias; SDK accepts at runtime, pyright's
-                # generated model doesn't expose it. Boundary ignore.
+                # mcp models alias the metadata field as `_meta`; the SDK
+                # accepts the unaliased `meta` kwarg at runtime (populate_by_name)
+                # but pyright's synthesized __init__ only exposes the alias.
+                # Boundary ignore.
                 **{"_meta": _tool_meta(tool)},  # pyright: ignore[reportArgumentType]
             ),
         )
@@ -159,7 +193,7 @@ def _build_elicit_schema(
 
 async def _try_elicit_and_approve(
     client: DaemonClient,
-    server: Server,
+    session: ServerSession,
     tool_name: str,
     args: dict[str, Any],
     deny_result: dict[str, Any],
@@ -170,17 +204,12 @@ async def _try_elicit_and_approve(
         return None
     schema = _build_elicit_schema(tool_name, args, rule, int(approval_id))
     try:
-        elicit_result = await server.request_context.session.elicit(
+        elicit_result = await session.elicit(
             message=(
                 f"Approve queued capdep request #{approval_id} for {tool_name} "
                 f"despite policy rule '{rule}'?"
             ),
-            # mcp's elicit() takes requestedSchema as a plain dict
-            # (camelCase). The prior code passed `requested_schema=`
-            # with an ElicitRequestedSchema object — wrong kwarg AND
-            # wrong type; this path would have raised at runtime when
-            # the email-approval elicitation fired.
-            requestedSchema={
+            requested_schema={
                 "type": "object",
                 "properties": schema["properties"],
                 "required": schema["required"],
@@ -200,7 +229,7 @@ async def _try_elicit_and_approve(
                     ),
                 ),
             ],
-            isError=True,
+            is_error=True,
         )
 
     content = elicit_result.content or {}
@@ -212,7 +241,7 @@ async def _try_elicit_and_approve(
                     text="User did not approve via elicitation.",
                 ),
             ],
-            isError=True,
+            is_error=True,
         )
 
     approved = await client.call(
@@ -232,7 +261,7 @@ async def _try_elicit_and_approve(
                     ),
                 ),
             ],
-            isError=False,
+            is_error=False,
         )
     return mcp_types.CallToolResult(
         content=[
@@ -244,13 +273,13 @@ async def _try_elicit_and_approve(
                 ),
             ),
         ],
-        isError=True,
+        is_error=True,
     )
 
 
-async def _send_log(server: Server, level: str, message: str) -> None:
+async def _send_log(session: ServerSession, level: str, message: str) -> None:
     with suppress(Exception):
-        await server.request_context.session.send_log_message(
+        await session.send_log_message(
             level=level,  # type: ignore[arg-type]
             data=message,
             logger="capdep",
@@ -262,7 +291,7 @@ async def dispatch_tool(
     session_id: UUID,
     name: str,
     arguments: dict[str, Any],
-    server: Server | None = None,
+    session: ServerSession | None = None,
 ) -> mcp_types.CallToolResult:
     result = await client.call(
         "tool.call",
@@ -277,13 +306,13 @@ async def dispatch_tool(
         text = f"tool error: {result['error']}"
         return mcp_types.CallToolResult(
             content=[mcp_types.TextContent(type="text", text=text)],
-            isError=True,
+            is_error=True,
         )
 
     if result["decision"] != "allow":
-        if server is not None and _is_elicitable_denial(result):
+        if session is not None and _is_elicitable_denial(result):
             await _send_log(
-                server,
+                session,
                 "warning",
                 "policy requires approval for "
                 f"{name} (approval_id={result.get('approval_id')}, rule={result.get('rule')}); "
@@ -291,7 +320,7 @@ async def dispatch_tool(
             )
             elicit_result = await _try_elicit_and_approve(
                 client,
-                server,
+                session,
                 name,
                 arguments,
                 result,
@@ -316,16 +345,16 @@ async def dispatch_tool(
             "io.capabledeputy/effective_labels": result.get("effective_labels", []),
             "io.capabledeputy/approval_id": result.get("approval_id"),
         }
-        if server is not None:
+        if session is not None:
             await _send_log(
-                server,
+                session,
                 "warning",
                 f"policy denied {name}: rule={rule}",
             )
         return mcp_types.CallToolResult(
             content=[mcp_types.TextContent(type="text", text=text)],
-            isError=True,
-            **{"_meta": meta},
+            is_error=True,
+            **{"_meta": meta},  # pyright: ignore[reportArgumentType]
         )
 
     media_payload: dict[str, Any] = dict(result)
@@ -341,9 +370,9 @@ async def dispatch_tool(
         "io.capabledeputy/labels_added": result.get("labels_added", []),
     }
 
-    if server is not None and result.get("labels_added"):
+    if session is not None and result.get("labels_added"):
         await _send_log(
-            server,
+            session,
             "info",
             f"tool {name} succeeded; labels expanded with " + ", ".join(result["labels_added"]),
         )
@@ -360,49 +389,88 @@ async def dispatch_tool(
     return built
 
 
-async def build_server(client: DaemonClient, session_id: UUID) -> Server:
-    server: Server = Server(SERVER_NAME)
-
-    @server.list_tools()
-    async def _list_tools() -> list[mcp_types.Tool]:
-        return await discover_tools(client)
-
-    @server.call_tool()
-    async def _call_tool(
-        name: str,
-        arguments: dict[str, Any] | None,
-    ) -> mcp_types.CallToolResult:
-        return await dispatch_tool(client, session_id, name, arguments or {}, server)
-
+async def build_server(
+    client: DaemonClient,
+    session_id: UUID,
+) -> tuple[Server, _SessionHolder]:
     from capabledeputy.mcp_server import prompts as _prompts
     from capabledeputy.mcp_server import resources as _resources
 
-    @server.list_resources()
-    async def _list_resources() -> list[mcp_types.Resource]:
-        return await _resources.list_resources(client)
+    session_holder = _SessionHolder()
 
-    @server.read_resource()
-    async def _read_resource(uri: Any) -> str:
-        return await _resources.read_resource(client, session_id, str(uri))
+    async def _on_list_tools(
+        ctx: ServerRequestContext,
+        params: mcp_types.PaginatedRequestParams | None,
+    ) -> mcp_types.ListToolsResult:
+        session_holder.capture(ctx.session)
+        return mcp_types.ListToolsResult(tools=await discover_tools(client))
 
-    @server.list_prompts()
-    async def _list_prompts() -> list[mcp_types.Prompt]:
-        return _prompts.list_prompts()
+    async def _on_call_tool(
+        ctx: ServerRequestContext,
+        params: mcp_types.CallToolRequestParams,
+    ) -> mcp_types.CallToolResult:
+        session_holder.capture(ctx.session)
+        return await dispatch_tool(
+            client,
+            session_id,
+            params.name,
+            params.arguments or {},
+            ctx.session,
+        )
 
-    @server.get_prompt()
-    async def _get_prompt(
-        name: str,
-        arguments: dict[str, str] | None,
+    async def _on_list_resources(
+        ctx: ServerRequestContext,
+        params: mcp_types.PaginatedRequestParams | None,
+    ) -> mcp_types.ListResourcesResult:
+        session_holder.capture(ctx.session)
+        return mcp_types.ListResourcesResult(resources=await _resources.list_resources(client))
+
+    async def _on_read_resource(
+        ctx: ServerRequestContext,
+        params: mcp_types.ReadResourceRequestParams,
+    ) -> mcp_types.ReadResourceResult:
+        session_holder.capture(ctx.session)
+        text = await _resources.read_resource(client, session_id, str(params.uri))
+        return mcp_types.ReadResourceResult(
+            contents=[
+                mcp_types.TextResourceContents(
+                    uri=str(params.uri),
+                    mime_type="application/json",
+                    text=text,
+                ),
+            ],
+        )
+
+    async def _on_list_prompts(
+        ctx: ServerRequestContext,
+        params: mcp_types.PaginatedRequestParams | None,
+    ) -> mcp_types.ListPromptsResult:
+        session_holder.capture(ctx.session)
+        return mcp_types.ListPromptsResult(prompts=_prompts.list_prompts())
+
+    async def _on_get_prompt(
+        ctx: ServerRequestContext,
+        params: mcp_types.GetPromptRequestParams,
     ) -> mcp_types.GetPromptResult:
-        return _prompts.get_prompt(name, arguments)
+        session_holder.capture(ctx.session)
+        return _prompts.get_prompt(params.name, params.arguments)
 
-    return server
+    server: Server = Server(
+        SERVER_NAME,
+        on_list_tools=_on_list_tools,
+        on_call_tool=_on_call_tool,
+        on_list_resources=_on_list_resources,
+        on_read_resource=_on_read_resource,
+        on_list_prompts=_on_list_prompts,
+        on_get_prompt=_on_get_prompt,
+    )
+    return server, session_holder
 
 
 async def _watch_capability_changes(
     socket_path: Path,
     session_id: UUID,
-    server: Server,
+    session_holder: _SessionHolder,
 ) -> None:
     """Subscribe to the daemon's audit stream and emit MCP
     tools/list_changed when our bound session's capabilities change."""
@@ -417,7 +485,8 @@ async def _watch_capability_changes(
             if (data.get("session_id") or "") != target:
                 continue
             with suppress(Exception):
-                await server.request_context.session.send_tool_list_changed()
+                session = await session_holder.wait()
+                await session.send_tool_list_changed()
 
 
 async def serve(session_id: UUID, socket_path: Path | None = None) -> None:
@@ -428,12 +497,12 @@ async def serve(session_id: UUID, socket_path: Path | None = None) -> None:
     # (Claude Code, Codex, etc.) connect to. It must never carry operator
     # authority — see daemon/authz.py.
     client = DaemonClient(socket, trusted=False)
-    server = await build_server(client, session_id)
+    server, session_holder = await build_server(client, session_id)
     async with (
         stdio_server() as (read_stream, write_stream),
         _anyio.create_task_group() as tg,
     ):
-        tg.start_soon(_watch_capability_changes, socket, session_id, server)
+        tg.start_soon(_watch_capability_changes, socket, session_id, session_holder)
         try:
             await server.run(
                 read_stream,

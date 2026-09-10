@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import mcp.types as mcp_types
+from mcp.server.context import ServerRequestContext
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
@@ -56,10 +57,10 @@ def _annotations(
 ) -> mcp_types.ToolAnnotations:
     return mcp_types.ToolAnnotations(
         title=title,
-        readOnlyHint=read_only,
-        destructiveHint=destructive,
-        idempotentHint=idempotent,
-        openWorldHint=open_world,
+        read_only_hint=read_only,
+        destructive_hint=destructive,
+        idempotent_hint=idempotent,
+        open_world_hint=open_world,
     )
 
 
@@ -68,8 +69,8 @@ def _tool(spec: ControlToolSpec) -> mcp_types.Tool:
         name=spec.name,
         title=spec.title,
         description=spec.description,
-        inputSchema=spec.input_schema,
-        outputSchema=_GENERIC_OBJECT_OUTPUT,
+        input_schema=spec.input_schema,
+        output_schema=_GENERIC_OBJECT_OUTPUT,
         annotations=spec.annotations,
         **{"_meta": _CONTROL_META},  # pyright: ignore[reportArgumentType]
     )
@@ -2101,24 +2102,28 @@ def _ok_result(result: Any) -> mcp_types.CallToolResult:
 def _error_result(message: str) -> mcp_types.CallToolResult:
     return mcp_types.CallToolResult(
         content=[mcp_types.TextContent(type="text", text=message)],
-        isError=True,
+        is_error=True,
     )
 
 
 async def build_control_server(client: DaemonClient) -> Server:
-    server: Server = Server(SERVER_NAME)
+    async def _on_list_tools(
+        ctx: ServerRequestContext,
+        params: mcp_types.PaginatedRequestParams | None,
+    ) -> mcp_types.ListToolsResult:
+        return mcp_types.ListToolsResult(tools=discover_control_tools())
 
-    @server.list_tools()
-    async def _list_tools() -> list[mcp_types.Tool]:
-        return discover_control_tools()
-
-    @server.call_tool()
-    async def _call_tool(
-        name: str,
-        arguments: dict[str, Any] | None,
+    async def _on_call_tool(
+        ctx: ServerRequestContext,
+        params: mcp_types.CallToolRequestParams,
     ) -> mcp_types.CallToolResult:
-        return await dispatch_control_tool(client, name, arguments)
+        return await dispatch_control_tool(client, params.name, params.arguments)
 
+    server: Server = Server(
+        SERVER_NAME,
+        on_list_tools=_on_list_tools,
+        on_call_tool=_on_call_tool,
+    )
     return server
 
 

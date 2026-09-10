@@ -5,6 +5,7 @@ import time
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+import httpx2
 import pytest
 
 from capabledeputy.upstream.config import UpstreamAuthConfig
@@ -20,7 +21,7 @@ from capabledeputy.upstream.http_auth import (
 
 def test_bearer_token_auth_adds_authorization_header() -> None:
     auth = BearerTokenAuth("tok")
-    request = httpx.Request("GET", "https://example.test/mcp")
+    request = httpx2.Request("GET", "https://example.test/mcp")
     flow = auth.sync_auth_flow(request)
     authed = next(flow)
     assert authed.headers["Authorization"] == "Bearer tok"
@@ -55,7 +56,7 @@ def test_oauth2_auth_reads_access_token_from_cache(tmp_path) -> None:
     )
     assert isinstance(auth, OAuth2TokenAuth)
 
-    request = httpx.Request("GET", "https://example.test/mcp")
+    request = httpx2.Request("GET", "https://example.test/mcp")
     authed = next(auth.sync_auth_flow(request))
 
     assert authed.headers["Authorization"] == "Bearer cached-token"
@@ -87,7 +88,7 @@ def test_oauth2_auth_rejects_mis_scoped_cached_token(tmp_path) -> None:
     assert isinstance(auth, OAuth2TokenAuth)
 
     with pytest.raises(RuntimeError, match=r"missing required scopes.*write:items"):
-        next(auth.sync_auth_flow(httpx.Request("GET", "https://example.test/mcp")))
+        next(auth.sync_auth_flow(httpx2.Request("GET", "https://example.test/mcp")))
 
 
 def test_oauth2_auth_missing_cache_tells_operator_to_login(tmp_path) -> None:
@@ -104,7 +105,7 @@ def test_oauth2_auth_missing_cache_tells_operator_to_login(tmp_path) -> None:
     assert isinstance(auth, OAuth2TokenAuth)
 
     with pytest.raises(RuntimeError, match="capdep oauth login --server github"):
-        next(auth.sync_auth_flow(httpx.Request("GET", "https://example.test/mcp")))
+        next(auth.sync_auth_flow(httpx2.Request("GET", "https://example.test/mcp")))
 
 
 def test_oauth2_credential_status_connected_and_redacted(tmp_path) -> None:

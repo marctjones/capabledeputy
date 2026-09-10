@@ -18,11 +18,22 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
+import httpx2
 
 from capabledeputy.upstream.config import UpstreamAuthConfig
 
+# mcp 2.x's streamable_http transport builds its own httpx2.AsyncClient
+# (a vendored httpx fork so the SDK can pin its major version independently
+# of the host app's own httpx dependency) and only accepts httpx2.Auth
+# instances -- a plain httpx.Auth fails a strict isinstance check. These two
+# auth classes exist ONLY to feed that transport's `http_client=` (see
+# supervisor.py's streamable_http connect path), so they subclass httpx2.Auth
+# directly rather than duplicating the class for two libraries. Everything
+# else in this module (OAuth discovery/token-exchange HTTP calls) is
+# unrelated to the MCP transport and stays on plain httpx.
 
-class BearerTokenAuth(httpx.Auth):
+
+class BearerTokenAuth(httpx2.Auth):
     """Static bearer-token auth for remote MCP endpoints."""
 
     def __init__(self, token: str) -> None:
@@ -30,7 +41,7 @@ class BearerTokenAuth(httpx.Auth):
             raise ValueError("bearer auth requires a non-empty token")
         self._token = token
 
-    def sync_auth_flow(self, request: httpx.Request):
+    def sync_auth_flow(self, request: httpx2.Request):
         request.headers["Authorization"] = f"Bearer {self._token}"
         yield request
 
@@ -41,7 +52,7 @@ class OAuth2Endpoints:
     token_url: str
 
 
-class OAuth2TokenAuth(httpx.Auth):
+class OAuth2TokenAuth(httpx2.Auth):
     """OAuth2 bearer auth backed by CapDep's local token cache."""
 
     def __init__(
@@ -63,7 +74,7 @@ class OAuth2TokenAuth(httpx.Auth):
     def token_cache(self) -> Path:
         return self._token_cache
 
-    def sync_auth_flow(self, request: httpx.Request):
+    def sync_auth_flow(self, request: httpx2.Request):
         token = self._valid_access_token()
         request.headers["Authorization"] = f"Bearer {token}"
         yield request
@@ -175,8 +186,9 @@ def httpx_auth_from_config(
     *,
     server_name: str = "default",
     requested_scopes: tuple[str, ...] = (),
-) -> httpx.Auth | None:
-    """Build an httpx auth object from an upstream auth config."""
+) -> httpx2.Auth | None:
+    """Build an httpx2 auth object from an upstream auth config (see the
+    module-level note on why httpx2, not httpx)."""
     if config is None or config.type == "none":
         return None
     if config.type == "bearer":

@@ -120,12 +120,17 @@ def _requires_explicit_target(kind: CapabilityKind | str) -> bool:
 def _coerce_annotations(value: Any) -> Any:
     if value is None:
         return None
-    if hasattr(value, "readOnlyHint") or hasattr(value, "destructiveHint"):
+    if hasattr(value, "read_only_hint") or hasattr(value, "destructive_hint"):
         return value
     if isinstance(value, dict):
+        # `value` here is a raw wire-format tool annotations dict (from an
+        # upstream MCP server's tools/list response) -- the MCP JSON-RPC
+        # wire format is camelCase regardless of that server's own SDK
+        # version, so these keys are NOT the mcp_types.ToolAnnotations
+        # Python attribute names checked above.
         return SimpleNamespace(
-            readOnlyHint=bool(value.get("readOnlyHint") or value.get("read_only")),
-            destructiveHint=bool(value.get("destructiveHint") or value.get("destructive")),
+            read_only_hint=bool(value.get("readOnlyHint") or value.get("read_only")),
+            destructive_hint=bool(value.get("destructiveHint") or value.get("destructive")),
         )
     return None
 

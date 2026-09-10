@@ -8,6 +8,16 @@ breaking changes).
 
 ### Changed
 
+- Security: bumped `mcp` 1.27.0 → 2.2.0 (closes 3 high-severity upstream CVEs —
+  WebSocket transport Host/Origin validation, HTTP transport session-principal
+  checks, cross-client experimental-task access) plus `pypdf`, `aiohttp`,
+  `cryptography`, `setuptools`, and `torch` to their patched versions. The 2.x
+  major bump renamed `mcp.types` fields to snake_case and replaced the
+  decorator-based `Server.list_tools()`/`call_tool()` registration with
+  constructor `on_list_tools=`/`on_call_tool=` handlers across every MCP
+  surface (`mcp_server/`, `mcp_servers/`, `upstream/adapter.py` +
+  `supervisor.py`'s streamable_http transport, now built on the SDK's
+  internally-vendored `httpx2`).
 - Opt-in offline MLX smoke profile uses Qwen2.5 0.5B Instruct for every role,
   with short role defaults; deterministic tests continue using fake models.
 

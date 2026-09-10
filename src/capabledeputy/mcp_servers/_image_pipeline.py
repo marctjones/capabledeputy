@@ -892,14 +892,22 @@ def _load_pipeline(style: str, config: ImageGenConfig) -> Any:
 
     _require_image_deps()
     import torch
-    from diffusers import StableDiffusionXLPipeline
+    from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import (
+        StableDiffusionXLPipeline,
+    )
     from huggingface_hub import hf_hub_download
 
     preset = config.checkpoints.get(style)
     if preset is None:
         raise ValueError(f"unknown image style {style!r}")
 
-    dtype = torch.float16 if config.device == "mps" else torch.float32
+    # torch's stubs stopped re-exporting these from the top-level package
+    # in this version; both remain the standard, still-public runtime API.
+    dtype = (
+        torch.float16  # pyright: ignore[reportPrivateImportUsage]
+        if config.device == "mps"
+        else torch.float32  # pyright: ignore[reportPrivateImportUsage]
+    )
     checkpoint_path = preset.get("path")
     if checkpoint_path:
         checkpoint_path = str(Path(checkpoint_path).expanduser())
@@ -943,7 +951,8 @@ def _generate_diffusers_image(
 
     pipe = _load_pipeline(style, config)
     generator_device = "cpu" if config.device == "mps" else config.device
-    generator = torch.Generator(device=generator_device)
+    # Still the standard, public runtime API; see the _load_pipeline note.
+    generator = torch.Generator(device=generator_device)  # pyright: ignore[reportPrivateImportUsage]
     if seed is not None:
         generator = generator.manual_seed(int(seed))
 

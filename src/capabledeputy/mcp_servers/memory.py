@@ -163,7 +163,11 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["key", "value"],
             },
             handler=_create,
-            annotations={"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
+            annotations={
+                "read_only_hint": False,
+                "destructive_hint": False,
+                "open_world_hint": False,
+            },
         ),
         ToolDescriptor(
             name="memory.read",
@@ -174,7 +178,7 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["key"],
             },
             handler=_read,
-            annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+            annotations={"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
         ),
         ToolDescriptor(
             name="memory.update",
@@ -188,7 +192,11 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["key", "value"],
             },
             handler=_update,
-            annotations={"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+            annotations={
+                "read_only_hint": False,
+                "destructive_hint": True,
+                "open_world_hint": False,
+            },
         ),
         ToolDescriptor(
             name="memory.delete",
@@ -199,7 +207,11 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["key"],
             },
             handler=_delete,
-            annotations={"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+            annotations={
+                "read_only_hint": False,
+                "destructive_hint": True,
+                "open_world_hint": False,
+            },
         ),
         ToolDescriptor(
             name="memory.list",
@@ -209,7 +221,7 @@ def tools() -> list[ToolDescriptor]:
                 "properties": {"prefix": {"type": "string"}},
             },
             handler=_list,
-            annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+            annotations={"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
         ),
     ]
 

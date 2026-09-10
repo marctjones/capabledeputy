@@ -24,7 +24,6 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from mcp.shared.memory import create_connected_server_and_client_session
 
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.mcp_servers import fs as fs_server
@@ -41,6 +40,7 @@ from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.registry import ToolRegistry
 from capabledeputy.upstream.adapter import LabeledMcpAdapter
 from capabledeputy.upstream.config import UpstreamServerConfig
+from tests.mcp_conformance import create_connected_server_and_client_session
 
 # --- Fixtures ---------------------------------------------------------------
 

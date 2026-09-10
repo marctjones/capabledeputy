@@ -38,7 +38,7 @@ def test_build_mcp_result_includes_json_and_terminal_view(
     }
     result = build_mcp_result(payload, meta={"io.capabledeputy/surface": "control"})
 
-    assert result.isError is False
+    assert result.is_error is False
     assert len(result.content) >= 2
     assert isinstance(result.content[0], mcp_types.TextContent)
     assert json.loads(result.content[0].text)["content"].startswith("Here is the chart")
@@ -63,7 +63,7 @@ def test_image_content_from_path_encodes_png(tmp_path: Path) -> None:
     image.write_bytes(b"\x89PNG\r\n\x1a\n")
     content = image_content_from_path(image, alt="chart")
     assert content is not None
-    assert content.mimeType == "image/png"
+    assert content.mime_type == "image/png"
     assert content.data
 
 
@@ -73,7 +73,7 @@ def test_collect_media_from_tool_output_path(tmp_path: Path) -> None:
     payload = {"decision": "allow", "output": {"path": str(image), "alt": "shot"}}
     _, images = collect_media_from_result(payload)
     assert len(images) == 1
-    assert images[0].mimeType == "image/jpeg"
+    assert images[0].mime_type == "image/jpeg"
 
 
 def test_format_terminal_agent_markdown_renders_code_block() -> None:

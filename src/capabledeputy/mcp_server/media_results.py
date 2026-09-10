@@ -98,7 +98,7 @@ def image_content_from_path(path: Path, *, alt: str = "") -> mcp_types.ImageCont
     return mcp_types.ImageContent(
         type="image",
         data=base64.standard_b64encode(data).decode("ascii"),
-        mimeType=mime,
+        mime_type=mime,
         **({"_meta": meta} if meta else {}),  # pyright: ignore[reportArgumentType]
     )
 
@@ -238,7 +238,7 @@ def build_mcp_result(
 
     return mcp_types.CallToolResult(
         content=content,
-        structuredContent=structured,
-        isError=is_error,
+        structured_content=structured,
+        is_error=is_error,
         **({"_meta": call_meta} if call_meta else {}),  # pyright: ignore[reportArgumentType]
     )

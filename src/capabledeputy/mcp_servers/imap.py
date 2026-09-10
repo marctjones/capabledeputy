@@ -358,7 +358,7 @@ def tools() -> list[ToolDescriptor]:
                 },
             },
             handler=_list_threads,
-            annotations={"readOnlyHint": True, "openWorldHint": True, "idempotentHint": True},
+            annotations={"read_only_hint": True, "open_world_hint": True, "idempotent_hint": True},
         ),
         ToolDescriptor(
             name="imap.read_message",
@@ -372,7 +372,7 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["uid"],
             },
             handler=_read_message,
-            annotations={"readOnlyHint": True, "openWorldHint": True, "idempotentHint": True},
+            annotations={"read_only_hint": True, "open_world_hint": True, "idempotent_hint": True},
         ),
         ToolDescriptor(
             name="imap.search",
@@ -390,7 +390,7 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["query"],
             },
             handler=_search,
-            annotations={"readOnlyHint": True, "openWorldHint": True, "idempotentHint": True},
+            annotations={"read_only_hint": True, "open_world_hint": True, "idempotent_hint": True},
         ),
         ToolDescriptor(
             name="imap.send",
@@ -409,14 +409,18 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["to", "subject", "body"],
             },
             handler=_send,
-            annotations={"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
+            annotations={
+                "read_only_hint": False,
+                "destructive_hint": True,
+                "open_world_hint": True,
+            },
         ),
         ToolDescriptor(
             name="imap.list_folders",
             description="List all IMAP folders / labels.",
             input_schema={"type": "object", "properties": {}},
             handler=_list_folders,
-            annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+            annotations={"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
         ),
         ToolDescriptor(
             name="imap.mark_read",
@@ -430,7 +434,11 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["uid"],
             },
             handler=_mark_read,
-            annotations={"readOnlyHint": False, "openWorldHint": False, "idempotentHint": True},
+            annotations={
+                "read_only_hint": False,
+                "open_world_hint": False,
+                "idempotent_hint": True,
+            },
         ),
         ToolDescriptor(
             name="imap.archive",
@@ -448,7 +456,11 @@ def tools() -> list[ToolDescriptor]:
                 "required": ["uid"],
             },
             handler=_archive,
-            annotations={"readOnlyHint": False, "destructiveHint": True, "openWorldHint": False},
+            annotations={
+                "read_only_hint": False,
+                "destructive_hint": True,
+                "open_world_hint": False,
+            },
         ),
     ]
 
