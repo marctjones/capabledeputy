@@ -1617,7 +1617,11 @@ def _handle_spawn(arg: str, focus: dict[str, str]) -> None:
                 "kind": cap["kind"],
                 "pattern": cap["pattern"],
                 "expiry": "session",
-                "origin": "user_approved",
+                # session.grant_capability only accepts
+                # origin=system_default (it can't authenticate that a
+                # human approved this — it's an automatic inheritance
+                # from the parent session, not a fresh approval).
+                "origin": "system_default",
                 "audit_id": str(uuid4()),
                 "max_amount": cap.get("max_amount"),
                 "allows_destructive": False,
@@ -1747,7 +1751,13 @@ def _handle_grant(arg: str, session_id: str) -> None:
         "kind": kind,
         "pattern": pattern,
         "expiry": "one_shot" if one_shot else "session",
-        "origin": "user_approved",
+        # Non-destructive grants go over session.grant_capability, which
+        # only accepts origin=system_default (it can't authenticate that
+        # a human actually approved anything). Destructive grants go over
+        # operator.grant_capability, the true operator-only path, where
+        # origin=user_approved accurately reports that the operator typed
+        # this command themselves.
+        "origin": "user_approved" if allows_destructive else "system_default",
         "audit_id": str(uuid4()),
         "max_amount": max_amount,
         "allows_destructive": allows_destructive,
@@ -4089,7 +4099,10 @@ def _grant_default_read_caps(session_id: str) -> None:
             "kind": kind,
             "pattern": pattern,
             "expiry": "session",
-            "origin": "user_approved",
+            # session.grant_capability only accepts origin=system_default
+            # (these are automatic session-default grants, not a fresh
+            # human approval).
+            "origin": "system_default",
             "audit_id": str(uuid4()),
             "allows_destructive": False,
             "revoked_by": [],

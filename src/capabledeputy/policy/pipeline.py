@@ -61,6 +61,12 @@ class DecisionRequest:
     egress_override_categories: frozenset[str] = frozenset()
     egress_override_tiers: frozenset[str] = frozenset()
     trust_profile_is_personal: bool = False
+    # DESIGN.md §10.11 declassified re-dispatch carve-out — set ONLY by
+    # the approval-queue's internal re-dispatch (call_tool's
+    # already_approved kwarg, itself set only by
+    # approval_handlers._execute_declassified_*). Never derive this from
+    # request-supplied capability data; see engine._compose_with_v2.
+    already_approved: bool = False
 
 
 @dataclass(frozen=True)
@@ -116,6 +122,7 @@ class LegacyEnginePolicyPipeline:
             egress_override_categories=request.egress_override_categories,
             egress_override_tiers=request.egress_override_tiers,
             trust_profile_is_personal=request.trust_profile_is_personal,
+            already_approved=request.already_approved,
         )
         return DecisionFrame(
             request=request,

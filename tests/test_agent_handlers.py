@@ -112,6 +112,37 @@ async def test_session_grant_capability_refuses_destructive_widening(app: App) -
         )
 
 
+@pytest.mark.parametrize(
+    "origin",
+    ["user_approved", "override_granted", "pattern_rule", "delegated"],
+)
+async def test_session_grant_capability_refuses_forged_origin(
+    app: App,
+    origin: str,
+) -> None:
+    """An external MCP host driving session.grant_capability must not be
+    able to forge an origin that is supposed to record a real
+    daemon-mediated event (an approval-queue click, an Override Grant
+    ceremony, a pattern-rule match, a delegation chain). Only
+    origin=system_default is self-assertable over this RPC."""
+    await app.startup()
+    s = await app.graph.new()
+    handlers = make_agent_handlers(app)
+
+    cap = Capability(kind=CapabilityKind.SEND_EMAIL, pattern="*")
+    cap_dict = cap.to_dict()
+    cap_dict["origin"] = origin
+
+    with pytest.raises(ValueError, match=origin):
+        await handlers["session.grant_capability"](
+            {"session_id": str(s.id), "capability": cap_dict},
+        )
+
+    unchanged = app.graph.get(s.id)
+    assert cap not in unchanged.capability_set
+    assert not any(c.kind == CapabilityKind.SEND_EMAIL for c in unchanged.capability_set)
+
+
 async def test_session_send_returns_tool_outcomes(app: App) -> None:
     await app.startup()
     fake = FakeLLMClient(

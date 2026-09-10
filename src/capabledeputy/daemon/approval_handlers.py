@@ -314,7 +314,12 @@ async def _execute_declassified_destructive(
         LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})),
     )
 
-    outcome = await app.tool_client.call_tool(granted.id, tool_name, tool_args)
+    outcome = await app.tool_client.call_tool(
+        granted.id,
+        tool_name,
+        tool_args,
+        already_approved=True,
+    )
     await app.graph.abort(granted.id)
     return granted.id, outcome
 
@@ -355,7 +360,12 @@ async def _execute_declassified_purchase(
     )
 
     call_args = {"vendor": target, **{k: v for k, v in args.items() if k != "vendor"}}
-    outcome = await app.tool_client.call_tool(granted.id, "purchase.queue", call_args)
+    outcome = await app.tool_client.call_tool(
+        granted.id,
+        "purchase.queue",
+        call_args,
+        already_approved=True,
+    )
     await app.graph.abort(granted.id)
     return granted.id, outcome
 
@@ -390,6 +400,7 @@ async def _execute_declassified_email(
             "subject": "Approved declassified message",
             "body": payload,
         },
+        already_approved=True,
     )
 
     await app.graph.abort(granted.id)

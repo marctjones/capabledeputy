@@ -248,7 +248,11 @@ class CapDepConsole(App[None]):
                     "kind": cap["kind"],
                     "pattern": cap["pattern"],
                     "expiry": "session",
-                    "origin": "user_approved",
+                    # session.grant_capability only accepts
+                    # origin=system_default (it can't authenticate that a
+                    # human approved this — it's an automatic inheritance
+                    # from the parent session, not a fresh approval).
+                    "origin": "system_default",
                     "audit_id": str(uuid4()),
                     "max_amount": cap.get("max_amount"),
                     "allows_destructive": False,
@@ -288,7 +292,9 @@ class CapDepConsole(App[None]):
             "kind": kind,
             "pattern": pattern,
             "expiry": "one_shot" if "--one-shot" in rest else "session",
-            "origin": "user_approved",
+            # Always routed through session.grant_capability below, which
+            # only accepts origin=system_default.
+            "origin": "system_default",
             "audit_id": str(uuid4()),
             "max_amount": max_amount,
             "allows_destructive": "--destructive" in rest,

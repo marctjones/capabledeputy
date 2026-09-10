@@ -249,15 +249,43 @@ _V2_TO_LEGACY: dict[RuleOutcome, Decision] = {
 }
 
 
-def _compose_with_v2(legacy: PolicyDecision, v2: EvaluationResult) -> PolicyDecision:
+def _compose_with_v2(
+    legacy: PolicyDecision,
+    v2: EvaluationResult,
+    *,
+    already_approved: bool = False,
+) -> PolicyDecision:
     """Compose the legacy PolicyDecision with the v2 EvaluationResult.
 
     FR-031 asymmetry: v2 may only ratchet stricter, never relax. If
     legacy already denies/requires-approval and v2 says AUTO, the
     legacy outcome stands — but v2_outcome/v2_matched_rule_ids are
     still recorded on the decision for audit (T048).
+
+    Declassified re-dispatch carve-out (DESIGN.md §10.11): when
+    `already_approved` is set — meaning this call is the internal
+    re-dispatch of an action a human just approved in the approval
+    queue, via a fresh one-shot capability scoped exactly to that
+    action — a v2 leg that would otherwise ratchet the legacy ALLOW
+    down to REQUIRE_APPROVAL is suppressed. Approving a pending action
+    is what resolves that gate; re-applying the v2 never-auto default
+    to the very re-dispatch the approval triggered would make the
+    approve button a no-op. DENY and OVERRIDE_REQUIRED are NOT
+    suppressed: the approval queue cannot cross a hard floor or an
+    override-only gate (only an Override Grant ceremony can, FR-038),
+    so those still ratchet as normal.
     """
     v2_as_legacy = _V2_TO_LEGACY[v2.outcome]
+    if (
+        already_approved
+        and legacy.decision is Decision.ALLOW
+        and v2_as_legacy is Decision.REQUIRE_APPROVAL
+    ):
+        return replace(
+            legacy,
+            v2_outcome=v2.outcome,
+            v2_matched_rule_ids=v2.matched_rule_ids,
+        )
     if _LEGACY_RANK[v2_as_legacy] < _LEGACY_RANK[legacy.decision]:
         # v2 ratchets stricter.
         rule_label = (
@@ -951,6 +979,7 @@ def _decide_impl(
     egress_override_categories: frozenset[str] = frozenset(),
     egress_override_tiers: frozenset[str] = frozenset(),
     trust_profile_is_personal: bool = False,
+    already_approved: bool = False,
 ) -> PolicyDecision:
     """Internal decision impl. The public `decide()` wraps this and
     adds recovery-step synthesis (Issue #3) on the resulting
@@ -968,6 +997,18 @@ def _decide_impl(
     refused — returned as DENY with rule `RELAX_REFUSED_RULE` — and
     the refused inputs are surfaced on `PolicyDecision.refused_relax_inputs`
     so the caller can emit a `RELAXATION_REFUSED` audit event.
+
+    `already_approved` (declassified re-dispatch, DESIGN.md §10.11): set
+    ONLY by the approval-queue's internal declassified-dispatch call
+    sites (`approval_handlers._execute_declassified_*`), never derived
+    from any client/RPC-supplied field — a capability's `origin` is
+    forgeable via `session.grant_capability` and must not be trusted for
+    this. When set, a v2 leg that would otherwise ratchet a legacy ALLOW
+    down to REQUIRE_APPROVAL is suppressed: the human approval that
+    produced this dispatch already IS the resolution of that gate. DENY
+    and OVERRIDE_REQUIRED still win — the approval queue does not cross
+    hard floors or override-only gates; only an explicit Override Grant
+    ceremony does (FR-038).
     """
     # R4b.4 — use bundled LabelState directly. Default to empty when not provided.
     if labels is None:
@@ -1365,13 +1406,14 @@ def _decide_impl(
         default_when_no_match=default_v2_outcome,
         now_hour=_eff_now_for_v2.hour,
     )
-    composed = _compose_with_v2(legacy, v2)
+    composed = _compose_with_v2(legacy, v2, already_approved=already_approved)
     if reversibility_outcome is not None:
         composed = _compose_with_reversibility(
             composed,
             reversibility_outcome=reversibility_outcome,
             reversibility_rule=reversibility_rule,
             reversibility_reason=reversibility_reason,
+            already_approved=already_approved,
         )
     if envelope_outcome is not None:
         composed = _compose_with_envelope(
@@ -1379,6 +1421,7 @@ def _decide_impl(
             envelope_outcome=envelope_outcome,
             envelope_rule=envelope_rule,
             envelope_reason=envelope_reason,
+            already_approved=already_approved,
         )
     composed = _compose_with_conflict_invariant(
         composed,
@@ -1481,11 +1524,23 @@ def _compose_with_envelope(
     envelope_outcome: Decision,
     envelope_rule: str | None,
     envelope_reason: str | None,
+    already_approved: bool = False,
 ) -> PolicyDecision:
     """Compose the envelope-dial outcome with the base decision.
     Most-restrictive wins. The dial NEVER relaxes a stricter base —
     SC-010 invariant: hard-floor cells immovable by the dial.
+
+    Declassified re-dispatch carve-out: see `_compose_with_v2`. Applies
+    identically here so the envelope dial can't re-block an approved
+    dispatch the v2 leg already let through; DENY/OVERRIDE_REQUIRED
+    still ratchet.
     """
+    if (
+        already_approved
+        and base.decision is Decision.ALLOW
+        and envelope_outcome is Decision.REQUIRE_APPROVAL
+    ):
+        return base
     if _LEGACY_RANK[envelope_outcome] < _LEGACY_RANK[base.decision]:
         return replace(
             base,
@@ -1502,6 +1557,7 @@ def _compose_with_reversibility(
     reversibility_outcome: Decision,
     reversibility_rule: str | None,
     reversibility_reason: str | None,
+    already_approved: bool = False,
 ) -> PolicyDecision:
     """Compose the reversibility-gate / optimistic-auto outcome with
     the legacy + v2 result. Most-restrictive wins UNLESS the
@@ -1515,7 +1571,17 @@ def _compose_with_reversibility(
     matching human-ratified rule); any DENY or rule-driven outcome
     still wins. This keeps Principle V (single chokepoint, no
     accidental relaxation) honest.
+
+    Declassified re-dispatch carve-out: see `_compose_with_v2`. Applies
+    identically here so the reversibility gate can't re-block an
+    approved dispatch; DENY/OVERRIDE_REQUIRED still ratchet.
     """
+    if (
+        already_approved
+        and base.decision is Decision.ALLOW
+        and reversibility_outcome is Decision.REQUIRE_APPROVAL
+    ):
+        return base
     # Optimistic-auto carve-out: only relaxes a base REQUIRE_APPROVAL
     # produced by the v2 never-auto default, never relaxes DENY.
     if (

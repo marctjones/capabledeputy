@@ -264,7 +264,7 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
         )
 
     async def session_grant_capability(params: dict[str, Any]) -> dict[str, Any]:
-        from capabledeputy.policy.capabilities import Capability
+        from capabledeputy.policy.capabilities import Capability, CapabilityOrigin
 
         cap = Capability.from_dict(params["capability"])
         if cap.allows_destructive:
@@ -272,6 +272,25 @@ def make_agent_handlers(app: App) -> dict[str, Handler]:
                 "allows_destructive capabilities cannot be granted via "
                 "session.grant_capability — use operator.grant_capability "
                 "after explicit operator consent, or approve the pending action",
+            )
+        # `origin` is an audit-trail claim about *how* a capability came to
+        # exist (a real approval-queue click, a real Override Grant
+        # ceremony, a real pattern-rule match, a real delegation chain).
+        # This RPC deserializes `capability` straight from the caller's
+        # JSON, so any origin other than SYSTEM_DEFAULT would let the
+        # caller forge that provenance — e.g. mint origin=user_approved
+        # without anyone having approved anything. Each non-default origin
+        # has its own daemon-mediated minting path; self-assertion here is
+        # never legitimate for them.
+        if cap.origin is not CapabilityOrigin.SYSTEM_DEFAULT:
+            raise ValueError(
+                f"capabilities with origin={cap.origin.value!r} cannot be granted via "
+                "session.grant_capability — session.grant_capability only accepts "
+                "origin=system_default. For origin=user_approved, use "
+                "operator.grant_capability (an operator's own grant) or approve the "
+                "pending action (approval.approve); for origin=override_granted, use "
+                "override.request/override.attest; for origin=pattern_rule, use "
+                "approval_pattern.create; for origin=delegated, use session.delegate",
             )
         session = await app.graph.grant_capability(UUID(params["session_id"]), cap)
         return session.to_dict()

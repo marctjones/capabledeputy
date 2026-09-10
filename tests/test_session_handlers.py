@@ -177,3 +177,29 @@ async def test_operator_grant_capability_allows_destructive(graph: SessionGraph)
         c.get("allows_destructive") and c.get("pattern") == "/tmp/*"
         for c in updated["capability_set"]
     )
+
+
+async def test_operator_grant_capability_allows_user_approved_origin(
+    graph: SessionGraph,
+) -> None:
+    """operator.grant_capability is the true operator-only path (unlike
+    session.grant_capability, it isn't wired as an MCP control tool), so
+    it's where origin=user_approved is legitimately self-assertable —
+    the CLI's destructive `/grant` and the GUI's grant-and-retry both
+    depend on this staying true."""
+    from capabledeputy.policy.capabilities import Capability, CapabilityKind, CapabilityOrigin
+
+    handlers = make_session_handlers(graph)
+    s = await handlers["session.new"]({})
+    cap = Capability(
+        kind=CapabilityKind.SEND_EMAIL,
+        pattern="*",
+        origin=CapabilityOrigin.USER_APPROVED,
+    )
+    updated = await handlers["operator.grant_capability"](
+        {"session_id": s["id"], "capability": cap.to_dict()},
+    )
+    assert any(
+        c.get("origin") == "user_approved" and c.get("kind") == "SEND_EMAIL"
+        for c in updated["capability_set"]
+    )

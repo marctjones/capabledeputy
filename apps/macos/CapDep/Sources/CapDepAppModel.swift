@@ -1968,11 +1968,17 @@ final class CapDepAppModel: ObservableObject {
         } else {
             expiry = step.isOneShot ? "one_shot" : "session"
         }
+        // Non-destructive grants go over session.grant_capability, which
+        // only accepts origin=system_default (it can't authenticate that
+        // a human actually approved anything). Destructive grants go over
+        // operator.grant_capability, the true operator-only path, where
+        // origin=user_approved accurately reports that the user approved
+        // this in the GUI.
         let capability: [String: Any] = [
             "kind": kind,
             "pattern": pattern,
             "expiry": expiry,
-            "origin": "user_approved",
+            "origin": allowsDestructive ? "user_approved" : "system_default",
             "audit_id": UUID().uuidString,
             "allows_destructive": allowsDestructive,
             "revoked_by": [] as [String],

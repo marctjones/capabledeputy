@@ -328,7 +328,23 @@ class LabeledToolClient:
         session_id: UUID,
         tool_name: str,
         args: dict[str, Any],
+        *,
+        already_approved: bool = False,
     ) -> ToolCallOutcome:
+        """Dispatch a tool call through the policy chokepoint.
+
+        `already_approved` MUST be set only by the approval queue's
+        internal declassified re-dispatch
+        (`approval_handlers._execute_declassified_*`) — a purpose
+        session's fresh one-shot capability re-executing an action a
+        human just approved. It suppresses the v2/envelope/reversibility
+        legs' REQUIRE_APPROVAL ratchet on THIS call only (DENY and
+        OVERRIDE_REQUIRED are unaffected — see
+        `engine._compose_with_v2`). No RPC-reachable caller may set
+        this from client-supplied data: it is a Python-call-site-only
+        flag, not derived from any capability field (a capability's
+        `origin` is forgeable via `session.grant_capability`).
+        """
         tool = self._registry.get(tool_name)
         session = self._graph.get(session_id)
 
@@ -388,6 +404,7 @@ class LabeledToolClient:
                 "cautious",
             )
             != "cautious",
+            already_approved=already_approved,
             **{k: v for k, v in v2_kwargs.items() if k != "labels"},
         )
         policy_decision = self._policy_pipeline.decide(decision_request).decision
