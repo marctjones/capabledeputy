@@ -339,12 +339,12 @@
       "statements": 179
     },
     "daemon.file.setup-plan": {
-      "covered": 104,
+      "covered": 114,
       "files": [
         "src/capabledeputy/daemon/setup_plan.py"
       ],
-      "min_percent": 88.7,
-      "statements": 115
+      "min_percent": 100.0,
+      "statements": 114
     },
     "daemon.file.skill-handlers": {
       "covered": 39,
