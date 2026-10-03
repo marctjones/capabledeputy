@@ -4,6 +4,42 @@ CapDep tests are grouped by what they prove and by how deterministic they are.
 Default CI should stay deterministic and local; opt-in tiers can exercise
 platform UI, real models, or real external MCP servers.
 
+## One-command profiles
+
+Use the repository wrapper when validating a change locally or in an automated
+runner:
+
+```bash
+scripts/test-capdep.sh core
+```
+
+`core` is the default and mirrors the Python CI gate: lint, formatting,
+type-checking, the deterministic pytest suite, and the coverage ratchet. It
+uses isolated test state and must not contact accounts, start the user's daemon,
+or load a model.
+
+The wrapper uses `/tmp/capdep-uv-cache` by default so it also works from
+restricted IDE or sandbox environments. Set `CAPDEP_UV_CACHE_DIR` to choose a
+different writable cache location.
+
+On a macOS build host, add the Swift package tests and unsigned app-shell build:
+
+```bash
+scripts/test-capdep.sh macos
+```
+
+For an intentional daily-driver smoke on a configured workstation, use:
+
+```bash
+scripts/test-capdep.sh live
+```
+
+`live` first completes both deterministic profiles, then runs `capdep doctor`,
+checks daily-driver readiness, starts the host-owned LaunchAgent if needed, and
+runs `scripts/verify-gui-parity.py`. The parity probe has a real local-model
+chat assertion but performs no irreversible account action. Keep real-account
+mutation coverage separately opt-in and explicitly approved.
+
 ## Default deterministic tier
 
 Run:
