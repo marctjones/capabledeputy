@@ -911,6 +911,7 @@ async def run_turn_streaming(
             candidates=(),
             n_visible=len(visible_all),
             method="conversational",
+            selection_reason="conversational_turn_intentionally_has_no_tools",
         )
     else:
         tool_surface = await select_tools_for_turn_async(
@@ -976,6 +977,7 @@ async def run_turn_streaming(
                 "n_selected": len(tool_surface.selected),
                 "selected": [t.name for t in tool_surface.selected],
                 "mandatory_added": list(tool_surface.mandatory_added),
+                "selection_reason": tool_surface.selection_reason,
             },
         ),
     )

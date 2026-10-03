@@ -138,6 +138,24 @@ def test_broad_caps_respect_max_selected() -> None:
     assert "policy.preview" in {t.name for t in result.selected}
 
 
+def test_zero_sized_selector_falls_back_to_the_visible_surface() -> None:
+    """A bad selection limit cannot silently make an admitted session toolless."""
+    registry = ToolRegistry()
+    tools = [_tool("inbox.list", CapabilityKind.IMAP_READ)]
+    registry.register(tools[0])
+    result = select_tools_for_turn(
+        registry,
+        _session_with_caps(CapabilityKind.IMAP_READ),
+        ExecutionMode.TURN_LEVEL,
+        tools,
+        user_message="triage my inbox",
+        selection_config=ToolSelectionConfig(mode="retrieve", max_selected=0),
+    )
+    assert [tool.name for tool in result.selected] == ["inbox.list"]
+    assert result.method == "full_surface_fallback"
+    assert result.selection_reason == "selector_returned_empty_for_nonempty_visible_surface"
+
+
 def test_web_search_intent_includes_kagi_and_search_tools() -> None:
     registry = ToolRegistry()
     tools = (

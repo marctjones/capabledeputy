@@ -42,6 +42,10 @@ class ToolSelectionResult:
     method: str
     mandatory_added: tuple[str, ...] = field(default_factory=tuple)
     scores: dict[str, float] = field(default_factory=dict)
+    # Human/audit-facing explanation.  A selected count alone is ambiguous:
+    # zero may be intentional for a conversational turn, or it may mean that
+    # policy admitted no tools at all (#420).
+    selection_reason: str = ""
 
 
 def _tokenize(text: str) -> set[str]:
@@ -181,12 +185,22 @@ def select_tools_for_turn(
     cfg = selection_config or ToolSelectionConfig()
     n_visible = len(visible)
 
+    if not visible:
+        return ToolSelectionResult(
+            selected=(),
+            candidates=(),
+            n_visible=0,
+            method="no_visible_tools",
+            selection_reason="no_tools_visible_under_current_capabilities_and_mode",
+        )
+
     if cfg.mode == "static" or n_visible <= cfg.max_selected:
         return ToolSelectionResult(
             selected=tuple(visible),
             candidates=tuple(visible),
             n_visible=n_visible,
             method="full_surface",
+            selection_reason="full_visible_surface",
         )
 
     narrowed = _apply_family_filter(visible, families_cfg, session.purpose_handle)
@@ -256,6 +270,20 @@ def select_tools_for_turn(
         scores[tool.name] = score
 
     selected = tuple(sorted(selected_map.values(), key=lambda t: t.name))
+    # A selector must never silently turn a non-empty, policy-admitted
+    # surface into an empty planner surface.  This is not an authority
+    # expansion: every returned tool was already visible to this session and
+    # remains independently checked by the dispatch chokepoint.  It makes an
+    # invalid zero-sized selection observable and usable instead of producing
+    # the confusing "0 tools available" daily-driver failure (#420).
+    if not selected:
+        return ToolSelectionResult(
+            selected=tuple(visible),
+            candidates=tuple(visible),
+            n_visible=n_visible,
+            method="full_surface_fallback",
+            selection_reason="selector_returned_empty_for_nonempty_visible_surface",
+        )
     return ToolSelectionResult(
         selected=selected,
         candidates=tuple(candidates),
@@ -263,6 +291,7 @@ def select_tools_for_turn(
         method=method,
         mandatory_added=tuple(mandatory_added),
         scores=scores,
+        selection_reason="deterministic_retrieval",
     )
 
 
@@ -317,6 +346,7 @@ async def select_tools_for_turn_async(
         method="family+retrieve+ai",
         mandatory_added=base.mandatory_added,
         scores=base.scores,
+        selection_reason="ai_curated_from_deterministic_candidates",
     )
 
 
@@ -344,4 +374,5 @@ def widen_tool_surface(
         method="widened",
         mandatory_added=current.mandatory_added,
         scores=current.scores,
+        selection_reason="widened_after_model_requested_visible_tool",
     )

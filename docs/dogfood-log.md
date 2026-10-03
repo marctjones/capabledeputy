@@ -4,14 +4,19 @@ Status: not started. Seven elapsed days of use are required; automated checks
 must not be substituted for this observation period.
 
 Use these workflows: cited research memo; local document summary/revision;
-inbox triage with drafts. Record the exact revision and model configuration.
+inbox triage with drafts; calendar planning; and task management. Record the
+exact revision, pinned local-model revision/asset, authorization path (human
+approval or standing deterministic grant), and policy trace.
 
-| Date | Revision/model | Workflow | Completed | Seconds | Approvals / unnecessary | Terminal rescue | Incorrect success claim | Recovery / issue |
-|---|---|---|---|---|---|---|---|---|
+| Date | Revision/model | Workflow | Authorization path | Completed | Seconds | Approvals / unnecessary | Policy trace | GUI + terminal | Recovery / issue |
+|---|---|---|---|---|---|---|---|---|---|
 
 A denied unauthorized variant is an assurance success but not a completed user
-workflow. Record the useful authorized path separately. Do not loosen policy
-to improve completion scores. Never send a message as a smoke-test side effect.
+workflow. For each workflow, record an allowed path, denied unauthorized
+irreversible effect, deterministic standing-authorization path where applicable,
+taint/egress denial, cancellation, and daemon-recovery result separately. Do
+not loosen policy to improve completion scores. Never send a message as a
+smoke-test side effect.
 
 ### 2026-09-05 — supervised stabilization check (not a full dogfood day)
 

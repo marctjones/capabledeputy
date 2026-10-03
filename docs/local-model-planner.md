@@ -29,6 +29,35 @@ capdep daemon start
 To opt out, set `CAPDEP_LLM_MODEL` to something else such as
 `claude-haiku-4-5` or `ollama/phi4:latest`.
 
+## Daily local 8B baseline
+
+For the personal daily-driver on a 24-GB Apple-silicon laptop, use the
+operator-owned `models-daily-local-8b.yaml` profile. It maps every planner
+role and the quarantined extractor to `mlx-community/Qwen3-8B-4bit`, keeps
+generation serialized, disables model thinking for strict structured output,
+and refuses implicit downloads or cloud fallback:
+
+```sh
+sh scripts/with-daily-local-8b.sh .venv/bin/capdep daemon start
+```
+
+The model must be cached before this command is run. If its cached asset is not
+in Hugging Face's normal cache, point the wrapper at its absolute path:
+
+```sh
+CAPDEP_DAILY_MLX_MODEL=/absolute/path/to/Qwen3-8B-4bit-mlx \
+  sh scripts/with-daily-local-8b.sh .venv/bin/capdep daemon start
+```
+
+Record its exact revision and local asset path in the daily-use log before
+treating a run as acceptance evidence. Sharing weights does **not** weaken the extractor boundary: the
+extractor remains a tool-less, schema-bounded invocation and the policy engine
+remains the only authority for declassification and effects.
+
+This is the daily operating baseline, not a claim that 8B is universally best.
+Any promotion to a larger per-role model requires comparative real-workflow
+latency, memory, valid-tool-output, cancellation, and recovery evidence.
+
 ### Optional: enable model thinking mode
 
 By default the MLX adapter disables model-native thinking mode because
