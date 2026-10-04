@@ -54,10 +54,25 @@ def _render_session(s: dict[str, Any]) -> None:
         console.print(f"  owner:   {s['owner']}")
     console.print(f"  created: {s['created_at']}")
     console.print(f"  updated: {s['updated_at']}")
-    if s["label_set"]:
-        console.print(f"  labels:  {', '.join(s['label_set'])}")
-    if s["capability_set"]:
-        console.print(f"  caps:    {', '.join(s['capability_set'])}")
+    labels = s.get("label_set")
+    if labels is None:
+        from capabledeputy.policy.labels import LabelState, legacy_labels_present
+
+        labels = legacy_labels_present(LabelState.from_dict(s.get("label_state")))
+    if labels:
+        console.print(f"  labels:  {', '.join(str(label) for label in labels)}")
+
+    capabilities = s.get("capability_set") or ()
+    if capabilities:
+        rendered_capabilities = [
+            (
+                f"{capability.get('kind', '?')}({capability.get('pattern', '*')})"
+                if isinstance(capability, dict)
+                else str(capability)
+            )
+            for capability in capabilities
+        ]
+        console.print(f"  caps:    {', '.join(rendered_capabilities)}")
     if s.get("tool_aliasing"):
         console.print("  flags:   tool_aliasing")
     if s.get("prefer_programmatic"):
