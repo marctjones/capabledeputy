@@ -12,6 +12,7 @@ and any tool. Every dispatch goes through it, which guarantees that:
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -89,6 +90,28 @@ _EGRESS_LIKE_KINDS: frozenset[CapabilityKind] = frozenset(
         CapabilityKind.DELETE_FS,
     }
 )
+
+
+def _audit_output_metadata(value: Any) -> dict[str, Any]:
+    """Describe a tool result without copying labeled content into the audit.
+
+    Audit is a durable, broadly inspectable control plane. It needs a stable
+    commitment to returned bytes for provenance correlation, not a second
+    uncontrolled copy of an inbox, calendar, document, or tool result.
+    Results stay in the session's labeled flow for inspectors and the model.
+    """
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return {
+        "output_digest": stable_digest(value),
+        "output_type": type(value).__name__,
+        "output_size_bytes": len(encoded),
+        "output_redacted": True,
+    }
 
 
 def _replace_tool_result(
@@ -614,7 +637,7 @@ class LabeledToolClient:
             audit_id=uuid4(),
             event_type=EventType.TOOL_RETURNED,
             session_id=session_id,
-            payload={"tool": tool_name, "output": result.output},
+            payload={"tool": tool_name, **_audit_output_metadata(result.output)},
         )
         await self._audit.write(tool_returned_event)
 

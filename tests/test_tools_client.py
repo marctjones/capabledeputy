@@ -1,3 +1,4 @@
+import json
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -518,6 +519,43 @@ async def test_audit_events_are_emitted(writer: AuditWriter) -> None:
     assert EventType.CAPABILITY_CHECKED in types
     assert EventType.TOOL_DISPATCHED in types
     assert EventType.TOOL_RETURNED in types
+
+
+async def test_tool_return_audit_commits_to_output_without_copying_it(
+    writer: AuditWriter,
+) -> None:
+    registry, graph, client = await _make_setup(writer)
+
+    async def handler(args: dict[str, Any], context: ToolContext) -> ToolResult:
+        return ToolResult(output={"private": "do-not-copy-this-to-the-audit"})
+
+    registry.register(
+        ToolDefinition(
+            name="private.read",
+            description="t",
+            capability_kind=CapabilityKind.READ_FS,
+            handler=handler,
+            target_arg="path",
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
+        ),
+    )
+    s = await graph.new()
+    await graph.grant_capability(s.id, Capability(kind=CapabilityKind.READ_FS, pattern="*"))
+
+    outcome = await client.call_tool(s.id, "private.read", {"path": "/private/item"})
+
+    assert outcome.output == {"private": "do-not-copy-this-to-the-audit"}
+    returned = next(
+        event for event in await writer.read_all() if event.event_type is EventType.TOOL_RETURNED
+    )
+    assert returned.payload["tool"] == "private.read"
+    assert returned.payload["output_redacted"] is True
+    assert returned.payload["output_type"] == "dict"
+    assert len(returned.payload["output_digest"]) == 64
+    assert returned.payload["output_size_bytes"] > 0
+    assert "output" not in returned.payload
+    assert "do-not-copy-this-to-the-audit" not in json.dumps(returned.to_dict())
 
 
 async def test_revoked_by_prior_use_blocks_second_dispatch(

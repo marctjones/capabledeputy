@@ -71,7 +71,7 @@ def test_capdepmac_gui_smoke_has_real_daemon_restart_acceptance_path() -> None:
     assert "turn_started" in smoke_source
     assert "turn_lost_to_daemon_restart" in smoke_source
     assert "reconnect follow-up" in smoke_source
-    assert "run([str(LAUNCHD_DAEMON), \"restart\"]" in smoke_source
+    assert 'run([str(LAUNCHD_DAEMON), "restart"]' in smoke_source
     assert 'os.environ["CAPDEP_DAEMON_MODE"] = "launchd"' in smoke_source
 
 
