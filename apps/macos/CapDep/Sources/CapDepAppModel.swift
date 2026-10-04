@@ -469,7 +469,6 @@ final class CapDepAppModel: ObservableObject {
             async let connectorsResult = client.call(method: "connector.status")
             async let runtimeResult = client.call(method: "runtime.status")
             async let sourceBindingsResult = client.call(method: "source_binding.list")
-            async let provenanceResult = client.call(method: "provenance.graph")
             async let relationshipResult = client.call(method: "relationship_group.list")
             async let patternsResult = client.call(method: "approval_pattern.list")
             async let memoryResult = client.call(method: "memory.entries")
@@ -506,7 +505,6 @@ final class CapDepAppModel: ObservableObject {
             let connectorsObject = try await connectorsResult as? [String: Any]
             let runtimeObject = try await runtimeResult as? [String: Any]
             let sourceBindingsObject = try await sourceBindingsResult as? [String: Any]
-            let provenanceObject = try await provenanceResult as? [String: Any]
             let relationshipObject = try await relationshipResult as? [String: Any]
             let patternsObject = try await patternsResult as? [String: Any]
             let memoryObject = try await memoryResult as? [String: Any]
@@ -555,10 +553,6 @@ final class CapDepAppModel: ObservableObject {
             )
             sourceBindings = (sourceBindingsObject?["bindings"] as? [[String: Any]] ?? [])
                 .map(SourceBindingViewData.init(dictionary:))
-            provenanceNodes = (provenanceObject?["nodes"] as? [[String: Any]] ?? [])
-                .map(ProvenanceNode.init(dictionary:))
-            provenanceEdges = (provenanceObject?["edges"] as? [[String: Any]] ?? [])
-                .map(ProvenanceEdge.init(dictionary:))
             relationshipGroups = (relationshipObject?["groups"] as? [[String: Any]] ?? [])
                 .map(RelationshipGroupViewData.init(dictionary:))
             approvalPatterns = (patternsObject?["patterns"] as? [[String: Any]] ?? [])
@@ -1755,14 +1749,23 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
-    func refreshSecurityContext(sessionID: String) async {
+    func refreshSecurityContext(
+        sessionID: String,
+        provenanceOffset: Int = 0,
+        provenanceKind: String? = nil,
+    ) async {
         guard !sessionID.isEmpty else {
             return
         }
         do {
             let result = try await client.call(
                 method: "session.security_context",
-                params: ["session_id": sessionID],
+                params: [
+                    "session_id": sessionID,
+                    "provenance_offset": provenanceOffset,
+                    "provenance_limit": 100,
+                    "provenance_kind": provenanceKind ?? "",
+                ],
             ) as? [String: Any]
             sessionSecurityContexts[sessionID] = SessionSecurityContext(dictionary: result ?? [:])
         } catch {

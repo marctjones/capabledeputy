@@ -29,7 +29,12 @@ def make_security_context_handlers(app: App) -> dict[str, Handler]:
             for a in app.approval_queue.list(status=None)
             if str(a.from_session) == str(session_id) or str(a.to_session) == str(session_id)
         ]
-        provenance = _provenance(scoped_events)
+        provenance = _provenance(
+            scoped_events,
+            offset=_bounded_nonnegative(params.get("provenance_offset"), default=0),
+            limit=_bounded_limit(params.get("provenance_limit"), default=100, maximum=500),
+            kind_filter=str(params.get("provenance_kind") or "").strip() or None,
+        )
         policy = _policy(scoped_events)
         origin = session.origin.to_dict()
         onguard = await _onguard(app, origin)
@@ -121,7 +126,27 @@ def _event_summary(event: Event) -> dict[str, Any]:
     }
 
 
-def _provenance(events: list[Event]) -> dict[str, Any]:
+def _bounded_nonnegative(value: Any, *, default: int) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _bounded_limit(value: Any, *, default: int, maximum: int) -> int:
+    try:
+        return min(maximum, max(1, int(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _provenance(
+    events: list[Event],
+    *,
+    offset: int,
+    limit: int,
+    kind_filter: str | None,
+) -> dict[str, Any]:
     nodes: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
     for event in events:
@@ -145,11 +170,33 @@ def _provenance(events: list[Event]) -> dict[str, Any]:
                     "metadata": payload.get("metadata") or {},
                 },
             )
+    total_edges = len(edges)
+    all_nodes = sorted(nodes.values(), key=lambda n: n["id"])
+    if kind_filter:
+        all_nodes = [node for node in all_nodes if node["kind"] == kind_filter]
+        visible_node_ids = {node["id"] for node in all_nodes}
+        edges = [
+            edge
+            for edge in edges
+            if edge["from"] in visible_node_ids or edge["to"] in visible_node_ids
+        ]
+    page_nodes = all_nodes[offset : offset + limit]
+    page_edges = edges[offset : offset + limit]
     return {
-        "nodes": sorted(nodes.values(), key=lambda n: n["id"]),
-        "edges": edges,
+        "nodes": page_nodes,
+        "edges": page_edges,
         "node_count": len(nodes),
-        "edge_count": len(edges),
+        "edge_count": total_edges,
+        "filtered_edge_count": len(edges),
+        "node_offset": offset,
+        "node_limit": limit,
+        "node_returned": len(page_nodes),
+        "node_has_more": offset + len(page_nodes) < len(all_nodes),
+        "edge_offset": offset,
+        "edge_limit": limit,
+        "edge_returned": len(page_edges),
+        "edge_has_more": offset + len(page_edges) < len(edges),
+        "kind_filter": kind_filter,
     }
 
 

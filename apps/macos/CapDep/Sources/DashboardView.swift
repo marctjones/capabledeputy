@@ -646,6 +646,16 @@ private struct DaemonRPCWorkbenchView: View {
 
 private struct ProvenanceView: View {
     @EnvironmentObject private var model: CapDepAppModel
+    @State private var kindFilter = ""
+
+    private var selectedSessionID: String? {
+        model.focusedSessionID ?? model.currentSessionID
+    }
+
+    private var context: SessionSecurityContext? {
+        guard let selectedSessionID else { return nil }
+        return model.sessionSecurityContexts[selectedSessionID]
+    }
 
     var body: some View {
         ScrollView {
@@ -654,14 +664,63 @@ private struct ProvenanceView: View {
                     .font(.largeTitle.weight(.bold))
                 Text("Materialized sources and transformations from audit events. Use this to explain why an output is trusted, tainted, or blocked.")
                     .foregroundStyle(.secondary)
+                if let selectedSessionID, let context {
+                    HStack {
+                        Text("Session \(selectedSessionID.prefix(8)) · showing \(context.provenanceNodeReturned) of \(context.provenanceNodeCount) nodes")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Previous") {
+                            Task {
+                                await model.refreshSecurityContext(
+                                    sessionID: selectedSessionID,
+                                    provenanceOffset: max(0, context.provenanceNodeOffset - 100),
+                                    provenanceKind: context.provenanceKindFilter,
+                                )
+                            }
+                        }
+                        .disabled(context.provenanceNodeOffset == 0)
+                        Button("Next") {
+                            Task {
+                                await model.refreshSecurityContext(
+                                    sessionID: selectedSessionID,
+                                    provenanceOffset: context.provenanceNodeOffset + context.provenanceNodeReturned,
+                                    provenanceKind: context.provenanceKindFilter,
+                                )
+                            }
+                        }
+                        .disabled(!context.provenanceNodeHasMore)
+                    }
+                    HStack {
+                        TextField("Filter node kind (optional)", text: $kindFilter)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Apply Filter") {
+                            Task {
+                                await model.refreshSecurityContext(
+                                    sessionID: selectedSessionID,
+                                    provenanceKind: kindFilter.trimmingCharacters(in: .whitespacesAndNewlines),
+                                )
+                            }
+                        }
+                        if !context.provenanceKindFilter.isEmpty {
+                            Text("Filtered: \(context.provenanceKindFilter)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
+                    Text("Select a session to load its bounded provenance page. Global audit history is not loaded here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 HStack(alignment: .top, spacing: 14) {
                     LiveCard(title: "Nodes", systemImage: "circle.grid.cross") {
                         VStack(alignment: .leading, spacing: 8) {
-                            if model.provenanceNodes.isEmpty {
-                                Text("No provenance nodes in the current audit tail.")
+                            if context?.provenanceNodes.isEmpty ?? true {
+                                Text("No provenance nodes in the selected session page.")
                                     .foregroundStyle(.secondary)
                             }
-                            ForEach(model.provenanceNodes) { node in
+                            ForEach(context?.provenanceNodes ?? []) { node in
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(node.id)
                                         .font(.caption.monospaced().weight(.semibold))
@@ -678,11 +737,11 @@ private struct ProvenanceView: View {
                     }
                     LiveCard(title: "Edges", systemImage: "arrow.triangle.branch") {
                         VStack(alignment: .leading, spacing: 8) {
-                            if model.provenanceEdges.isEmpty {
-                                Text("No provenance edges in the current audit tail.")
+                            if context?.provenanceEdges.isEmpty ?? true {
+                                Text("No provenance edges in the selected session page.")
                                     .foregroundStyle(.secondary)
                             }
-                            ForEach(model.provenanceEdges) { edge in
+                            ForEach(context?.provenanceEdges ?? []) { edge in
                                 Text("\(edge.from) -> \(edge.to)  \(edge.kind)")
                                     .font(.caption.monospaced())
                                     .textSelection(.enabled)

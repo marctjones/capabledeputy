@@ -151,3 +151,40 @@ async def test_session_security_context_includes_upstream_mcp_server_status(
         ]
     finally:
         await app.shutdown()
+
+
+async def test_session_security_context_pages_provenance_without_losing_counts(
+    tmp_path: Path,
+) -> None:
+    app = App(state_db_path=tmp_path / "state.db", audit_log_path=tmp_path / "audit.jsonl")
+    await app.startup()
+    try:
+        session = await app.graph.new(owner="operator", intent="paged provenance")
+        for index in range(125):
+            await app.audit.write(
+                Event(
+                    event_type=EventType.PROVENANCE_NODE,
+                    session_id=session.id,
+                    payload={
+                        "node_id": f"node-{index:03}",
+                        "kind": "tool" if index % 2 else "source",
+                        "materialized_id": f"materialized-{index}",
+                    },
+                ),
+            )
+        handlers = make_security_context_handlers(app)
+
+        ctx = await handlers["session.security_context"](
+            {"session_id": str(session.id), "provenance_offset": 100, "provenance_limit": 20},
+        )
+
+        provenance = ctx["provenance"]
+        assert provenance["node_count"] == 125
+        assert provenance["node_offset"] == 100
+        assert provenance["node_limit"] == 20
+        assert provenance["node_returned"] == 20
+        assert provenance["node_has_more"] is True
+        assert [node["id"] for node in provenance["nodes"]][:1] == ["node-100"]
+        assert len(provenance["nodes"]) == 20
+    finally:
+        await app.shutdown()

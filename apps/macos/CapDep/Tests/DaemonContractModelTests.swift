@@ -64,6 +64,12 @@ final class DaemonContractModelTests: XCTestCase {
             "provenance": [
                 "node_count": 3,
                 "edge_count": 2,
+                "node_offset": 100,
+                "node_returned": 1,
+                "node_has_more": true,
+                "edge_returned": 1,
+                "edge_has_more": true,
+                "kind_filter": "tool_result",
                 "nodes": [["id": "node-1", "kind": "tool_result", "materialized_id": "gmail-1"]],
                 "edges": [["from": "node-0", "to": "node-1", "kind": "derived_from"]],
             ],
@@ -102,6 +108,12 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(context.matchedRuleIDs, ["rule.untrusted_egress"])
         XCTAssertEqual(context.provenanceNodeCount, 3)
         XCTAssertEqual(context.provenanceEdgeCount, 2)
+        XCTAssertEqual(context.provenanceNodeOffset, 100)
+        XCTAssertEqual(context.provenanceNodeReturned, 1)
+        XCTAssertTrue(context.provenanceNodeHasMore)
+        XCTAssertEqual(context.provenanceEdgeReturned, 1)
+        XCTAssertTrue(context.provenanceEdgeHasMore)
+        XCTAssertEqual(context.provenanceKindFilter, "tool_result")
         XCTAssertEqual(context.externalMCPActors, ["gmail"])
         XCTAssertEqual(context.toolActors, ["gmail.send"])
         XCTAssertEqual(context.onguardClientID, "onguard.digest.daily")

@@ -963,6 +963,12 @@ struct SessionSecurityContext: Hashable {
     let matchedRuleIDs: [String]
     let provenanceNodeCount: Int
     let provenanceEdgeCount: Int
+    let provenanceNodeOffset: Int
+    let provenanceNodeReturned: Int
+    let provenanceNodeHasMore: Bool
+    let provenanceEdgeReturned: Int
+    let provenanceEdgeHasMore: Bool
+    let provenanceKindFilter: String
     let externalMCPActors: [String]
     let toolActors: [String]
     let onguardClientID: String
@@ -1002,6 +1008,12 @@ struct SessionSecurityContext: Hashable {
         self.matchedRuleIDs = policy["matched_rule_ids"] as? [String] ?? []
         self.provenanceNodeCount = provenance["node_count"] as? Int ?? 0
         self.provenanceEdgeCount = provenance["edge_count"] as? Int ?? 0
+        self.provenanceNodeOffset = provenance["node_offset"] as? Int ?? 0
+        self.provenanceNodeReturned = provenance["node_returned"] as? Int ?? 0
+        self.provenanceNodeHasMore = provenance["node_has_more"] as? Bool ?? false
+        self.provenanceEdgeReturned = provenance["edge_returned"] as? Int ?? 0
+        self.provenanceEdgeHasMore = provenance["edge_has_more"] as? Bool ?? false
+        self.provenanceKindFilter = provenance["kind_filter"] as? String ?? ""
         self.externalMCPActors = (actors["external_mcp"] as? [[String: Any]] ?? [])
             .compactMap { $0["name"] as? String }
             .sorted()
