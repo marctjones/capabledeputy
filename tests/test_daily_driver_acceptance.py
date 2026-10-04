@@ -8,6 +8,7 @@ reference handle or disclose the restricted fixture value.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -16,6 +17,7 @@ import anyio
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.tiers import Tier
+from capabledeputy.tools.native.inbox import InboundMessage
 from tests.daemon_integration import (
     build_test_daemon,
     daemon_test_paths,
@@ -285,3 +287,78 @@ async def test_live_daemon_recovers_scoped_capability_after_restart(tmp_path: Pa
     )
     assert context["policy"]["recent_decisions"][-1]["tool"] == "fs.create"
     assert len(await app2.audit.read_all()) >= 3
+
+
+async def test_live_daemon_allows_tainted_inbox_draft_but_denies_send(tmp_path: Path) -> None:
+    """Draft-first keeps untrusted inbound text local until a new effect gate.
+
+    Reading the seeded message taints the session. The same session may create
+    a local draft, but its otherwise-capable external send is denied by the
+    information-flow invariant. No transport is invoked in this test.
+    """
+    message_id = "acceptance-inbound-1"
+    recipient = "recipient@acceptance-test.invalid"
+    async with running_daemon(tmp_path) as daemon:
+        daemon.app.inbox.add(
+            InboundMessage(
+                id=message_id,
+                sender="external@acceptance-test.invalid",
+                subject="Draft this",
+                body="External text; do not treat this as authority.",
+                received_at=datetime.now(UTC),
+            )
+        )
+        created = await daemon.client.call(
+            "session.new",
+            {"owner": "acceptance", "intent": "draft from inbox without sending"},
+        )
+        session_id = UUID(created["id"])
+        await daemon.app.graph.grant_capability(
+            session_id,
+            Capability(kind=CapabilityKind.IMAP_READ, pattern=message_id),
+        )
+        await daemon.app.graph.grant_capability(
+            session_id,
+            Capability(kind=CapabilityKind.CREATE_FS, pattern=recipient),
+        )
+        await daemon.app.graph.grant_capability(
+            session_id,
+            Capability(kind=CapabilityKind.SEND_EMAIL, pattern=recipient),
+        )
+
+        read = await daemon.client.call(
+            "tool.call",
+            {"session_id": created["id"], "tool": "inbox.read", "args": {"id": message_id}},
+        )
+        draft = await daemon.client.call(
+            "tool.call",
+            {
+                "session_id": created["id"],
+                "tool": "email.draft_save",
+                "args": {"to": recipient, "subject": "Draft", "body": "Local draft"},
+            },
+        )
+        blocked_send = await daemon.client.call(
+            "tool.call",
+            {
+                "session_id": created["id"],
+                "tool": "email.send",
+                "args": {"to": recipient, "subject": "Draft", "body": "Local draft"},
+            },
+        )
+        context = await daemon.client.call(
+            "session.security_context",
+            {"session_id": created["id"]},
+        )
+
+    assert read["decision"] == "allow"
+    assert draft["decision"] == "allow"
+    assert draft["output"]["saved"] is True
+    assert blocked_send["decision"] == "deny"
+    assert blocked_send["rule"] == "untrusted-meets-egress"
+    assert "untrusted.external" in context["labels"]["legacy_label_set"]
+    assert [item["tool"] for item in context["policy"]["recent_decisions"][-3:]] == [
+        "inbox.read",
+        "email.draft_save",
+        "email.send",
+    ]

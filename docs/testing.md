@@ -102,6 +102,8 @@ Current coverage includes:
 - Local document revision: the default scoped grant produces a focused
   approval request, while a separate exact destructive standing grant allows
   only the named file revision.
+- Inbound-mail drafting: tainted inbox content may become a local draft, but
+  the same session cannot send it to an external recipient.
 - CLI onguard read paths calling the daemon instead of duplicating store logic.
 - TUI console/spectator live-daemon smoke tests and onguard coordination
   rendering.
