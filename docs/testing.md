@@ -47,6 +47,13 @@ configured daemon, run:
 .venv/bin/python scripts/verify-daily-driver-policy.py --output /tmp/capdep-policy-acceptance.json
 ```
 
+The companion hermetic daemon lane exercises restricted-memory handle routing
+over the Unix-socket RPC boundary without an account or model dependency:
+
+```bash
+.venv/bin/pytest -q tests/test_daily_driver_acceptance.py
+```
+
 It records daemon-projected policy traces for an inert allowed read, an
 unauthorized email denial, a bounded standing grant that still requires focused
 approval, an untrusted-taint egress denial, and a real queued-turn
