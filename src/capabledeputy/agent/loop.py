@@ -1293,13 +1293,30 @@ async def run_turn_streaming(
             stream_fn = getattr(effective_llm, "respond_streaming", None)
             if stream_fn is not None:
                 accumulated = ""
+                # #419 — JSON-tool planners emit the tool envelope as ordinary
+                # token chunks. Do not hand an envelope-shaped prefix to a UI
+                # and hope the final parser repairs it later: by then the raw
+                # JSON has already been visible. Hold only a leading JSON/code
+                # fence candidate; ordinary prose remains token-streamed.
+                pending_prefix = ""
+                hold_structured_prefix: bool | None = None
                 async for chunk in stream_fn(
                     messages,
                     tool_descriptions,
                     max_tokens=chat_max_tokens,
                 ):
                     accumulated += chunk
-                    yield LLMTokenReceived(iteration=iteration, text=chunk)
+                    if hold_structured_prefix is None:
+                        pending_prefix += chunk
+                        first = pending_prefix.lstrip()
+                        if not first:
+                            continue
+                        hold_structured_prefix = first.startswith(("{", "```"))
+                        if not hold_structured_prefix:
+                            yield LLMTokenReceived(iteration=iteration, text=pending_prefix)
+                            pending_prefix = ""
+                    elif not hold_structured_prefix:
+                        yield LLMTokenReceived(iteration=iteration, text=chunk)
                 response = finalize_mlx_text(
                     accumulated,
                     tool_descriptions,

@@ -215,6 +215,39 @@ async def test_streaming_llm_emits_token_events(
     assert events[-1].result.content == "hello world"
 
 
+async def test_streaming_tool_json_is_never_emitted_as_tokens(
+    session_setup: tuple[UUID, SessionGraph, AuditWriter, ToolRegistry, LabeledToolClient],
+) -> None:
+    """#419: a split raw tool envelope must remain daemon-private while parsing.
+
+    The terminal scrub alone is insufficient: an interactive client renders
+    ``LLMTokenReceived`` immediately, so the partial ``{"tool_calls"`` prefix
+    would otherwise be visible before the clean terminal result arrives.
+    """
+    sid, graph, audit, registry, tool_client = session_setup
+    llm = _StreamingStubLLM(
+        ['{"tool', '_calls": [{"id": "1", "name": "missing", "args": {}}]'],
+    )
+
+    events = []
+    async for evt in run_turn_streaming(
+        session_id=sid,
+        user_message="hi",
+        llm=cast(LLMClient, llm),
+        tool_client=tool_client,
+        registry=registry,
+        graph=graph,
+        audit=audit,
+    ):
+        events.append(evt)
+
+    token_text = "".join(evt.text for evt in events if isinstance(evt, LLMTokenReceived))
+    assert "tool_calls" not in token_text
+    assert isinstance(events[-1], TurnCompleted)
+    assert "tool_calls" not in events[-1].result.content
+    assert "didn't parse" in events[-1].result.content
+
+
 async def test_capdepmac_turn_suppresses_leaked_web_fetch_grant(
     tmp_path: Path,
 ) -> None:
