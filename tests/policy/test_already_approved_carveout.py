@@ -61,13 +61,21 @@ def _decide(*, rules_v2: DecisionRules, already_approved: bool) -> Decision:
     ).decision
 
 
-def test_without_already_approved_v2_default_still_ratchets_to_require_approval() -> None:
-    """Baseline: reproduces the reported bug. A fresh one-shot
-    allows_destructive=True capability (legacy ALLOW) with no matching
-    v2 rule collapses to REQUIRE_APPROVAL absent the carve-out —
-    proving `already_approved` is the thing doing the work below, not
-    some other change to the default composition."""
-    assert _decide(rules_v2=_NO_RULES, already_approved=False) == Decision.REQUIRE_APPROVAL
+def test_standing_destructive_capability_resolves_v2_default() -> None:
+    """A scoped ``allows_destructive`` capability is deterministic standing
+    authorization, so the v2 *default* cannot turn it back into an approval
+    loop. Named policy rules still decide their own cells below."""
+    assert _decide(rules_v2=_NO_RULES, already_approved=False) == Decision.ALLOW
+
+
+def test_standing_destructive_capability_does_not_suppress_named_approval_rule() -> None:
+    assert (
+        _decide(
+            rules_v2=_rules_with_outcome(RuleOutcome.REQUIRE_APPROVAL),
+            already_approved=False,
+        )
+        == Decision.REQUIRE_APPROVAL
+    )
 
 
 def test_already_approved_suppresses_v2_default_ratchet() -> None:

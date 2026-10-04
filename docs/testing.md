@@ -99,6 +99,9 @@ Current coverage includes:
   RPC, then records the post-decision bind in audit and provenance.
 - A deterministic citable web-source fetch whose untrusted label blocks a
   subsequent otherwise-capable email egress attempt.
+- Local document revision: the default scoped grant produces a focused
+  approval request, while a separate exact destructive standing grant allows
+  only the named file revision.
 - CLI onguard read paths calling the daemon instead of duplicating store logic.
 - TUI console/spectator live-daemon smoke tests and onguard coordination
   rendering.

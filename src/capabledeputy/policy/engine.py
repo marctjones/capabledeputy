@@ -22,6 +22,7 @@ from capabledeputy.policy.bindings import BindingError, BindingSet
 from capabledeputy.policy.capabilities import (
     Capability,
     CapabilityKind,
+    is_destructive_kind,
     kind_name,
 )
 from capabledeputy.policy.decision_rules import (
@@ -254,6 +255,7 @@ def _compose_with_v2(
     v2: EvaluationResult,
     *,
     already_approved: bool = False,
+    standing_destructive_authorization: bool = False,
 ) -> PolicyDecision:
     """Compose the legacy PolicyDecision with the v2 EvaluationResult.
 
@@ -274,8 +276,30 @@ def _compose_with_v2(
     suppressed: the approval queue cannot cross a hard floor or an
     override-only gate (only an Override Grant ceremony can, FR-038),
     so those still ratchet as normal.
+
+    A matching ``allows_destructive`` capability is separately a bounded,
+    operator-established standing authorization. It suppresses only the
+    unconfigured v2 SUGGEST default; named v2 rules and all structural floors
+    remain authoritative.
     """
     v2_as_legacy = _V2_TO_LEGACY[v2.outcome]
+    # An exact capability's ``allows_destructive`` bit is a deterministic
+    # standing authorization. It resolves only the absence of a v2 rule;
+    # any named rule (including REQUIRE_APPROVAL), DENY, or
+    # OVERRIDE_REQUIRED remains more authoritative. Do not generalize this
+    # carve-out to ordinary capabilities: that would silently turn a model
+    # proposal into authority.
+    if (
+        standing_destructive_authorization
+        and legacy.decision is Decision.ALLOW
+        and v2.outcome is RuleOutcome.SUGGEST
+        and not v2.matched_rule_ids
+    ):
+        return replace(
+            legacy,
+            v2_outcome=v2.outcome,
+            v2_matched_rule_ids=v2.matched_rule_ids,
+        )
     if (
         already_approved
         and legacy.decision is Decision.ALLOW
@@ -729,8 +753,6 @@ def _decide_legacy(
     # DESTRUCTIVE_KINDS set AND the CustomKindRegistry's per-kind flag,
     # so a custom kind declared with `destructive: true` in servers.d/
     # gets the same Clark-Wilson gating.
-    from capabledeputy.policy.capabilities import is_destructive_kind
-
     if is_destructive_kind(action.kind) and not cap.allows_destructive:
         # action.kind may be enum (has .value) or str (custom kinds).
         kind_str = kind_name(action.kind)
@@ -1406,7 +1428,23 @@ def _decide_impl(
         default_when_no_match=default_v2_outcome,
         now_hour=_eff_now_for_v2.hour,
     )
-    composed = _compose_with_v2(legacy, v2, already_approved=already_approved)
+    # A capability with ``allows_destructive`` is an operator-established,
+    # bounded standing authorization for the destructive action it matches.
+    # It may resolve the unconfigured v2 never-auto default and the local
+    # reversibility prompt below, but never a named policy rule or a
+    # structural/data-flow floor.
+    standing_destructive_authorization = (
+        is_destructive_kind(action.kind)
+        and legacy.decision is Decision.ALLOW
+        and legacy.matched_capability is not None
+        and legacy.matched_capability.allows_destructive
+    )
+    composed = _compose_with_v2(
+        legacy,
+        v2,
+        already_approved=already_approved,
+        standing_destructive_authorization=standing_destructive_authorization,
+    )
     if reversibility_outcome is not None:
         composed = _compose_with_reversibility(
             composed,
@@ -1414,6 +1452,7 @@ def _decide_impl(
             reversibility_rule=reversibility_rule,
             reversibility_reason=reversibility_reason,
             already_approved=already_approved,
+            standing_destructive_authorization=standing_destructive_authorization,
         )
     if envelope_outcome is not None:
         composed = _compose_with_envelope(
@@ -1558,6 +1597,7 @@ def _compose_with_reversibility(
     reversibility_rule: str | None,
     reversibility_reason: str | None,
     already_approved: bool = False,
+    standing_destructive_authorization: bool = False,
 ) -> PolicyDecision:
     """Compose the reversibility-gate / optimistic-auto outcome with
     the legacy + v2 result. Most-restrictive wins UNLESS the
@@ -1580,6 +1620,17 @@ def _compose_with_reversibility(
         already_approved
         and base.decision is Decision.ALLOW
         and reversibility_outcome is Decision.REQUIRE_APPROVAL
+    ):
+        return base
+    # This is deliberately narrower than the approval re-dispatch carve-out:
+    # a standing destructive capability resolves only the local
+    # reversible-with-friction prompt, never communication egress or another
+    # specialized REQUIRE_APPROVAL gate.
+    if (
+        standing_destructive_authorization
+        and base.decision is Decision.ALLOW
+        and reversibility_outcome is Decision.REQUIRE_APPROVAL
+        and reversibility_rule == REVERSIBILITY_REQUIRES_APPROVAL_RULE
     ):
         return base
     # Optimistic-auto carve-out: only relaxes a base REQUIRE_APPROVAL

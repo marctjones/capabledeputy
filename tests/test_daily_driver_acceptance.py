@@ -145,3 +145,78 @@ async def test_live_daemon_keeps_citable_web_research_from_egress(tmp_path: Path
         "email.send",
     ]
     assert context["policy"]["recent_decisions"][-1]["rule"] == "untrusted-meets-egress"
+
+
+async def test_live_daemon_document_revision_needs_approval_or_exact_grant(tmp_path: Path) -> None:
+    """A destructive local edit cannot depend on model confidence.
+
+    The same scoped ``MODIFY_FS`` capability is insufficient without its
+    deterministic destructive flag.  A distinct session with an exact,
+    pre-established standing grant can make the bounded revision; no broad
+    filesystem capability is introduced.
+    """
+    document = tmp_path / "draft.txt"
+    document.write_text("original", encoding="utf-8")
+
+    async with running_daemon(tmp_path) as daemon:
+        pending = await daemon.client.call("session.new", {"intent": "revise document"})
+        await daemon.app.graph.grant_capability(
+            UUID(pending["id"]),
+            Capability(kind=CapabilityKind.MODIFY_FS, pattern=str(document)),
+        )
+        approval_required = await daemon.client.call(
+            "tool.call",
+            {
+                "session_id": pending["id"],
+                "tool": "fs.modify",
+                "args": {"path": str(document), "content": "unapproved revision"},
+            },
+        )
+        assert approval_required["decision"] == "require_approval"
+        assert document.read_text(encoding="utf-8") == "original"
+        approval_id = approval_required["approval_id"]
+        assert isinstance(approval_id, int)
+        submission = approval_required["approval_submission"]
+        assert submission["action"] == "EXECUTE_DESTRUCTIVE"
+        assert submission["target"] == str(document)
+        assert submission["justification"] == approval_required["reason"]
+        assert json.loads(submission["payload"]) == {
+            "tool": "fs.modify",
+            "args": {"path": str(document), "content": "unapproved revision"},
+        }
+        approved = await daemon.client.call("approval.approve", {"id": approval_id})
+        assert approved["dispatch"]["decision"] == "allow"
+        assert document.read_text(encoding="utf-8") == "unapproved revision"
+
+        standing = await daemon.client.call("session.new", {"intent": "revise document"})
+        await daemon.app.graph.grant_capability(
+            UUID(standing["id"]),
+            Capability(
+                kind=CapabilityKind.MODIFY_FS,
+                pattern=str(document),
+                allows_destructive=True,
+            ),
+        )
+        revised = await daemon.client.call(
+            "tool.call",
+            {
+                "session_id": standing["id"],
+                "tool": "fs.modify",
+                "args": {"path": str(document), "content": "standing-grant revision"},
+            },
+        )
+        assert revised["decision"] == "allow"
+        assert document.read_text(encoding="utf-8") == "standing-grant revision"
+        context = await daemon.client.call(
+            "session.security_context",
+            {"session_id": standing["id"]},
+        )
+
+    active_caps = context["capabilities"]["active"]
+    assert any(
+        capability["kind"] == "MODIFY_FS"
+        and capability["pattern"] == str(document)
+        and capability["allows_destructive"] is True
+        for capability in active_caps
+    )
+    assert context["policy"]["recent_decisions"][-1]["decision"] == "allow"
