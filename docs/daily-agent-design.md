@@ -81,3 +81,12 @@ Use `scripts/test-capdep.sh core` for deterministic checks and
 `scripts/test-capdep.sh live` for an intentional host-owned daemon and GUI
 parity smoke. Live tests may use local credentials for read-only readiness but
 must never perform unattended account mutations.
+
+For the credential-gated Gmail, Calendar, and Drive read slice, run
+`CAPDEP_GOOGLE_WORKSPACE_LIVE=1 .venv/bin/python
+scripts/verify-google-workspace-read-only.py`. It proves exact read-only
+credential posture, denied reads without the corresponding session capability,
+bounded allowed reads, label/provenance propagation, and audit-output
+minimization without rendering account content. It is evidence for the
+read-only terminal path; GUI cancellation/recovery and mutation authorization
+remain separate acceptance work.

@@ -40,6 +40,18 @@ runs `scripts/verify-gui-parity.py`. The parity probe has a real local-model
 chat assertion but performs no irreversible account action. Keep real-account
 mutation coverage separately opt-in and explicitly approved.
 
+To exercise the configured Google Workspace read-only account path, opt in
+explicitly:
+
+```bash
+CAPDEP_GOOGLE_WORKSPACE_LIVE=1 .venv/bin/python scripts/verify-google-workspace-read-only.py
+```
+
+The verifier makes one bounded Gmail, Calendar, and Drive read through the
+daemon, checks that capability-free sessions are denied, and validates labels,
+provenance, and redacted audit commitments. It reports only structural
+evidence; it does not print account content or perform mutations.
+
 ## Default deterministic tier
 
 Run:
