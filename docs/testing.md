@@ -40,6 +40,18 @@ runs `scripts/verify-gui-parity.py`. The parity probe has a real local-model
 chat assertion but performs no irreversible account action. Keep real-account
 mutation coverage separately opt-in and explicitly approved.
 
+For the policy portion of daily-driver acceptance against an already-running
+configured daemon, run:
+
+```bash
+.venv/bin/python scripts/verify-daily-driver-policy.py --output /tmp/capdep-policy-acceptance.json
+```
+
+It records daemon-projected policy traces for an inert allowed read, an
+unauthorized email denial, a bounded standing grant that still requires focused
+approval, and an untrusted-taint egress denial. The pending test approval is
+denied during cleanup and no external effect is executed.
+
 To exercise the configured Google Workspace read-only account path, opt in
 explicitly:
 
