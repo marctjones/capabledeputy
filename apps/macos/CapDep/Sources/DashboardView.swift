@@ -801,6 +801,9 @@ private struct InspectorView: View {
                             }
                         }
                     }
+                    SessionArtifactInspectorView(
+                        artifacts: model.sessionArtifacts[session.id] ?? [],
+                    )
                 } else {
                     PlaceholderDetailView(
                         title: "Select an item",
@@ -814,7 +817,87 @@ private struct InspectorView: View {
         .task(id: selectedSession?.id) {
             if let selectedSession {
                 await model.refreshSecurityContext(sessionID: selectedSession.id)
+                await model.loadSessionArtifacts(sessionID: selectedSession.id)
             }
+        }
+    }
+}
+
+/// Read-only Console rendering for references the daemon already materialized.
+/// It deliberately bypasses markdown parsing: a planner cannot smuggle a new
+/// file path into this surface, and unsupported artifacts stay metadata only.
+private struct SessionArtifactInspectorView: View {
+    let artifacts: [SessionArtifact]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Session Artifacts")
+                .font(.headline)
+            if artifacts.isEmpty {
+                Text("No daemon-materialized artifacts for this session.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(artifacts) { artifact in
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(
+                        artifact.kind.replacingOccurrences(of: "_", with: " ").capitalized,
+                        systemImage: artifact.isAuthorizedGeneratedImage ? "photo.badge.checkmark" : "doc.text",
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    Text("source: \(artifact.source.isEmpty ? "unknown" : artifact.source) · hash: \(artifact.shortHash.isEmpty ? "missing" : artifact.shortHash)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                    if artifact.isAuthorizedGeneratedImage {
+                        AuthorizedSessionImageView(artifact: artifact)
+                    } else {
+                        Text("Metadata only — this artifact is not an authenticated generated image.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+}
+
+private struct AuthorizedSessionImageView: View {
+    let artifact: SessionArtifact
+    @State private var digestMatches: Bool?
+
+    var body: some View {
+        Group {
+            switch (digestMatches, ChatImageURLResolver.resolve(artifact.path)) {
+            case (.some(true), .success(let resolved)):
+                ChatLocalImageView(resolved: resolved)
+                    .frame(maxHeight: 260)
+                if !artifact.alt.isEmpty {
+                    Text(artifact.alt)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            case (.some(false), _):
+                Text("Artifact digest no longer matches the daemon-recorded reference; pixels are withheld.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case (_, .failure):
+                Text("Authenticated artifact is no longer available at its recorded path.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            default:
+                ProgressView("Verifying artifact digest…")
+                    .font(.caption)
+            }
+        }
+        .task(id: artifact.id) {
+            guard case .success(let resolved) = ChatImageURLResolver.resolve(artifact.path) else {
+                digestMatches = false
+                return
+            }
+            digestMatches = artifact.matchesRecordedDigest(at: resolved.url)
         }
     }
 }

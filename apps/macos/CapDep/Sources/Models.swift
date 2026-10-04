@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 struct Approval: Identifiable, Hashable {
@@ -308,6 +309,47 @@ struct CapDepSession: Identifiable, Hashable {
             }
         }
         return labels.sorted()
+    }
+}
+
+/// A daemon-materialized session artifact. This is deliberately narrower than
+/// arbitrary markdown: only generated images with a tool-output origin, a
+/// content hash, and an approved work-images path are eligible for rendering.
+struct SessionArtifact: Identifiable, Hashable {
+    let id: String
+    let kind: String
+    let source: String
+    let path: String
+    let alt: String
+    let sha256: String
+    let originToolName: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["artifact_id"] as? String ?? UUID().uuidString
+        self.kind = dictionary["kind"] as? String ?? ""
+        self.source = dictionary["source"] as? String ?? ""
+        self.path = dictionary["path"] as? String ?? ""
+        self.alt = dictionary["alt"] as? String ?? ""
+        self.sha256 = dictionary["sha256"] as? String ?? ""
+        self.originToolName = dictionary["origin_tool_name"] as? String ?? ""
+    }
+
+    var isAuthorizedGeneratedImage: Bool {
+        kind == "generated_image"
+            && source == "tool_output"
+            && ChatMarkdownParser.isGeneratedWorkImagePath(path)
+            && sha256.count == 64
+            && sha256.allSatisfy { $0.isHexDigit }
+    }
+
+    var shortHash: String { String(sha256.prefix(12)) }
+
+    func matchesRecordedDigest(at url: URL) -> Bool {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+            return false
+        }
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return digest == sha256.lowercased()
     }
 }
 

@@ -39,6 +39,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var selectedSessionChildren: [CapDepSession] = []
     @Published private(set) var approvalDetails: [Int: ApprovalDetail] = [:]
     @Published private(set) var sessionSecurityContexts: [String: SessionSecurityContext] = [:]
+    @Published private(set) var sessionArtifacts: [String: [SessionArtifact]] = [:]
     @Published private(set) var onguardClients: [OnguardClientViewData] = []
     @Published private(set) var onguardCommands: [OnguardCommandViewData] = []
     @Published private(set) var onguardSchedules: [OnguardScheduleViewData] = []
@@ -100,6 +101,7 @@ final class CapDepAppModel: ObservableObject {
         "image.readiness",
         "ping",
         "session.get",
+        "session.artifacts",
         "session.list",
         "session.new",
         "session.turn.ack",
@@ -761,6 +763,21 @@ final class CapDepAppModel: ObservableObject {
             if chatMessages.isEmpty {
                 seedDemoImageIfNeeded()
             }
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Read daemon-persisted artifact references for Console inspection. This
+    /// RPC is read-only; the client cannot nominate a filesystem path here.
+    func loadSessionArtifacts(sessionID: String) async {
+        do {
+            let result = try await client.call(
+                method: "session.artifacts",
+                params: ["session_id": sessionID],
+            ) as? [String: Any]
+            let artifacts = result?["artifacts"] as? [[String: Any]] ?? []
+            sessionArtifacts[sessionID] = artifacts.map(SessionArtifact.init(dictionary:))
         } catch {
             lastError = error.localizedDescription
         }

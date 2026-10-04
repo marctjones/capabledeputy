@@ -2,6 +2,25 @@ import XCTest
 @testable import CapDepMac
 
 final class DaemonContractModelTests: XCTestCase {
+
+    func testSessionArtifactOnlyTreatsDaemonGeneratedWorkImageAsRenderable() {
+        let trusted = SessionArtifact(dictionary: [
+            "artifact_id": "image-1",
+            "kind": "generated_image",
+            "source": "tool_output",
+            "path": "/Users/example/.capdep/work/images/chart.png",
+            "sha256": String(repeating: "a", count: 64),
+        ])
+        XCTAssertTrue(trusted.isAuthorizedGeneratedImage)
+
+        let untrusted = SessionArtifact(dictionary: [
+            "kind": "generated_image",
+            "source": "planner_text",
+            "path": "/Users/example/.capdep/work/images/chart.png",
+            "sha256": String(repeating: "a", count: 64),
+        ])
+        XCTAssertFalse(untrusted.isAuthorizedGeneratedImage)
+    }
     func testSessionSecurityContextParsesDaemonProjection() {
         let context = SessionSecurityContext(dictionary: [
             "session": ["id": "session-1", "enforcement_mode": "enforce"],
