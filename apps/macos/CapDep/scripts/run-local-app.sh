@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="$ROOT/.build/CapDepMac.app"
-EXEC="$ROOT/.build/arm64-apple-macosx/debug/CapDepMac"
 REPO_ROOT="$(cd "$ROOT/../../.." && pwd)"
 CAPDEP="$REPO_ROOT/.venv/bin/capdep"
 TMUX_DAEMON="$REPO_ROOT/scripts/run-local-daemon-tmux.sh"
@@ -31,6 +30,11 @@ if [[ "$CLEAN_BUILD" == "1" ]]; then
 fi
 echo "[capdep-gui] swift build"
 swift build
+EXEC="$(swift build --show-bin-path)/CapDepMac"
+if [[ ! -x "$EXEC" ]]; then
+  echo "[capdep-gui] SwiftPM did not produce CapDepMac at $EXEC" >&2
+  exit 1
+fi
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"

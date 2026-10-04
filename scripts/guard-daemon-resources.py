@@ -11,6 +11,21 @@ import subprocess
 import sys
 import time
 
+DEFAULT_RSS_LIMIT_MIB = 8192
+
+
+def rss_limit_mib() -> int:
+    """Return the operator-adjustable group RSS ceiling.
+
+    Eight GiB permits the pinned 8B local MLX profile on a 24 GiB Mac while
+    remaining a firm, conservative ceiling.  A malformed value refuses to
+    start rather than silently disabling the watchdog.
+    """
+    limit = int(os.environ.get("CAPDEP_DAEMON_RSS_LIMIT_MIB", DEFAULT_RSS_LIMIT_MIB))
+    if limit <= 0:
+        raise ValueError("CAPDEP_DAEMON_RSS_LIMIT_MIB must be a positive integer")
+    return limit
+
 
 def sample(pgid: int) -> dict:
     rows = subprocess.check_output(
@@ -31,11 +46,17 @@ def sample(pgid: int) -> dict:
     }
 
 
-def reason_for(s: dict, warning_seconds: float, cpu_seconds: float) -> str | None:
+def reason_for(
+    s: dict,
+    warning_seconds: float,
+    cpu_seconds: float,
+    *,
+    memory_limit_mib: int = DEFAULT_RSS_LIMIT_MIB,
+) -> str | None:
     if s["pressure"] >= 4:
         return "critical system memory pressure"
-    if s["rss_mib"] >= 2048:
-        return "daemon process group exceeded 2048 MiB RSS"
+    if s["rss_mib"] >= memory_limit_mib:
+        return f"daemon process group exceeded {memory_limit_mib} MiB RSS"
     if warning_seconds >= 15:
         return "system memory warning sustained for 15 seconds"
     if cpu_seconds >= 30:
@@ -50,6 +71,7 @@ def emit(**values):
 def main() -> int:
     if len(sys.argv) < 2:
         raise SystemExit("usage: guard-daemon-resources.py COMMAND [ARG ...]")
+    memory_limit_mib = rss_limit_mib()
     child = subprocess.Popen(sys.argv[1:], start_new_session=True)
     stopped = False
 
@@ -68,7 +90,7 @@ def main() -> int:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     warning_since = cpu_since = None
-    emit(event="started", pid=child.pid, rss_limit_mib=2048)
+    emit(event="started", pid=child.pid, rss_limit_mib=memory_limit_mib)
     try:
         while child.poll() is None and not stopped:
             now = time.monotonic()
@@ -80,6 +102,7 @@ def main() -> int:
                     s,
                     now - warning_since if warning_since else 0,
                     now - cpu_since if cpu_since else 0,
+                    memory_limit_mib=memory_limit_mib,
                 )
                 emit(event="sample", pid=child.pid, **s)
                 if reason:

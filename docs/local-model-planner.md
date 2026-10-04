@@ -318,7 +318,9 @@ See [raw measurements](evidence/model-qwen25-05b-2026-09-05.jsonl).
 `scripts/guard-daemon-resources.py COMMAND ...` starts an owned process group,
 checks it every two seconds, and terminates the group if any of these occur:
 
-- 2,048 MiB aggregate resident memory;
+- 8,192 MiB aggregate resident memory by default (override with
+  `CAPDEP_DAEMON_RSS_LIMIT_MIB` for a deliberately smaller or larger local
+  model profile);
 - critical macOS memory pressure immediately, or warning pressure for 15 seconds;
 - at least 200% aggregate CPU (two cores) for 30 seconds;
 - failure to obtain monitoring telemetry.
@@ -331,7 +333,7 @@ Children that create independent process groups are outside its group accounting
 Global memory pressure still triggers a stop even if another app caused it.
 
 On Marc's Mac the existing LaunchAgent now runs this watchdog at nice priority 10
-around `with-smoke-model.sh` and the daemon. KeepAlive is false, so a safety stop
+around `with-daily-local-8b.sh` and the daemon. KeepAlive is false, so a safety stop
 will not trigger an immediate restart loop. Monitoring continues after the Codex
 turn ends. Logs: `~/.capdep/resource-guard.log`; original plist backup:
 `~/.capdep/backups/daemon-before-resource-guard-*.plist`.
