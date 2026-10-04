@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -91,6 +92,40 @@ async def test_connector_status_reports_local_apps(app: App) -> None:
     assert mail["actions"][0]["id"] == "macos.automation_settings"
     word = next(c for c in result["connectors"] if c["id"] == "microsoft-word")
     assert word["bundle_id"] == "com.microsoft.Word"
+
+
+async def test_connector_status_does_not_present_unconfigured_google_as_a_dependency(
+    app: App,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "capabledeputy.daemon.setup_control_handlers._google_workspace_connector",
+        lambda: (_ for _ in ()).throw(AssertionError("must not probe Google when unconfigured")),
+    )
+
+    result = await make_setup_control_handlers(app)["connector.status"]({})
+
+    assert "google-workspace" not in {connector["id"] for connector in result["connectors"]}
+
+
+async def test_connector_status_reports_google_only_when_google_is_admitted(
+    app: App,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app.upstream_manager = SimpleNamespace(server_status={"google-workspace": object()})
+    monkeypatch.setattr(
+        "capabledeputy.daemon.setup_control_handlers._google_workspace_connector",
+        lambda: {"id": "google-workspace", "status": "ready_read_only"},
+    )
+
+    result = await make_setup_control_handlers(app)["connector.status"]({})
+
+    google = next(
+        connector
+        for connector in result["connectors"]
+        if connector["id"] == "google-workspace"
+    )
+    assert google["status"] == "ready_read_only"
 
 
 def test_google_workspace_connector_requires_exact_read_only_scopes() -> None:

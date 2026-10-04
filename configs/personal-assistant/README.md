@@ -15,10 +15,10 @@ approval).
 
 | File | Purpose |
 |---|---|
-| `daemon.yaml` | Master config — wires up bundled local tools, Apple app automation, official Google Workspace MCP, and the policy files |
+| `daemon.yaml` | Master config — wires up bundled local tools, desktop app automation, and policy files. External MCP providers (Google Workspace, GitHub, Slack, etc.) are separately admitted by the operator. |
 | `profiles.yaml` | One operator profile (`personal`) with max-tier ceiling |
 | `purposes.yaml` | Five working purposes (general, inbox, calendar, writing, research) |
-| `source_bindings.yaml` | Common macOS paths, Apple app URIs, and Google service URIs → label tier mappings |
+| `source_bindings.yaml` | Common macOS paths, Apple app URIs, and optional provider URIs → label tier mappings |
 | `relationship_groups.yaml` | Self/trusted/family/work recipient groups used to reduce prompts without broadening authority |
 | `envelopes.yaml` | Per-category risk-preference dial bounds |
 | `override_policy.yaml` | Single-authorized operator can override hard floors; no dual-control required (single-user mode) |

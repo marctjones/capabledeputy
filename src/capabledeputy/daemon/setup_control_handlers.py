@@ -99,11 +99,22 @@ def make_setup_control_handlers(
         raise ValueError(f"unknown setup action: {action_id}")
 
     async def connector_status(params: dict[str, Any]) -> dict[str, Any]:
+        # An account posture is useful only for a connector the operator has
+        # actually admitted to this daemon.  In particular, probing the local
+        # Google credential store merely because ``connector.status`` was
+        # called made Google look like a built-in CapDep dependency.  It is an
+        # optional MCP provider like GitHub, Slack, or any other upstream.
+        #
+        # Native macOS application rows remain setup hints: they describe
+        # bounded tools shipped in the selected desktop profile, not an
+        # external account integration.
+        configured = _configured_upstream_names(app)
+        connectors: list[dict[str, Any]] = []
+        if "google-workspace" in configured:
+            connectors.append(_google_workspace_connector())
+        connectors.extend(_office_connector(app_info) for app_info in OFFICE_AUTOMATION_APPS)
         return {
-            "connectors": [
-                _google_workspace_connector(),
-                *[_office_connector(app_info) for app_info in OFFICE_AUTOMATION_APPS],
-            ],
+            "connectors": connectors,
         }
 
     async def runtime_status(params: dict[str, Any]) -> dict[str, Any]:
@@ -290,6 +301,19 @@ def _office_connector(app_info: dict[str, str]) -> dict[str, Any]:
         ),
         "actions": [_open_macos_automation_action()],
     }
+
+
+def _configured_upstream_names(app: App) -> frozenset[str]:
+    """Return names of upstreams admitted to this running daemon.
+
+    This intentionally uses runtime status rather than inspecting a provider's
+    executable or credential store.  A configured-but-failed server still
+    counts: its row can explain readiness, while an unconfigured provider is
+    invisible instead of being presented as a missing dependency.
+    """
+    manager = getattr(app, "upstream_manager", None)
+    statuses = getattr(manager, "server_status", {}) or {}
+    return frozenset(str(name) for name in statuses)
 
 
 def _google_workspace_connector(
