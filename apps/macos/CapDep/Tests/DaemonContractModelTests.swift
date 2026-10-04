@@ -21,6 +21,24 @@ final class DaemonContractModelTests: XCTestCase {
         ])
         XCTAssertFalse(untrusted.isAuthorizedGeneratedImage)
     }
+
+    func testSessionArtifactWithholdsChangedBytes() throws {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("capdep-artifact-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data().write(to: file)
+        let artifact = SessionArtifact(dictionary: [
+            "kind": "generated_image",
+            "source": "tool_output",
+            "path": file.path,
+            // SHA-256 for an empty file.
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        ])
+        XCTAssertTrue(artifact.matchesRecordedDigest(at: file))
+
+        try Data([0]).write(to: file)
+        XCTAssertFalse(artifact.matchesRecordedDigest(at: file))
+    }
     func testSessionSecurityContextParsesDaemonProjection() {
         let context = SessionSecurityContext(dictionary: [
             "session": ["id": "session-1", "enforcement_mode": "enforce"],
