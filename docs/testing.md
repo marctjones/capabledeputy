@@ -56,9 +56,9 @@ over the Unix-socket RPC boundary without an account or model dependency:
 
 It records daemon-projected policy traces for an inert allowed read, an
 unauthorized email denial, a bounded standing grant that still requires focused
-approval, an untrusted-taint egress denial, and a real queued-turn
-cancellation. The pending test approval is denied during cleanup and no
-external effect is executed.
+approval, an untrusted-taint egress denial, a real queued-turn cancellation,
+and session/capability recovery across a daemon restart. The local-document
+approval exercises a temporary file only; no external effect is executed.
 
 To exercise the configured Google Workspace read-only account path, opt in
 explicitly:

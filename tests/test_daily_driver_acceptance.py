@@ -11,10 +11,17 @@ import json
 from pathlib import Path
 from uuid import UUID
 
+import anyio
+
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import CategoryTag, LabelState
 from capabledeputy.policy.tiers import Tier
-from tests.daemon_integration import running_daemon
+from tests.daemon_integration import (
+    build_test_daemon,
+    daemon_test_paths,
+    running_daemon,
+    wait_for_socket,
+)
 
 
 def _restricted_financial() -> LabelState:
@@ -220,3 +227,61 @@ async def test_live_daemon_document_revision_needs_approval_or_exact_grant(tmp_p
         for capability in active_caps
     )
     assert context["policy"]["recent_decisions"][-1]["decision"] == "allow"
+
+
+async def test_live_daemon_recovers_scoped_capability_after_restart(tmp_path: Path) -> None:
+    """Recovery preserves deterministic authority, not an in-flight model act.
+
+    A fresh daemon process reopens the same session/audit stores. It can use a
+    previously recorded exact capability, but nothing broad is recreated and
+    the post-restart tool call still crosses the normal reference monitor.
+    """
+    paths = daemon_test_paths(tmp_path)
+    destination = tmp_path / "recovered-draft.txt"
+    daemon1, app1 = await build_test_daemon(paths)
+
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(daemon1.serve)
+        await wait_for_socket(paths.socket)
+        from capabledeputy.ipc.client import DaemonClient
+
+        first_client = DaemonClient(paths.socket)
+        created = await first_client.call(
+            "session.new",
+            {"owner": "acceptance", "intent": "recover scoped local create"},
+        )
+        await app1.graph.grant_capability(
+            UUID(created["id"]),
+            Capability(kind=CapabilityKind.CREATE_FS, pattern=str(destination)),
+        )
+        await first_client.call("shutdown")
+
+    daemon2, app2 = await build_test_daemon(paths)
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(daemon2.serve)
+        await wait_for_socket(paths.socket)
+        from capabledeputy.ipc.client import DaemonClient
+
+        recovered_client = DaemonClient(paths.socket)
+        created_file = await recovered_client.call(
+            "tool.call",
+            {
+                "session_id": created["id"],
+                "tool": "fs.create",
+                "args": {"path": str(destination), "content": "recovered"},
+            },
+        )
+        context = await recovered_client.call(
+            "session.security_context",
+            {"session_id": created["id"]},
+        )
+        await recovered_client.call("shutdown")
+
+    assert created_file["decision"] == "allow"
+    assert destination.read_text(encoding="utf-8") == "recovered"
+    assert any(
+        capability["kind"] == "CREATE_FS" and capability["pattern"] == str(destination)
+        for capability in context["capabilities"]["active"]
+    )
+    assert context["policy"]["recent_decisions"][-1]["tool"] == "fs.create"
+    assert len(await app2.audit.read_all()) >= 3
