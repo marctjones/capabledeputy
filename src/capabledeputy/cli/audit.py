@@ -100,6 +100,76 @@ def retention_command(
         console.print("[green]No legacy tool-output candidates found.[/green]")
 
 
+@audit_app.command("sanitize-legacy")
+def sanitize_legacy_command(
+    path: Annotated[
+        str, typer.Argument(help="Legacy audit.jsonl to sanitize without modifying it.")
+    ],
+    destination: Annotated[
+        str,
+        typer.Argument(help="New sanitized audit JSONL path; it must not already exist."),
+    ],
+    operator: Annotated[
+        str,
+        typer.Option("--operator", help="Human operator approving this copy operation."),
+    ],
+    approve: Annotated[
+        bool,
+        typer.Option(
+            "--approve",
+            help="Required explicit approval; without it the command only reports the inventory.",
+        ),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit content-free remediation evidence JSON."),
+    ] = False,
+) -> None:
+    """Create an operator-approved, separately chained redacted audit copy.
+
+    The input log is never rewritten, deleted, or cut over.  The result has a
+    fresh hash chain and a sidecar manifest that commits to both file hashes;
+    the operator must separately verify and deliberately configure any future
+    cutover or secure retention of the original.
+    """
+    from pathlib import Path
+
+    from capabledeputy.audit.retention import (
+        inventory_legacy_tool_outputs,
+        sanitize_legacy_tool_outputs,
+    )
+
+    source = Path(path)
+    if not approve:
+        report = inventory_legacy_tool_outputs(source)
+        message = (
+            "No audit files changed. Re-run with --approve and a non-empty "
+            "--operator only after reviewing this inventory."
+        )
+        if json_output:
+            console.print_json(data={**report.to_dict(), "approved": False, "message": message})
+        else:
+            console.print(f"[yellow]{message}[/yellow]")
+            console.print(f"  legacy-output candidates: {len(report.legacy_output_candidates)}")
+            console.print(f"  malformed lines: {report.malformed_lines}")
+        raise typer.Exit(code=2)
+
+    try:
+        result = sanitize_legacy_tool_outputs(source, Path(destination), operator=operator)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if json_output:
+        console.print_json(data={**result.to_dict(), "approved": True})
+        return
+    console.print("[green]Created a separate redacted audit copy.[/green]")
+    console.print(f"  sanitized log: [dim]{result.sanitized}[/dim]")
+    console.print(f"  manifest: [dim]{result.manifest}[/dim]")
+    console.print(
+        f"  redacted legacy tool.returned records: {result.sanitized_tool_returned_events}"
+    )
+    console.print("  Source audit was not modified; verify both files before any manual cutover.")
+
+
 @audit_app.callback()
 def audit_main(
     ctx: typer.Context,
