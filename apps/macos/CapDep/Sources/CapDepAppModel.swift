@@ -40,6 +40,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var approvalDetails: [Int: ApprovalDetail] = [:]
     @Published private(set) var sessionSecurityContexts: [String: SessionSecurityContext] = [:]
     @Published private(set) var sessionArtifacts: [String: [SessionArtifact]] = [:]
+    @Published private(set) var sessionArtifactLabels: [String: [String]] = [:]
     @Published private(set) var onguardClients: [OnguardClientViewData] = []
     @Published private(set) var onguardCommands: [OnguardCommandViewData] = []
     @Published private(set) var onguardSchedules: [OnguardScheduleViewData] = []
@@ -778,6 +779,9 @@ final class CapDepAppModel: ObservableObject {
             ) as? [String: Any]
             let artifacts = result?["artifacts"] as? [[String: Any]] ?? []
             sessionArtifacts[sessionID] = artifacts.map(SessionArtifact.init(dictionary:))
+            if let labelState = result?["label_state"] as? [String: Any] {
+                sessionArtifactLabels[sessionID] = CapDepSession.flattenLabels(labelState)
+            }
         } catch {
             lastError = error.localizedDescription
         }

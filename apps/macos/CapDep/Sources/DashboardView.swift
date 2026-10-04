@@ -803,6 +803,7 @@ private struct InspectorView: View {
                     }
                     SessionArtifactInspectorView(
                         artifacts: model.sessionArtifacts[session.id] ?? [],
+                        labels: model.sessionArtifactLabels[session.id] ?? [],
                     )
                 } else {
                     PlaceholderDetailView(
@@ -828,6 +829,7 @@ private struct InspectorView: View {
 /// file path into this surface, and unsupported artifacts stay metadata only.
 private struct SessionArtifactInspectorView: View {
     let artifacts: [SessionArtifact]
+    let labels: [String]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -836,6 +838,11 @@ private struct SessionArtifactInspectorView: View {
             if artifacts.isEmpty {
                 Text("No daemon-materialized artifacts for this session.")
                     .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if !labels.isEmpty {
+                Text("Session labels: \(labels.joined(separator: ", "))")
+                    .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }
             ForEach(artifacts) { artifact in
@@ -848,6 +855,11 @@ private struct SessionArtifactInspectorView: View {
                     Text("source: \(artifact.source.isEmpty ? "unknown" : artifact.source) · hash: \(artifact.shortHash.isEmpty ? "missing" : artifact.shortHash)")
                         .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
+                    if !artifact.originToolName.isEmpty {
+                        Text("provenance: \(artifact.originToolName)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
                     if artifact.isAuthorizedGeneratedImage {
                         AuthorizedSessionImageView(artifact: artifact)
                     } else {
