@@ -57,3 +57,24 @@ def test_daily_local_wrapper_preserves_role_model_pool() -> None:
     backend, config_path = result.stdout.splitlines()
     assert backend == ""
     assert config_path == str(root / "configs" / "models-daily-local-8b.yaml")
+
+
+def test_daily_local_wrapper_honors_explicit_cached_model_path(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    wrapper = root / "scripts" / "with-daily-local-8b.sh"
+    model_dir = tmp_path / "Qwen3-8B-4bit-mlx"
+    model_dir.mkdir()
+    result = subprocess.run(
+        [
+            "sh",
+            str(wrapper),
+            sys.executable,
+            "-c",
+            "import os; print(os.environ['CAPDEP_LLM_MODEL'])",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CAPDEP_DAILY_MLX_MODEL": str(model_dir)},
+    )
+    assert result.stdout.strip() == str(model_dir)

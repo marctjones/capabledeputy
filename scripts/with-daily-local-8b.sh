@@ -9,6 +9,9 @@ if [ "$#" -eq 0 ]; then
 fi
 REPO_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 CAPDEP_MODELS_CONFIG="$REPO_ROOT/configs/models-daily-local-8b.yaml"
+# A repository identifier works when its model is already in the Hugging Face
+# cache.  The launcher can instead pass the explicit local model directory;
+# both forms remain offline-only below.
 DAILY_MODEL="${CAPDEP_DAILY_MLX_MODEL:-mlx/mlx-community/Qwen3-8B-4bit}"
 export CAPDEP_MODELS_CONFIG
 # Do not set CAPDEP_LLM_BACKEND here.  That variable intentionally selects the

@@ -9,6 +9,19 @@ SOCKET="${CAPDEP_TMUX_SOCKET:-capdep-daemon-debug}"
 SESSION="${CAPDEP_TMUX_SESSION:-capdep-daemon}"
 LOG="${CAPDEP_DAEMON_TMUX_LOG:-/tmp/capdep-daemon-tmux-debug.log}"
 PATH_VALUE="$DEV_BIN:${CAPDEP_DAEMON_PATH:-$PATH}"
+# Prefer the standard local model directory when it is present.  The wrapper
+# retains the repository-id fallback for machines that use the Hugging Face
+# cache instead.  Resolving this before creating tmux makes a restart behave
+# exactly like the documented daily local launch, rather than accidentally
+# selecting an unavailable offline repository entry.
+DEFAULT_LOCAL_DAILY_MODEL="$HOME/Models/Qwen3-8B-4bit-mlx"
+if [[ -n "${CAPDEP_DAILY_MLX_MODEL:-}" ]]; then
+  DAILY_MODEL="${CAPDEP_DAILY_MLX_MODEL}"
+elif [[ -d "$DEFAULT_LOCAL_DAILY_MODEL" ]]; then
+  DAILY_MODEL="$DEFAULT_LOCAL_DAILY_MODEL"
+else
+  DAILY_MODEL=""
+fi
 
 usage() {
   cat <<USAGE
@@ -69,7 +82,7 @@ start_daemon() {
   fi
   : > "$LOG"
   tmux -L "$SOCKET" new-session -d -s "$SESSION" -c "$REPO_ROOT" \
-    "PATH='$PATH_VALUE' CAPDEP_REPO_ROOT='$REPO_ROOT' CAPDEP_IDLE_SHUTDOWN_SECONDS=off CAPDEP_DAILY_MLX_MODEL='${CAPDEP_DAILY_MLX_MODEL:-}' '$DAILY_MODEL_WRAPPER' '$CAPDEP' daemon start 2>&1 | tee '$LOG'; printf '\nexit=%s\n' \"\$?\" | tee -a '$LOG'; exec zsh"
+    "PATH='$PATH_VALUE' CAPDEP_REPO_ROOT='$REPO_ROOT' CAPDEP_IDLE_SHUTDOWN_SECONDS=off CAPDEP_DAILY_MLX_MODEL='$DAILY_MODEL' '$DAILY_MODEL_WRAPPER' '$CAPDEP' daemon start 2>&1 | tee '$LOG'; printf '\nexit=%s\n' \"\$?\" | tee -a '$LOG'; exec zsh"
   wait_for_daemon || {
     echo "capdep tmux daemon failed to start" >&2
     tail -120 "$LOG" >&2 2>/dev/null || true

@@ -40,6 +40,12 @@ runs `scripts/verify-gui-parity.py`. The parity probe has a real local-model
 chat assertion but performs no irreversible account action. Keep real-account
 mutation coverage separately opt-in and explicitly approved.
 
+For the tmux development launcher, CapDep automatically uses
+`~/Models/Qwen3-8B-4bit-mlx` when that standard cached baseline exists. Set
+`CAPDEP_DAILY_MLX_MODEL` to an explicit already-cached path to override it;
+otherwise the offline Hugging Face cache fallback is used. Neither path
+downloads a model or enables cloud inference.
+
 For the policy portion of daily-driver acceptance against an already-running
 configured daemon, run:
 
