@@ -6,7 +6,11 @@ maps this roadmap onto GitHub issues and dependencies. The older
 `docs/improvement-roadmap.md` and `docs/improvement-roadmap-2.md` files are
 historical backlog snapshots, not the current roadmap.
 
-**Last refreshed:** 2026-07-18 — **v0.58.0** is the current head of `main`.
+**Daily-use delivery design:** [docs/daily-agent-design.md](docs/daily-agent-design.md)
+is the canonical practical-workflow, authorization, connector-readiness, and
+acceptance specification.
+
+**Last refreshed:** 2026-10-03 — **v0.58.0** is the current head of `main`.
 Milestones v0.54–v0.58 are complete (v0.58 shipped scoped — see below). Since
 v0.53 the project shipped the egress-complete chokepoint (v0.54), reachable
 safe-handling flow patterns for restricted data (v0.55), named security-posture
@@ -16,9 +20,11 @@ policy-authoring stack (v0.56), daemon reliability/supervision/data-safety
 web.fetch, email SEND, tasks, image-safety default, zero-config surface — all
 real and verified in-repo). v0.58 shipped **scoped**: credential-gated work
 (live calendar/inbox reads #325, first-class GWS + GitHub connect #328, the
-Swift reconnect tail #319) was deferred to **v0.59** rather than faked, and
-Microsoft 365 / Notion (#329) were marked not-supported-for-v1.0. v1.0 remains
-unscheduled.
+Swift reconnect tail #319) was deferred rather than faked. Current connector
+reality is narrower: Gmail IMAP/SMTP may be configured locally, while a real
+Google Calendar/Drive provider is not yet wired. The daily-use design records
+the required evidence before either is called ready. Microsoft 365 / Notion
+(#329) were marked not-supported-for-v1.0. v1.0 remains unscheduled.
 
 ### Current and upcoming milestones
 
