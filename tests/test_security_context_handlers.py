@@ -160,13 +160,15 @@ async def test_session_security_context_pages_provenance_without_losing_counts(
     await app.startup()
     try:
         session = await app.graph.new(owner="operator", intent="paged provenance")
-        for index in range(125):
+        # Match the reported daily-use graph scale.  The response must remain
+        # bounded even though the daemon owns thousands of persisted nodes.
+        for index in range(4_001):
             await app.audit.write(
                 Event(
                     event_type=EventType.PROVENANCE_NODE,
                     session_id=session.id,
                     payload={
-                        "node_id": f"node-{index:03}",
+                            "node_id": f"node-{index:04}",
                         "kind": "tool" if index % 2 else "source",
                         "materialized_id": f"materialized-{index}",
                     },
@@ -175,16 +177,15 @@ async def test_session_security_context_pages_provenance_without_losing_counts(
         handlers = make_security_context_handlers(app)
 
         ctx = await handlers["session.security_context"](
-            {"session_id": str(session.id), "provenance_offset": 100, "provenance_limit": 20},
+            {"session_id": str(session.id), "provenance_offset": 4_000, "provenance_limit": 20},
         )
 
         provenance = ctx["provenance"]
-        assert provenance["node_count"] == 125
-        assert provenance["node_offset"] == 100
+        assert provenance["node_count"] == 4_001
+        assert provenance["node_offset"] == 4_000
         assert provenance["node_limit"] == 20
-        assert provenance["node_returned"] == 20
-        assert provenance["node_has_more"] is True
-        assert [node["id"] for node in provenance["nodes"]][:1] == ["node-100"]
-        assert len(provenance["nodes"]) == 20
+        assert provenance["node_returned"] == 1
+        assert provenance["node_has_more"] is False
+        assert [node["id"] for node in provenance["nodes"]] == ["node-4000"]
     finally:
         await app.shutdown()
