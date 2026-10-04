@@ -921,6 +921,7 @@ private struct SecurityContextSummaryView: View {
         VStack(alignment: .leading, spacing: 12) {
             InspectorSection(title: "Security Context", rows: [
                 ("Enforcement", context.enforcementMode),
+                ("Session Origin", context.originKind.isEmpty ? "(not recorded)" : context.originKind),
                 ("Labels", "\(context.labelCount)"),
                 ("Capabilities", "\(context.activeCapabilityCount) active"),
                 ("Used Kinds", context.usedKinds.isEmpty ? "(none)" : context.usedKinds.joined(separator: ", ")),
@@ -932,10 +933,71 @@ private struct SecurityContextSummaryView: View {
                 ("Tool Actors", context.toolActors.isEmpty ? "(none)" : context.toolActors.joined(separator: ", ")),
                 ("Onguard", context.onguardClientID.isEmpty ? "(none)" : context.onguardClientID),
             ])
+            InspectorEvidenceList(
+                title: "Labels and Taint",
+                emptyMessage: "No labels are present on this session.",
+                items: context.labelValues.map { (name: $0, detail: "Daemon-propagated session label") },
+            )
+            InspectorEvidenceList(
+                title: "Active Capabilities",
+                emptyMessage: "No active capabilities are present.",
+                items: context.activeCapabilities.map { (name: $0.kind, detail: $0.summary) },
+            )
+            InspectorEvidenceList(
+                title: "Planner Tool Surface",
+                emptyMessage: "No planner tool-surface selection was recorded for this session.",
+                items: context.toolSurfaceSelections.map { (name: "Selected tools", detail: $0.summary) },
+            )
+            InspectorEvidenceList(
+                title: "Deterministic Policy Decisions",
+                emptyMessage: "No policy decision has been recorded for this session.",
+                items: context.policyDecisions.map { (name: "\($0.decision.uppercased()) · \($0.tool)", detail: $0.summary) },
+            )
+            InspectorEvidenceList(
+                title: "Session Provenance Nodes",
+                emptyMessage: "No session-scoped provenance nodes were recorded.",
+                items: context.provenanceNodes.map { (name: $0.kind, detail: $0.materializedID) },
+            )
+            InspectorEvidenceList(
+                title: "Session Provenance Edges",
+                emptyMessage: "No session-scoped provenance edges were recorded.",
+                items: context.provenanceEdges.map { (name: $0.kind, detail: "\($0.from) → \($0.to)") },
+            )
             InspectorItemList(title: "Security Models", items: context.securityModels)
             InspectorItemList(title: "Flow Patterns", items: context.flowPatterns)
             InspectorSection(title: "Limitations", rows: context.limitations.map { ("Limit", $0) })
         }
+    }
+}
+
+private struct InspectorEvidenceList: View {
+    let title: String
+    let emptyMessage: String
+    let items: [(name: String, detail: String)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            if items.isEmpty {
+                Text(emptyMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.name.isEmpty ? "(unnamed)" : item.name)
+                        .font(.subheadline.weight(.medium))
+                    Text(item.detail.isEmpty ? "(no additional evidence)" : item.detail)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.30), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 

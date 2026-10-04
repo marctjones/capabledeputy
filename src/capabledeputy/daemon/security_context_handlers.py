@@ -69,6 +69,7 @@ def make_security_context_handlers(app: App) -> dict[str, Handler]:
                 "session_origin": origin,
                 "external_mcp": external_actors["mcp"],
                 "tools": external_actors["tools"],
+                "tool_surface": _tool_surface(scoped_events),
                 "onguard": onguard,
             },
             "approvals": {
@@ -258,6 +259,34 @@ def _external_actors(
         "mcp": sorted(mcp.values(), key=lambda a: str(a.get("name"))),
         "tools": sorted(tools.values(), key=lambda a: str(a.get("name"))),
     }
+
+
+def _tool_surface(events: list[Event]) -> dict[str, Any]:
+    """Project planner-visible tool selections as read-only session evidence.
+
+    The planner picks from a daemon-owned filtered surface.  Rendering this
+    audit projection lets an operator distinguish tools the planner could see
+    from tools it actually used, without allowing a client to widen that
+    surface or to manufacture a selection record.
+    """
+    selections = []
+    for event in events:
+        if event.event_type != EventType.TOOL_SURFACE_SELECTED:
+            continue
+        payload = event.payload
+        selections.append(
+            {
+                "audit_id": str(event.audit_id),
+                "timestamp": event.timestamp.isoformat(),
+                "method": payload.get("method"),
+                "n_visible": payload.get("n_visible"),
+                "n_selected": payload.get("n_selected"),
+                "selected": list(payload.get("selected") or []),
+                "mandatory_added": list(payload.get("mandatory_added") or []),
+                "selection_reason": payload.get("selection_reason"),
+            },
+        )
+    return {"selection_count": len(selections), "recent_selections": selections[-20:]}
 
 
 def _security_models(

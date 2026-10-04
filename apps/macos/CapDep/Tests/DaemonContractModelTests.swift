@@ -44,7 +44,15 @@ final class DaemonContractModelTests: XCTestCase {
             "session": ["id": "session-1", "enforcement_mode": "enforce"],
             "labels": ["label_state": ["a": ["untrusted.external"]]],
             "capabilities": [
-                "active": [["kind": "SEND_EMAIL"]],
+                "active": [[
+                    "kind": "SEND_EMAIL",
+                    "pattern": "recipient@example.com",
+                    "origin": "operator_grant",
+                    "expiry": "bounded",
+                    "expires_at": "2026-10-05T00:00:00+00:00",
+                    "max_amount": 1,
+                    "revoked_by": ["approval_revoked"],
+                ]],
                 "used_kinds": ["READ_EMAIL"],
             ],
             "approvals": ["pending_count": 2],
@@ -53,12 +61,27 @@ final class DaemonContractModelTests: XCTestCase {
                 "deny_count": 1,
                 "matched_rule_ids": ["rule.untrusted_egress"],
             ],
-            "provenance": ["node_count": 3, "edge_count": 2],
+            "provenance": [
+                "node_count": 3,
+                "edge_count": 2,
+                "nodes": [["id": "node-1", "kind": "tool_result", "materialized_id": "gmail-1"]],
+                "edges": [["from": "node-0", "to": "node-1", "kind": "derived_from"]],
+            ],
             "actors": [
                 "external_mcp": [["name": "gmail"]],
                 "tools": [["name": "gmail.send"]],
+                "tool_surface": ["recent_selections": [[
+                    "audit_id": "tool-surface-1",
+                    "method": "capability_filtered",
+                    "n_visible": 4,
+                    "n_selected": 2,
+                    "selected": ["gmail.messages.list", "web.fetch"],
+                    "mandatory_added": ["web.fetch"],
+                    "selection_reason": "intent match",
+                ]]],
                 "onguard": ["client": ["client_id": "onguard.digest.daily"]],
             ],
+            "origin": ["kind": "workflow_template"],
             "security_models": [
                 ["name": "information_flow_labels", "implemented": true, "evidence": ["label_count": 1]],
             ],
@@ -82,6 +105,13 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(context.externalMCPActors, ["gmail"])
         XCTAssertEqual(context.toolActors, ["gmail.send"])
         XCTAssertEqual(context.onguardClientID, "onguard.digest.daily")
+        XCTAssertEqual(context.originKind, "workflow_template")
+        XCTAssertEqual(context.activeCapabilities.first?.kind, "SEND_EMAIL")
+        XCTAssertEqual(context.activeCapabilities.first?.pattern, "recipient@example.com")
+        XCTAssertEqual(context.activeCapabilities.first?.revokedBy, ["approval_revoked"])
+        XCTAssertEqual(context.toolSurfaceSelections.first?.selected, ["gmail.messages.list", "web.fetch"])
+        XCTAssertEqual(context.provenanceNodes.first?.materializedID, "gmail-1")
+        XCTAssertEqual(context.provenanceEdges.first?.kind, "derived_from")
         XCTAssertEqual(context.securityModels.first?.name, "information_flow_labels")
         XCTAssertEqual(context.securityModels.first?.active, true)
         XCTAssertEqual(context.flowPatterns.first?.name, "human_approval_gate")

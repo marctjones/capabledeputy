@@ -68,6 +68,20 @@ async def test_session_security_context_materializes_daemon_security_state(
                 },
             ),
         )
+        await app.audit.write(
+            Event(
+                event_type=EventType.TOOL_SURFACE_SELECTED,
+                session_id=session.id,
+                payload={
+                    "method": "capability_filtered",
+                    "n_visible": 4,
+                    "n_selected": 2,
+                    "selected": ["gmail.messages.list", "web.fetch"],
+                    "mandatory_added": ["web.fetch"],
+                    "selection_reason": "intent match",
+                },
+            ),
+        )
 
         handlers = make_security_context_handlers(app)
         ctx = await handlers["session.security_context"]({"session_id": str(session.id)})
@@ -84,6 +98,9 @@ async def test_session_security_context_materializes_daemon_security_state(
         assert ctx["provenance"]["node_count"] >= 1
         assert ctx["actors"]["onguard"]["client"]["client_id"] == "onguard.digest.daily"
         assert ctx["actors"]["onguard"]["commands"][0]["command_id"] == command["command_id"]
+        selection = ctx["actors"]["tool_surface"]["recent_selections"][0]
+        assert selection["selected"] == ["gmail.messages.list", "web.fetch"]
+        assert selection["n_visible"] == 4
         assert any(
             model["name"] == "materialized_provenance_dag" and model["implemented"]
             for model in ctx["security_models"]
