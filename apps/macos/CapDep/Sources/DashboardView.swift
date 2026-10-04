@@ -1048,6 +1048,13 @@ private struct SecurityContextSummaryView: View {
                 items: context.labelValues.map { (name: $0, detail: "Daemon-propagated session label") },
             )
             InspectorEvidenceList(
+                title: "Label Ingress and Propagation",
+                emptyMessage: "No label-propagation audit event was recorded for this session.",
+                items: context.labelPropagation.map {
+                    (name: $0.sourceTool.isEmpty ? "Unknown source" : $0.sourceTool, detail: $0.summary)
+                },
+            )
+            InspectorEvidenceList(
                 title: "Active Capabilities",
                 emptyMessage: "No active capabilities are present.",
                 items: context.activeCapabilities.map { (name: $0.kind, detail: $0.summary) },

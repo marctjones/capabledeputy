@@ -82,6 +82,17 @@ async def test_session_security_context_materializes_daemon_security_state(
                 },
             ),
         )
+        await app.audit.write(
+            Event(
+                event_type=EventType.LABEL_PROPAGATED,
+                session_id=session.id,
+                payload={
+                    "source_tool": "web.fetch",
+                    "categories_added": [],
+                    "levels_added": ["external-untrusted"],
+                },
+            ),
+        )
 
         handlers = make_security_context_handlers(app)
         ctx = await handlers["session.security_context"]({"session_id": str(session.id)})
@@ -91,6 +102,11 @@ async def test_session_security_context_materializes_daemon_security_state(
         assert ctx["session"]["purpose_handle"] == "personal_assistant"
         assert ctx["origin"]["kind"] == "onguard_queued_command"
         assert "untrusted.external" in ctx["labels"]["legacy_label_set"]
+        propagation = ctx["labels"]["propagation"]
+        assert len(propagation) == 1
+        assert propagation[0]["source_tool"] == "web.fetch"
+        assert propagation[0]["categories_added"] == []
+        assert propagation[0]["levels_added"] == ["external-untrusted"]
         assert ctx["approvals"]["pending_count"] == 1
         assert ctx["policy"]["decision_count"] == 1
         assert ctx["policy"]["approval_gate_count"] == 1

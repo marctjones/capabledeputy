@@ -42,7 +42,15 @@ final class DaemonContractModelTests: XCTestCase {
     func testSessionSecurityContextParsesDaemonProjection() {
         let context = SessionSecurityContext(dictionary: [
             "session": ["id": "session-1", "enforcement_mode": "enforce"],
-            "labels": ["label_state": ["a": ["untrusted.external"]]],
+            "labels": [
+                "label_state": ["a": ["untrusted.external"]],
+                "propagation": [[
+                    "audit_id": "label-event-1",
+                    "source_tool": "web.fetch",
+                    "categories_added": [],
+                    "levels_added": ["external-untrusted"],
+                ]],
+            ],
             "capabilities": [
                 "active": [[
                     "kind": "SEND_EMAIL",
@@ -121,6 +129,8 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(context.activeCapabilities.first?.kind, "SEND_EMAIL")
         XCTAssertEqual(context.activeCapabilities.first?.pattern, "recipient@example.com")
         XCTAssertEqual(context.activeCapabilities.first?.revokedBy, ["approval_revoked"])
+        XCTAssertEqual(context.labelPropagation.first?.sourceTool, "web.fetch")
+        XCTAssertEqual(context.labelPropagation.first?.levelsAdded, ["external-untrusted"])
         XCTAssertEqual(context.toolSurfaceSelections.first?.selected, ["gmail.messages.list", "web.fetch"])
         XCTAssertEqual(context.provenanceNodes.first?.materializedID, "gmail-1")
         XCTAssertEqual(context.provenanceEdges.first?.kind, "derived_from")

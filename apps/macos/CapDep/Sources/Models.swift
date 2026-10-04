@@ -974,6 +974,7 @@ struct SessionSecurityContext: Hashable {
     let onguardClientID: String
     let originKind: String
     let labelValues: [String]
+    let labelPropagation: [SessionLabelPropagationEvidence]
     let activeCapabilities: [SessionCapabilityEvidence]
     let policyDecisions: [SessionPolicyDecision]
     let toolSurfaceSelections: [SessionToolSurfaceSelection]
@@ -1025,6 +1026,8 @@ struct SessionSecurityContext: Hashable {
         self.labelValues = CapDepSession.flattenLabels(
             labels["label_state"] as? [String: Any] ?? [:],
         ).sorted()
+        self.labelPropagation = (labels["propagation"] as? [[String: Any]] ?? [])
+            .map(SessionLabelPropagationEvidence.init(dictionary:))
         self.activeCapabilities = (capabilities["active"] as? [[String: Any]] ?? [])
             .map(SessionCapabilityEvidence.init(dictionary:))
             .sorted { $0.sortKey < $1.sortKey }
@@ -1045,6 +1048,29 @@ struct SessionSecurityContext: Hashable {
     }
 
     static let empty = SessionSecurityContext(dictionary: [:])
+}
+
+/// Content-free daemon audit evidence explaining a label's ingress. The UI
+/// displays this projection only; it cannot add, clear, or declassify labels.
+struct SessionLabelPropagationEvidence: Identifiable, Hashable {
+    let id: String
+    let sourceTool: String
+    let categoriesAdded: [String]
+    let levelsAdded: [String]
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["audit_id"] as? String ?? UUID().uuidString
+        self.sourceTool = dictionary["source_tool"] as? String ?? ""
+        self.categoriesAdded = dictionary["categories_added"] as? [String] ?? []
+        self.levelsAdded = dictionary["levels_added"] as? [String] ?? []
+    }
+
+    var summary: String {
+        var parts = ["source=\(sourceTool.isEmpty ? "unknown" : sourceTool)"]
+        if !categoriesAdded.isEmpty { parts.append("categories=\(categoriesAdded.joined(separator: ", "))") }
+        if !levelsAdded.isEmpty { parts.append("provenance=\(levelsAdded.joined(separator: ", "))") }
+        return parts.joined(separator: " · ")
+    }
 }
 
 /// A daemon-projected capability record.  This is display evidence only: no

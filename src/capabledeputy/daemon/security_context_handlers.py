@@ -62,6 +62,10 @@ def make_security_context_handlers(app: App) -> dict[str, Handler]:
                 "label_state": session.label_state.to_dict(),
                 "axis_d": session.axis_d.to_dict(),
                 "legacy_label_set": label_set,
+                # This is a content-free explanation of how labels reached
+                # the session.  Clients render daemon audit evidence rather
+                # than infer authority or taint from planner text.
+                "propagation": _label_propagation(scoped_events),
             },
             "capabilities": {
                 "active": session_dict["capability_set"],
@@ -239,6 +243,31 @@ def _policy(events: list[Event]) -> dict[str, Any]:
             {str(rule) for d in decisions for rule in d.get("v2_matched_rule_ids", []) if rule},
         ),
     }
+
+
+def _label_propagation(events: list[Event]) -> list[dict[str, Any]]:
+    """Project label-ingress evidence without copying any tool output.
+
+    A propagation record says which daemon-dispatched tool contributed the
+    category/provenance labels.  It intentionally exposes neither arguments
+    nor returned content, preserving the separation between inspectable audit
+    control data and labeled session/reference data.
+    """
+    propagated = []
+    for event in events:
+        if event.event_type != EventType.LABEL_PROPAGATED:
+            continue
+        payload = event.payload
+        propagated.append(
+            {
+                "audit_id": str(event.audit_id),
+                "timestamp": event.timestamp.isoformat(),
+                "source_tool": str(payload.get("source_tool") or ""),
+                "categories_added": [str(value) for value in payload.get("categories_added") or []],
+                "levels_added": [str(value) for value in payload.get("levels_added") or []],
+            }
+        )
+    return propagated[-50:]
 
 
 async def _onguard(app: App, origin: dict[str, Any]) -> dict[str, Any]:
