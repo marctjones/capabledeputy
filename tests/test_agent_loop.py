@@ -126,6 +126,76 @@ async def test_tool_call_followed_by_final_answer(writer: AuditWriter) -> None:
     assert memory.read("k") is not None
 
 
+async def test_web_image_request_retries_until_daemon_fetch_is_called(writer: AuditWriter) -> None:
+    graph, registry, client, _memory, _queue = await _setup(writer)
+
+    async def fetch_image(args: dict[str, Any], context: ToolContext) -> ToolResult:
+        return ToolResult(
+            output={
+                "ok": True,
+                "markdown": "![Cat](/Users/operator/.capdep/work/images/cat.png)",
+            },
+        )
+
+    registry.register(
+        ToolDefinition(
+            name="image.fetch",
+            description="Fetch and cache a remote image.",
+            capability_kind=CapabilityKind.FETCH_IMAGE,
+            handler=fetch_image,
+            target_arg="url",
+            operations=(Operation(EffectClass.FETCH),),
+            risk_ids=("RISK-INDIRECT-INJECTION",),
+        ),
+    )
+    s = await graph.new()
+    graph._sessions[s.id] = replace(
+        s,
+        capability_set=frozenset({Capability(kind=CapabilityKind.FETCH_IMAGE, pattern="*")}),
+    )
+
+    class MLXLLMClient(FakeLLMClient):
+        """Exercise the JSON-tool retry path used by the local planner."""
+
+    llm = MLXLLMClient(
+        [
+            LLMResponse(content="![Cat](https://example.com/cat.png)"),
+            LLMResponse(
+                content="",
+                tool_calls=(
+                    ToolCall(
+                        id="fetch-1",
+                        name="image.fetch",
+                        args={"url": "https://example.com/cat.png"},
+                    ),
+                ),
+                finish_reason=FinishReason.TOOL_CALLS,
+            ),
+            LLMResponse(content="Here is the cached image."),
+        ],
+    )
+
+    result = await run_turn(
+        session_id=s.id,
+        user_message="show Jia Lissa image from Wikipedia",
+        llm=llm,
+        tool_client=client,
+        registry=registry,
+        graph=graph,
+        audit=writer,
+    )
+
+    assert result.content == (
+        "Here is the cached image.\n\n![Cat](/Users/operator/.capdep/work/images/cat.png)"
+    )
+    assert [outcome.tool_name for outcome in result.tool_outcomes] == ["image.fetch"]
+    assert result.tool_outcomes[0].decision == Decision.ALLOW
+    retries = [
+        event for event in await writer.read_all() if event.event_type is EventType.LLM_PARSE_RETRY
+    ]
+    assert any(event.payload.get("reason") == "image_fetch_mandatory" for event in retries)
+
+
 async def test_policy_denial_passed_back_to_llm(writer: AuditWriter) -> None:
     graph, registry, client, _, _ = await _setup(writer)
     s = await graph.new()

@@ -727,12 +727,17 @@ async def run_turn_streaming(
     """
     from capabledeputy.agent.chat_turn import (
         CHAT_MAX_TOKENS,
+        IMAGE_FETCH_RETRY_NOTICE,
         IMAGE_GENERATION_RETRY_NOTICE,
         IMAGE_PATH_HALLUCINATION_RETRY_NOTICE,
         allowed_image_generate_paths,
         collect_prior_work_image_paths,
+        ensure_fetched_image_markdown_present,
         ensure_generated_image_markdown_present,
+        has_image_fetch_intent,
+        has_image_fetch_outcome,
         has_probable_image_generation_intent,
+        image_fetch_tool_names_in,
         image_generate_tool_names_in,
         image_generation_failure_report_from_outcomes,
         is_conversational_turn,
@@ -1090,7 +1095,9 @@ async def run_turn_streaming(
     last_response: LLMResponse | None = None
     parse_retry_used = False
     image_gen_retry_used = False
+    image_fetch_retry_used = False
     force_image_generate = should_force_image_generate_tool(user_message)
+    force_image_fetch = has_image_fetch_intent(user_message)
     probable_image_request = has_probable_image_generation_intent(user_message)
     selected_tool_names = {t.name for t in tool_surface.selected}
     visible_tool_names_all = {t.name for t in visible_all}
@@ -1495,6 +1502,33 @@ async def run_turn_streaming(
             messages.append(Message(role=Role.SYSTEM, content=retry_notice))
             continue
 
+        if (
+            not response.tool_calls
+            and tool_descriptions
+            and force_image_fetch
+            and not image_fetch_retry_used
+            and image_fetch_tool_names_in(selected_tool_names)
+            and planner_uses_json_tools(effective_llm)
+            and not has_image_fetch_outcome(tool_outcomes)
+        ):
+            image_fetch_retry_used = True
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_PARSE_RETRY,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    step_id=iteration,
+                    payload={
+                        "iteration": iteration,
+                        "reason": "image_fetch_mandatory",
+                        "content_length": len(response.content),
+                    },
+                ),
+            )
+            messages.append(Message(role=Role.ASSISTANT, content=response.content or ""))
+            messages.append(Message(role=Role.SYSTEM, content=IMAGE_FETCH_RETRY_NOTICE))
+            continue
+
         if not response.tool_calls:
             final_content = response.content or ""
             if force_image_generate or probable_image_request:
@@ -1510,6 +1544,11 @@ async def run_turn_streaming(
                 image_failure = image_generation_failure_report_from_outcomes(tool_outcomes)
                 if image_failure is not None:
                     final_content = image_failure
+            if force_image_fetch:
+                final_content = ensure_fetched_image_markdown_present(
+                    final_content,
+                    outcomes=tool_outcomes,
+                )
             final_content = _repair_foreground_recovery_leak(
                 final_content,
                 session=session,
