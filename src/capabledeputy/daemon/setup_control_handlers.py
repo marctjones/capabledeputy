@@ -7,6 +7,9 @@ but durable state changes and policy-relevant previews stay here.
 
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -31,6 +34,24 @@ from capabledeputy.policy.bindings import (
 )
 from capabledeputy.policy.reversibility import MutabilityLabel, ReversibilityLabel
 from capabledeputy.policy.tiers import Tier
+
+_GOOGLE_READ_SCOPES = frozenset(
+    {
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/calendar.events.readonly",
+        "https://www.googleapis.com/auth/drive.readonly",
+    },
+)
+_GOOGLE_WRITE_SCOPES = frozenset(
+    {
+        "https://www.googleapis.com/auth/gmail.compose",
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/calendar",
+        "https://www.googleapis.com/auth/calendar.events",
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.file",
+    },
+)
 
 
 def make_setup_control_handlers(
@@ -79,7 +100,10 @@ def make_setup_control_handlers(
 
     async def connector_status(params: dict[str, Any]) -> dict[str, Any]:
         return {
-            "connectors": [_office_connector(app_info) for app_info in OFFICE_AUTOMATION_APPS],
+            "connectors": [
+                _google_workspace_connector(),
+                *[_office_connector(app_info) for app_info in OFFICE_AUTOMATION_APPS],
+            ],
         }
 
     async def runtime_status(params: dict[str, Any]) -> dict[str, Any]:
@@ -265,6 +289,86 @@ def _office_connector(app_info: dict[str, str]) -> dict[str, Any]:
             "permission on first use."
         ),
         "actions": [_open_macos_automation_action()],
+    }
+
+
+def _google_workspace_connector(
+    *,
+    runner: Any = subprocess.run,
+    executable: str | None = None,
+) -> dict[str, Any]:
+    """Return a redacted, daemon-owned Google Workspace credential posture.
+
+    The local ``gws`` CLI owns its encrypted OAuth store.  It is deliberately
+    queried only through its read-only ``auth status`` command: a GUI or CLI
+    receives a posture, never a token, account identifier, or credential path.
+    A usable token with broad write scopes is *not* reported ready for the
+    daily read-only workflow; provider permission is distinct from CapDep
+    authority, and least privilege remains an operator-visible prerequisite.
+    """
+    command = executable or shutil.which("gws")
+    if not command:
+        return {
+            "id": "google-workspace",
+            "name": "Google Workspace",
+            "type": "local_oauth_provider",
+            "status": "unavailable",
+            "detail": "Google Workspace CLI (gws) is not installed.",
+            "actions": [],
+        }
+    try:
+        completed = runner(
+            [command, "auth", "status"],
+            check=False,
+            text=True,
+            capture_output=True,
+            timeout=5,
+        )
+        payload = json.loads(completed.stdout) if completed.returncode == 0 else {}
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        payload = {}
+    if not payload:
+        return {
+            "id": "google-workspace",
+            "name": "Google Workspace",
+            "type": "local_oauth_provider",
+            "status": "not_connected",
+            "detail": "Google Workspace credentials are not ready in the daemon-owned gws store.",
+            "actions": [],
+        }
+
+    scopes = frozenset(str(scope) for scope in payload.get("scopes", ()))
+    missing = sorted(_GOOGLE_READ_SCOPES - scopes)
+    write_scopes = sorted(_GOOGLE_WRITE_SCOPES & scopes)
+    token_valid = payload.get("token_valid") is True
+    if not token_valid:
+        status = "reauthentication_needed"
+        detail = (
+            "Google Workspace credentials need reauthentication before read-only workflows can run."
+        )
+    elif missing or write_scopes:
+        status = "least_privilege_reauth_needed"
+        detail = (
+            "Google Workspace token is usable but not least-privilege for CapDep's "
+            "read-only workflow; reauthenticate with the exact Gmail, Calendar, "
+            "and Drive read scopes."
+        )
+    else:
+        status = "ready_read_only"
+        detail = (
+            "Google Workspace read-only credentials are ready; CapDep still gates "
+            "every tool call by capability and labels."
+        )
+    return {
+        "id": "google-workspace",
+        "name": "Google Workspace",
+        "type": "local_oauth_provider",
+        "status": status,
+        "detail": detail,
+        "read_scopes_present": sorted(_GOOGLE_READ_SCOPES & scopes),
+        "missing_read_scopes": missing,
+        "write_scopes_present": write_scopes,
+        "actions": [],
     }
 
 

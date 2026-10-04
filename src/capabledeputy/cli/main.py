@@ -974,6 +974,23 @@ def app_status_command(
     console.print(f"local model available: {model.get('local_available', False)}")
 
 
+@app.command("connector-status")
+def connector_status_command(
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Show redacted daemon-owned account and local-app connector readiness."""
+    result = anyio.run(DaemonClient(default_socket_path()).call, "connector.status", {})
+    if json_output:
+        console.print_json(data=result)
+        return
+    for connector in result.get("connectors", []):
+        console.print(
+            f"[bold]{connector.get('name', connector.get('id', 'connector'))}[/bold] "
+            f"— {connector.get('status', 'unknown')}\n"
+            f"  {connector.get('detail', '')}"
+        )
+
+
 @app.command("setup-plan")
 def setup_plan_command(
     json_output: Annotated[bool, typer.Option("--json")] = False,

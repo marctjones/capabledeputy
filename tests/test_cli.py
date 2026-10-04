@@ -33,6 +33,12 @@ def test_daemon_stop_exits_nonzero_when_not_running() -> None:
     assert result.exit_code == 1
 
 
+def test_connector_status_exits_nonzero_when_daemon_not_running() -> None:
+    result = runner.invoke(app, ["connector-status"])
+    assert result.exit_code == 1
+    assert "daemon not running" in str(result.exception)
+
+
 def test_help_runs() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0

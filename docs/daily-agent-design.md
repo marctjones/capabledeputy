@@ -21,9 +21,9 @@ authorization decision.
 
 | Workflow | Current state | Required completion evidence | Authority for external effects |
 |---|---|---|---|
-| Inbox triage | Gmail IMAP/SMTP connector can be configured locally; daemon currently registers IMAP read tools. | Live, read-only inbox-header and message-read acceptance with source labels, provenance, cancellation, and reconnect coverage. | Reading follows source/flow policy; archive/mark-read need their declared mutation decision; send is approval-gated. |
-| Calendar planning | Native calendar is an in-memory deterministic demo, not a real Google calendar. | Select and connect a real provider; prove read, proposed mutation, cancel, and recovery flows. | Create/modify/delete/respond require approval unless an exact bounded standing authorization matches. |
-| Drive/document work | No Google Drive connector is registered. | Least-privilege Drive OAuth/provider, resource labels, reference-handle routing, and read/write acceptance tests. | Drive mutations and sharing are effect-gated; sharing/egress defaults to approval. |
+| Inbox triage | Google Workspace MCP is registered with Gmail reads mapped to `IMAP_READ`; a valid provider token is not by itself a ready claim. | Exact read-only OAuth posture plus live inbox-header and message-read acceptance with source labels, provenance, cancellation, and reconnect coverage. | Reading follows source/flow policy; archive/mark-read need their declared mutation decision; send is approval-gated. |
+| Calendar planning | Google Workspace MCP registers Calendar reads as `CALENDAR_READ`; the native calendar remains an in-memory deterministic demo. | Exact read-only OAuth posture plus real-provider read, proposed mutation, cancel, and recovery evidence. | Create/modify/delete/respond require approval unless an exact bounded standing authorization matches. |
+| Drive/document work | Google Workspace MCP registers Drive reads as `CLOUD_FILE_READ`; source labels and strict tool mappings are present. | Exact read-only OAuth posture, reference-handle routing, and read/write acceptance tests. | Drive mutations and sharing are effect-gated; sharing/egress defaults to approval. |
 | Research briefing | Local files and web read paths are available. | Real workflow evidence for citations, taint propagation, safe drafting, and egress refusal. | Read-only by default; external fetch/egress is destination- and label-gated. |
 | Email drafting and sending | Drafting is the normal path; send-capable tools exist but are policy-controlled. | Exact rendered approval payload, recipient binding, cancellation, and audited post-approval redispatch. | Human approval by default; only a bounded, revocable standing grant or ratified rule may automate an exact scope. |
 | GitHub work | Curated integration exists but account readiness is not yet proven. | Least-privilege PAT or OAuth setup, visible scope/readiness, and read/mutation acceptance tests. | Repository mutations, comments, PR actions, and token-scoped effects are individually gated. |
@@ -68,7 +68,8 @@ locally.
    authority path.
 3. **Real account workflows:** complete #325 and #328. Gmail, a selected
    calendar/Drive provider, and GitHub must each have a least-privilege
-   readiness check and explicit effect map.
+   readiness check and explicit effect map. A working token with write scopes
+   is reported as `least_privilege_reauth_needed`, never as read-only ready.
 4. **Local-model promotion:** complete #311/#338 with latency, peak-memory,
    task-success, valid-tool/schema-output, and fallback measurements. The
    local 8B profile is an operational baseline, not an evidence-based winner.

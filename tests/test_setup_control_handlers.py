@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -8,7 +9,10 @@ from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.daemon.settings_store import update_settings
-from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
+from capabledeputy.daemon.setup_control_handlers import (
+    _google_workspace_connector,
+    make_setup_control_handlers,
+)
 
 
 @pytest.fixture
@@ -87,6 +91,50 @@ async def test_connector_status_reports_local_apps(app: App) -> None:
     assert mail["actions"][0]["id"] == "macos.automation_settings"
     word = next(c for c in result["connectors"] if c["id"] == "microsoft-word")
     assert word["bundle_id"] == "com.microsoft.Word"
+
+
+def test_google_workspace_connector_requires_exact_read_only_scopes() -> None:
+    def runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                '{"token_valid": true, "scopes": ['
+                '"https://www.googleapis.com/auth/gmail.modify", '
+                '"https://www.googleapis.com/auth/drive.readonly"'
+                "]}"
+            ),
+        )
+
+    result = _google_workspace_connector(runner=runner, executable="gws")
+
+    assert result["status"] == "least_privilege_reauth_needed"
+    assert result["write_scopes_present"] == ["https://www.googleapis.com/auth/gmail.modify"]
+    assert result["missing_read_scopes"] == [
+        "https://www.googleapis.com/auth/calendar.events.readonly",
+        "https://www.googleapis.com/auth/gmail.readonly",
+    ]
+
+
+def test_google_workspace_connector_reports_exact_read_only_posture() -> None:
+    def runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                '{"token_valid": true, "scopes": ['
+                '"https://www.googleapis.com/auth/gmail.readonly", '
+                '"https://www.googleapis.com/auth/calendar.events.readonly", '
+                '"https://www.googleapis.com/auth/drive.readonly"'
+                "]}"
+            ),
+        )
+
+    result = _google_workspace_connector(runner=runner, executable="gws")
+
+    assert result["status"] == "ready_read_only"
+    assert result["missing_read_scopes"] == []
+    assert result["write_scopes_present"] == []
 
 
 async def test_source_binding_upsert_preview_and_delete(app: App, tmp_path: Path) -> None:
