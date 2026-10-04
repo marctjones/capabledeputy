@@ -95,6 +95,10 @@ Current coverage includes:
 
 - MCP-control onguard operations dispatching into daemon-owned registry,
   queue, schedule, and artifact state.
+- Restricted-memory routing that exposes only an opaque reference handle over
+  RPC, then records the post-decision bind in audit and provenance.
+- A deterministic citable web-source fetch whose untrusted label blocks a
+  subsequent otherwise-capable email egress attempt.
 - CLI onguard read paths calling the daemon instead of duplicating store logic.
 - TUI console/spectator live-daemon smoke tests and onguard coordination
   rendering.
