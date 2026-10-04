@@ -60,6 +60,46 @@ def _related_provenance(
     return nodes, edges
 
 
+@audit_app.command("retention")
+def retention_command(
+    path: Annotated[
+        str | None,
+        typer.Argument(help="Path to audit.jsonl; defaults to the local audit log."),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit content-free inventory JSON."),
+    ] = False,
+) -> None:
+    """Inventory legacy tool outputs without rendering audit payload content.
+
+    This is intentionally read-only.  It identifies records requiring an
+    operator retention decision; it never deletes, exports, or rewrites audit
+    history, and it never prints a tool result.
+    """
+    from pathlib import Path
+
+    from capabledeputy.audit.retention import inventory_legacy_tool_outputs
+    from capabledeputy.paths import default_audit_log_path
+
+    report = inventory_legacy_tool_outputs(Path(path) if path else default_audit_log_path())
+    if json_output:
+        console.print_json(data=report.to_dict())
+        return
+    console.print(f"Audit retention inventory: [dim]{report.path}[/dim]")
+    console.print(f"  events scanned: {report.total_events}")
+    console.print(f"  tool.returned: {report.tool_returned_events}")
+    console.print(f"  current redacted records: {report.redacted_tool_returned_events}")
+    console.print(f"  legacy-output candidates: {len(report.legacy_output_candidates)}")
+    console.print(f"  malformed lines: {report.malformed_lines}")
+    if report.remediation_required:
+        console.print("[yellow]Operator review required; no audit history was changed.[/yellow]")
+        for audit_id in report.legacy_output_candidates[:20]:
+            console.print(f"  candidate audit={audit_id}")
+    else:
+        console.print("[green]No legacy tool-output candidates found.[/green]")
+
+
 @audit_app.callback()
 def audit_main(
     ctx: typer.Context,
