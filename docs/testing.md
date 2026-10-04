@@ -49,8 +49,9 @@ configured daemon, run:
 
 It records daemon-projected policy traces for an inert allowed read, an
 unauthorized email denial, a bounded standing grant that still requires focused
-approval, and an untrusted-taint egress denial. The pending test approval is
-denied during cleanup and no external effect is executed.
+approval, an untrusted-taint egress denial, and a real queued-turn
+cancellation. The pending test approval is denied during cleanup and no
+external effect is executed.
 
 To exercise the configured Google Workspace read-only account path, opt in
 explicitly:

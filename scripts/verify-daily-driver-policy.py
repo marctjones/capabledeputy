@@ -136,6 +136,49 @@ async def _case(
         await _cleanup(client, session_id, approval_id)
 
 
+async def _cancellation_case(client: DaemonClient) -> dict[str, Any]:
+    """Cancel a real queued turn before it can perform a model/tool action."""
+    session_id = await _session(client, "cancellation")
+    started = time.monotonic()
+    try:
+        turn_start = await _call(
+            client,
+            "session.turn.start",
+            {
+                "session_id": session_id,
+                "client_id": "daily-driver-acceptance",
+                "message": "Write a detailed 10,000-word essay about test cancellation.",
+            },
+        )
+        turn_id = str((turn_start.get("turn") or {}).get("id") or "")
+        if not turn_id:
+            raise RuntimeError("session.turn.start did not return a turn id")
+        await _call(client, "session.turn.cancel", {"turn_id": turn_id, "reason": "acceptance"})
+        status = ""
+        # Model execution may already have crossed into a generation call;
+        # give the daemon a bounded 20 seconds to observe cancellation and
+        # publish its terminal state.
+        for _ in range(400):
+            observed = await _call(client, "session.turn.get", {"turn_id": turn_id})
+            status = str((observed.get("turn") or {}).get("status") or "")
+            if status in {"completed", "interrupted", "error"}:
+                break
+            await asyncio.sleep(0.05)
+        return {
+            "name": "turn_cancellation",
+            "session_id": session_id,
+            "expected": "interrupted",
+            "outcome": status,
+            "passed": status == "interrupted",
+            "latency_ms": round((time.monotonic() - started) * 1000, 2),
+            "approval_id": None,
+            "policy_trace": [],
+            "audit_ids": [],
+        }
+    finally:
+        await _cleanup(client, session_id, None)
+
+
 async def run() -> dict[str, Any]:
     client = DaemonClient(default_socket_path())
     status = await _call(client, "app.status", {})
@@ -172,6 +215,7 @@ async def run() -> dict[str, Any]:
             args={"to": RECIPIENT, "subject": "acceptance", "body": "must not send"},
             expected="deny",
         ),
+        await _cancellation_case(client),
     ]
     return {
         "schema": "capdep.daily-driver-policy-acceptance.v1",
