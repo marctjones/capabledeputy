@@ -55,6 +55,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var currentResolvedModelRole = ""
     @Published private(set) var currentResolvedModelReason = ""
     @Published private(set) var currentResolvedModelID = ""
+    @Published private(set) var sessionModelReports: [String: SessionModelReport] = [:]
     /// `work/images` paths authorized for the in-flight assistant stream (from tool results).
     @Published private(set) var authorizedStreamingImagePaths: Set<String> = []
     @Published private(set) var turnPendingApprovalIDs: [Int] = []
@@ -87,6 +88,7 @@ final class CapDepAppModel: ObservableObject {
     private var streamingAssistantMessageID: String?
     private static let chatModelModeKey = "CapDep.chatModelMode"
     private static let promptRunsStorageKey = "CapDep.pendingPromptRuns.v1"
+    private static let sessionModelReportsStorageKey = "CapDep.sessionModelReports.v1"
     private static let requiredDaemonMethods = [
         "app.status",
         "approval.list",
@@ -135,6 +137,7 @@ final class CapDepAppModel: ObservableObject {
 
     init() {
         restorePendingPromptRuns()
+        restoreSessionModelReports()
         Self.shared = self
         Task {
             await start()
@@ -190,6 +193,38 @@ final class CapDepAppModel: ObservableObject {
         if let data = try? JSONEncoder().encode(pending) {
             UserDefaults.standard.set(data, forKey: Self.promptRunsStorageKey)
         }
+    }
+
+    private func restoreSessionModelReports() {
+        guard let data = UserDefaults.standard.data(forKey: Self.sessionModelReportsStorageKey) else {
+            return
+        }
+        guard let restored = try? JSONDecoder().decode([String: SessionModelReport].self, from: data) else {
+            UserDefaults.standard.removeObject(forKey: Self.sessionModelReportsStorageKey)
+            return
+        }
+        sessionModelReports = restored
+    }
+
+    private func persistSessionModelReports() {
+        guard !sessionModelReports.isEmpty else {
+            UserDefaults.standard.removeObject(forKey: Self.sessionModelReportsStorageKey)
+            return
+        }
+        if let data = try? JSONEncoder().encode(sessionModelReports) {
+            UserDefaults.standard.set(data, forKey: Self.sessionModelReportsStorageKey)
+        }
+    }
+
+    func modelSummary(for sessionID: String) -> String? {
+        guard let report = sessionModelReports[sessionID], !report.model.isEmpty else {
+            return nil
+        }
+        let modelName = report.model.split(separator: "/").last.map(String.init) ?? report.model
+        let role = modelRoleTitle(report.role)
+        return report.reason.isEmpty
+            ? "Model: \(role) · \(modelName)"
+            : "Model: \(role) · \(modelName) (\(report.reason))"
     }
 
     @discardableResult
@@ -1231,6 +1266,11 @@ final class CapDepAppModel: ObservableObject {
                     ],
                 )
             }
+            // The subscription can join after a very fast local model has
+            // already emitted its selection event. Reconcile that retained
+            // provenance record so the session reports the factual model
+            // even when the completion itself was streamed successfully.
+            try await reconcileTurnModelSelection(turnID: turnID)
             if !finished {
                 ChatDebugLog.log("subscribe_fallback_poll", metadata: ["turn_id": turnID])
                 try await pollTurnUntilFinished(turnID: turnID)
@@ -1312,6 +1352,16 @@ final class CapDepAppModel: ObservableObject {
             currentResolvedModelRole = payload["role"] as? String ?? ""
             currentResolvedModelReason = payload["reason"] as? String ?? ""
             currentResolvedModelID = payload["model"] as? String ?? ""
+            if let sessionID = promptRuns.last(where: { $0.turnID == eventTurnID })?.sessionID
+                ?? currentSessionID,
+               !currentResolvedModelID.isEmpty {
+                sessionModelReports[sessionID] = SessionModelReport(
+                    role: currentResolvedModelRole,
+                    model: currentResolvedModelID,
+                    reason: currentResolvedModelReason,
+                )
+                persistSessionModelReports()
+            }
         } else if type == "llm_token" {
             if let partial = payload["partial_content"] as? String, !partial.isEmpty {
                 setStreamingAssistantContent(partial)
@@ -1471,6 +1521,18 @@ final class CapDepAppModel: ObservableObject {
                 turnStatusLine = "Waiting for daemon turn result…"
             }
             try await Task.sleep(for: .milliseconds(80))
+        }
+    }
+
+    private func reconcileTurnModelSelection(turnID: String) async throws {
+        let response = try await client.call(
+            method: "session.turn.events",
+            params: ["turn_id": turnID, "cursor": 0, "limit": 200],
+        ) as? [String: Any]
+        let events = response?["events"] as? [[String: Any]] ?? []
+        for event in events where event["type"] as? String == "model_selected" {
+            _ = try applyTurnEvent(event)
+            return
         }
     }
 

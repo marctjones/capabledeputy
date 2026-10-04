@@ -459,6 +459,10 @@ struct ChatView: View {
 
     private var modelModeHelperText: String {
         guard model.isRunningTurn, !model.currentResolvedModelRole.isEmpty else {
+            if let sessionID = model.currentSessionID,
+               let summary = model.modelSummary(for: sessionID) {
+                return summary
+            }
             return model.contextChips.isEmpty ? model.selectedChatModelMode.helpText : "\(model.contextChips.count) context item\(model.contextChips.count == 1 ? "" : "s") attached"
         }
         let title: String

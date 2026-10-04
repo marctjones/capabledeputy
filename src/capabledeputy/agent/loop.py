@@ -966,6 +966,34 @@ async def run_turn_streaming(
             reason=routing.reason,
             model=routing.mlx_model,
         )
+    else:
+        # Legacy/direct model setup remains supported for operator-managed
+        # launchd profiles. Emit the same observable model-selection event as
+        # the role pool so every foreground client can report the factual
+        # model that served its session. This is provenance only; it has no
+        # bearing on capability or policy decisions.
+        direct_model = str(getattr(effective_llm, "_model", "") or type(effective_llm).__name__)
+        await audit.write(
+            Event(
+                event_type=EventType.LLM_MODEL_SELECTED,
+                session_id=session_id,
+                turn_id=len(session.history),
+                payload={
+                    "role": "planner.fast",
+                    "reason": "direct_model_config",
+                    "mlx_model": direct_model,
+                    "n_visible_tools": len(visible_all),
+                    "n_selected_tools": len(tool_surface.selected),
+                    "conversational": conversational,
+                },
+            ),
+        )
+        yield ModelSelected(
+            iteration=0,
+            role="planner.fast",
+            reason="direct_model_config",
+            model=direct_model,
+        )
     await audit.write(
         Event(
             event_type=EventType.TOOL_SURFACE_SELECTED,

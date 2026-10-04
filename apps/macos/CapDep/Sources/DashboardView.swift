@@ -212,6 +212,12 @@ private struct SessionListView: View {
                         .font(.headline)
                     Text("\(session.status) · \(session.purpose.isEmpty ? "unset" : session.purpose)")
                         .foregroundStyle(.secondary)
+                    if let modelSummary = model.modelSummary(for: session.id) {
+                        Text(modelSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                     if !session.labels.isEmpty {
                         Text(session.labels.prefix(4).joined(separator: " · "))
                             .font(.caption.monospaced())

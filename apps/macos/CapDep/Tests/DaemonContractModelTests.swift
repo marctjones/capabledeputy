@@ -256,6 +256,21 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(restored.first?.status, .running)
     }
 
+    func testSessionModelReportPreservesDaemonResolvedIdentity() throws {
+        let report = SessionModelReport(
+            role: "planner.tools",
+            model: "mlx-community/Qwen3-8B-4bit",
+            reason: "large_tool_surface",
+        )
+
+        let data = try JSONEncoder().encode(report)
+        let restored = try JSONDecoder().decode(SessionModelReport.self, from: data)
+
+        XCTAssertEqual(restored.role, "planner.tools")
+        XCTAssertEqual(restored.model, "mlx-community/Qwen3-8B-4bit")
+        XCTAssertEqual(restored.reason, "large_tool_surface")
+    }
+
     func testGuiGrantPatternRendersDaemonPatternVerbatim() {
         // #421 — the daemon owns grant scope (it already widened READ_FS to the
         // directory). The client renders the recovery-step pattern VERBATIM and

@@ -2,7 +2,7 @@
 
 Verifies the async generator yields the expected event sequence
 under various scenarios:
-- Normal turn (no tool calls): IterationStarted → LLMRequestSent →
+- Normal turn (no tool calls): ModelSelected → IterationStarted → LLMRequestSent →
   LLMResponseReceived → TurnCompleted
 - Tool-call turn: ... → ToolDispatched → ToolReturned → ... → TurnCompleted
 - Max-iterations exceeded: ... → TurnInterrupted(reason='max_iterations')
@@ -105,8 +105,7 @@ async def session_setup(
 async def test_no_tool_calls_yields_terminal_completed_event(
     session_setup: tuple[UUID, SessionGraph, AuditWriter, ToolRegistry, LabeledToolClient],
 ) -> None:
-    """A simple turn with no tool calls produces:
-    IterationStarted → LLMRequestSent → LLMResponseReceived → TurnCompleted."""
+    """A direct-model turn reports its actual model before responding."""
     sid, graph, audit, registry, tool_client = session_setup
     llm = _StubLLM(
         [
@@ -132,19 +131,23 @@ async def test_no_tool_calls_yields_terminal_completed_event(
         events.append(evt)
 
     # Expected sequence
-    assert isinstance(events[0], IterationStarted)
-    assert events[0].iteration == 1
-    assert isinstance(events[1], LLMRequestSent)
+    assert isinstance(events[0], ModelSelected)
+    assert events[0].role == "planner.fast"
+    assert events[0].reason == "direct_model_config"
+    assert events[0].model == "_StubLLM"
+    assert isinstance(events[1], IterationStarted)
     assert events[1].iteration == 1
-    assert isinstance(events[2], LLMResponseReceived)
+    assert isinstance(events[2], LLMRequestSent)
     assert events[2].iteration == 1
-    assert events[2].content_length == len("hello world")
-    assert events[2].n_tool_calls == 0
-    assert isinstance(events[3], TurnCompleted)
-    assert events[3].result.content == "hello world"
-    assert events[3].result.iterations == 1
+    assert isinstance(events[3], LLMResponseReceived)
+    assert events[3].iteration == 1
+    assert events[3].content_length == len("hello world")
+    assert events[3].n_tool_calls == 0
+    assert isinstance(events[4], TurnCompleted)
+    assert events[4].result.content == "hello world"
+    assert events[4].result.iterations == 1
     # No more events after TurnCompleted
-    assert len(events) == 4
+    assert len(events) == 5
 
 
 def test_model_selected_event_serializes_for_clients() -> None:

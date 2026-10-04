@@ -217,6 +217,15 @@ struct ChatPromptRun: Identifiable, Hashable, Codable {
     }
 }
 
+/// The daemon-reported model that most recently served a session. This is
+/// display evidence only: model routing never grants capabilities or affects a
+/// policy decision.
+struct SessionModelReport: Hashable, Codable {
+    let role: String
+    let model: String
+    let reason: String
+}
+
 enum ChatModelMode: String, CaseIterable, Identifiable {
     case automatic
     case fast
