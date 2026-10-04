@@ -6,6 +6,7 @@ from scripts import test_capdepmac_gui_interactions as gui_smoke
 ROOT = Path(__file__).resolve().parents[1]
 CHAT_VIEW = ROOT / "apps/macos/CapDep/Sources/ChatView.swift"
 APP_MODEL = ROOT / "apps/macos/CapDep/Sources/CapDepAppModel.swift"
+APP_ENTRY = ROOT / "apps/macos/CapDep/Sources/CapDepMacApp.swift"
 LAUNCHER = ROOT / "apps/macos/CapDep/scripts/run-local-app.sh"
 GUI_SMOKE = ROOT / "scripts/test_capdepmac_gui_interactions.py"
 
@@ -40,6 +41,14 @@ def test_capdepmac_no_focus_test_hook_is_opt_in() -> None:
     assert "CAPDEP_GUI_TEST_COMMAND_FILE" in launcher_source
     assert "CAPDEP_GUI_BACKGROUND_OPEN" in launcher_source
     assert 'open -g -n "$APP"' in launcher_source
+
+
+def test_menu_bar_host_keeps_onboarding_reachable_without_chat_window() -> None:
+    app_source = APP_ENTRY.read_text(encoding="utf-8")
+    menu_bar_source = app_source.split("struct ApprovalCardWindow", maxsplit=1)[0]
+
+    assert ".onChange(of: model.isOnboardingPresented)" in menu_bar_source
+    assert 'openWindow(id: "onboarding-wizard")' in menu_bar_source
 
 
 def test_capdepmac_gui_smoke_defaults_to_no_focus_driver() -> None:

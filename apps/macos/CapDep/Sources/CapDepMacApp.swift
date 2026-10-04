@@ -1,11 +1,11 @@
 import SwiftUI
 import UserNotifications
 
-/// #332 — the menu-bar label is the one CapDep view that stays alive whenever
-/// the app is running (main/console windows can all be closed). Hosting the
-/// policy-prompt auto-open observers here — instead of only on ChatView, which
-/// dies with the main window — makes approval/grant/override cards reliably
-/// surface no matter which window (if any) is open.
+/// #332/#333 — the menu-bar label is the one CapDep view that stays alive
+/// whenever the app is running (main/console windows can all be closed).
+/// Hosting the policy-prompt and onboarding auto-open observers here — instead
+/// of only on ChatView, which dies with the main window — makes those native
+/// cards reliably surface no matter which window (if any) is open.
 struct MenuBarLabel: View {
     @EnvironmentObject private var model: CapDepAppModel
     @Environment(\.openWindow) private var openWindow
@@ -28,6 +28,11 @@ struct MenuBarLabel: View {
         .onChange(of: model.overrideWindowID) { _, newValue in
             if newValue != nil {
                 openWindow(id: "override-card")
+            }
+        }
+        .onChange(of: model.isOnboardingPresented) { _, presented in
+            if presented {
+                openWindow(id: "onboarding-wizard")
             }
         }
     }
