@@ -62,6 +62,12 @@ async def _check_chat_session(client: DaemonClient) -> None:
     if not session_id:
         raise RuntimeError("session.new did not return an id")
 
+    artifacts = await _call(client, "session.artifacts", {"session_id": session_id})
+    if str(artifacts.get("session_id") or "") != session_id:
+        raise RuntimeError("session.artifacts did not bind its result to the requested session")
+    if not isinstance(artifacts.get("artifacts"), list):
+        raise RuntimeError("session.artifacts did not return an artifact list")
+
     started = await _call(
         client,
         "session.turn.start",
