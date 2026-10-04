@@ -391,3 +391,45 @@ async def test_live_daemon_calendar_plan_uses_focused_approval(tmp_path: Path) -
 
     assert approved["dispatch"]["decision"] == "allow"
     assert len(daemon.app.calendar.all()) == 1
+
+
+async def test_live_daemon_task_completion_uses_exact_standing_grant(tmp_path: Path) -> None:
+    """A local task can be completed only after its exact grant is established."""
+    title = "Acceptance task"
+    async with running_daemon(tmp_path) as daemon:
+        created = await daemon.client.call("session.new", {"intent": "manage tasks"})
+        session_id = UUID(created["id"])
+        await daemon.app.graph.grant_capability(
+            session_id,
+            Capability(kind=CapabilityKind.CREATE_FS, pattern=title),
+        )
+        await daemon.app.graph.grant_capability(
+            session_id,
+            Capability(kind=CapabilityKind.READ_FS, pattern="*"),
+        )
+        task = await daemon.client.call(
+            "tool.call",
+            {"session_id": created["id"], "tool": "tasks.add", "args": {"title": title}},
+        )
+        task_id = task["output"]["id"]
+        await daemon.app.graph.grant_capability(
+            session_id,
+            Capability(
+                kind=CapabilityKind.MODIFY_FS,
+                pattern=task_id,
+                allows_destructive=True,
+            ),
+        )
+        completed = await daemon.client.call(
+            "tool.call",
+            {"session_id": created["id"], "tool": "tasks.complete", "args": {"id": task_id}},
+        )
+        listed = await daemon.client.call(
+            "tool.call",
+            {"session_id": created["id"], "tool": "tasks.list", "args": {"include_done": True}},
+        )
+
+    assert task["decision"] == "allow"
+    assert completed["decision"] == "allow"
+    assert completed["output"]["completed"] is True
+    assert listed["output"]["tasks"] == [{"id": task_id, "title": title, "done": True}]

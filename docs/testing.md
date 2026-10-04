@@ -104,6 +104,8 @@ Current coverage includes:
   only the named file revision.
 - Inbound-mail drafting: tainted inbox content may become a local draft, but
   the same session cannot send it to an external recipient.
+- Task management: a task can be completed only through an exact, explicit
+  destructive standing grant for that task identifier.
 - CLI onguard read paths calling the daemon instead of duplicating store logic.
 - TUI console/spectator live-daemon smoke tests and onguard coordination
   rendering.
