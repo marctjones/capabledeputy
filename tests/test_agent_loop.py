@@ -132,8 +132,9 @@ async def test_web_image_request_retries_until_daemon_fetch_is_called(writer: Au
     async def fetch_image(args: dict[str, Any], context: ToolContext) -> ToolResult:
         return ToolResult(
             output={
-                "ok": True,
-                "markdown": "![Cat](/Users/operator/.capdep/work/images/cat.png)",
+                "text": (
+                    '{"ok":true,"markdown":"![Cat](/Users/operator/.capdep/work/images/cat.png)"}'
+                ),
             },
         )
 

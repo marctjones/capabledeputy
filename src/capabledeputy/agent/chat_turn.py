@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from typing import TYPE_CHECKING, Any
@@ -399,7 +400,7 @@ def ensure_fetched_image_markdown_present(content: str, *, outcomes: list[Any]) 
             continue
         if getattr(outcome, "decision", None) != Decision.ALLOW:
             continue
-        output = getattr(outcome, "output", None)
+        output = _structured_tool_output(getattr(outcome, "output", None))
         markdown = output.get("markdown") if isinstance(output, dict) else None
         if not isinstance(markdown, str) or not markdown.strip():
             continue
@@ -409,6 +410,21 @@ def ensure_fetched_image_markdown_present(content: str, *, outcomes: list[Any]) 
             markdown.strip() if not content.strip() else f"{content.rstrip()}\n\n{markdown.strip()}"
         )
     return content
+
+
+def _structured_tool_output(output: Any) -> dict[str, Any]:
+    """Unwrap the standard MCP ``{text: JSON}`` envelope when present."""
+    if not isinstance(output, dict):
+        return {}
+    text = output.get("text")
+    if isinstance(text, str):
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed
+    return output
 
 
 def looks_like_image_generation_refusal(content: str) -> bool:
