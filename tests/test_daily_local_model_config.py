@@ -1,5 +1,8 @@
 """The daily-driver local baseline must not route into a larger model."""
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from capabledeputy.llm.models_config import load_models_config
@@ -30,3 +33,27 @@ def test_daily_local_8b_profile_never_role_escalates() -> None:
     )
     assert result.role == "planner.fast"
     assert result.reason == "daily_local_8b_baseline"
+
+
+def test_daily_local_wrapper_preserves_role_model_pool() -> None:
+    root = Path(__file__).resolve().parents[1]
+    wrapper = root / "scripts" / "with-daily-local-8b.sh"
+    result = subprocess.run(
+        [
+            "sh",
+            str(wrapper),
+            sys.executable,
+            "-c",
+            (
+                "import os; print(os.environ.get('CAPDEP_LLM_BACKEND', '')); "
+                "print(os.environ['CAPDEP_MODELS_CONFIG'])"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CAPDEP_LLM_BACKEND": "litellm"},
+    )
+    backend, config_path = result.stdout.splitlines()
+    assert backend == ""
+    assert config_path == str(root / "configs" / "models-daily-local-8b.yaml")

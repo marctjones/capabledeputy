@@ -11,7 +11,10 @@ REPO_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 CAPDEP_MODELS_CONFIG="$REPO_ROOT/configs/models-daily-local-8b.yaml"
 DAILY_MODEL="${CAPDEP_DAILY_MLX_MODEL:-mlx/mlx-community/Qwen3-8B-4bit}"
 export CAPDEP_MODELS_CONFIG
-export CAPDEP_LLM_BACKEND=mlx
+# Do not set CAPDEP_LLM_BACKEND here.  That variable intentionally selects the
+# legacy single-client compatibility path; the daily baseline needs ModelPool
+# role routing so the daemon can report and enforce the pinned role mapping.
+unset CAPDEP_LLM_BACKEND
 export CAPDEP_LLM_MODEL="$DAILY_MODEL"
 export CAPDEP_LLM_TOOLS_MODEL="$CAPDEP_LLM_MODEL"
 export CAPDEP_LLM_QUALITY_MODEL="$CAPDEP_LLM_MODEL"
