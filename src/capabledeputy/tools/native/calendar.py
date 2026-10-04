@@ -32,7 +32,17 @@ from capabledeputy.policy.labels import (
 from capabledeputy.policy.tiers import Tier
 from capabledeputy.tools.registry import ToolContext, ToolDefinition, ToolResult
 
-_CAL_DESTRUCTIVE_ROUTE = ApprovalRoute(
+# Calendar creation can be frictional even though it is not destructive: the
+# v2 reversibility gate may require a focused approval for a new commitment.
+# Its title is the precise, human-readable target on the approval card.
+_CALENDAR_CREATE_ROUTE = ApprovalRoute(
+    action=ApprovalAction.EXECUTE_DESTRUCTIVE,
+    target_arg="title",
+    payload_kind=ApprovalPayloadKind.TOOL_ENVELOPE,
+)
+
+# Existing events use their immutable event identifier as the approval target.
+_CALENDAR_MUTATION_ROUTE = ApprovalRoute(
     action=ApprovalAction.EXECUTE_DESTRUCTIVE,
     target_arg="id",
     payload_kind=ApprovalPayloadKind.TOOL_ENVELOPE,
@@ -217,6 +227,7 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.CREATE_CAL,
             handler=create_event,
             target_arg="title",
+            approval_route=_CALENDAR_CREATE_ROUTE,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -244,7 +255,7 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.MODIFY_CAL,
             handler=update_event,
             target_arg="id",
-            approval_route=_CAL_DESTRUCTIVE_ROUTE,
+            approval_route=_CALENDAR_MUTATION_ROUTE,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -272,7 +283,7 @@ def make_calendar_tools(store: CalendarStore) -> list[ToolDefinition]:
             capability_kind=CapabilityKind.DELETE_CAL,
             handler=delete_event,
             target_arg="id",
-            approval_route=_CAL_DESTRUCTIVE_ROUTE,
+            approval_route=_CALENDAR_MUTATION_ROUTE,
             parameters_schema={
                 "type": "object",
                 "properties": {"id": {"type": "string"}},

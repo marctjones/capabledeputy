@@ -362,3 +362,32 @@ async def test_live_daemon_allows_tainted_inbox_draft_but_denies_send(tmp_path: 
         "email.draft_save",
         "email.send",
     ]
+
+
+async def test_live_daemon_calendar_plan_uses_focused_approval(tmp_path: Path) -> None:
+    """A new calendar commitment has an executable deterministic approval path."""
+    title = "Acceptance planning block"
+    async with running_daemon(tmp_path) as daemon:
+        created = await daemon.client.call("session.new", {"intent": "plan calendar"})
+        await daemon.app.graph.grant_capability(
+            UUID(created["id"]),
+            Capability(kind=CapabilityKind.CREATE_CAL, pattern=title),
+        )
+        pending = await daemon.client.call(
+            "tool.call",
+            {
+                "session_id": created["id"],
+                "tool": "calendar.create_event",
+                "args": {
+                    "title": title,
+                    "starts_at": "2026-10-05T09:00:00+00:00",
+                    "ends_at": "2026-10-05T09:30:00+00:00",
+                },
+            },
+        )
+        assert pending["decision"] == "require_approval"
+        assert pending["approval_submission"]["target"] == title
+        approved = await daemon.client.call("approval.approve", {"id": pending["approval_id"]})
+
+    assert approved["dispatch"]["decision"] == "allow"
+    assert len(daemon.app.calendar.all()) == 1
