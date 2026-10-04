@@ -7,9 +7,6 @@ but durable state changes and policy-relevant previews stay here.
 
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -34,24 +31,6 @@ from capabledeputy.policy.bindings import (
 )
 from capabledeputy.policy.reversibility import MutabilityLabel, ReversibilityLabel
 from capabledeputy.policy.tiers import Tier
-
-_GOOGLE_READ_SCOPES = frozenset(
-    {
-        "https://www.googleapis.com/auth/gmail.readonly",
-        "https://www.googleapis.com/auth/calendar.events.readonly",
-        "https://www.googleapis.com/auth/drive.readonly",
-    },
-)
-_GOOGLE_WRITE_SCOPES = frozenset(
-    {
-        "https://www.googleapis.com/auth/gmail.compose",
-        "https://www.googleapis.com/auth/gmail.modify",
-        "https://www.googleapis.com/auth/calendar",
-        "https://www.googleapis.com/auth/calendar.events",
-        "https://www.googleapis.com/auth/drive",
-        "https://www.googleapis.com/auth/drive.file",
-    },
-)
 
 
 def make_setup_control_handlers(
@@ -99,22 +78,21 @@ def make_setup_control_handlers(
         raise ValueError(f"unknown setup action: {action_id}")
 
     async def connector_status(params: dict[str, Any]) -> dict[str, Any]:
-        # An account posture is useful only for a connector the operator has
-        # actually admitted to this daemon.  In particular, probing the local
-        # Google credential store merely because ``connector.status`` was
-        # called made Google look like a built-in CapDep dependency.  It is an
-        # optional MCP provider like GitHub, Slack, or any other upstream.
-        #
-        # Native macOS application rows remain setup hints: they describe
-        # bounded tools shipped in the selected desktop profile, not an
-        # external account integration.
-        configured = _configured_upstream_names(app)
-        connectors: list[dict[str, Any]] = []
-        if "google-workspace" in configured:
-            connectors.append(_google_workspace_connector())
-        connectors.extend(_office_connector(app_info) for app_info in OFFICE_AUTOMATION_APPS)
+        """Return configured MCP lifecycle state plus desktop setup hints.
+
+        This does not contact providers.  Use ``mcp.probe`` for an explicit,
+        generic read-only ``list_tools`` health check.
+        """
+        return {"connectors": _connector_status_rows(app)}
+
+    async def mcp_probe(params: dict[str, Any]) -> dict[str, Any]:
+        manager = getattr(app, "upstream_manager", None)
+        if manager is None or not hasattr(manager, "probe_servers"):
+            return {"connectors": _connector_status_rows(app), "probed": 0}
+        probes = await manager.probe_servers()
         return {
-            "connectors": connectors,
+            "connectors": _connector_status_rows(app, probes=probes),
+            "probed": len(probes),
         }
 
     async def runtime_status(params: dict[str, Any]) -> dict[str, Any]:
@@ -247,6 +225,7 @@ def make_setup_control_handlers(
 
     return {
         "connector.status": connector_status,
+        "mcp.probe": mcp_probe,
         "runtime.status": runtime_status,
         "runtime.automation_pause": runtime_set_automation_paused,
         "runtime.screen_control.request": runtime_request_screen_control,
@@ -303,97 +282,43 @@ def _office_connector(app_info: dict[str, str]) -> dict[str, Any]:
     }
 
 
-def _configured_upstream_names(app: App) -> frozenset[str]:
-    """Return names of upstreams admitted to this running daemon.
-
-    This intentionally uses runtime status rather than inspecting a provider's
-    executable or credential store.  A configured-but-failed server still
-    counts: its row can explain readiness, while an unconfigured provider is
-    invisible instead of being presented as a missing dependency.
-    """
+def _connector_status_rows(
+    app: App,
+    *,
+    probes: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Render provider-neutral MCP lifecycle/probe rows for all clients."""
     manager = getattr(app, "upstream_manager", None)
     statuses = getattr(manager, "server_status", {}) or {}
-    return frozenset(str(name) for name in statuses)
-
-
-def _google_workspace_connector(
-    *,
-    runner: Any = subprocess.run,
-    executable: str | None = None,
-) -> dict[str, Any]:
-    """Return a redacted, daemon-owned Google Workspace credential posture.
-
-    The local ``gws`` CLI owns its encrypted OAuth store.  It is deliberately
-    queried only through its read-only ``auth status`` command: a GUI or CLI
-    receives a posture, never a token, account identifier, or credential path.
-    A usable token with broad write scopes is *not* reported ready for the
-    daily read-only workflow; provider permission is distinct from CapDep
-    authority, and least privilege remains an operator-visible prerequisite.
-    """
-    command = executable or shutil.which("gws")
-    if not command:
-        return {
-            "id": "google-workspace",
-            "name": "Google Workspace",
-            "type": "local_oauth_provider",
-            "status": "unavailable",
-            "detail": "Google Workspace CLI (gws) is not installed.",
-            "actions": [],
-        }
-    try:
-        completed = runner(
-            [command, "auth", "status"],
-            check=False,
-            text=True,
-            capture_output=True,
-            timeout=5,
-        )
-        payload = json.loads(completed.stdout) if completed.returncode == 0 else {}
-    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
-        payload = {}
-    if not payload:
-        return {
-            "id": "google-workspace",
-            "name": "Google Workspace",
-            "type": "local_oauth_provider",
-            "status": "not_connected",
-            "detail": "Google Workspace credentials are not ready in the daemon-owned gws store.",
-            "actions": [],
-        }
-
-    scopes = frozenset(str(scope) for scope in payload.get("scopes", ()))
-    missing = sorted(_GOOGLE_READ_SCOPES - scopes)
-    write_scopes = sorted(_GOOGLE_WRITE_SCOPES & scopes)
-    token_valid = payload.get("token_valid") is True
-    if not token_valid:
-        status = "reauthentication_needed"
+    by_name = {str(probe["name"]): probe for probe in probes or []}
+    rows: list[dict[str, Any]] = []
+    for name, status in sorted(statuses.items()):
+        probe = by_name.get(str(name))
+        state = str(probe.get("probe_state")) if probe is not None else str(status.state)
         detail = (
-            "Google Workspace credentials need reauthentication before read-only workflows can run."
+            str(probe.get("detail"))
+            if probe is not None
+            else (
+                status.error
+                or f"Registered {status.registered_tool_count} policy-admitted MCP tool(s)."
+            )
         )
-    elif missing or write_scopes:
-        status = "least_privilege_reauth_needed"
-        detail = (
-            "Google Workspace token is usable but not least-privilege for CapDep's "
-            "read-only workflow; reauthenticate with the exact Gmail, Calendar, "
-            "and Drive read scopes."
+        rows.append(
+            {
+                "id": f"mcp:{name}",
+                "name": str(name),
+                "type": "mcp_server",
+                "status": state,
+                "detail": detail,
+                "transport": status.transport,
+                "registered_tool_count": status.registered_tool_count,
+                "rejected_tool_count": status.rejected_tool_count,
+                "reported_tool_count": probe.get("reported_tool_count") if probe else None,
+                "actions": [],
+            }
         )
-    else:
-        status = "ready_read_only"
-        detail = (
-            "Google Workspace read-only credentials are ready; CapDep still gates "
-            "every tool call by capability and labels."
-        )
-    return {
-        "id": "google-workspace",
-        "name": "Google Workspace",
-        "type": "local_oauth_provider",
-        "status": status,
-        "detail": detail,
-        "read_scopes_present": sorted(_GOOGLE_READ_SCOPES & scopes),
-        "missing_read_scopes": missing,
-        "write_scopes_present": write_scopes,
-        "actions": [],
-    }
+    rows.extend(_office_connector(app_info) for app_info in OFFICE_AUTOMATION_APPS)
+    return rows
 
 
 def _open_macos_automation_action() -> dict[str, Any]:

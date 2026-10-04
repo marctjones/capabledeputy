@@ -1936,6 +1936,16 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
+    func probeMcpServers() async {
+        do {
+            let result = try await client.call(method: "mcp.probe") as? [String: Any]
+            connectorStatuses = (result?["connectors"] as? [[String: Any]] ?? [])
+                .map(ConnectorStatus.init(dictionary:))
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
     func setAutomationPaused(_ paused: Bool) async {
         do {
             let result = try await client.call(

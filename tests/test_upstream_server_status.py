@@ -130,6 +130,34 @@ async def test_manager_captures_registered_server_status() -> None:
     assert status.rejected_tool_count == 0
 
 
+async def test_manager_generic_probe_uses_list_tools_without_executing_a_tool() -> None:
+    config = UpstreamServerConfig(name="example", command=("stub",))
+    session = _StubSession(tools=[_stub_tool("read_files"), _stub_tool("list_dirs")])
+    mgr = UpstreamManager([config], ToolRegistry())
+    mgr._sessions_by_name["example"] = session  # type: ignore[assignment]
+    mgr._status["example"] = UpstreamServerStatus(
+        name="example",
+        state="registered",
+        registered_at_epoch=0,
+        registered_tool_count=2,
+    )
+
+    result = await mgr.probe_servers()
+
+    assert result == [
+        {
+            "name": "example",
+            "configured_state": "registered",
+            "registered_tool_count": 2,
+            "rejected_tool_count": 0,
+            "transport": "stdio",
+            "probe_state": "healthy",
+            "reported_tool_count": 2,
+            "detail": "MCP list-tools probe succeeded; no tool was executed.",
+        },
+    ]
+
+
 def test_adapter_exposes_registered_names() -> None:
     """The adapter's public `registered_names` property is needed by
     the manager to compute the count without poking internals."""

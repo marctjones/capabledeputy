@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,10 +9,7 @@ from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.daemon.approval_handlers import make_approval_handlers
 from capabledeputy.daemon.settings_store import update_settings
-from capabledeputy.daemon.setup_control_handlers import (
-    _google_workspace_connector,
-    make_setup_control_handlers,
-)
+from capabledeputy.daemon.setup_control_handlers import make_setup_control_handlers
 
 
 @pytest.fixture
@@ -94,82 +90,56 @@ async def test_connector_status_reports_local_apps(app: App) -> None:
     assert word["bundle_id"] == "com.microsoft.Word"
 
 
-async def test_connector_status_does_not_present_unconfigured_google_as_a_dependency(
-    app: App,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        "capabledeputy.daemon.setup_control_handlers._google_workspace_connector",
-        lambda: (_ for _ in ()).throw(AssertionError("must not probe Google when unconfigured")),
+async def test_connector_status_reports_all_admitted_mcp_servers_generically(app: App) -> None:
+    app.upstream_manager = SimpleNamespace(
+        server_status={
+            "example-provider": SimpleNamespace(
+                state="registered",
+                registered_tool_count=3,
+                rejected_tool_count=1,
+                transport="streamable_http",
+                error="",
+            ),
+        },
     )
 
     result = await make_setup_control_handlers(app)["connector.status"]({})
 
-    assert "google-workspace" not in {connector["id"] for connector in result["connectors"]}
+    server = next(item for item in result["connectors"] if item["id"] == "mcp:example-provider")
+    assert server["type"] == "mcp_server"
+    assert server["status"] == "registered"
+    assert server["registered_tool_count"] == 3
 
 
-async def test_connector_status_reports_google_only_when_google_is_admitted(
-    app: App,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    app.upstream_manager = SimpleNamespace(server_status={"google-workspace": object()})
-    monkeypatch.setattr(
-        "capabledeputy.daemon.setup_control_handlers._google_workspace_connector",
-        lambda: {"id": "google-workspace", "status": "ready_read_only"},
-    )
+async def test_mcp_probe_returns_generic_health_without_provider_specific_logic(app: App) -> None:
+    class FakeManager:
+        def __init__(self) -> None:
+            self.server_status = {
+                "example-provider": SimpleNamespace(
+                    state="registered",
+                    registered_tool_count=3,
+                    rejected_tool_count=0,
+                    transport="stdio",
+                    error="",
+                ),
+            }
 
-    result = await make_setup_control_handlers(app)["connector.status"]({})
+        async def probe_servers(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "name": "example-provider",
+                    "probe_state": "healthy",
+                    "detail": "MCP list-tools probe succeeded; no tool was executed.",
+                    "reported_tool_count": 3,
+                },
+            ]
 
-    google = next(
-        connector
-        for connector in result["connectors"]
-        if connector["id"] == "google-workspace"
-    )
-    assert google["status"] == "ready_read_only"
+    app.upstream_manager = FakeManager()
+    result = await make_setup_control_handlers(app)["mcp.probe"]({})
 
-
-def test_google_workspace_connector_requires_exact_read_only_scopes() -> None:
-    def runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(
-            args=[],
-            returncode=0,
-            stdout=(
-                '{"token_valid": true, "scopes": ['
-                '"https://www.googleapis.com/auth/gmail.modify", '
-                '"https://www.googleapis.com/auth/drive.readonly"'
-                "]}"
-            ),
-        )
-
-    result = _google_workspace_connector(runner=runner, executable="gws")
-
-    assert result["status"] == "least_privilege_reauth_needed"
-    assert result["write_scopes_present"] == ["https://www.googleapis.com/auth/gmail.modify"]
-    assert result["missing_read_scopes"] == [
-        "https://www.googleapis.com/auth/calendar.events.readonly",
-        "https://www.googleapis.com/auth/gmail.readonly",
-    ]
-
-
-def test_google_workspace_connector_reports_exact_read_only_posture() -> None:
-    def runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(
-            args=[],
-            returncode=0,
-            stdout=(
-                '{"token_valid": true, "scopes": ['
-                '"https://www.googleapis.com/auth/gmail.readonly", '
-                '"https://www.googleapis.com/auth/calendar.events.readonly", '
-                '"https://www.googleapis.com/auth/drive.readonly"'
-                "]}"
-            ),
-        )
-
-    result = _google_workspace_connector(runner=runner, executable="gws")
-
-    assert result["status"] == "ready_read_only"
-    assert result["missing_read_scopes"] == []
-    assert result["write_scopes_present"] == []
+    assert result["probed"] == 1
+    assert result["connectors"][0]["id"] == "mcp:example-provider"
+    assert result["connectors"][0]["status"] == "healthy"
 
 
 async def test_source_binding_upsert_preview_and_delete(app: App, tmp_path: Path) -> None:

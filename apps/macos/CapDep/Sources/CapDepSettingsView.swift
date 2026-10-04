@@ -18,10 +18,10 @@ struct CapDepSettingsView: View {
                     Label("Assistant", systemImage: "cpu")
                 }
 
-            AccountsSettingsView()
+            McpServersSettingsView()
                 .environmentObject(model)
                 .tabItem {
-                    Label("Accounts", systemImage: "person.crop.circle")
+                    Label("MCP Servers", systemImage: "server.rack")
                 }
 
             AutomationSettingsView()
@@ -173,18 +173,37 @@ private struct AssistantSettingsView: View {
     }
 }
 
-private struct AccountsSettingsView: View {
+private struct McpServersSettingsView: View {
     @EnvironmentObject private var model: CapDepAppModel
 
     var body: some View {
         Form {
-            ForEach(model.connectorStatuses) { connector in
-                SetupProviderRow(
-                    name: connector.name,
-                    status: connector.detail,
-                    action: connector.actions.first,
-                )
-                .environmentObject(model)
+            Section("Admitted MCP servers") {
+                Button("Probe MCP Servers") {
+                    Task { await model.probeMcpServers() }
+                }
+                Text("A probe sends only MCP list-tools requests. It executes no MCP tool and exposes no provider credentials or content.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(model.connectorStatuses.filter { $0.type == "mcp_server" }) { connector in
+                    SetupProviderRow(
+                        name: connector.name,
+                        status: connector.detail,
+                        action: nil,
+                    )
+                    .environmentObject(model)
+                }
+            }
+
+            Section("Desktop application setup") {
+                ForEach(model.connectorStatuses.filter { $0.type == "local_app" }) { connector in
+                    SetupProviderRow(
+                        name: connector.name,
+                        status: connector.detail,
+                        action: connector.actions.first,
+                    )
+                    .environmentObject(model)
+                }
             }
         }
         .formStyle(.grouped)

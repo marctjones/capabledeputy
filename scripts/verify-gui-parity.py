@@ -26,6 +26,7 @@ GUI_METHODS: tuple[tuple[str, dict[str, Any]], ...] = (
     ("config.validate", {}),
     ("config.log_locations", {}),
     ("connector.status", {}),
+    ("mcp.probe", {}),
     ("runtime.status", {}),
     ("source_binding.list", {}),
     ("provenance.graph", {}),
