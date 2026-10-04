@@ -647,6 +647,7 @@ private struct DaemonRPCWorkbenchView: View {
 private struct ProvenanceView: View {
     @EnvironmentObject private var model: CapDepAppModel
     @State private var kindFilter = ""
+    @State private var selectedNodeID: String?
 
     private var selectedSessionID: String? {
         model.focusedSessionID ?? model.currentSessionID
@@ -655,6 +656,18 @@ private struct ProvenanceView: View {
     private var context: SessionSecurityContext? {
         guard let selectedSessionID else { return nil }
         return model.sessionSecurityContexts[selectedSessionID]
+    }
+
+    private var selectedNode: SessionProvenanceEvidence? {
+        guard let selectedNodeID else { return nil }
+        return context?.provenanceNodes.first { $0.id == selectedNodeID }
+    }
+
+    private var selectedNodeEdges: [SessionProvenanceEdgeEvidence] {
+        guard let selectedNodeID else { return [] }
+        return (context?.provenanceEdges ?? []).filter {
+            $0.from == selectedNodeID || $0.to == selectedNodeID
+        }
     }
 
     var body: some View {
@@ -708,6 +721,35 @@ private struct ProvenanceView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    if let selectedNode {
+                        LiveCard(title: "Selected Node", systemImage: "info.circle") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(selectedNode.id)
+                                    .font(.caption.monospaced().weight(.semibold))
+                                    .textSelection(.enabled)
+                                Text("Kind: \(selectedNode.kind.isEmpty ? "(unknown)" : selectedNode.kind)")
+                                    .font(.caption)
+                                if !selectedNode.materializedID.isEmpty {
+                                    Text("Materialized ID: \(selectedNode.materializedID)")
+                                        .font(.caption.monospaced())
+                                        .textSelection(.enabled)
+                                }
+                                if selectedNodeEdges.isEmpty {
+                                    Text("No incident edges occur in this bounded page.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text("Incident edges in this page")
+                                        .font(.caption.weight(.semibold))
+                                    ForEach(selectedNodeEdges) { edge in
+                                        Text("\(edge.from) -> \(edge.to)  \(edge.kind)")
+                                            .font(.caption.monospaced())
+                                            .textSelection(.enabled)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 } else {
                     Text("Select a session to load its bounded provenance page. Global audit history is not loaded here.")
                         .font(.caption)
@@ -721,17 +763,25 @@ private struct ProvenanceView: View {
                                     .foregroundStyle(.secondary)
                             }
                             ForEach(context?.provenanceNodes ?? []) { node in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(node.id)
-                                        .font(.caption.monospaced().weight(.semibold))
-                                    Text(node.kind.isEmpty ? "(unknown kind)" : node.kind)
-                                        .foregroundStyle(.secondary)
-                                    if !node.materializedID.isEmpty {
-                                        Text(node.materializedID)
-                                            .font(.caption.monospaced())
+                                Button {
+                                    selectedNodeID = node.id
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(node.id)
+                                            .font(.caption.monospaced().weight(.semibold))
+                                        Text(node.kind.isEmpty ? "(unknown kind)" : node.kind)
                                             .foregroundStyle(.secondary)
+                                        if !node.materializedID.isEmpty {
+                                            Text(node.materializedID)
+                                                .font(.caption.monospaced())
+                                                .foregroundStyle(.secondary)
+                                        }
                                     }
                                 }
+                                .buttonStyle(.plain)
+                                .padding(6)
+                                .background(selectedNodeID == node.id ? Color.accentColor.opacity(0.15) : Color.clear)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
                             }
                         }
                     }
