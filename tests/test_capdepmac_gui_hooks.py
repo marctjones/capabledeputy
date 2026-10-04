@@ -55,6 +55,17 @@ def test_capdepmac_gui_smoke_defaults_to_no_focus_driver() -> None:
     assert "CAPDEP_GUI_BACKGROUND_OPEN" in smoke_source
 
 
+def test_capdepmac_gui_smoke_has_real_daemon_restart_acceptance_path() -> None:
+    smoke_source = GUI_SMOKE.read_text(encoding="utf-8")
+
+    assert "--daemon-restart-after-submit" in smoke_source
+    assert "turn_started" in smoke_source
+    assert "turn_lost_to_daemon_restart" in smoke_source
+    assert "reconnect follow-up" in smoke_source
+    assert "run([str(LAUNCHD_DAEMON), \"restart\"]" in smoke_source
+    assert 'os.environ["CAPDEP_DAEMON_MODE"] = "launchd"' in smoke_source
+
+
 def test_capdepmac_gui_command_file_writes_jsonl(tmp_path: Path) -> None:
     command_file = tmp_path / "commands.jsonl"
 

@@ -644,7 +644,15 @@ final class CapDepAppModel: ObservableObject {
         var lastError: Error?
         for attempt in 0 ..< budget.maxAttempts {
             do {
-                return try await operation()
+                let result = try await operation()
+                // A recovered request is the authoritative connection-health
+                // signal. Without this transition the app can remain marked
+                // "reconnecting" after a successful turn recovery and reject
+                // the next deliberate prompt as not usable.
+                if attempt > 0 {
+                    setDaemonConnection(.connected, detail: "")
+                }
+                return result
             } catch {
                 lastError = error
                 guard ReconnectPolicy.isTransient(error), attempt < budget.maxAttempts - 1 else {
@@ -1223,17 +1231,25 @@ final class CapDepAppModel: ObservableObject {
             )
 
             var finished = false
-            let heartbeatTask = Task {
+            let heartbeatTask = Task { [weak self] in
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(10))
                     guard !Task.isCancelled else { return }
-                    _ = try? await client.call(
-                        method: "session.turn.ack",
-                        params: [
-                            "turn_id": turnID,
-                            "client_id": "CapDepMac",
-                        ],
-                    )
+                    // A heartbeat is best-effort, but it should not silently
+                    // give up just because the daemon moved its socket during
+                    // an otherwise recoverable restart.  The daemon still
+                    // owns expiry/cancellation; this merely re-attaches the
+                    // existing client to its retained turn.
+                    guard let self else { return }
+                    _ = try? await self.withReconnect(budget: .ambient) {
+                        try await self.client.call(
+                            method: "session.turn.ack",
+                            params: [
+                                "turn_id": turnID,
+                                "client_id": "CapDepMac",
+                            ],
+                        )
+                    }
                 }
             }
             defer { heartbeatTask.cancel() }
@@ -1266,14 +1282,38 @@ final class CapDepAppModel: ObservableObject {
                     ],
                 )
             }
-            // The subscription can join after a very fast local model has
-            // already emitted its selection event. Reconcile that retained
-            // provenance record so the session reports the factual model
-            // even when the completion itself was streamed successfully.
-            try await reconcileTurnModelSelection(turnID: turnID)
-            if !finished {
-                ChatDebugLog.log("subscribe_fallback_poll", metadata: ["turn_id": turnID])
-                try await pollTurnUntilFinished(turnID: turnID)
+            do {
+                // The subscription can join after a very fast local model has
+                // already emitted its selection event. Reconcile that retained
+                // provenance record so the session reports the factual model
+                // even when the completion itself was streamed successfully.
+                try await reconcileTurnModelSelection(turnID: turnID)
+                if !finished {
+                    ChatDebugLog.log("subscribe_fallback_poll", metadata: ["turn_id": turnID])
+                    try await pollTurnUntilFinished(turnID: turnID)
+                }
+            } catch {
+                // A daemon process restart drops its in-memory lifecycle
+                // records. Never replay the message automatically: replay
+                // could duplicate an external effect after an uncertain
+                // outcome. Instead surface a clean, auditable interruption;
+                // the reconnect has already restored the session and the user
+                // can deliberately send the next turn.
+                guard ReconnectPolicy.isLostInFlightTurn(error) else {
+                    throw error
+                }
+                // The new daemon issued this deterministic missing-turn
+                // response, so transport has recovered even though the old
+                // in-memory turn cannot be resumed.
+                setDaemonConnection(.connected, detail: "")
+                ChatDebugLog.log(
+                    "turn_lost_to_daemon_restart",
+                    metadata: ["turn_id": turnID, "session_id": sessionID],
+                )
+                markCurrentPromptInterrupted()
+                finalizeStreamingAssistant(
+                    "[turn interrupted: the daemon restarted before this turn's result was retained]",
+                )
             }
             return true
         } catch {
@@ -1464,16 +1504,24 @@ final class CapDepAppModel: ObservableObject {
                     ],
                 )
             }
-            let observed = try await client.call(
-                method: "session.turn.get",
-                params: ["turn_id": turnID],
-            ) as? [String: Any]
+            // #319 — this is the recovery path after a subscription closes.
+            // It must use the same bounded reconnect policy as turn start;
+            // otherwise a daemon restart merely moves the raw transport error
+            // from streaming to polling.
+            let observed = try await withReconnect(budget: .turnRecovery) {
+                try await self.client.call(
+                    method: "session.turn.get",
+                    params: ["turn_id": turnID],
+                )
+            } as? [String: Any]
             let observedTurn = observed?["turn"] as? [String: Any] ?? [:]
             let status = observedTurn["status"] as? String ?? ""
-            let events = try await client.call(
-                method: "session.turn.events",
-                params: ["turn_id": turnID, "cursor": cursor, "limit": 200],
-            ) as? [String: Any]
+            let events = try await withReconnect(budget: .turnRecovery) {
+                try await self.client.call(
+                    method: "session.turn.events",
+                    params: ["turn_id": turnID, "cursor": cursor, "limit": 200],
+                )
+            } as? [String: Any]
             let batch = events?["events"] as? [[String: Any]] ?? []
             cursor = events?["next_cursor"] as? Int ?? cursor
             for event in batch {
@@ -1525,10 +1573,16 @@ final class CapDepAppModel: ObservableObject {
     }
 
     private func reconcileTurnModelSelection(turnID: String) async throws {
-        let response = try await client.call(
-            method: "session.turn.events",
-            params: ["turn_id": turnID, "cursor": 0, "limit": 200],
-        ) as? [String: Any]
+        // Model provenance is retained with the turn.  This reconciliation
+        // commonly runs immediately after stream completion, including the
+        // reconnect fallback, so it must not turn a harmless daemon bounce
+        // into a failed user turn.
+        let response = try await withReconnect(budget: .turnRecovery) {
+            try await self.client.call(
+                method: "session.turn.events",
+                params: ["turn_id": turnID, "cursor": 0, "limit": 200],
+            )
+        } as? [String: Any]
         let events = response?["events"] as? [[String: Any]] ?? []
         for event in events where event["type"] as? String == "model_selected" {
             _ = try applyTurnEvent(event)

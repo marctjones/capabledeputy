@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_ROOT = ROOT / "apps/macos/CapDep"
 LAUNCHER = APP_ROOT / "scripts/run-local-app.sh"
+LAUNCHD_DAEMON = ROOT / "scripts/run-local-daemon-launchd.sh"
 CHAT_TRACE = Path.home() / "Library/Logs/CapDep/chat-trace.log"
 DEFAULT_ARTIFACT_DIR = Path(tempfile.gettempdir()) / "capdepmac-gui-smoke-artifacts"
 
@@ -94,7 +95,10 @@ def launch_app(
     env = os.environ.copy()
     env.setdefault("CLEAN_BUILD", "0" if not clean_build else "1")
     env.setdefault("VERIFY_APP_CONNECTION", "1")
-    env.setdefault("CAPDEP_DAEMON_MODE", "tmux")
+    # The production desktop daemon is host-owned by launchd.  Use that path
+    # for restart acceptance rather than the developer tmux convenience
+    # launcher, while still allowing an explicit caller override.
+    env.setdefault("CAPDEP_DAEMON_MODE", "launchd")
     if command_file is not None:
         env["CAPDEP_GUI_TEST_COMMAND_FILE"] = str(command_file)
     if background:
@@ -164,6 +168,28 @@ def wait_for_turn_completions(*, line_count: int, expected: int, timeout: float)
         f"only saw {sum('turn_send_end' in line for line in _trace_lines_after(line_count))} "
         f"turn_send_end trace entries; expected {expected}",
     )
+
+
+def wait_for_trace_event(*, line_count: int, event: str, timeout: float) -> None:
+    """Wait for one CapDepMac diagnostic event emitted after ``line_count``.
+
+    This is deliberately a lifecycle assertion rather than a timing sleep: a
+    mid-turn restart test must not claim coverage when it merely restarted the
+    daemon before the GUI had actually created its turn.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if any(event in line for line in _trace_lines_after(line_count)):
+            return
+        time.sleep(0.25)
+    raise SmokeError(f"{event} did not appear in {CHAT_TRACE}")
+
+
+def restart_daemon_mid_turn() -> None:
+    """Restart the host-owned local daemon for the #319 live acceptance path."""
+    if not LAUNCHD_DAEMON.is_file():
+        raise SmokeError(f"launchd daemon controller is missing: {LAUNCHD_DAEMON}")
+    run([str(LAUNCHD_DAEMON), "restart"], timeout=60.0)
 
 
 def wait_for_trace_image_markdown(*, line_count: int, timeout: float) -> None:
@@ -436,6 +462,14 @@ def main(argv: list[str] | None = None) -> int:
         help="run an additional prompt that must complete with image markdown in the GUI trace",
     )
     parser.add_argument(
+        "--daemon-restart-after-submit",
+        action="store_true",
+        help=(
+            "restart the host-owned daemon after turn_started, require the GUI to "
+            "surface a clean lost-turn interruption, then prove a follow-up turn works"
+        ),
+    )
+    parser.add_argument(
         "--artifact-dir",
         type=Path,
         default=DEFAULT_ARTIFACT_DIR,
@@ -468,6 +502,14 @@ def main(argv: list[str] | None = None) -> int:
             require_accessibility()
         if args.driver == "test-hook" and not args.skip_launch:
             args.command_file.unlink(missing_ok=True)
+        if args.daemon_restart_after_submit and args.driver != "test-hook":
+            raise SmokeError("--daemon-restart-after-submit requires --driver test-hook")
+        if args.daemon_restart_after_submit:
+            # Do not inherit a developer's tmux selection for this acceptance
+            # case. The test deliberately restarts the same production
+            # launchd-owned daemon that launched the GUI, avoiding two owners
+            # racing over one Unix socket.
+            os.environ["CAPDEP_DAEMON_MODE"] = "launchd"
         launch_app(
             clean_build=args.clean_build,
             skip_launch=args.skip_launch,
@@ -486,10 +528,43 @@ def main(argv: list[str] | None = None) -> int:
                 timeout=args.timeout,
                 marker="submit_queued",
             )
+            if args.daemon_restart_after_submit:
+                # Only bounce after the daemon accepted the turn.  A graceful
+                # result must be an explicit lost-turn interruption, never an
+                # implicit retry of the original prompt.
+                wait_for_trace_event(
+                    line_count=trace_start,
+                    event="turn_started",
+                    timeout=args.timeout,
+                )
+                restart_daemon_mid_turn()
+                wait_for_trace_event(
+                    line_count=trace_start,
+                    event="turn_lost_to_daemon_restart",
+                    timeout=args.response_timeout,
+                )
             if args.wait_response:
                 wait_for_turn_completions(
                     line_count=trace_start,
                     expected=len(args.messages),
+                    timeout=args.response_timeout,
+                )
+            if args.daemon_restart_after_submit:
+                # The recovered GUI session must accept a new, deliberate
+                # message.  This validates reconnection without replaying the
+                # uncertain original turn.
+                follow_up = "GUI reconnect follow-up: reply with exactly reconnect-ok"
+                follow_up_start = _trace_line_count()
+                write_test_hook_prompt(args.command_file, follow_up)
+                wait_for_chat_trace_messages(
+                    [follow_up],
+                    line_count=follow_up_start,
+                    timeout=args.timeout,
+                    marker="submit_queued",
+                )
+                wait_for_turn_completions(
+                    line_count=follow_up_start,
+                    expected=1,
                     timeout=args.response_timeout,
                 )
             if args.generated_image:
