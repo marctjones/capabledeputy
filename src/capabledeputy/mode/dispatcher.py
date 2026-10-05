@@ -109,6 +109,44 @@ def select_mode(
     has_sandbox_actuator: bool = False,
     session: Session | None = None,
     posture: Posture | None = None,
+    required_modes: frozenset[ExecutionMode] | None = None,
+) -> tuple[ExecutionMode, str]:
+    """Select deterministically, refusing a fallback outside required handling.
+
+    ``required_modes`` is a caller-owned restriction, never an authorization.
+    None preserves legacy preferences; an empty set permits no execution.
+    This gate does not certify provider exposure or successful execution.
+    """
+    if required_modes is not None and (
+        not isinstance(required_modes, frozenset)
+        or any(not isinstance(mode, ExecutionMode) for mode in required_modes)
+    ):
+        raise ModeSelectionError("required_modes must be a frozenset of ExecutionMode")
+    mode, reason = _select_mode(
+        label_state,
+        registry,
+        prefer_programmatic=prefer_programmatic,
+        force_mode=force_mode,
+        has_sandbox_actuator=has_sandbox_actuator,
+        session=session,
+        posture=posture,
+    )
+    if required_modes is not None and mode not in required_modes:
+        raise ModeSelectionError(
+            f"selected {mode.value} violates required handling; no widening fallback permitted"
+        )
+    return mode, reason
+
+
+def _select_mode(
+    label_state: LabelState,
+    registry: ToolRegistry,
+    *,
+    prefer_programmatic: bool = False,
+    force_mode: ExecutionMode | None = None,
+    has_sandbox_actuator: bool = False,
+    session: Session | None = None,
+    posture: Posture | None = None,
 ) -> tuple[ExecutionMode, str]:
     """Pick the execution mode for an upcoming turn.
 
