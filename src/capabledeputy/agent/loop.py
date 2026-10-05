@@ -638,7 +638,7 @@ async def run_turn(
         raise AgentLoopExceededError(
             f"agent loop exceeded {max_iterations} iterations{_LOOP_RECOVERY_HINT}",
         )
-    if interrupt_reason == "mode_refused_restricted":
+    if interrupt_reason in {"mode_refused_restricted", "mode_refused_required"}:
         # Issue #52 — fail-closed: restricted tier with no Pattern ③/⑤
         # mode available. Surface the typed error to RPC callers.
         raise ModeSelectionError(
@@ -798,6 +798,11 @@ async def run_turn_streaming(
             has_sandbox_actuator=has_sandbox_actuator,
             session=session,
             posture=active_posture,
+            required_modes=(
+                frozenset(ExecutionMode(m) for m in session.required_modes)
+                if session.required_modes is not None
+                else None
+            ),
         )
     except ModeSelectionError as e:
         # FR-047 fail-closed (#52): the session reached restricted tier
@@ -812,14 +817,23 @@ async def run_turn_streaming(
                 step_id=0,
                 payload={
                     "refused": True,
-                    "tier": "restricted",
+                    "constraint": "required_handling"
+                    if session.required_modes is not None
+                    else "restricted_floor",
+                    "required_modes": sorted(session.required_modes)
+                    if session.required_modes is not None
+                    else None,
                     "reason": str(e),
                 },
             ),
         )
         yield TurnInterrupted(
             iteration=0,
-            reason="mode_refused_restricted",
+            reason=(
+                "mode_refused_required"
+                if session.required_modes is not None
+                else "mode_refused_restricted"
+            ),
             partial_content=str(e),
             partial_outcomes=(),
         )
@@ -1736,6 +1750,11 @@ async def run_turn_streaming(
                         has_sandbox_actuator=has_sandbox_actuator,
                         session=session,
                         posture=active_posture,
+                        required_modes=(
+                            frozenset(ExecutionMode(m) for m in session.required_modes)
+                            if session.required_modes is not None
+                            else None
+                        ),
                     )
                 except ModeSelectionError as e:
                     await audit.write(
@@ -1746,14 +1765,20 @@ async def run_turn_streaming(
                             step_id=iteration,
                             payload={
                                 "refused": True,
-                                "tier": "restricted",
+                                "constraint": "required_handling"
+                                if session.required_modes is not None
+                                else "restricted_floor",
                                 "reason": str(e),
                             },
                         ),
                     )
                     yield TurnInterrupted(
                         iteration=iteration,
-                        reason="mode_refused_restricted",
+                        reason=(
+                            "mode_refused_required"
+                            if session.required_modes is not None
+                            else "mode_refused_restricted"
+                        ),
                         partial_content=(last_response.content if last_response else ""),
                         partial_outcomes=tuple(tool_outcomes),
                     )

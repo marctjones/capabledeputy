@@ -21,7 +21,11 @@ from capabledeputy.session.foreground_defaults import (
     supplement_foreground_capabilities,
 )
 from capabledeputy.session.graph import SessionGraph
-from capabledeputy.session.model import SessionStatus, session_artifacts_from_handles
+from capabledeputy.session.model import (
+    SessionStatus,
+    required_modes_from_value,
+    session_artifacts_from_handles,
+)
 
 
 def make_session_handlers(
@@ -46,6 +50,7 @@ def make_session_handlers(
             purpose_handle=purpose_handle,
             tool_aliasing=bool(params.get("tool_aliasing", False)),
             prefer_programmatic=bool(params.get("prefer_programmatic", False)),
+            required_modes=required_modes_from_value(params.get("required_modes")),
             parent=parent,
             origin=params.get("origin"),
         )

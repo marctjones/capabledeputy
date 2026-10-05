@@ -21,13 +21,17 @@ from anyio.to_thread import run_sync as run_in_thread
 from capabledeputy.session.model import Session
 from capabledeputy.store import Migration, prepare_managed_db
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
-# Forward-only migrations, `{from_version: fn(conn)}` (#315). Empty today: the
-# four-axis cutover has no faithful legacy migration, so an older DB is
-# snapshotted-then-recreated rather than migrated. Future incompatible changes
-# add a version bump + one migration function here instead of a wipe.
-_MIGRATIONS: dict[int, Migration] = {}
+
+# Forward-only migrations, `{from_version: fn(conn)}` (#315). Version 9 to 10
+# preserves sessions and adds a restrictive handling requirement. Older
+# four-axis cutovers have no faithful migration and retain snapshot recovery.
+def _add_required_modes(conn: sqlite3.Connection) -> None:
+    conn.execute("ALTER TABLE sessions ADD COLUMN required_modes TEXT DEFAULT NULL")
+
+
+_MIGRATIONS: dict[int, Migration] = {9: _add_required_modes}
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -47,6 +51,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     owner TEXT,
     tool_aliasing INTEGER NOT NULL DEFAULT 0,
     prefer_programmatic INTEGER NOT NULL DEFAULT 0,
+    required_modes TEXT DEFAULT NULL,
     used_kinds TEXT NOT NULL DEFAULT '[]',
     cap_uses TEXT NOT NULL DEFAULT '{}',
     revoked_audit_ids TEXT NOT NULL DEFAULT '[]',
@@ -219,9 +224,9 @@ class SessionStore:
                     label_state, axis_d, purpose_handle,
                     reference_handles, risk_preference_at_spawn,
                     effective_isolation_region_id, enforcement_mode,
-                    first_use_prompt_enabled, origin
+                    first_use_prompt_enabled, origin, required_modes
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     status = excluded.status,
                     intent = excluded.intent,
@@ -243,7 +248,8 @@ class SessionStore:
                     effective_isolation_region_id = excluded.effective_isolation_region_id,
                     enforcement_mode = excluded.enforcement_mode,
                     first_use_prompt_enabled = excluded.first_use_prompt_enabled,
-                    origin = excluded.origin
+                    origin = excluded.origin,
+                    required_modes = excluded.required_modes
                 """,
                 (
                     d["id"],
@@ -270,6 +276,7 @@ class SessionStore:
                     d.get("enforcement_mode", "strict"),
                     1 if d.get("first_use_prompt_enabled", False) else 0,
                     json.dumps(d.get("origin", {})),
+                    json.dumps(d["required_modes"]) if d["required_modes"] is not None else None,
                 ),
             )
 
@@ -323,6 +330,9 @@ def _row_to_session(row: sqlite3.Row) -> Session:
             "owner": row["owner"],
             "tool_aliasing": bool(row["tool_aliasing"]),
             "prefer_programmatic": bool(row["prefer_programmatic"]),
+            "required_modes": json.loads(row["required_modes"])
+            if row["required_modes"] is not None
+            else None,
             "used_kinds": json.loads(row["used_kinds"]),
             "cap_uses": json.loads(row["cap_uses"]),
             "revoked_audit_ids": json.loads(row["revoked_audit_ids"]),
