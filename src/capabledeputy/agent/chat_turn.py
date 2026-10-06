@@ -31,7 +31,7 @@ _WIKIPEDIA_LOOKUP_INTENT_RE = re.compile(
 
 _TOOL_INTENT_RE = re.compile(
     r"\b("
-    r"email|inbox|mail|gmail|calendar|event|meeting|schedule|"
+    r"emails?|e-?mails?|inbox|mailbox|gmail|messages?|repl(?:y|ies)|calendar|event|meeting|schedule|"
     r"file|folder|document|drive|read|write|search|websearch|fetch|browse|"
     r"headlines?|news|internet|online|website|wikipedia|kagi|research|"
     r"git|repo|commit|branch|memory|note|draft|send|delete|"

@@ -73,6 +73,31 @@ _KAGI_SEARCH_TOOL = "kagi.kagi_search_fetch"
 _LEGACY_DDG_SEARCH_TOOLS = frozenset({"web.search", "bundled-search.search.web"})
 
 
+def mail_tool_surface(
+    registry: ToolRegistry, session: Session, tools: list[ToolDefinition], message: str
+) -> list[ToolDefinition]:
+    """Prefer registered real mail without granting otherwise invisible tools.
+
+    Native inbox.* is seeded demo data, not a fallback for a denied real account.
+    An explicit demo request keeps that surface available.
+    """
+    if re.search(r"\b(demo|sample|seeded)\b", message, re.IGNORECASE):
+        return tools
+    if session.purpose_handle != "inbox" and not re.search(
+        r"\b(emails?|e-?mails?|gmail|inbox|mailbox|messages?|repl(?:y|ies))\b",
+        message,
+        re.IGNORECASE,
+    ):
+        return tools
+    real_mail = any(
+        t.capability_kind == CapabilityKind.IMAP_READ and not t.name.startswith("inbox.")
+        for t in registry.list()
+    )
+    if not real_mail:
+        return tools
+    return [t for t in tools if not t.name.startswith("inbox.")]
+
+
 def _kagi_search_available(tools: list[ToolDefinition]) -> bool:
     return any(t.name == _KAGI_SEARCH_TOOL for t in tools)
 
@@ -183,6 +208,7 @@ def select_tools_for_turn(
 ) -> ToolSelectionResult:
     families_cfg = families or load_tool_families()
     cfg = selection_config or ToolSelectionConfig()
+    visible = mail_tool_surface(registry, session, visible, user_message)
     n_visible = len(visible)
 
     if not visible:
@@ -217,6 +243,16 @@ def select_tools_for_turn(
     candidate_names = {t.name for t in candidates}
 
     mandatory_names: set[str] = set(families_cfg.mandatory_always)
+    if session.purpose_handle == "inbox" or re.search(
+        r"\b(emails?|e-?mails?|gmail|inbox|mailbox|messages?|repl(?:y|ies))\b",
+        user_message,
+        re.IGNORECASE,
+    ):
+        mandatory_names.update(
+            t.name
+            for t in visible
+            if t.capability_kind == CapabilityKind.IMAP_READ and not t.name.startswith("inbox.")
+        )
     mandatory_names.update(_mode_required_tools(visible, mode))
     if has_web_search_intent(user_message) and not has_image_generation_intent(user_message):
         if _kagi_search_available(visible):
@@ -251,7 +287,9 @@ def select_tools_for_turn(
     scores: dict[str, float] = {}
     mandatory_added: list[str] = []
     visible_by_name = {t.name: t for t in visible}
-    for name in sorted(mandatory_names):
+    for name in sorted(
+        mandatory_names, key=lambda name: (name not in families_cfg.mandatory_always, name)
+    ):
         if len(selected_map) >= cfg.max_selected:
             break
         tool = visible_by_name.get(name)
@@ -306,6 +344,7 @@ async def select_tools_for_turn_async(
     families: ToolFamiliesConfig | None = None,
     selection_config: ToolSelectionConfig | None = None,
 ) -> ToolSelectionResult:
+    visible = mail_tool_surface(registry, session, visible, user_message)
     base = select_tools_for_turn(
         registry,
         session,
@@ -336,8 +375,11 @@ async def select_tools_for_turn_async(
     if not selected_map:
         return base
 
+    priority = {name: i for i, name in enumerate(base.mandatory_added)}
     capped = tuple(
-        sorted(selected_map.values(), key=lambda t: t.name)[: cfg.max_selected],
+        sorted(selected_map.values(), key=lambda t: (priority.get(t.name, len(priority)), t.name))[
+            : cfg.max_selected
+        ]
     )
     return ToolSelectionResult(
         selected=capped,
@@ -355,7 +397,12 @@ def widen_tool_surface(
     visible: list[ToolDefinition],
     *,
     missing_tool_name: str | None = None,
+    registry: ToolRegistry | None = None,
+    session: Session | None = None,
+    user_message: str = "",
 ) -> ToolSelectionResult:
+    if registry is not None and session is not None:
+        visible = mail_tool_surface(registry, session, visible, user_message)
     names = {t.name for t in current.selected}
     expanded = list(current.selected)
     for tool in visible:

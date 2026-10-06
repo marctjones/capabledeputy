@@ -760,6 +760,7 @@ async def run_turn_streaming(
     from capabledeputy.agent.tool_families import load_tool_families
     from capabledeputy.agent.tool_selection import (
         ToolSelectionResult,
+        mail_tool_surface,
         select_tools_for_turn_async,
         widen_tool_surface,
     )
@@ -913,6 +914,7 @@ async def run_turn_streaming(
     )
 
     visible_all = visible_tools(registry, session, mode, active_posture)
+    visible_all = mail_tool_surface(registry, session, visible_all, user_message)
     conversational = is_conversational_turn(user_message)
 
     families_cfg = tool_families or load_tool_families()
@@ -1797,6 +1799,7 @@ async def run_turn_streaming(
                 prior_selected_names = {tool.name for tool in tool_surface.selected}
                 prior_selected_names.update(response_tool_names)
                 visible_all = visible_tools(registry, session, mode, active_posture)
+                visible_all = mail_tool_surface(registry, session, visible_all, user_message)
                 tool_surface = await select_tools_for_turn_async(
                     registry,
                     session,
