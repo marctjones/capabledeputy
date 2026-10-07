@@ -1,0 +1,85 @@
+Window count: 1
+Window: CapDep
+AXGroup | missing value | missing value
+AXGroup | missing value | missing value
+AXStaticText | capdep.chat.session-summary | Summarize my recent emails. | Summarize my recent emails.
+AXStaticText | capdep.chat.session-summary | e33de0be | e33de0be
+AXStaticText | capdep.chat.session-summary | Purpose: general | Purpose: general
+AXButton | capdep.chat.session-summary | missing value | missing value
+AXStaticText | capdep.chat.session-summary | Email read grant | Email read grant
+AXStaticText | capdep.chat.session-summary | Sensitive: personal | Sensitive: personal
+AXStaticText | capdep.chat.session-summary | Untrusted content taint | Untrusted content taint
+AXStaticText | capdep.chat.session-summary | 38 tools · strict | 38 tools · strict
+AXScrollArea | missing value | missing value
+AXButton | capdep.chat.request-inspector | missing value | missing value
+AXStaticText | capdep.chat.message.user | Summarize my recent emails. | Summarize my recent emails.
+AXImage | shield | missing value | missing value
+AXStaticText | CapDep | CapDep
+AXStaticText | capdep.chat.message.assistant | Read 2 of 2 recent emails (complete coverage).
+
+1. Alice — Meeting agenda: Please confirm tomorrow's meeting agenda.
+2. Bob — Budget check-in: Please review the budget on Friday.
+
+Open Email drafts to select a source and prepare a reply. | Read 2 of 2 recent emails (complete coverage).
+
+1. Alice — Meeting agenda: Please confirm tomorrow's meeting agenda.
+2. Bob — Budget check-in: Please review the budget on Friday.
+
+Open Email drafts to select a source and prepare a reply.
+AXButton | capdep.chat.request-inspector | missing value | missing value
+AXStaticText | capdep.chat.message.user | Show the Markdown rendering fixture. | Show the Markdown rendering fixture.
+AXImage | shield | missing value | missing value
+AXStaticText | CapDep | CapDep
+AXStaticText | capdep.chat.message.assistant | # Rendering Fixture
+
+First paragraph with bold text and emphasis.
+
+Second paragraph stays separate from the first.
+
+1. First ordered item.
+2. Second ordered item with inline code.
+
+> A quoted paragraph remains a quote. | # Rendering Fixture
+
+First paragraph with bold text and emphasis.
+
+Second paragraph stays separate from the first.
+
+1. First ordered item.
+2. Second ordered item with inline code.
+
+> A quoted paragraph remains a quote.
+AXStaticText | capdep.chat.message.assistant | text | text
+AXButton | capdep.chat.message.assistant | missing value | missing value
+AXScrollArea | capdep.chat.message.assistant | missing value | missing value
+AXStaticText | first code line
+second code line | first code line
+second code line
+AXScrollBar | missing value | 0.89247311828
+AXValueIndicator | missing value | 0.89247311828
+AXButton | missing value | missing value
+AXButton | missing value | missing value
+AXButton | missing value | missing value
+AXButton | missing value | missing value
+AXGroup | missing value | missing value
+AXTextField | capdep.chat.input | missing value |
+AXButton | capdep.chat.send | missing value | missing value
+AXButton | capdep.chat.refresh-context | missing value | missing value
+AXStaticText | Model: Fast · synthetic-email-mvp (direct_model_config) | Model: Fast · synthetic-email-mvp (direct_model_config)
+AXMenuButton | capdep.chat.model-mode | Auto | missing value
+AXButton | capdep.chat.new-session | missing value | missing value
+AXToolbar | missing value | missing value
+AXGroup | missing value | missing value
+AXMenuButton | missing value | Conversation | missing value
+AXGroup | missing value | missing value
+AXPopUpButton | missing value | General
+AXGroup | missing value | missing value
+AXStaticText | capdep.chat.connection-status | CapDep daemon connection Connected 0.58.0 | CapDep daemon connection Connected 0.58.0
+AXButton | capdep.email.open | missing value | missing value
+AXButton |  | missing value | missing value
+AXButton | missing value | missing value
+AXButton | missing value | missing value
+AXGroup | missing value | missing value
+AXGroup | missing value | missing value
+AXButton | missing value | missing value
+AXStaticText | CapDep | CapDep
