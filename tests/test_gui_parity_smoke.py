@@ -26,6 +26,8 @@ async def test_chat_parity_requires_exact_success(status, content, passes) -> No
         async def call(self, method, params):
             if method == "session.new":
                 return {"id": "session"}
+            if method == "session.artifacts":
+                return {"session_id": params["session_id"], "artifacts": []}
             if method == "session.turn.start":
                 return {"turn": {"id": "turn"}}
             if method == "session.turn.cancel":

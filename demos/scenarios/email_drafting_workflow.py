@@ -5,7 +5,8 @@ UNTRUSTED_EXTERNAL), composes a reply, saves it as a draft (LOCAL —
 non-egressing, no gate fires), lists drafts so the operator can see
 what's queued, and finally tries to send the draft. The send is
 refused (Brewer-Nash + FR-019). The operator requests an override;
-a distinct attester signs off; the draft-send succeeds.
+a distinct attester signs off; the draft-send is authorized and recorded.
+This offline demo has no SMTP transport, so the draft remains local.
 
 This demonstrates the structural separation between **composing** an
 email and **sending** one. Drafts are cheap; sends are committed.
@@ -224,10 +225,11 @@ async def test_email_drafting_workflow_demo(tmp_path: Any) -> None:
     assert final_send.rule == "override-grant-active"
     policy_outcome(final_send)
     tool(
-        f"email.draft_send → sent ({final_send.output['id'][:8]}…); "
-        "draft removed from DraftBox; grant CONSUMED."
+        f"email.draft_send → recorded ({final_send.output['id'][:8]}…); "
+        "no SMTP delivery; draft retained in DraftBox; grant CONSUMED."
     )
 
-    # Verify the draft is gone and the outbox has it.
-    assert app.email_drafts.get(__import__("uuid").UUID(draft_id)) is None
+    # Authorization and an outbox record do not prove SMTP acceptance.
+    assert final_send.output["delivered"] is False
+    assert app.email_drafts.get(__import__("uuid").UUID(draft_id)) is not None
     assert any(s.to == "anna@partner.com" for s in app.email_outbox.all())

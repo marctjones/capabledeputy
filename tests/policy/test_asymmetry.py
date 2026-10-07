@@ -185,7 +185,10 @@ def test_relaxation_refused_payload_shape() -> None:
         decision,
     )
     assert payload["tool"] == "email.send"
-    assert payload["args"] == {"to": "alice@example.com"}
+    assert payload["args"]["redacted"] is True
+    assert payload["args"]["argument_count"] == 1
+    assert len(payload["args"]["digest"]) == 64
+    assert "alice@example.com" not in str(payload)
     assert payload["refused_relax_inputs"] == [
         {"description": "model said it's fine", "origin": "llm-suggested"},
     ]

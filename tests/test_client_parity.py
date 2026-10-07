@@ -39,6 +39,8 @@ def _daemon_methods_from_source() -> set[str]:
     # These are audit event names used inside relationship aggregation, not RPC handlers.
     methods.discard("approval.approved")
     methods.discard("approval.denied")
+    # Canonical envelope format keys are data discriminators, not RPC handlers.
+    methods.discard("capdep.email.v2")
     return methods
 
 
