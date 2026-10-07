@@ -10,6 +10,13 @@ struct ChatView: View {
     @Environment(\.openWindow) private var openWindow
     @FocusState private var inputFocused: Bool
     @State private var emailWorkspace: EmailWorkspaceTarget?
+    @State private var choosingSession = false
+    @State private var sessionSearch = ""
+    @State private var sessionDrafts: [String: String] = [:]
+    @State private var followsLatest = true
+    @State private var transcriptHeight: CGFloat = 0
+    @State private var hasUnreadContent = false
+    @State private var previousScrollTop: CGFloat?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,6 +28,42 @@ struct ChatView: View {
         .navigationTitle("CapDep")
         .accessibilityElement(children: .contain)
         .accessibilityLabel("CapDep chat workspace")
+        .sheet(isPresented: $choosingSession) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Conversations").font(.title2.weight(.semibold))
+                    Spacer()
+                    Button("Done") { choosingSession = false }
+                }
+                TextField("Search conversations", text: $sessionSearch)
+                List(model.sessions.filter {
+                    sessionSearch.isEmpty || "\($0.intent) \($0.id)".localizedCaseInsensitiveContains(sessionSearch)
+                }.sorted { $0.updatedAt > $1.updatedAt }) { session in
+                    Button {
+                        model.focusSession(session)
+                        choosingSession = false
+                        inputFocused = true
+                    } label: {
+                        HStack {
+                            Image(systemName: session.id == model.currentSessionID ? "checkmark.circle.fill" : "bubble.left")
+                            VStack(alignment: .leading) {
+                                Text(session.intent.isEmpty ? "Untitled conversation" : session.intent)
+                                Text("\(session.id.prefix(8)) · \(session.status)").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }.contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                }
+                .accessibilityIdentifier("capdep.chat.conversations")
+            }.padding(20).frame(width: 560, height: 440)
+        }
+        .onChange(of: model.currentSessionID) { old, new in
+            sessionDrafts[old ?? "unsessioned"] = model.commandText
+            model.commandText = sessionDrafts[new ?? "unsessioned"] ?? ""
+            followsLatest = true
+            hasUnreadContent = false
+            previousScrollTop = nil
+        }
         .capdepBackgroundSafeSheet(item: $emailWorkspace) { target in
             EmailDraftsView(sessionID: target.id).environmentObject(model)
         }
@@ -161,11 +204,48 @@ struct ChatView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                     }
+                    Color.clear.frame(height: 1)
+                        .id("chat-bottom")
+
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 20)
                 .frame(maxWidth: 980, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .center)
+                .background(GeometryReader { geometry in
+                    let frame = geometry.frame(in: .named("chat-scroll"))
+                    Color.clear.preference(key: ChatScrollPreference.self, value: ChatScrollPosition(top: frame.minY, bottom: frame.maxY))
+                })
+            }
+            .coordinateSpace(name: "chat-scroll")
+            .background(GeometryReader { geometry in
+                Color.clear.preference(key: ChatViewportPreference.self, value: geometry.size.height)
+            })
+            .onPreferenceChange(ChatViewportPreference.self) { transcriptHeight = $0 }
+            .onPreferenceChange(ChatScrollPreference.self) { position in
+                followsLatest = position.shouldFollow(previousTop: previousScrollTop, viewportHeight: transcriptHeight, wasFollowing: followsLatest)
+                previousScrollTop = position.top
+                if followsLatest {
+                    hasUnreadContent = false
+                    if position.bottom > transcriptHeight + 1 {
+                        proxy.scrollTo("chat-bottom", anchor: .bottom)
+                    }
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if !followsLatest {
+                    Button(hasUnreadContent ? "New content · Jump to latest" : "Jump to latest") {
+                        followsLatest = true
+                        hasUnreadContent = false
+                        proxy.scrollTo("chat-bottom", anchor: .bottom)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("capdep.chat.jump-latest")
+                    .padding(12)
+                }
+            }
+            .onChange(of: model.currentSessionID) { _, _ in
+                proxy.scrollTo("chat-bottom", anchor: .bottom)
             }
             .onChange(of: model.chatMessages.count) { _, _ in
                 scrollToLatest(proxy: proxy)
@@ -182,12 +262,12 @@ struct ChatView: View {
     }
 
     private func scrollToLatest(proxy: ScrollViewProxy) {
-        guard let lastID = model.chatMessages.last?.id else {
+        guard followsLatest else {
+            hasUnreadContent = true
             return
         }
-        withAnimation(.easeOut(duration: 0.2)) {
-            proxy.scrollTo(lastID, anchor: .bottom)
-        }
+        // Avoid per-token animations, and include statuses/approvals below the last message.
+        proxy.scrollTo("chat-bottom", anchor: .bottom)
     }
 
     private var welcomeHeader: some View {
@@ -420,6 +500,7 @@ struct ChatView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .accessibilityIdentifier("capdep.chat.new-session")
+                .disabled(model.isRunningTurn || !model.connected)
             }
         }
         .padding(16)
@@ -441,12 +522,16 @@ struct ChatView: View {
                     model.focusSession(session)
                 }
             }
+            Button("Browse all conversations…") { choosingSession = true }
             if model.sessions.isEmpty {
                 Text("No sessions yet")
             }
         } label: {
-            Label("Session", systemImage: "bubble.left.and.bubble.right")
+            Label(model.currentSessionID.map { "Chat · \($0.prefix(8))" } ?? "Choose conversation", systemImage: "bubble.left.and.bubble.right")
         }
+        .disabled(model.isRunningTurn)
+        .accessibilityIdentifier("capdep.chat.session-menu")
+        .help(model.isRunningTurn ? "Finish or cancel the current turn before switching conversations" : "Switch or reopen a conversation")
     }
 
     private var purposePicker: some View {
@@ -658,4 +743,13 @@ private struct PromptQueuePanel: View {
         case .failed: .red
         }
     }
+}
+
+private struct ChatScrollPreference: PreferenceKey {
+    static let defaultValue = ChatScrollPosition(top: 0, bottom: 0)
+    static func reduce(value: inout ChatScrollPosition, nextValue: () -> ChatScrollPosition) { value = nextValue() }
+}
+private struct ChatViewportPreference: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
