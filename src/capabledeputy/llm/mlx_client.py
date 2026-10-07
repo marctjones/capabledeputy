@@ -17,8 +17,12 @@ from __future__ import annotations
 import asyncio
 import gc
 import json
+import math
+import os
 import re
+import stat
 import threading
+import time
 from collections.abc import AsyncGenerator
 from importlib import import_module
 from typing import Any, ClassVar
@@ -353,6 +357,47 @@ class MLXLLMClient:
         self._trust_remote_code = trust_remote_code
         self._enable_thinking = enable_thinking
 
+    def _resource_trace(self, stage: str, began: float, **counts: int) -> None:
+        """Opt-in private numeric telemetry; never serialize model inputs/outputs."""
+        path = os.environ.get("CAPDEP_MLX_RESOURCE_METRICS")
+        if not path:
+            return
+        stages = {"load_started", "load_completed", "prefill", "first_token", "completed"}
+        if stage not in stages:
+            return
+        row: dict[str, str | int | float] = {
+            "stage": stage,
+            "time": time.time(),
+            "elapsed_seconds": round(time.monotonic() - began, 3),
+        }
+        for key in ("prompt_processed_tokens", "prompt_tokens", "generation_tokens"):
+            value = counts.get(key)
+            if type(value) is int and value >= 0:
+                row[key] = value
+        try:
+            core = import_module("mlx.core")
+            for key, accessor in (
+                ("active_memory_bytes", "get_active_memory"),
+                ("cache_memory_bytes", "get_cache_memory"),
+                ("peak_memory_bytes", "get_peak_memory"),
+            ):
+                value = getattr(core, accessor)()
+                if type(value) is int and value >= 0:
+                    row[key] = value
+            fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as output:
+                info = os.fstat(output.fileno())
+                if (
+                    not stat.S_ISREG(info.st_mode)
+                    or info.st_uid != os.getuid()
+                    or stat.S_IMODE(info.st_mode) & 0o077
+                ):
+                    return
+                output.write(json.dumps(row, allow_nan=False) + "\n")
+        except (OSError, AttributeError, TypeError, ValueError):
+            # Telemetry is optional; no exception text or fallback destination.
+            return
+
     async def respond(
         self,
         messages: list[Message],
@@ -403,17 +448,27 @@ class MLXLLMClient:
             try:
                 if cancelled.is_set():
                     return
+                began = time.monotonic()
+                self._resource_trace("load_started", began)
                 model, tokenizer = self._load_model_sync()
+                self._resource_trace("load_completed", began)
                 prompt = self._render_prompt(tokenizer, messages, tools)
                 stream_generate = import_module("mlx_lm").stream_generate
                 accumulated = ""
                 self.last_generation_metrics = {"prefill_step_size": self._prefill_step_size}
+                options = {}
+                if os.environ.get("CAPDEP_MLX_RESOURCE_METRICS"):
+                    options["prompt_progress_callback"] = lambda done, total: self._resource_trace(
+                        "prefill", began, prompt_processed_tokens=done, prompt_tokens=total
+                    )
+                first_token = True
                 for response in stream_generate(
                     model,
                     tokenizer,
                     prompt,
                     max_tokens=limit,
                     prefill_step_size=self._prefill_step_size,
+                    **options,
                 ):
                     if cancelled.is_set():
                         break
@@ -423,8 +478,12 @@ class MLXLLMClient:
                             isinstance(value, (int, float))
                             and not isinstance(value, bool)
                             and value >= 0
+                            and math.isfinite(value)
                         ):
                             self.last_generation_metrics[key] = value
+                    if first_token:
+                        self._resource_trace("first_token", began)
+                        first_token = False
                     # mlx_lm yields detokenizer.last_segment per token — not
                     # cumulative text. Slicing against a running prefix corrupts
                     # output into the garbled "Ihaveolsableision..." strings.
@@ -445,6 +504,7 @@ class MLXLLMClient:
                             except Exception:
                                 pass
                         publish(delta)
+                self._resource_trace("completed", began)
                 publish(None)
             except BaseException as exc:
                 publish(exc)
