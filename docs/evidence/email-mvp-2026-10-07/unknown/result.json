@@ -1,0 +1,39 @@
+{
+  "result": "PASS",
+  "driver": "background native macOS Accessibility",
+  "foreground_activation": false,
+  "background_checks": 110,
+  "keyboard_or_mouse_events": false,
+  "smtp_outcome": "outcome_unknown",
+  "steps": [
+    "natural summary submitted using native controls",
+    "selected source and saved edited subject/body through native controls",
+    "exact reviewed account/recipient/subject/body visible",
+    "native defer made no SMTP submission; fresh exact review reopened",
+    "native deny made no SMTP submission; fresh exact review reopened",
+    "one explicit native approval reached fake SMTP exactly once",
+    "daemon restart retained visible receipt with no duplicate send",
+    "explicit provider verification retained unknown submission history without retry",
+    "native transcript preserved paragraphs, heading/list boundaries, quote and code lines"
+  ],
+  "evidence": {
+    "synthetic": true,
+    "real_accounts_used": false,
+    "imap_reads": 1,
+    "smtp_attempt_count": 1,
+    "smtp_attempts": [
+      {
+        "to": "alice@email-mvp.invalid",
+        "subject": "Re: Meeting agenda \u2014 GUI reviewed",
+        "body": "Thursday works for me.\n\n1. Review the agenda.\n2. Confirm the meeting time.\n\nThanks,\nTest User",
+        "from_addr": "owner@email-mvp.invalid",
+        "account_fingerprint": "58dea25e2a795a05b9952ce6d076e1c95bd065dd0e8aafdc82869c923826495a",
+        "in_reply_to": "<agenda@email-mvp.invalid>",
+        "references": "<thread@email-mvp.invalid> <agenda@email-mvp.invalid>",
+        "message_id": "<041c8eb3-fc31-4592-ab84-9f3e2a980ddd.v2@capabledeputy.local>"
+      }
+    ]
+  },
+  "socket": "/tmp/cdmvp-66w3gnuj/daemon.sock",
+  "real_mail_contacted": false
+}

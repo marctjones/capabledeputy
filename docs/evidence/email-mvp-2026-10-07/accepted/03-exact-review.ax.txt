@@ -1,0 +1,157 @@
+Window count: 2
+Window: CapDep
+AXGroup | missing value | missing value
+AXGroup | missing value | missing value
+AXStaticText | capdep.chat.session-summary | Summarize my recent emails. | Summarize my recent emails.
+AXStaticText | capdep.chat.session-summary | 6e6756cf | 6e6756cf
+AXStaticText | capdep.chat.session-summary | Purpose: general | Purpose: general
+AXButton | capdep.chat.session-summary | missing value | missing value
+AXStaticText | capdep.chat.session-summary | Email read grant | Email read grant
+AXStaticText | capdep.chat.session-summary | Sensitive: personal | Sensitive: personal
+AXStaticText | capdep.chat.session-summary | Untrusted content taint | Untrusted content taint
+AXStaticText | capdep.chat.session-summary | 38 tools · strict | 38 tools · strict
+AXStaticText | capdep.chat.session-summary | 1 approvals pending | 1 approvals pending
+AXScrollArea | missing value | missing value
+AXButton | capdep.chat.request-inspector | missing value | missing value
+AXStaticText | capdep.chat.message.user | Summarize my recent emails. | Summarize my recent emails.
+AXImage | shield | missing value | missing value
+AXStaticText | CapDep | CapDep
+AXStaticText | capdep.chat.message.assistant | Read 2 of 2 recent emails (complete coverage).
+
+1. Alice — Meeting agenda: Please confirm tomorrow's meeting agenda.
+2. Bob — Budget check-in: Please review the budget on Friday.
+
+Open Email drafts to select a source and prepare a reply. | Read 2 of 2 recent emails (complete coverage).
+
+1. Alice — Meeting agenda: Please confirm tomorrow's meeting agenda.
+2. Bob — Budget check-in: Please review the budget on Friday.
+
+Open Email drafts to select a source and prepare a reply.
+AXStaticText | capdep.chat.prompt-activity | Prompt activity | Prompt activity
+AXButton | capdep.chat.prompt-activity | missing value | missing value
+AXStaticText | capdep.chat.prompt-activity | Completed | Completed
+AXStaticText | capdep.chat.prompt-activity | 26f1bc0d | 26f1bc0d
+AXStaticText | capdep.chat.message.user | Summarize my recent emails. | Summarize my recent emails.
+AXStaticText | Tool activity | Tool activity
+AXImage | wrench | missing value | missing value
+AXStaticText | quarantined.summarize_mail | quarantined.summarize_mail
+AXStaticText | reversible/system, non-egressing — optimistic auto-execution | reversible/system, non-egressing — optimistic auto-execution
+AXGroup | missing value | missing value
+AXTextField | capdep.chat.input | missing value |
+AXButton | capdep.chat.send | missing value | missing value
+AXButton | capdep.chat.refresh-context | missing value | missing value
+AXStaticText | Model: Fast · synthetic-email-mvp (direct_model_config) | Model: Fast · synthetic-email-mvp (direct_model_config)
+AXMenuButton | capdep.chat.model-mode | Auto | missing value
+AXButton | capdep.chat.new-session | missing value | missing value
+AXToolbar | missing value | missing value
+AXGroup | missing value | missing value
+AXMenuButton | missing value | Conversation | missing value
+AXGroup | missing value | missing value
+AXPopUpButton | missing value | General
+AXGroup | missing value | missing value
+AXStaticText | capdep.chat.connection-status | CapDep daemon connection Connected 0.58.0 | CapDep daemon connection Connected 0.58.0
+AXButton | capdep.email.open | missing value | missing value
+AXButton |  | missing value | missing value
+AXButton |  | missing value | missing value
+AXButton | missing value | missing value
+AXButton | missing value | missing value
+AXGroup | missing value | missing value
+AXGroup | missing value | missing value
+AXButton | missing value | missing value
+AXStaticText | CapDep | CapDep
+Window: Approval
+AXGroup | missing value | missing value
+AXScrollArea | missing value | missing value
+AXStaticText | Approval #1,791,357,798,026,586 | Approval #1,791,357,798,026,586
+AXStaticText | pending | pending
+AXStaticText | SEND_EMAIL | SEND_EMAIL
+AXStaticText | Review This Reply | Review This Reply
+AXStaticText | capdep.email.review-envelope | Account: acceptance.imap
+From: owner@email-mvp.invalid
+To: alice@email-mvp.invalid
+Subject: Re: Meeting agenda — GUI reviewed
+
+Thursday works for me.
+
+1. Review the agenda.
+2. Confirm the meeting time.
+
+Thanks,
+Test User | Account: acceptance.imap
+From: owner@email-mvp.invalid
+To: alice@email-mvp.invalid
+Subject: Re: Meeting agenda — GUI reviewed
+
+Thursday works for me.
+
+1. Review the agenda.
+2. Confirm the meeting time.
+
+Thanks,
+Test User
+AXStaticText | This authorizes only this reply. It does not grant permission for future messages. | This authorizes only this reply. It does not grant permission for future messages.
+AXStaticText | Draft version 2 | Draft version 2
+AXDisclosureTriangle | missing value | false
+AXStaticText | What will happen | What will happen
+AXStaticText | Send an email using the exact approved payload and destination. | Send an email using the exact approved payload and destination.
+AXStaticText | Approving sends your explicit decision to the daemon. Deny or defer if the source, action, destination, or payload is not what you expect. | Approving sends your explicit decision to the daemon. Deny or defer if the source, action, destination, or payload is not what you expect.
+AXStaticText | Review Flow | Review Flow
+AXStaticText | Source | Source
+AXImage | chevron.right | missing value | missing value
+AXStaticText | Action | Action
+AXImage | chevron.right | missing value | missing value
+AXStaticText | Session 6e6756cf | Session 6e6756cf
+AXStaticText | SEND EMAIL | SEND EMAIL
+AXStaticText | Destination | Destination
+AXStaticText | alice@email-mvp.invalid | alice@email-mvp.invalid
+AXStaticText | Justification | Justification
+AXStaticText | Review exact saved draft; release only this message to this recipient | Review exact saved draft; release only this message to this recipient
+AXStaticText | Labels In | Labels In
+AXStaticText | (
+):source-declared:regulated:personal | (
+):source-declared:regulated:personal
+AXStaticText | external-untrusted | external-untrusted
+AXStaticText | Labels Out | Labels Out
+AXStaticText | (none) | (none)
+AXStaticText | Policy Reason | Policy Reason
+AXStaticText | Rule: supervised-personal-mail-release | Rule: supervised-personal-mail-release
+AXStaticText | This action is allowed only after explicit human approval. | This action is allowed only after explicit human approval.
+AXStaticText | Payload | Payload
+AXStaticText | capdep.email.review-envelope | Account: acceptance.imap
+From: owner@email-mvp.invalid
+To: alice@email-mvp.invalid
+Subject: Re: Meeting agenda — GUI reviewed
+
+Thursday works for me.
+
+1. Review the agenda.
+2. Confirm the meeting time.
+
+Thanks,
+Test User | Account: acceptance.imap
+From: owner@email-mvp.invalid
+To: alice@email-mvp.invalid
+Subject: Re: Meeting agenda — GUI reviewed
+
+Thursday works for me.
+
+1. Review the agenda.
+2. Confirm the meeting time.
+
+Thanks,
+Test User
+AXButton | capdep.email.deny | missing value | missing value
+AXButton | capdep.email.defer | missing value | missing value
+AXButton | capdep.email.approve | missing value | missing value
+AXScrollBar | missing value | 0.0
+AXValueIndicator | missing value | 0.0
+AXButton | missing value | missing value
+AXButton | missing value | missing value
+AXButton | missing value | missing value
+AXButton | missing value | missing value
+AXButton | missing value | missing value
+AXButton | missing value | missing value
+AXGroup | missing value | missing value
+AXGroup | missing value | missing value
+AXButton | missing value | missing value
+AXStaticText | Approval | Approval

@@ -1,6 +1,14 @@
 # Stable MVP Release Checklist
 
-**Last refreshed:** 2026-09-05
+**Scope clarified:** 2026-10-07
+
+The immediate delivery target is supervised-email milestone #51, whose bounded
+verification is recorded in
+[supervised-email-mvp-evidence-2026-10-07.md](supervised-email-mvp-evidence-2026-10-07.md).
+The checklist below describes broader stable-product release acceptance. Its
+September evidence and checked counts are historical; completing the bounded
+email workflow does not complete these broader release gates. Live email and
+seven-day daily-use evidence remain milestone #54 / #479.
 
 Use this checklist before calling CapableDeputy "stable MVP". If an item is not
 true, the release is either incomplete or must explicitly document the
