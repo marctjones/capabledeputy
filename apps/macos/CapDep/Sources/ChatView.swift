@@ -1,10 +1,15 @@
 import SwiftUI
 
+private struct EmailWorkspaceTarget: Identifiable {
+    let id: String
+}
+
 /// Primary CapDep surface — durable chat workspace; operator console is secondary.
 struct ChatView: View {
     @EnvironmentObject private var model: CapDepAppModel
     @Environment(\.openWindow) private var openWindow
     @FocusState private var inputFocused: Bool
+    @State private var emailWorkspace: EmailWorkspaceTarget?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,7 +19,11 @@ struct ChatView: View {
         }
         .frame(minWidth: 720, minHeight: 560)
         .navigationTitle("CapDep")
-        .accessibilityIdentifier("capdep.chat.window")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("CapDep chat workspace")
+        .capdepBackgroundSafeSheet(item: $emailWorkspace) { target in
+            EmailDraftsView(sessionID: target.id).environmentObject(model)
+        }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 sessionMenu
@@ -22,11 +31,18 @@ struct ChatView: View {
             }
             ToolbarItemGroup(placement: .automatic) {
                 connectionBadge
+                Button {
+                    guard let sessionID = model.currentSessionID else { return }
+                    emailWorkspace = EmailWorkspaceTarget(id: sessionID)
+                } label: {
+                    Label("Email Replies", systemImage: "envelope.badge")
+                }.disabled(model.currentSessionID == nil)
+                    .accessibilityIdentifier("capdep.email.open")
                 if !model.pendingApprovals.isEmpty {
                     Button {
                         if let first = model.pendingApprovals.first {
                             model.presentApproval(id: first.id)
-                            openWindow(id: "approval-card")
+                            capdepOpenWindow(openWindow, id: "approval-card")
                         }
                     } label: {
                         Label(
@@ -36,7 +52,7 @@ struct ChatView: View {
                     }
                 }
                 Button {
-                    openWindow(id: "console")
+                    capdepOpenWindow(openWindow, id: "console")
                 } label: {
                     Label("Console", systemImage: "rectangle.3.group")
                 }
@@ -53,24 +69,24 @@ struct ChatView: View {
         }
         .onChange(of: model.approvalWindowID) { _, approvalID in
             if approvalID != nil {
-                openWindow(id: "approval-card")
+                capdepOpenWindow(openWindow, id: "approval-card")
             }
         }
         .onChange(of: model.grantPromptPresented) { _, presented in
             if presented {
-                openWindow(id: "capability-grant-card")
+                capdepOpenWindow(openWindow, id: "capability-grant-card")
             }
         }
         .onChange(of: model.isOnboardingPresented) { _, presented in
             if presented {
-                openWindow(id: "onboarding-wizard")
+                capdepOpenWindow(openWindow, id: "onboarding-wizard")
             }
         }
         .task {
             // First-run wizard may have been requested during model.start()
             // before this view began observing.
             if model.isOnboardingPresented {
-                openWindow(id: "onboarding-wizard")
+                capdepOpenWindow(openWindow, id: "onboarding-wizard")
             }
         }
     }
@@ -226,7 +242,7 @@ struct ChatView: View {
             Button("Review approval") {
                 if let first = model.turnPendingApprovalIDs.first {
                     model.presentApproval(id: first)
-                    openWindow(id: "approval-card")
+                    capdepOpenWindow(openWindow, id: "approval-card")
                 }
             }
             .buttonStyle(.borderedProminent)
@@ -250,7 +266,7 @@ struct ChatView: View {
             Spacer()
             Button("Open override control") {
                 model.presentOverrideRequest()
-                openWindow(id: "override-card")
+                capdepOpenWindow(openWindow, id: "override-card")
             }
             .buttonStyle(.borderedProminent)
         }
@@ -288,7 +304,7 @@ struct ChatView: View {
             Spacer()
             Button(actionLabel) {
                 model.grantPromptPresented = true
-                openWindow(id: "capability-grant-card")
+                capdepOpenWindow(openWindow, id: "capability-grant-card")
             }
             .buttonStyle(.borderedProminent)
         }
@@ -408,7 +424,8 @@ struct ChatView: View {
         }
         .padding(16)
         .background(.bar)
-        .accessibilityIdentifier("capdep.chat.composer")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Message composer")
     }
 
     private var sessionMenu: some View {

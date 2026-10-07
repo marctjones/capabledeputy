@@ -15,8 +15,6 @@ def test_capdepmac_primary_chat_accessibility_hooks_are_stable() -> None:
     source = CHAT_VIEW.read_text(encoding="utf-8")
 
     for identifier in (
-        "capdep.chat.window",
-        "capdep.chat.composer",
         "capdep.chat.input",
         "capdep.chat.send",
         "capdep.chat.cancel-turn",
@@ -26,6 +24,10 @@ def test_capdepmac_primary_chat_accessibility_hooks_are_stable() -> None:
         "capdep.chat.message.assistant",
     ):
         assert f'"{identifier}"' in source
+    # Container identifiers propagate over child identifiers in native SwiftUI.
+    # Label containers and keep identifiers on the actual interactive controls.
+    assert '.accessibilityLabel("CapDep chat workspace")' in source
+    assert '.accessibilityLabel("Message composer")' in source
 
 
 def test_capdepmac_no_focus_test_hook_is_opt_in() -> None:

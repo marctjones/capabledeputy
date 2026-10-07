@@ -6,6 +6,10 @@ struct ApprovalDetailView: View {
     private var detail: ApprovalDetail? {
         model.approvalDetails[approval.id]
     }
+    private var email: EmailReviewPresentation? {
+        approval.action == "SEND_EMAIL" ? EmailReviewPresentation(payload: approval.payload) : nil
+    }
+    private var deciding: Bool { model.decidingApprovalIDs.contains(approval.id) }
 
     var body: some View {
         ScrollView {
@@ -20,6 +24,20 @@ struct ApprovalDetailView: View {
                     }
                     Spacer()
                     StatusPill(text: approval.status)
+                }
+
+                if let email {
+                    DetailSection(title: "Review This Reply") {
+                        Text(email.exactText).font(.body).textSelection(.enabled)
+                            .accessibilityIdentifier("capdep.email.review-envelope")
+                        Text("This authorizes only this reply. It does not grant permission for future messages.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if let version = email.version { Text("Draft version \(version)").font(.caption) }
+                        DisclosureGroup("Source and Thread") {
+                            Text("Source: \(email.sourceID)\nIn-Reply-To: \(email.inReplyTo)\nReferences: \(email.references)\nMessage-ID: \(email.messageID)")
+                                .font(.caption.monospaced()).textSelection(.enabled)
+                        }
+                    }
                 }
 
                 RiskExplanation(approval: approval, detail: detail)
@@ -60,7 +78,7 @@ struct ApprovalDetailView: View {
                 }
 
                 DetailSection(title: "Payload") {
-                    Text(approval.payload.isEmpty ? "(empty)" : approval.payload)
+                    Text(readablePayload)
                         .font(.body.monospaced())
                         .textSelection(.enabled)
                         .padding()
@@ -68,7 +86,7 @@ struct ApprovalDetailView: View {
                         .background(.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
                 }
 
-                if let detail, !detail.suggestedActions.isEmpty {
+                if email == nil, let detail, !detail.suggestedActions.isEmpty {
                     DetailSection(title: "Safer Paths") {
                         VStack(alignment: .leading, spacing: 8) {
                             ForEach(detail.suggestedActions) { action in
@@ -93,14 +111,16 @@ struct ApprovalDetailView: View {
                         Label("Deny", systemImage: "xmark.circle")
                     }
                     .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("capdep.email.deny")
 
                     Button("Defer") {
                         Task {
                             await model.deferApproval(approval)
                         }
                     }
+                    .accessibilityIdentifier("capdep.email.defer")
 
-                    if detail?.siblingApprovable == true {
+                    if email == nil, detail?.siblingApprovable == true {
                         Button("Approve Group (\(detail?.siblingPendingCount ?? 0))") {
                             Task {
                                 await model.approveGroup(approval)
@@ -110,6 +130,7 @@ struct ApprovalDetailView: View {
 
                     Spacer()
 
+                    if email == nil {
                     Button("Add Relationship") {
                         Task {
                             await model.addRelationshipMember(
@@ -129,24 +150,34 @@ struct ApprovalDetailView: View {
                         }
                     }
                     .disabled(approval.target.isEmpty)
+                    }
 
                     Button {
                         Task {
                             await model.approve(approval)
                         }
                     } label: {
-                        Label("Approve Once", systemImage: "checkmark.circle")
+                        Label(email == nil ? "Approve Once" : "Approve This Reply", systemImage: "checkmark.circle")
                     }
                     .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
+                    .accessibilityIdentifier("capdep.email.approve")
                 }
                 .controlSize(.large)
+                .disabled(deciding || approval.status.lowercased() != "pending")
+                if deciding { ProgressView("Submitting decision…") }
+                if let error = model.lastError {
+                    Text(error).foregroundStyle(.red).textSelection(.enabled)
+                }
             }
             .padding(28)
         }
         .task(id: approval.id) {
             await model.refreshApprovalDetail(approval)
         }
+    }
+
+    private var readablePayload: String {
+        email?.exactText ?? (approval.payload.isEmpty ? "(empty)" : approval.payload)
     }
 }
 

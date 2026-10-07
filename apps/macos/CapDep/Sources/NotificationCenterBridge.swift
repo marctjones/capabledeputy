@@ -116,6 +116,7 @@ final class NotificationCenterBridge {
     }
 
     private var canUseUserNotifications: Bool {
-        Bundle.main.bundleURL.pathExtension == "app"
+        guard !CapDepBackgroundGUIMode.enabled else { return false }
+        return Bundle.main.bundleURL.pathExtension == "app"
     }
 }

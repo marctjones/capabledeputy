@@ -76,6 +76,7 @@ final class CapDepAppModel: ObservableObject {
     @Published var contextChips: [ContextChip] = []
     @Published var taskPanelPinned = false
     @Published var lastError: String?
+    @Published private(set) var decidingApprovalIDs: Set<Int> = []
 
     let client = DaemonClient(socketPath: DaemonClient.defaultSocketPath())
     @Published private(set) var workflows: [WorkflowTemplate] = []
@@ -2022,6 +2023,7 @@ final class CapDepAppModel: ObservableObject {
     func deferApproval(_ approval: Approval) async {
         do {
             _ = try await client.call(method: "approval.defer", params: ["id": approval.id])
+            if approvalWindowID == approval.id { approvalWindowID = nil }
             await refresh()
         } catch {
             lastError = error.localizedDescription
@@ -2251,7 +2253,28 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
+    func loadEmailDrafts(sessionID: String) async throws -> [SessionEmailDraft] {
+        let result = try await client.call(method: "email.draft_list", params: ["session_id": sessionID])
+        let raw = result as? [String: Any] ?? [:]
+        return (raw["drafts"] as? [[String: Any]] ?? []).compactMap(SessionEmailDraft.init)
+    }
+
+    func requestEmailDraftReview(sessionID: String, draft: SessionEmailDraft) async throws -> Int {
+        let result = try await client.call(method: "email.draft_review", params: [
+            "session_id": sessionID, "id": draft.id, "version": draft.version,
+        ])
+        guard let raw = result as? [String: Any], let id = raw["id"] as? Int else {
+            throw NSError(domain: "CapDep", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "The daemon did not return an approval ID.",
+            ])
+        }
+        await refresh()
+        return id
+    }
+
     private func decide(_ approval: Approval, approved: Bool) async {
+        guard decidingApprovalIDs.insert(approval.id).inserted else { return }
+        defer { decidingApprovalIDs.remove(approval.id) }
         var strongAuth = ""
         if approved {
             strongAuth = await strongAuthMarkerIfNeeded(for: approval)
@@ -2269,12 +2292,30 @@ final class CapDepAppModel: ObservableObject {
             } else {
                 params["reason"] = "denied in CapDep macOS app"
             }
-            _ = try await client.call(
+            let result = try await client.call(
                 method: approved ? "approval.approve" : "approval.deny",
                 params: params,
             )
             approvalWindowID = nil
             await refresh()
+            if approved, approval.action == "SEND_EMAIL", let raw = result as? [String: Any],
+               let dispatch = raw["dispatch"] as? [String: Any] {
+                let output = dispatch["output"] as? [String: Any] ?? [:]
+                let delivered = output["delivered"] as? Bool == true
+                let status = output["status"] as? String ?? ""
+                let receipt: String
+                if status == "outcome_unknown" || status == "submitting" {
+                    receipt = "Email outcome is unknown. Do not resend until the prior submission is reconciled. Open Email Replies for its durable status."
+                } else if delivered {
+                    receipt = "Email accepted by SMTP. Recipient delivery is unverified. Open Email Replies for its durable status."
+                } else {
+                    receipt = "Email approval completed without confirmed SMTP acceptance. \(dispatch["error"] as? String ?? output["delivery_detail"] as? String ?? "Check Email Replies for the recorded outcome.")"
+                }
+                if currentSessionID == approval.fromSession {
+                    chatMessages.append(ChatMessage(role: .assistant, content: receipt))
+                }
+                if !delivered { lastError = receipt }
+            }
         } catch {
             lastError = error.localizedDescription
         }

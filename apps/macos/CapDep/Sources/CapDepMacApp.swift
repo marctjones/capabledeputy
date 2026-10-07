@@ -16,21 +16,25 @@ struct MenuBarLabel: View {
             systemImage: model.pendingApprovals.isEmpty ? "shield" : "shield.lefthalf.filled",
         )
         .onChange(of: model.approvalWindowID) { _, newValue in
+            guard !CapDepBackgroundGUIMode.enabled else { return }
             if newValue != nil {
                 openWindow(id: "approval-card")
             }
         }
         .onChange(of: model.grantPromptPresented) { _, presented in
+            guard !CapDepBackgroundGUIMode.enabled else { return }
             if presented {
                 openWindow(id: "capability-grant-card")
             }
         }
         .onChange(of: model.overrideWindowID) { _, newValue in
+            guard !CapDepBackgroundGUIMode.enabled else { return }
             if newValue != nil {
                 openWindow(id: "override-card")
             }
         }
         .onChange(of: model.isOnboardingPresented) { _, presented in
+            guard !CapDepBackgroundGUIMode.enabled else { return }
             if presented {
                 openWindow(id: "onboarding-wizard")
             }
@@ -65,7 +69,9 @@ struct ApprovalCardWindow: View {
 // No `@main` here: the SwiftPM launcher target and the Xcode app shell each
 // provide the entry point and call `CapDepMacApp.main()`.
 public struct CapDepMacApp: App {
-    private static let singleInstanceGuard = SingleInstanceGuard(name: "capdepmac")
+    private static let singleInstanceGuard = SingleInstanceGuard(
+        name: SingleInstanceGuard.lockName(socketPath: DaemonClient.defaultSocketPath())
+    )
     @StateObject private var model = CapDepAppModel()
     private let notificationDelegate = CapDepNotificationDelegate()
     @NSApplicationDelegateAdaptor(CapDepScriptingDelegate.self)
