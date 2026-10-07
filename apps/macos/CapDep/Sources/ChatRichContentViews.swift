@@ -33,7 +33,7 @@ struct ChatRichMessageBody: View {
                 ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                     switch block {
                     case .prose(let prose):
-                        Text(ChatContentFormatter.attributedMarkdown(from: prose, fullDocument: true))
+                        Text(ChatContentFormatter.attributedMarkdown(from: prose))
                             .font(.body)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
