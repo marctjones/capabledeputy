@@ -9,7 +9,7 @@ or seven-day daily use. Those broader claims remain separately gated.
 ## Independent backend and regression checks
 
 Run from the shared working tree in `/Users/marc/Documents/GitHub/capabledeputy`.
-These are working-tree results, not results attributed to an immutable release.
+The full-suite results below concern that working tree, not an immutable release.
 Default mail effects used only synthetic accounts and fake transports.
 
 | Check | Result |
@@ -18,6 +18,7 @@ Default mail effects used only synthetic accounts and fake transports.
 | Production SMTP serialization boundary | 2 passed, exit 0 |
 | Latest Swift package suite | 77 executed, 1 skipped, 0 failures; exit 0 |
 | Unsigned Mac product app build | `BUILD SUCCEEDED`, exit 0; isolated temporary derived data |
+| Actual cached Qwen3 8B model lane | Bounded synthetic rerun passed in 65.06 seconds; initial failure retained |
 | Final Python regression suite | 3,648 passed, 15 skipped, 2 explicitly deselected, exit 0; 211.64 seconds |
 | Ruff check and format | Passed; 810 files formatted |
 | Pyright | 0 errors, 0 warnings |
@@ -120,17 +121,45 @@ as passes. The final result is
 The three PASS results, binary hashes, exact-review and recovery Accessibility
 snapshots are preserved under [evidence/email-mvp-2026-10-07](evidence/email-mvp-2026-10-07).
 Their build manifests explicitly record dirty working trees; differing binary
-hashes retain the exact tested native artifact identity. No release tag or
-combined immutable implementation is implied.
+hashes retain the exact tested native artifact identity. These binaries are not
+asserted to be builds of an immutable release tag.
 
-Independent verification/contract corrections are committed as `a9e4320`.
-That commit depends on the implementation chat's MVP working-tree modules;
-it is not independently an immutable release candidate. The remaining native
-and production implementation must be included before a release commit can
-be attributed the combined acceptance evidence.
+An additional actual app-restart run passed with 97 background checks. The
+process reopened its saved conversation and receipt without another SMTP
+attempt. DEBUG setup selected a daemon-authorized session via the production
+focus method; subsequent checks used native Accessibility. Its PASS and
+reopened transcript/receipt snapshots are preserved under
+`evidence/email-mvp-2026-10-07/reopen/`.
 
-The cached local 8B model lane is recorded separately by the implementation
-chat. It exposed an invented date filter and unsupported attachment reference.
-Passing deterministic authorization tests does not make those generated
-results useful or factual. Live-account quality and daily-use acceptance remain
-under #479 / milestone #54.
+Independent verification/contract corrections are committed as `a9e4320` and
+the initial evidence archive as `09e235e`. The implementation chat subsequently
+committed the selected backend as `72a146e` and native UI/acceptance driver as
+`b5c92ac`, preserving unrelated working-tree changes.
+
+Before committing, it applied the selected patches to an isolated archive:
+180 focused backend tests passed, and the selected Swift snapshot executed 71
+tests with one skip and no failures. The corrected mail-summary code, scope
+tests and local-model lane matched current source byte for byte. These focused
+snapshot checks support the selected implementation; they do not reattribute
+the earlier broad working-tree test run to an immutable release. Signed
+distribution and full-product release acceptance remain separate.
+
+The initial cached local 8B model lane exposed an invented date filter and
+unsupported attachment reference. The implementation chat corrected neutral
+recent-mail routing using the trusted latest user request: unrequested
+date/query/folder filters are removed while explicit requested filters remain.
+Thirty focused scope tests passed; the later mail/SMTP regression aggregate
+passed 66 tests. This correction followed the full regression run above.
+
+The actual cached Qwen3-8B-4bit-mlx rerun passed in 65.06 seconds: both synthetic
+topics/dates were preserved, no unrequested date filter executed and the human
+edited source-bound reply reached fake SMTP. The shipped composition path
+starts with a blank draft for human editing; supplemental tool-free AI reply
+composition is separately recorded and passed its corpus-specific factual
+checks. It is not the shipped default or release authority.
+
+Both the initial failure and successful rerun are preserved under
+[evidence/email-mvp-2026-10-07/model](evidence/email-mvp-2026-10-07/model).
+Their synthetic records establish one fixed-corpus result, not generalized
+model quality or daily-driver promotion. Live-account quality and daily-use
+acceptance remain #479 / milestone #54.

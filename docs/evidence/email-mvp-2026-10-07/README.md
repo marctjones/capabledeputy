@@ -10,13 +10,21 @@ foreground activation was used.
 | accepted | SMTP accepted; recipient delivery unverified | 92 | 1 |
 | failed | Definite pre-submission failure | 91 | 1 |
 | unknown | Unknown submission followed by explicit provider verification | 110 | 1; no retry |
+| reopen | Actual app restart restores conversation and receipt | 97 | 1; no retry |
 
 AX snapshot line endings/trailing whitespace are normalized for repository
 formatting; the original temporary snapshots remain unchanged.
 
+`model/` retains the initial actual cached 8B factual-quality failure and its
+successful synthetic rerun after correcting unrequested read filters. This is
+one corpus, with a human edited reply as the shipped workflow; supplemental
+tool-free AI composition is separately identified. Model path is recorded as
+its basename in the repository copy. No broad model-quality promotion follows.
+
 Each directory preserves the result and build manifest plus exact-review,
 restart-recovery and readable-transcript AX snapshots. Unknown also preserves
-provider-verification evidence. Build hashes identify the actual test artifacts;
+provider-verification evidence. `reopen/` retains the separate actual app-restart
+PASS and reopened transcript/receipt snapshots. Build hashes identify the actual test artifacts;
 manifests mark the tested source as a dirty working tree. This evidence does
 not establish signed distribution, real-provider acceptance or model quality.
 

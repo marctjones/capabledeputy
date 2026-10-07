@@ -1,0 +1,176 @@
+{
+  "model_path": "Qwen3-8B-4bit-mlx",
+  "actual_local_model": true,
+  "synthetic_mail": true,
+  "real_accounts_used": false,
+  "downloads_allowed": false,
+  "network_allowed": false,
+  "status": "completed",
+  "model_responses": [
+    {
+      "role": "planner",
+      "elapsed_seconds": 26.1,
+      "offered_tools": [
+        "email.source_list",
+        "email.reply_create",
+        "email.draft_update",
+        "email.draft_save",
+        "email.draft_list",
+        "quarantined.summarize_mail"
+      ],
+      "content": "",
+      "tool_calls": [
+        {
+          "name": "quarantined.summarize_mail",
+          "args": {}
+        }
+      ],
+      "finish_reason": "tool_calls"
+    },
+    {
+      "role": "extractor",
+      "elapsed_seconds": 5.62,
+      "offered_tools": [],
+      "content": "{\n  \"sender\": \"Alice <alice@email-mvp.invalid>\",\n  \"subject\": \"Meeting agenda\",\n  \"urgency\": \"medium\",\n  \"one_line_summary\": \"Please confirm the meeting agenda for tomorrow.\"\n}",
+      "tool_calls": [],
+      "finish_reason": "stop"
+    },
+    {
+      "role": "extractor",
+      "elapsed_seconds": 5.77,
+      "offered_tools": [],
+      "content": "{\n  \"sender\": \"Bob <bob@email-mvp.invalid>\",\n  \"subject\": \"Budget check-in\",\n  \"urgency\": \"medium\",\n  \"one_line_summary\": \"Please review the budget on Friday.\"\n}",
+      "tool_calls": [],
+      "finish_reason": "stop"
+    },
+    {
+      "role": "planner",
+      "elapsed_seconds": 24.02,
+      "offered_tools": [
+        "email.source_list",
+        "email.reply_create",
+        "email.draft_update",
+        "email.draft_save",
+        "email.draft_list",
+        "quarantined.summarize_mail"
+      ],
+      "content": "Here are the summaries of your recent emails:\n\n1. **From Alice**: \"Meeting agenda\" - Please confirm the meeting agenda for tomorrow.\n\n2. **From Bob**: \"Budget check-in\" - Please review the budget on Friday.\n\nLet me know if you'd like more details on any of these emails.",
+      "tool_calls": [],
+      "finish_reason": "stop"
+    },
+    {
+      "role": "reply_suggestion",
+      "elapsed_seconds": 2.75,
+      "offered_tools": [],
+      "content": "The meeting agenda for tomorrow is confirmed. Please let me know if any adjustments are needed.",
+      "tool_calls": [],
+      "finish_reason": "stop"
+    }
+  ],
+  "summary_result": {
+    "content": "Here are the summaries of your recent emails:\n\n1. **From Alice**: \"Meeting agenda\" - Please confirm the meeting agenda for tomorrow.\n\n2. **From Bob**: \"Budget check-in\" - Please review the budget on Friday.\n\nLet me know if you'd like more details on any of these emails.",
+    "iterations": 2,
+    "finish_reason": "stop",
+    "tool_outcomes": [
+      {
+        "decision": "allow",
+        "rule": "optimistic-auto",
+        "reason": "reversible/system, non-egressing — optimistic auto-execution",
+        "error": null,
+        "output": {
+          "ok": true,
+          "complete": true,
+          "scope": {
+            "folder": "INBOX",
+            "since_date": null,
+            "query": null,
+            "correction_applied": false
+          },
+          "matched_count": 2,
+          "fetched_count": 2,
+          "summarized_count": 2,
+          "limit_reached": false,
+          "failures": [],
+          "summaries": [
+            {
+              "source_id": "351351b6-9c92-462e-a816-dc41d7052af4",
+              "uid": "101",
+              "folder": "INBOX",
+              "uidvalidity": "20261007",
+              "message_id": "<agenda@email-mvp.invalid>",
+              "body_truncated": false,
+              "data": {
+                "sender": "Alice <alice@email-mvp.invalid>",
+                "subject": "Meeting agenda",
+                "urgency": "medium",
+                "one_line_summary": "Please confirm the meeting agenda for tomorrow."
+              }
+            },
+            {
+              "source_id": "47f5ab35-bf46-4957-98a5-2ad5d05cc955",
+              "uid": "102",
+              "folder": "INBOX",
+              "uidvalidity": "20261007",
+              "message_id": "<budget@email-mvp.invalid>",
+              "body_truncated": false,
+              "data": {
+                "sender": "Bob <bob@email-mvp.invalid>",
+                "subject": "Budget check-in",
+                "urgency": "medium",
+                "one_line_summary": "Please review the budget on Friday."
+              }
+            }
+          ]
+        },
+        "tool_name": "quarantined.summarize_mail",
+        "tool_args": {},
+        "approval_submission": null,
+        "approval_id": null,
+        "labels_added": [
+          "confidential.personal",
+          "untrusted.external",
+          "untrusted.user_input"
+        ],
+        "recovery_steps": []
+      }
+    ],
+    "workstream": {
+      "id": "ec72c5a6-bfc0-4539-8acf-e1739894f9bb",
+      "session_id": "bb4ee39f-9245-478c-b748-996f7d2c6752",
+      "client_id": "interactive-client",
+      "claimed_at": "2026-10-07T07:23:58.906091+00:00",
+      "lease_until": "2026-10-07T07:28:58.906091+00:00",
+      "status": "active",
+      "reason": "interactive session activity",
+      "released_at": null,
+      "last_renewed_at": "2026-10-07T07:23:58.906091+00:00",
+      "active": true
+    }
+  },
+  "smtp_attempt_count": 1,
+  "delivery_status": "smtp_accepted",
+  "reply_body": "The meeting agenda for tomorrow is confirmed. Please let me know if any adjustments are needed.",
+  "mvp_reply_body": "Thank you, the meeting agenda for tomorrow is confirmed.",
+  "mvp_reply_origin": "Fixture human edit of blank source-bound draft",
+  "supplemental_compose_is_shipped_default": false,
+  "source_recipient": "alice@email-mvp.invalid",
+  "elapsed_seconds": 65.06,
+  "quality": {
+    "status": "passed",
+    "mvp_checks": {
+      "no_unrequested_executed_date_filter": true,
+      "summary_preserves_both_topics_and_dates": true
+    },
+    "model_proposed_unrequested_date_filter": false,
+    "supplemental_compose": {
+      "shipped_default": false,
+      "status": "passed",
+      "checks": {
+        "reply_confirms_requested_agenda": true,
+        "reply_does_not_invent_attachment": true
+      }
+    },
+    "scope": "Single fixed synthetic corpus; inspect recorded actual responses too"
+  },
+  "evidence_copy_note": "Cached model path recorded as basename; other synthetic result fields preserved."
+}
