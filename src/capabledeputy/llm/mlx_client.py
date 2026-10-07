@@ -342,7 +342,12 @@ class MLXLLMClient:
         max_tokens: int = 2048,
         trust_remote_code: bool = False,
         enable_thinking: bool = False,
+        prefill_step_size: int = 512,
     ) -> None:
+        if prefill_step_size < 1:
+            raise ValueError("prefill_step_size must be positive")
+        self.last_generation_metrics: dict[str, int | float] = {}
+        self._prefill_step_size = prefill_step_size
         self._model = model
         self._max_tokens = max_tokens
         self._trust_remote_code = trust_remote_code
@@ -402,14 +407,24 @@ class MLXLLMClient:
                 prompt = self._render_prompt(tokenizer, messages, tools)
                 stream_generate = import_module("mlx_lm").stream_generate
                 accumulated = ""
+                self.last_generation_metrics = {"prefill_step_size": self._prefill_step_size}
                 for response in stream_generate(
                     model,
                     tokenizer,
                     prompt,
                     max_tokens=limit,
+                    prefill_step_size=self._prefill_step_size,
                 ):
                     if cancelled.is_set():
                         break
+                    for key in ("prompt_tokens", "generation_tokens", "peak_memory"):
+                        value = getattr(response, key, None)
+                        if (
+                            isinstance(value, (int, float))
+                            and not isinstance(value, bool)
+                            and value >= 0
+                        ):
+                            self.last_generation_metrics[key] = value
                     # mlx_lm yields detokenizer.last_segment per token — not
                     # cumulative text. Slicing against a running prefix corrupts
                     # output into the garbled "Ihaveolsableision..." strings.
@@ -467,6 +482,7 @@ class MLXLLMClient:
                 prompt=prompt,
                 verbose=False,
                 max_tokens=self._max_tokens,
+                prefill_step_size=self._prefill_step_size,
             ),
         )
 

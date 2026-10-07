@@ -1,0 +1,15 @@
+{
+  "stage": "handoff_cleanup",
+  "send_approved": false,
+  "version": {
+    "version": "0.58.0",
+    "git_rev": "8589346da5e311eb595539d8d74be7058b876b2c",
+    "git_dirty": "dirty",
+    "manifest_hash": "7444243677c33091",
+    "source_content_hash": "1834907d977fe2a5dba696fa9cb3e41101eb7bf5fbf38bb3e1033e9ebf603d8f"
+  },
+  "aborted_dedicated_sessions": 2,
+  "active_turn_count": 0,
+  "coordinator_active_count": 0,
+  "cleanup_completed": true
+}

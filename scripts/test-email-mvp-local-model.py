@@ -112,6 +112,7 @@ async def worker(model_path: Path, output: Path) -> int:
                 {
                     "role": self.role,
                     "elapsed_seconds": round(time.monotonic() - began, 2),
+                    "generation_metrics": dict(local.last_generation_metrics),
                     "offered_tools": [tool.name for tool in tools],
                     "content": response.content,
                     "tool_calls": [{"name": t.name, "args": t.args} for t in response.tool_calls],

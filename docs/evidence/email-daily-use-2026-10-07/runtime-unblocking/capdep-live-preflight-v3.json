@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-07T08:24:33.081547+00:00",
+  "expected_revision": "fd57c4f4ca9b0be12dbd46a63b187e5395a24182",
+  "live_requested": false,
+  "send_authority_granted": false,
+  "human_quality_review": null,
+  "observed_inbox_receipt": null,
+  "status": "failed",
+  "error_type": "DaemonNotRunningError"
+}

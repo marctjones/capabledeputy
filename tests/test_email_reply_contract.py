@@ -23,6 +23,7 @@ def test_source_snapshot_retains_body_headers_labels_and_session_after_restart(t
             "reply_to": "reply@example.com",
             "subject": "Subject",
             "message_id": "<source@example.com>",
+            "date": "Wed, 7 Oct 2026 01:00:00 -0400",
             "references": "<older@example.com>",
             "body": "Source content",
             "body_present": True,
@@ -41,6 +42,7 @@ def test_source_snapshot_retains_body_headers_labels_and_session_after_restart(t
     assert recovered.all(uuid4()) == []
     assert source["labels"] == labels.to_dict()
     assert source["body"] == "Source content"
+    assert source["date"] == "Wed, 7 Oct 2026 01:00:00 -0400"
     assert source["reply_to"] == "reply@example.com"
 
 
@@ -302,3 +304,33 @@ async def test_neutral_recent_request_cannot_acquire_model_invented_date_filter(
         assert dated.output is not None
         assert dated.output["scope"]["correction_applied"] is False
         assert calls[-1] == {"max_results": 2, "folder": "INBOX", "since_date": "2026-10-01"}
+
+
+async def test_requested_recent_message_count_overrides_model_proposed_count(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from uuid import UUID
+
+    from capabledeputy.session.model import Turn
+    from tests.test_email_mvp_acceptance import email_daemon
+
+    async with email_daemon(tmp_path, monkeypatch) as (client, app, _, transport):
+        calls = []
+        provider = app.registry.get("acceptance.imap.read_recent")
+
+        async def tracked(args, context):
+            calls.append(dict(args))
+            return await provider.handler(args, context)
+
+        app.registry.unregister_prefix(provider.name)
+        app.registry.register(replace(provider, handler=tracked))
+        session = await client.call("session.new", {"purpose_handle": "inbox"})
+        sid = UUID(session["id"])
+        await app.graph.add_turn(
+            sid, Turn(turn_id=1, role="user", content="Summarize my two most recent emails.")
+        )
+        result = await app.tool_client.call_tool(
+            sid, "quarantined.summarize_mail", {"max_results": 20}
+        )
+        assert result.output is not None and result.output["fetched_count"] == 2
+        assert calls == [{"max_results": 2, "folder": "INBOX"}]
+        assert transport.attempts == []

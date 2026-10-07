@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-07T08:33:11.438969+00:00",
+  "expected_revision": "8589346da5e311eb595539d8d74be7058b876b2c",
+  "live_requested": true,
+  "send_authority_granted": false,
+  "human_quality_review": null,
+  "observed_inbox_receipt": null,
+  "status": "blocked_daemon_revision",
+  "daemon_revision_matches": false,
+  "daemon_dirty": true,
+  "daemon_revision": "fd57c4f4ca9b0be12dbd46a63b187e5395a24182"
+}

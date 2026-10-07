@@ -97,6 +97,17 @@ def mail_tool_surface(
     if not real_mail:
         return tools
     projected_mail = any(t.name == "quarantined.summarize_mail" for t in tools)
+    # A bounded recent-mail summary needs only its projection tool. Keeping
+    # unrelated filesystem/cloud/draft catalogs in this prompt wastes local
+    # prefill memory and invites irrelevant calls. All policy context remains.
+    if projected_mail and re.fullmatch(
+        r"\s*(?:please\s+)?summari[sz]e\s+(?:my\s+)?"
+        r"(?:(?:\d+|two|three|five|ten)\s+)?(?:most\s+)?"
+        r"(?:recent|latest|newest)\s+e-?mails?[.!?]?\s*",
+        message,
+        re.IGNORECASE,
+    ):
+        return [t for t in tools if t.name == "quarantined.summarize_mail"]
     return [
         t
         for t in tools

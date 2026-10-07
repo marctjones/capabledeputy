@@ -4,6 +4,7 @@ import argparse
 import importlib.util
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -23,10 +24,14 @@ class Client:
         self.modes = modes
         self.fail = fail
 
-    async def call(self, method, params=None):
+    async def call(self, method, params=None) -> dict[str, Any]:
         self.calls.append((method, params))
         if method == "daemon.code_version":
-            return {"git_rev": self.revision, "git_dirty": "clean"}
+            return {
+                "git_rev": self.revision,
+                "git_dirty": "clean",
+                "source_content_hash": recorder.source_content_hash(),
+            }
         if method == "session.new":
             return {
                 "id": "session",
@@ -193,3 +198,44 @@ async def test_non_strict_enforcement_prevents_live_read(posture):
     await recorder.run(client, args(), report)
     assert report["status"] == "blocked_enforcement_posture"
     assert [c[0] for c in client.calls] == ["daemon.code_version", "session.new", "session.abort"]
+
+
+async def test_matching_revision_with_changed_source_blocks_before_ingestion():
+    client = Client()
+    call = client.call
+
+    async def stale(method, params=None):
+        result = await call(method, params)
+        if method == "daemon.code_version":
+            result["source_content_hash"] = "b" * 64
+        return result
+
+    client.call = stale
+    report = {}
+    await recorder.run(client, args(), report)
+    assert report["status"] == "blocked_daemon_source_content"
+    assert len(client.calls) == 1
+
+
+async def test_inherited_unbounded_read_authority_is_revoked_before_timed_grant():
+    client = Client(modes=["dual_llm"])
+    call = client.call
+
+    async def inherited(method, params=None):
+        result = await call(method, params)
+        if method == "session.new":
+            result["capability_set"] = [
+                {"kind": "IMAP_READ", "audit_id": "inherited", "expires_at": None}
+            ]
+        return result
+
+    client.call = inherited
+    report = {}
+    await recorder.run(client, args(), report)
+    methods = [m for m, _ in client.calls]
+    assert methods.index("capability.revoke") < methods.index("operator.grant_capability")
+    assert report["inherited_read_grants_revoked"] == 1
+    revoke = next(p for m, p in client.calls if m == "capability.revoke")
+    assert revoke == {"session_id": "session", "audit_id": "inherited", "eager_teardown": True}
+    grant = next(p for m, p in client.calls if m == "operator.grant_capability")
+    assert grant["capability"]["expires_at"] is not None

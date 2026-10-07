@@ -58,7 +58,14 @@ def _connect_imap() -> imaplib.IMAP4_SSL:
     """
     cfg = load_config().imap
     client = imaplib.IMAP4_SSL(cfg.host, cfg.port, ssl_context=ssl.create_default_context())
-    client.login(cfg.username, cfg.password)
+    try:
+        client.login(cfg.username, cfg.password)
+    except BaseException:
+        # Authentication failed before the caller received ownership. Close the
+        # socket here; no mailbox operation or implicit reconnect is permitted.
+        with contextlib.suppress(Exception):
+            client.shutdown()
+        raise
     return client
 
 

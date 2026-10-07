@@ -145,6 +145,7 @@ class EmailSourceBox:
                 "from",
                 "reply_to",
                 "subject",
+                "date",
                 "message_id",
                 "references",
                 "body",

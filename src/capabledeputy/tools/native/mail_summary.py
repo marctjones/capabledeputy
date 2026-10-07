@@ -76,6 +76,22 @@ def make_mail_summary_tools(app: App) -> list[ToolDefinition]:
             read_args.pop("since_date", None)
             read_args.pop("query", None)
             read_args["folder"] = "INBOX"
+            latest = next(
+                turn.content
+                for turn in reversed(app.graph.get(context.session_id).history)
+                if turn.role == "user"
+            )
+            count = re.search(
+                r"\b(\d+|two|three|five|ten)\s+(?:most\s+)?(?:recent|latest|newest)\b",
+                latest,
+                re.IGNORECASE,
+            )
+            if count:
+                value = count.group(1).lower()
+                requested_count = {"two": 2, "three": 3, "five": 5, "ten": 10}.get(value)
+                if requested_count is None:
+                    requested_count = int(value)
+                read_args["max_results"] = min(20, max(1, requested_count))
         outcome = await app.tool_client.call_tool(context.session_id, provider.name, read_args)
         if outcome.error or outcome.output is None:
             return ToolResult(
@@ -136,6 +152,7 @@ def make_mail_summary_tools(app: App) -> list[ToolDefinition]:
                     "folder": message["folder"],
                     "uidvalidity": message.get("uidvalidity"),
                     "message_id": message.get("message_id", ""),
+                    "date": message.get("date", ""),
                     "body_truncated": message.get("body_truncated", False),
                     "data": projection.model_dump(mode="json"),
                 }

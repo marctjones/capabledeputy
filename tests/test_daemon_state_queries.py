@@ -33,6 +33,7 @@ async def test_daemon_info_reports_code_and_state(tmp_path: Path) -> None:
         assert info["version"]
         assert info["git_rev"]
         assert info["manifest_hash"]
+        assert len(info["source_content_hash"]) == 64
         assert info["tool_count"] > 0
         assert info["session_count"] == 1
         assert info["session_count_active"] == 1

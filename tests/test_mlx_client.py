@@ -372,3 +372,53 @@ async def test_closing_stream_stops_generation_at_next_token(monkeypatch) -> Non
         release.set()
     assert await asyncio.to_thread(finished.wait, 5)
     assert len(generated) <= 1
+
+
+async def test_streaming_uses_bounded_prefill_without_changing_output(monkeypatch):
+    from types import SimpleNamespace
+
+    options = []
+    client = MLXLLMClient(prefill_step_size=128)
+    monkeypatch.setattr(
+        client, "_load_model_sync", lambda: (object(), SimpleNamespace(chat_template=None))
+    )
+
+    def stream(*args, **kwargs):
+        options.append(kwargs)
+        yield SimpleNamespace(
+            text="Complete response",
+            prompt_tokens=6400,
+            peak_memory=5.5,
+            generation_tokens=2,
+            unexpected="PRIVATE-CONTENT",
+        )
+
+    monkeypatch.setattr(
+        "capabledeputy.llm.mlx_client.import_module",
+        lambda _: SimpleNamespace(stream_generate=stream),
+    )
+    result = await client.respond([], [])
+    assert result.content == "Complete response"
+    assert options[0]["prefill_step_size"] == 128
+    assert client.last_generation_metrics == {
+        "prefill_step_size": 128,
+        "prompt_tokens": 6400,
+        "peak_memory": 5.5,
+        "generation_tokens": 2,
+    }
+    with pytest.raises(ValueError):
+        MLXLLMClient(prefill_step_size=0)
+
+
+def test_source_content_hash_detects_bytes_not_only_mtime(tmp_path):
+    import os
+
+    from capabledeputy.daemon.handlers import source_content_hash
+
+    module = tmp_path / "module.py"
+    module.write_text("value = 1")
+    before = module.stat()
+    digest = source_content_hash(tmp_path)
+    module.write_text("value = 2")
+    os.utime(module, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert source_content_hash(tmp_path) != digest

@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from capabledeputy.daemon.handlers import source_content_hash
 from capabledeputy.ipc.client import DaemonClient
 from capabledeputy.ipc.socket_path import default_socket_path
 from capabledeputy.policy.capabilities import Capability, CapabilityKind
@@ -72,6 +73,15 @@ async def run(client: DaemonClient, args: argparse.Namespace, report: dict[str, 
     if revision != args.expected_revision:
         report["status"] = "blocked_daemon_revision"
         return
+    expected_content = source_content_hash()
+    report["expected_source_content_hash"] = expected_content
+    observed_content = version.get("source_content_hash", "")
+    report["daemon_source_content_matches"] = observed_content == expected_content
+    if re.fullmatch(r"[0-9a-f]{64}", observed_content):
+        report["daemon_source_content_hash"] = observed_content
+    if observed_content != expected_content:
+        report["status"] = "blocked_daemon_source_content"
+        return
     if not args.live:
         report["status"] = "preflight_only"
         return
@@ -101,6 +111,19 @@ async def run(client: DaemonClient, args: argparse.Namespace, report: dict[str, 
         if any(c.get("kind") == "SEND_EMAIL" for c in session.get("capability_set", [])):
             report["status"] = "blocked_send_authority"
             return
+        # The inbox purpose may supply an unbounded IMAP grant. Revoke inherited
+        # grants in this dedicated session before adding the five-minute grant.
+        inherited = [c for c in session.get("capability_set", []) if c.get("kind") == "IMAP_READ"]
+        for inherited_capability in inherited:
+            await client.call(
+                "capability.revoke",
+                {
+                    "session_id": session_id,
+                    "audit_id": inherited_capability["audit_id"],
+                    "eager_teardown": True,
+                },
+            )
+        report["inherited_read_grants_revoked"] = len(inherited)
         capability = Capability(
             kind=CapabilityKind.IMAP_READ,
             pattern="*",
@@ -116,9 +139,8 @@ async def run(client: DaemonClient, args: argparse.Namespace, report: dict[str, 
                 {
                     "session_id": session_id,
                     "max_iterations": 5,
-                    "message": "Summarize my two most recent real emails. Read their bodies using "
-                    "quarantined.summarize_mail. Do not use demo data, draft, or send. "
-                    "Clearly report incomplete or truncated coverage.",
+                    "mode": args.required_mode[0],
+                    "message": "Summarize my two most recent emails.",
                 },
             ),
             timeout=240,
@@ -171,7 +193,8 @@ async def main() -> int:
         try:
             await run(DaemonClient(default_socket_path()), args, report)
         except Exception as exc:
-            report["status"] = "failed"
+            if report["status"] != "failed_cleanup":
+                report["status"] = "failed"
             report["error_type"] = type(exc).__name__  # no provider exception text
         finally:
             json.dump(report, evidence, indent=2, allow_nan=False)

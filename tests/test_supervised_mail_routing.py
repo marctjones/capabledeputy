@@ -66,3 +66,17 @@ def test_explicit_demo_request_keeps_demo_tools():
     registry, tools = _catalog()
     session = _session_with_caps(CapabilityKind.IMAP_READ)
     assert mail_tool_surface(registry, session, tools, "triage the demo inbox") == tools
+
+
+def test_bounded_recent_summary_offers_only_projection_without_granting_it():
+    registry, tools = _catalog()
+    projection = _tool("quarantined.summarize_mail", CapabilityKind.IMAP_READ)
+    registry.register(projection)
+    session = _session_with_caps(CapabilityKind.IMAP_READ)
+    assert mail_tool_surface(
+        registry, session, [*tools, projection], "Summarize my two most recent emails."
+    ) == [projection]
+    assert (
+        mail_tool_surface(registry, session, tools, "Summarize my two most recent emails.")
+        == tools[1:]
+    )

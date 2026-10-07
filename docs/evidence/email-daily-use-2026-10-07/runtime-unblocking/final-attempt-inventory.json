@@ -1,0 +1,38 @@
+{
+  "dedicated_session_count": 5,
+  "active_session_count": 0,
+  "tool_returned_count": 0,
+  "request_metadata": [
+    {
+      "n_messages": 2,
+      "n_tools": 14,
+      "context_tokens_estimate": 7122,
+      "context_window": 100000
+    },
+    {
+      "n_messages": 2,
+      "n_tools": 14,
+      "context_tokens_estimate": 7122,
+      "context_window": 100000
+    },
+    {
+      "n_messages": 2,
+      "n_tools": 14,
+      "context_tokens_estimate": 7117,
+      "context_window": 100000
+    },
+    {
+      "n_messages": 2,
+      "n_tools": 1,
+      "context_tokens_estimate": 4841,
+      "context_window": 100000
+    },
+    {
+      "n_messages": 2,
+      "n_tools": 1,
+      "context_tokens_estimate": 4841,
+      "context_window": 100000
+    }
+  ],
+  "content_was_exported": false
+}

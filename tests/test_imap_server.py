@@ -400,3 +400,27 @@ async def test_mark_read_sets_seen_flag(mock_imap_cfg) -> None:
     assert store_calls
     assert any("\\Seen" in str(c.args) for c in store_calls)
     assert result["marked_read"] is True
+
+
+async def test_revoked_credentials_close_connection_without_mailbox_read(mock_imap_cfg):
+    import imaplib
+
+    client = _mock_imap_client()
+    client.login.side_effect = imaplib.IMAP4.error("Synthetic credentials revoked")
+    with (
+        patch("capabledeputy.mcp_servers.imap.imaplib.IMAP4_SSL", return_value=client),
+        pytest.raises(imaplib.IMAP4.error),
+    ):
+        await _handler("imap.read_recent")({"max_results": 2})
+    client.shutdown.assert_called_once()
+    client.select.assert_not_called()
+    client.uid.assert_not_called()
+    # Restoration only enables a separate, explicit request; no automatic retry.
+    restored = _mock_imap_client()
+    restored.uid.side_effect = [("OK", [b""])]
+    with patch("capabledeputy.mcp_servers.imap.imaplib.IMAP4_SSL", return_value=restored):
+        result = await _handler("imap.read_recent")({"max_results": 2})
+    assert isinstance(result, dict)
+    assert result["ok"] and result["count"] == 0
+    restored.login.assert_called_once()
+    restored.logout.assert_called_once()

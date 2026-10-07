@@ -498,7 +498,7 @@ def execute(args, parser):
         gui.click("capdep.chat.send")
         rendered = gui.wait_text("Second ordered item", name="07-readable-transcript")
         for expected in (
-            "# Rendering Fixture",
+            "Rendering Fixture",
             "First paragraph with bold text",
             "Second paragraph stays separate",
             "1. First ordered item.",
@@ -507,7 +507,8 @@ def execute(args, parser):
             "first code line\nsecond code line",
         ):
             assert expected in rendered, expected
-        assert "\n\n" in rendered
+        assert "First paragraph with bold text and emphasis.\n" in rendered
+        assert "\nSecond paragraph stays separate" in rendered
         assert json.loads(evidence_path.read_text())["smtp_attempt_count"] == 1
         steps.append(
             "native transcript preserved paragraphs, heading/list boundaries, quote and code lines"

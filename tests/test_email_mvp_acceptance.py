@@ -971,7 +971,21 @@ async def test_hostile_planner_follows_mail_injection_but_only_exact_human_reply
         )
         attempted = [row for row in result["tool_outcomes"] if row["tool_name"] == "email.send"]
         assert len(attempted) == 1 and attempted[0]["decision"] == "deny", result
-        assert attempted[0]["rule"] == "untrusted-meets-egress"
+        assert attempted[0]["rule"] in {
+            "tool-not-visible-in-current-mode",
+            "untrusted-meets-egress",
+        }
+        # The bounded summary catalog can refuse earlier. Independently retain
+        # evidence that the actual policy boundary denies a direct dispatch too.
+        direct = await client.call(
+            "tool.call",
+            {
+                "session_id": session["id"],
+                "tool": "email.send",
+                "args": args,
+            },
+        )
+        assert direct["decision"] == "deny" and direct["rule"] == "untrusted-meets-egress"
         assert transport.attempts == []
         assert json.loads(transport.evidence_path.read_text())["smtp_attempt_count"] == 0
         planner_inputs = "\n".join(
