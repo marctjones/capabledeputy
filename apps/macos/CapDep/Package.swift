@@ -15,9 +15,14 @@ let package = Package(
         .executable(name: "CapDepMac", targets: ["CapDepMacLauncher"]),
         .library(name: "CapDepMacKit", targets: ["CapDepMac"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/swiftlang/swift-markdown.git", exact: "0.6.0"),
+        .package(url: "https://github.com/swiftlang/swift-cmark.git", exact: "0.9.0"),
+    ],
     targets: [
         .target(
             name: "CapDepMac",
+            dependencies: [.product(name: "Markdown", package: "swift-markdown")],
             path: "Sources",
         ),
         .executableTarget(

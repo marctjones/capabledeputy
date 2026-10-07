@@ -22,6 +22,11 @@ struct ChatRichMessageBody: View {
             Text("…")
                 .font(.body)
                 .foregroundStyle(.secondary)
+        } else if !text.contains("![") {
+            VStack(alignment: .leading, spacing: 8) {
+                ChatSemanticText(source: text)
+                ChatCopyControls(source: text, isStreaming: isStreaming)
+            }
         } else if blocks.isEmpty {
             Text(ChatContentFormatter.attributedMarkdown(from: text))
                 .font(.body)
@@ -33,11 +38,7 @@ struct ChatRichMessageBody: View {
                 ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                     switch block {
                     case .prose(let prose):
-                        Text(ChatContentFormatter.attributedMarkdown(from: prose))
-                            .font(.body)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .tint(.accentColor)
+                        ChatSemanticText(source: prose)
                     case .code(let language, let body):
                         ChatCodeBlockView(language: language, code: body)
                     case .image(let alt, let urlString):
@@ -211,5 +212,41 @@ struct ChatImageBlockView: View {
             return nil
         }
         return step
+    }
+}
+private struct ChatCopyControls: View {
+    let source: String
+    let isStreaming: Bool
+    @State private var codes: [String] = []
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            controls
+            Menu("Copy and text size") { controls }
+        }
+        .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
+        .task(id: isStreaming ? "streaming" : source) {
+            codes = isStreaming ? [] : ChatSemanticRenderer.codeBlocks(source)
+        }
+    }
+
+    private var controls: some View {
+        HStack {
+            Button("Copy Markdown") { copy(source) }
+                .accessibilityIdentifier("capdep.chat.copy-markdown")
+            ForEach(Array(codes.enumerated()), id: \.offset) { index, code in
+                Button("Copy code \(index + 1)") { copy(code) }
+            }
+            Menu("Text size") {
+                ForEach([14, 16, 18, 22], id: \.self) { size in
+                    Button("\(size) pt") { UserDefaults.standard.set(Double(size), forKey: "capdep.chat.text-size") }
+                }
+            }
+        }
+    }
+
+    private func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 }

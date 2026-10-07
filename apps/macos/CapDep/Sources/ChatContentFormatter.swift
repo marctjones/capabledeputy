@@ -79,7 +79,14 @@ enum ChatContentFormatter {
             guard !inFence else {
                 return line
             }
-            return line.replacing(/<\/?[A-Za-z][^>\n]*>/, with: "")
+            return line.replacing(/<\/?[A-Za-z][^>\n]*>/) { match in
+                let token = String(match.0)
+                // CommonMark autolinks are text destinations, not HTML tags.
+                if token.hasPrefix("<https://") || token.hasPrefix("<http://") || token.hasPrefix("<mailto:") {
+                    return token
+                }
+                return ""
+            }
         }.joined(separator: "\n")
     }
 
