@@ -8,7 +8,8 @@ account, one recipient and plain-text mail. No work mail, attachments or reply-a
 ## Before the first real read
 
 1. Check the running daemon revision against the tested checkout. The recorder
-   refuses a mismatch. A matching dirty revision is not an immutable build:
+   refuses a mismatch and separately checks the startup source-byte SHA256,
+   including untracked Python modules. A matching dirty revision is not an immutable build:
    retain the build manifest and reviewed patch separately. Rebuild/restart the
    daemon at a safe idle point before using newly changed exposure enforcement.
 2. Review #454's actual storage posture: tool-return audits contain commitments,
@@ -110,6 +111,30 @@ not emulate every filesystem failure or prove recipient receipt.
 
 ## Evidence on 2026-10-07
 
+- Backend recovery, bounded recent-mail routing, Date-header preservation,
+  failed IMAP-login socket cleanup, retention inventory and startup source-byte
+  checks were reviewed and committed as `beccad3`. The handoff's focused gate
+  passed **138 tests**, exit 0. Subsequent private numeric MLX load/prefill
+  tracing is committed as `b3129e4`; the combined focused gate passed
+  **142 tests**, exit 0, in 9.11 seconds, with scoped Ruff and Pyright clean.
+- Actual guarded cached Qwen 8B inference passed the fixed synthetic corpus.
+  Production attempts did not complete a summary: broad and mail-only profiles
+  were stopped by whole-host Warning sustained for 15 seconds. Sampled process
+  RSS remained below the unchanged 8-GiB guard ceiling. An idle production
+  process was subsequently stopped under the same host-pressure condition at
+  a sampled peak of 167 MiB; this establishes external host pressure can stop
+  the daemon independently of model inference. MLX peak allocation is a
+  separate measurement and is not process RSS or total host memory.
+- A fresh no-read preflight matched startup source bytes before the telemetry
+  edit. Changed source requires a tested-source restart and a new preflight.
+  Model-load/prefill telemetry is opt-in, numeric-only and private; it is
+  diagnostic evidence, not a demonstrated live resource fix.
+- Failed attempts, numeric synthetic metrics and the privacy-disclosure count
+  remain in `evidence/email-daily-use-2026-10-07/runtime-unblocking/`.
+  No private mail payload is archived there. A recorded diagnostic disclosure
+  and retained historical raw audit data remain distinct, unresolved privacy
+  limitations; file-permission tightening does not erase copies.
+
 - Saved metadata-only preflight:
   `docs/evidence/email-daily-use-2026-10-07/preflight.json`.
   The daemon reported revision `c2d5643a8eb58c7e24d97b7e3562e95516407385`, dirty;
@@ -119,5 +144,7 @@ not emulate every filesystem failure or prove recipient receipt.
   delivery tests: **78 passed**. Focused Ruff and Pyright checks passed.
 - Native/synthetic MVP evidence remains in
   `docs/supervised-email-mvp-evidence-2026-10-07.md`; it is not real-provider proof.
-- Real reads, controlled sends, recipient receipts and elapsed trial days in this
-  follow-up: **0**. #479 remains open.
+- Completed real summaries, approved controlled sends, recipient receipts and
+  elapsed trial days in this follow-up: **0**. #479 remains open. Seven elapsed
+  days remain an operational follow-up, not a prerequisite for preparing a
+  usable source-bound reply and exact native review today.

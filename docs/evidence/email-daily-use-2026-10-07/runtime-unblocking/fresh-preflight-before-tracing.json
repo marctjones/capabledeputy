@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-07T08:48:01.563395+00:00",
+  "expected_revision": "8589346da5e311eb595539d8d74be7058b876b2c",
+  "live_requested": false,
+  "send_authority_granted": false,
+  "human_quality_review": null,
+  "observed_inbox_receipt": null,
+  "status": "preflight_only",
+  "daemon_revision_matches": true,
+  "daemon_dirty": true,
+  "daemon_revision": "8589346da5e311eb595539d8d74be7058b876b2c",
+  "expected_source_content_hash": "1834907d977fe2a5dba696fa9cb3e41101eb7bf5fbf38bb3e1033e9ebf603d8f",
+  "daemon_source_content_matches": true,
+  "daemon_source_content_hash": "1834907d977fe2a5dba696fa9cb3e41101eb7bf5fbf38bb3e1033e9ebf603d8f"
+}

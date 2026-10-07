@@ -3,7 +3,9 @@
 Coordinator requested a fresh smaller-context session. This session has stopped
 new work. No exact send was approved; no SMTP attempt or inbox receipt occurred.
 No real summary completed and Day 1 has not begun. #479 remains open. The current
-source changes are **uncommitted**, tested working-tree changes, not a release.
+source changes were **uncommitted** when this handoff was written. The fresh
+continuation reviewed and committed the documented owned changes as `beccad3`;
+private numeric MLX phase tracing follows in `b3129e4`. Neither is a release.
 
 ## Stable operational endpoint
 
@@ -117,7 +119,10 @@ Owned changed files (all were clean in the initial baseline, except new files):
   `test_mail_retention_inventory.py` (new).
 - this handoff and runtime-unblocking metadata evidence directory.
 
-No commit made by this lane yet. Review and commit only these owned changes.
+The original lane made no commit. Fresh continuation reviewed these files and
+metadata-only evidence, then scoped-committed them as `beccad3`. Subsequent
+optional private numeric model-load/prefill tracing is `b3129e4`, with the final
+focused backend gate at 142 passed, exit 0, 9.11 seconds; Ruff/Pyright clean.
 Native sibling commits in shared checkout: `d1912d4` semantic renderer/dependencies,
 `8589346` conversation/session drafts/follow behavior. Native sibling handoff:
 `docs/handoffs/native-chat-ux-20261007.md`. Native source editing belongs to that
