@@ -502,7 +502,7 @@ def has_web_search_intent(message: str) -> bool:
     return has_chart_generation_intent(stripped) and has_research_data_intent(stripped)
 
 
-def is_conversational_turn(message: str) -> bool:
+def is_conversational_turn(message: str, *, purpose_handle: str = "") -> bool:
     """True when the user message is likely pure chat — no tool calls needed.
 
     Short greetings, small talk, and general knowledge questions should
@@ -513,6 +513,14 @@ def is_conversational_turn(message: str) -> bool:
     if not stripped:
         return False
     if len(stripped) > 320:
+        return False
+    # Resolve pronoun/ordinal follow-ups in the admitted inbox context before
+    # deciding that a short turn needs no tools. This changes exposure, not grants.
+    if purpose_handle == "inbox" and re.search(
+        r"\b(other|next|previous|first|second|third|those|them)\b|\b(that|this) one\b",
+        stripped,
+        re.IGNORECASE,
+    ):
         return False
     if (
         has_image_generation_intent(stripped)

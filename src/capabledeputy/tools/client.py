@@ -93,6 +93,13 @@ _EGRESS_LIKE_KINDS: frozenset[CapabilityKind] = frozenset(
 )
 
 
+def _audit_args(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Keep private mail inputs in labeled storage, not the operational audit."""
+    if tool_name.startswith("email.") or ".imap." in tool_name:
+        return {"redacted": True, "digest": stable_digest(args), "argument_count": len(args)}
+    return args
+
+
 def _audit_output_metadata(value: Any) -> dict[str, Any]:
     """Describe a tool result without copying labeled content into the audit.
 
@@ -107,12 +114,36 @@ def _audit_output_metadata(value: Any) -> dict[str, Any]:
         separators=(",", ":"),
         default=str,
     ).encode("utf-8")
-    return {
+    metadata = {
         "output_digest": stable_digest(value),
         "output_type": type(value).__name__,
         "output_size_bytes": len(encoded),
         "output_redacted": True,
     }
+    # Bounded, content-free operational facts explain read/delivery failures
+    # without adding mailbox bodies or model prose to the durable audit.
+    if isinstance(value, dict):
+        diagnostics = {
+            key: value[key]
+            for key in (
+                "ok",
+                "found",
+                "complete",
+                "body_present",
+                "body_truncated",
+                "matched_count",
+                "requested_count",
+                "failed_count",
+                "fetched_count",
+                "summarized_count",
+                "limit_reached",
+                "delivered",
+            )
+            if key in value and type(value[key]) in (bool, int)
+        }
+        if diagnostics:
+            metadata["operation_status"] = diagnostics
+    return metadata
 
 
 def _replace_tool_result(
@@ -158,7 +189,7 @@ def build_policy_decided_payload(
     """
     payload: dict[str, Any] = {
         "tool": tool_name,
-        "args": args,
+        "args": _audit_args(tool_name, args),
         "decision": decision.decision.value,
         "rule": decision.rule,
         "reason": decision.reason,
@@ -182,7 +213,7 @@ def build_policy_decided_payload(
         payload["effect_class"] = decision.effect_class
     payload["policy_trace"] = {
         "tool": tool_name,
-        "args": args,
+        "args": _audit_args(tool_name, args),
         "decision": decision.decision.value,
         "rule": decision.rule,
         "matched_capability_audit_id": (
@@ -220,7 +251,7 @@ def build_relaxation_refused_payload(
     """
     return {
         "tool": tool_name,
-        "args": args,
+        "args": _audit_args(tool_name, args),
         "refused_relax_inputs": [
             {"description": r.description, "origin": r.origin}
             for r in decision.refused_relax_inputs
@@ -339,7 +370,7 @@ class LabeledToolClient:
                 session_id=session_id,
                 payload={
                     "tool": tool_name,
-                    "args": args,
+                    "args": _audit_args(tool_name, args),
                     "purpose_handle": session.purpose_handle,
                     "inadmissible_categories": list(inadmissible),
                     "decision_rule": decision.rule,
@@ -618,7 +649,7 @@ class LabeledToolClient:
                 session_id=session_id,
                 payload={
                     "tool": tool_name,
-                    "args": args,
+                    "args": _audit_args(tool_name, args),
                     "audit_id": str(
                         policy_decision.matched_capability.audit_id
                         if policy_decision.matched_capability
@@ -1108,7 +1139,7 @@ class LabeledToolClient:
                     session_id=session_id,
                     payload={
                         "tool": tool_name,
-                        "args": args,
+                        "args": _audit_args(tool_name, args),
                         "rule": decision.rule,
                         "reason": decision.reason,
                         "non_blocking": True,
@@ -1155,7 +1186,7 @@ class LabeledToolClient:
                         session_id=session_id,
                         payload={
                             "tool": tool_name,
-                            "args": args,
+                            "args": _audit_args(tool_name, args),
                             "decision_rule": decision.rule,
                             "crossed_risk_ids": list(signal.crossed),
                             "non_suppressible": True,

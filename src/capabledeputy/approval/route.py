@@ -32,6 +32,7 @@ class ApprovalPayloadKind(StrEnum):
     BODY_ARG = "body_arg"
     JSON_ARGS = "json_args"
     TOOL_ENVELOPE = "tool_envelope"
+    EMAIL_ENVELOPE = "email_envelope"
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,8 @@ class ApprovalRoute:
             payload = str(args.get(self.payload_arg, ""))
         elif self.payload_kind == ApprovalPayloadKind.JSON_ARGS:
             payload = json.dumps(args)
+        elif self.payload_kind == ApprovalPayloadKind.EMAIL_ENVELOPE:
+            payload = json.dumps({"format": "capdep.email.v1", "message": args}, sort_keys=True)
         else:  # TOOL_ENVELOPE
             payload = json.dumps({"tool": tool_name, "args": args})
         return {

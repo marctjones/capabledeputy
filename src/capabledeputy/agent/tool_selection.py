@@ -90,12 +90,20 @@ def mail_tool_surface(
     ):
         return tools
     real_mail = any(
-        t.capability_kind == CapabilityKind.IMAP_READ and not t.name.startswith("inbox.")
+        t.capability_kind == CapabilityKind.IMAP_READ
+        and not t.name.startswith(("inbox.", "email.", "quarantined."))
         for t in registry.list()
     )
     if not real_mail:
         return tools
-    return [t for t in tools if not t.name.startswith("inbox.")]
+    projected_mail = any(t.name == "quarantined.summarize_mail" for t in tools)
+    return [
+        t
+        for t in tools
+        if not t.name.startswith("inbox.")
+        and t.name != "quarantined.extract_inbox"
+        and not (projected_mail and t.name.endswith((".imap.list_threads", ".imap.search")))
+    ]
 
 
 def _kagi_search_available(tools: list[ToolDefinition]) -> bool:

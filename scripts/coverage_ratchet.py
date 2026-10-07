@@ -45,6 +45,7 @@ STATIC_GROUPS: dict[str, tuple[str, ...]] = {
         "src/capabledeputy/tools/source_flow.py",
         "src/capabledeputy/tools/policy_hooks.py",
     ),
+    "tools.native.email-journal": ("src/capabledeputy/tools/native/email_journal.py",),
     "tools.native_all": ("src/capabledeputy/tools/native/*.py",),
 }
 

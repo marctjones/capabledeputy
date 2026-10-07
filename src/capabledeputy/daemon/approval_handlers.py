@@ -10,6 +10,7 @@ labels would still conflict.
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from typing import Any
 from uuid import UUID
@@ -32,7 +33,12 @@ from capabledeputy.policy.labels import (
     LabelState,
     ProvenanceLevel,
     ProvenanceTag,
+    label_join,
 )
+from capabledeputy.policy.tiers import Tier, is_above
+from capabledeputy.provenance import ProvenanceRecorder, approval_request_node_id, stable_digest
+from capabledeputy.tools.native.email import single_recipient
+from capabledeputy.tools.native.email_delivery import smtp_config_fingerprint
 
 
 def make_approval_handlers(app: App) -> dict[str, Handler]:
@@ -115,6 +121,9 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         request = app.approval_queue.get(int(params["id"]))
         if request.status != ApprovalStatus.PENDING:
             return {"approval": request.to_dict(), "already_decided": True}
+        if request.action == ApprovalAction.SEND_EMAIL:
+            _email_args(request.payload, request.target)
+            _validate_reviewed_draft(app, request)
         decided_by = str(params.get("decided_by", "user"))
         settings = load_settings()
         if (
@@ -139,7 +148,12 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
                 approved.payload,
                 approved.target,
                 origin_session=approved.from_session,
+                approval_id=approved.id,
+                source_labels=approved.labels_in,
             )
+            draft_ref = _reviewed_draft_ref(approved.payload)
+            if draft_ref and dispatch_outcome.output and dispatch_outcome.output.get("delivered"):
+                app.email_drafts.discard(UUID(draft_ref[0]))
             updated = replace(approved, to_session=new_session)
             app.approval_queue._requests[approved.id] = updated
             return {
@@ -248,7 +262,196 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
             "n_failed": sum(1 for r in results if r.get("error")),
         }
 
+    async def email_draft_list(params: dict[str, Any]) -> dict[str, Any]:
+        outcome = await app.tool_client.call_tool(
+            UUID(str(params["session_id"])),
+            "email.draft_list",
+            {},
+        )
+        if outcome.output is None or outcome.error:
+            raise ValueError("Draft read is not authorized")
+        return outcome.output
+
+    async def email_source_list(params: dict[str, Any]) -> dict[str, Any]:
+        outcome = await app.tool_client.call_tool(
+            UUID(str(params["session_id"])), "email.source_list", {}
+        )
+        if outcome.output is None or outcome.error:
+            raise ValueError("Source read is not authorized")
+        return outcome.output
+
+    async def email_reply_create(params: dict[str, Any]) -> dict[str, Any]:
+        await email_source_list(params)
+        outcome = await app.tool_client.call_tool(
+            UUID(str(params["session_id"])),
+            "email.reply_create",
+            {key: params[key] for key in ("source_id", "body") if key in params},
+        )
+        if outcome.output is None or outcome.error:
+            raise ValueError(outcome.error or "Reply creation is not authorized")
+        return outcome.output
+
+    async def email_draft_update(params: dict[str, Any]) -> dict[str, Any]:
+        await email_draft_list(params)
+        outcome = await app.tool_client.call_tool(
+            UUID(str(params["session_id"])),
+            "email.draft_update",
+            {key: params[key] for key in ("id", "version", "to", "subject", "body")},
+        )
+        if outcome.output is None or outcome.error:
+            raise ValueError(outcome.error or "Draft editing is not authorized")
+        return outcome.output
+
+    async def email_operation_list(params: dict[str, Any]) -> dict[str, Any]:
+        journal = app.email_operations
+        if journal is None:
+            raise ValueError("Email operation storage is not ready")
+        # Same source-session read authorization, including its conservative labels.
+        await email_draft_list(params)
+        return {
+            "operations": [
+                {
+                    "id": str(o.id),
+                    "draft_id": str(o.draft_id),
+                    "draft_version": o.draft_version,
+                    "message_id": o.message_id,
+                    # Frozen reviewed identity lets the operator distinguish receipts
+                    # without exposing message bodies in the history projection.
+                    "subject": o.envelope.get("subject", ""),
+                    "to": o.envelope.get("to", ""),
+                    "recipient": o.envelope.get("to", ""),
+                    "from_addr": o.envelope.get("from_addr", ""),
+                    "account_id": o.envelope.get("account_id", ""),
+                    "in_reply_to": o.envelope.get("in_reply_to", ""),
+                    "references": o.envelope.get("references", ""),
+                    "status": o.status,
+                    "detail": o.detail,
+                    "created_at": o.created_at.isoformat(),
+                    "updated_at": o.updated_at.isoformat(),
+                    "reconciliation_outcome": o.reconciliation_outcome,
+                    "reconciliation_reason": o.reconciliation_reason,
+                    "reconciled_by": o.reconciled_by,
+                    "reconciled_at": o.reconciled_at.isoformat() if o.reconciled_at else None,
+                }
+                for o in journal.all(UUID(str(params["session_id"])))
+            ]
+        }
+
+    async def email_operation_status(params: dict[str, Any]) -> dict[str, Any]:
+        rows = (await email_operation_list(params))["operations"]
+        operation = next((row for row in rows if row["id"] == str(params["id"])), None)
+        if operation is None:
+            raise ValueError("Operation not found in this session")
+        return {"operation": operation}
+
+    async def email_operation_reconcile(params: dict[str, Any]) -> dict[str, Any]:
+        await email_operation_status(params)
+        if params.get("confirmed") is not True:
+            raise ValueError("Explicit provider-verification confirmation is required")
+        if params.get("outcome") not in {"confirmed_not_sent", "smtp_accepted"}:
+            raise ValueError("Choose a provider-verified outcome")
+        reason = params.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("Describe the provider evidence for this reconciliation")
+        journal = app.email_operations
+        if journal is None:
+            raise ValueError("Email operation storage is not ready")
+        journal.reconcile(
+            UUID(str(params["id"])), params["outcome"], reason=reason, decided_by="operator"
+        )
+        return await email_operation_status(params)
+
+    async def email_draft_review(params: dict[str, Any]) -> dict[str, Any]:
+        session_id = UUID(str(params["session_id"]))
+        # Discovery/read still goes through decide(), not a UI-side permission.
+        outcome = await app.tool_client.call_tool(session_id, "email.draft_list", {})
+        if outcome.output is None or outcome.error:
+            raise ValueError("Draft read is not authorized")
+        draft = app.email_drafts.get(UUID(str(params["id"])))
+        if draft is None or draft.session_id != session_id:
+            raise ValueError("Draft not found in this session")
+        if draft.version != int(params["version"]):
+            raise ValueError("Draft changed; reload before requesting review")
+        session = app.graph.get(session_id)
+        labels = label_join(session.label_state, draft.label_state)
+        # This release path is for operator-owned personal mail, not arbitrary
+        # structural denials or confidential categories governed by other policies.
+        if any(
+            tag.category != "personal" or is_above(tag.tier, Tier.REGULATED) for tag in labels.a
+        ):
+            raise ValueError("This draft requires a category-specific release policy")
+        if draft.source:
+            if app.email_sources.get(draft.source["source_id"], draft.session_id) is None:
+                raise ValueError("Source mailbox changed; reread the message before review")
+            config = app._email_smtp_config
+            if (
+                config is None
+                or smtp_config_fingerprint(config) != draft.source["account_fingerprint"]
+            ):
+                raise ValueError("Sending account changed or unavailable; create a fresh reply")
+            journal = app.email_operations
+            if journal is None:
+                raise ValueError("Email operation storage is not ready")
+            if journal.blocks_draft(draft.id):
+                raise ValueError(
+                    "This draft has an unresolved or accepted submission; inspect its status"
+                )
+            existing = journal.for_draft(draft.id, draft.version)
+            if existing is not None:
+                raise ValueError(
+                    "This draft version already has a send operation; inspect its status"
+                )
+            message = {
+                "account_id": draft.source["account_id"],
+                "from_addr": draft.source["from_addr"],
+                "to": draft.to,
+                "subject": draft.subject,
+                "body": draft.body,
+                "in_reply_to": draft.source["in_reply_to"],
+                "references": draft.source["references"],
+                "message_id": f"<{draft.id}.v{draft.version}@capabledeputy.local>",
+            }
+            envelope = {
+                "format": "capdep.email.v2",
+                "draft_id": str(draft.id),
+                "draft_version": draft.version,
+                "source_id": draft.source["source_id"],
+                "account_fingerprint": draft.source["account_fingerprint"],
+                "envelope_digest": stable_digest(message),
+                "message": message,
+            }
+        else:
+            if app._email_smtp_config is not None:
+                raise ValueError("Select an actual source message to create a reviewed reply")
+            envelope = {
+                "format": "capdep.email.v1",
+                "draft_id": str(draft.id),
+                "draft_version": draft.version,
+                "message": {"to": draft.to, "subject": draft.subject, "body": draft.body},
+            }
+        payload = json.dumps(envelope, sort_keys=True)
+        _email_args(payload, draft.to)
+        request = await app.approval_queue.submit(
+            from_session=session_id,
+            action=ApprovalAction.SEND_EMAIL,
+            payload=payload,
+            target=draft.to,
+            labels_in=labels,
+            justification="Review exact saved draft; release only this message to this recipient",
+            rule="supervised-personal-mail-release",
+            allow_patterns=False,
+        )
+        return request.to_dict()
+
     return {
+        "email.source_list": email_source_list,
+        "email.reply_create": email_reply_create,
+        "email.draft_update": email_draft_update,
+        "email.operation_list": email_operation_list,
+        "email.operation_status": email_operation_status,
+        "email.operation_reconcile": email_operation_reconcile,
+        "email.draft_list": email_draft_list,
+        "email.draft_review": email_draft_review,
         "approval.list": approval_list,
         "approval.show": approval_show,
         "approval.submit": approval_submit,
@@ -375,7 +578,18 @@ async def _execute_declassified_email(
     payload: str,
     target: str,
     origin_session: UUID,
+    approval_id: int | None = None,
+    source_labels: LabelState | None = None,
 ) -> tuple[UUID, Any]:
+    args = _email_args(payload, target)
+    ref = _reviewed_draft_ref(payload)
+    if ref and "account_id" in args:
+        args.update(
+            _draft_id=ref[0],
+            _draft_version=ref[1],
+            _origin_session=str(origin_session),
+            _reviewed_labels=source_labels.to_dict() if source_labels else {},
+        )
     cap = Capability(
         kind=CapabilityKind.SEND_EMAIL,
         pattern=target,
@@ -391,17 +605,140 @@ async def _execute_declassified_email(
         granted.id,
         LabelState(b=frozenset({ProvenanceTag(ProvenanceLevel.PRINCIPAL_DIRECT)})),
     )
+    if approval_id is not None:
+        recorder = ProvenanceRecorder(app.audit)
+        node_id = f"reviewed_email_release:{purpose_session.id}"
+        await recorder.node(
+            session_id=origin_session,
+            node_id=node_id,
+            kind="reviewed_email_release",
+            label_state=source_labels,
+            metadata={
+                "approval_id": approval_id,
+                "envelope_digest": stable_digest(args),
+                "target": target,
+                "execution_session": str(purpose_session.id),
+            },
+        )
+        await recorder.edge(
+            session_id=origin_session,
+            from_node_id=approval_request_node_id(approval_id),
+            to_node_id=node_id,
+            kind="authorized_exact_release",
+        )
 
     outcome = await app.tool_client.call_tool(
         granted.id,
         "email.send",
-        {
-            "to": target,
-            "subject": "Approved declassified message",
-            "body": payload,
-        },
+        args,
         already_approved=True,
     )
 
     await app.graph.abort(granted.id)
     return granted.id, outcome
+
+
+def _email_args(payload: str, target: str) -> dict[str, Any]:
+    try:
+        envelope = json.loads(payload)
+    except json.JSONDecodeError:
+        envelope = None
+    if isinstance(envelope, dict) and envelope.get("format") == "capdep.email.v2":
+        args = envelope.get("message")
+        expected = {
+            "account_id",
+            "from_addr",
+            "to",
+            "subject",
+            "body",
+            "in_reply_to",
+            "references",
+            "message_id",
+        }
+        if (
+            not isinstance(args, dict)
+            or set(args) != expected
+            or not all(isinstance(v, str) for v in args.values())
+        ):
+            raise ValueError("Reviewed reply must contain the complete exact envelope")
+        if args["to"] != target or single_recipient(args["to"]) != target:
+            raise ValueError("Reviewed reply recipient does not match target")
+        if stable_digest(args) != envelope.get("envelope_digest"):
+            raise ValueError("Reviewed reply digest does not match")
+        if any(c in value for key, value in args.items() if key != "body" for c in "\r\n"):
+            raise ValueError("Invalid reply headers")
+        args = {**args, "account_fingerprint": str(envelope["account_fingerprint"])}
+    elif isinstance(envelope, dict) and envelope.get("format") in {
+        "capdep.email.v1",
+        "capdep.email.v2",
+    }:
+        args = envelope.get("message")
+        if not isinstance(args, dict) or set(args) != {"to", "subject", "body"}:
+            raise ValueError("Reviewed email must contain exactly to, subject and body")
+        if not all(isinstance(v, str) for v in args.values()) or args["to"] != target:
+            raise ValueError("Reviewed email recipient does not match approval target")
+    else:
+        # Existing explicit body-only approvals retain their historical meaning.
+        args = {"to": target, "subject": "Approved declassified message", "body": payload}
+    if not target or any(c in args["to"] + args["subject"] for c in "\r\n"):
+        raise ValueError("Invalid email recipient or subject")
+    return dict(args)
+
+
+def _reviewed_draft_ref(payload: str) -> tuple[str, int] | None:
+    try:
+        envelope = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    if (
+        isinstance(envelope, dict)
+        and envelope.get("format") in {"capdep.email.v1", "capdep.email.v2"}
+        and "draft_id" in envelope
+    ):
+        return str(envelope["draft_id"]), int(envelope["draft_version"])
+    return None
+
+
+def _validate_reviewed_draft(app: App, request: Any) -> None:
+    ref = _reviewed_draft_ref(request.payload)
+    if ref is None:
+        return
+    draft = app.email_drafts.get(UUID(ref[0]))
+    if draft is None or draft.session_id != request.from_session or draft.version != ref[1]:
+        raise ValueError("Reviewed draft changed or disappeared; request a fresh review")
+    args = _email_args(request.payload, request.target)
+    if draft.source:
+        envelope = json.loads(request.payload)
+        if envelope.get("source_id") != draft.source["source_id"]:
+            raise ValueError("Reviewed source does not match saved draft")
+        if app.email_sources.get(draft.source["source_id"], draft.session_id) is None:
+            raise ValueError("Reviewed source is unavailable")
+        config = app._email_smtp_config
+        if config is None or smtp_config_fingerprint(config) != draft.source["account_fingerprint"]:
+            raise ValueError("Sending account changed; request a fresh review")
+        source_session = app.graph.get(draft.session_id)
+        if source_session.status.value not in {"active", "waiting_approval"}:
+            raise ValueError("Source session is no longer active")
+        labels = label_join(source_session.label_state, draft.label_state)
+        if (
+            any(
+                tag.category != "personal" or is_above(tag.tier, Tier.REGULATED) for tag in labels.a
+            )
+            or labels != request.labels_in
+        ):
+            raise ValueError("Source labels changed; request a fresh review")
+        expected = {
+            "to": draft.to,
+            "subject": draft.subject,
+            "body": draft.body,
+            "account_id": draft.source["account_id"],
+            "from_addr": draft.source["from_addr"],
+            "in_reply_to": draft.source["in_reply_to"],
+            "references": draft.source["references"],
+            "message_id": f"<{draft.id}.v{draft.version}@capabledeputy.local>",
+            "account_fingerprint": draft.source["account_fingerprint"],
+        }
+    else:
+        expected = {"to": draft.to, "subject": draft.subject, "body": draft.body}
+    if args != expected:
+        raise ValueError("Reviewed draft content does not match saved draft")

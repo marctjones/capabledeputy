@@ -319,7 +319,7 @@ async def test_live_daemon_allows_tainted_inbox_draft_but_denies_send(tmp_path: 
         )
         await daemon.app.graph.grant_capability(
             session_id,
-            Capability(kind=CapabilityKind.CREATE_FS, pattern=recipient),
+            Capability(kind=CapabilityKind.CREATE_FS, pattern=f"local-email-drafts://{recipient}"),
         )
         await daemon.app.graph.grant_capability(
             session_id,

@@ -42,6 +42,12 @@ from __future__ import annotations
 # gate is declared, so "operator-only" is one checkable fact instead of
 # scattered convention.
 OPERATOR_ONLY_METHODS: dict[str, str] = {
+    "approval.approve": "only the operator may authorize a pending effect or release",
+    "approval.approve_group": "only the operator may authorize grouped effects or releases",
+    "email.operation_reconcile": "human confirmation of provider-verified unknown send outcome",
+    "email.reply_create": "human-selected source reply creation",
+    "email.draft_update": "human versioned draft editing",
+    "email.draft_review": "human-requested exact personal-mail release review",
     # session_handlers.py — explicit "the AI cannot invoke this" / "the AI
     # cannot self-shadow" / destructive-widening grant path.
     "operator.grant_capability": "may set allows_destructive=True with no origin restriction",

@@ -6,6 +6,7 @@ smtplib mocked. Real network is the manual-test concern.
 
 from __future__ import annotations
 
+import email
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -108,6 +109,7 @@ def _mock_imap_client():
     client = MagicMock()
     client.login.return_value = ("OK", [b"auth ok"])
     client.select.return_value = ("OK", [b"1"])
+    client.response.return_value = ("UIDVALIDITY", [b"12345"])
     client.logout.return_value = ("BYE", [b"bye"])
     return client
 
@@ -197,6 +199,63 @@ async def test_read_message_extracts_body(mock_imap_cfg) -> None:
     assert result["found"] is True
     assert "Hello, this is the body." in result["body"]
     assert result["from"] == "alice@example.com"
+    client.select.assert_called_once_with("INBOX", readonly=True)
+    client.uid.assert_called_once_with("FETCH", "100", "(BODY.PEEK[])")
+    assert result["body_present"] is True
+    assert result["body_truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_read_recent_fetches_search_ids_not_model_guesses(mock_imap_cfg) -> None:
+    client = _mock_imap_client()
+    raw = b"Subject: hi\r\nContent-Type: text/plain\r\n\r\nActual body"
+    client.uid.side_effect = lambda *args: (
+        ("OK", [b"100001 100099"]) if args[0] == "SEARCH" else ("OK", [(b"data", raw)])
+    )
+    with patch.object(imap, "_connect_imap", return_value=client):
+        result = await _handler("imap.read_recent")({"max_results": 2, "since_date": "2026-10-07"})
+    assert isinstance(result, dict)
+    messages = result["messages"]
+    assert isinstance(messages, list)
+    assert all(isinstance(message, dict) for message in messages)
+    assert [m["uid"] for m in messages] == ["100099", "100001"]
+    assert all(m["body"] == "Actual body" for m in messages)
+    assert result["complete"] is True
+    client.select.assert_called_once_with("INBOX", readonly=True)
+    assert client.uid.call_args_list[0].args == ("SEARCH", None, "SINCE", "07-Oct-2026")
+    assert all(c.args[2] == "(BODY.PEEK[])" for c in client.uid.call_args_list[1:])
+
+
+@pytest.mark.asyncio
+async def test_search_failure_is_not_an_empty_inbox(mock_imap_cfg) -> None:
+    client = _mock_imap_client()
+    client.uid.return_value = ("NO", [b"failure"])
+    with patch.object(imap, "_connect_imap", return_value=client):
+        result = await _handler("imap.read_recent")({})
+    assert isinstance(result, dict)
+    assert result["ok"] is False
+    assert result["error"] == "search_failed"
+
+
+@pytest.mark.asyncio
+async def test_stale_mailbox_reference_fails_before_fetch(mock_imap_cfg) -> None:
+    client = _mock_imap_client()
+    with patch.object(imap, "_connect_imap", return_value=client):
+        result = await _handler("imap.read_message")({"uid": "100", "uidvalidity": "old"})
+    assert isinstance(result, dict)
+    assert result["error"] == "stale_mailbox_reference"
+    client.uid.assert_not_called()
+
+
+def test_html_body_is_text_and_attachments_are_not_body() -> None:
+    msg = email.message_from_string(
+        'Content-Type: multipart/mixed; boundary="x"\n\n'
+        "--x\nContent-Type: text/plain\nContent-Disposition: attachment\n\nNot the body\n"
+        "--x\nContent-Type: text/html\n\n<p>Hello &amp; welcome</p><script>unsafe</script>\n--x--"
+    )
+    body = imap._extract_body(msg)
+    assert "Hello & welcome" in body
+    assert "Not the body" not in body and "unsafe" not in body
 
 
 @pytest.mark.asyncio

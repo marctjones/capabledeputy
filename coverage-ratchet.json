@@ -659,6 +659,14 @@
       "min_percent": 100.0,
       "statements": 67
     },
+    "tools.native.email-journal": {
+      "covered": 126,
+      "files": [
+        "src/capabledeputy/tools/native/email_journal.py"
+      ],
+      "min_percent": 100.0,
+      "statements": 126
+    },
     "tools.native.extract": {
       "covered": 23,
       "files": [
@@ -682,6 +690,14 @@
       ],
       "min_percent": 93.48,
       "statements": 46
+    },
+    "tools.native.mail-summary": {
+      "covered": 46,
+      "files": [
+        "src/capabledeputy/tools/native/mail_summary.py"
+      ],
+      "min_percent": 79.31,
+      "statements": 58
     },
     "tools.native.memory": {
       "covered": 181,

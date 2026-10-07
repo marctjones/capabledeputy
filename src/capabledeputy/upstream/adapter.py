@@ -394,6 +394,13 @@ class LabeledMcpAdapter:
 
             name = f"{self._config.name}.{upstream_tool.name}"
             override = self._config.tool_overrides.get(upstream_tool.name)
+            # Bounded body-fetch is a newly added source surface. Old operator
+            # configs must not admit it by name inference without source labels.
+            if upstream_tool.name == "imap.read_recent" and (
+                override is None or not override.additional_tags.a or not override.additional_tags.b
+            ):
+                self._rejected_tools.append(upstream_tool.name)
+                continue
 
             kind: CapabilityKind | str | None
             if override and override.capability_kind:

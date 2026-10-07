@@ -915,7 +915,7 @@ async def run_turn_streaming(
 
     visible_all = visible_tools(registry, session, mode, active_posture)
     visible_all = mail_tool_surface(registry, session, visible_all, user_message)
-    conversational = is_conversational_turn(user_message)
+    conversational = is_conversational_turn(user_message, purpose_handle=session.purpose_handle)
 
     families_cfg = tool_families or load_tool_families()
     selection_cfg = (

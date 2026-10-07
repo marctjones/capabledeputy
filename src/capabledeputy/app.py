@@ -25,7 +25,8 @@ from capabledeputy.session.store import SessionStore
 from capabledeputy.tools.client import LabeledToolClient
 from capabledeputy.tools.native.calendar import CalendarStore, make_calendar_tools
 from capabledeputy.tools.native.chart import make_chart_tools
-from capabledeputy.tools.native.email import DraftBox, EmailOutbox, make_email_tools
+from capabledeputy.tools.native.email import DraftBox, EmailOutbox, EmailSourceBox, make_email_tools
+from capabledeputy.tools.native.email_delivery import SmtpConfig
 from capabledeputy.tools.native.extract import make_extract_tools
 from capabledeputy.tools.native.fs import make_fs_tools
 from capabledeputy.tools.native.inbox import Inbox, make_inbox_tools
@@ -54,11 +55,13 @@ class App:
         resources: StaticResourcePublisher | None = None,
         fs_labeler: Any = None,
         purchase_reversibility_policy: PurchaseReversibilityPolicy | None = None,
+        email_smtp_config: SmtpConfig | None = None,
     ) -> None:
         # Issue #5 — dynamic filesystem labeling. When provided (loaded
         # from configs/fs_label_rules.yaml), fs reads attach Axis-A
         # category labels so local-file data participates in IFC.
         self._fs_labeler = fs_labeler
+        self._email_smtp_config = email_smtp_config
         # When provided (loaded from configs/purchase_reversibility.yaml),
         # purchase.queue resolves a per-call reversibility override from
         # the operator's declared vendor allowlist instead of always
@@ -100,7 +103,12 @@ class App:
         self.memory = LabeledMemoryStore(resolved_state_db_path)
         self.purchase_queue = PurchaseQueue()
         self.email_outbox = EmailOutbox()
-        self.email_drafts = DraftBox()
+        self.email_drafts = DraftBox(resolved_state_db_path)
+        self.email_sources = EmailSourceBox(resolved_state_db_path)
+        from capabledeputy.tools.native.email_journal import EmailOperationJournal
+
+        self.email_operations: EmailOperationJournal | None = None
+        self._email_state_db_path = resolved_state_db_path
         self.calendar = CalendarStore()
         self.inbox = Inbox()
         self.web = WebMock()
@@ -116,7 +124,13 @@ class App:
         # validate at approve-time that the capability_requested is
         # not cascaded-inert. Without the graph, the queue still
         # works but skips cascade invalidation (back-compat).
-        self.approval_queue = ApprovalQueue(audit=self.audit, graph=self.graph)
+        self.approval_queue = ApprovalQueue(
+            audit=self.audit,
+            graph=self.graph,
+            id_store_path=resolved_state_db_path.with_name(
+                resolved_state_db_path.name + ".approval-ids.sqlite3"
+            ),
+        )
         self.registry = ToolRegistry()
         self.policy_context = policy_context
         self.purposes = purposes
@@ -170,7 +184,18 @@ class App:
             reversibility_policy=self._purchase_reversibility_policy,
         ):
             self.registry.register(tool)
-        for tool in make_email_tools(self.email_outbox, self.email_drafts):
+        for tool in make_email_tools(
+            self.email_outbox,
+            self.email_drafts,
+            self._email_smtp_config,
+            self.email_sources,
+            lambda: self.email_operations,
+            self.graph.get,
+        ):
+            self.registry.register(tool)
+        from capabledeputy.tools.native.mail_summary import make_mail_summary_tools
+
+        for tool in make_mail_summary_tools(self):
             self.registry.register(tool)
         for tool in make_calendar_tools(self.calendar):
             self.registry.register(tool)
@@ -245,6 +270,10 @@ class App:
         await self.onguard.initialize()
         await self.mcp_admissions.initialize()
         await self.graph.load()
+        from capabledeputy.tools.native.email_journal import EmailOperationJournal
+
+        self.email_operations = EmailOperationJournal(self._email_state_db_path)
+        self.email_operations.recover_submitting()
         self._maybe_start_devbox_reaper()
         # #323 — a structured "up" line so an operator/log processor can see the
         # daemon started (and how much state it rehydrated) without the audit log.
@@ -376,3 +405,7 @@ class App:
                     f"[devbox] shutdown reaped {total} live container(s)",
                     file=sys.stderr,
                 )
+
+        if self.email_operations is not None:
+            self.email_operations.close()
+            self.email_operations = None

@@ -289,15 +289,18 @@ def filter_tools_for_mode(
          posture can re-expose a raw reader in an exposure-limited mode (the
          #302 CaMeL invariant is a floor).
     """
+    mail_body_readers = {
+        t.name for t in tools if t.name.endswith((".imap.read_recent", ".imap.read_message"))
+    }
     if planner_projection_only(posture):
-        tools = [t for t in tools if t.name not in UNTRUSTED_SOURCE_RAW_READERS]
+        tools = [t for t in tools if t.name not in UNTRUSTED_SOURCE_RAW_READERS | mail_body_readers]
     if mode not in {
         ExecutionMode.DUAL_LLM,
         ExecutionMode.REFERENCE,
         ExecutionMode.SEALED,
     }:
         return tools
-    hidden = _RAW_LABELED_DATA_TOOLS | UNTRUSTED_SOURCE_RAW_READERS
+    hidden = _RAW_LABELED_DATA_TOOLS | UNTRUSTED_SOURCE_RAW_READERS | mail_body_readers
     return [t for t in tools if t.name not in hidden]
 
 

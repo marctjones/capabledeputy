@@ -780,6 +780,8 @@ async def run_daemon(
         _resolve_v09_configs_dir() / "purchase_reversibility.yaml",
     )
 
+    from capabledeputy.tools.native.email_delivery import load_operator_smtp_config
+
     app = App(
         state_db_path=state_db_path,
         audit_log_path=audit_log_path,
@@ -792,6 +794,7 @@ async def run_daemon(
         purposes=purposes_registry,
         fs_labeler=fs_labeler,
         purchase_reversibility_policy=purchase_reversibility_policy,
+        email_smtp_config=load_operator_smtp_config(),
     )
     await app.startup()
 

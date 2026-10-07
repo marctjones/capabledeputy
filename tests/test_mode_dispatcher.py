@@ -91,6 +91,15 @@ def test_no_confidential_labels_picks_turn_level() -> None:
     assert "no confidential" in reason
 
 
+def test_real_mail_bodies_stay_off_projection_only_planner_surface() -> None:
+    registry = _make_registry(
+        "account.imap.read_recent", "account.imap.read_message", "quarantined.summarize_mail"
+    )
+    for mode in (ExecutionMode.TURN_LEVEL, ExecutionMode.DUAL_LLM):
+        names = {t.name for t in filter_tools_for_mode(registry.list(), mode)}
+        assert names == {"quarantined.summarize_mail"}
+
+
 def test_confidential_with_quarantined_picks_dual_llm() -> None:
     registry = _make_registry("memory.read", "quarantined.extract")
     mode, _ = select_mode(

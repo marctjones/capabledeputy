@@ -484,6 +484,9 @@ IMAP_BLOCK_BODY = """\
       # Issue #33 — IMAP read tools use IMAP_READ kind, not READ_FS.
       # Operators with legacy `/grant READ_FS *` keep working
       # (back-compat union); new grants should be `IMAP_READ *`.
+      "imap.read_recent":
+        capability_kind: IMAP_READ
+        additional_labels: ["confidential.personal", "untrusted.user_input"]
       "imap.list_threads":
         capability_kind: IMAP_READ
         additional_labels: ["confidential.personal", "untrusted.user_input"]

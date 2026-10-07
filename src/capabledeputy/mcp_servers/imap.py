@@ -37,8 +37,11 @@ import email.utils
 import imaplib
 import smtplib
 import ssl
+from datetime import date
+from email.header import decode_header, make_header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from html.parser import HTMLParser
 from typing import Any
 
 from capabledeputy.mcp_servers._common import ToolDescriptor, serve_tools
@@ -66,7 +69,52 @@ def _is_gmail(host: str) -> bool:
 def _parse_addresses(header: str | None) -> str:
     if not header:
         return ""
-    return str(header)
+    return str(make_header(decode_header(str(header))))
+
+
+def _select_readonly(client: imaplib.IMAP4_SSL, folder: str) -> str | None:
+    typ, _ = client.select(folder, readonly=True)
+    if typ != "OK":
+        raise ValueError("IMAP mailbox selection failed")
+    _, values = client.response("UIDVALIDITY")
+    if values and isinstance(values[0], bytes):
+        return values[0].decode("ascii")
+    return None
+
+
+def _fetch_message(
+    client: imaplib.IMAP4_SSL,
+    uid: str,
+    folder: str,
+    body_limit: int = 8192,
+) -> dict[str, Any]:
+    typ, data = client.uid("FETCH", uid, "(BODY.PEEK[])")
+    base: dict[str, Any] = {"uid": uid, "folder": folder, "found": False}
+    if typ != "OK":
+        return {**base, "ok": False, "error": "fetch_failed"}
+    for item in data or []:
+        if not isinstance(item, tuple) or len(item) < 2 or not isinstance(item[1], bytes):
+            continue
+        msg = email.message_from_bytes(item[1])
+        body = _extract_body(msg)
+        return {
+            **base,
+            "ok": True,
+            "found": True,
+            "from": _parse_addresses(msg.get("From")),
+            "reply_to": _parse_addresses(msg.get("Reply-To")),
+            "to": _parse_addresses(msg.get("To")),
+            "cc": _parse_addresses(msg.get("Cc")),
+            "subject": _parse_addresses(msg.get("Subject")),
+            "date": msg.get("Date", ""),
+            "message_id": msg.get("Message-ID", ""),
+            "in_reply_to": msg.get("In-Reply-To", ""),
+            "references": msg.get("References", ""),
+            "body": body[:body_limit],
+            "body_present": bool(body.strip()),
+            "body_truncated": len(body) > body_limit,
+        }
+    return {**base, "ok": True, "error": "message_not_found"}
 
 
 # ---------- imap.list_threads ----------
@@ -76,11 +124,20 @@ async def _list_threads(args: dict[str, Any]) -> dict[str, Any]:
     folder = str(args.get("folder", "INBOX"))
     query = str(args.get("query", ""))
     max_results = int(args.get("max_results", 20))
+    if not 1 <= max_results <= 100:
+        raise ValueError("max_results must be between 1 and 100")
+    since = args.get("since_date")
+    since_term = date.fromisoformat(str(since)).strftime("%d-%b-%Y") if since else None
+    include_body = bool(args.get("include_body", False))
     client = _connect_imap()
     try:
-        client.select(folder)
+        uidvalidity = _select_readonly(client, folder)
         is_gmail = _is_gmail(load_config().imap.host)
-        if query and is_gmail:
+        if since_term and query:
+            raise ValueError("Use either since_date or query, not both")
+        if since_term:
+            typ, data = client.uid("SEARCH", None, "SINCE", since_term)  # type: ignore[arg-type]
+        elif query and is_gmail:
             # Gmail X-GM-RAW lets us use Gmail's search syntax verbatim
             typ, data = client.uid("SEARCH", "X-GM-RAW", f'"{query}"')
         elif query:
@@ -90,19 +147,37 @@ async def _list_threads(args: dict[str, Any]) -> dict[str, Any]:
         else:
             typ, data = client.uid("SEARCH", None, "ALL")  # type: ignore[arg-type]
         if typ != "OK":
-            return {"folder": folder, "query": query, "count": 0, "messages": []}
+            return {
+                "ok": False,
+                "error": "search_failed",
+                "folder": folder,
+                "query": query,
+                "count": 0,
+                "messages": [],
+            }
         uids = data[0].split() if data and data[0] else []
         # Most recent first
+        matched_count = len(uids)
         uids = list(reversed(uids))[:max_results]
         messages = []
+        failures = []
         for uid_bytes in uids:
             uid = uid_bytes.decode("ascii")
+            if include_body:
+                result = _fetch_message(client, uid, folder, min(8192, 16384 // len(uids)))
+                result["uidvalidity"] = uidvalidity
+                if not result["found"] or not result["ok"]:
+                    failures.append(result)
+                else:
+                    messages.append(result)
+                continue
             typ, hdr_data = client.uid(
                 "FETCH",
                 uid,
                 "(BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)])",
             )
             if typ != "OK" or not hdr_data:
+                failures.append({"uid": uid, "error": "header_fetch_failed"})
                 continue
             for item in hdr_data:
                 if not isinstance(item, tuple) or len(item) < 2:
@@ -113,14 +188,25 @@ async def _list_threads(args: dict[str, Any]) -> dict[str, Any]:
                     messages.append(
                         {
                             "uid": uid,
+                            "folder": folder,
+                            "uidvalidity": uidvalidity,
                             "from": _parse_addresses(msg.get("From")),
                             "to": _parse_addresses(msg.get("To")),
-                            "subject": msg.get("Subject", ""),
+                            "subject": _parse_addresses(msg.get("Subject")),
                             "date": msg.get("Date", ""),
                             "message_id": msg.get("Message-ID", ""),
                         },
                     )
         return {
+            "ok": not failures,
+            "complete": not failures and matched_count <= max_results,
+            "matched_count": matched_count,
+            "requested_count": len(uids),
+            "failed_count": len(failures),
+            "failures": failures,
+            "limit_reached": matched_count > max_results,
+            "bodies_included": include_body,
+            "uidvalidity": uidvalidity,
             "folder": folder,
             "query": query,
             "count": len(messages),
@@ -136,70 +222,72 @@ async def _list_threads(args: dict[str, Any]) -> dict[str, Any]:
 
 async def _read_message(args: dict[str, Any]) -> dict[str, Any]:
     uid = str(args["uid"])
+    if not uid.isascii() or not uid.isdigit() or int(uid) < 1:
+        raise ValueError("uid must be a positive numeric message UID")
     folder = str(args.get("folder", "INBOX"))
     client = _connect_imap()
     try:
-        client.select(folder)
-        typ, data = client.uid("FETCH", uid, "(RFC822)")
-        if typ != "OK" or not data:
-            return {"found": False, "uid": uid, "folder": folder}
-        for item in data:
-            if not isinstance(item, tuple) or len(item) < 2:
-                continue
-            raw = item[1]
-            if not isinstance(raw, bytes):
-                continue
-            msg = email.message_from_bytes(raw)
-            body = _extract_body(msg)
-            return {
-                "found": True,
-                "uid": uid,
-                "folder": folder,
-                "from": _parse_addresses(msg.get("From")),
-                "to": _parse_addresses(msg.get("To")),
-                "cc": _parse_addresses(msg.get("Cc")),
-                "subject": msg.get("Subject", ""),
-                "date": msg.get("Date", ""),
-                "message_id": msg.get("Message-ID", ""),
-                "body": body[:8192],
-            }
-        return {"found": False, "uid": uid, "folder": folder}
+        uidvalidity = _select_readonly(client, folder)
+        if args.get("uidvalidity") is not None and str(args["uidvalidity"]) != uidvalidity:
+            return {"ok": False, "found": False, "error": "stale_mailbox_reference"}
+        return {**_fetch_message(client, uid, folder), "uidvalidity": uidvalidity}
     finally:
         with contextlib.suppress(Exception):
             client.logout()
 
 
+class _HTMLText(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+        self.hidden = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style"}:
+            self.hidden += 1
+        elif tag in {"br", "p", "div", "li"}:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style"}:
+            self.hidden = max(0, self.hidden - 1)
+
+    def handle_data(self, data: str) -> None:
+        if not self.hidden:
+            self.parts.append(data)
+
+
 def _extract_body(msg: email.message.Message) -> str:
-    if msg.is_multipart():
-        for part in msg.walk():
-            ctype = part.get_content_type()
-            if ctype == "text/plain":
-                try:
-                    payload = part.get_payload(decode=True)
-                    if isinstance(payload, bytes):
-                        charset = part.get_content_charset() or "utf-8"
-                        return payload.decode(charset, errors="replace")
-                except Exception:
-                    continue
-        # Fallback to first text/* if no text/plain
-        for part in msg.walk():
-            if part.get_content_maintype() == "text":
-                try:
-                    payload = part.get_payload(decode=True)
-                    if isinstance(payload, bytes):
-                        charset = part.get_content_charset() or "utf-8"
-                        return payload.decode(charset, errors="replace")
-                except Exception:
-                    continue
-        return ""
-    try:
-        payload = msg.get_payload(decode=True)
-        if isinstance(payload, bytes):
-            charset = msg.get_content_charset() or "utf-8"
-            return payload.decode(charset, errors="replace")
-        return str(payload or "")
-    except Exception:
-        return ""
+    parts = [
+        p
+        for p in msg.walk()
+        if p.get_content_disposition() != "attachment"
+        and p.get_content_type() in {"text/plain", "text/html"}
+    ]
+    parts.sort(key=lambda p: p.get_content_type() != "text/plain")
+    for part in parts:
+        payload = part.get_payload(decode=True)
+        if not isinstance(payload, bytes):
+            continue
+        try:
+            text = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        except LookupError:
+            text = payload.decode("utf-8", errors="replace")
+        if part.get_content_type() == "text/html":
+            parser = _HTMLText()
+            parser.feed(text)
+            text = "".join(parser.parts)
+        if text.strip():
+            return text
+    return ""
+
+
+async def _read_recent(args: dict[str, Any]) -> dict[str, Any]:
+    """One bounded read operation; message IDs come from SEARCH, never the model."""
+    limit = int(args.get("max_results", 10))
+    if not 1 <= limit <= 20:
+        raise ValueError("read_recent max_results must be between 1 and 20")
+    return await _list_threads({**args, "max_results": limit, "include_body": True})
 
 
 # ---------- imap.search ----------
@@ -342,6 +430,28 @@ async def _archive(args: dict[str, Any]) -> dict[str, Any]:
 def tools() -> list[ToolDescriptor]:
     return [
         ToolDescriptor(
+            name="imap.read_recent",
+            description=(
+                "Read and summarize real email: searches then fetches actual message bodies "
+                "without guessing UIDs or marking messages seen. Use this for recent/today's "
+                "email summaries instead of listing headers then inventing IDs. "
+                "since_date is inclusive YYYY-MM-DD in the mailbox's date semantics; "
+                "use either since_date or provider search query. Report incomplete coverage, "
+                "failed reads, empty bodies and body_truncated; never treat them as success."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "folder": {"type": "string", "default": "INBOX"},
+                    "query": {"type": "string"},
+                    "since_date": {"type": "string", "format": "date"},
+                    "max_results": {"type": "integer", "minimum": 1, "maximum": 20},
+                },
+            },
+            handler=_read_recent,
+            annotations={"read_only_hint": True, "open_world_hint": True, "idempotent_hint": True},
+        ),
+        ToolDescriptor(
             name="imap.list_threads",
             description=(
                 "List messages in an IMAP folder, optionally filtered by a "
@@ -368,6 +478,7 @@ def tools() -> list[ToolDescriptor]:
                 "properties": {
                     "uid": {"type": "string"},
                     "folder": {"type": "string", "default": "INBOX"},
+                    "uidvalidity": {"type": "string"},
                 },
                 "required": ["uid"],
             },
