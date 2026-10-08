@@ -31,6 +31,7 @@ class ApprovalStatus(StrEnum):
     DENIED = "denied"
     DEFERRED = "deferred"
     EXPIRED = "expired"
+    SUPERSEDED = "superseded"
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,35 @@ class ApprovalRequest:
     # vs "this matches the rule you wrote — proceed?"). None when the
     # caller didn't supply a rule (legacy / out-of-band approvals).
     rule: str | None = None
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> ApprovalRequest:
+        """Read a daemon-owned review record; malformed records fail closed."""
+        return cls(
+            id=int(raw["id"]),
+            audit_id=UUID(raw["audit_id"]),
+            from_session=UUID(raw["from_session"]),
+            action=ApprovalAction(raw["action"]),
+            payload=raw["payload"],
+            target=raw["target"],
+            labels_in=LabelState.from_dict(raw["labels_in"]),
+            labels_out=LabelState.from_dict(raw["labels_out"]),
+            capability_requested=(
+                Capability.from_dict(raw["capability_requested"])
+                if raw["capability_requested"]
+                else None
+            ),
+            justification=raw["justification"],
+            requested_at=datetime.fromisoformat(raw["requested_at"]),
+            status=ApprovalStatus(raw["status"]),
+            to_session=UUID(raw["to_session"]) if raw.get("to_session") else None,
+            decision_at=datetime.fromisoformat(raw["decision_at"]) if raw["decision_at"] else None,
+            decided_by=raw["decided_by"],
+            decision_scope=raw["decision_scope"],
+            sibling_group_id=UUID(raw["sibling_group_id"]) if raw["sibling_group_id"] else None,
+            expires_at=datetime.fromisoformat(raw["expires_at"]) if raw["expires_at"] else None,
+            rule=raw["rule"],
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {

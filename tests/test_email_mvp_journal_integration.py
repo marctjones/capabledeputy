@@ -19,10 +19,21 @@ async def test_concurrent_distinct_approvals_submit_once(tmp_path, monkeypatch):
     async with email_daemon(tmp_path, monkeypatch) as (client, app, paths, transport):
         session_id, _ = await summarize(client)
         draft = await create_reply(client, session_id)
-        first, second = (
-            await review(client, session_id, draft),
-            await review(client, session_id, draft),
-        )
+        first = await review(client, session_id, draft)
+        request = app.approval_queue.get(first["id"])
+        # Normal reopen reuses a review now. Explicitly construct a second
+        # valid request to keep exercising distinct-request journal deduplication.
+        second = (
+            await app.approval_queue.submit(
+                from_session=request.from_session,
+                action=request.action,
+                payload=request.payload,
+                target=request.target,
+                labels_in=request.labels_in,
+                justification=request.justification,
+                allow_patterns=False,
+            )
+        ).to_dict()
         entered, release = threading.Event(), threading.Event()
 
         def held_delivery(**args):

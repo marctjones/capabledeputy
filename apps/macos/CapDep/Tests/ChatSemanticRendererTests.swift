@@ -60,6 +60,8 @@ extension ChatSemanticRendererTests {
             _ = NSApplication.shared
             for (width, size, dark) in [(380.0, 14.0, false), (900.0, 14.0, true), (380.0, 22.0, false), (900.0, 22.0, true)] {
                 let text = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 1200))
+                text.isEditable = false
+                text.isSelectable = true
                 text.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
                 text.backgroundColor = .textBackgroundColor
                 text.textContainer?.containerSize = NSSize(width: width - 12, height: .greatestFiniteMagnitude)
@@ -76,7 +78,8 @@ extension ChatSemanticRendererTests {
                 text.setSelectedRange(selected)
                 let pasteboard = NSPasteboard.withUniqueName()
                 defer { pasteboard.releaseGlobally() }
-                XCTAssertTrue(text.writeSelection(to: pasteboard, type: .string))
+                XCTAssertEqual(text.selectedRange(), selected)
+                XCTAssertTrue(text.writeSelection(to: pasteboard, types: text.writablePasteboardTypes))
                 XCTAssertEqual(pasteboard.string(forType: .string), string.substring(with: selected))
                 if let evidence = ProcessInfo.processInfo.environment["CAPDEP_NATIVE_RENDER_EVIDENCE"] {
                     text.setSelectedRange(NSRange(location: 0, length: 0))

@@ -430,49 +430,63 @@ def execute(args, parser):
         steps.append("selected source and saved edited subject/body through native controls")
         gui.click("capdep.email.review")
         gui.wait("capdep.email.review-envelope")
-        reviewed = gui.element("capdep.email.review-envelope")
+        reviewed = gui.snapshot("03-exact-review")
         assert SUBJECT in reviewed and BODY in reviewed, reviewed
-        assert "Account:" in reviewed and "From:" in reviewed and "To:" in reviewed
-        gui.snapshot("03-exact-review")
-        steps.append("exact reviewed account/recipient/subject/body visible")
+        assert "owner@email-mvp.invalid" in reviewed and "alice@email-mvp.invalid" in reviewed
+        assert "Window: Approval" not in reviewed, reviewed
+        assert gui.element("capdep.task-review.body") == BODY
+        steps.append("exact account/recipient/content reviewed inside original task window")
         evidence_path = state / "evidence.json"
-        for decision in ("defer", "deny"):
-            gui.click("capdep.email." + decision)
-            assert json.loads(evidence_path.read_text())["smtp_attempt_count"] == 0
-            gui.click("capdep.email.open")
-            gui.click("capdep.email.draft.", prefix=True)
-            gui.click("capdep.email.review")
-            gui.wait("capdep.email.review-envelope")
-            assert gui.element("capdep.email.review-envelope") == reviewed
-            steps.append(f"native {decision} made no SMTP submission; fresh exact review reopened")
+        gui.click("capdep.task-review.back")
+        gui.wait("capdep.task-review.open.", prefix=True)
+        assert json.loads(evidence_path.read_text())["smtp_attempt_count"] == 0
+        gui.click("capdep.task-review.open.", prefix=True)
+        gui.wait("capdep.task-review.edit")
+        gui.click("capdep.task-review.edit")
+        gui.fill("capdep.task-review.body-editor", BODY + "\nReviewed again.")
+        gui.click("capdep.task-review.save")
+        gui.wait_value("capdep.task-review.body", BODY + "\nReviewed again.")
+        gui.wait_text("Changed since the previous review: body.", name="03-changed-fields")
+        steps.append(
+            "back kept consent pending; editing superseded it and produced a fresh exact review"
+        )
+        gui.click("capdep.email.deny")
+        gui.wait_text("You chose not to send this reply", name="03-declined")
+        assert json.loads(evidence_path.read_text())["smtp_attempt_count"] == 0
+        gui.click("capdep.task-review.fresh")
+        gui.wait_value("capdep.task-review.body", BODY + "\nReviewed again.")
         gui.click("capdep.email.approve")
         evidence = wait_json(evidence_path, lambda data: data.get("smtp_attempt_count", 0) == 1)
-        steps.append("one explicit native approval reached fake SMTP exactly once")
-        gui.click("capdep.email.open")
-        gui.wait("capdep.email.reload")
         expected_status = {
-            "accepted": "SMTP accepted",
-            "failed_before_submission": "Failed before submission",
-            "outcome_unknown": "Outcome unknown",
+            "accepted": "Accepted by your mail service",
+            "failed_before_submission": "Not sent",
+            "outcome_unknown": "Send outcome unknown",
         }[args.smtp_outcome]
-        gui.wait_text(expected_status, name="04-send-history")
+        gui.wait_text(expected_status, name="04-task-receipt")
+        steps.append(
+            "one deliberate task review submitted exactly once and kept its result in place"
+        )
         attempt = evidence["smtp_attempts"][0]
         assert attempt["to"] == "alice@email-mvp.invalid", attempt
         assert attempt["from_addr"] == "owner@email-mvp.invalid", attempt
-        assert attempt["subject"] == SUBJECT and attempt["body"] == BODY, attempt
+        assert attempt["subject"] == SUBJECT and attempt["body"] == BODY + "\nReviewed again.", (
+            attempt
+        )
         assert attempt["in_reply_to"] == "<agenda@email-mvp.invalid>", attempt
-        gui.click("capdep.email.done")
+        gui.click("capdep.task-review.back")
+        gui.wait_text(expected_status, name="04-conversation-receipt")
         daemon.terminate()
         daemon.wait(timeout=15)
         daemon = start_daemon()
         wait_daemon(socket_path, daemon)
-        gui.click("capdep.email.open")
-        gui.click("capdep.email.reload")
-        gui.wait_text(expected_status, name="05-recovered-history")
+        gui.wait_text(expected_status, name="05-recovered-task-receipt")
         evidence = json.loads(evidence_path.read_text())
         assert evidence.get("smtp_attempt_count") == 1, evidence
-        steps.append("daemon restart retained visible receipt with no duplicate send")
+        steps.append("daemon restart retained task receipt without another send")
         if args.smtp_outcome == "outcome_unknown":
+            # Existing explicit provider-evidence surface remains covered while
+            # the task review renders the same authoritative reconciled result.
+            gui.click("capdep.email.open")
             gui.click("capdep.email.reconcile.", prefix=True)
             gui.wait("capdep.email.reconciliation.identity")
             identity = gui.element("capdep.email.reconciliation.identity")
@@ -490,10 +504,10 @@ def execute(args, parser):
             gui.click("capdep.email.reconciliation.record")
             gui.wait_text("Operator verification: smtp accepted", name="06-provider-verification")
             assert json.loads(evidence_path.read_text())["smtp_attempt_count"] == 1
-            steps.append(
-                "explicit provider verification retained unknown submission history without retry"
-            )
-        gui.click("capdep.email.done")
+            gui.click("capdep.email.done")
+            expected_status = "Accepted by your mail service"
+            gui.wait_text(expected_status, name="06-reconciled-task-receipt")
+            steps.append("provider reconciliation updated original task without retry")
         gui.fill("capdep.chat.input", "Show the Markdown rendering fixture.")
         gui.click("capdep.chat.send")
         rendered = gui.wait_text("Second ordered item", name="07-readable-transcript")
@@ -550,7 +564,6 @@ def execute(args, parser):
         gui = GUI(app_pid, artifacts)
         gui.background_checks = previous_checks
         gui.wait_text("Second ordered item", name="08-app-reopened-transcript")
-        gui.click("capdep.email.open")
         gui.wait_text(expected_status, name="09-app-reopened-receipt")
         assert json.loads(evidence_path.read_text())["smtp_attempt_count"] == 1
         steps.append(

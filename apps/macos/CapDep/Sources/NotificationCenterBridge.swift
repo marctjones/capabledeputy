@@ -69,8 +69,8 @@ final class NotificationCenterBridge {
         let content = UNMutableNotificationContent()
         content.title = "CapDep approval needed"
         content.body = count == 1
-            ? "Approval #\(approvalID) is waiting for review."
-            : "\(count) actions are waiting for review. Open approval #\(approvalID)."
+            ? "An action is ready for your review. Open its conversation to continue."
+            : "\(count) actions are ready for review."
         content.sound = .default
         content.userInfo = ["approval_id": approvalID]
         content.categoryIdentifier = ApprovalNotification.category

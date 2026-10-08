@@ -7,6 +7,7 @@ from capabledeputy.app import App
 from capabledeputy.approval.model import ApprovalAction
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.daemon.security_context_handlers import make_security_context_handlers
+from capabledeputy.policy.capabilities import Capability, CapabilityKind
 from capabledeputy.policy.labels import tags_for_labels_strings
 from capabledeputy.upstream.manager import UpstreamServerStatus
 
@@ -43,7 +44,10 @@ async def test_session_security_context_materializes_daemon_security_state(
         )
         await app.graph.add_tags(
             session.id,
-            tags_for_labels_strings(frozenset({"untrusted.external"})),
+            tags_for_labels_strings(frozenset({"untrusted.external", "confidential.personal"})),
+        )
+        await app.graph.grant_capability(
+            session.id, Capability(kind=CapabilityKind.READ_FS, pattern="/documents/*")
         )
         await app.approval_queue.submit(
             from_session=session.id,
@@ -100,6 +104,19 @@ async def test_session_security_context_materializes_daemon_security_state(
         assert ctx["schema_version"] == 1
         assert ctx["session"]["id"] == str(session.id)
         assert ctx["session"]["purpose_handle"] == "personal_assistant"
+        assert ctx["posture_summary"]["external_untrusted"] is True
+        assert ctx["posture_summary"]["sensitive_categories"] == ["personal"]
+        assert "READ_FS" in ctx["posture_summary"]["grant_kinds"]
+        assert "not permission" in ctx["posture_summary"]["authorization_notice"]
+        assert ctx["saved_state"]["history_turn_count"] == 0
+        assert ctx["saved_state"]["reference_handle_keys"] == []
+        assert any(t["name"] == "web.fetch" for t in ctx["available_tools"])
+        assert all("kind_grant_present" in t for t in ctx["available_tools"])
+        assert all(
+            t["kind_grant_present"]
+            == (t["capability_kind"] in ctx["posture_summary"]["grant_kinds"])
+            for t in ctx["available_tools"]
+        )
         assert ctx["origin"]["kind"] == "onguard_queued_command"
         assert "untrusted.external" in ctx["labels"]["legacy_label_set"]
         propagation = ctx["labels"]["propagation"]
@@ -184,7 +201,7 @@ async def test_session_security_context_pages_provenance_without_losing_counts(
                     event_type=EventType.PROVENANCE_NODE,
                     session_id=session.id,
                     payload={
-                            "node_id": f"node-{index:04}",
+                        "node_id": f"node-{index:04}",
                         "kind": "tool" if index % 2 else "source",
                         "materialized_id": f"materialized-{index}",
                     },

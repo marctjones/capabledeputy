@@ -14,7 +14,9 @@ from uuid import UUID
 from capabledeputy.app import App
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.daemon.handlers import Handler
+from capabledeputy.policy.capabilities import kind_name
 from capabledeputy.policy.labels import legacy_labels_present
+from capabledeputy.policy.tiers import Tier
 
 
 def make_security_context_handlers(app: App) -> dict[str, Handler]:
@@ -40,9 +42,40 @@ def make_security_context_handlers(app: App) -> dict[str, Handler]:
         onguard = await _onguard(app, origin)
         external_actors = _external_actors(app, scoped_events, origin)
         label_set = legacy_labels_present(session.label_state)
+        grant_kinds = sorted({kind_name(cap.kind) for cap in session.capability_set})
 
         return {
             "schema_version": 1,
+            # Presentation facts, NOT authorization predictions. A kind-level
+            # grant does not establish target, purpose, expiry or rate validity.
+            "posture_summary": {
+                "grant_kinds": grant_kinds,
+                "sensitive_categories": sorted(
+                    tag.category for tag in session.label_state.a if tag.tier != Tier.NONE
+                ),
+                "external_untrusted": any(
+                    tag.level.value == "external-untrusted" for tag in session.label_state.b
+                ),
+                "authorization_notice": (
+                    "Grants and registered tools are not permission for a specific action. "
+                    "The daemon evaluates target, purpose, labels, expiry "
+                    "and prior use at dispatch."
+                ),
+            },
+            "available_tools": [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "capability_kind": kind_name(tool.capability_kind),
+                    "kind_grant_present": kind_name(tool.capability_kind) in grant_kinds,
+                }
+                for tool in app.registry.list()
+            ],
+            "saved_state": {
+                "reference_handle_keys": sorted(session.reference_handles),
+                "declassification_count": len(session.declassification_log),
+                "history_turn_count": len(session.history),
+            },
             "session": {
                 "id": str(session.id),
                 "parent": str(session.parent) if session.parent else None,

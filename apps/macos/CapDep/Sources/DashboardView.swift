@@ -165,7 +165,11 @@ private struct ApprovalQueueView: View {
         }
         .overlay {
             if let approval = selectedApproval {
-                ApprovalDetailView(approval: approval)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(approval.actionTitle).font(.title2)
+                    Button("Review in conversation") { model.presentApproval(id: approval.id) }
+                    Button("Back to approvals") { selectedApproval = nil }
+                }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .background(.background)
             }
         }

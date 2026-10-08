@@ -13,6 +13,8 @@ struct EmailReviewPresentation {
     let references: String
     let sourceID: String
     let version: Int?
+    let draftID: String
+    let isBound: Bool
 
     init?(payload: String) {
         guard let data = payload.data(using: .utf8),
@@ -31,6 +33,16 @@ struct EmailReviewPresentation {
         references = (message["references"] as? [String])?.joined(separator: " ") ?? message["references"] as? String ?? ""
         sourceID = raw["source_id"] as? String ?? ""
         version = raw["draft_version"] as? Int
+        draftID = raw["draft_id"] as? String ?? ""
+        isBound = format == "capdep.email.v2" && !draftID.isEmpty && version != nil
+            && Set(message.keys) == Set(["account_id", "from_addr", "to", "subject", "body", "in_reply_to", "references", "message_id"])
+            && message.values.allSatisfy { $0 is String }
+            && !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !(message["account_id"] as? String ?? "").isEmpty
+            && !(message["from_addr"] as? String ?? "").isEmpty
+            && !(raw["source_id"] as? String ?? "").isEmpty
+            && !(raw["account_fingerprint"] as? String ?? "").isEmpty
+            && !(raw["envelope_digest"] as? String ?? "").isEmpty
     }
 
     var exactText: String {

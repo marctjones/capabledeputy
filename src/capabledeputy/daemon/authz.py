@@ -48,6 +48,9 @@ OPERATOR_ONLY_METHODS: dict[str, str] = {
     "email.reply_create": "human-selected source reply creation",
     "email.draft_update": "human versioned draft editing",
     "email.draft_review": "human-requested exact personal-mail release review",
+    "email.draft_begin_edit": "withdraw old exact review before human editing",
+    "approval.task_list": "operator review of protected task action content and results",
+    "settings.update": "operator-owned preferences include required approval authentication",
     # session_handlers.py — explicit "the AI cannot invoke this" / "the AI
     # cannot self-shadow" / destructive-widening grant path.
     "operator.grant_capability": "may set allows_destructive=True with no origin restriction",

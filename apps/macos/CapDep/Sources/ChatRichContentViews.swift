@@ -7,6 +7,7 @@ struct ChatRichMessageBody: View {
     var authorizedImagePaths: Set<String> = []
     var holdUnverifiedGeneratedImages: Bool = false
     var onContentSizeChange: (() -> Void)?
+    var copyIdentifier = "capdep.chat.copy-markdown"
 
     private var blocks: [ChatBlock] {
         ChatMarkdownParser.blocks(
@@ -25,7 +26,7 @@ struct ChatRichMessageBody: View {
         } else if !text.contains("![") {
             VStack(alignment: .leading, spacing: 8) {
                 ChatSemanticText(source: text)
-                ChatCopyControls(source: text, isStreaming: isStreaming)
+                ChatCopyControls(source: text, isStreaming: isStreaming, identifier: copyIdentifier)
             }
         } else if blocks.isEmpty {
             Text(ChatContentFormatter.attributedMarkdown(from: text))
@@ -217,13 +218,11 @@ struct ChatImageBlockView: View {
 private struct ChatCopyControls: View {
     let source: String
     let isStreaming: Bool
+    let identifier: String
     @State private var codes: [String] = []
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            controls
-            Menu("Copy and text size") { controls }
-        }
+        controls
         .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
         .task(id: isStreaming ? "streaming" : source) {
             codes = isStreaming ? [] : ChatSemanticRenderer.codeBlocks(source)
@@ -233,9 +232,13 @@ private struct ChatCopyControls: View {
     private var controls: some View {
         HStack {
             Button("Copy Markdown") { copy(source) }
-                .accessibilityIdentifier("capdep.chat.copy-markdown")
-            ForEach(Array(codes.enumerated()), id: \.offset) { index, code in
-                Button("Copy code \(index + 1)") { copy(code) }
+                .accessibilityIdentifier(identifier)
+            if !codes.isEmpty {
+                Menu("Copy code") {
+                    ForEach(Array(codes.enumerated()), id: \.offset) { index, code in
+                        Button("Code block \(index + 1)") { copy(code) }
+                    }
+                }
             }
             Menu("Text size") {
                 ForEach([14, 16, 18, 22], id: \.self) { size in

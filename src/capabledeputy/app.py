@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from capabledeputy.approval.model import ApprovalAction, ApprovalStatus
 from capabledeputy.approval.queue import ApprovalQueue
 from capabledeputy.audit.writer import AuditWriter
 from capabledeputy.llm.client import LLMClient
@@ -129,6 +131,9 @@ class App:
             graph=self.graph,
             id_store_path=resolved_state_db_path.with_name(
                 resolved_state_db_path.name + ".approval-ids.sqlite3"
+            ),
+            review_store_path=resolved_state_db_path.with_name(
+                resolved_state_db_path.name + ".approval-reviews.sqlite3"
             ),
         )
         self.registry = ToolRegistry()
@@ -274,6 +279,43 @@ class App:
 
         self.email_operations = EmailOperationJournal(self._email_state_db_path)
         self.email_operations.recover_submitting()
+        # Missing operation evidence after process recovery is not proof of
+        # non-submission (the stores could have been restored independently).
+        # Retain a reconcilable unknown operation; never resume dispatch.
+        for review in self.approval_queue.list():
+            if (
+                review.action != ApprovalAction.SEND_EMAIL
+                or review.status != ApprovalStatus.APPROVED
+            ):
+                continue
+            try:
+                envelope = json.loads(review.payload)
+                if not isinstance(envelope, dict) or envelope.get("format") != "capdep.email.v2":
+                    continue
+                operation = self.email_operations.for_draft(
+                    UUID(envelope["draft_id"]), int(envelope["draft_version"])
+                )
+            except (ValueError, KeyError, TypeError):
+                continue
+            if (
+                operation is None
+                and review.decision_scope.get("execution_status") != "failed_before_submission"
+            ):
+                operation, created = self.email_operations.claim(
+                    session_id=review.from_session,
+                    draft_id=UUID(envelope["draft_id"]),
+                    draft_version=int(envelope["draft_version"]),
+                    envelope=envelope["message"],
+                    account_fingerprint=envelope["account_fingerprint"],
+                    message_id=envelope["message"]["message_id"],
+                )
+                if created:
+                    self.email_operations.finish(
+                        operation.id,
+                        "outcome_unknown",
+                        "Recovered an approved review without submission evidence. "
+                        "Verify the provider before any retry.",
+                    )
         self._maybe_start_devbox_reaper()
         # #323 — a structured "up" line so an operator/log processor can see the
         # daemon started (and how much state it rehydrated) without the audit log.

@@ -1,4 +1,4 @@
-"""Ephemeral approval requests with durable, nonreused daemon review IDs."""
+"""Durable review history with nonreused IDs and fail-closed consent recovery."""
 
 from __future__ import annotations
 
@@ -71,6 +71,7 @@ class ApprovalQueue:
         graph: Any = None,
         default_ttl_seconds: int = DEFAULT_APPROVAL_TTL_SECONDS,
         id_store_path: Path | None = None,
+        review_store_path: Path | None = None,
     ) -> None:
         self._next_id = 1
         self._id_store_path = id_store_path
@@ -83,6 +84,74 @@ class ApprovalQueue:
         # the caller doesn't pass an explicit ttl_seconds. 0 ⇒
         # no auto-expiry (legacy / explicit immortal behavior).
         self._default_ttl_seconds = max(0, default_ttl_seconds)
+        self._review_store_path = review_store_path
+        if review_store_path is not None:
+            review_store_path.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(review_store_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+            os.close(fd)
+            review_store_path.chmod(0o600)
+            with closing(sqlite3.connect(review_store_path)) as con, con:
+                con.execute(
+                    "CREATE TABLE IF NOT EXISTS reviews "
+                    "(id INTEGER PRIMARY KEY, record TEXT NOT NULL)"
+                )
+                rows = con.execute("SELECT record FROM reviews").fetchall()
+            for (record,) in rows:
+                request = ApprovalRequest.from_dict(json.loads(record))
+                if request.status == ApprovalStatus.PENDING:
+                    # Recovery preserves discoverability, never revives consent.
+                    # A daemon restart requires a fresh policy/source-bound review.
+                    request = replace(
+                        request,
+                        status=ApprovalStatus.EXPIRED,
+                        decision_at=datetime.now(UTC),
+                        decided_by="daemon-restart",
+                    )
+                self.record(request)
+                self._next_id = max(self._next_id, request.id + 1)
+
+    def record(self, request: ApprovalRequest) -> None:
+        """Persist before publishing a state transition or permitting an effect."""
+        if self._review_store_path is not None:
+            with closing(sqlite3.connect(self._review_store_path)) as con, con:
+                con.execute(
+                    "INSERT OR REPLACE INTO reviews VALUES (?, ?)",
+                    (request.id, json.dumps(request.to_dict(), allow_nan=False)),
+                )
+        self._requests[request.id] = request
+
+    def mark_not_submitted(self, request_id: int, detail: str) -> None:
+        """Record a proven pre-journal stop without erasing the approval decision."""
+        request = self.get(request_id)
+        self.record(
+            replace(
+                request,
+                decision_scope={
+                    **request.decision_scope,
+                    "execution_status": "failed_before_submission",
+                    "execution_detail": detail,
+                },
+            )
+        )
+
+    def supersede(self, request_id: int) -> ApprovalRequest:
+        """Withdraw old consent synchronously, before an editor can be shown."""
+        request = self.get(request_id)
+        if request.status == ApprovalStatus.APPROVED:
+            raise ApprovalStateError(
+                "This action was already approved; inspect its outcome before editing"
+            )
+        if request.status != ApprovalStatus.PENDING:
+            return request
+        updated = replace(
+            request,
+            status=ApprovalStatus.SUPERSEDED,
+            decision_at=datetime.now(UTC),
+            decided_by="operator-edit",
+        )
+        self.record(updated)
+        self._record_queue_depth()
+        return updated
 
     def _allocate_id(self) -> int:
         """Commit a never-reused ID before exposing a review to any client.
@@ -225,7 +294,7 @@ class ApprovalQueue:
             decision_at=now,
             decided_by="ttl",
         )
-        self._requests[expired.id] = expired
+        self.record(expired)
         self._schedule_expired_audit(expired)
         self._record_queue_depth()
         return expired
@@ -309,10 +378,7 @@ class ApprovalQueue:
         if anchor.sibling_group_id is not None:
             return anchor.sibling_group_id
         new_group_id = uuid4()
-        self._requests[anchor.id] = replace(
-            anchor,
-            sibling_group_id=new_group_id,
-        )
+        self.record(replace(anchor, sibling_group_id=new_group_id))
         return new_group_id
 
     async def approve_group(
@@ -387,7 +453,7 @@ class ApprovalQueue:
             expires_at=expires_at,
             rule=rule,
         )
-        self._requests[request.id] = request
+        self.record(request)
         if self._audit:
             event = Event(
                 event_type=EventType.APPROVAL_REQUESTED,
@@ -604,7 +670,7 @@ class ApprovalQueue:
                         "originating_audit_id": str(originator_id),
                     },
                 )
-                self._requests[request_id] = invalidated
+                self.record(invalidated)
                 if self._audit:
                     await self._audit.write(
                         Event(
@@ -670,7 +736,7 @@ class ApprovalQueue:
             decided_by=decided_by,
             decision_scope=scope,
         )
-        self._requests[request_id] = updated
+        self.record(updated)
         if self._audit:
             event = Event(
                 event_type=EventType.APPROVAL_APPROVED,
@@ -724,7 +790,7 @@ class ApprovalQueue:
             decided_by=decided_by,
             decision_scope={"reason": reason} if reason else {},
         )
-        self._requests[request_id] = updated
+        self.record(updated)
         if self._audit:
             event = Event(
                 event_type=EventType.APPROVAL_DENIED,
@@ -767,7 +833,7 @@ class ApprovalQueue:
                 f"approval {request_id} not pending (status={request.status})",
             )
         updated = replace(request, status=ApprovalStatus.DEFERRED)
-        self._requests[request_id] = updated
+        self.record(updated)
         if self._audit:
             await self._audit.write(
                 Event(

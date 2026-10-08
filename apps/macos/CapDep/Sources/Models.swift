@@ -17,6 +17,7 @@ struct Approval: Identifiable, Hashable {
     let rule: String
     let requiresStrongAuth: Bool
     let touchIDPolicyEnabled: Bool
+    let expiresAt: String
 
     init(dictionary: [String: Any]) {
         self.id = dictionary["id"] as? Int ?? 0
@@ -34,6 +35,7 @@ struct Approval: Identifiable, Hashable {
         self.rule = dictionary["rule"] as? String ?? ""
         self.requiresStrongAuth = dictionary["requires_strong_auth"] as? Bool ?? false
         self.touchIDPolicyEnabled = dictionary["touch_id_policy_enabled"] as? Bool ?? false
+        self.expiresAt = dictionary["expires_at"] as? String ?? ""
     }
 
     private static func labels(from raw: Any?) -> [String] {
@@ -61,6 +63,7 @@ struct ChatMessage: Identifiable, Hashable {
     let role: Role
     var content: String
     var isStreaming: Bool
+    var requestTurnID: String? = nil
 
     init(
         id: String = UUID().uuidString,
@@ -218,6 +221,72 @@ struct ChatPromptRun: Identifiable, Hashable, Codable {
     }
 }
 
+/// Read-only daemon request evidence. This projection grants no authority.
+struct RequestTraceEvent: Identifiable {
+    let cursor: Int
+    let kind: String
+    let timestamp: String
+    let payload: [String: Any]
+    var id: Int { cursor }
+    var isNoise: Bool { kind == "heartbeat" || kind == "llm_token" }
+    var isModelTrace: Bool { kind.contains("thinking") || kind.contains("reasoning") }
+
+    init(dictionary: [String: Any]) {
+        cursor = dictionary["cursor"] as? Int ?? 0
+        kind = dictionary["type"] as? String ?? "unknown"
+        timestamp = dictionary["created_at"] as? String ?? ""
+        payload = dictionary["payload"] as? [String: Any] ?? [:]
+    }
+
+    var title: String {
+        switch kind {
+        case "tool_dispatched": return "Proposed tool: \(payload["tool_name"] as? String ?? "tool")"
+        case "tool_returned":
+            let outcome = payload["outcome"] as? [String: Any] ?? [:]
+            return "Daemon decision: \(outcome["decision"] as? String ?? "unknown") — \(outcome["tool_name"] as? String ?? "tool")"
+        case "model_selected": return "Model: \(payload["model"] as? String ?? "unknown")"
+        case "llm_request_sent": return "Model request (\(payload["n_tools"] as? Int ?? 0) selected tools)"
+        default: return kind.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    static func redactedJSON(_ value: Any) -> String {
+        func redact(_ value: Any) -> Any {
+            if let dictionary = value as? [String: Any] {
+                return dictionary.mapValues { $0 }.reduce(into: [String: Any]()) { result, pair in
+                    let key = pair.key.lowercased().replacingOccurrences(of: "-", with: "_")
+                    let sensitive = ["password", "secret", "token", "authorization", "cookie", "api_key", "credential"]
+                        .contains { key.contains($0) }
+                    result[pair.key] = sensitive ? "[redacted]" : redact(pair.value)
+                }
+            }
+            if let array = value as? [Any] { return array.map(redact) }
+            return value
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: redact(value), options: [.prettyPrinted, .sortedKeys, .fragmentsAllowed]),
+              let text = String(data: data, encoding: .utf8) else { return "Unavailable" }
+        return text
+    }
+}
+
+struct RequestInspectionTarget: Identifiable {
+    let id: String
+    let prompt: String
+    let sessionID: String?
+    let turnID: String?
+    var promptRunID: String? = nil
+
+    static func matches(prompt: String, daemonMessage: String) -> Bool {
+        func normalized(_ text: String) -> String {
+            for prefix in ["/model tools ", "/quality ", "/fast "] where text.hasPrefix(prefix) {
+                return String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return !prompt.isEmpty && normalized(prompt) == normalized(daemonMessage)
+    }
+}
+
 /// The daemon-reported model that most recently served a session. This is
 /// display evidence only: model routing never grants capabilities or affects a
 /// policy decision.
@@ -283,6 +352,7 @@ struct CapDepSession: Identifiable, Hashable {
     let purpose: String
     let owner: String
     let labels: [String]
+    let updatedAt: String
 
     init(dictionary: [String: Any]) {
         self.id = dictionary["id"] as? String ?? ""
@@ -290,6 +360,7 @@ struct CapDepSession: Identifiable, Hashable {
         self.intent = dictionary["intent"] as? String ?? ""
         self.purpose = dictionary["purpose_handle"] as? String ?? ""
         self.owner = dictionary["owner"] as? String ?? ""
+        self.updatedAt = dictionary["updated_at"] as? String ?? ""
         if let labelState = dictionary["label_state"] as? [String: Any] {
             self.labels = Self.flattenLabels(labelState)
         } else {
@@ -776,6 +847,7 @@ struct DaemonSettings: Hashable {
     var defaultPurpose: String
     var globalShortcut: String
     var imageProfile: String
+    var imageBackend: String
     var launchAtLogin: Bool
     var notificationsEnabled: Bool
     var preferLocalMLX: Bool
@@ -788,6 +860,7 @@ struct DaemonSettings: Hashable {
         self.defaultPurpose = dictionary["default_purpose"] as? String ?? "general"
         self.globalShortcut = dictionary["global_shortcut"] as? String ?? "Option-Space"
         self.imageProfile = dictionary["image_profile"] as? String ?? "default"
+        self.imageBackend = dictionary["image_backend"] as? String ?? "configured"
         self.launchAtLogin = dictionary["launch_at_login"] as? Bool ?? false
         self.notificationsEnabled = dictionary["notifications_enabled"] as? Bool ?? true
         self.preferLocalMLX = dictionary["prefer_local_mlx"] as? Bool ?? true
@@ -802,6 +875,7 @@ struct DaemonSettings: Hashable {
             "default_purpose": defaultPurpose,
             "global_shortcut": globalShortcut,
             "image_profile": imageProfile,
+            "image_backend": imageBackend,
             "launch_at_login": launchAtLogin,
             "notifications_enabled": notificationsEnabled,
             "prefer_local_mlx": preferLocalMLX,
@@ -952,6 +1026,16 @@ struct ProvenanceEdge: Identifiable, Hashable {
 }
 
 struct SessionSecurityContext: Hashable {
+    let grantKinds: [String]
+    let sensitiveCategories: [String]
+    let externalUntrusted: Bool
+    let authorizationNotice: String
+    let availableTools: [DaemonToolViewData]
+    let referenceHandleKeys: [String]
+    let sessionDetails: [String: String]
+    let decisionContextDetails: [String: String]
+    let capabilityUsageDetails: [String: String]
+    let hasPostureSummary: Bool
     let sessionID: String
     let enforcementMode: String
     let labelCount: Int
@@ -985,9 +1069,23 @@ struct SessionSecurityContext: Hashable {
     let limitations: [String]
 
     init(dictionary: [String: Any]) {
+        let summary = dictionary["posture_summary"] as? [String: Any] ?? [:]
+        self.hasPostureSummary = dictionary["posture_summary"] != nil
+        self.grantKinds = summary["grant_kinds"] as? [String] ?? []
+        self.sensitiveCategories = summary["sensitive_categories"] as? [String] ?? []
+        self.externalUntrusted = summary["external_untrusted"] as? Bool ?? false
+        self.authorizationNotice = summary["authorization_notice"] as? String ?? "Authorization is evaluated by the daemon for each action."
+        self.availableTools = (dictionary["available_tools"] as? [[String: Any]] ?? []).map(DaemonToolViewData.init(dictionary:))
+        self.referenceHandleKeys = (dictionary["saved_state"] as? [String: Any])?["reference_handle_keys"] as? [String] ?? []
         let session = dictionary["session"] as? [String: Any] ?? [:]
+        self.sessionDetails = session.mapValues { String(describing: $0) }
         let labels = dictionary["labels"] as? [String: Any] ?? [:]
         let capabilities = dictionary["capabilities"] as? [String: Any] ?? [:]
+        self.capabilityUsageDetails = [
+            "revoked_audit_ids": String(describing: capabilities["revoked_audit_ids"] ?? []),
+            "cap_uses": String(describing: capabilities["cap_uses"] ?? [:]),
+        ]
+        self.decisionContextDetails = (labels["axis_d"] as? [String: Any] ?? [:]).mapValues { String(describing: $0) }
         let approvals = dictionary["approvals"] as? [String: Any] ?? [:]
         let policy = dictionary["policy"] as? [String: Any] ?? [:]
         let provenance = dictionary["provenance"] as? [String: Any] ?? [:]
@@ -1048,6 +1146,10 @@ struct SessionSecurityContext: Hashable {
     }
 
     static let empty = SessionSecurityContext(dictionary: [:])
+
+    var hasEmailReadGrant: Bool {
+        grantKinds.contains("IMAP_READ") || grantKinds.contains("READ_EMAIL")
+    }
 }
 
 /// Content-free daemon audit evidence explaining a label's ingress. The UI

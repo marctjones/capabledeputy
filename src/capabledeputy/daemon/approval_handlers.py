@@ -10,6 +10,7 @@ labels would still conflict.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import replace
 from typing import Any
@@ -20,6 +21,7 @@ from capabledeputy.approval.model import ApprovalAction, ApprovalStatus
 from capabledeputy.approval.strong_auth import (
     approval_requires_strong_auth,
     approval_to_client_dict,
+    authenticate_approval,
 )
 from capabledeputy.daemon.handlers import Handler
 from capabledeputy.daemon.settings_store import load_settings
@@ -42,6 +44,8 @@ from capabledeputy.tools.native.email_delivery import smtp_config_fingerprint
 
 
 def make_approval_handlers(app: App) -> dict[str, Handler]:
+    decision_locks: dict[int, asyncio.Lock] = {}
+
     async def approval_list(params: dict[str, Any]) -> dict[str, Any]:
         status = params.get("status")
         status_enum = ApprovalStatus(status) if status else None
@@ -118,7 +122,16 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         return completed.to_dict()
 
     async def approval_approve(params: dict[str, Any]) -> dict[str, Any]:
+        identity = int(params["id"])
+        if app.approval_queue.get(identity).status != ApprovalStatus.PENDING:
+            return await approve_locked(params)
+        async with decision_locks.setdefault(identity, asyncio.Lock()):
+            return await approve_locked(params)
+
+    async def approve_locked(params: dict[str, Any]) -> dict[str, Any]:
         request = app.approval_queue.get(int(params["id"]))
+        if request.status == ApprovalStatus.SUPERSEDED:
+            raise ValueError("This review changed; request a fresh review")
         if request.status != ApprovalStatus.PENDING:
             return {"approval": request.to_dict(), "already_decided": True}
         if request.action == ApprovalAction.SEND_EMAIL:
@@ -126,16 +139,25 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
             _validate_reviewed_draft(app, request)
         decided_by = str(params.get("decided_by", "user"))
         settings = load_settings()
-        if (
-            settings.require_touch_id_for_high_risk
-            and _approval_requires_strong_auth(request)
-            and str(params.get("strong_auth", "")) != "touch_id"
-        ):
-            raise ValueError("approval requires strong authentication")
+        authentication = None
+        if settings.require_touch_id_for_high_risk and _approval_requires_strong_auth(request):
+            authentication = await authenticate_approval(request)
+            current = app.approval_queue.get(request.id)
+            if current != request or current.status != ApprovalStatus.PENDING:
+                raise ValueError(
+                    "The review changed or expired during authentication; prepare a fresh review"
+                )
+            if request.action == ApprovalAction.SEND_EMAIL:
+                _validate_reviewed_draft(app, request)
 
         decision_scope = params.get("decision_scope")
         if decision_scope is not None and not isinstance(decision_scope, dict):
             raise ValueError("decision_scope must be an object")
+        decision_scope = dict(decision_scope or {})
+        for reserved in ("authentication", "execution_status", "execution_detail"):
+            decision_scope.pop(reserved, None)
+        if authentication is not None:
+            decision_scope["authentication"] = authentication
         approved = await app.approval_queue.approve(
             request.id,
             decided_by=decided_by,
@@ -143,19 +165,32 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         )
 
         if approved.action == ApprovalAction.SEND_EMAIL:
-            new_session, dispatch_outcome = await _execute_declassified_email(
-                app,
-                approved.payload,
-                approved.target,
-                origin_session=approved.from_session,
-                approval_id=approved.id,
-                source_labels=approved.labels_in,
-            )
+            try:
+                new_session, dispatch_outcome = await _execute_declassified_email(
+                    app,
+                    approved.payload,
+                    approved.target,
+                    origin_session=approved.from_session,
+                    approval_id=approved.id,
+                    source_labels=approved.labels_in,
+                )
+            finally:
+                ref = _reviewed_draft_ref(approved.payload)
+                if (
+                    ref
+                    and app.email_operations is not None
+                    and json.loads(approved.payload).get("format") == "capdep.email.v2"
+                    and app.email_operations.for_draft(UUID(ref[0]), ref[1]) is None
+                ):
+                    app.approval_queue.mark_not_submitted(
+                        approved.id, "Stopped before submission. Prepare a fresh review."
+                    )
+            approved = app.approval_queue.get(approved.id)
             draft_ref = _reviewed_draft_ref(approved.payload)
             if draft_ref and dispatch_outcome.output and dispatch_outcome.output.get("delivered"):
                 app.email_drafts.discard(UUID(draft_ref[0]))
             updated = replace(approved, to_session=new_session)
-            app.approval_queue._requests[approved.id] = updated
+            app.approval_queue.record(updated)
             return {
                 "approval": updated.to_dict(),
                 "executed_in_session": str(new_session),
@@ -174,7 +209,7 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
                 origin_session=approved.from_session,
             )
             updated = replace(approved, to_session=new_session)
-            app.approval_queue._requests[approved.id] = updated
+            app.approval_queue.record(updated)
             return {
                 "approval": updated.to_dict(),
                 "executed_in_session": str(new_session),
@@ -193,7 +228,7 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
                 origin_session=approved.from_session,
             )
             updated = replace(approved, to_session=new_session)
-            app.approval_queue._requests[approved.id] = updated
+            app.approval_queue.record(updated)
             return {
                 "approval": updated.to_dict(),
                 "executed_in_session": str(new_session),
@@ -244,6 +279,12 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
                 result = await approval_approve(
                     {"id": m.id, "decided_by": decided_by, "strong_auth": strong_auth},
                 )
+                if result.get("already_decided"):
+                    # Another client can decide a later sibling while an
+                    # earlier one awaits authentication or dispatch. Count the
+                    # authoritative result, not the stale pending snapshot.
+                    result["skipped"] = True
+                    result["reason"] = f"status={result['approval']['status']}"
                 result["id"] = m.id
                 results.append(result)
             except Exception as e:
@@ -293,6 +334,9 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
 
     async def email_draft_update(params: dict[str, Any]) -> dict[str, Any]:
         await email_draft_list(params)
+        _withdraw_draft_reviews(
+            app, str(params["session_id"]), str(params["id"]), int(params["version"])
+        )
         outcome = await app.tool_client.call_tool(
             UUID(str(params["session_id"])),
             "email.draft_update",
@@ -301,6 +345,73 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         if outcome.output is None or outcome.error:
             raise ValueError(outcome.error or "Draft editing is not authorized")
         return outcome.output
+
+    async def email_draft_begin_edit(params: dict[str, Any]) -> dict[str, Any]:
+        await email_draft_list(params)
+        draft = app.email_drafts.get(UUID(str(params["id"])))
+        if draft is None or str(draft.session_id) != str(params["session_id"]):
+            raise ValueError("Draft not found in this conversation")
+        if draft.version != int(params["version"]):
+            raise ValueError("The draft changed; reload before editing")
+        _withdraw_draft_reviews(app, str(draft.session_id), str(draft.id), draft.version)
+        return {
+            "draft": {
+                "id": str(draft.id),
+                "version": draft.version,
+                "to": draft.to,
+                "subject": draft.subject,
+                "body": draft.body,
+                "source_id": draft.source.get("source_id", ""),
+                "account_id": draft.source.get("account_id", ""),
+                "from_addr": draft.source.get("from_addr", ""),
+            }
+        }
+
+    async def approval_task_list(params: dict[str, Any]) -> dict[str, Any]:
+        session_id = UUID(str(params["session_id"]))
+        # Use the same deterministic, labeled read path as the email workspace.
+        await email_draft_list(params)
+        settings = load_settings()
+        reviews = []
+        for request in app.approval_queue.list():
+            if request.from_session != session_id:
+                continue
+            row = approval_to_client_dict(
+                request, touch_id_policy_enabled=settings.require_touch_id_for_high_risk
+            )
+            row["review_state"] = request.status.value
+            row["review_error"] = ""
+            if request.decision_scope.get("execution_status") == "failed_before_submission":
+                row["review_state"] = "failed_before_submission"
+                row["review_error"] = request.decision_scope.get("execution_detail", "")
+            row["can_approve"] = request.status == ApprovalStatus.PENDING
+            ref = (
+                _reviewed_draft_ref(request.payload)
+                if request.action == ApprovalAction.SEND_EMAIL
+                else None
+            )
+            if (
+                request.status == ApprovalStatus.PENDING
+                and request.action == ApprovalAction.SEND_EMAIL
+            ):
+                try:
+                    _validate_reviewed_draft(app, request)
+                except ValueError as error:
+                    row.update(review_state="changed", review_error=str(error), can_approve=False)
+            if ref and app.email_operations is not None:
+                operation = app.email_operations.for_draft(UUID(ref[0]), ref[1])
+                if operation is not None:
+                    row["review_state"] = operation.reconciliation_outcome or operation.status
+                    row["can_approve"] = False
+                    row["operation"] = {
+                        "id": str(operation.id),
+                        "status": operation.status,
+                        "detail": operation.detail,
+                        "reconciliation_outcome": operation.reconciliation_outcome,
+                        "reconciliation_reason": operation.reconciliation_reason,
+                    }
+            reviews.append(row)
+        return {"reviews": reviews}
 
     async def email_operation_list(params: dict[str, Any]) -> dict[str, Any]:
         journal = app.email_operations
@@ -431,6 +542,14 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
             }
         payload = json.dumps(envelope, sort_keys=True)
         _email_args(payload, draft.to)
+        # One actionable review per saved version. Reopening never resets expiry.
+        for previous in app.approval_queue.list():
+            if (
+                previous.from_session == session_id
+                and previous.payload == payload
+                and previous.status == ApprovalStatus.PENDING
+            ):
+                return previous.to_dict()
         request = await app.approval_queue.submit(
             from_session=session_id,
             action=ApprovalAction.SEND_EMAIL,
@@ -447,6 +566,8 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
         "email.source_list": email_source_list,
         "email.reply_create": email_reply_create,
         "email.draft_update": email_draft_update,
+        "email.draft_begin_edit": email_draft_begin_edit,
+        "approval.task_list": approval_task_list,
         "email.operation_list": email_operation_list,
         "email.operation_status": email_operation_status,
         "email.operation_reconcile": email_operation_reconcile,
@@ -465,6 +586,38 @@ def make_approval_handlers(app: App) -> dict[str, Handler]:
 
 def _approval_requires_strong_auth(request: Any) -> bool:
     return approval_requires_strong_auth(request)
+
+
+def _withdraw_draft_reviews(app: App, session_id: str, draft_id: str, version: int) -> None:
+    """No await between inspecting and withdrawing every old review."""
+    journal = app.email_operations
+    if journal is not None and journal.blocks_draft(UUID(draft_id)):
+        raise ValueError(
+            "This reply has a submitted or uncertain send; "
+            "inspect its unresolved operation before editing"
+        )
+    related = [
+        r
+        for r in app.approval_queue.list()
+        if str(r.from_session) == session_id
+        and r.action == ApprovalAction.SEND_EMAIL
+        and _reviewed_draft_ref(r.payload) == (draft_id, version)
+    ]
+    for request in related:
+        if request.status == ApprovalStatus.APPROVED:
+            if request.decision_scope.get("execution_status") == "failed_before_submission":
+                continue
+            operation = journal.for_draft(UUID(draft_id), version) if journal is not None else None
+            if operation is None or (
+                operation.status != "failed_before_submission"
+                and operation.reconciliation_outcome != "confirmed_not_sent"
+            ):
+                raise ValueError(
+                    "This reply was already approved; check its send status before editing"
+                )
+    for request in related:
+        if request.status == ApprovalStatus.PENDING:
+            app.approval_queue.supersede(request.id)
 
 
 async def _execute_declassified_destructive(

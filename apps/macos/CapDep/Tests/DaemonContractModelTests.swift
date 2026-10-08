@@ -2,6 +2,27 @@ import XCTest
 @testable import CapDepMac
 
 final class DaemonContractModelTests: XCTestCase {
+    func testSessionPostureUsesDaemonFactsNotToolNamesOrPromptClaims() {
+        let registeredOnly = SessionSecurityContext(dictionary: [
+            "available_tools": [["name": "mail.imap.list_threads", "capability_kind": "IMAP_READ"]],
+        ])
+        XCTAssertFalse(registeredOnly.hasEmailReadGrant)
+        XCTAssertFalse(registeredOnly.externalUntrusted)
+        let labeled = SessionSecurityContext(dictionary: [
+            "posture_summary": [
+                "grant_kinds": ["IMAP_READ"],
+                "sensitive_categories": ["personal"],
+                "external_untrusted": true,
+            ],
+            "session": ["id": "s1", "purpose_handle": "daily", "prefer_programmatic": true],
+            "saved_state": ["reference_handle_keys": ["document-1"]],
+        ])
+        XCTAssertTrue(labeled.hasEmailReadGrant)
+        XCTAssertEqual(labeled.sensitiveCategories, ["personal"])
+        XCTAssertTrue(labeled.externalUntrusted)
+        XCTAssertEqual(labeled.referenceHandleKeys, ["document-1"])
+        XCTAssertEqual(labeled.sessionDetails["purpose_handle"], "daily")
+    }
 
     func testSessionArtifactOnlyTreatsDaemonGeneratedWorkImageAsRenderable() {
         let trusted = SessionArtifact(dictionary: [
@@ -277,6 +298,44 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(health.phase.systemImage, "exclamationmark.shield.fill")
     }
 
+    func testRequestTraceKeepsDaemonDecisionSeparateFromProposal() {
+        let proposed = RequestTraceEvent(dictionary: [
+            "cursor": 3, "type": "tool_dispatched", "payload": ["tool_name": "mail.read"],
+        ])
+        let decision = RequestTraceEvent(dictionary: [
+            "cursor": 4, "type": "tool_returned", "payload": ["outcome": ["tool_name": "mail.read", "decision": "deny"]],
+        ])
+        XCTAssertTrue(proposed.title.contains("Proposed tool"))
+        XCTAssertTrue(decision.title.contains("Daemon decision: deny"))
+        XCTAssertEqual(decision.id, 4)
+    }
+
+    func testRequestAssociationUsesExactTextNotSubstrings() {
+        XCTAssertTrue(RequestInspectionTarget.matches(prompt: "hi", daemonMessage: "/fast hi"))
+        XCTAssertTrue(RequestInspectionTarget.matches(prompt: "hi", daemonMessage: "/model tools hi"))
+        XCTAssertFalse(RequestInspectionTarget.matches(prompt: "hi", daemonMessage: "this is another request"))
+        XCTAssertFalse(RequestInspectionTarget.matches(prompt: "", daemonMessage: "anything"))
+    }
+
+    func testRequestTraceRedactsNestedCredentials() {
+        let text = RequestTraceEvent.redactedJSON([
+            "arguments": ["password": "never-render", "API-Key": "secret-key", "query": "INBOX"],
+            "headers": [["Authorization": "Bearer credential"]],
+        ])
+        XCTAssertFalse(text.contains("never-render"))
+        XCTAssertFalse(text.contains("secret-key"))
+        XCTAssertFalse(text.contains("Bearer credential"))
+        XCTAssertTrue(text.contains("INBOX"))
+        XCTAssertTrue(text.contains("[redacted]"))
+    }
+
+    func testRequestTraceDoesNotInventReasoningAndMarksNoise() {
+        XCTAssertTrue(RequestTraceEvent(dictionary: ["type": "heartbeat"]).isNoise)
+        XCTAssertTrue(RequestTraceEvent(dictionary: ["type": "llm_token"]).isNoise)
+        XCTAssertFalse(RequestTraceEvent(dictionary: ["type": "tool_returned"]).isModelTrace)
+        XCTAssertTrue(RequestTraceEvent(dictionary: ["type": "model_reasoning"]).isModelTrace)
+    }
+
     func testDaemonSettingsPreserveImageProfile() {
         var settings = DaemonSettings(dictionary: [
             "default_purpose": "research",
@@ -289,6 +348,15 @@ final class DaemonContractModelTests: XCTestCase {
 
         settings.imageProfile = "quality"
         XCTAssertEqual(settings.rpcDictionary["image_profile"] as? String, "quality")
+    }
+
+    func testDaemonSettingsPreserveBackendChoice() {
+        let defaults = DaemonSettings(dictionary: [:])
+        XCTAssertEqual(defaults.imageBackend, "configured")
+        var settings = DaemonSettings(dictionary: ["image_backend": "mflux"])
+        XCTAssertEqual(settings.rpcDictionary["image_backend"] as? String, "mflux")
+        settings.imageBackend = "diffusers"
+        XCTAssertEqual(settings.rpcDictionary["image_backend"] as? String, "diffusers")
     }
 
     func testImageProfileAndReadinessParseDaemonPayloads() {

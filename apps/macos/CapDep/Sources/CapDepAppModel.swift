@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import LocalAuthentication
 
 @MainActor
 final class CapDepAppModel: ObservableObject {
@@ -8,6 +7,11 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var daemonConnection = DaemonConnectionHealth.empty
     @Published private(set) var isRefreshing = false
     @Published private(set) var pendingApprovals: [Approval] = []
+    @Published private(set) var allApprovals: [Approval] = []
+    @Published var taskApprovals: [String: [TaskApproval]] = [:]
+    @Published var taskApprovalErrors: [String: String] = [:]
+    @Published var showingApprovalQueue = false
+    @Published var replyEditorState: ReplyEditorState?
     @Published private(set) var sessions: [CapDepSession] = []
     @Published private(set) var events: [AuditEvent] = []
     @Published private(set) var appStatus = AppStatus.empty
@@ -39,6 +43,8 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var selectedSessionChildren: [CapDepSession] = []
     @Published private(set) var approvalDetails: [Int: ApprovalDetail] = [:]
     @Published private(set) var sessionSecurityContexts: [String: SessionSecurityContext] = [:]
+    @Published private(set) var sessionSecurityUpdatedAt: [String: Date] = [:]
+    @Published private(set) var sessionSecurityErrors: [String: String] = [:]
     @Published private(set) var sessionArtifacts: [String: [SessionArtifact]] = [:]
     @Published private(set) var sessionArtifactLabels: [String: [String]] = [:]
     @Published private(set) var onguardClients: [OnguardClientViewData] = []
@@ -51,6 +57,7 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var currentSessionID: String?
     @Published private(set) var chatMessages: [ChatMessage] = []
     @Published private(set) var promptRuns: [ChatPromptRun] = []
+    @Published private(set) var requestTurns: [String: [String: Any]] = [:]
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
     @Published private(set) var isRunningTurn = false
     @Published private(set) var currentTurnID: String?
@@ -455,7 +462,7 @@ final class CapDepAppModel: ObservableObject {
             }
             async let approvalsResult = client.call(
                 method: "approval.list",
-                params: ["status": "pending"],
+                params: [:],
             )
             async let sessionsResult = client.call(method: "session.list")
             async let auditResult = client.call(method: "audit.tail", params: ["limit": 40])
@@ -522,7 +529,8 @@ final class CapDepAppModel: ObservableObject {
             let approvals = (approvalsObject?["approvals"] as? [[String: Any]] ?? [])
                 .map(Approval.init(dictionary:))
                 .sorted { $0.id < $1.id }
-            pendingApprovals = approvals
+            allApprovals = approvals
+            pendingApprovals = approvals.filter { $0.status == "pending" }
             sessions = (sessionsObject?["sessions"] as? [[String: Any]] ?? [])
                 .map(CapDepSession.init(dictionary:))
                 .sorted { $0.id < $1.id }
@@ -586,14 +594,18 @@ final class CapDepAppModel: ObservableObject {
             for notification in daemonNotifications where notification.urgency == "high" {
                 await notifications.notifyOnguard(notification)
             }
-            if approvals.count > lastPendingApprovalCount, let first = approvals.first {
+            if pendingApprovals.count > lastPendingApprovalCount, let first = pendingApprovals.first {
                 await notifications.notifyPendingApproval(
-                    count: approvals.count,
+                    count: pendingApprovals.count,
                     approvalID: first.id,
                 )
                 lastNotifiedApprovalID = first.id
             }
-            lastPendingApprovalCount = approvals.count
+            lastPendingApprovalCount = pendingApprovals.count
+            if let currentSessionID {
+                await refreshSecurityContext(sessionID: currentSessionID)
+                await refreshTaskApprovals(sessionID: currentSessionID)
+            }
         } catch {
             setDaemonConnection(.disconnected, detail: error.localizedDescription)
             lastError = error.localizedDescription
@@ -670,9 +682,7 @@ final class CapDepAppModel: ObservableObject {
     }
 
     func focusApproval(_ approval: Approval) {
-        focusedApprovalID = approval.id
-        approvalWindowID = approval.id
-        selectedSection = .approvals
+        presentApproval(id: approval.id)
     }
 
     /// Decide an approval addressed only by id (#332 notification actions).
@@ -689,10 +699,33 @@ final class CapDepAppModel: ObservableObject {
         await deny(approval)
     }
 
+    func presentApprovalQueue() {
+        if let editor = replyEditorState {
+            approvalWindowID = editor.approvalID
+            showingApprovalQueue = false
+            lastError = "Save or discard your reply edits before opening the queue."
+            return
+        }
+        approvalWindowID = nil
+        showingApprovalQueue = true
+    }
+
     func presentApproval(id: Int) {
+        guard replyEditorState == nil || replyEditorState?.approvalID == id else {
+            lastError = "Save or discard your reply edits before opening another review."
+            return
+        }
         focusedApprovalID = id
+        showingApprovalQueue = false
+        if let approval = allApprovals.first(where: { $0.id == id }),
+           !isRunningTurn, currentSessionID != approval.fromSession,
+           let session = sessions.first(where: { $0.id == approval.fromSession }) {
+            focusSession(session)
+        }
         approvalWindowID = id
-        selectedSection = .approvals
+        if let approval = allApprovals.first(where: { $0.id == id }) {
+            Task { await refreshTaskApprovals(sessionID: approval.fromSession) }
+        }
     }
 
     // MARK: - First-run onboarding (#333)
@@ -744,6 +777,13 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
+    func inspectRequest(turnID: String) async throws -> [String: Any] {
+        let response = try await client.call(method: "session.turn.get", params: ["turn_id": turnID]) as? [String: Any]
+        let turn = response?["turn"] as? [String: Any] ?? [:]
+        requestTurns[turnID] = turn
+        return turn
+    }
+
     func loadChatHistory(sessionID: String) async {
         do {
             let result = try await client.call(
@@ -751,7 +791,24 @@ final class CapDepAppModel: ObservableObject {
                 params: ["session_id": sessionID],
             ) as? [String: Any]
             let history = result?["history"] as? [[String: Any]] ?? []
-            chatMessages = ChatMessage.fromHistory(history)
+            var messages = ChatMessage.fromHistory(history)
+            let response = try? await client.call(method: "session.turn.list", params: ["session_id": sessionID]) as? [String: Any]
+            // A session switch while either RPC is suspended must not put
+            // another session's messages or request IDs into the current chat.
+            guard currentSessionID == sessionID else { return }
+            var turns = response?["turns"] as? [[String: Any]] ?? []
+            for turn in turns {
+                if let id = turn["id"] as? String { requestTurns[id] = turn }
+            }
+            for index in messages.indices where messages[index].role == .user {
+                let text = messages[index].content
+                if !text.isEmpty, let match = turns.firstIndex(where: {
+                    RequestInspectionTarget.matches(prompt: text, daemonMessage: $0["message"] as? String ?? "")
+                }) {
+                    messages[index].requestTurnID = turns.remove(at: match)["id"] as? String
+                }
+            }
+            chatMessages = messages
             streamingAssistantMessageID = nil
             authorizedStreamingImagePaths = []
             promptRuns.removeAll { $0.isTerminal }
@@ -818,13 +875,13 @@ final class CapDepAppModel: ObservableObject {
         guard let output = outcome["output"] as? [String: Any] else {
             return
         }
+        guard output["ok"] as? Bool == true,
+              let verification = output["verification"] as? [String: Any],
+              verification["ok"] as? Bool == true else {
+            return
+        }
         if let imagePath = output["image_path"] as? String {
             authorizeStreamingImagePath(imagePath)
-        }
-        if let markdown = output["markdown"] as? String {
-            for path in ChatMarkdownParser.extractMarkdownImagePaths(from: markdown) {
-                authorizeStreamingImagePath(path)
-            }
         }
     }
 
@@ -1232,6 +1289,10 @@ final class CapDepAppModel: ObservableObject {
             }
             observedTurnID = turnID
             currentTurnID = turnID
+            requestTurns[turnID] = turn
+            if let userIndex = chatMessages.lastIndex(where: { $0.role == .user }) {
+                chatMessages[userIndex].requestTurnID = turnID
+            }
             if let promptID {
                 markPromptRun(promptID, status: .running, turnID: turnID)
             }
@@ -1399,6 +1460,9 @@ final class CapDepAppModel: ObservableObject {
         turnStatusLine = describeTurnEvent(event)
         let type = event["type"] as? String ?? ""
         let payload = event["payload"] as? [String: Any] ?? [:]
+        if ["completed", "interrupted", "error"].contains(type) {
+            requestTurns[eventTurnID]?["status"] = type
+        }
         if type == "llm_response_received" {
             let toolCalls = payload["n_tool_calls"] as? Int ?? 0
             if toolCalls > 0 {
@@ -1769,7 +1833,10 @@ final class CapDepAppModel: ObservableObject {
                 ],
             ) as? [String: Any]
             sessionSecurityContexts[sessionID] = SessionSecurityContext(dictionary: result ?? [:])
+            sessionSecurityUpdatedAt[sessionID] = Date()
+            sessionSecurityErrors.removeValue(forKey: sessionID)
         } catch {
+            sessionSecurityErrors[sessionID] = error.localizedDescription
             lastError = error.localizedDescription
         }
     }
@@ -2034,17 +2101,12 @@ final class CapDepAppModel: ObservableObject {
         guard !approval.siblingGroupID.isEmpty else {
             return
         }
-        let strongAuth = await strongAuthMarkerIfNeeded(for: approval)
-        guard strongAuthSatisfied(for: approval, marker: strongAuth) else {
-            return
-        }
         do {
             _ = try await client.call(
                 method: "approval.approve_group",
                 params: [
                     "group_id": approval.siblingGroupID,
                     "decided_by": "CapDepMac",
-                    "strong_auth": strongAuth,
                 ],
             )
             approvalWindowID = nil
@@ -2071,10 +2133,9 @@ final class CapDepAppModel: ObservableObject {
     }
 
     private func presentApprovalPromptIfNeeded(approvalID: Int) {
-        focusedApprovalID = approvalID
-        approvalWindowID = approvalID
-        selectedSection = .approvals
-        grantPromptPresented = false
+        // Incoming reviews stay in their task; never steal focus or open a window.
+        // Explicit user entry points call presentApproval(id:) instead.
+        Task { await refresh() }
     }
 
     private func presentPolicyPromptsAfterTurn() {
@@ -2275,84 +2336,25 @@ final class CapDepAppModel: ObservableObject {
     private func decide(_ approval: Approval, approved: Bool) async {
         guard decidingApprovalIDs.insert(approval.id).inserted else { return }
         defer { decidingApprovalIDs.remove(approval.id) }
-        var strongAuth = ""
-        if approved {
-            strongAuth = await strongAuthMarkerIfNeeded(for: approval)
-            guard strongAuthSatisfied(for: approval, marker: strongAuth) else {
-                return
-            }
-        }
+        lastError = nil
         do {
             var params: [String: Any] = [
                 "id": approval.id,
                 "decided_by": "CapDepMac",
             ]
-            if approved {
-                params["strong_auth"] = strongAuth
-            } else {
+            if !approved {
                 params["reason"] = "denied in CapDep macOS app"
             }
             let result = try await client.call(
                 method: approved ? "approval.approve" : "approval.deny",
                 params: params,
             )
-            approvalWindowID = nil
             await refresh()
-            if approved, approval.action == "SEND_EMAIL", let raw = result as? [String: Any],
-               let dispatch = raw["dispatch"] as? [String: Any] {
-                let output = dispatch["output"] as? [String: Any] ?? [:]
-                let delivered = output["delivered"] as? Bool == true
-                let status = output["status"] as? String ?? ""
-                let receipt: String
-                if status == "outcome_unknown" || status == "submitting" {
-                    receipt = "Email outcome is unknown. Do not resend until the prior submission is reconciled. Open Email Replies for its durable status."
-                } else if delivered {
-                    receipt = "Email accepted by SMTP. Recipient delivery is unverified. Open Email Replies for its durable status."
-                } else {
-                    receipt = "Email approval completed without confirmed SMTP acceptance. \(dispatch["error"] as? String ?? output["delivery_detail"] as? String ?? "Check Email Replies for the recorded outcome.")"
-                }
-                if currentSessionID == approval.fromSession {
-                    chatMessages.append(ChatMessage(role: .assistant, content: receipt))
-                }
-                if !delivered { lastError = receipt }
-            }
+            await refreshTaskApprovals(sessionID: approval.fromSession)
+            _ = result // The task projection owns durable decision and execution state.
+
         } catch {
             lastError = error.localizedDescription
-        }
-    }
-
-    private func strongAuthSatisfied(for approval: Approval, marker: String) -> Bool {
-        guard approval.touchIDPolicyEnabled else {
-            return true
-        }
-        guard approval.requiresStrongAuth else {
-            return true
-        }
-        return marker == "touch_id"
-    }
-
-    private func strongAuthMarkerIfNeeded(for approval: Approval) async -> String {
-        guard approval.touchIDPolicyEnabled else {
-            return ""
-        }
-        guard approval.requiresStrongAuth else {
-            return ""
-        }
-        let context = LAContext()
-        var error: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
-            lastError = error?.localizedDescription ?? "Touch ID or device authentication is unavailable."
-            return ""
-        }
-        do {
-            let ok = try await context.evaluatePolicy(
-                .deviceOwnerAuthentication,
-                localizedReason: "Approve high-risk CapDep action #\(approval.id)",
-            )
-            return ok ? "touch_id" : ""
-        } catch {
-            lastError = error.localizedDescription
-            return ""
         }
     }
 

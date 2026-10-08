@@ -112,8 +112,6 @@ final class CapDepBackgroundPanel: NSPanel {
 @MainActor
 final class CapDepBackgroundGUITestHost {
     private var chat: CapDepBackgroundPanel
-    private var approval: CapDepBackgroundPanel?
-    private var presentedApprovalID: Int?
     private var sessionToReopen = ProcessInfo.processInfo.environment["CAPDEP_GUI_TEST_REOPEN_SESSION"]
     private var observers: Set<AnyCancellable> = []
     private let model: CapDepAppModel
@@ -137,13 +135,6 @@ final class CapDepBackgroundGUITestHost {
             .sink { connected, error in
                 CapDepBackgroundGUIMode.diagnostic("model.connection=\(connected) error=\(error ?? "none")")
             }.store(in: &observers)
-        model.$approvalWindowID.combineLatest(model.$pendingApprovals)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] selected, pending in
-                MainActor.assumeIsolated {
-                    self?.showApproval(pending.first(where: { $0.id == selected }))
-                }
-            }.store(in: &observers)
         model.$sessions.receive(on: RunLoop.main).sink { [weak self] sessions in
             MainActor.assumeIsolated {
                 guard let self, let id = self.sessionToReopen,
@@ -154,20 +145,7 @@ final class CapDepBackgroundGUITestHost {
         }.store(in: &observers)
     }
 
-    private func showApproval(_ selected: Approval?) {
-        guard let selected else {
-            approval?.close()
-            approval = nil
-            presentedApprovalID = nil
-            return
-        }
-        guard presentedApprovalID != selected.id else { return }
-        presentedApprovalID = selected.id
-        let panel = approval ?? CapDepBackgroundPanel(title: "Approval", size: NSSize(width: 760, height: 820))
-        panel.contentViewController = NSHostingController(rootView: ApprovalDetailView(approval: selected).environmentObject(model))
-        approval = panel
-        panel.orderBack(nil)
-    }
+
 }
 
 @MainActor
