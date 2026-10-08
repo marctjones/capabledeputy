@@ -5,6 +5,7 @@ import Foundation
 final class CapDepAppModel: ObservableObject {
     @Published private(set) var connected = false
     @Published private(set) var daemonConnection = DaemonConnectionHealth.empty
+    @Published private(set) var buildReadiness: BuildReadiness
     @Published private(set) var isRefreshing = false
     @Published private(set) var pendingApprovals: [Approval] = []
     @Published private(set) var allApprovals: [Approval] = []
@@ -86,6 +87,9 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var decidingApprovalIDs: Set<Int> = []
 
     let client = DaemonClient(socketPath: DaemonClient.defaultSocketPath())
+    private let appBuildIdentity: AppBuildIdentity
+    private let expectedAppSourceHash: String?
+    private let expectedDaemonSourceHash: String?
     @Published private(set) var workflows: [WorkflowTemplate] = []
     private let notifications = NotificationCenterBridge()
     private let daemonSupervisor = DaemonSupervisor()
@@ -147,6 +151,29 @@ final class CapDepAppModel: ObservableObject {
     private(set) static weak var shared: CapDepAppModel?
 
     init() {
+        let appIdentity = AppBuildIdentity.capture()
+        let repositoryRoot = ProcessInfo.processInfo.environment["CAPDEP_REPO_ROOT"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+        let packageRoot = repositoryRoot?.appendingPathComponent(
+            "apps/macos/CapDep",
+            isDirectory: true,
+        )
+        let appSourceHash = packageRoot.flatMap(
+            BuildIdentityComparison.appSourceContentHash(packageRoot:),
+        )
+        let daemonSourceHash = repositoryRoot.flatMap(
+            BuildIdentityComparison.daemonSourceContentHash(repositoryRoot:),
+        )
+        appBuildIdentity = appIdentity
+        expectedAppSourceHash = appSourceHash
+        expectedDaemonSourceHash = daemonSourceHash
+        buildReadiness = BuildReadiness.make(
+            app: appIdentity,
+            daemon: nil,
+            expectedAppSourceHash: appSourceHash,
+            expectedDaemonSourceHash: daemonSourceHash,
+            connected: false,
+        )
         restorePendingPromptRuns()
         restoreSessionModelReports()
         Self.shared = self
@@ -453,6 +480,13 @@ final class CapDepAppModel: ObservableObject {
 
         do {
             guard await verifyDaemonHandshake() else {
+                buildReadiness = BuildReadiness.make(
+                    app: appBuildIdentity,
+                    daemon: buildReadiness.daemon,
+                    expectedAppSourceHash: expectedAppSourceHash,
+                    expectedDaemonSourceHash: expectedDaemonSourceHash,
+                    connected: false,
+                )
                 if daemonConnection.phase == .unhealthy, !isRecoveringDaemon {
                     Task {
                         await ensureDaemonRunning()
@@ -464,6 +498,7 @@ final class CapDepAppModel: ObservableObject {
                 method: "approval.list",
                 params: [:],
             )
+            async let daemonCodeVersionResult = readDaemonCodeVersion()
             async let sessionsResult = client.call(method: "session.list")
             async let auditResult = client.call(method: "audit.tail", params: ["limit": 40])
             async let statusResult = client.call(method: "app.status")
@@ -500,6 +535,7 @@ final class CapDepAppModel: ObservableObject {
             )
 
             let approvalsObject = try await approvalsResult as? [String: Any]
+            let daemonCodeVersion = await daemonCodeVersionResult
             let sessionsObject = try await sessionsResult as? [String: Any]
             let auditObject = try await auditResult as? [String: Any]
             let statusObject = try await statusResult as? [String: Any]
@@ -538,6 +574,13 @@ final class CapDepAppModel: ObservableObject {
                 .map(AuditEvent.init(dictionary:))
                 .reversed()
             appStatus = AppStatus(dictionary: statusObject ?? [:])
+            buildReadiness = BuildReadiness.make(
+                app: appBuildIdentity,
+                daemon: daemonCodeVersion,
+                expectedAppSourceHash: expectedAppSourceHash,
+                expectedDaemonSourceHash: expectedDaemonSourceHash,
+                connected: true,
+            )
             setupPlan = SetupPlan(dictionary: setupObject ?? [:])
             setupChecks = (setupObject?["checks"] as? [[String: Any]] ?? [])
                 .map(SetupCheck.init(dictionary:))
@@ -607,6 +650,13 @@ final class CapDepAppModel: ObservableObject {
                 await refreshTaskApprovals(sessionID: currentSessionID)
             }
         } catch {
+            buildReadiness = BuildReadiness.make(
+                app: appBuildIdentity,
+                daemon: buildReadiness.daemon,
+                expectedAppSourceHash: expectedAppSourceHash,
+                expectedDaemonSourceHash: expectedDaemonSourceHash,
+                connected: false,
+            )
             setDaemonConnection(.disconnected, detail: error.localizedDescription)
             lastError = error.localizedDescription
             if shouldRecoverDaemon(after: error) {
@@ -616,6 +666,17 @@ final class CapDepAppModel: ObservableObject {
                     await refresh()
                 }
             }
+        }
+    }
+
+    private func readDaemonCodeVersion() async -> DaemonBuildIdentity? {
+        do {
+            guard let dictionary = try await client.call(method: "daemon.code_version") as? [String: Any] else {
+                return nil
+            }
+            return DaemonBuildIdentity(dictionary: dictionary)
+        } catch {
+            return nil
         }
     }
 

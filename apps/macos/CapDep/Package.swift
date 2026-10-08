@@ -22,10 +22,17 @@ let package = Package(
     ],
     targets: [
         .executableTarget(name: "CapDepApprovalAuth", path: "ApprovalAuth"),
+        .executableTarget(name: "BuildIdentityGenerator", path: "BuildIdentityGenerator"),
+        .plugin(
+            name: "BuildIdentityPlugin",
+            capability: .buildTool(),
+            dependencies: ["BuildIdentityGenerator"],
+        ),
         .target(
             name: "CapDepMac",
             dependencies: [.product(name: "Markdown", package: "swift-markdown")],
             path: "Sources",
+            plugins: [.plugin(name: "BuildIdentityPlugin")],
         ),
         .executableTarget(
             name: "CapDepMacLauncher",
