@@ -755,13 +755,33 @@ def test_discard_region_cleans_harvest_dir(fake_podman: None) -> None:
     assert not _os.path.exists(hd)
 
 
-# --- Integration smoke (skipped if podman missing) --------------------------
+# --- Integration smoke (skipped if podman missing or its engine is down) -----
 
 
-@pytest.mark.skipif(
-    shutil.which("podman") is None,
-    reason="real podman binary not present",
-)
+def _podman_engine_reachable() -> bool:
+    """True only when `podman info` succeeds (binary present AND VM/engine up).
+
+    On macOS the binary can exist while `podman machine` is stopped, which made
+    the real-podman tests fail with exit 125 instead of skipping.
+    """
+    if shutil.which("podman") is None:
+        return False
+    try:
+        return (
+            subprocess.run(
+                ["podman", "info"], capture_output=True, timeout=15, check=False
+            ).returncode
+            == 0
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+_PODMAN_REASON = "real podman engine not reachable (`podman info` failed; start `podman machine`)"
+_PODMAN_USABLE = _podman_engine_reachable()
+
+
+@pytest.mark.skipif(not _PODMAN_USABLE, reason=_PODMAN_REASON)
 def test_real_podman_round_trip_files(tmp_path) -> None:
     """End-to-end: pass a script in via inputs, have it read the
     input + write a transformed output, harvest it back, verify
@@ -795,10 +815,7 @@ def test_real_podman_round_trip_files(tmp_path) -> None:
         a.discard_region(rid)
 
 
-@pytest.mark.skipif(
-    shutil.which("podman") is None,
-    reason="real podman binary not present",
-)
+@pytest.mark.skipif(not _PODMAN_USABLE, reason=_PODMAN_REASON)
 def test_real_podman_smoke(tmp_path) -> None:
     """If a real podman is on PATH, run `alpine:latest echo hello` and
     verify we get exit_code=0 + non-empty digest. Pulls the alpine
