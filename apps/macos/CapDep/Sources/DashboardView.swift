@@ -940,7 +940,7 @@ private struct InspectorView: View {
 /// Read-only Console rendering for references the daemon already materialized.
 /// It deliberately bypasses markdown parsing: a planner cannot smuggle a new
 /// file path into this surface, and unsupported artifacts stay metadata only.
-private struct SessionArtifactInspectorView: View {
+struct SessionArtifactInspectorView: View {
     let artifacts: [SessionArtifact]
     let labels: [String]
 
@@ -1027,7 +1027,7 @@ private struct AuthorizedSessionImageView: View {
     }
 }
 
-private struct SecurityContextSummaryView: View {
+struct SecurityContextSummaryView: View {
     let context: SessionSecurityContext
 
     var body: some View {

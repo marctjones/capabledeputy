@@ -89,10 +89,7 @@ async def test_live_daemon_routes_restricted_memory_by_handle_only(tmp_path: Pat
     assert any(node["kind"] == "reference_handle" for node in context["provenance"]["nodes"])
     assert any(node["kind"] == "reference_bind" for node in context["provenance"]["nodes"])
     assert any(edge["kind"] == "bound" for edge in context["provenance"]["edges"])
-    assert any(
-        event["event_type"] == "pattern3.handle_bind"
-        for event in context["audit_evidence"]
-    )
+    assert any(event["event_type"] == "pattern3.handle_bind" for event in context["audit_evidence"])
 
 
 async def test_live_daemon_keeps_citable_web_research_from_egress(tmp_path: Path) -> None:
