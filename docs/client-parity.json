@@ -10,6 +10,7 @@
   "rpc_methods": {
     "email.draft_list": {"tier": "operator", "cli": "intentional", "tui": "intentional", "swift_gui": "implemented", "mcp_control": "intentional"},
     "email.draft_review": {"tier": "operator", "cli": "intentional", "tui": "intentional", "swift_gui": "implemented", "mcp_control": "intentional"},
+    "email.draft_begin_edit": {"tier": "operator", "cli": "intentional", "tui": "intentional", "swift_gui": "implemented", "mcp_control": "intentional"},
     "email.draft_update": {"tier": "operator", "cli": "intentional", "tui": "intentional", "swift_gui": "implemented", "mcp_control": "intentional"},
     "email.operation_list": {"tier": "operator", "cli": "intentional", "tui": "intentional", "swift_gui": "implemented", "mcp_control": "intentional"},
     "email.operation_reconcile": {"tier": "operator", "cli": "intentional", "tui": "intentional", "swift_gui": "implemented", "mcp_control": "intentional"},
@@ -22,6 +23,7 @@
     "approval.approve": {"tier": "core", "cli": "implemented", "tui": "implemented", "swift_gui": "implemented", "mcp_control": "implemented"},
     "approval.approve_group": {"tier": "core", "cli": "implemented", "tui": "implemented", "swift_gui": "implemented", "mcp_control": "implemented"},
     "approval.defer": {"tier": "core", "cli": "implemented", "tui": "implemented", "swift_gui": "implemented", "mcp_control": "implemented"},
+    "approval.task_list": {"tier": "core", "cli": "intentional", "tui": "intentional", "swift_gui": "implemented", "mcp_control": "intentional"},
     "approval.deny": {"tier": "core", "cli": "implemented", "tui": "implemented", "swift_gui": "implemented", "mcp_control": "implemented"},
     "approval.detail": {"tier": "core", "cli": "implemented", "tui": "intentional", "swift_gui": "implemented", "mcp_control": "implemented"},
     "approval.list": {"tier": "core", "cli": "implemented", "tui": "implemented", "swift_gui": "implemented", "mcp_control": "implemented"},
