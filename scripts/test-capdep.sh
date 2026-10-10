@@ -13,10 +13,21 @@ cd "$REPO_ROOT"
 # A workstation may have a protected shared uv cache (for example when the
 # daemon is launched from a sandboxed IDE). Keep test dependency resolution
 # isolated and overridable rather than failing before the first check runs.
-export UV_CACHE_DIR="${CAPDEP_UV_CACHE_DIR:-/tmp/capdep-uv-cache}"
-export UV_PYTHON_INSTALL_DIR="${CAPDEP_UV_PYTHON_INSTALL_DIR:-/tmp/capdep-uv-python}"
+#
+# Defaults live under ~/Library/Caches (not /tmp): macOS purges /tmp, which used
+# to strip the managed interpreter out from under .venv and break every run.
+CAPDEP_CACHE_ROOT="${CAPDEP_CACHE_ROOT:-$HOME/Library/Caches/capdep}"
+export UV_CACHE_DIR="${CAPDEP_UV_CACHE_DIR:-$CAPDEP_CACHE_ROOT/uv-cache}"
+export UV_PYTHON_INSTALL_DIR="${CAPDEP_UV_PYTHON_INSTALL_DIR:-$CAPDEP_CACHE_ROOT/uv-python}"
 
 VENV="$REPO_ROOT/.venv"
+# A venv whose interpreter cannot import `encodings` is broken (purged or moved
+# base interpreter). Fail fast with a repair hint instead of a cryptic abort.
+if [[ -x "$VENV/bin/python" ]] && ! "$VENV/bin/python" -c 'import encodings' >/dev/null 2>&1; then
+  echo "error: $VENV/bin/python is broken (its base interpreter is missing)." >&2
+  echo "repair: rm -rf '$VENV' && scripts/bootstrap-dev-env.sh" >&2
+  exit 1
+fi
 if [[ -x "$VENV/bin/python" ]]; then
   RUN_FROM_VENV=true
 elif [[ -x "$REPO_ROOT/.venv/bin/uv" ]]; then
