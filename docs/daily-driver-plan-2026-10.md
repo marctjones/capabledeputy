@@ -9,6 +9,14 @@ into #338/#335, labels normalised, and 51 new issues filed as #509–#559 (secur
 #515–#529, native UX #530–#539, testing #540–#552, docs #553–#559). Remaining audit work not yet applied:
 rewriting milestone descriptions, body restructures of the 23 oversized issues, and the #455/#457/#458/#479 splits.
 
+Progress on PR #562 (branch `chore/daily-driver-plan-2026-10`): reproducing CI at `0afe114` found and fixed five defects that
+had been invisible because the author's uncommitted tree contained the fixes — a client-parity manifest gap, a stale strong-auth test,
+cross-file `private` Swift views (clean checkout did not compile), an unformatted test file, and nine pyright errors in committed tests.
+Also done: local-only planner guard made an allowlist (hosted model specs bypassed it), Podman tests skip when the engine is down,
+menu-bar status no longer claims "protected", approval notifications name the newest unseen approval and no longer offer a blind Deny,
+real-socket tests for client reconnect and mid-run revocation, and `scripts/verify-clean-checkout.sh` to check *committed* state.
+Lesson recorded on #503: the "reproducible build" claim must be verified from a clean checkout, never the working tree.
+
 ## 1. Verdict
 
 CapableDeputy's *structural* security core is real (single `decide()` chokepoint, always-on conflict floors,
