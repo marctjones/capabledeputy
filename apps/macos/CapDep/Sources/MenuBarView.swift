@@ -131,9 +131,10 @@ struct MenuBarView: View {
     }
 
     private var statusTitle: String {
-        if model.connected {
-            return "CapDep protected"
-        }
-        return model.daemonConnection.statusTitle
+        MenuBarStatus.title(
+            connected: model.connected,
+            pendingCount: model.pendingApprovals.count,
+            disconnectedTitle: model.daemonConnection.statusTitle,
+        )
     }
 }
