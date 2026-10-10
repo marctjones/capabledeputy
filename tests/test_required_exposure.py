@@ -24,4 +24,8 @@ def test_required_mode_does_not_grant_or_choose_mode():
 
 def test_invalid_requirement_fails_closed():
     with pytest.raises(ModeSelectionError):
-        select_mode(LabelState(), ToolRegistry(), required_modes=frozenset({"turn_level"}))
+        select_mode(
+            LabelState(),
+            ToolRegistry(),
+            required_modes=frozenset({"turn_level"}),  # type: ignore[arg-type]
+        )

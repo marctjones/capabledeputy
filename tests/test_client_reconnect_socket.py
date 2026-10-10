@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any
 
 import anyio
 import pytest
@@ -27,6 +28,7 @@ from tests.daemon_integration import (
 async def _first_run(paths: DaemonTestPaths) -> str:
     """Start a daemon, create a session, shut the daemon down; return the session id."""
     daemon, _app = await build_test_daemon(paths)
+    created: dict[str, Any] = {}
     async with anyio.create_task_group() as tg:
         tg.start_soon(daemon.serve)
         await wait_for_socket(paths.socket)

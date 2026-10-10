@@ -1,4 +1,5 @@
 import json
+from typing import Literal
 
 import pytest
 
@@ -67,7 +68,7 @@ async def test_blind_requirement_masks_values_links_and_errors(tmp_path, failure
             [
                 LLMResponse(
                     content="",
-                    tool_calls=[ToolCall(id="c1", name="read", args={"target": "local"})],
+                    tool_calls=(ToolCall(id="c1", name="read", args={"target": "local"}),),
                 ),
                 LLMResponse(content="Result withheld; review separately."),
             ]
@@ -92,6 +93,7 @@ async def test_blind_requirement_masks_values_links_and_errors(tmp_path, failure
             result_recipient="internal",
         )
         assert not internal.result_withheld
+        assert internal.output is not None
         assert internal.output["value"] == "PRIVATE_SOURCE_VALUE"
         assert graph.get(session.id).label_state == source
 
@@ -100,7 +102,8 @@ async def test_empty_requirement_denies_even_internal_dispatch(tmp_path):
     graph = SessionGraph()
     s = await graph.new(required_modes=frozenset())
     client = LabeledToolClient(ToolRegistry(), graph, AuditWriter(tmp_path / "audit.jsonl"))
-    for recipient in ["planner", "internal"]:
+    recipients: tuple[Literal["planner", "internal"], ...] = ("planner", "internal")
+    for recipient in recipients:
         outcome = await client.call_tool(s.id, "not-registered", {}, result_recipient=recipient)
         assert outcome.decision == Decision.DENY
         assert outcome.rule == "required-handling-empty"

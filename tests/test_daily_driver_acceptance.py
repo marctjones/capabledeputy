@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import anyio
@@ -237,6 +238,9 @@ async def test_live_daemon_recovers_scoped_capability_after_restart(tmp_path: Pa
     """
     paths = daemon_test_paths(tmp_path)
     destination = tmp_path / "recovered-draft.txt"
+    created: dict[str, Any] = {}
+    created_file: dict[str, Any] = {}
+    context: dict[str, Any] = {}
     daemon1, app1 = await build_test_daemon(paths)
 
     async with anyio.create_task_group() as task_group:
