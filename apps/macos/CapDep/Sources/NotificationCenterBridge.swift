@@ -11,7 +11,9 @@ enum ApprovalNotification {
     /// Opens the full approval card (foreground) — approving happens there, with
     /// payload + labels visible, never blind from the banner.
     static let reviewAction = "CAPDEP_APPROVAL_REVIEW"
-    /// Deny straight from the banner — safe/fail-closed without the full card.
+    /// Legacy identifier from banners delivered before Deny was removed from the
+    /// category. It is no longer registered; the delegate treats it as Review so
+    /// an old banner can never decide an approval unseen.
     static let denyAction = "CAPDEP_APPROVAL_DENY"
 }
 
@@ -45,14 +47,11 @@ final class NotificationCenterBridge {
             title: "Review",
             options: [.foreground],
         )
-        let deny = UNNotificationAction(
-            identifier: ApprovalNotification.denyAction,
-            title: "Deny",
-            options: [.destructive],
-        )
+        // No Deny here: a decision made from the banner is made without seeing the
+        // exact action (approval-experience design: never decide unseen).
         let category = UNNotificationCategory(
             identifier: ApprovalNotification.category,
-            actions: [review, deny],
+            actions: [review],
             intentIdentifiers: [],
             options: [],
         )

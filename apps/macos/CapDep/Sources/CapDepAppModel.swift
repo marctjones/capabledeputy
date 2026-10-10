@@ -97,7 +97,7 @@ final class CapDepAppModel: ObservableObject {
     private var isProcessingPromptQueue = false
     private var didStartGuiTestCommandHook = false
     private var guiTestCommandLineCount = 0
-    private var lastPendingApprovalCount = 0
+    private var announcedApprovalIDs: Set<Int> = []
     private var lastNotifiedApprovalID: Int?
     private var streamingAssistantMessageID: String?
     private static let chatModelModeKey = "CapDep.chatModelMode"
@@ -637,14 +637,17 @@ final class CapDepAppModel: ObservableObject {
             for notification in daemonNotifications where notification.urgency == "high" {
                 await notifications.notifyOnguard(notification)
             }
-            if pendingApprovals.count > lastPendingApprovalCount, let first = pendingApprovals.first {
+            if let newest = ApprovalNotificationRouting.approvalToAnnounce(
+                announced: announcedApprovalIDs,
+                pending: pendingApprovals,
+            ) {
                 await notifications.notifyPendingApproval(
                     count: pendingApprovals.count,
-                    approvalID: first.id,
+                    approvalID: newest,
                 )
-                lastNotifiedApprovalID = first.id
+                lastNotifiedApprovalID = newest
             }
-            lastPendingApprovalCount = pendingApprovals.count
+            announcedApprovalIDs.formUnion(pendingApprovals.map(\.id))
             if let currentSessionID {
                 await refreshSecurityContext(sessionID: currentSessionID)
                 await refreshTaskApprovals(sessionID: currentSessionID)
