@@ -282,7 +282,18 @@ async def test_high_risk_approval_requires_strong_auth_when_touch_id_policy_enab
     with pytest.raises(ValueError, match="strong authentication"):
         await handlers["approval.approve"]({"id": approval.id, "decided_by": "test"})
 
-    result = await handlers["approval.approve"](
-        {"id": approval.id, "decided_by": "test", "strong_auth": "touch_id"},
+    # A client-supplied marker is never trusted: without the daemon-owned native
+    # helper the approval is still refused.
+    with pytest.raises(ValueError, match="strong authentication"):
+        await handlers["approval.approve"](
+            {"id": approval.id, "decided_by": "test", "strong_auth": "touch_id"},
+        )
+
+    async def authenticated(_request: object) -> dict[str, str]:
+        return {"method": "test"}
+
+    monkeypatch.setattr(
+        "capabledeputy.daemon.approval_handlers.authenticate_approval", authenticated
     )
+    result = await handlers["approval.approve"]({"id": approval.id, "decided_by": "test"})
     assert result["approval"]["status"] == "approved"
