@@ -165,7 +165,11 @@ private struct ApprovalQueueView: View {
         }
         .overlay {
             if let approval = selectedApproval {
-                ApprovalDetailView(approval: approval)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(approval.actionTitle).font(.title2)
+                    Button("Review in conversation") { model.presentApproval(id: approval.id) }
+                    Button("Back to approvals") { selectedApproval = nil }
+                }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .background(.background)
             }
         }
@@ -212,6 +216,12 @@ private struct SessionListView: View {
                         .font(.headline)
                     Text("\(session.status) · \(session.purpose.isEmpty ? "unset" : session.purpose)")
                         .foregroundStyle(.secondary)
+                    if let modelSummary = model.modelSummary(for: session.id) {
+                        Text(modelSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                     if !session.labels.isEmpty {
                         Text(session.labels.prefix(4).joined(separator: " · "))
                             .font(.caption.monospaced())
@@ -640,6 +650,29 @@ private struct DaemonRPCWorkbenchView: View {
 
 private struct ProvenanceView: View {
     @EnvironmentObject private var model: CapDepAppModel
+    @State private var kindFilter = ""
+    @State private var selectedNodeID: String?
+
+    private var selectedSessionID: String? {
+        model.focusedSessionID ?? model.currentSessionID
+    }
+
+    private var context: SessionSecurityContext? {
+        guard let selectedSessionID else { return nil }
+        return model.sessionSecurityContexts[selectedSessionID]
+    }
+
+    private var selectedNode: SessionProvenanceEvidence? {
+        guard let selectedNodeID else { return nil }
+        return context?.provenanceNodes.first { $0.id == selectedNodeID }
+    }
+
+    private var selectedNodeEdges: [SessionProvenanceEdgeEvidence] {
+        guard let selectedNodeID else { return [] }
+        return (context?.provenanceEdges ?? []).filter {
+            $0.from == selectedNodeID || $0.to == selectedNodeID
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -648,35 +681,121 @@ private struct ProvenanceView: View {
                     .font(.largeTitle.weight(.bold))
                 Text("Materialized sources and transformations from audit events. Use this to explain why an output is trusted, tainted, or blocked.")
                     .foregroundStyle(.secondary)
-                HStack(alignment: .top, spacing: 14) {
-                    LiveCard(title: "Nodes", systemImage: "circle.grid.cross") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            if model.provenanceNodes.isEmpty {
-                                Text("No provenance nodes in the current audit tail.")
-                                    .foregroundStyle(.secondary)
+                if let selectedSessionID, let context {
+                    HStack {
+                        Text("Session \(selectedSessionID.prefix(8)) · showing \(context.provenanceNodeReturned) of \(context.provenanceNodeCount) nodes")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Previous") {
+                            Task {
+                                await model.refreshSecurityContext(
+                                    sessionID: selectedSessionID,
+                                    provenanceOffset: max(0, context.provenanceNodeOffset - 100),
+                                    provenanceKind: context.provenanceKindFilter,
+                                )
                             }
-                            ForEach(model.provenanceNodes) { node in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(node.id)
-                                        .font(.caption.monospaced().weight(.semibold))
-                                    Text(node.kind.isEmpty ? "(unknown kind)" : node.kind)
+                        }
+                        .disabled(context.provenanceNodeOffset == 0)
+                        Button("Next") {
+                            Task {
+                                await model.refreshSecurityContext(
+                                    sessionID: selectedSessionID,
+                                    provenanceOffset: context.provenanceNodeOffset + context.provenanceNodeReturned,
+                                    provenanceKind: context.provenanceKindFilter,
+                                )
+                            }
+                        }
+                        .disabled(!context.provenanceNodeHasMore)
+                    }
+                    HStack {
+                        TextField("Filter node kind (optional)", text: $kindFilter)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Apply Filter") {
+                            Task {
+                                await model.refreshSecurityContext(
+                                    sessionID: selectedSessionID,
+                                    provenanceKind: kindFilter.trimmingCharacters(in: .whitespacesAndNewlines),
+                                )
+                            }
+                        }
+                        if !context.provenanceKindFilter.isEmpty {
+                            Text("Filtered: \(context.provenanceKindFilter)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if let selectedNode {
+                        LiveCard(title: "Selected Node", systemImage: "info.circle") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(selectedNode.id)
+                                    .font(.caption.monospaced().weight(.semibold))
+                                    .textSelection(.enabled)
+                                Text("Kind: \(selectedNode.kind.isEmpty ? "(unknown)" : selectedNode.kind)")
+                                    .font(.caption)
+                                if !selectedNode.materializedID.isEmpty {
+                                    Text("Materialized ID: \(selectedNode.materializedID)")
+                                        .font(.caption.monospaced())
+                                        .textSelection(.enabled)
+                                }
+                                if selectedNodeEdges.isEmpty {
+                                    Text("No incident edges occur in this bounded page.")
+                                        .font(.caption)
                                         .foregroundStyle(.secondary)
-                                    if !node.materializedID.isEmpty {
-                                        Text(node.materializedID)
+                                } else {
+                                    Text("Incident edges in this page")
+                                        .font(.caption.weight(.semibold))
+                                    ForEach(selectedNodeEdges) { edge in
+                                        Text("\(edge.from) -> \(edge.to)  \(edge.kind)")
                                             .font(.caption.monospaced())
-                                            .foregroundStyle(.secondary)
+                                            .textSelection(.enabled)
                                     }
                                 }
                             }
                         }
                     }
-                    LiveCard(title: "Edges", systemImage: "arrow.triangle.branch") {
+                } else {
+                    Text("Select a session to load its bounded provenance page. Global audit history is not loaded here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                HStack(alignment: .top, spacing: 14) {
+                    LiveCard(title: "Nodes", systemImage: "circle.grid.cross") {
                         VStack(alignment: .leading, spacing: 8) {
-                            if model.provenanceEdges.isEmpty {
-                                Text("No provenance edges in the current audit tail.")
+                            if context?.provenanceNodes.isEmpty ?? true {
+                                Text("No provenance nodes in the selected session page.")
                                     .foregroundStyle(.secondary)
                             }
-                            ForEach(model.provenanceEdges) { edge in
+                            ForEach(context?.provenanceNodes ?? []) { node in
+                                Button {
+                                    selectedNodeID = node.id
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(node.id)
+                                            .font(.caption.monospaced().weight(.semibold))
+                                        Text(node.kind.isEmpty ? "(unknown kind)" : node.kind)
+                                            .foregroundStyle(.secondary)
+                                        if !node.materializedID.isEmpty {
+                                            Text(node.materializedID)
+                                                .font(.caption.monospaced())
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .padding(6)
+                                .background(selectedNodeID == node.id ? Color.accentColor.opacity(0.15) : Color.clear)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                        }
+                    }
+                    LiveCard(title: "Edges", systemImage: "arrow.triangle.branch") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if context?.provenanceEdges.isEmpty ?? true {
+                                Text("No provenance edges in the selected session page.")
+                                    .foregroundStyle(.secondary)
+                            }
+                            ForEach(context?.provenanceEdges ?? []) { edge in
                                 Text("\(edge.from) -> \(edge.to)  \(edge.kind)")
                                     .font(.caption.monospaced())
                                     .textSelection(.enabled)
@@ -795,6 +914,10 @@ private struct InspectorView: View {
                             }
                         }
                     }
+                    SessionArtifactInspectorView(
+                        artifacts: model.sessionArtifacts[session.id] ?? [],
+                        labels: model.sessionArtifactLabels[session.id] ?? [],
+                    )
                 } else {
                     PlaceholderDetailView(
                         title: "Select an item",
@@ -808,18 +931,110 @@ private struct InspectorView: View {
         .task(id: selectedSession?.id) {
             if let selectedSession {
                 await model.refreshSecurityContext(sessionID: selectedSession.id)
+                await model.loadSessionArtifacts(sessionID: selectedSession.id)
             }
         }
     }
 }
 
-private struct SecurityContextSummaryView: View {
+/// Read-only Console rendering for references the daemon already materialized.
+/// It deliberately bypasses markdown parsing: a planner cannot smuggle a new
+/// file path into this surface, and unsupported artifacts stay metadata only.
+struct SessionArtifactInspectorView: View {
+    let artifacts: [SessionArtifact]
+    let labels: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Session Artifacts")
+                .font(.headline)
+            if artifacts.isEmpty {
+                Text("No daemon-materialized artifacts for this session.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if !labels.isEmpty {
+                Text("Session labels: \(labels.joined(separator: ", "))")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(artifacts) { artifact in
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(
+                        artifact.kind.replacingOccurrences(of: "_", with: " ").capitalized,
+                        systemImage: artifact.isAuthorizedGeneratedImage ? "photo.badge.checkmark" : "doc.text",
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    Text("source: \(artifact.source.isEmpty ? "unknown" : artifact.source) · hash: \(artifact.shortHash.isEmpty ? "missing" : artifact.shortHash)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                    if !artifact.originToolName.isEmpty {
+                        Text("provenance: \(artifact.originToolName)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    if artifact.isAuthorizedGeneratedImage {
+                        AuthorizedSessionImageView(artifact: artifact)
+                    } else {
+                        Text("Metadata only — this artifact is not an authenticated generated image.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+}
+
+private struct AuthorizedSessionImageView: View {
+    let artifact: SessionArtifact
+    @State private var digestMatches: Bool?
+
+    var body: some View {
+        Group {
+            switch (digestMatches, ChatImageURLResolver.resolve(artifact.path)) {
+            case (.some(true), .success(let resolved)):
+                ChatLocalImageView(resolved: resolved)
+                    .frame(maxHeight: 260)
+                if !artifact.alt.isEmpty {
+                    Text(artifact.alt)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            case (.some(false), _):
+                Text("Artifact digest no longer matches the daemon-recorded reference; pixels are withheld.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case (_, .failure):
+                Text("Authenticated artifact is no longer available at its recorded path.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            default:
+                ProgressView("Verifying artifact digest…")
+                    .font(.caption)
+            }
+        }
+        .task(id: artifact.id) {
+            guard case .success(let resolved) = ChatImageURLResolver.resolve(artifact.path) else {
+                digestMatches = false
+                return
+            }
+            digestMatches = artifact.matchesRecordedDigest(at: resolved.url)
+        }
+    }
+}
+
+struct SecurityContextSummaryView: View {
     let context: SessionSecurityContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             InspectorSection(title: "Security Context", rows: [
                 ("Enforcement", context.enforcementMode),
+                ("Session Origin", context.originKind.isEmpty ? "(not recorded)" : context.originKind),
                 ("Labels", "\(context.labelCount)"),
                 ("Capabilities", "\(context.activeCapabilityCount) active"),
                 ("Used Kinds", context.usedKinds.isEmpty ? "(none)" : context.usedKinds.joined(separator: ", ")),
@@ -831,10 +1046,78 @@ private struct SecurityContextSummaryView: View {
                 ("Tool Actors", context.toolActors.isEmpty ? "(none)" : context.toolActors.joined(separator: ", ")),
                 ("Onguard", context.onguardClientID.isEmpty ? "(none)" : context.onguardClientID),
             ])
+            InspectorEvidenceList(
+                title: "Labels and Taint",
+                emptyMessage: "No labels are present on this session.",
+                items: context.labelValues.map { (name: $0, detail: "Daemon-propagated session label") },
+            )
+            InspectorEvidenceList(
+                title: "Label Ingress and Propagation",
+                emptyMessage: "No label-propagation audit event was recorded for this session.",
+                items: context.labelPropagation.map {
+                    (name: $0.sourceTool.isEmpty ? "Unknown source" : $0.sourceTool, detail: $0.summary)
+                },
+            )
+            InspectorEvidenceList(
+                title: "Active Capabilities",
+                emptyMessage: "No active capabilities are present.",
+                items: context.activeCapabilities.map { (name: $0.kind, detail: $0.summary) },
+            )
+            InspectorEvidenceList(
+                title: "Planner Tool Surface",
+                emptyMessage: "No planner tool-surface selection was recorded for this session.",
+                items: context.toolSurfaceSelections.map { (name: "Selected tools", detail: $0.summary) },
+            )
+            InspectorEvidenceList(
+                title: "Deterministic Policy Decisions",
+                emptyMessage: "No policy decision has been recorded for this session.",
+                items: context.policyDecisions.map { (name: "\($0.decision.uppercased()) · \($0.tool)", detail: $0.summary) },
+            )
+            InspectorEvidenceList(
+                title: "Session Provenance Nodes",
+                emptyMessage: "No session-scoped provenance nodes were recorded.",
+                items: context.provenanceNodes.map { (name: $0.kind, detail: $0.materializedID) },
+            )
+            InspectorEvidenceList(
+                title: "Session Provenance Edges",
+                emptyMessage: "No session-scoped provenance edges were recorded.",
+                items: context.provenanceEdges.map { (name: $0.kind, detail: "\($0.from) → \($0.to)") },
+            )
             InspectorItemList(title: "Security Models", items: context.securityModels)
             InspectorItemList(title: "Flow Patterns", items: context.flowPatterns)
             InspectorSection(title: "Limitations", rows: context.limitations.map { ("Limit", $0) })
         }
+    }
+}
+
+private struct InspectorEvidenceList: View {
+    let title: String
+    let emptyMessage: String
+    let items: [(name: String, detail: String)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            if items.isEmpty {
+                Text(emptyMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.name.isEmpty ? "(unnamed)" : item.name)
+                        .font(.subheadline.weight(.medium))
+                    Text(item.detail.isEmpty ? "(no additional evidence)" : item.detail)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.30), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 

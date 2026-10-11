@@ -81,12 +81,12 @@ def tool_show(
         console.print_json(data=result)
         return
     console.print(f"[bold]{result['name']}[/bold]")
-    console.print(f"  description:     {result['description']}")
-    console.print(f"  capability_kind: {result['capability_kind']}")
-    console.print(f"  target_arg:      {result['target_arg']}")
-    if result["amount_arg"]:
+    console.print(f"  description:     {result.get('description', '')}")
+    console.print(f"  capability_kind: {result.get('capability_kind', '')}")
+    console.print(f"  target_arg:      {result.get('target_arg', '')}")
+    if result.get("amount_arg"):
         console.print(f"  amount_arg:      {result['amount_arg']}")
-    if result["inherent_labels"]:
+    if result.get("inherent_labels"):
         console.print(f"  inherent_labels: {', '.join(result['inherent_labels'])}")
 
 
@@ -124,9 +124,9 @@ def tool_test(
         console.print(f"rule: {result['rule']}")
     if result["reason"]:
         console.print(f"reason: {result['reason']}")
-    if result["effective_labels"]:
+    if result.get("effective_labels"):
         console.print(f"effective labels: {', '.join(result['effective_labels'])}")
-    matched = result["matched_capability"]
+    matched = result.get("matched_capability")
     if matched:
         console.print(f"matched capability: {matched['kind']}({matched['pattern']})")
 

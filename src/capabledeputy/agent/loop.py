@@ -638,7 +638,7 @@ async def run_turn(
         raise AgentLoopExceededError(
             f"agent loop exceeded {max_iterations} iterations{_LOOP_RECOVERY_HINT}",
         )
-    if interrupt_reason == "mode_refused_restricted":
+    if interrupt_reason in {"mode_refused_restricted", "mode_refused_required"}:
         # Issue #52 — fail-closed: restricted tier with no Pattern ③/⑤
         # mode available. Surface the typed error to RPC callers.
         raise ModeSelectionError(
@@ -727,12 +727,17 @@ async def run_turn_streaming(
     """
     from capabledeputy.agent.chat_turn import (
         CHAT_MAX_TOKENS,
+        IMAGE_FETCH_RETRY_NOTICE,
         IMAGE_GENERATION_RETRY_NOTICE,
         IMAGE_PATH_HALLUCINATION_RETRY_NOTICE,
         allowed_image_generate_paths,
         collect_prior_work_image_paths,
+        ensure_fetched_image_markdown_present,
         ensure_generated_image_markdown_present,
+        has_image_fetch_intent,
+        has_image_fetch_outcome,
         has_probable_image_generation_intent,
+        image_fetch_tool_names_in,
         image_generate_tool_names_in,
         image_generation_failure_report_from_outcomes,
         is_conversational_turn,
@@ -755,6 +760,7 @@ async def run_turn_streaming(
     from capabledeputy.agent.tool_families import load_tool_families
     from capabledeputy.agent.tool_selection import (
         ToolSelectionResult,
+        mail_tool_surface,
         select_tools_for_turn_async,
         widen_tool_surface,
     )
@@ -793,6 +799,11 @@ async def run_turn_streaming(
             has_sandbox_actuator=has_sandbox_actuator,
             session=session,
             posture=active_posture,
+            required_modes=(
+                frozenset(ExecutionMode(m) for m in session.required_modes)
+                if session.required_modes is not None
+                else None
+            ),
         )
     except ModeSelectionError as e:
         # FR-047 fail-closed (#52): the session reached restricted tier
@@ -807,14 +818,23 @@ async def run_turn_streaming(
                 step_id=0,
                 payload={
                     "refused": True,
-                    "tier": "restricted",
+                    "constraint": "required_handling"
+                    if session.required_modes is not None
+                    else "restricted_floor",
+                    "required_modes": sorted(session.required_modes)
+                    if session.required_modes is not None
+                    else None,
                     "reason": str(e),
                 },
             ),
         )
         yield TurnInterrupted(
             iteration=0,
-            reason="mode_refused_restricted",
+            reason=(
+                "mode_refused_required"
+                if session.required_modes is not None
+                else "mode_refused_restricted"
+            ),
             partial_content=str(e),
             partial_outcomes=(),
         )
@@ -894,7 +914,8 @@ async def run_turn_streaming(
     )
 
     visible_all = visible_tools(registry, session, mode, active_posture)
-    conversational = is_conversational_turn(user_message)
+    visible_all = mail_tool_surface(registry, session, visible_all, user_message)
+    conversational = is_conversational_turn(user_message, purpose_handle=session.purpose_handle)
 
     families_cfg = tool_families or load_tool_families()
     selection_cfg = (
@@ -911,6 +932,7 @@ async def run_turn_streaming(
             candidates=(),
             n_visible=len(visible_all),
             method="conversational",
+            selection_reason="conversational_turn_intentionally_has_no_tools",
         )
     else:
         tool_surface = await select_tools_for_turn_async(
@@ -965,6 +987,34 @@ async def run_turn_streaming(
             reason=routing.reason,
             model=routing.mlx_model,
         )
+    else:
+        # Legacy/direct model setup remains supported for operator-managed
+        # launchd profiles. Emit the same observable model-selection event as
+        # the role pool so every foreground client can report the factual
+        # model that served its session. This is provenance only; it has no
+        # bearing on capability or policy decisions.
+        direct_model = str(getattr(effective_llm, "_model", "") or type(effective_llm).__name__)
+        await audit.write(
+            Event(
+                event_type=EventType.LLM_MODEL_SELECTED,
+                session_id=session_id,
+                turn_id=len(session.history),
+                payload={
+                    "role": "planner.fast",
+                    "reason": "direct_model_config",
+                    "mlx_model": direct_model,
+                    "n_visible_tools": len(visible_all),
+                    "n_selected_tools": len(tool_surface.selected),
+                    "conversational": conversational,
+                },
+            ),
+        )
+        yield ModelSelected(
+            iteration=0,
+            role="planner.fast",
+            reason="direct_model_config",
+            model=direct_model,
+        )
     await audit.write(
         Event(
             event_type=EventType.TOOL_SURFACE_SELECTED,
@@ -976,6 +1026,7 @@ async def run_turn_streaming(
                 "n_selected": len(tool_surface.selected),
                 "selected": [t.name for t in tool_surface.selected],
                 "mandatory_added": list(tool_surface.mandatory_added),
+                "selection_reason": tool_surface.selection_reason,
             },
         ),
     )
@@ -1060,7 +1111,9 @@ async def run_turn_streaming(
     last_response: LLMResponse | None = None
     parse_retry_used = False
     image_gen_retry_used = False
+    image_fetch_retry_used = False
     force_image_generate = should_force_image_generate_tool(user_message)
+    force_image_fetch = has_image_fetch_intent(user_message)
     probable_image_request = has_probable_image_generation_intent(user_message)
     selected_tool_names = {t.name for t in tool_surface.selected}
     visible_tool_names_all = {t.name for t in visible_all}
@@ -1263,13 +1316,30 @@ async def run_turn_streaming(
             stream_fn = getattr(effective_llm, "respond_streaming", None)
             if stream_fn is not None:
                 accumulated = ""
+                # #419 — JSON-tool planners emit the tool envelope as ordinary
+                # token chunks. Do not hand an envelope-shaped prefix to a UI
+                # and hope the final parser repairs it later: by then the raw
+                # JSON has already been visible. Hold only a leading JSON/code
+                # fence candidate; ordinary prose remains token-streamed.
+                pending_prefix = ""
+                hold_structured_prefix: bool | None = None
                 async for chunk in stream_fn(
                     messages,
                     tool_descriptions,
                     max_tokens=chat_max_tokens,
                 ):
                     accumulated += chunk
-                    yield LLMTokenReceived(iteration=iteration, text=chunk)
+                    if hold_structured_prefix is None:
+                        pending_prefix += chunk
+                        first = pending_prefix.lstrip()
+                        if not first:
+                            continue
+                        hold_structured_prefix = first.startswith(("{", "```"))
+                        if not hold_structured_prefix:
+                            yield LLMTokenReceived(iteration=iteration, text=pending_prefix)
+                            pending_prefix = ""
+                    elif not hold_structured_prefix:
+                        yield LLMTokenReceived(iteration=iteration, text=chunk)
                 response = finalize_mlx_text(
                     accumulated,
                     tool_descriptions,
@@ -1448,6 +1518,33 @@ async def run_turn_streaming(
             messages.append(Message(role=Role.SYSTEM, content=retry_notice))
             continue
 
+        if (
+            not response.tool_calls
+            and tool_descriptions
+            and force_image_fetch
+            and not image_fetch_retry_used
+            and image_fetch_tool_names_in(selected_tool_names)
+            and planner_uses_json_tools(effective_llm)
+            and not has_image_fetch_outcome(tool_outcomes)
+        ):
+            image_fetch_retry_used = True
+            await audit.write(
+                Event(
+                    event_type=EventType.LLM_PARSE_RETRY,
+                    session_id=session_id,
+                    turn_id=len(session.history),
+                    step_id=iteration,
+                    payload={
+                        "iteration": iteration,
+                        "reason": "image_fetch_mandatory",
+                        "content_length": len(response.content),
+                    },
+                ),
+            )
+            messages.append(Message(role=Role.ASSISTANT, content=response.content or ""))
+            messages.append(Message(role=Role.SYSTEM, content=IMAGE_FETCH_RETRY_NOTICE))
+            continue
+
         if not response.tool_calls:
             final_content = response.content or ""
             if force_image_generate or probable_image_request:
@@ -1463,6 +1560,11 @@ async def run_turn_streaming(
                 image_failure = image_generation_failure_report_from_outcomes(tool_outcomes)
                 if image_failure is not None:
                     final_content = image_failure
+            if force_image_fetch:
+                final_content = ensure_fetched_image_markdown_present(
+                    final_content,
+                    outcomes=tool_outcomes,
+                )
             final_content = _repair_foreground_recovery_leak(
                 final_content,
                 session=session,
@@ -1650,6 +1752,11 @@ async def run_turn_streaming(
                         has_sandbox_actuator=has_sandbox_actuator,
                         session=session,
                         posture=active_posture,
+                        required_modes=(
+                            frozenset(ExecutionMode(m) for m in session.required_modes)
+                            if session.required_modes is not None
+                            else None
+                        ),
                     )
                 except ModeSelectionError as e:
                     await audit.write(
@@ -1660,14 +1767,20 @@ async def run_turn_streaming(
                             step_id=iteration,
                             payload={
                                 "refused": True,
-                                "tier": "restricted",
+                                "constraint": "required_handling"
+                                if session.required_modes is not None
+                                else "restricted_floor",
                                 "reason": str(e),
                             },
                         ),
                     )
                     yield TurnInterrupted(
                         iteration=iteration,
-                        reason="mode_refused_restricted",
+                        reason=(
+                            "mode_refused_required"
+                            if session.required_modes is not None
+                            else "mode_refused_restricted"
+                        ),
                         partial_content=(last_response.content if last_response else ""),
                         partial_outcomes=tuple(tool_outcomes),
                     )
@@ -1686,6 +1799,7 @@ async def run_turn_streaming(
                 prior_selected_names = {tool.name for tool in tool_surface.selected}
                 prior_selected_names.update(response_tool_names)
                 visible_all = visible_tools(registry, session, mode, active_posture)
+                visible_all = mail_tool_surface(registry, session, visible_all, user_message)
                 tool_surface = await select_tools_for_turn_async(
                     registry,
                     session,

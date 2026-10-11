@@ -60,6 +60,9 @@ def foreground_chat_default_capabilities(
         (
             _make_cap(CapabilityKind.CREATE_FS, f"{resolved_home}/.capdep/work/*"),
             _make_cap(CapabilityKind.CREATE_FS, "/tmp/*"),
+            # Local draft storage only: this URI never matches filesystem paths
+            # and grants no external draft or send authority.
+            _make_cap(CapabilityKind.CREATE_FS, "local-email-drafts://*"),
             _make_cap(CapabilityKind.IMAP_READ, "*"),
             _make_cap(CapabilityKind.CLOUD_FILE_READ, "*"),
             _make_cap(CapabilityKind.CHAT_READ, "*"),

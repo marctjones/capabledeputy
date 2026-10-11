@@ -2,7 +2,7 @@
 
 Verifies the async generator yields the expected event sequence
 under various scenarios:
-- Normal turn (no tool calls): IterationStarted → LLMRequestSent →
+- Normal turn (no tool calls): ModelSelected → IterationStarted → LLMRequestSent →
   LLMResponseReceived → TurnCompleted
 - Tool-call turn: ... → ToolDispatched → ToolReturned → ... → TurnCompleted
 - Max-iterations exceeded: ... → TurnInterrupted(reason='max_iterations')
@@ -105,8 +105,7 @@ async def session_setup(
 async def test_no_tool_calls_yields_terminal_completed_event(
     session_setup: tuple[UUID, SessionGraph, AuditWriter, ToolRegistry, LabeledToolClient],
 ) -> None:
-    """A simple turn with no tool calls produces:
-    IterationStarted → LLMRequestSent → LLMResponseReceived → TurnCompleted."""
+    """A direct-model turn reports its actual model before responding."""
     sid, graph, audit, registry, tool_client = session_setup
     llm = _StubLLM(
         [
@@ -132,19 +131,23 @@ async def test_no_tool_calls_yields_terminal_completed_event(
         events.append(evt)
 
     # Expected sequence
-    assert isinstance(events[0], IterationStarted)
-    assert events[0].iteration == 1
-    assert isinstance(events[1], LLMRequestSent)
+    assert isinstance(events[0], ModelSelected)
+    assert events[0].role == "planner.fast"
+    assert events[0].reason == "direct_model_config"
+    assert events[0].model == "_StubLLM"
+    assert isinstance(events[1], IterationStarted)
     assert events[1].iteration == 1
-    assert isinstance(events[2], LLMResponseReceived)
+    assert isinstance(events[2], LLMRequestSent)
     assert events[2].iteration == 1
-    assert events[2].content_length == len("hello world")
-    assert events[2].n_tool_calls == 0
-    assert isinstance(events[3], TurnCompleted)
-    assert events[3].result.content == "hello world"
-    assert events[3].result.iterations == 1
+    assert isinstance(events[3], LLMResponseReceived)
+    assert events[3].iteration == 1
+    assert events[3].content_length == len("hello world")
+    assert events[3].n_tool_calls == 0
+    assert isinstance(events[4], TurnCompleted)
+    assert events[4].result.content == "hello world"
+    assert events[4].result.iterations == 1
     # No more events after TurnCompleted
-    assert len(events) == 4
+    assert len(events) == 5
 
 
 def test_model_selected_event_serializes_for_clients() -> None:
@@ -210,6 +213,39 @@ async def test_streaming_llm_emits_token_events(
     assert [evt.text for evt in token_events] == ["hello ", "world"]
     assert isinstance(events[-1], TurnCompleted)
     assert events[-1].result.content == "hello world"
+
+
+async def test_streaming_tool_json_is_never_emitted_as_tokens(
+    session_setup: tuple[UUID, SessionGraph, AuditWriter, ToolRegistry, LabeledToolClient],
+) -> None:
+    """#419: a split raw tool envelope must remain daemon-private while parsing.
+
+    The terminal scrub alone is insufficient: an interactive client renders
+    ``LLMTokenReceived`` immediately, so the partial ``{"tool_calls"`` prefix
+    would otherwise be visible before the clean terminal result arrives.
+    """
+    sid, graph, audit, registry, tool_client = session_setup
+    llm = _StreamingStubLLM(
+        ['{"tool', '_calls": [{"id": "1", "name": "missing", "args": {}}]'],
+    )
+
+    events = []
+    async for evt in run_turn_streaming(
+        session_id=sid,
+        user_message="hi",
+        llm=cast(LLMClient, llm),
+        tool_client=tool_client,
+        registry=registry,
+        graph=graph,
+        audit=audit,
+    ):
+        events.append(evt)
+
+    token_text = "".join(evt.text for evt in events if isinstance(evt, LLMTokenReceived))
+    assert "tool_calls" not in token_text
+    assert isinstance(events[-1], TurnCompleted)
+    assert "tool_calls" not in events[-1].result.content
+    assert "didn't parse" in events[-1].result.content
 
 
 async def test_capdepmac_turn_suppresses_leaked_web_fetch_grant(

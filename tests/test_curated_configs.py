@@ -88,6 +88,40 @@ def test_tier1_curated_mappings_cover_core_providers() -> None:
     } <= {path.name for path in _FILES}
 
 
+def test_google_workspace_maps_every_exposed_effect_explicitly() -> None:
+    """#328: the local Workspace MCP surface is strict and never inferred."""
+    [config] = load_config_file(_CURATED / "google-workspace.yaml")
+
+    assert config.command == (
+        "gws-mcp-server",
+        "--services",
+        "gmail,calendar,drive",
+    )
+    assert config.auth is None  # local gws owns its encrypted OAuth token
+    assert config.tool_overrides["gmail_messages_list"].capability_kind is CapabilityKind.IMAP_READ
+    assert (
+        config.tool_overrides["gmail_drafts_create"].capability_kind
+        is CapabilityKind.EXTERNAL_MAIL_DRAFT
+    )
+    assert (
+        config.tool_overrides["calendar_events_insert"].capability_kind is CapabilityKind.CREATE_CAL
+    )
+    assert (
+        config.tool_overrides["calendar_events_update"].capability_kind is CapabilityKind.MODIFY_CAL
+    )
+    assert (
+        config.tool_overrides["calendar_events_delete"].capability_kind is CapabilityKind.DELETE_CAL
+    )
+    assert (
+        config.tool_overrides["drive_files_list"].capability_kind is CapabilityKind.CLOUD_FILE_READ
+    )
+    assert config.tool_overrides["drive_files_delete"].capability_kind is CapabilityKind.DELETE_FS
+    assert (
+        config.tool_overrides["drive_permissions_create"].capability_kind
+        is CapabilityKind.SEND_MESSAGE
+    )
+
+
 @pytest.mark.parametrize(
     ("filename", "server_name", "client_env", "write_tool"),
     [

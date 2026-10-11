@@ -25,6 +25,9 @@ strict: true
 disabled_kinds: ["SEND_EMAIL"]
 
 tool_overrides:
+  imap.read_recent:
+    capability_kind: IMAP_READ
+    additional_labels: [confidential.personal, untrusted.user_input]
   # Read tools — IMAP_READ kind. Default sessions auto-grant IMAP_READ *.
   # Per-tool labels color the session's IFC state after reading.
   imap.list_threads:

@@ -24,6 +24,39 @@ public final class CapDepScriptingDelegate: NSObject, NSApplicationDelegate {
         "pendingApprovalIDs",
     ]
 
+    #if DEBUG
+    private var backgroundGUIHost: CapDepBackgroundGUITestHost?
+    private var backgroundLaunchObserver: NSObjectProtocol?
+
+    public override init() {
+        super.init()
+        guard CapDepBackgroundGUIMode.enabled else { return }
+        CapDepBackgroundGUIMode.diagnostic("delegate.init")
+        // Observe AppKit directly as well as the SwiftUI delegate callback:
+        // background-only launches may defer ordinary scene initialization.
+        backgroundLaunchObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didFinishLaunchingNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.startBackgroundHost(event: "launch.notification") }
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.startBackgroundHost(event: "delegate.deferred")
+        }
+    }
+
+    public func applicationDidFinishLaunching(_ notification: Notification) {
+        startBackgroundHost(event: "delegate.didFinishLaunching")
+    }
+
+    private func startBackgroundHost(event: String) {
+        guard CapDepBackgroundGUIMode.enabled else { return }
+        CapDepBackgroundGUIMode.diagnostic("\(event) existing=\(backgroundGUIHost != nil) shared=\(CapDepAppModel.shared != nil)")
+        guard backgroundGUIHost == nil else { return }
+        let model = CapDepAppModel.shared ?? CapDepAppModel()
+        backgroundGUIHost = CapDepBackgroundGUITestHost(model: model)
+    }
+    #endif
+
     public func application(_ sender: NSApplication, delegateHandlesKey key: String) -> Bool {
         Self.scriptingKeys.contains(key)
     }

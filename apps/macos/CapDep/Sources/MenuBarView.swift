@@ -45,13 +45,8 @@ struct MenuBarView: View {
             .keyboardShortcut(" ", modifiers: [.option])
 
             Button {
-                if let first = model.pendingApprovals.first {
-                    model.presentApproval(id: first.id)
-                    openWindow(id: "approval-card")
-                } else {
-                    model.selectedSection = .approvals
-                    openWindow(id: "console")
-                }
+                model.presentApprovalQueue()
+                openWindow(id: "main")
             } label: {
                 Label("Approvals", systemImage: "hand.raised")
             }
@@ -102,9 +97,9 @@ struct MenuBarView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     ForEach(model.pendingApprovals.prefix(3)) { approval in
-                        Button("#\(approval.id) \(approval.action) -> \(approval.target)") {
+                        Button(approval.actionTitle) {
                             model.presentApproval(id: approval.id)
-                            openWindow(id: "approval-card")
+                            openWindow(id: "main")
                         }
                     }
                 }
@@ -136,9 +131,10 @@ struct MenuBarView: View {
     }
 
     private var statusTitle: String {
-        if model.connected {
-            return "CapDep protected"
-        }
-        return model.daemonConnection.statusTitle
+        MenuBarStatus.title(
+            connected: model.connected,
+            pendingCount: model.pendingApprovals.count,
+            disconnectedTitle: model.daemonConnection.statusTitle,
+        )
     }
 }

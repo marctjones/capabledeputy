@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 struct Approval: Identifiable, Hashable {
@@ -16,6 +17,7 @@ struct Approval: Identifiable, Hashable {
     let rule: String
     let requiresStrongAuth: Bool
     let touchIDPolicyEnabled: Bool
+    let expiresAt: String
 
     init(dictionary: [String: Any]) {
         self.id = dictionary["id"] as? Int ?? 0
@@ -33,6 +35,7 @@ struct Approval: Identifiable, Hashable {
         self.rule = dictionary["rule"] as? String ?? ""
         self.requiresStrongAuth = dictionary["requires_strong_auth"] as? Bool ?? false
         self.touchIDPolicyEnabled = dictionary["touch_id_policy_enabled"] as? Bool ?? false
+        self.expiresAt = dictionary["expires_at"] as? String ?? ""
     }
 
     private static func labels(from raw: Any?) -> [String] {
@@ -60,6 +63,7 @@ struct ChatMessage: Identifiable, Hashable {
     let role: Role
     var content: String
     var isStreaming: Bool
+    var requestTurnID: String? = nil
 
     init(
         id: String = UUID().uuidString,
@@ -217,6 +221,81 @@ struct ChatPromptRun: Identifiable, Hashable, Codable {
     }
 }
 
+/// Read-only daemon request evidence. This projection grants no authority.
+struct RequestTraceEvent: Identifiable {
+    let cursor: Int
+    let kind: String
+    let timestamp: String
+    let payload: [String: Any]
+    var id: Int { cursor }
+    var isNoise: Bool { kind == "heartbeat" || kind == "llm_token" }
+    var isModelTrace: Bool { kind.contains("thinking") || kind.contains("reasoning") }
+
+    init(dictionary: [String: Any]) {
+        cursor = dictionary["cursor"] as? Int ?? 0
+        kind = dictionary["type"] as? String ?? "unknown"
+        timestamp = dictionary["created_at"] as? String ?? ""
+        payload = dictionary["payload"] as? [String: Any] ?? [:]
+    }
+
+    var title: String {
+        switch kind {
+        case "tool_dispatched": return "Proposed tool: \(payload["tool_name"] as? String ?? "tool")"
+        case "tool_returned":
+            let outcome = payload["outcome"] as? [String: Any] ?? [:]
+            return "Daemon decision: \(outcome["decision"] as? String ?? "unknown") — \(outcome["tool_name"] as? String ?? "tool")"
+        case "model_selected": return "Model: \(payload["model"] as? String ?? "unknown")"
+        case "llm_request_sent": return "Model request (\(payload["n_tools"] as? Int ?? 0) selected tools)"
+        default: return kind.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    static func redactedJSON(_ value: Any) -> String {
+        func redact(_ value: Any) -> Any {
+            if let dictionary = value as? [String: Any] {
+                return dictionary.mapValues { $0 }.reduce(into: [String: Any]()) { result, pair in
+                    let key = pair.key.lowercased().replacingOccurrences(of: "-", with: "_")
+                    let sensitive = ["password", "secret", "token", "authorization", "cookie", "api_key", "credential"]
+                        .contains { key.contains($0) }
+                    result[pair.key] = sensitive ? "[redacted]" : redact(pair.value)
+                }
+            }
+            if let array = value as? [Any] { return array.map(redact) }
+            return value
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: redact(value), options: [.prettyPrinted, .sortedKeys, .fragmentsAllowed]),
+              let text = String(data: data, encoding: .utf8) else { return "Unavailable" }
+        return text
+    }
+}
+
+struct RequestInspectionTarget: Identifiable {
+    let id: String
+    let prompt: String
+    let sessionID: String?
+    let turnID: String?
+    var promptRunID: String? = nil
+
+    static func matches(prompt: String, daemonMessage: String) -> Bool {
+        func normalized(_ text: String) -> String {
+            for prefix in ["/model tools ", "/quality ", "/fast "] where text.hasPrefix(prefix) {
+                return String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return !prompt.isEmpty && normalized(prompt) == normalized(daemonMessage)
+    }
+}
+
+/// The daemon-reported model that most recently served a session. This is
+/// display evidence only: model routing never grants capabilities or affects a
+/// policy decision.
+struct SessionModelReport: Hashable, Codable {
+    let role: String
+    let model: String
+    let reason: String
+}
+
 enum ChatModelMode: String, CaseIterable, Identifiable {
     case automatic
     case fast
@@ -273,6 +352,7 @@ struct CapDepSession: Identifiable, Hashable {
     let purpose: String
     let owner: String
     let labels: [String]
+    let updatedAt: String
 
     init(dictionary: [String: Any]) {
         self.id = dictionary["id"] as? String ?? ""
@@ -280,6 +360,7 @@ struct CapDepSession: Identifiable, Hashable {
         self.intent = dictionary["intent"] as? String ?? ""
         self.purpose = dictionary["purpose_handle"] as? String ?? ""
         self.owner = dictionary["owner"] as? String ?? ""
+        self.updatedAt = dictionary["updated_at"] as? String ?? ""
         if let labelState = dictionary["label_state"] as? [String: Any] {
             self.labels = Self.flattenLabels(labelState)
         } else {
@@ -299,6 +380,47 @@ struct CapDepSession: Identifiable, Hashable {
             }
         }
         return labels.sorted()
+    }
+}
+
+/// A daemon-materialized session artifact. This is deliberately narrower than
+/// arbitrary markdown: only generated images with a tool-output origin, a
+/// content hash, and an approved work-images path are eligible for rendering.
+struct SessionArtifact: Identifiable, Hashable {
+    let id: String
+    let kind: String
+    let source: String
+    let path: String
+    let alt: String
+    let sha256: String
+    let originToolName: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["artifact_id"] as? String ?? UUID().uuidString
+        self.kind = dictionary["kind"] as? String ?? ""
+        self.source = dictionary["source"] as? String ?? ""
+        self.path = dictionary["path"] as? String ?? ""
+        self.alt = dictionary["alt"] as? String ?? ""
+        self.sha256 = dictionary["sha256"] as? String ?? ""
+        self.originToolName = dictionary["origin_tool_name"] as? String ?? ""
+    }
+
+    var isAuthorizedGeneratedImage: Bool {
+        kind == "generated_image"
+            && source == "tool_output"
+            && ChatMarkdownParser.isGeneratedWorkImagePath(path)
+            && sha256.count == 64
+            && sha256.allSatisfy { $0.isHexDigit }
+    }
+
+    var shortHash: String { String(sha256.prefix(12)) }
+
+    func matchesRecordedDigest(at url: URL) -> Bool {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+            return false
+        }
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return digest == sha256.lowercased()
     }
 }
 
@@ -725,6 +847,7 @@ struct DaemonSettings: Hashable {
     var defaultPurpose: String
     var globalShortcut: String
     var imageProfile: String
+    var imageBackend: String
     var launchAtLogin: Bool
     var notificationsEnabled: Bool
     var preferLocalMLX: Bool
@@ -737,6 +860,7 @@ struct DaemonSettings: Hashable {
         self.defaultPurpose = dictionary["default_purpose"] as? String ?? "general"
         self.globalShortcut = dictionary["global_shortcut"] as? String ?? "Option-Space"
         self.imageProfile = dictionary["image_profile"] as? String ?? "default"
+        self.imageBackend = dictionary["image_backend"] as? String ?? "configured"
         self.launchAtLogin = dictionary["launch_at_login"] as? Bool ?? false
         self.notificationsEnabled = dictionary["notifications_enabled"] as? Bool ?? true
         self.preferLocalMLX = dictionary["prefer_local_mlx"] as? Bool ?? true
@@ -751,6 +875,7 @@ struct DaemonSettings: Hashable {
             "default_purpose": defaultPurpose,
             "global_shortcut": globalShortcut,
             "image_profile": imageProfile,
+            "image_backend": imageBackend,
             "launch_at_login": launchAtLogin,
             "notifications_enabled": notificationsEnabled,
             "prefer_local_mlx": preferLocalMLX,
@@ -901,6 +1026,16 @@ struct ProvenanceEdge: Identifiable, Hashable {
 }
 
 struct SessionSecurityContext: Hashable {
+    let grantKinds: [String]
+    let sensitiveCategories: [String]
+    let externalUntrusted: Bool
+    let authorizationNotice: String
+    let availableTools: [DaemonToolViewData]
+    let referenceHandleKeys: [String]
+    let sessionDetails: [String: String]
+    let decisionContextDetails: [String: String]
+    let capabilityUsageDetails: [String: String]
+    let hasPostureSummary: Bool
     let sessionID: String
     let enforcementMode: String
     let labelCount: Int
@@ -912,21 +1047,50 @@ struct SessionSecurityContext: Hashable {
     let matchedRuleIDs: [String]
     let provenanceNodeCount: Int
     let provenanceEdgeCount: Int
+    let provenanceNodeOffset: Int
+    let provenanceNodeReturned: Int
+    let provenanceNodeHasMore: Bool
+    let provenanceEdgeReturned: Int
+    let provenanceEdgeHasMore: Bool
+    let provenanceKindFilter: String
     let externalMCPActors: [String]
     let toolActors: [String]
     let onguardClientID: String
+    let originKind: String
+    let labelValues: [String]
+    let labelPropagation: [SessionLabelPropagationEvidence]
+    let activeCapabilities: [SessionCapabilityEvidence]
+    let policyDecisions: [SessionPolicyDecision]
+    let toolSurfaceSelections: [SessionToolSurfaceSelection]
+    let provenanceNodes: [SessionProvenanceEvidence]
+    let provenanceEdges: [SessionProvenanceEdgeEvidence]
     let securityModels: [SecurityContextItem]
     let flowPatterns: [SecurityContextItem]
     let limitations: [String]
 
     init(dictionary: [String: Any]) {
+        let summary = dictionary["posture_summary"] as? [String: Any] ?? [:]
+        self.hasPostureSummary = dictionary["posture_summary"] != nil
+        self.grantKinds = summary["grant_kinds"] as? [String] ?? []
+        self.sensitiveCategories = summary["sensitive_categories"] as? [String] ?? []
+        self.externalUntrusted = summary["external_untrusted"] as? Bool ?? false
+        self.authorizationNotice = summary["authorization_notice"] as? String ?? "Authorization is evaluated by the daemon for each action."
+        self.availableTools = (dictionary["available_tools"] as? [[String: Any]] ?? []).map(DaemonToolViewData.init(dictionary:))
+        self.referenceHandleKeys = (dictionary["saved_state"] as? [String: Any])?["reference_handle_keys"] as? [String] ?? []
         let session = dictionary["session"] as? [String: Any] ?? [:]
+        self.sessionDetails = session.mapValues { String(describing: $0) }
         let labels = dictionary["labels"] as? [String: Any] ?? [:]
         let capabilities = dictionary["capabilities"] as? [String: Any] ?? [:]
+        self.capabilityUsageDetails = [
+            "revoked_audit_ids": String(describing: capabilities["revoked_audit_ids"] ?? []),
+            "cap_uses": String(describing: capabilities["cap_uses"] ?? [:]),
+        ]
+        self.decisionContextDetails = (labels["axis_d"] as? [String: Any] ?? [:]).mapValues { String(describing: $0) }
         let approvals = dictionary["approvals"] as? [String: Any] ?? [:]
         let policy = dictionary["policy"] as? [String: Any] ?? [:]
         let provenance = dictionary["provenance"] as? [String: Any] ?? [:]
         let actors = dictionary["actors"] as? [String: Any] ?? [:]
+        let origin = dictionary["origin"] as? [String: Any] ?? [:]
         let onguard = actors["onguard"] as? [String: Any] ?? [:]
         let onguardClient = onguard["client"] as? [String: Any] ?? [:]
 
@@ -943,6 +1107,12 @@ struct SessionSecurityContext: Hashable {
         self.matchedRuleIDs = policy["matched_rule_ids"] as? [String] ?? []
         self.provenanceNodeCount = provenance["node_count"] as? Int ?? 0
         self.provenanceEdgeCount = provenance["edge_count"] as? Int ?? 0
+        self.provenanceNodeOffset = provenance["node_offset"] as? Int ?? 0
+        self.provenanceNodeReturned = provenance["node_returned"] as? Int ?? 0
+        self.provenanceNodeHasMore = provenance["node_has_more"] as? Bool ?? false
+        self.provenanceEdgeReturned = provenance["edge_returned"] as? Int ?? 0
+        self.provenanceEdgeHasMore = provenance["edge_has_more"] as? Bool ?? false
+        self.provenanceKindFilter = provenance["kind_filter"] as? String ?? ""
         self.externalMCPActors = (actors["external_mcp"] as? [[String: Any]] ?? [])
             .compactMap { $0["name"] as? String }
             .sorted()
@@ -950,6 +1120,24 @@ struct SessionSecurityContext: Hashable {
             .compactMap { $0["name"] as? String }
             .sorted()
         self.onguardClientID = onguardClient["client_id"] as? String ?? ""
+        self.originKind = origin["kind"] as? String ?? ""
+        self.labelValues = CapDepSession.flattenLabels(
+            labels["label_state"] as? [String: Any] ?? [:],
+        ).sorted()
+        self.labelPropagation = (labels["propagation"] as? [[String: Any]] ?? [])
+            .map(SessionLabelPropagationEvidence.init(dictionary:))
+        self.activeCapabilities = (capabilities["active"] as? [[String: Any]] ?? [])
+            .map(SessionCapabilityEvidence.init(dictionary:))
+            .sorted { $0.sortKey < $1.sortKey }
+        self.policyDecisions = (policy["recent_decisions"] as? [[String: Any]] ?? [])
+            .map(SessionPolicyDecision.init(dictionary:))
+        let toolSurface = actors["tool_surface"] as? [String: Any] ?? [:]
+        self.toolSurfaceSelections = (toolSurface["recent_selections"] as? [[String: Any]] ?? [])
+            .map(SessionToolSurfaceSelection.init(dictionary:))
+        self.provenanceNodes = (provenance["nodes"] as? [[String: Any]] ?? [])
+            .map(SessionProvenanceEvidence.init(dictionary:))
+        self.provenanceEdges = (provenance["edges"] as? [[String: Any]] ?? [])
+            .map(SessionProvenanceEdgeEvidence.init(dictionary:))
         self.securityModels = (dictionary["security_models"] as? [[String: Any]] ?? [])
             .map(SecurityContextItem.init(dictionary:))
         self.flowPatterns = (dictionary["flow_patterns"] as? [[String: Any]] ?? [])
@@ -958,6 +1146,145 @@ struct SessionSecurityContext: Hashable {
     }
 
     static let empty = SessionSecurityContext(dictionary: [:])
+
+    var hasEmailReadGrant: Bool {
+        grantKinds.contains("IMAP_READ") || grantKinds.contains("READ_EMAIL")
+    }
+}
+
+/// Content-free daemon audit evidence explaining a label's ingress. The UI
+/// displays this projection only; it cannot add, clear, or declassify labels.
+struct SessionLabelPropagationEvidence: Identifiable, Hashable {
+    let id: String
+    let sourceTool: String
+    let categoriesAdded: [String]
+    let levelsAdded: [String]
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["audit_id"] as? String ?? UUID().uuidString
+        self.sourceTool = dictionary["source_tool"] as? String ?? ""
+        self.categoriesAdded = dictionary["categories_added"] as? [String] ?? []
+        self.levelsAdded = dictionary["levels_added"] as? [String] ?? []
+    }
+
+    var summary: String {
+        var parts = ["source=\(sourceTool.isEmpty ? "unknown" : sourceTool)"]
+        if !categoriesAdded.isEmpty { parts.append("categories=\(categoriesAdded.joined(separator: ", "))") }
+        if !levelsAdded.isEmpty { parts.append("provenance=\(levelsAdded.joined(separator: ", "))") }
+        return parts.joined(separator: " · ")
+    }
+}
+
+/// A daemon-projected capability record.  This is display evidence only: no
+/// CapDepMac control can grant, revoke, attenuate, or otherwise edit it.
+struct SessionCapabilityEvidence: Identifiable, Hashable {
+    let id: String
+    let kind: String
+    let pattern: String
+    let origin: String
+    let expiry: String
+    let expiresAt: String
+    let maxAmount: String
+    let rateLimit: String
+    let revokedBy: [String]
+
+    init(dictionary: [String: Any]) {
+        self.kind = dictionary["kind"] as? String ?? ""
+        self.pattern = dictionary["pattern"] as? String ?? ""
+        self.origin = dictionary["origin"] as? String ?? ""
+        self.expiry = dictionary["expiry"] as? String ?? ""
+        self.expiresAt = dictionary["expires_at"] as? String ?? ""
+        self.maxAmount = dictionary["max_amount"].map { String(describing: $0) } ?? ""
+        self.rateLimit = dictionary["rate_limit"].map { String(describing: $0) } ?? ""
+        self.revokedBy = dictionary["revoked_by"] as? [String] ?? []
+        self.id = dictionary["audit_id"] as? String ?? "\(kind):\(pattern):\(origin)"
+    }
+
+    var sortKey: String { "\(kind)\u{0}\(pattern)\u{0}\(id)" }
+
+    var summary: String {
+        var parts = ["target=\(pattern)", "origin=\(origin)", "expiry=\(expiry)"]
+        if !expiresAt.isEmpty { parts.append("expires=\(expiresAt)") }
+        if !maxAmount.isEmpty { parts.append("max=\(maxAmount)") }
+        if !rateLimit.isEmpty { parts.append("rate=\(rateLimit)") }
+        if !revokedBy.isEmpty { parts.append("revoked by \(revokedBy.joined(separator: ", "))") }
+        return parts.joined(separator: " · ")
+    }
+}
+
+struct SessionPolicyDecision: Identifiable, Hashable {
+    let id: String
+    let tool: String
+    let decision: String
+    let rule: String
+    let reason: String
+    let effectClass: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["audit_id"] as? String ?? UUID().uuidString
+        self.tool = dictionary["tool"] as? String ?? ""
+        self.decision = dictionary["decision"] as? String ?? ""
+        self.rule = dictionary["rule"] as? String ?? ""
+        self.reason = dictionary["reason"] as? String ?? ""
+        self.effectClass = dictionary["effect_class"] as? String ?? ""
+    }
+
+    var summary: String {
+        [rule.isEmpty ? nil : "rule=\(rule)", effectClass.isEmpty ? nil : "effect=\(effectClass)", reason.isEmpty ? nil : reason]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+    }
+}
+
+struct SessionToolSurfaceSelection: Identifiable, Hashable {
+    let id: String
+    let method: String
+    let visibleCount: Int
+    let selected: [String]
+    let mandatoryAdded: [String]
+    let reason: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["audit_id"] as? String ?? UUID().uuidString
+        self.method = dictionary["method"] as? String ?? ""
+        self.visibleCount = dictionary["n_visible"] as? Int ?? 0
+        self.selected = dictionary["selected"] as? [String] ?? []
+        self.mandatoryAdded = dictionary["mandatory_added"] as? [String] ?? []
+        self.reason = dictionary["selection_reason"] as? String ?? ""
+    }
+
+    var summary: String {
+        var parts = ["method=\(method)", "visible=\(visibleCount)", "selected=\(selected.joined(separator: ", "))"]
+        if !mandatoryAdded.isEmpty { parts.append("mandatory=\(mandatoryAdded.joined(separator: ", "))") }
+        if !reason.isEmpty { parts.append("reason=\(reason)") }
+        return parts.joined(separator: " · ")
+    }
+}
+
+struct SessionProvenanceEvidence: Identifiable, Hashable {
+    let id: String
+    let kind: String
+    let materializedID: String
+
+    init(dictionary: [String: Any]) {
+        self.id = dictionary["id"] as? String ?? UUID().uuidString
+        self.kind = dictionary["kind"] as? String ?? ""
+        self.materializedID = dictionary["materialized_id"] as? String ?? ""
+    }
+}
+
+struct SessionProvenanceEdgeEvidence: Identifiable, Hashable {
+    let id: String
+    let from: String
+    let to: String
+    let kind: String
+
+    init(dictionary: [String: Any]) {
+        self.from = dictionary["from"] as? String ?? ""
+        self.to = dictionary["to"] as? String ?? ""
+        self.kind = dictionary["kind"] as? String ?? ""
+        self.id = "\(from)→\(to):\(kind)"
+    }
 }
 
 struct SecurityContextItem: Identifiable, Hashable {

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.upstream.server_yaml import (
     CustomKindDecl,
     CustomKindRegistry,
@@ -253,6 +254,28 @@ tool_mappings:
     assert cfg.auth.type == "oauth2"
     assert cfg.command == ()
     assert any(tag.category == "personal" for tag in cfg.inherent_tags.a)
+
+
+def test_google_workspace_server_example_is_strict_and_complete(tmp_path: Path) -> None:
+    """The copy-ready local Workspace connector stays valid and fail-closed."""
+    repo = Path(__file__).parent.parent
+    source = repo / "configs" / "servers.d.example" / "google-workspace.yaml"
+    destination = tmp_path / "servers.d"
+    destination.mkdir()
+    _write_yaml(destination, source.name, source.read_text(encoding="utf-8"))
+
+    [config], _, _ = load_servers_d(destination)
+    server = config.server_config
+    assert server.strict is True
+    assert server.command == ("gws-mcp-server", "--services", "gmail,calendar,drive")
+    assert server.tool_overrides["gmail_messages_list"].capability_kind is CapabilityKind.IMAP_READ
+    assert (
+        server.tool_overrides["calendar_events_delete"].capability_kind is CapabilityKind.DELETE_CAL
+    )
+    assert (
+        server.tool_overrides["drive_permissions_create"].capability_kind
+        is CapabilityKind.SEND_MESSAGE
+    )
 
 
 def test_unsupported_schema_version_refused(tmp_path: Path) -> None:

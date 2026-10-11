@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from typing import TYPE_CHECKING, Any
@@ -30,7 +31,7 @@ _WIKIPEDIA_LOOKUP_INTENT_RE = re.compile(
 
 _TOOL_INTENT_RE = re.compile(
     r"\b("
-    r"email|inbox|mail|gmail|calendar|event|meeting|schedule|"
+    r"emails?|e-?mails?|inbox|mailbox|gmail|messages?|repl(?:y|ies)|calendar|event|meeting|schedule|"
     r"file|folder|document|drive|read|write|search|websearch|fetch|browse|"
     r"headlines?|news|internet|online|website|wikipedia|kagi|research|"
     r"git|repo|commit|branch|memory|note|draft|send|delete|"
@@ -142,6 +143,14 @@ IMAGE_PATH_HALLUCINATION_RETRY_NOTICE = (
     "paste ONLY the `markdown` field returned by the tool."
 )
 
+IMAGE_FETCH_RETRY_NOTICE = (
+    "MANDATORY: the user requested an image from the web. You MUST call "
+    "`bundled-image-fetch.image.fetch` (or `image.fetch`) with the chosen "
+    "remote image/page URL now. The daemon, not the client, fetches and caches "
+    "it after a policy decision. Do NOT paste remote image markdown or an https "
+    "URL as a substitute. Respond with ONLY a tool_calls JSON object."
+)
+
 
 def has_chart_generation_intent(message: str) -> bool:
     """True when the user wants a generated chart/graph shown inline."""
@@ -229,6 +238,10 @@ def is_generated_work_image_path(path: str) -> bool:
 
 def _is_image_generate_tool_name(name: str | None) -> bool:
     return bool(name and name in _image_generate_tool_names())
+
+
+def _is_image_fetch_tool_name(name: str | None) -> bool:
+    return bool(name and name in _image_fetch_tool_names())
 
 
 def image_paths_from_tool_outcome(outcome: ToolCallOutcome) -> frozenset[str]:
@@ -378,6 +391,42 @@ def ensure_generated_image_markdown_present(
     return f"{content.rstrip()}\n\n{preferred}"
 
 
+def ensure_fetched_image_markdown_present(content: str, *, outcomes: list[Any]) -> str:
+    """Keep an admitted daemon-cached web image visible when prose omits it."""
+    from capabledeputy.policy.rules import Decision
+
+    for outcome in outcomes:
+        if not _is_image_fetch_tool_name(getattr(outcome, "tool_name", None)):
+            continue
+        if getattr(outcome, "decision", None) != Decision.ALLOW:
+            continue
+        output = _structured_tool_output(getattr(outcome, "output", None))
+        markdown = output.get("markdown") if isinstance(output, dict) else None
+        if not isinstance(markdown, str) or not markdown.strip():
+            continue
+        if markdown.strip() in content:
+            return content
+        return (
+            markdown.strip() if not content.strip() else f"{content.rstrip()}\n\n{markdown.strip()}"
+        )
+    return content
+
+
+def _structured_tool_output(output: Any) -> dict[str, Any]:
+    """Unwrap the standard MCP ``{text: JSON}`` envelope when present."""
+    if not isinstance(output, dict):
+        return {}
+    text = output.get("text")
+    if isinstance(text, str):
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed
+    return output
+
+
 def looks_like_image_generation_refusal(content: str) -> bool:
     """True when the model declined in prose instead of calling image.generate."""
     stripped = content.strip()
@@ -404,6 +453,17 @@ def looks_like_image_generation_refusal(content: str) -> bool:
 
 def image_generate_tool_names_in(selected_names: set[str] | frozenset[str]) -> bool:
     return any(name in selected_names for name in _image_generate_tool_names())
+
+
+def image_fetch_tool_names_in(selected_names: set[str] | frozenset[str]) -> bool:
+    return any(name in selected_names for name in _image_fetch_tool_names())
+
+
+def has_image_fetch_outcome(outcomes: list[Any]) -> bool:
+    """Whether this turn already dispatched the daemon-mediated image fetch."""
+    return any(
+        getattr(outcome, "tool_name", None) in _image_fetch_tool_names() for outcome in outcomes
+    )
 
 
 def _image_generate_tool_names() -> tuple[str, ...]:
@@ -442,7 +502,7 @@ def has_web_search_intent(message: str) -> bool:
     return has_chart_generation_intent(stripped) and has_research_data_intent(stripped)
 
 
-def is_conversational_turn(message: str) -> bool:
+def is_conversational_turn(message: str, *, purpose_handle: str = "") -> bool:
     """True when the user message is likely pure chat — no tool calls needed.
 
     Short greetings, small talk, and general knowledge questions should
@@ -453,6 +513,14 @@ def is_conversational_turn(message: str) -> bool:
     if not stripped:
         return False
     if len(stripped) > 320:
+        return False
+    # Resolve pronoun/ordinal follow-ups in the admitted inbox context before
+    # deciding that a short turn needs no tools. This changes exposure, not grants.
+    if purpose_handle == "inbox" and re.search(
+        r"\b(other|next|previous|first|second|third|those|them)\b|\b(that|this) one\b",
+        stripped,
+        re.IGNORECASE,
+    ):
         return False
     if (
         has_image_generation_intent(stripped)

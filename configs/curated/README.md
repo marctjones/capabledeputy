@@ -11,6 +11,7 @@ locked-down" path for demonstrating actual workflows.
 |---|---|---|
 | `official-reference.yaml` | filesystem, fetch, git, time, memory | doc drafting, web research, dev/work, reminders |
 | `github.yaml` | GitHub official remote MCP | repository, issue, PR, and code review workflows |
+| `google-workspace.yaml` | local `gws-mcp-server` | Gmail, Google Calendar, and Drive workflows |
 | `microsoft-365.yaml` | Microsoft 365 / Graph MCP mapping fixture | Outlook, OneDrive/SharePoint, and calendar workflows |
 | `notion.yaml` | Notion MCP mapping fixture | workspace research, page drafting, and database notes |
 | `slack.yaml` | Slack official remote MCP | team communication |
@@ -61,9 +62,12 @@ scope decision, not a gap.
   pin CapDep's tool capability policy for those providers, but keep endpoint
   hostnames as operator-reviewed placeholders until the current producer MCP
   endpoint is confirmed for the deployment.
-- **Community / compatibility:** `google-workspace-community.yaml` uses
+- **Community / compatibility:** `google-workspace.yaml` uses the local
   `gws-mcp-server`. Treat package upgrades as an admission event: re-review
-  `rejected_tools` and the override map.
+  `rejected_tools` and the override map. Its credential is held by `gws`, not
+  in the CapDep config; begin with the three read-only Gmail/Calendar/Drive
+  scopes documented in the file and add a reviewed scope only when a concrete
+  mutation workflow needs it.
 
 ## Caveats (honest)
 

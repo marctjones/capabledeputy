@@ -1,11 +1,16 @@
-"""Approval queue: in-memory storage of pending and decided ApprovalRequests."""
+"""Durable review history with nonreused IDs and fail-closed consent recovery."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
+import sqlite3
+import time
+from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -65,8 +70,11 @@ class ApprovalQueue:
         pattern_registry: ApprovalPatternRegistry | None = None,
         graph: Any = None,
         default_ttl_seconds: int = DEFAULT_APPROVAL_TTL_SECONDS,
+        id_store_path: Path | None = None,
+        review_store_path: Path | None = None,
     ) -> None:
         self._next_id = 1
+        self._id_store_path = id_store_path
         self._requests: dict[int, ApprovalRequest] = {}
         self._audit = audit
         self._provenance = ProvenanceRecorder(audit)
@@ -76,6 +84,137 @@ class ApprovalQueue:
         # the caller doesn't pass an explicit ttl_seconds. 0 ⇒
         # no auto-expiry (legacy / explicit immortal behavior).
         self._default_ttl_seconds = max(0, default_ttl_seconds)
+        self._review_store_path = review_store_path
+        if review_store_path is not None:
+            review_store_path.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(review_store_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+            os.close(fd)
+            review_store_path.chmod(0o600)
+            with closing(sqlite3.connect(review_store_path)) as con, con:
+                con.execute(
+                    "CREATE TABLE IF NOT EXISTS reviews "
+                    "(id INTEGER PRIMARY KEY, record TEXT NOT NULL)"
+                )
+                rows = con.execute("SELECT record FROM reviews").fetchall()
+            for (record,) in rows:
+                request = ApprovalRequest.from_dict(json.loads(record))
+                if request.status == ApprovalStatus.PENDING:
+                    # Recovery preserves discoverability, never revives consent.
+                    # A daemon restart requires a fresh policy/source-bound review.
+                    request = replace(
+                        request,
+                        status=ApprovalStatus.EXPIRED,
+                        decision_at=datetime.now(UTC),
+                        decided_by="daemon-restart",
+                    )
+                self.record(request)
+                self._next_id = max(self._next_id, request.id + 1)
+
+    def record(self, request: ApprovalRequest) -> None:
+        """Persist before publishing a state transition or permitting an effect."""
+        if self._review_store_path is not None:
+            with closing(sqlite3.connect(self._review_store_path)) as con, con:
+                con.execute(
+                    "INSERT OR REPLACE INTO reviews VALUES (?, ?)",
+                    (request.id, json.dumps(request.to_dict(), allow_nan=False)),
+                )
+        self._requests[request.id] = request
+
+    def mark_not_submitted(self, request_id: int, detail: str) -> None:
+        """Record a proven pre-journal stop without erasing the approval decision."""
+        request = self.get(request_id)
+        self.record(
+            replace(
+                request,
+                decision_scope={
+                    **request.decision_scope,
+                    "execution_status": "failed_before_submission",
+                    "execution_detail": detail,
+                },
+            )
+        )
+
+    def supersede(self, request_id: int) -> ApprovalRequest:
+        """Withdraw old consent synchronously, before an editor can be shown."""
+        request = self.get(request_id)
+        if request.status == ApprovalStatus.APPROVED:
+            raise ApprovalStateError(
+                "This action was already approved; inspect its outcome before editing"
+            )
+        if request.status != ApprovalStatus.PENDING:
+            return request
+        updated = replace(
+            request,
+            status=ApprovalStatus.SUPERSEDED,
+            decision_at=datetime.now(UTC),
+            decided_by="operator-edit",
+        )
+        self.record(updated)
+        self._record_queue_depth()
+        return updated
+
+    def _allocate_id(self) -> int:
+        """Commit a never-reused ID before exposing a review to any client.
+
+        The daemon uses a separate allocator database so session schema recovery
+        cannot reset review identities. Initial epoch-microsecond IDs occupy a
+        namespace above the old process-local sequential counters. A persistent
+        marker detects a missing/replaced allocator and fails closed; recovery
+        must restore the original pair, never delete both and silently reseed.
+        Pending reviews remain ephemeral and must be requested anew on restart.
+        """
+        path = self._id_store_path
+        if path is None:
+            identity = self._next_id
+            self._next_id += 1
+            return identity
+        marker = path.with_name(path.name + ".identity")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        db_exists, marker_exists = path.exists(), marker.exists()
+        if db_exists != marker_exists:
+            raise ApprovalStateError(
+                "Approval ID storage is incomplete; restore its original database "
+                "and identity marker"
+            )
+        fresh = not db_exists
+        with closing(sqlite3.connect(path)) as con:
+            if fresh:
+                try:
+                    with marker.open("x", encoding="utf-8") as handle:
+                        handle.write(str(uuid4()))
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                except FileExistsError:
+                    pass  # another allocator initialized the same namespace
+            namespace = str(UUID(marker.read_text(encoding="utf-8").strip()))
+            with con:
+                con.execute("BEGIN IMMEDIATE")
+                if fresh:
+                    con.execute(
+                        "CREATE TABLE IF NOT EXISTS approval_ids "
+                        "(singleton INTEGER PRIMARY KEY CHECK(singleton = 1), "
+                        "next_id INTEGER NOT NULL, namespace TEXT NOT NULL)"
+                    )
+                    con.execute(
+                        "INSERT OR IGNORE INTO approval_ids VALUES (1, ?, ?)",
+                        (time.time_ns() // 1000, namespace),
+                    )
+                row = con.execute(
+                    "SELECT next_id, namespace FROM approval_ids WHERE singleton = 1"
+                ).fetchone()
+                if row is None or row[1] != namespace:
+                    raise ApprovalStateError(
+                        "Approval ID storage identity changed; restore the original allocator"
+                    )
+                identity = row[0]
+                # All supported clients (including JSON/JavaScript) preserve
+                # these numeric identifiers exactly. Exhaustion fails closed.
+                if not isinstance(identity, int) or not 0 < identity < (1 << 53) - 1:
+                    raise ApprovalStateError("Approval ID allocator is invalid or exhausted")
+                con.execute(
+                    "UPDATE approval_ids SET next_id = ? WHERE singleton = 1", (identity + 1,)
+                )
+            return identity
 
     def __len__(self) -> int:
         return len(self._requests)
@@ -155,7 +294,7 @@ class ApprovalQueue:
             decision_at=now,
             decided_by="ttl",
         )
-        self._requests[expired.id] = expired
+        self.record(expired)
         self._schedule_expired_audit(expired)
         self._record_queue_depth()
         return expired
@@ -239,10 +378,7 @@ class ApprovalQueue:
         if anchor.sibling_group_id is not None:
             return anchor.sibling_group_id
         new_group_id = uuid4()
-        self._requests[anchor.id] = replace(
-            anchor,
-            sibling_group_id=new_group_id,
-        )
+        self.record(replace(anchor, sibling_group_id=new_group_id))
         return new_group_id
 
     async def approve_group(
@@ -283,6 +419,7 @@ class ApprovalQueue:
         justification: str = "",
         ttl_seconds: int | None = None,
         rule: str | None = None,
+        allow_patterns: bool = True,
     ) -> ApprovalRequest:
         # Default-tolerant on labels
         if labels_in is None:
@@ -302,7 +439,7 @@ class ApprovalQueue:
         if effective_ttl > 0:
             expires_at = datetime.now(UTC) + timedelta(seconds=effective_ttl)
         request = ApprovalRequest(
-            id=self._next_id,
+            id=self._allocate_id(),
             audit_id=uuid4(),
             from_session=from_session,
             action=action,
@@ -316,8 +453,7 @@ class ApprovalQueue:
             expires_at=expires_at,
             rule=rule,
         )
-        self._next_id += 1
-        self._requests[request.id] = request
+        self.record(request)
         if self._audit:
             event = Event(
                 event_type=EventType.APPROVAL_REQUESTED,
@@ -353,7 +489,7 @@ class ApprovalQueue:
                     kind="approval_authority",
                     event_audit_id=event.audit_id,
                 )
-        matched = self.patterns.find_match(request)
+        matched = self.patterns.find_match(request) if allow_patterns else None
         if matched is not None:
             self.patterns.increment_use(matched.id)
             await self.approve(
@@ -534,7 +670,7 @@ class ApprovalQueue:
                         "originating_audit_id": str(originator_id),
                     },
                 )
-                self._requests[request_id] = invalidated
+                self.record(invalidated)
                 if self._audit:
                     await self._audit.write(
                         Event(
@@ -600,7 +736,7 @@ class ApprovalQueue:
             decided_by=decided_by,
             decision_scope=scope,
         )
-        self._requests[request_id] = updated
+        self.record(updated)
         if self._audit:
             event = Event(
                 event_type=EventType.APPROVAL_APPROVED,
@@ -654,7 +790,7 @@ class ApprovalQueue:
             decided_by=decided_by,
             decision_scope={"reason": reason} if reason else {},
         )
-        self._requests[request_id] = updated
+        self.record(updated)
         if self._audit:
             event = Event(
                 event_type=EventType.APPROVAL_DENIED,
@@ -697,7 +833,7 @@ class ApprovalQueue:
                 f"approval {request_id} not pending (status={request.status})",
             )
         updated = replace(request, status=ApprovalStatus.DEFERRED)
-        self._requests[request_id] = updated
+        self.record(updated)
         if self._audit:
             await self._audit.write(
                 Event(

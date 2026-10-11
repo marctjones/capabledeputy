@@ -76,11 +76,33 @@ def test_available_image_profiles_surface_asset_readiness(monkeypatch, tmp_path:
 
 def test_image_readiness_includes_model_asset_state(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("CAPDEP_MODEL_ASSET_HOME", str(tmp_path / "assets"))
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "hf"))
     readiness = image_readiness(profile_name="default")
 
     assert readiness["asset_profile"] == "image.default"
     assert readiness["asset_readiness"]["status"] == "native"
     assert any(check["id"] == "model-asset" for check in readiness["checks"])
+
+
+def test_image_readiness_requires_a_cached_mflux_repository(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "hf"))
+    missing = image_readiness(profile_name="default")
+    missing_cache = next(check for check in missing["checks"] if check["id"] == "model-cache")
+    assert missing_cache["status"] == "error"
+    assert missing["ok"] is False
+
+    snapshot = (
+        tmp_path
+        / "hf"
+        / "hub"
+        / "models--filipstrand--Z-Image-Turbo-mflux-4bit"
+        / "snapshots"
+        / "revision"
+    )
+    snapshot.mkdir(parents=True)
+    cached = image_readiness(profile_name="default")
+    cached_cache = next(check for check in cached["checks"] if check["id"] == "model-cache")
+    assert cached_cache["status"] == "ok"
 
 
 def test_image_readiness_checks_mlx_metal_on_apple_silicon(

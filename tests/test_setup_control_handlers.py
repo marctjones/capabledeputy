@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -87,6 +88,58 @@ async def test_connector_status_reports_local_apps(app: App) -> None:
     assert mail["actions"][0]["id"] == "macos.automation_settings"
     word = next(c for c in result["connectors"] if c["id"] == "microsoft-word")
     assert word["bundle_id"] == "com.microsoft.Word"
+
+
+async def test_connector_status_reports_all_admitted_mcp_servers_generically(app: App) -> None:
+    app.upstream_manager = SimpleNamespace(
+        server_status={
+            "example-provider": SimpleNamespace(
+                state="registered",
+                registered_tool_count=3,
+                rejected_tool_count=1,
+                transport="streamable_http",
+                error="",
+            ),
+        },
+    )
+
+    result = await make_setup_control_handlers(app)["connector.status"]({})
+
+    server = next(item for item in result["connectors"] if item["id"] == "mcp:example-provider")
+    assert server["type"] == "mcp_server"
+    assert server["status"] == "registered"
+    assert server["registered_tool_count"] == 3
+
+
+async def test_mcp_probe_returns_generic_health_without_provider_specific_logic(app: App) -> None:
+    class FakeManager:
+        def __init__(self) -> None:
+            self.server_status = {
+                "example-provider": SimpleNamespace(
+                    state="registered",
+                    registered_tool_count=3,
+                    rejected_tool_count=0,
+                    transport="stdio",
+                    error="",
+                ),
+            }
+
+        async def probe_servers(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "name": "example-provider",
+                    "probe_state": "healthy",
+                    "detail": "MCP list-tools probe succeeded; no tool was executed.",
+                    "reported_tool_count": 3,
+                },
+            ]
+
+    app.upstream_manager = FakeManager()
+    result = await make_setup_control_handlers(app)["mcp.probe"]({})
+
+    assert result["probed"] == 1
+    assert result["connectors"][0]["id"] == "mcp:example-provider"
+    assert result["connectors"][0]["status"] == "healthy"
 
 
 async def test_source_binding_upsert_preview_and_delete(app: App, tmp_path: Path) -> None:
@@ -229,7 +282,18 @@ async def test_high_risk_approval_requires_strong_auth_when_touch_id_policy_enab
     with pytest.raises(ValueError, match="strong authentication"):
         await handlers["approval.approve"]({"id": approval.id, "decided_by": "test"})
 
-    result = await handlers["approval.approve"](
-        {"id": approval.id, "decided_by": "test", "strong_auth": "touch_id"},
+    # A client-supplied marker is never trusted: without the daemon-owned native
+    # helper the approval is still refused.
+    with pytest.raises(ValueError, match="strong authentication"):
+        await handlers["approval.approve"](
+            {"id": approval.id, "decided_by": "test", "strong_auth": "touch_id"},
+        )
+
+    async def authenticated(_request: object) -> dict[str, str]:
+        return {"method": "test"}
+
+    monkeypatch.setattr(
+        "capabledeputy.daemon.approval_handlers.authenticate_approval", authenticated
     )
+    result = await handlers["approval.approve"]({"id": approval.id, "decided_by": "test"})
     assert result["approval"]["status"] == "approved"

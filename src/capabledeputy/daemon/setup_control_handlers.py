@@ -78,8 +78,21 @@ def make_setup_control_handlers(
         raise ValueError(f"unknown setup action: {action_id}")
 
     async def connector_status(params: dict[str, Any]) -> dict[str, Any]:
+        """Return configured MCP lifecycle state plus desktop setup hints.
+
+        This does not contact providers.  Use ``mcp.probe`` for an explicit,
+        generic read-only ``list_tools`` health check.
+        """
+        return {"connectors": _connector_status_rows(app)}
+
+    async def mcp_probe(params: dict[str, Any]) -> dict[str, Any]:
+        manager = getattr(app, "upstream_manager", None)
+        if manager is None or not hasattr(manager, "probe_servers"):
+            return {"connectors": _connector_status_rows(app), "probed": 0}
+        probes = await manager.probe_servers()
         return {
-            "connectors": [_office_connector(app_info) for app_info in OFFICE_AUTOMATION_APPS],
+            "connectors": _connector_status_rows(app, probes=probes),
+            "probed": len(probes),
         }
 
     async def runtime_status(params: dict[str, Any]) -> dict[str, Any]:
@@ -212,6 +225,7 @@ def make_setup_control_handlers(
 
     return {
         "connector.status": connector_status,
+        "mcp.probe": mcp_probe,
         "runtime.status": runtime_status,
         "runtime.automation_pause": runtime_set_automation_paused,
         "runtime.screen_control.request": runtime_request_screen_control,
@@ -266,6 +280,45 @@ def _office_connector(app_info: dict[str, str]) -> dict[str, Any]:
         ),
         "actions": [_open_macos_automation_action()],
     }
+
+
+def _connector_status_rows(
+    app: App,
+    *,
+    probes: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Render provider-neutral MCP lifecycle/probe rows for all clients."""
+    manager = getattr(app, "upstream_manager", None)
+    statuses = getattr(manager, "server_status", {}) or {}
+    by_name = {str(probe["name"]): probe for probe in probes or []}
+    rows: list[dict[str, Any]] = []
+    for name, status in sorted(statuses.items()):
+        probe = by_name.get(str(name))
+        state = str(probe.get("probe_state")) if probe is not None else str(status.state)
+        detail = (
+            str(probe.get("detail"))
+            if probe is not None
+            else (
+                status.error
+                or f"Registered {status.registered_tool_count} policy-admitted MCP tool(s)."
+            )
+        )
+        rows.append(
+            {
+                "id": f"mcp:{name}",
+                "name": str(name),
+                "type": "mcp_server",
+                "status": state,
+                "detail": detail,
+                "transport": status.transport,
+                "registered_tool_count": status.registered_tool_count,
+                "rejected_tool_count": status.rejected_tool_count,
+                "reported_tool_count": probe.get("reported_tool_count") if probe else None,
+                "actions": [],
+            }
+        )
+    rows.extend(_office_connector(app_info) for app_info in OFFICE_AUTOMATION_APPS)
+    return rows
 
 
 def _open_macos_automation_action() -> dict[str, Any]:

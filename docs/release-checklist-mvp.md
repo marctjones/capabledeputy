@@ -1,6 +1,14 @@
 # Stable MVP Release Checklist
 
-**Last refreshed:** 2026-09-05
+**Scope clarified:** 2026-10-07
+
+The immediate delivery target is supervised-email milestone #51, whose bounded
+verification is recorded in
+[supervised-email-mvp-evidence-2026-10-07.md](supervised-email-mvp-evidence-2026-10-07.md).
+The checklist below describes broader stable-product release acceptance. Its
+September evidence and checked counts are historical; completing the bounded
+email workflow does not complete these broader release gates. Live email and
+seven-day daily-use evidence remain milestone #54 / #479.
 
 Use this checklist before calling CapableDeputy "stable MVP". If an item is not
 true, the release is either incomplete or must explicitly document the
@@ -10,6 +18,9 @@ exception.
 
 - [ ] `#319` is closed and daemon reconnect works across the supported client
   surfaces.
+- [ ] `#419` and `#420` are closed: malformed local-model tool envelopes never
+  leak into chat, and a policy-admitted tool surface never silently becomes
+  empty.
 - [ ] `#331`, `#332`, `#333`, and `#334` are closed, so CapDepMac can resolve
   override/approval/onboarding/media flows without terminal-only fallbacks.
 - [ ] `#325` and `#328` are closed, so the real-account Google Workspace and
@@ -64,4 +75,9 @@ GUI workflow pass. GitHub issues remain open until their acceptance is verified.
 - [ ] Research memo completes through the GUI and preserves citations/provenance.
 - [ ] Local-document summary/revision completes through reviewed file effects.
 - [ ] Inbox triage produces drafts against a real account without an implicit send.
+- [ ] Calendar planning and task management complete with deterministic
+  authorization for every external or irreversible effect.
+- [ ] Each acceptance workflow has allowed, unauthorized-denied,
+  standing-authorization, taint/egress-denied, cancellation, and daemon-recovery
+  evidence on both CapDepMac and CLI/TUI.
 - [ ] Seven days of dogfooding logged in [dogfood-log.md](dogfood-log.md).

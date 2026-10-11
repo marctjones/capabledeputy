@@ -2,12 +2,86 @@ import XCTest
 @testable import CapDepMac
 
 final class DaemonContractModelTests: XCTestCase {
+    func testSessionPostureUsesDaemonFactsNotToolNamesOrPromptClaims() {
+        let registeredOnly = SessionSecurityContext(dictionary: [
+            "available_tools": [["name": "mail.imap.list_threads", "capability_kind": "IMAP_READ"]],
+        ])
+        XCTAssertFalse(registeredOnly.hasEmailReadGrant)
+        XCTAssertFalse(registeredOnly.externalUntrusted)
+        let labeled = SessionSecurityContext(dictionary: [
+            "posture_summary": [
+                "grant_kinds": ["IMAP_READ"],
+                "sensitive_categories": ["personal"],
+                "external_untrusted": true,
+            ],
+            "session": ["id": "s1", "purpose_handle": "daily", "prefer_programmatic": true],
+            "saved_state": ["reference_handle_keys": ["document-1"]],
+        ])
+        XCTAssertTrue(labeled.hasEmailReadGrant)
+        XCTAssertEqual(labeled.sensitiveCategories, ["personal"])
+        XCTAssertTrue(labeled.externalUntrusted)
+        XCTAssertEqual(labeled.referenceHandleKeys, ["document-1"])
+        XCTAssertEqual(labeled.sessionDetails["purpose_handle"], "daily")
+    }
+
+    func testSessionArtifactOnlyTreatsDaemonGeneratedWorkImageAsRenderable() {
+        let trusted = SessionArtifact(dictionary: [
+            "artifact_id": "image-1",
+            "kind": "generated_image",
+            "source": "tool_output",
+            "path": "/Users/example/.capdep/work/images/chart.png",
+            "sha256": String(repeating: "a", count: 64),
+        ])
+        XCTAssertTrue(trusted.isAuthorizedGeneratedImage)
+
+        let untrusted = SessionArtifact(dictionary: [
+            "kind": "generated_image",
+            "source": "planner_text",
+            "path": "/Users/example/.capdep/work/images/chart.png",
+            "sha256": String(repeating: "a", count: 64),
+        ])
+        XCTAssertFalse(untrusted.isAuthorizedGeneratedImage)
+    }
+
+    func testSessionArtifactWithholdsChangedBytes() throws {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("capdep-artifact-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data().write(to: file)
+        let artifact = SessionArtifact(dictionary: [
+            "kind": "generated_image",
+            "source": "tool_output",
+            "path": file.path,
+            // SHA-256 for an empty file.
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        ])
+        XCTAssertTrue(artifact.matchesRecordedDigest(at: file))
+
+        try Data([0]).write(to: file)
+        XCTAssertFalse(artifact.matchesRecordedDigest(at: file))
+    }
     func testSessionSecurityContextParsesDaemonProjection() {
         let context = SessionSecurityContext(dictionary: [
             "session": ["id": "session-1", "enforcement_mode": "enforce"],
-            "labels": ["label_state": ["a": ["untrusted.external"]]],
+            "labels": [
+                "label_state": ["a": ["untrusted.external"]],
+                "propagation": [[
+                    "audit_id": "label-event-1",
+                    "source_tool": "web.fetch",
+                    "categories_added": [],
+                    "levels_added": ["external-untrusted"],
+                ]],
+            ],
             "capabilities": [
-                "active": [["kind": "SEND_EMAIL"]],
+                "active": [[
+                    "kind": "SEND_EMAIL",
+                    "pattern": "recipient@example.com",
+                    "origin": "operator_grant",
+                    "expiry": "bounded",
+                    "expires_at": "2026-10-05T00:00:00+00:00",
+                    "max_amount": 1,
+                    "revoked_by": ["approval_revoked"],
+                ]],
                 "used_kinds": ["READ_EMAIL"],
             ],
             "approvals": ["pending_count": 2],
@@ -16,12 +90,33 @@ final class DaemonContractModelTests: XCTestCase {
                 "deny_count": 1,
                 "matched_rule_ids": ["rule.untrusted_egress"],
             ],
-            "provenance": ["node_count": 3, "edge_count": 2],
+            "provenance": [
+                "node_count": 3,
+                "edge_count": 2,
+                "node_offset": 100,
+                "node_returned": 1,
+                "node_has_more": true,
+                "edge_returned": 1,
+                "edge_has_more": true,
+                "kind_filter": "tool_result",
+                "nodes": [["id": "node-1", "kind": "tool_result", "materialized_id": "gmail-1"]],
+                "edges": [["from": "node-0", "to": "node-1", "kind": "derived_from"]],
+            ],
             "actors": [
                 "external_mcp": [["name": "gmail"]],
                 "tools": [["name": "gmail.send"]],
+                "tool_surface": ["recent_selections": [[
+                    "audit_id": "tool-surface-1",
+                    "method": "capability_filtered",
+                    "n_visible": 4,
+                    "n_selected": 2,
+                    "selected": ["gmail.messages.list", "web.fetch"],
+                    "mandatory_added": ["web.fetch"],
+                    "selection_reason": "intent match",
+                ]]],
                 "onguard": ["client": ["client_id": "onguard.digest.daily"]],
             ],
+            "origin": ["kind": "workflow_template"],
             "security_models": [
                 ["name": "information_flow_labels", "implemented": true, "evidence": ["label_count": 1]],
             ],
@@ -42,9 +137,24 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(context.matchedRuleIDs, ["rule.untrusted_egress"])
         XCTAssertEqual(context.provenanceNodeCount, 3)
         XCTAssertEqual(context.provenanceEdgeCount, 2)
+        XCTAssertEqual(context.provenanceNodeOffset, 100)
+        XCTAssertEqual(context.provenanceNodeReturned, 1)
+        XCTAssertTrue(context.provenanceNodeHasMore)
+        XCTAssertEqual(context.provenanceEdgeReturned, 1)
+        XCTAssertTrue(context.provenanceEdgeHasMore)
+        XCTAssertEqual(context.provenanceKindFilter, "tool_result")
         XCTAssertEqual(context.externalMCPActors, ["gmail"])
         XCTAssertEqual(context.toolActors, ["gmail.send"])
         XCTAssertEqual(context.onguardClientID, "onguard.digest.daily")
+        XCTAssertEqual(context.originKind, "workflow_template")
+        XCTAssertEqual(context.activeCapabilities.first?.kind, "SEND_EMAIL")
+        XCTAssertEqual(context.activeCapabilities.first?.pattern, "recipient@example.com")
+        XCTAssertEqual(context.activeCapabilities.first?.revokedBy, ["approval_revoked"])
+        XCTAssertEqual(context.labelPropagation.first?.sourceTool, "web.fetch")
+        XCTAssertEqual(context.labelPropagation.first?.levelsAdded, ["external-untrusted"])
+        XCTAssertEqual(context.toolSurfaceSelections.first?.selected, ["gmail.messages.list", "web.fetch"])
+        XCTAssertEqual(context.provenanceNodes.first?.materializedID, "gmail-1")
+        XCTAssertEqual(context.provenanceEdges.first?.kind, "derived_from")
         XCTAssertEqual(context.securityModels.first?.name, "information_flow_labels")
         XCTAssertEqual(context.securityModels.first?.active, true)
         XCTAssertEqual(context.flowPatterns.first?.name, "human_approval_gate")
@@ -188,6 +298,44 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(health.phase.systemImage, "exclamationmark.shield.fill")
     }
 
+    func testRequestTraceKeepsDaemonDecisionSeparateFromProposal() {
+        let proposed = RequestTraceEvent(dictionary: [
+            "cursor": 3, "type": "tool_dispatched", "payload": ["tool_name": "mail.read"],
+        ])
+        let decision = RequestTraceEvent(dictionary: [
+            "cursor": 4, "type": "tool_returned", "payload": ["outcome": ["tool_name": "mail.read", "decision": "deny"]],
+        ])
+        XCTAssertTrue(proposed.title.contains("Proposed tool"))
+        XCTAssertTrue(decision.title.contains("Daemon decision: deny"))
+        XCTAssertEqual(decision.id, 4)
+    }
+
+    func testRequestAssociationUsesExactTextNotSubstrings() {
+        XCTAssertTrue(RequestInspectionTarget.matches(prompt: "hi", daemonMessage: "/fast hi"))
+        XCTAssertTrue(RequestInspectionTarget.matches(prompt: "hi", daemonMessage: "/model tools hi"))
+        XCTAssertFalse(RequestInspectionTarget.matches(prompt: "hi", daemonMessage: "this is another request"))
+        XCTAssertFalse(RequestInspectionTarget.matches(prompt: "", daemonMessage: "anything"))
+    }
+
+    func testRequestTraceRedactsNestedCredentials() {
+        let text = RequestTraceEvent.redactedJSON([
+            "arguments": ["password": "never-render", "API-Key": "secret-key", "query": "INBOX"],
+            "headers": [["Authorization": "Bearer credential"]],
+        ])
+        XCTAssertFalse(text.contains("never-render"))
+        XCTAssertFalse(text.contains("secret-key"))
+        XCTAssertFalse(text.contains("Bearer credential"))
+        XCTAssertTrue(text.contains("INBOX"))
+        XCTAssertTrue(text.contains("[redacted]"))
+    }
+
+    func testRequestTraceDoesNotInventReasoningAndMarksNoise() {
+        XCTAssertTrue(RequestTraceEvent(dictionary: ["type": "heartbeat"]).isNoise)
+        XCTAssertTrue(RequestTraceEvent(dictionary: ["type": "llm_token"]).isNoise)
+        XCTAssertFalse(RequestTraceEvent(dictionary: ["type": "tool_returned"]).isModelTrace)
+        XCTAssertTrue(RequestTraceEvent(dictionary: ["type": "model_reasoning"]).isModelTrace)
+    }
+
     func testDaemonSettingsPreserveImageProfile() {
         var settings = DaemonSettings(dictionary: [
             "default_purpose": "research",
@@ -200,6 +348,15 @@ final class DaemonContractModelTests: XCTestCase {
 
         settings.imageProfile = "quality"
         XCTAssertEqual(settings.rpcDictionary["image_profile"] as? String, "quality")
+    }
+
+    func testDaemonSettingsPreserveBackendChoice() {
+        let defaults = DaemonSettings(dictionary: [:])
+        XCTAssertEqual(defaults.imageBackend, "configured")
+        var settings = DaemonSettings(dictionary: ["image_backend": "mflux"])
+        XCTAssertEqual(settings.rpcDictionary["image_backend"] as? String, "mflux")
+        settings.imageBackend = "diffusers"
+        XCTAssertEqual(settings.rpcDictionary["image_backend"] as? String, "diffusers")
     }
 
     func testImageProfileAndReadinessParseDaemonPayloads() {
@@ -254,6 +411,21 @@ final class DaemonContractModelTests: XCTestCase {
         XCTAssertEqual(restored.first?.purpose, .research)
         XCTAssertEqual(restored.first?.turnID, "turn-1")
         XCTAssertEqual(restored.first?.status, .running)
+    }
+
+    func testSessionModelReportPreservesDaemonResolvedIdentity() throws {
+        let report = SessionModelReport(
+            role: "planner.tools",
+            model: "mlx-community/Qwen3-8B-4bit",
+            reason: "large_tool_surface",
+        )
+
+        let data = try JSONEncoder().encode(report)
+        let restored = try JSONDecoder().decode(SessionModelReport.self, from: data)
+
+        XCTAssertEqual(restored.role, "planner.tools")
+        XCTAssertEqual(restored.model, "mlx-community/Qwen3-8B-4bit")
+        XCTAssertEqual(restored.reason, "large_tool_surface")
     }
 
     func testGuiGrantPatternRendersDaemonPatternVerbatim() {

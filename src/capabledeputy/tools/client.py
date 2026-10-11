@@ -12,9 +12,11 @@ and any tool. Every dispatch goes through it, which guarantees that:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from copy import deepcopy
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID, uuid4
 
 from capabledeputy.audit.events import Event, EventType
@@ -91,6 +93,59 @@ _EGRESS_LIKE_KINDS: frozenset[CapabilityKind] = frozenset(
 )
 
 
+def _audit_args(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Keep private mail inputs in labeled storage, not the operational audit."""
+    if tool_name.startswith("email.") or ".imap." in tool_name:
+        return {"redacted": True, "digest": stable_digest(args), "argument_count": len(args)}
+    return args
+
+
+def _audit_output_metadata(value: Any) -> dict[str, Any]:
+    """Describe a tool result without copying labeled content into the audit.
+
+    Audit is a durable, broadly inspectable control plane. It needs a stable
+    commitment to returned bytes for provenance correlation, not a second
+    uncontrolled copy of an inbox, calendar, document, or tool result.
+    Results stay in the session's labeled flow for inspectors and the model.
+    """
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    metadata = {
+        "output_digest": stable_digest(value),
+        "output_type": type(value).__name__,
+        "output_size_bytes": len(encoded),
+        "output_redacted": True,
+    }
+    # Bounded, content-free operational facts explain read/delivery failures
+    # without adding mailbox bodies or model prose to the durable audit.
+    if isinstance(value, dict):
+        diagnostics = {
+            key: value[key]
+            for key in (
+                "ok",
+                "found",
+                "complete",
+                "body_present",
+                "body_truncated",
+                "matched_count",
+                "requested_count",
+                "failed_count",
+                "fetched_count",
+                "summarized_count",
+                "limit_reached",
+                "delivered",
+            )
+            if key in value and type(value[key]) in (bool, int)
+        }
+        if diagnostics:
+            metadata["operation_status"] = diagnostics
+    return metadata
+
+
 def _replace_tool_result(
     original: Any,
     *,
@@ -134,7 +189,7 @@ def build_policy_decided_payload(
     """
     payload: dict[str, Any] = {
         "tool": tool_name,
-        "args": args,
+        "args": _audit_args(tool_name, args),
         "decision": decision.decision.value,
         "rule": decision.rule,
         "reason": decision.reason,
@@ -158,7 +213,7 @@ def build_policy_decided_payload(
         payload["effect_class"] = decision.effect_class
     payload["policy_trace"] = {
         "tool": tool_name,
-        "args": args,
+        "args": _audit_args(tool_name, args),
         "decision": decision.decision.value,
         "rule": decision.rule,
         "matched_capability_audit_id": (
@@ -196,7 +251,7 @@ def build_relaxation_refused_payload(
     """
     return {
         "tool": tool_name,
-        "args": args,
+        "args": _audit_args(tool_name, args),
         "refused_relax_inputs": [
             {"description": r.description, "origin": r.origin}
             for r in decision.refused_relax_inputs
@@ -232,6 +287,7 @@ class ToolCallOutcome:
     # Renders in the REPL via `_render_recovery_steps`; the agent
     # quotes these literally instead of inventing commands.
     recovery_steps: tuple[Any, ...] = field(default_factory=tuple)
+    result_withheld: bool = False
 
 
 class LabeledToolClient:
@@ -314,7 +370,7 @@ class LabeledToolClient:
                 session_id=session_id,
                 payload={
                     "tool": tool_name,
-                    "args": args,
+                    "args": _audit_args(tool_name, args),
                     "purpose_handle": session.purpose_handle,
                     "inadmissible_categories": list(inadmissible),
                     "decision_rule": decision.rule,
@@ -324,6 +380,98 @@ class LabeledToolClient:
         )
 
     async def call_tool(
+        self,
+        session_id: UUID,
+        tool_name: str,
+        args: dict[str, Any],
+        *,
+        already_approved: bool = False,
+        result_recipient: Literal["planner", "internal"] = "planner",
+    ) -> ToolCallOutcome:
+        """Default to planner-safe returns; internal is a trusted caller boundary.
+
+        The internal recipient is not a tool argument or model-controlled RPC
+        option. Its caller must separately gate all later materialization.
+        This restriction covers ordinary returns, not provider input admission.
+        """
+        if result_recipient not in {"planner", "internal"}:
+            raise ValueError("unknown tool result recipient")
+        session = self._graph.get(session_id)
+        required = session.required_modes
+        if required == frozenset():
+            await self._audit.write(
+                Event(
+                    event_type=EventType.POLICY_DECIDED,
+                    session_id=session_id,
+                    payload={
+                        "tool": tool_name,
+                        "decision": "DENY",
+                        "rule": "required-handling-empty",
+                        "stage": "required_handling",
+                    },
+                )
+            )
+            return ToolCallOutcome(
+                decision=Decision.DENY,
+                rule="required-handling-empty",
+                reason="No execution mode is permitted by this session requirement.",
+                tool_name=tool_name,
+                tool_args=args,
+            )
+        opaque = (
+            result_recipient == "planner"
+            and required is not None
+            and bool(required)
+            and required <= {"reference", "sealed"}
+        )
+        original_args = deepcopy(args) if opaque else args
+        try:
+            outcome = await self._call_tool(
+                session_id,
+                tool_name,
+                deepcopy(args) if opaque else args,
+                already_approved=already_approved,
+            )
+        except Exception:
+            if not opaque:
+                raise
+            # A failure here may follow execution: never imply it is safe to retry.
+            raise RuntimeError(
+                "Tool dispatch failed; details withheld. Execution state may be uncertain."
+            ) from None
+        if not opaque:
+            return outcome
+        await self._audit.write(
+            Event(
+                event_type=EventType.PLANNER_RESULT_WITHHELD,
+                session_id=session_id,
+                payload={
+                    "tool": tool_name,
+                    "decision": outcome.decision.value,
+                    "required_modes": sorted(required or ()),
+                    "result_recipient": "planner",
+                },
+            )
+        )
+        return replace(
+            outcome,
+            output=(
+                {
+                    "result_withheld": True,
+                    "notice": "Result withheld. This is not an instruction to retry the effect.",
+                }
+                if outcome.output is not None
+                else None
+            ),
+            error="Tool failed; details withheld." if outcome.error is not None else None,
+            reason="Original decision preserved; result details withheld from planner.",
+            approval_submission=None,
+            recovery_steps=(),
+            tool_args=original_args,
+            result_withheld=True,
+        )
+
+    async def _call_tool(
         self,
         session_id: UUID,
         tool_name: str,
@@ -501,7 +649,7 @@ class LabeledToolClient:
                 session_id=session_id,
                 payload={
                     "tool": tool_name,
-                    "args": args,
+                    "args": _audit_args(tool_name, args),
                     "audit_id": str(
                         policy_decision.matched_capability.audit_id
                         if policy_decision.matched_capability
@@ -614,7 +762,7 @@ class LabeledToolClient:
             audit_id=uuid4(),
             event_type=EventType.TOOL_RETURNED,
             session_id=session_id,
-            payload={"tool": tool_name, "output": result.output},
+            payload={"tool": tool_name, **_audit_output_metadata(result.output)},
         )
         await self._audit.write(tool_returned_event)
 
@@ -991,7 +1139,7 @@ class LabeledToolClient:
                     session_id=session_id,
                     payload={
                         "tool": tool_name,
-                        "args": args,
+                        "args": _audit_args(tool_name, args),
                         "rule": decision.rule,
                         "reason": decision.reason,
                         "non_blocking": True,
@@ -1038,7 +1186,7 @@ class LabeledToolClient:
                         session_id=session_id,
                         payload={
                             "tool": tool_name,
-                            "args": args,
+                            "args": _audit_args(tool_name, args),
                             "decision_rule": decision.rule,
                             "crossed_risk_ids": list(signal.crossed),
                             "non_suppressible": True,

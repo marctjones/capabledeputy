@@ -305,3 +305,27 @@ async def test_setup_plan_imap_loaded_with_credentials_is_ok(
 
     assert imap_step["status"] == "ok"
     assert "saved credentials" in imap_step["detail"]
+
+
+async def test_setup_plan_imap_credentials_without_loaded_upstream_needs_manual_step(
+    app: App,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Saved credentials but no loaded mail upstream is the 'manual' state.
+
+    This branch used to be covered only on machines that happened to hold real
+    IMAP credentials; the credential check is mocked so it is covered everywhere.
+    """
+    app.policy_context = PolicyContext()
+    app.upstream_manager = SimpleNamespace(server_status={})
+    monkeypatch.setattr(
+        "capabledeputy.daemon.setup_plan.imap_credentials_present",
+        lambda: True,
+    )
+
+    plan = build_setup_plan(app)
+    imap_step = next(step for step in plan["steps"] if step["id"] == "imap-email")
+
+    assert imap_step["status"] == "manual"
+    assert "not loaded" in imap_step["detail"]
+    assert "--register-only" in imap_step["detail"]

@@ -22,6 +22,18 @@ SESSION_ARTIFACTS_HANDLE = "session_artifacts"
 SESSION_ARTIFACTS_SCHEMA_VERSION = 1
 
 
+def required_modes_from_value(value: Any) -> frozenset[str] | None:
+    """Parse a restrictive handling requirement; malformed state never defaults."""
+    if value is None:
+        return None
+    allowed = {"turn_level", "dual_llm", "programmatic", "reference", "sealed"}
+    if not isinstance(value, list | tuple | frozenset):
+        raise ValueError("required_modes must be a list of mode names or null")
+    if any(not isinstance(item, str) or item not in allowed for item in value):
+        raise ValueError("required_modes contains an unknown mode")
+    return frozenset(value)
+
+
 class SessionStatus(StrEnum):
     ACTIVE = "active"
     PAUSED = "paused"
@@ -313,6 +325,7 @@ class Session:
     intent: str | None = None
     tool_aliasing: bool = False
     prefer_programmatic: bool = False
+    required_modes: frozenset[str] | None = None
     used_kinds: frozenset[CapabilityKind] = field(default_factory=frozenset)
     # Per-capability use timestamps for sliding-window rate limiting,
     # keyed by capability audit_id. Treated immutably (replace()), like
@@ -355,6 +368,10 @@ class Session:
     # RPC.
     first_use_prompt_enabled: bool = False
 
+    def __post_init__(self) -> None:
+        if self.required_modes != required_modes_from_value(self.required_modes):
+            raise ValueError("required_modes must be immutable")
+
     @classmethod
     def new(
         cls,
@@ -367,6 +384,7 @@ class Session:
         declassification_log: tuple[DeclassEvent, ...] = (),
         tool_aliasing: bool = False,
         prefer_programmatic: bool = False,
+        required_modes: frozenset[str] | None = None,
         used_kinds: frozenset[CapabilityKind] = frozenset(),
         cap_uses: dict[str, tuple[datetime, ...]] | None = None,
         revoked_audit_ids: frozenset[UUID] = frozenset(),
@@ -397,6 +415,7 @@ class Session:
             intent=intent,
             tool_aliasing=tool_aliasing,
             prefer_programmatic=prefer_programmatic,
+            required_modes=required_modes,
             used_kinds=used_kinds,
             cap_uses=cap_uses if cap_uses is not None else {},
             revoked_audit_ids=revoked_audit_ids,
@@ -435,6 +454,9 @@ class Session:
             "intent": self.intent,
             "tool_aliasing": self.tool_aliasing,
             "prefer_programmatic": self.prefer_programmatic,
+            "required_modes": sorted(self.required_modes)
+            if self.required_modes is not None
+            else None,
             "used_kinds": sorted(k.value for k in self.used_kinds),
             "cap_uses": {
                 aid: [ts.isoformat() for ts in stamps] for aid, stamps in self.cap_uses.items()
@@ -471,6 +493,7 @@ class Session:
             intent=d.get("intent"),
             tool_aliasing=bool(d.get("tool_aliasing", False)),
             prefer_programmatic=bool(d.get("prefer_programmatic", False)),
+            required_modes=required_modes_from_value(d.get("required_modes")),
             used_kinds=_load_used_kinds(d.get("used_kinds", ()), session_id=d["id"]),
             cap_uses={
                 aid: tuple(datetime.fromisoformat(ts) for ts in stamps)

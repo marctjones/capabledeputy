@@ -243,3 +243,59 @@ class UpstreamManager:
     def server_status(self) -> dict[str, UpstreamServerStatus]:
         """Per-upstream-server status snapshot for /server display."""
         return dict(self._status)
+
+    async def probe_servers(self) -> list[dict[str, Any]]:
+        """Perform a provider-neutral, read-only MCP health probe.
+
+        ``list_tools`` verifies that the supervisor can still communicate with
+        each admitted server without executing an MCP tool or exposing any
+        provider credentials or returned content.  This is deliberately
+        operator/UI initiated rather than a background poll: some remote MCP
+        providers charge for or rate-limit requests.
+        """
+        from capabledeputy.reliability import with_timeout
+
+        results: list[dict[str, Any]] = []
+        for name, status in sorted(self._status.items()):
+            base = {
+                "name": name,
+                "configured_state": status.state,
+                "registered_tool_count": status.registered_tool_count,
+                "rejected_tool_count": status.rejected_tool_count,
+                "transport": status.transport,
+            }
+            session = self._sessions_by_name.get(name)
+            if status.state != "registered" or session is None:
+                results.append(
+                    {
+                        **base,
+                        "probe_state": "unavailable",
+                        "detail": status.error or "MCP server did not register at daemon startup.",
+                    }
+                )
+                continue
+            try:
+                listing = await with_timeout(
+                    5,
+                    f"MCP health probe for {name!r}",
+                    session.list_tools,
+                )
+                reported_count = len(getattr(listing, "tools", ()) or ())
+                results.append(
+                    {
+                        **base,
+                        "probe_state": "healthy",
+                        "reported_tool_count": reported_count,
+                        "detail": "MCP list-tools probe succeeded; no tool was executed.",
+                    }
+                )
+            except Exception as e:
+                error_detail = f"MCP list-tools probe failed: {type(e).__name__}: {str(e)[:300]}"
+                results.append(
+                    {
+                        **base,
+                        "probe_state": "degraded",
+                        "detail": error_detail,
+                    }
+                )
+        return results

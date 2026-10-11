@@ -1,0 +1,11 @@
+{
+  "head": "8589346da5e311eb595539d8d74be7058b876b2c",
+  "working_tree_dirty": true,
+  "working_tree_patch_sha256": "cdf55bc63efb2e24227df51462b6bd12ee0b97fc7f0a851e037fb6a05a8659eb",
+  "original_runtime_backup_sha256": "6b207af780c13b59101330a39761c0042faa512e622edccd9d2be506777a9eb2",
+  "mail_only_config_sha256": "45097780c0bd450d39eb028987134bceef5200206e1340016db34de6883333a7",
+  "private_content_export_failure_count": 1,
+  "send_approval_count": 0,
+  "smtp_attempt_count": 0,
+  "elapsed_trial_days": 0
+}

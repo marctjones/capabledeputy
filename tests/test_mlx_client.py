@@ -372,3 +372,142 @@ async def test_closing_stream_stops_generation_at_next_token(monkeypatch) -> Non
         release.set()
     assert await asyncio.to_thread(finished.wait, 5)
     assert len(generated) <= 1
+
+
+async def test_streaming_uses_bounded_prefill_without_changing_output(monkeypatch):
+    from types import SimpleNamespace
+
+    options = []
+    client = MLXLLMClient(prefill_step_size=128)
+    monkeypatch.setattr(
+        client, "_load_model_sync", lambda: (object(), SimpleNamespace(chat_template=None))
+    )
+
+    def stream(*args, **kwargs):
+        options.append(kwargs)
+        yield SimpleNamespace(
+            text="Complete response",
+            prompt_tokens=6400,
+            peak_memory=5.5,
+            generation_tokens=2,
+            unexpected="PRIVATE-CONTENT",
+        )
+
+    monkeypatch.setattr(
+        "capabledeputy.llm.mlx_client.import_module",
+        lambda _: SimpleNamespace(stream_generate=stream),
+    )
+    result = await client.respond([], [])
+    assert result.content == "Complete response"
+    assert options[0]["prefill_step_size"] == 128
+    assert client.last_generation_metrics == {
+        "prefill_step_size": 128,
+        "prompt_tokens": 6400,
+        "peak_memory": 5.5,
+        "generation_tokens": 2,
+    }
+    with pytest.raises(ValueError):
+        MLXLLMClient(prefill_step_size=0)
+
+
+def test_source_content_hash_detects_bytes_not_only_mtime(tmp_path):
+    import os
+
+    from capabledeputy.daemon.handlers import source_content_hash
+
+    module = tmp_path / "module.py"
+    module.write_text("value = 1")
+    before = module.stat()
+    digest = source_content_hash(tmp_path)
+    module.write_text("value = 2")
+    os.utime(module, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert source_content_hash(tmp_path) != digest
+
+
+def test_resource_trace_exports_only_numeric_counters_to_private_file(tmp_path, monkeypatch):
+    import json
+    import time
+
+    secret = "PRIVATE-CONTENT"
+    path = tmp_path / "metrics.jsonl"
+    monkeypatch.setenv("CAPDEP_MLX_RESOURCE_METRICS", str(path))
+    monkeypatch.setattr(
+        "capabledeputy.llm.mlx_client.import_module",
+        lambda _: SimpleNamespace(
+            get_active_memory=lambda: 1024,
+            get_cache_memory=lambda: secret,
+            get_peak_memory=lambda: True,
+        ),
+    )
+    client = MLXLLMClient(model=secret)
+    client._resource_trace(
+        "prefill",
+        time.monotonic(),
+        prompt_tokens=12,
+        output=secret,  # type: ignore[arg-type]
+    )
+    row = json.loads(path.read_text())
+    assert set(row) == {"stage", "time", "elapsed_seconds", "prompt_tokens", "active_memory_bytes"}
+    assert row["prompt_tokens"] == 12 and row["active_memory_bytes"] == 1024
+    assert secret not in path.read_text()
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("unsafe", ["symlink", "public"])
+def test_resource_trace_refuses_unsafe_destination(tmp_path, monkeypatch, unsafe):
+    import time
+
+    target = tmp_path / "target"
+    target.write_text("preserve")
+    path = tmp_path / "metrics"
+    if unsafe == "symlink":
+        path.symlink_to(target)
+    else:
+        path.write_text("preserve")
+        path.chmod(0o644)
+    monkeypatch.setenv("CAPDEP_MLX_RESOURCE_METRICS", str(path))
+    monkeypatch.setattr(
+        "capabledeputy.llm.mlx_client.import_module",
+        lambda _: SimpleNamespace(
+            get_active_memory=lambda: 1, get_cache_memory=lambda: 2, get_peak_memory=lambda: 3
+        ),
+    )
+    MLXLLMClient()._resource_trace("load_completed", time.monotonic())
+    assert path.read_text() == target.read_text() == "preserve"
+
+
+async def test_streaming_traces_load_prefill_and_completion_without_content(tmp_path, monkeypatch):
+    import json
+
+    path = tmp_path / "metrics"
+    monkeypatch.setenv("CAPDEP_MLX_RESOURCE_METRICS", str(path))
+    client = MLXLLMClient()
+    monkeypatch.setattr(
+        client, "_load_model_sync", lambda: (object(), SimpleNamespace(chat_template=None))
+    )
+
+    def stream(*args, **kwargs):
+        kwargs["prompt_progress_callback"](512, 1024)
+        yield SimpleNamespace(text="PRIVATE-RESPONSE", peak_memory=float("inf"))
+
+    monkeypatch.setattr(
+        "capabledeputy.llm.mlx_client.import_module",
+        lambda _: SimpleNamespace(
+            stream_generate=stream,
+            get_active_memory=lambda: 1,
+            get_cache_memory=lambda: 2,
+            get_peak_memory=lambda: 3,
+        ),
+    )
+    response = await client.respond([], [])
+    assert response.content == "PRIVATE-RESPONSE"
+    assert "PRIVATE-RESPONSE" not in path.read_text()
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [row["stage"] for row in rows] == [
+        "load_started",
+        "load_completed",
+        "prefill",
+        "first_token",
+        "completed",
+    ]
+    assert "peak_memory" not in client.last_generation_metrics

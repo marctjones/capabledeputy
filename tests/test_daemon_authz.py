@@ -76,6 +76,9 @@ def test_operator_only_methods_include_documented_gaps() -> None:
     operator-only elsewhere in the daemon — the finding this fixes was
     precisely that convention and enforcement had diverged."""
     for method in (
+        "approval.approve",
+        "approval.approve_group",
+        "email.draft_review",
         "operator.grant_capability",
         "capability.revoke",
         "session.set_enforcement",
@@ -89,6 +92,20 @@ def test_operator_only_methods_include_documented_gaps() -> None:
     # session.grant_capability is the deliberately-AI-safe narrowing path —
     # must never require operator auth or the agent's normal grant flow breaks.
     assert not requires_operator("session.grant_capability")
+
+
+@pytest.mark.parametrize(
+    "method", ["approval.approve", "approval.approve_group", "email.draft_review"]
+)
+async def test_mail_authorization_is_unreachable_without_operator_token(socket_path, method):
+    daemon = Daemon(socket_path)
+    daemon.register(method, lambda params: _ok())
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(daemon.serve)
+        await _wait_for_socket(socket_path)
+        response = await _raw_call(socket_path, method, {})
+        assert response["error"]["code"] == PERMISSION_DENIED
+        await DaemonClient(socket_path).call("shutdown")
 
 
 async def test_operator_token_file_is_written_owner_only(socket_path: Path) -> None:

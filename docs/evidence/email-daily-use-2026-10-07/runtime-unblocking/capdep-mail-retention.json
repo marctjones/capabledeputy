@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "kind": "state.db",
+      "bytes": 5640192,
+      "owner_only": true
+    },
+    {
+      "kind": "audit.jsonl",
+      "bytes": 21477070,
+      "owner_only": true
+    },
+    {
+      "kind": "chat-trace.jsonl",
+      "bytes": 25965869,
+      "owner_only": true
+    }
+  ],
+  "legacy_raw_tool_returns": 2820,
+  "tool_return_commitments": 54,
+  "invalid_audit_lines": 0,
+  "retains_private_content": true,
+  "automatic_deletion": false,
+  "table_counts": {
+    "sessions": 334,
+    "email_drafts": 1,
+    "email_operations": 0
+  }
+}

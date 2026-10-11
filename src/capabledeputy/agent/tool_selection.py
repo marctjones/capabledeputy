@@ -42,6 +42,10 @@ class ToolSelectionResult:
     method: str
     mandatory_added: tuple[str, ...] = field(default_factory=tuple)
     scores: dict[str, float] = field(default_factory=dict)
+    # Human/audit-facing explanation.  A selected count alone is ambiguous:
+    # zero may be intentional for a conversational turn, or it may mean that
+    # policy admitted no tools at all (#420).
+    selection_reason: str = ""
 
 
 def _tokenize(text: str) -> set[str]:
@@ -67,6 +71,50 @@ def _score_tool(tool: ToolDefinition, query_tokens: set[str], family: bool) -> f
 
 _KAGI_SEARCH_TOOL = "kagi.kagi_search_fetch"
 _LEGACY_DDG_SEARCH_TOOLS = frozenset({"web.search", "bundled-search.search.web"})
+
+
+def mail_tool_surface(
+    registry: ToolRegistry, session: Session, tools: list[ToolDefinition], message: str
+) -> list[ToolDefinition]:
+    """Prefer registered real mail without granting otherwise invisible tools.
+
+    Native inbox.* is seeded demo data, not a fallback for a denied real account.
+    An explicit demo request keeps that surface available.
+    """
+    if re.search(r"\b(demo|sample|seeded)\b", message, re.IGNORECASE):
+        return tools
+    if session.purpose_handle != "inbox" and not re.search(
+        r"\b(emails?|e-?mails?|gmail|inbox|mailbox|messages?|repl(?:y|ies))\b",
+        message,
+        re.IGNORECASE,
+    ):
+        return tools
+    real_mail = any(
+        t.capability_kind == CapabilityKind.IMAP_READ
+        and not t.name.startswith(("inbox.", "email.", "quarantined."))
+        for t in registry.list()
+    )
+    if not real_mail:
+        return tools
+    projected_mail = any(t.name == "quarantined.summarize_mail" for t in tools)
+    # A bounded recent-mail summary needs only its projection tool. Keeping
+    # unrelated filesystem/cloud/draft catalogs in this prompt wastes local
+    # prefill memory and invites irrelevant calls. All policy context remains.
+    if projected_mail and re.fullmatch(
+        r"\s*(?:please\s+)?summari[sz]e\s+(?:my\s+)?"
+        r"(?:(?:\d+|two|three|five|ten)\s+)?(?:most\s+)?"
+        r"(?:recent|latest|newest)\s+e-?mails?[.!?]?\s*",
+        message,
+        re.IGNORECASE,
+    ):
+        return [t for t in tools if t.name == "quarantined.summarize_mail"]
+    return [
+        t
+        for t in tools
+        if not t.name.startswith("inbox.")
+        and t.name != "quarantined.extract_inbox"
+        and not (projected_mail and t.name.endswith((".imap.list_threads", ".imap.search")))
+    ]
 
 
 def _kagi_search_available(tools: list[ToolDefinition]) -> bool:
@@ -179,7 +227,17 @@ def select_tools_for_turn(
 ) -> ToolSelectionResult:
     families_cfg = families or load_tool_families()
     cfg = selection_config or ToolSelectionConfig()
+    visible = mail_tool_surface(registry, session, visible, user_message)
     n_visible = len(visible)
+
+    if not visible:
+        return ToolSelectionResult(
+            selected=(),
+            candidates=(),
+            n_visible=0,
+            method="no_visible_tools",
+            selection_reason="no_tools_visible_under_current_capabilities_and_mode",
+        )
 
     if cfg.mode == "static" or n_visible <= cfg.max_selected:
         return ToolSelectionResult(
@@ -187,6 +245,7 @@ def select_tools_for_turn(
             candidates=tuple(visible),
             n_visible=n_visible,
             method="full_surface",
+            selection_reason="full_visible_surface",
         )
 
     narrowed = _apply_family_filter(visible, families_cfg, session.purpose_handle)
@@ -203,6 +262,16 @@ def select_tools_for_turn(
     candidate_names = {t.name for t in candidates}
 
     mandatory_names: set[str] = set(families_cfg.mandatory_always)
+    if session.purpose_handle == "inbox" or re.search(
+        r"\b(emails?|e-?mails?|gmail|inbox|mailbox|messages?|repl(?:y|ies))\b",
+        user_message,
+        re.IGNORECASE,
+    ):
+        mandatory_names.update(
+            t.name
+            for t in visible
+            if t.capability_kind == CapabilityKind.IMAP_READ and not t.name.startswith("inbox.")
+        )
     mandatory_names.update(_mode_required_tools(visible, mode))
     if has_web_search_intent(user_message) and not has_image_generation_intent(user_message):
         if _kagi_search_available(visible):
@@ -237,7 +306,9 @@ def select_tools_for_turn(
     scores: dict[str, float] = {}
     mandatory_added: list[str] = []
     visible_by_name = {t.name: t for t in visible}
-    for name in sorted(mandatory_names):
+    for name in sorted(
+        mandatory_names, key=lambda name: (name not in families_cfg.mandatory_always, name)
+    ):
         if len(selected_map) >= cfg.max_selected:
             break
         tool = visible_by_name.get(name)
@@ -256,6 +327,20 @@ def select_tools_for_turn(
         scores[tool.name] = score
 
     selected = tuple(sorted(selected_map.values(), key=lambda t: t.name))
+    # A selector must never silently turn a non-empty, policy-admitted
+    # surface into an empty planner surface.  This is not an authority
+    # expansion: every returned tool was already visible to this session and
+    # remains independently checked by the dispatch chokepoint.  It makes an
+    # invalid zero-sized selection observable and usable instead of producing
+    # the confusing "0 tools available" daily-driver failure (#420).
+    if not selected:
+        return ToolSelectionResult(
+            selected=tuple(visible),
+            candidates=tuple(visible),
+            n_visible=n_visible,
+            method="full_surface_fallback",
+            selection_reason="selector_returned_empty_for_nonempty_visible_surface",
+        )
     return ToolSelectionResult(
         selected=selected,
         candidates=tuple(candidates),
@@ -263,6 +348,7 @@ def select_tools_for_turn(
         method=method,
         mandatory_added=tuple(mandatory_added),
         scores=scores,
+        selection_reason="deterministic_retrieval",
     )
 
 
@@ -277,6 +363,7 @@ async def select_tools_for_turn_async(
     families: ToolFamiliesConfig | None = None,
     selection_config: ToolSelectionConfig | None = None,
 ) -> ToolSelectionResult:
+    visible = mail_tool_surface(registry, session, visible, user_message)
     base = select_tools_for_turn(
         registry,
         session,
@@ -307,8 +394,11 @@ async def select_tools_for_turn_async(
     if not selected_map:
         return base
 
+    priority = {name: i for i, name in enumerate(base.mandatory_added)}
     capped = tuple(
-        sorted(selected_map.values(), key=lambda t: t.name)[: cfg.max_selected],
+        sorted(selected_map.values(), key=lambda t: (priority.get(t.name, len(priority)), t.name))[
+            : cfg.max_selected
+        ]
     )
     return ToolSelectionResult(
         selected=capped,
@@ -317,6 +407,7 @@ async def select_tools_for_turn_async(
         method="family+retrieve+ai",
         mandatory_added=base.mandatory_added,
         scores=base.scores,
+        selection_reason="ai_curated_from_deterministic_candidates",
     )
 
 
@@ -325,7 +416,12 @@ def widen_tool_surface(
     visible: list[ToolDefinition],
     *,
     missing_tool_name: str | None = None,
+    registry: ToolRegistry | None = None,
+    session: Session | None = None,
+    user_message: str = "",
 ) -> ToolSelectionResult:
+    if registry is not None and session is not None:
+        visible = mail_tool_surface(registry, session, visible, user_message)
     names = {t.name for t in current.selected}
     expanded = list(current.selected)
     for tool in visible:
@@ -344,4 +440,5 @@ def widen_tool_surface(
         method="widened",
         mandatory_added=current.mandatory_added,
         scores=current.scores,
+        selection_reason="widened_after_model_requested_visible_tool",
     )

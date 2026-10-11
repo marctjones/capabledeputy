@@ -43,4 +43,13 @@ def test_guard_limits_and_short_cpu_bursts():
     assert guard.reason_for(normal, 0, 10) is None
     assert guard.reason_for(normal, 0, 30)
     assert guard.reason_for(normal, 15, 0)
-    assert guard.reason_for({**normal, "rss_mib": 2048}, 0, 0)
+    assert guard.reason_for({**normal, "rss_mib": guard.DEFAULT_RSS_LIMIT_MIB}, 0, 0)
+
+
+def test_guard_accepts_explicit_positive_rss_limit(monkeypatch):
+    guard = load_guard()
+    monkeypatch.setenv("CAPDEP_DAEMON_RSS_LIMIT_MIB", "4096")
+    assert guard.rss_limit_mib() == 4096
+    monkeypatch.setenv("CAPDEP_DAEMON_RSS_LIMIT_MIB", "0")
+    with pytest.raises(ValueError, match="positive"):
+        guard.rss_limit_mib()

@@ -1,22 +1,24 @@
 import Foundation
 
 /// Normalizes assistant text for the chat surface: strips MLX artifacts and
-/// renders lightweight markdown (links, emphasis, lists) as AttributedString.
+/// renders inline Markdown while preserving readable block syntax and whitespace.
 enum ChatContentFormatter {
     static func displayText(_ raw: String) -> String {
         var text = stripMLXArtifacts(raw)
         text = sanitizeCommonMark(text)
-        text = condenseVerboseSearchCatalog(text)
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    static func attributedMarkdown(from raw: String, fullDocument: Bool = false) -> AttributedString {
+    static func attributedMarkdown(from raw: String) -> AttributedString {
         let cleaned = displayText(raw)
         guard !cleaned.isEmpty else {
             return AttributedString("")
         }
         var options = AttributedString.MarkdownParsingOptions()
-        options.interpretedSyntax = fullDocument ? .full : .inlineOnlyPreservingWhitespace
+        // SwiftUI Text does not lay out Foundation's block presentation intents.
+        // Full parsing removes separators and list markers, joining distinct blocks.
+        // Keep block Markdown readable until a semantic block renderer owns layout.
+        options.interpretedSyntax = .inlineOnlyPreservingWhitespace
         if let parsed = try? AttributedString(markdown: cleaned, options: options) {
             return parsed
         }
@@ -77,47 +79,15 @@ enum ChatContentFormatter {
             guard !inFence else {
                 return line
             }
-            return line.replacing(/<\/?[A-Za-z][^>\n]*>/, with: "")
+            return line.replacing(/<\/?[A-Za-z][^>\n]*>/) { match in
+                let token = String(match.0)
+                // CommonMark autolinks are text destinations, not HTML tags.
+                if token.hasPrefix("<https://") || token.hasPrefix("<http://") || token.hasPrefix("<mailto:") {
+                    return token
+                }
+                return ""
+            }
         }.joined(separator: "\n")
     }
 
-    /// Turn long numbered link catalogs into a compact bullet list for chat.
-    static func condenseVerboseSearchCatalog(_ text: String) -> String {
-        let lines = text.components(separatedBy: .newlines)
-        let linkLine = /^\d+\.\s+\[[^\]]+\]\([^)]+\)/
-        var numberedLinkLines = 0
-        for line in lines {
-            let stripped = line.trimmingCharacters(in: .whitespaces)
-            if stripped.firstMatch(of: linkLine) != nil {
-                numberedLinkLines += 1
-            }
-        }
-        guard numberedLinkLines >= 3 else {
-            return text
-        }
-
-        let rowPattern = /^\d+\.\s+\[(?<title>[^\]]+)\]\((?<url>[^)]+)\)\s*-?\s*(?<blurb>.*)$/
-        var output: [String] = []
-        var converted = 0
-        for line in lines {
-            let stripped = line.trimmingCharacters(in: .whitespaces)
-            if let match = stripped.firstMatch(of: rowPattern) {
-                let title = String(match.title)
-                let url = String(match.url)
-                let blurb = String(match.blurb).trimmingCharacters(in: .whitespaces)
-                if blurb.isEmpty {
-                    output.append("- [\(title)](\(url))")
-                } else {
-                    output.append("- **\(title)** — \(blurb) [source](\(url))")
-                }
-                converted += 1
-            } else {
-                output.append(line)
-            }
-        }
-        guard converted >= 3 else {
-            return text
-        }
-        return output.joined(separator: "\n")
-    }
 }

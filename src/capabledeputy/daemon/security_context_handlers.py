@@ -14,7 +14,9 @@ from uuid import UUID
 from capabledeputy.app import App
 from capabledeputy.audit.events import Event, EventType
 from capabledeputy.daemon.handlers import Handler
+from capabledeputy.policy.capabilities import kind_name
 from capabledeputy.policy.labels import legacy_labels_present
+from capabledeputy.policy.tiers import Tier
 
 
 def make_security_context_handlers(app: App) -> dict[str, Handler]:
@@ -29,15 +31,51 @@ def make_security_context_handlers(app: App) -> dict[str, Handler]:
             for a in app.approval_queue.list(status=None)
             if str(a.from_session) == str(session_id) or str(a.to_session) == str(session_id)
         ]
-        provenance = _provenance(scoped_events)
+        provenance = _provenance(
+            scoped_events,
+            offset=_bounded_nonnegative(params.get("provenance_offset"), default=0),
+            limit=_bounded_limit(params.get("provenance_limit"), default=100, maximum=500),
+            kind_filter=str(params.get("provenance_kind") or "").strip() or None,
+        )
         policy = _policy(scoped_events)
         origin = session.origin.to_dict()
         onguard = await _onguard(app, origin)
         external_actors = _external_actors(app, scoped_events, origin)
         label_set = legacy_labels_present(session.label_state)
+        grant_kinds = sorted({kind_name(cap.kind) for cap in session.capability_set})
 
         return {
             "schema_version": 1,
+            # Presentation facts, NOT authorization predictions. A kind-level
+            # grant does not establish target, purpose, expiry or rate validity.
+            "posture_summary": {
+                "grant_kinds": grant_kinds,
+                "sensitive_categories": sorted(
+                    tag.category for tag in session.label_state.a if tag.tier != Tier.NONE
+                ),
+                "external_untrusted": any(
+                    tag.level.value == "external-untrusted" for tag in session.label_state.b
+                ),
+                "authorization_notice": (
+                    "Grants and registered tools are not permission for a specific action. "
+                    "The daemon evaluates target, purpose, labels, expiry "
+                    "and prior use at dispatch."
+                ),
+            },
+            "available_tools": [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "capability_kind": kind_name(tool.capability_kind),
+                    "kind_grant_present": kind_name(tool.capability_kind) in grant_kinds,
+                }
+                for tool in app.registry.list()
+            ],
+            "saved_state": {
+                "reference_handle_keys": sorted(session.reference_handles),
+                "declassification_count": len(session.declassification_log),
+                "history_turn_count": len(session.history),
+            },
             "session": {
                 "id": str(session.id),
                 "parent": str(session.parent) if session.parent else None,
@@ -57,6 +95,10 @@ def make_security_context_handlers(app: App) -> dict[str, Handler]:
                 "label_state": session.label_state.to_dict(),
                 "axis_d": session.axis_d.to_dict(),
                 "legacy_label_set": label_set,
+                # This is a content-free explanation of how labels reached
+                # the session.  Clients render daemon audit evidence rather
+                # than infer authority or taint from planner text.
+                "propagation": _label_propagation(scoped_events),
             },
             "capabilities": {
                 "active": session_dict["capability_set"],
@@ -69,6 +111,7 @@ def make_security_context_handlers(app: App) -> dict[str, Handler]:
                 "session_origin": origin,
                 "external_mcp": external_actors["mcp"],
                 "tools": external_actors["tools"],
+                "tool_surface": _tool_surface(scoped_events),
                 "onguard": onguard,
             },
             "approvals": {
@@ -120,7 +163,27 @@ def _event_summary(event: Event) -> dict[str, Any]:
     }
 
 
-def _provenance(events: list[Event]) -> dict[str, Any]:
+def _bounded_nonnegative(value: Any, *, default: int) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _bounded_limit(value: Any, *, default: int, maximum: int) -> int:
+    try:
+        return min(maximum, max(1, int(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _provenance(
+    events: list[Event],
+    *,
+    offset: int,
+    limit: int,
+    kind_filter: str | None,
+) -> dict[str, Any]:
     nodes: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
     for event in events:
@@ -144,11 +207,33 @@ def _provenance(events: list[Event]) -> dict[str, Any]:
                     "metadata": payload.get("metadata") or {},
                 },
             )
+    total_edges = len(edges)
+    all_nodes = sorted(nodes.values(), key=lambda n: n["id"])
+    if kind_filter:
+        all_nodes = [node for node in all_nodes if node["kind"] == kind_filter]
+        visible_node_ids = {node["id"] for node in all_nodes}
+        edges = [
+            edge
+            for edge in edges
+            if edge["from"] in visible_node_ids or edge["to"] in visible_node_ids
+        ]
+    page_nodes = all_nodes[offset : offset + limit]
+    page_edges = edges[offset : offset + limit]
     return {
-        "nodes": sorted(nodes.values(), key=lambda n: n["id"]),
-        "edges": edges,
+        "nodes": page_nodes,
+        "edges": page_edges,
         "node_count": len(nodes),
-        "edge_count": len(edges),
+        "edge_count": total_edges,
+        "filtered_edge_count": len(edges),
+        "node_offset": offset,
+        "node_limit": limit,
+        "node_returned": len(page_nodes),
+        "node_has_more": offset + len(page_nodes) < len(all_nodes),
+        "edge_offset": offset,
+        "edge_limit": limit,
+        "edge_returned": len(page_edges),
+        "edge_has_more": offset + len(page_edges) < len(edges),
+        "kind_filter": kind_filter,
     }
 
 
@@ -191,6 +276,31 @@ def _policy(events: list[Event]) -> dict[str, Any]:
             {str(rule) for d in decisions for rule in d.get("v2_matched_rule_ids", []) if rule},
         ),
     }
+
+
+def _label_propagation(events: list[Event]) -> list[dict[str, Any]]:
+    """Project label-ingress evidence without copying any tool output.
+
+    A propagation record says which daemon-dispatched tool contributed the
+    category/provenance labels.  It intentionally exposes neither arguments
+    nor returned content, preserving the separation between inspectable audit
+    control data and labeled session/reference data.
+    """
+    propagated = []
+    for event in events:
+        if event.event_type != EventType.LABEL_PROPAGATED:
+            continue
+        payload = event.payload
+        propagated.append(
+            {
+                "audit_id": str(event.audit_id),
+                "timestamp": event.timestamp.isoformat(),
+                "source_tool": str(payload.get("source_tool") or ""),
+                "categories_added": [str(value) for value in payload.get("categories_added") or []],
+                "levels_added": [str(value) for value in payload.get("levels_added") or []],
+            }
+        )
+    return propagated[-50:]
 
 
 async def _onguard(app: App, origin: dict[str, Any]) -> dict[str, Any]:
@@ -258,6 +368,34 @@ def _external_actors(
         "mcp": sorted(mcp.values(), key=lambda a: str(a.get("name"))),
         "tools": sorted(tools.values(), key=lambda a: str(a.get("name"))),
     }
+
+
+def _tool_surface(events: list[Event]) -> dict[str, Any]:
+    """Project planner-visible tool selections as read-only session evidence.
+
+    The planner picks from a daemon-owned filtered surface.  Rendering this
+    audit projection lets an operator distinguish tools the planner could see
+    from tools it actually used, without allowing a client to widen that
+    surface or to manufacture a selection record.
+    """
+    selections = []
+    for event in events:
+        if event.event_type != EventType.TOOL_SURFACE_SELECTED:
+            continue
+        payload = event.payload
+        selections.append(
+            {
+                "audit_id": str(event.audit_id),
+                "timestamp": event.timestamp.isoformat(),
+                "method": payload.get("method"),
+                "n_visible": payload.get("n_visible"),
+                "n_selected": payload.get("n_selected"),
+                "selected": list(payload.get("selected") or []),
+                "mandatory_added": list(payload.get("mandatory_added") or []),
+                "selection_reason": payload.get("selection_reason"),
+            },
+        )
+    return {"selection_count": len(selections), "recent_selections": selections[-20:]}
 
 
 def _security_models(

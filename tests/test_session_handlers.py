@@ -102,6 +102,39 @@ async def test_session_get_returns_full_session(graph: SessionGraph) -> None:
     assert got == s
 
 
+async def test_session_artifacts_returns_only_daemon_persisted_references(
+    graph: SessionGraph,
+) -> None:
+    handlers = make_session_handlers(graph)
+    session = await handlers["session.new"]({"intent": "inspect generated image"})
+    await graph.add_session_artifacts(
+        UUID(session["id"]),
+        [
+            {
+                "artifact_id": "artifact-image",
+                "kind": "generated_image",
+                "source": "tool_output",
+                "path": "/tmp/.capdep/work/images/example.png",
+                "sha256": "a" * 64,
+            }
+        ],
+    )
+
+    result = await handlers["session.artifacts"]({"session_id": session["id"]})
+
+    assert result["session_id"] == session["id"]
+    assert result["artifacts"] == [
+        {
+            "artifact_id": "artifact-image",
+            "kind": "generated_image",
+            "source": "tool_output",
+            "path": "/tmp/.capdep/work/images/example.png",
+            "sha256": "a" * 64,
+        }
+    ]
+    assert "label_state" in result
+
+
 async def test_session_get_unknown_raises(graph: SessionGraph) -> None:
     handlers = make_session_handlers(graph)
     with pytest.raises(SessionNotFoundError):

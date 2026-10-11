@@ -18,10 +18,10 @@ struct CapDepSettingsView: View {
                     Label("Assistant", systemImage: "cpu")
                 }
 
-            AccountsSettingsView()
+            McpServersSettingsView()
                 .environmentObject(model)
                 .tabItem {
-                    Label("Accounts", systemImage: "person.crop.circle")
+                    Label("MCP Servers", systemImage: "server.rack")
                 }
 
             AutomationSettingsView()
@@ -114,6 +114,39 @@ private struct AssistantSettingsView: View {
             LabeledContent("Daemon", value: model.connected ? "Connected" : "Offline")
             LabeledContent("Socket", value: model.client.socketPath)
             LabeledContent("Model backend", value: "Daemon configured")
+            Section("Build readiness") {
+                Label {
+                    Text(model.buildReadiness.comparison.title)
+                        .font(.headline)
+                } icon: {
+                    Image(systemName: buildReadinessSymbol)
+                        .foregroundStyle(buildReadinessColor)
+                }
+                Text(model.buildReadiness.comparison.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let guidance = model.buildReadiness.comparison.guidance {
+                    Text(guidance)
+                        .font(.caption)
+                }
+                DisclosureGroup("Build identities") {
+                    LabeledContent("App bundle version", value: shown(model.buildReadiness.app.version))
+                    LabeledContent("App executable SHA-256", value: shown(model.buildReadiness.app.executableSHA256))
+                    LabeledContent("App source SHA-256", value: shown(model.buildReadiness.app.sourceContentSHA256))
+                    if let daemon = model.buildReadiness.daemon {
+                        LabeledContent("Daemon package version", value: shown(daemon.version))
+                        LabeledContent("Daemon startup revision", value: daemon.revisionLabel)
+                        LabeledContent("Daemon source SHA-256", value: shown(daemon.sourceContentHash))
+                        LabeledContent("Daemon mtime manifest", value: shown(daemon.manifestHash))
+                    } else {
+                        LabeledContent("Daemon identity", value: "Unavailable")
+                    }
+                    Text("App executable and daemon source hashes identify different components and are not compared with each other. The mtime manifest is diagnostic only.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            }
             Toggle(
                 "Prefer local MLX when available",
                 isOn: settingBinding(\.preferLocalMLX),
@@ -150,6 +183,26 @@ private struct AssistantSettingsView: View {
         .formStyle(.grouped)
     }
 
+    private var buildReadinessSymbol: String {
+        switch model.buildReadiness.comparison {
+        case .current: "checkmark.circle.fill"
+        case .mismatch: "exclamationmark.triangle.fill"
+        case .unknown: "questionmark.circle"
+        }
+    }
+
+    private var buildReadinessColor: Color {
+        switch model.buildReadiness.comparison {
+        case .current: .green
+        case .mismatch: .orange
+        case .unknown: .secondary
+        }
+    }
+
+    private func shown(_ value: String) -> String {
+        value.isEmpty ? "Unavailable" : value
+    }
+
     private func settingBinding(_ keyPath: WritableKeyPath<DaemonSettings, Bool>) -> Binding<Bool> {
         Binding {
             model.daemonSettings[keyPath: keyPath]
@@ -173,18 +226,37 @@ private struct AssistantSettingsView: View {
     }
 }
 
-private struct AccountsSettingsView: View {
+private struct McpServersSettingsView: View {
     @EnvironmentObject private var model: CapDepAppModel
 
     var body: some View {
         Form {
-            ForEach(model.connectorStatuses) { connector in
-                SetupProviderRow(
-                    name: connector.name,
-                    status: connector.detail,
-                    action: connector.actions.first,
-                )
-                .environmentObject(model)
+            Section("Admitted MCP servers") {
+                Button("Probe MCP Servers") {
+                    Task { await model.probeMcpServers() }
+                }
+                Text("A probe sends only MCP list-tools requests. It executes no MCP tool and exposes no provider credentials or content.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(model.connectorStatuses.filter { $0.type == "mcp_server" }) { connector in
+                    SetupProviderRow(
+                        name: connector.name,
+                        status: connector.detail,
+                        action: nil,
+                    )
+                    .environmentObject(model)
+                }
+            }
+
+            Section("Desktop application setup") {
+                ForEach(model.connectorStatuses.filter { $0.type == "local_app" }) { connector in
+                    SetupProviderRow(
+                        name: connector.name,
+                        status: connector.detail,
+                        action: connector.actions.first,
+                    )
+                    .environmentObject(model)
+                }
             }
         }
         .formStyle(.grouped)

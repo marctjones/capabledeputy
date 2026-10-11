@@ -167,6 +167,9 @@ purposes:
         pattern: "/Users/*/Desktop/**"
       - kind: CREATE_FS
         pattern: "/Users/*/notes/scratch/**"
+      # Daemon-local drafts only; this URI grants no filesystem or send access.
+      - kind: CREATE_FS
+        pattern: "local-email-drafts://*"
       - kind: WEB_FETCH
         pattern: "*"
       - kind: CLOUD_FILE_READ
@@ -229,6 +232,8 @@ purposes:
         pattern: "*"
       - kind: CREATE_FS
         pattern: "/Users/*/notes/inbox-summaries/**"
+      - kind: CREATE_FS
+        pattern: "local-email-drafts://*"
 
   - purpose_id: calendar
     label: "Calendar review and scheduling"

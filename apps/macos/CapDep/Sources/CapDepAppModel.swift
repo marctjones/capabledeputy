@@ -1,13 +1,18 @@
 import AppKit
 import Foundation
-import LocalAuthentication
 
 @MainActor
 final class CapDepAppModel: ObservableObject {
     @Published private(set) var connected = false
     @Published private(set) var daemonConnection = DaemonConnectionHealth.empty
+    @Published private(set) var buildReadiness: BuildReadiness
     @Published private(set) var isRefreshing = false
     @Published private(set) var pendingApprovals: [Approval] = []
+    @Published private(set) var allApprovals: [Approval] = []
+    @Published var taskApprovals: [String: [TaskApproval]] = [:]
+    @Published var taskApprovalErrors: [String: String] = [:]
+    @Published var showingApprovalQueue = false
+    @Published var replyEditorState: ReplyEditorState?
     @Published private(set) var sessions: [CapDepSession] = []
     @Published private(set) var events: [AuditEvent] = []
     @Published private(set) var appStatus = AppStatus.empty
@@ -39,6 +44,10 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var selectedSessionChildren: [CapDepSession] = []
     @Published private(set) var approvalDetails: [Int: ApprovalDetail] = [:]
     @Published private(set) var sessionSecurityContexts: [String: SessionSecurityContext] = [:]
+    @Published private(set) var sessionSecurityUpdatedAt: [String: Date] = [:]
+    @Published private(set) var sessionSecurityErrors: [String: String] = [:]
+    @Published private(set) var sessionArtifacts: [String: [SessionArtifact]] = [:]
+    @Published private(set) var sessionArtifactLabels: [String: [String]] = [:]
     @Published private(set) var onguardClients: [OnguardClientViewData] = []
     @Published private(set) var onguardCommands: [OnguardCommandViewData] = []
     @Published private(set) var onguardSchedules: [OnguardScheduleViewData] = []
@@ -49,12 +58,14 @@ final class CapDepAppModel: ObservableObject {
     @Published private(set) var currentSessionID: String?
     @Published private(set) var chatMessages: [ChatMessage] = []
     @Published private(set) var promptRuns: [ChatPromptRun] = []
+    @Published private(set) var requestTurns: [String: [String: Any]] = [:]
     @Published private(set) var currentToolOutcomes: [ToolOutcome] = []
     @Published private(set) var isRunningTurn = false
     @Published private(set) var currentTurnID: String?
     @Published private(set) var currentResolvedModelRole = ""
     @Published private(set) var currentResolvedModelReason = ""
     @Published private(set) var currentResolvedModelID = ""
+    @Published private(set) var sessionModelReports: [String: SessionModelReport] = [:]
     /// `work/images` paths authorized for the in-flight assistant stream (from tool results).
     @Published private(set) var authorizedStreamingImagePaths: Set<String> = []
     @Published private(set) var turnPendingApprovalIDs: [Int] = []
@@ -73,8 +84,12 @@ final class CapDepAppModel: ObservableObject {
     @Published var contextChips: [ContextChip] = []
     @Published var taskPanelPinned = false
     @Published var lastError: String?
+    @Published private(set) var decidingApprovalIDs: Set<Int> = []
 
     let client = DaemonClient(socketPath: DaemonClient.defaultSocketPath())
+    private let appBuildIdentity: AppBuildIdentity
+    private let expectedAppSourceHash: String?
+    private let expectedDaemonSourceHash: String?
     @Published private(set) var workflows: [WorkflowTemplate] = []
     private let notifications = NotificationCenterBridge()
     private let daemonSupervisor = DaemonSupervisor()
@@ -82,11 +97,12 @@ final class CapDepAppModel: ObservableObject {
     private var isProcessingPromptQueue = false
     private var didStartGuiTestCommandHook = false
     private var guiTestCommandLineCount = 0
-    private var lastPendingApprovalCount = 0
+    private var announcedApprovalIDs: Set<Int> = []
     private var lastNotifiedApprovalID: Int?
     private var streamingAssistantMessageID: String?
     private static let chatModelModeKey = "CapDep.chatModelMode"
     private static let promptRunsStorageKey = "CapDep.pendingPromptRuns.v1"
+    private static let sessionModelReportsStorageKey = "CapDep.sessionModelReports.v1"
     private static let requiredDaemonMethods = [
         "app.status",
         "approval.list",
@@ -98,6 +114,7 @@ final class CapDepAppModel: ObservableObject {
         "image.readiness",
         "ping",
         "session.get",
+        "session.artifacts",
         "session.list",
         "session.new",
         "session.turn.ack",
@@ -134,7 +151,31 @@ final class CapDepAppModel: ObservableObject {
     private(set) static weak var shared: CapDepAppModel?
 
     init() {
+        let appIdentity = AppBuildIdentity.capture()
+        let repositoryRoot = ProcessInfo.processInfo.environment["CAPDEP_REPO_ROOT"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+        let packageRoot = repositoryRoot?.appendingPathComponent(
+            "apps/macos/CapDep",
+            isDirectory: true,
+        )
+        let appSourceHash = packageRoot.flatMap(
+            BuildIdentityComparison.appSourceContentHash(packageRoot:),
+        )
+        let daemonSourceHash = repositoryRoot.flatMap(
+            BuildIdentityComparison.daemonSourceContentHash(repositoryRoot:),
+        )
+        appBuildIdentity = appIdentity
+        expectedAppSourceHash = appSourceHash
+        expectedDaemonSourceHash = daemonSourceHash
+        buildReadiness = BuildReadiness.make(
+            app: appIdentity,
+            daemon: nil,
+            expectedAppSourceHash: appSourceHash,
+            expectedDaemonSourceHash: daemonSourceHash,
+            connected: false,
+        )
         restorePendingPromptRuns()
+        restoreSessionModelReports()
         Self.shared = self
         Task {
             await start()
@@ -190,6 +231,38 @@ final class CapDepAppModel: ObservableObject {
         if let data = try? JSONEncoder().encode(pending) {
             UserDefaults.standard.set(data, forKey: Self.promptRunsStorageKey)
         }
+    }
+
+    private func restoreSessionModelReports() {
+        guard let data = UserDefaults.standard.data(forKey: Self.sessionModelReportsStorageKey) else {
+            return
+        }
+        guard let restored = try? JSONDecoder().decode([String: SessionModelReport].self, from: data) else {
+            UserDefaults.standard.removeObject(forKey: Self.sessionModelReportsStorageKey)
+            return
+        }
+        sessionModelReports = restored
+    }
+
+    private func persistSessionModelReports() {
+        guard !sessionModelReports.isEmpty else {
+            UserDefaults.standard.removeObject(forKey: Self.sessionModelReportsStorageKey)
+            return
+        }
+        if let data = try? JSONEncoder().encode(sessionModelReports) {
+            UserDefaults.standard.set(data, forKey: Self.sessionModelReportsStorageKey)
+        }
+    }
+
+    func modelSummary(for sessionID: String) -> String? {
+        guard let report = sessionModelReports[sessionID], !report.model.isEmpty else {
+            return nil
+        }
+        let modelName = report.model.split(separator: "/").last.map(String.init) ?? report.model
+        let role = modelRoleTitle(report.role)
+        return report.reason.isEmpty
+            ? "Model: \(role) · \(modelName)"
+            : "Model: \(role) · \(modelName) (\(report.reason))"
     }
 
     @discardableResult
@@ -407,6 +480,13 @@ final class CapDepAppModel: ObservableObject {
 
         do {
             guard await verifyDaemonHandshake() else {
+                buildReadiness = BuildReadiness.make(
+                    app: appBuildIdentity,
+                    daemon: buildReadiness.daemon,
+                    expectedAppSourceHash: expectedAppSourceHash,
+                    expectedDaemonSourceHash: expectedDaemonSourceHash,
+                    connected: false,
+                )
                 if daemonConnection.phase == .unhealthy, !isRecoveringDaemon {
                     Task {
                         await ensureDaemonRunning()
@@ -416,8 +496,9 @@ final class CapDepAppModel: ObservableObject {
             }
             async let approvalsResult = client.call(
                 method: "approval.list",
-                params: ["status": "pending"],
+                params: [:],
             )
+            async let daemonCodeVersionResult = readDaemonCodeVersion()
             async let sessionsResult = client.call(method: "session.list")
             async let auditResult = client.call(method: "audit.tail", params: ["limit": 40])
             async let statusResult = client.call(method: "app.status")
@@ -431,7 +512,6 @@ final class CapDepAppModel: ObservableObject {
             async let connectorsResult = client.call(method: "connector.status")
             async let runtimeResult = client.call(method: "runtime.status")
             async let sourceBindingsResult = client.call(method: "source_binding.list")
-            async let provenanceResult = client.call(method: "provenance.graph")
             async let relationshipResult = client.call(method: "relationship_group.list")
             async let patternsResult = client.call(method: "approval_pattern.list")
             async let memoryResult = client.call(method: "memory.entries")
@@ -455,6 +535,7 @@ final class CapDepAppModel: ObservableObject {
             )
 
             let approvalsObject = try await approvalsResult as? [String: Any]
+            let daemonCodeVersion = await daemonCodeVersionResult
             let sessionsObject = try await sessionsResult as? [String: Any]
             let auditObject = try await auditResult as? [String: Any]
             let statusObject = try await statusResult as? [String: Any]
@@ -468,7 +549,6 @@ final class CapDepAppModel: ObservableObject {
             let connectorsObject = try await connectorsResult as? [String: Any]
             let runtimeObject = try await runtimeResult as? [String: Any]
             let sourceBindingsObject = try await sourceBindingsResult as? [String: Any]
-            let provenanceObject = try await provenanceResult as? [String: Any]
             let relationshipObject = try await relationshipResult as? [String: Any]
             let patternsObject = try await patternsResult as? [String: Any]
             let memoryObject = try await memoryResult as? [String: Any]
@@ -485,7 +565,8 @@ final class CapDepAppModel: ObservableObject {
             let approvals = (approvalsObject?["approvals"] as? [[String: Any]] ?? [])
                 .map(Approval.init(dictionary:))
                 .sorted { $0.id < $1.id }
-            pendingApprovals = approvals
+            allApprovals = approvals
+            pendingApprovals = approvals.filter { $0.status == "pending" }
             sessions = (sessionsObject?["sessions"] as? [[String: Any]] ?? [])
                 .map(CapDepSession.init(dictionary:))
                 .sorted { $0.id < $1.id }
@@ -493,6 +574,13 @@ final class CapDepAppModel: ObservableObject {
                 .map(AuditEvent.init(dictionary:))
                 .reversed()
             appStatus = AppStatus(dictionary: statusObject ?? [:])
+            buildReadiness = BuildReadiness.make(
+                app: appBuildIdentity,
+                daemon: daemonCodeVersion,
+                expectedAppSourceHash: expectedAppSourceHash,
+                expectedDaemonSourceHash: expectedDaemonSourceHash,
+                connected: true,
+            )
             setupPlan = SetupPlan(dictionary: setupObject ?? [:])
             setupChecks = (setupObject?["checks"] as? [[String: Any]] ?? [])
                 .map(SetupCheck.init(dictionary:))
@@ -517,10 +605,6 @@ final class CapDepAppModel: ObservableObject {
             )
             sourceBindings = (sourceBindingsObject?["bindings"] as? [[String: Any]] ?? [])
                 .map(SourceBindingViewData.init(dictionary:))
-            provenanceNodes = (provenanceObject?["nodes"] as? [[String: Any]] ?? [])
-                .map(ProvenanceNode.init(dictionary:))
-            provenanceEdges = (provenanceObject?["edges"] as? [[String: Any]] ?? [])
-                .map(ProvenanceEdge.init(dictionary:))
             relationshipGroups = (relationshipObject?["groups"] as? [[String: Any]] ?? [])
                 .map(RelationshipGroupViewData.init(dictionary:))
             approvalPatterns = (patternsObject?["patterns"] as? [[String: Any]] ?? [])
@@ -553,15 +637,29 @@ final class CapDepAppModel: ObservableObject {
             for notification in daemonNotifications where notification.urgency == "high" {
                 await notifications.notifyOnguard(notification)
             }
-            if approvals.count > lastPendingApprovalCount, let first = approvals.first {
+            if let newest = ApprovalNotificationRouting.approvalToAnnounce(
+                announced: announcedApprovalIDs,
+                pending: pendingApprovals,
+            ) {
                 await notifications.notifyPendingApproval(
-                    count: approvals.count,
-                    approvalID: first.id,
+                    count: pendingApprovals.count,
+                    approvalID: newest,
                 )
-                lastNotifiedApprovalID = first.id
+                lastNotifiedApprovalID = newest
             }
-            lastPendingApprovalCount = approvals.count
+            announcedApprovalIDs.formUnion(pendingApprovals.map(\.id))
+            if let currentSessionID {
+                await refreshSecurityContext(sessionID: currentSessionID)
+                await refreshTaskApprovals(sessionID: currentSessionID)
+            }
         } catch {
+            buildReadiness = BuildReadiness.make(
+                app: appBuildIdentity,
+                daemon: buildReadiness.daemon,
+                expectedAppSourceHash: expectedAppSourceHash,
+                expectedDaemonSourceHash: expectedDaemonSourceHash,
+                connected: false,
+            )
             setDaemonConnection(.disconnected, detail: error.localizedDescription)
             lastError = error.localizedDescription
             if shouldRecoverDaemon(after: error) {
@@ -571,6 +669,17 @@ final class CapDepAppModel: ObservableObject {
                     await refresh()
                 }
             }
+        }
+    }
+
+    private func readDaemonCodeVersion() async -> DaemonBuildIdentity? {
+        do {
+            guard let dictionary = try await client.call(method: "daemon.code_version") as? [String: Any] else {
+                return nil
+            }
+            return DaemonBuildIdentity(dictionary: dictionary)
+        } catch {
+            return nil
         }
     }
 
@@ -609,7 +718,15 @@ final class CapDepAppModel: ObservableObject {
         var lastError: Error?
         for attempt in 0 ..< budget.maxAttempts {
             do {
-                return try await operation()
+                let result = try await operation()
+                // A recovered request is the authoritative connection-health
+                // signal. Without this transition the app can remain marked
+                // "reconnecting" after a successful turn recovery and reject
+                // the next deliberate prompt as not usable.
+                if attempt > 0 {
+                    setDaemonConnection(.connected, detail: "")
+                }
+                return result
             } catch {
                 lastError = error
                 guard ReconnectPolicy.isTransient(error), attempt < budget.maxAttempts - 1 else {
@@ -629,9 +746,7 @@ final class CapDepAppModel: ObservableObject {
     }
 
     func focusApproval(_ approval: Approval) {
-        focusedApprovalID = approval.id
-        approvalWindowID = approval.id
-        selectedSection = .approvals
+        presentApproval(id: approval.id)
     }
 
     /// Decide an approval addressed only by id (#332 notification actions).
@@ -648,10 +763,33 @@ final class CapDepAppModel: ObservableObject {
         await deny(approval)
     }
 
+    func presentApprovalQueue() {
+        if let editor = replyEditorState {
+            approvalWindowID = editor.approvalID
+            showingApprovalQueue = false
+            lastError = "Save or discard your reply edits before opening the queue."
+            return
+        }
+        approvalWindowID = nil
+        showingApprovalQueue = true
+    }
+
     func presentApproval(id: Int) {
+        guard replyEditorState == nil || replyEditorState?.approvalID == id else {
+            lastError = "Save or discard your reply edits before opening another review."
+            return
+        }
         focusedApprovalID = id
+        showingApprovalQueue = false
+        if let approval = allApprovals.first(where: { $0.id == id }),
+           !isRunningTurn, currentSessionID != approval.fromSession,
+           let session = sessions.first(where: { $0.id == approval.fromSession }) {
+            focusSession(session)
+        }
         approvalWindowID = id
-        selectedSection = .approvals
+        if let approval = allApprovals.first(where: { $0.id == id }) {
+            Task { await refreshTaskApprovals(sessionID: approval.fromSession) }
+        }
     }
 
     // MARK: - First-run onboarding (#333)
@@ -703,6 +841,13 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
+    func inspectRequest(turnID: String) async throws -> [String: Any] {
+        let response = try await client.call(method: "session.turn.get", params: ["turn_id": turnID]) as? [String: Any]
+        let turn = response?["turn"] as? [String: Any] ?? [:]
+        requestTurns[turnID] = turn
+        return turn
+    }
+
     func loadChatHistory(sessionID: String) async {
         do {
             let result = try await client.call(
@@ -710,13 +855,48 @@ final class CapDepAppModel: ObservableObject {
                 params: ["session_id": sessionID],
             ) as? [String: Any]
             let history = result?["history"] as? [[String: Any]] ?? []
-            chatMessages = ChatMessage.fromHistory(history)
+            var messages = ChatMessage.fromHistory(history)
+            let response = try? await client.call(method: "session.turn.list", params: ["session_id": sessionID]) as? [String: Any]
+            // A session switch while either RPC is suspended must not put
+            // another session's messages or request IDs into the current chat.
+            guard currentSessionID == sessionID else { return }
+            var turns = response?["turns"] as? [[String: Any]] ?? []
+            for turn in turns {
+                if let id = turn["id"] as? String { requestTurns[id] = turn }
+            }
+            for index in messages.indices where messages[index].role == .user {
+                let text = messages[index].content
+                if !text.isEmpty, let match = turns.firstIndex(where: {
+                    RequestInspectionTarget.matches(prompt: text, daemonMessage: $0["message"] as? String ?? "")
+                }) {
+                    messages[index].requestTurnID = turns.remove(at: match)["id"] as? String
+                }
+            }
+            chatMessages = messages
             streamingAssistantMessageID = nil
             authorizedStreamingImagePaths = []
             promptRuns.removeAll { $0.isTerminal }
             persistPendingPromptRuns()
             if chatMessages.isEmpty {
                 seedDemoImageIfNeeded()
+            }
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Read daemon-persisted artifact references for Console inspection. This
+    /// RPC is read-only; the client cannot nominate a filesystem path here.
+    func loadSessionArtifacts(sessionID: String) async {
+        do {
+            let result = try await client.call(
+                method: "session.artifacts",
+                params: ["session_id": sessionID],
+            ) as? [String: Any]
+            let artifacts = result?["artifacts"] as? [[String: Any]] ?? []
+            sessionArtifacts[sessionID] = artifacts.map(SessionArtifact.init(dictionary:))
+            if let labelState = result?["label_state"] as? [String: Any] {
+                sessionArtifactLabels[sessionID] = CapDepSession.flattenLabels(labelState)
             }
         } catch {
             lastError = error.localizedDescription
@@ -759,13 +939,13 @@ final class CapDepAppModel: ObservableObject {
         guard let output = outcome["output"] as? [String: Any] else {
             return
         }
+        guard output["ok"] as? Bool == true,
+              let verification = output["verification"] as? [String: Any],
+              verification["ok"] as? Bool == true else {
+            return
+        }
         if let imagePath = output["image_path"] as? String {
             authorizeStreamingImagePath(imagePath)
-        }
-        if let markdown = output["markdown"] as? String {
-            for path in ChatMarkdownParser.extractMarkdownImagePaths(from: markdown) {
-                authorizeStreamingImagePath(path)
-            }
         }
     }
 
@@ -1173,6 +1353,10 @@ final class CapDepAppModel: ObservableObject {
             }
             observedTurnID = turnID
             currentTurnID = turnID
+            requestTurns[turnID] = turn
+            if let userIndex = chatMessages.lastIndex(where: { $0.role == .user }) {
+                chatMessages[userIndex].requestTurnID = turnID
+            }
             if let promptID {
                 markPromptRun(promptID, status: .running, turnID: turnID)
             }
@@ -1188,17 +1372,25 @@ final class CapDepAppModel: ObservableObject {
             )
 
             var finished = false
-            let heartbeatTask = Task {
+            let heartbeatTask = Task { [weak self] in
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(10))
                     guard !Task.isCancelled else { return }
-                    _ = try? await client.call(
-                        method: "session.turn.ack",
-                        params: [
-                            "turn_id": turnID,
-                            "client_id": "CapDepMac",
-                        ],
-                    )
+                    // A heartbeat is best-effort, but it should not silently
+                    // give up just because the daemon moved its socket during
+                    // an otherwise recoverable restart.  The daemon still
+                    // owns expiry/cancellation; this merely re-attaches the
+                    // existing client to its retained turn.
+                    guard let self else { return }
+                    _ = try? await self.withReconnect(budget: .ambient) {
+                        try await self.client.call(
+                            method: "session.turn.ack",
+                            params: [
+                                "turn_id": turnID,
+                                "client_id": "CapDepMac",
+                            ],
+                        )
+                    }
                 }
             }
             defer { heartbeatTask.cancel() }
@@ -1231,9 +1423,38 @@ final class CapDepAppModel: ObservableObject {
                     ],
                 )
             }
-            if !finished {
-                ChatDebugLog.log("subscribe_fallback_poll", metadata: ["turn_id": turnID])
-                try await pollTurnUntilFinished(turnID: turnID)
+            do {
+                // The subscription can join after a very fast local model has
+                // already emitted its selection event. Reconcile that retained
+                // provenance record so the session reports the factual model
+                // even when the completion itself was streamed successfully.
+                try await reconcileTurnModelSelection(turnID: turnID)
+                if !finished {
+                    ChatDebugLog.log("subscribe_fallback_poll", metadata: ["turn_id": turnID])
+                    try await pollTurnUntilFinished(turnID: turnID)
+                }
+            } catch {
+                // A daemon process restart drops its in-memory lifecycle
+                // records. Never replay the message automatically: replay
+                // could duplicate an external effect after an uncertain
+                // outcome. Instead surface a clean, auditable interruption;
+                // the reconnect has already restored the session and the user
+                // can deliberately send the next turn.
+                guard ReconnectPolicy.isLostInFlightTurn(error) else {
+                    throw error
+                }
+                // The new daemon issued this deterministic missing-turn
+                // response, so transport has recovered even though the old
+                // in-memory turn cannot be resumed.
+                setDaemonConnection(.connected, detail: "")
+                ChatDebugLog.log(
+                    "turn_lost_to_daemon_restart",
+                    metadata: ["turn_id": turnID, "session_id": sessionID],
+                )
+                markCurrentPromptInterrupted()
+                finalizeStreamingAssistant(
+                    "[turn interrupted: the daemon restarted before this turn's result was retained]",
+                )
             }
             return true
         } catch {
@@ -1303,6 +1524,9 @@ final class CapDepAppModel: ObservableObject {
         turnStatusLine = describeTurnEvent(event)
         let type = event["type"] as? String ?? ""
         let payload = event["payload"] as? [String: Any] ?? [:]
+        if ["completed", "interrupted", "error"].contains(type) {
+            requestTurns[eventTurnID]?["status"] = type
+        }
         if type == "llm_response_received" {
             let toolCalls = payload["n_tool_calls"] as? Int ?? 0
             if toolCalls > 0 {
@@ -1312,6 +1536,16 @@ final class CapDepAppModel: ObservableObject {
             currentResolvedModelRole = payload["role"] as? String ?? ""
             currentResolvedModelReason = payload["reason"] as? String ?? ""
             currentResolvedModelID = payload["model"] as? String ?? ""
+            if let sessionID = promptRuns.last(where: { $0.turnID == eventTurnID })?.sessionID
+                ?? currentSessionID,
+               !currentResolvedModelID.isEmpty {
+                sessionModelReports[sessionID] = SessionModelReport(
+                    role: currentResolvedModelRole,
+                    model: currentResolvedModelID,
+                    reason: currentResolvedModelReason,
+                )
+                persistSessionModelReports()
+            }
         } else if type == "llm_token" {
             if let partial = payload["partial_content"] as? String, !partial.isEmpty {
                 setStreamingAssistantContent(partial)
@@ -1414,16 +1648,24 @@ final class CapDepAppModel: ObservableObject {
                     ],
                 )
             }
-            let observed = try await client.call(
-                method: "session.turn.get",
-                params: ["turn_id": turnID],
-            ) as? [String: Any]
+            // #319 — this is the recovery path after a subscription closes.
+            // It must use the same bounded reconnect policy as turn start;
+            // otherwise a daemon restart merely moves the raw transport error
+            // from streaming to polling.
+            let observed = try await withReconnect(budget: .turnRecovery) {
+                try await self.client.call(
+                    method: "session.turn.get",
+                    params: ["turn_id": turnID],
+                )
+            } as? [String: Any]
             let observedTurn = observed?["turn"] as? [String: Any] ?? [:]
             let status = observedTurn["status"] as? String ?? ""
-            let events = try await client.call(
-                method: "session.turn.events",
-                params: ["turn_id": turnID, "cursor": cursor, "limit": 200],
-            ) as? [String: Any]
+            let events = try await withReconnect(budget: .turnRecovery) {
+                try await self.client.call(
+                    method: "session.turn.events",
+                    params: ["turn_id": turnID, "cursor": cursor, "limit": 200],
+                )
+            } as? [String: Any]
             let batch = events?["events"] as? [[String: Any]] ?? []
             cursor = events?["next_cursor"] as? Int ?? cursor
             for event in batch {
@@ -1471,6 +1713,24 @@ final class CapDepAppModel: ObservableObject {
                 turnStatusLine = "Waiting for daemon turn result…"
             }
             try await Task.sleep(for: .milliseconds(80))
+        }
+    }
+
+    private func reconcileTurnModelSelection(turnID: String) async throws {
+        // Model provenance is retained with the turn.  This reconciliation
+        // commonly runs immediately after stream completion, including the
+        // reconnect fallback, so it must not turn a harmless daemon bounce
+        // into a failed user turn.
+        let response = try await withReconnect(budget: .turnRecovery) {
+            try await self.client.call(
+                method: "session.turn.events",
+                params: ["turn_id": turnID, "cursor": 0, "limit": 200],
+            )
+        } as? [String: Any]
+        let events = response?["events"] as? [[String: Any]] ?? []
+        for event in events where event["type"] as? String == "model_selected" {
+            _ = try applyTurnEvent(event)
+            return
         }
     }
 
@@ -1618,17 +1878,29 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
-    func refreshSecurityContext(sessionID: String) async {
+    func refreshSecurityContext(
+        sessionID: String,
+        provenanceOffset: Int = 0,
+        provenanceKind: String? = nil,
+    ) async {
         guard !sessionID.isEmpty else {
             return
         }
         do {
             let result = try await client.call(
                 method: "session.security_context",
-                params: ["session_id": sessionID],
+                params: [
+                    "session_id": sessionID,
+                    "provenance_offset": provenanceOffset,
+                    "provenance_limit": 100,
+                    "provenance_kind": provenanceKind ?? "",
+                ],
             ) as? [String: Any]
             sessionSecurityContexts[sessionID] = SessionSecurityContext(dictionary: result ?? [:])
+            sessionSecurityUpdatedAt[sessionID] = Date()
+            sessionSecurityErrors.removeValue(forKey: sessionID)
         } catch {
+            sessionSecurityErrors[sessionID] = error.localizedDescription
             lastError = error.localizedDescription
         }
     }
@@ -1796,6 +2068,16 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
+    func probeMcpServers() async {
+        do {
+            let result = try await client.call(method: "mcp.probe") as? [String: Any]
+            connectorStatuses = (result?["connectors"] as? [[String: Any]] ?? [])
+                .map(ConnectorStatus.init(dictionary:))
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
     func setAutomationPaused(_ paused: Bool) async {
         do {
             let result = try await client.call(
@@ -1872,6 +2154,7 @@ final class CapDepAppModel: ObservableObject {
     func deferApproval(_ approval: Approval) async {
         do {
             _ = try await client.call(method: "approval.defer", params: ["id": approval.id])
+            if approvalWindowID == approval.id { approvalWindowID = nil }
             await refresh()
         } catch {
             lastError = error.localizedDescription
@@ -1882,17 +2165,12 @@ final class CapDepAppModel: ObservableObject {
         guard !approval.siblingGroupID.isEmpty else {
             return
         }
-        let strongAuth = await strongAuthMarkerIfNeeded(for: approval)
-        guard strongAuthSatisfied(for: approval, marker: strongAuth) else {
-            return
-        }
         do {
             _ = try await client.call(
                 method: "approval.approve_group",
                 params: [
                     "group_id": approval.siblingGroupID,
                     "decided_by": "CapDepMac",
-                    "strong_auth": strongAuth,
                 ],
             )
             approvalWindowID = nil
@@ -1919,10 +2197,9 @@ final class CapDepAppModel: ObservableObject {
     }
 
     private func presentApprovalPromptIfNeeded(approvalID: Int) {
-        focusedApprovalID = approvalID
-        approvalWindowID = approvalID
-        selectedSection = .approvals
-        grantPromptPresented = false
+        // Incoming reviews stay in their task; never steal focus or open a window.
+        // Explicit user entry points call presentApproval(id:) instead.
+        Task { await refresh() }
     }
 
     private func presentPolicyPromptsAfterTurn() {
@@ -2101,67 +2378,47 @@ final class CapDepAppModel: ObservableObject {
         }
     }
 
-    private func decide(_ approval: Approval, approved: Bool) async {
-        var strongAuth = ""
-        if approved {
-            strongAuth = await strongAuthMarkerIfNeeded(for: approval)
-            guard strongAuthSatisfied(for: approval, marker: strongAuth) else {
-                return
-            }
+    func loadEmailDrafts(sessionID: String) async throws -> [SessionEmailDraft] {
+        let result = try await client.call(method: "email.draft_list", params: ["session_id": sessionID])
+        let raw = result as? [String: Any] ?? [:]
+        return (raw["drafts"] as? [[String: Any]] ?? []).compactMap(SessionEmailDraft.init)
+    }
+
+    func requestEmailDraftReview(sessionID: String, draft: SessionEmailDraft) async throws -> Int {
+        let result = try await client.call(method: "email.draft_review", params: [
+            "session_id": sessionID, "id": draft.id, "version": draft.version,
+        ])
+        guard let raw = result as? [String: Any], let id = raw["id"] as? Int else {
+            throw NSError(domain: "CapDep", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "The daemon did not return an approval ID.",
+            ])
         }
+        await refresh()
+        return id
+    }
+
+    private func decide(_ approval: Approval, approved: Bool) async {
+        guard decidingApprovalIDs.insert(approval.id).inserted else { return }
+        defer { decidingApprovalIDs.remove(approval.id) }
+        lastError = nil
         do {
             var params: [String: Any] = [
                 "id": approval.id,
                 "decided_by": "CapDepMac",
             ]
-            if approved {
-                params["strong_auth"] = strongAuth
-            } else {
+            if !approved {
                 params["reason"] = "denied in CapDep macOS app"
             }
-            _ = try await client.call(
+            let result = try await client.call(
                 method: approved ? "approval.approve" : "approval.deny",
                 params: params,
             )
-            approvalWindowID = nil
             await refresh()
+            await refreshTaskApprovals(sessionID: approval.fromSession)
+            _ = result // The task projection owns durable decision and execution state.
+
         } catch {
             lastError = error.localizedDescription
-        }
-    }
-
-    private func strongAuthSatisfied(for approval: Approval, marker: String) -> Bool {
-        guard approval.touchIDPolicyEnabled else {
-            return true
-        }
-        guard approval.requiresStrongAuth else {
-            return true
-        }
-        return marker == "touch_id"
-    }
-
-    private func strongAuthMarkerIfNeeded(for approval: Approval) async -> String {
-        guard approval.touchIDPolicyEnabled else {
-            return ""
-        }
-        guard approval.requiresStrongAuth else {
-            return ""
-        }
-        let context = LAContext()
-        var error: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
-            lastError = error?.localizedDescription ?? "Touch ID or device authentication is unavailable."
-            return ""
-        }
-        do {
-            let ok = try await context.evaluatePolicy(
-                .deviceOwnerAuthentication,
-                localizedReason: "Approve high-risk CapDep action #\(approval.id)",
-            )
-            return ok ? "touch_id" : ""
-        } catch {
-            lastError = error.localizedDescription
-            return ""
         }
     }
 

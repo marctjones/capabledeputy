@@ -555,7 +555,7 @@ def image_readiness(*, profile_name: str | None = None) -> dict[str, Any]:
         },
     )
     checks.extend(_backend_readiness_checks(backend))
-    checks.extend(_path_readiness_checks(config))
+    checks.extend(_path_readiness_checks(config, backend=backend))
     checks.extend(_account_readiness_checks(config, backend))
     asset_profile = _PROFILE_ASSET_IDS.get(
         (profile_name or os.environ.get("CAPDEP_IMAGE_PROFILE") or "default").strip().lower(),
@@ -629,7 +629,7 @@ def _module_check(check_id: str, module_name: str, recovery: str) -> dict[str, A
         }
 
 
-def _path_readiness_checks(config: ImageGenConfig) -> list[dict[str, Any]]:
+def _path_readiness_checks(config: ImageGenConfig, *, backend: str) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     output_parent = config.output_dir.expanduser().parent
     checks.append(
@@ -663,7 +663,52 @@ def _path_readiness_checks(config: ImageGenConfig) -> list[dict[str, Any]]:
                 "recovery": "Download the checkpoint or clear the local checkpoint override.",
             },
         )
+    checks.extend(_model_cache_readiness_checks(config, backend=backend))
     return checks
+
+
+def _model_cache_readiness_checks(config: ImageGenConfig, *, backend: str) -> list[dict[str, Any]]:
+    """Report whether a repo-backed local image runtime has its snapshot.
+
+    MFLUX supports Hugging Face repository identifiers directly, but a supported
+    native format is not proof that its bytes are present.  CapDep's daily
+    local profile must fail readiness rather than make a later generation job
+    discover a missing cache while offline.
+    """
+    if backend != "mflux":
+        return []
+    model_path = config.model_path or _MFLUX_DEFAULT_MODEL_PATHS.get(config.model)
+    if not model_path:
+        return []
+    configured_path = Path(model_path).expanduser()
+    if configured_path.is_dir():
+        return [
+            {
+                "id": "model-cache",
+                "status": "ok",
+                "detail": "local model directory present",
+            }
+        ]
+    if "/" not in model_path:
+        return []
+    hf_home = Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface")
+    hub_cache = Path(os.environ.get("HF_HUB_CACHE") or hf_home / "hub")
+    repo_cache = hub_cache / f"models--{model_path.replace('/', '--')}" / "snapshots"
+    cached = repo_cache.is_dir() and any(path.is_dir() for path in repo_cache.iterdir())
+    return [
+        {
+            "id": "model-cache",
+            "status": "ok" if cached else "error",
+            "detail": (
+                "local MFLUX model snapshot present"
+                if cached
+                else "local MFLUX model snapshot missing"
+            ),
+            "recovery": (
+                f"Cache {model_path} with `hf download {model_path}` before local generation."
+            ),
+        }
+    ]
 
 
 def _account_readiness_checks(config: ImageGenConfig, backend: str) -> list[dict[str, Any]]:

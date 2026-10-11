@@ -1,0 +1,80 @@
+{
+  "synthetic": true,
+  "status": "completed",
+  "quality": {
+    "status": "passed",
+    "mvp_checks": {
+      "no_unrequested_executed_date_filter": true,
+      "summary_preserves_both_topics_and_dates": true
+    },
+    "model_proposed_unrequested_date_filter": false,
+    "supplemental_compose": {
+      "shipped_default": false,
+      "status": "passed",
+      "checks": {
+        "reply_confirms_requested_agenda": true,
+        "reply_does_not_invent_attachment": true
+      }
+    },
+    "scope": "Single fixed synthetic corpus; inspect recorded actual responses too"
+  },
+  "elapsed_seconds": 58.86,
+  "model_identity": "Qwen3-8B-4bit-mlx",
+  "responses": [
+    {
+      "role": "planner",
+      "elapsed_seconds": 26.19,
+      "offered_tool_count": 1,
+      "generation_metrics": {
+        "prefill_step_size": 512,
+        "prompt_tokens": 3840,
+        "generation_tokens": 40,
+        "peak_memory": 5.55146556
+      }
+    },
+    {
+      "role": "extractor",
+      "elapsed_seconds": 6.12,
+      "offered_tool_count": 0,
+      "generation_metrics": {
+        "prefill_step_size": 512,
+        "prompt_tokens": 436,
+        "generation_tokens": 47,
+        "peak_memory": 5.55146556
+      }
+    },
+    {
+      "role": "extractor",
+      "elapsed_seconds": 5.05,
+      "offered_tool_count": 0,
+      "generation_metrics": {
+        "prefill_step_size": 512,
+        "prompt_tokens": 430,
+        "generation_tokens": 47,
+        "peak_memory": 5.55146556
+      }
+    },
+    {
+      "role": "planner",
+      "elapsed_seconds": 18.29,
+      "offered_tool_count": 1,
+      "generation_metrics": {
+        "prefill_step_size": 512,
+        "prompt_tokens": 4397,
+        "generation_tokens": 63,
+        "peak_memory": 5.646968944
+      }
+    },
+    {
+      "role": "reply_suggestion",
+      "elapsed_seconds": 2.09,
+      "offered_tool_count": 0,
+      "generation_metrics": {
+        "prefill_step_size": 512,
+        "prompt_tokens": 92,
+        "generation_tokens": 19,
+        "peak_memory": 5.646968944
+      }
+    }
+  ]
+}

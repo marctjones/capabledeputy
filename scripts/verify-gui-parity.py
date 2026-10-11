@@ -26,6 +26,7 @@ GUI_METHODS: tuple[tuple[str, dict[str, Any]], ...] = (
     ("config.validate", {}),
     ("config.log_locations", {}),
     ("connector.status", {}),
+    ("mcp.probe", {}),
     ("runtime.status", {}),
     ("source_binding.list", {}),
     ("provenance.graph", {}),
@@ -61,6 +62,12 @@ async def _check_chat_session(client: DaemonClient) -> None:
     session_id = str(created.get("id") or "")
     if not session_id:
         raise RuntimeError("session.new did not return an id")
+
+    artifacts = await _call(client, "session.artifacts", {"session_id": session_id})
+    if str(artifacts.get("session_id") or "") != session_id:
+        raise RuntimeError("session.artifacts did not bind its result to the requested session")
+    if not isinstance(artifacts.get("artifacts"), list):
+        raise RuntimeError("session.artifacts did not return an artifact list")
 
     started = await _call(
         client,

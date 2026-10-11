@@ -42,7 +42,7 @@ enum ChatMarkdownParser {
                 )
             }
             let language = String(match.1).trimmingCharacters(in: .whitespacesAndNewlines)
-            let body = String(match.2).trimmingCharacters(in: .newlines)
+            let body = String(match.2)
             result.append(.code(language: language.isEmpty ? nil : language, body: body))
             cursor = match.range.upperBound
         }

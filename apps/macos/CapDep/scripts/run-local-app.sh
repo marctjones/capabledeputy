@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="$ROOT/.build/CapDepMac.app"
-EXEC="$ROOT/.build/arm64-apple-macosx/debug/CapDepMac"
 REPO_ROOT="$(cd "$ROOT/../../.." && pwd)"
 CAPDEP="$REPO_ROOT/.venv/bin/capdep"
 TMUX_DAEMON="$REPO_ROOT/scripts/run-local-daemon-tmux.sh"
@@ -31,6 +30,16 @@ if [[ "$CLEAN_BUILD" == "1" ]]; then
 fi
 echo "[capdep-gui] swift build"
 swift build
+EXEC="$(swift build --show-bin-path)/CapDepMac"
+if [[ ! -x "$EXEC" ]]; then
+  echo "[capdep-gui] SwiftPM did not produce CapDepMac at $EXEC" >&2
+  exit 1
+fi
+APP_VERSION="$(sed -n 's/^__version__ = "\([^"]*\)"$/\1/p' "$REPO_ROOT/src/capabledeputy/version.py" | head -n 1)"
+if [[ -z "$APP_VERSION" ]]; then
+  echo "[capdep-gui] Could not read app version from capabledeputy/version.py" >&2
+  exit 1
+fi
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
@@ -77,7 +86,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>LSMinimumSystemVersion</key>

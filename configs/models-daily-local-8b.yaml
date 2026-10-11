@@ -1,0 +1,26 @@
+# Daily-driver local baseline for a 24-GB Apple-silicon laptop.
+#
+# All roles deliberately share one pinned operator-provisioned MLX model. This
+# avoids a surprise 14B/30B download or a role-switch memory spike during a
+# normal assistant session. The policy/flow boundaries remain unchanged: the
+# extractor is still tool-less and schema-bounded even when it shares weights
+# with the planner.
+default_backend: mlx
+roles:
+  planner.fast: &daily_8b
+    mlx: mlx-community/Qwen3-8B-4bit
+    max_tokens: 512
+  planner.tools: *daily_8b
+  planner.quality: *daily_8b
+  planner.coder: *daily_8b
+  extractor:
+    mlx: mlx-community/Qwen3-8B-4bit
+    max_tokens: 512
+routing:
+  - default:
+      role: planner.fast
+      reason: daily_local_8b_baseline
+tool_selection:
+  mode: retrieve
+  retrieval_top_k: 20
+  max_selected: 15

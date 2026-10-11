@@ -134,6 +134,19 @@ class ModelPool:
         }
 
 
+_LOCAL_MODEL_PREFIXES = ("mlx/", "mlx-community/", "Qwen/", "/", "~", "./")
+
+
+def is_local_model_spec(model: str) -> bool:
+    """True only for specs that run on this machine (MLX ids or filesystem paths).
+
+    This is an allowlist on purpose: a hosted provider prefix (fireworks_ai/,
+    openai/, gemini/, ...) must never be treated as local just because it is
+    not one of the providers we happened to list.
+    """
+    return model.startswith(_LOCAL_MODEL_PREFIXES)
+
+
 def require_mlx_on_apple_silicon(*, prefer_local_mlx: bool = True) -> None:
     """Refuse remote/Ollama fallbacks on Apple Silicon unless explicitly allowed."""
     import platform
@@ -158,12 +171,7 @@ def require_mlx_on_apple_silicon(*, prefer_local_mlx: bool = True) -> None:
             "Use MLX (default) or set CAPDEP_ALLOW_REMOTE_LLM=1 to override.",
         )
     model = os.environ.get("CAPDEP_LLM_MODEL", "").strip()
-    if (
-        model
-        and not model.startswith("mlx/")
-        and not model.startswith("Qwen/")
-        and (model.startswith("ollama/") or "claude" in model.lower())
-    ):
+    if model and not is_local_model_spec(model):
         raise RuntimeError(
             f"CAPDEP_LLM_MODEL={model!r} is not an MLX model. "
             "Use mlx/<repo> or set CAPDEP_ALLOW_REMOTE_LLM=1.",

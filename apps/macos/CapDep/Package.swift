@@ -14,11 +14,25 @@ let package = Package(
     products: [
         .executable(name: "CapDepMac", targets: ["CapDepMacLauncher"]),
         .library(name: "CapDepMacKit", targets: ["CapDepMac"]),
+        .executable(name: "CapDepApprovalAuth", targets: ["CapDepApprovalAuth"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/swiftlang/swift-markdown.git", exact: "0.6.0"),
+        .package(url: "https://github.com/swiftlang/swift-cmark.git", exact: "0.9.0"),
     ],
     targets: [
+        .executableTarget(name: "CapDepApprovalAuth", path: "ApprovalAuth"),
+        .executableTarget(name: "BuildIdentityGenerator", path: "BuildIdentityGenerator"),
+        .plugin(
+            name: "BuildIdentityPlugin",
+            capability: .buildTool(),
+            dependencies: ["BuildIdentityGenerator"],
+        ),
         .target(
             name: "CapDepMac",
+            dependencies: [.product(name: "Markdown", package: "swift-markdown")],
             path: "Sources",
+            plugins: [.plugin(name: "BuildIdentityPlugin")],
         ),
         .executableTarget(
             name: "CapDepMacLauncher",

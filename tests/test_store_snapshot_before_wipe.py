@@ -69,8 +69,14 @@ def test_corrupt_db_is_quarantined_not_deleted(tmp_path: Path) -> None:
 
 def test_backups_do_not_collide(tmp_path: Path) -> None:
     db = tmp_path / "state.db"
+    backups = []
     for _ in range(3):
         _write_db_at_version(db, SCHEMA_VERSION - 1)
-        anyio.run(SessionStore(db).initialize)
-    backups = list(tmp_path.glob("state.db.pre-wipe*"))
-    assert len(backups) == 3  # no overwrite
+        store = SessionStore(db)
+        anyio.run(store.initialize)
+        assert store.last_backup_path is not None
+        backups.append(store.last_backup_path)
+    assert len(set(backups)) == 3  # migration and wipe snapshots never overwrite
+    for backup in backups:
+        with sqlite3.connect(backup) as con:
+            assert con.execute("SELECT id FROM sessions").fetchone()[0] == "old-session"

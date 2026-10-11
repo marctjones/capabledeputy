@@ -235,6 +235,7 @@ class SessionGraph:
         intent: str | None = None,
         tool_aliasing: bool = False,
         prefer_programmatic: bool = False,
+        required_modes: frozenset[str] | None = None,
         parent: UUID | None = None,
         purpose_handle: str = UNSET_PURPOSE_HANDLE,
         candidate_capability_categories: frozenset[str] | None = None,
@@ -342,6 +343,7 @@ class SessionGraph:
             intent=intent,
             tool_aliasing=tool_aliasing,
             prefer_programmatic=prefer_programmatic,
+            required_modes=required_modes,
             parent=parent,
             purpose_handle=purpose_handle,
             capability_set=default_caps,
@@ -401,6 +403,7 @@ class SessionGraph:
         # SC-002).
         child = Session.new(
             parent=parent_id,
+            required_modes=parent.required_modes,
             owner=parent.owner,
             intent=intent,
             label_state=parent.label_state,

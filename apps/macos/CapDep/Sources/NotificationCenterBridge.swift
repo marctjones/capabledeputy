@@ -11,7 +11,9 @@ enum ApprovalNotification {
     /// Opens the full approval card (foreground) — approving happens there, with
     /// payload + labels visible, never blind from the banner.
     static let reviewAction = "CAPDEP_APPROVAL_REVIEW"
-    /// Deny straight from the banner — safe/fail-closed without the full card.
+    /// Legacy identifier from banners delivered before Deny was removed from the
+    /// category. It is no longer registered; the delegate treats it as Review so
+    /// an old banner can never decide an approval unseen.
     static let denyAction = "CAPDEP_APPROVAL_DENY"
 }
 
@@ -45,14 +47,11 @@ final class NotificationCenterBridge {
             title: "Review",
             options: [.foreground],
         )
-        let deny = UNNotificationAction(
-            identifier: ApprovalNotification.denyAction,
-            title: "Deny",
-            options: [.destructive],
-        )
+        // No Deny here: a decision made from the banner is made without seeing the
+        // exact action (approval-experience design: never decide unseen).
         let category = UNNotificationCategory(
             identifier: ApprovalNotification.category,
-            actions: [review, deny],
+            actions: [review],
             intentIdentifiers: [],
             options: [],
         )
@@ -69,8 +68,8 @@ final class NotificationCenterBridge {
         let content = UNMutableNotificationContent()
         content.title = "CapDep approval needed"
         content.body = count == 1
-            ? "Approval #\(approvalID) is waiting for review."
-            : "\(count) actions are waiting for review. Open approval #\(approvalID)."
+            ? "An action is ready for your review. Open its conversation to continue."
+            : "\(count) actions are ready for review."
         content.sound = .default
         content.userInfo = ["approval_id": approvalID]
         content.categoryIdentifier = ApprovalNotification.category
@@ -116,6 +115,7 @@ final class NotificationCenterBridge {
     }
 
     private var canUseUserNotifications: Bool {
-        Bundle.main.bundleURL.pathExtension == "app"
+        guard !CapDepBackgroundGUIMode.enabled else { return false }
+        return Bundle.main.bundleURL.pathExtension == "app"
     }
 }

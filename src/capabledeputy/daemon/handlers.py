@@ -17,6 +17,24 @@ Handler = Callable[[dict[str, Any]], Awaitable[Any]]
 # than what's on disk. We snapshot once (at import time, which is
 # effectively daemon-startup time for the daemon process); the value
 # never changes for the lifetime of the daemon — that's the point.
+def source_content_hash(src_root: Path | None = None) -> str:
+    """Commit the startup source bytes, including untracked Python modules.
+
+    This supplements the compatibility mtime manifest; it is not a claim that
+    every module was imported or that a dirty checkout is an immutable release.
+    """
+    import hashlib
+
+    root = src_root or Path(__file__).resolve().parent.parent
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*.py")):
+        name = path.relative_to(root).as_posix().encode()
+        data = path.read_bytes()
+        digest.update(len(name).to_bytes(8, "big") + name)
+        digest.update(len(data).to_bytes(8, "big") + data)
+    return digest.hexdigest()
+
+
 def _capture_code_version() -> dict[str, str]:
     """Best-effort capture of the daemon's running code identity.
     `git_rev` reads `git rev-parse HEAD` if the daemon was launched
@@ -72,6 +90,7 @@ def _capture_code_version() -> dict[str, str]:
         "git_rev": git_rev or "",
         "git_dirty": "" if git_dirty is None else ("dirty" if git_dirty else "clean"),
         "manifest_hash": manifest_hash,
+        "source_content_hash": source_content_hash(src_root),
     }
 
 

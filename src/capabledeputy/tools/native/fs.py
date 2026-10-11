@@ -37,6 +37,8 @@ from dataclasses import replace as _dc_replace
 from pathlib import Path
 from typing import Any
 
+from capabledeputy.approval.model import ApprovalAction
+from capabledeputy.approval.route import ApprovalPayloadKind, ApprovalRoute
 from capabledeputy.policy.capabilities import CapabilityKind
 from capabledeputy.policy.effect_class import EffectClass, Operation
 from capabledeputy.policy.fs_labeling import FsLabeler
@@ -76,6 +78,12 @@ def _with_fs_labels(base: _FsHandler, labeler: FsLabeler | None) -> _FsHandler:
 
 
 _MAX_BYTES = 64 * 1024
+
+_FS_DESTRUCTIVE_ROUTE = ApprovalRoute(
+    action=ApprovalAction.EXECUTE_DESTRUCTIVE,
+    target_arg="path",
+    payload_kind=ApprovalPayloadKind.TOOL_ENVELOPE,
+)
 
 
 def _to_file_uri(path: str) -> str:
@@ -360,6 +368,7 @@ def make_fs_tools(labeler: FsLabeler | None = None) -> list[ToolDefinition]:
             default_reversibility={"degree": "reversible-with-friction", "agent": "human"},
             tool_provenance="operator-curated",
             surfaces_destination_id=True,
+            approval_route=_FS_DESTRUCTIVE_ROUTE,
             parameters_schema={
                 "type": "object",
                 "properties": {

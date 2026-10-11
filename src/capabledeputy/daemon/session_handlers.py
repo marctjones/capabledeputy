@@ -21,7 +21,11 @@ from capabledeputy.session.foreground_defaults import (
     supplement_foreground_capabilities,
 )
 from capabledeputy.session.graph import SessionGraph
-from capabledeputy.session.model import SessionStatus
+from capabledeputy.session.model import (
+    SessionStatus,
+    required_modes_from_value,
+    session_artifacts_from_handles,
+)
 
 
 def make_session_handlers(
@@ -46,6 +50,7 @@ def make_session_handlers(
             purpose_handle=purpose_handle,
             tool_aliasing=bool(params.get("tool_aliasing", False)),
             prefer_programmatic=bool(params.get("prefer_programmatic", False)),
+            required_modes=required_modes_from_value(params.get("required_modes")),
             parent=parent,
             origin=params.get("origin"),
         )
@@ -87,6 +92,20 @@ def make_session_handlers(
     async def session_get(params: dict[str, Any]) -> dict[str, Any]:
         s = graph.get(UUID(params["session_id"]))
         return s.to_dict()
+
+    async def session_artifacts(params: dict[str, Any]) -> dict[str, Any]:
+        """Return daemon-persisted artifact references for one session.
+
+        This deliberately exposes only references the daemon previously
+        materialized from tool outcomes; clients do not supply paths or create
+        artifact records through this read-only route.
+        """
+        s = graph.get(UUID(params["session_id"]))
+        return {
+            "session_id": str(s.id),
+            "artifacts": list(session_artifacts_from_handles(s.reference_handles)),
+            "label_state": s.label_state.to_dict(),
+        }
 
     async def session_events(params: dict[str, Any]) -> dict[str, Any]:
         if coordinator is None:
@@ -233,6 +252,7 @@ def make_session_handlers(
         "session.resume": session_resume,
         "session.abort": session_abort,
         "session.get": session_get,
+        "session.artifacts": session_artifacts,
         "session.events": session_events,
         "session.input.submit": session_input_submit,
         "session.input.queue": session_input_queue,

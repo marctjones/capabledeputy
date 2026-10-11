@@ -10,18 +10,56 @@ final class ChatContentFormatterTests: XCTestCase {
         )
     }
 
-    func testCondenseNumberedSearchCatalog() {
+    func testNumberedSearchCatalogKeepsAuthoredNumbersAndLinks() {
         let raw = """
-        Here is what I found about cats.
+        Selected messages:
 
-        1. [Cat - Wikipedia](https://en.wikipedia.org/wiki/Cat) - Domestic species
-        2. [Felidae - Wikipedia](https://en.wikipedia.org/wiki/Felidae) - Mammal family
-        3. [Cats musical - Wikipedia](https://en.wikipedia.org/wiki/Cats_(musical)) - Stage show
+        4. [First message](https://example.com/first) - Needs a reply
+        7. [Second message](https://example.com/second) - For information
+        12. [Third message](https://example.com/third) - Follow up tomorrow
         """
-        let formatted = ChatContentFormatter.displayText(raw)
-        XCTAssertTrue(formatted.contains("- **Cat - Wikipedia**"))
-        XCTAssertTrue(formatted.contains("[source](https://en.wikipedia.org/wiki/Cat)"))
-        XCTAssertFalse(formatted.contains("1. [Cat"))
+        XCTAssertEqual(ChatContentFormatter.displayText(raw), raw)
+        let rendered = ChatContentFormatter.attributedMarkdown(from: raw)
+        XCTAssertEqual(String(rendered.characters), """
+        Selected messages:
+
+        4. First message - Needs a reply
+        7. Second message - For information
+        12. Third message - Follow up tomorrow
+        """)
+        XCTAssertEqual(
+            rendered.runs.compactMap { $0.link?.absoluteString },
+            ["https://example.com/first", "https://example.com/second", "https://example.com/third"],
+        )
+    }
+
+    func testMailSummaryPreservesParagraphsHeadingsAndNestedLists() {
+        let raw = """
+        ## Inbox summary
+
+        First paragraph.
+
+        Second paragraph.
+
+        3. Reply to Alice
+           - Confirm the date
+           - Keep the subject
+        8. Read Bob's update
+
+        > Quoted source remains a separate block.
+        """
+        XCTAssertEqual(String(ChatContentFormatter.attributedMarkdown(from: raw).characters), raw)
+    }
+
+    func testStreamingProsePreservesIncompleteMarkdownAndBlockBreaks() {
+        let partials = [
+            "## Inbox\n\n1. First\n2.",
+            "Summary\n\n- **Unfinished emphasis",
+            "Summary\n\n7. [Unfinished link](https://example.com",
+        ]
+        for raw in partials {
+            XCTAssertEqual(String(ChatContentFormatter.attributedMarkdown(from: raw).characters), raw)
+        }
     }
 
     func testDisplayTextPreservesGeneratedImageMarkdown() {
@@ -41,7 +79,11 @@ final class ChatContentFormatterTests: XCTestCase {
         let rendered = ChatContentFormatter.attributedMarkdown(
             from: "Read more at [Wikipedia](https://en.wikipedia.org/wiki/Cat).",
         )
-        XCTAssertFalse(String(rendered.characters).isEmpty)
+        XCTAssertEqual(String(rendered.characters), "Read more at Wikipedia.")
+        XCTAssertEqual(
+            rendered.runs.compactMap { $0.link?.absoluteString },
+            ["https://en.wikipedia.org/wiki/Cat"],
+        )
     }
 
     func testSanitizeCommonMarkRemovesHTMLControlsAndBadLinks() {

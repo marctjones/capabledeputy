@@ -1,0 +1,58 @@
+# Curated local Google Workspace CLI MCP mapping.
+#
+# Prerequisites (operator-owned, never stored in this file):
+#
+#   1. Enable Gmail, Google Calendar, and Google Drive APIs for the selected
+#      Google Cloud project.
+#   2. Configure an OAuth desktop client for this machine in `gws`.
+#   3. Authenticate with the exact scopes required for the workflow:
+#
+#      gws auth login --scopes \
+#        https://www.googleapis.com/auth/gmail.readonly,\
+#https://www.googleapis.com/auth/calendar.events.readonly,\
+#https://www.googleapis.com/auth/drive.readonly
+#
+# Use an explicit, reviewed scope upgrade before enabling a write workflow.
+# OAuth scope permits a provider call; it is never CapDep authority. Every
+# mutation below is still a declared effect that goes through `decide()`.
+#
+# The server talks to the local `gws` credential store. It deliberately has no
+# OAuth block here: CapDep's upstream OAuth client applies to remote MCP
+# servers, while gws is a local stdio provider with its own encrypted token
+# store and browser flow.
+
+upstream_servers:
+  - name: google-workspace
+    command: ["gws-mcp-server", "--services", "gmail,calendar,drive"]
+    inherent_labels: ["confidential.personal", "untrusted.user_input"]
+    strict: true
+    # Gmail sending is not exposed by gws-mcp-server. Drafts remain available;
+    # the user reviews and sends them in Gmail. Drive/calendar mutations are
+    # intentionally registered so policy can render an exact approval instead
+    # of hiding the effect behind a local helper.
+    tool_overrides:
+      # Gmail
+      gmail_messages_list: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      gmail_messages_get: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      gmail_threads_list: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      gmail_threads_get: {capability_kind: IMAP_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      gmail_threads_modify: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"], target_template: "gmail://threads/{id}"}
+      gmail_drafts_create: {capability_kind: EXTERNAL_MAIL_DRAFT, additional_labels: ["confidential.personal"], target_arg: to}
+
+      # Google Calendar
+      calendar_events_list: {capability_kind: CALENDAR_READ, additional_labels: ["confidential.personal", "untrusted.user_input"], target_arg: calendarId}
+      calendar_events_get: {capability_kind: CALENDAR_READ, additional_labels: ["confidential.personal", "untrusted.user_input"], target_template: "gcal://calendar/{calendarId}/events/{eventId}"}
+      calendar_events_insert: {capability_kind: CREATE_CAL, additional_labels: ["confidential.personal"], target_arg: calendarId}
+      calendar_events_update: {capability_kind: MODIFY_CAL, additional_labels: ["confidential.personal"], target_template: "gcal://calendar/{calendarId}/events/{eventId}"}
+      calendar_events_delete: {capability_kind: DELETE_CAL, additional_labels: ["confidential.personal"], target_template: "gcal://calendar/{calendarId}/events/{eventId}"}
+
+      # Google Drive
+      drive_files_list: {capability_kind: CLOUD_FILE_READ, additional_labels: ["confidential.personal", "untrusted.user_input"]}
+      drive_files_get: {capability_kind: CLOUD_FILE_READ, additional_labels: ["confidential.personal", "untrusted.user_input"], target_template: "gdrive://files/{fileId}"}
+      drive_files_export: {capability_kind: CLOUD_FILE_READ, additional_labels: ["confidential.personal", "untrusted.user_input"], target_template: "gdrive://files/{fileId}"}
+      drive_files_download: {capability_kind: CLOUD_FILE_READ, additional_labels: ["confidential.personal", "untrusted.user_input"], target_template: "gdrive://files/{fileId}"}
+      drive_files_create: {capability_kind: CREATE_FS, additional_labels: ["confidential.personal"], target_template: "gdrive://root/{name}"}
+      drive_files_copy: {capability_kind: CREATE_FS, additional_labels: ["confidential.personal"], target_template: "gdrive://files/{fileId}/copies/{name}"}
+      drive_files_update: {capability_kind: MODIFY_FS, additional_labels: ["confidential.personal"], target_template: "gdrive://files/{fileId}"}
+      drive_files_delete: {capability_kind: DELETE_FS, additional_labels: ["confidential.personal"], target_template: "gdrive://files/{fileId}"}
+      drive_permissions_create: {capability_kind: SEND_MESSAGE, additional_labels: ["confidential.personal"], target_template: "gdrive://files/{fileId}/share/{emailAddress}"}

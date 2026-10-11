@@ -6,6 +6,7 @@ from scripts import test_capdepmac_gui_interactions as gui_smoke
 ROOT = Path(__file__).resolve().parents[1]
 CHAT_VIEW = ROOT / "apps/macos/CapDep/Sources/ChatView.swift"
 APP_MODEL = ROOT / "apps/macos/CapDep/Sources/CapDepAppModel.swift"
+APP_ENTRY = ROOT / "apps/macos/CapDep/Sources/CapDepMacApp.swift"
 LAUNCHER = ROOT / "apps/macos/CapDep/scripts/run-local-app.sh"
 GUI_SMOKE = ROOT / "scripts/test_capdepmac_gui_interactions.py"
 
@@ -14,8 +15,6 @@ def test_capdepmac_primary_chat_accessibility_hooks_are_stable() -> None:
     source = CHAT_VIEW.read_text(encoding="utf-8")
 
     for identifier in (
-        "capdep.chat.window",
-        "capdep.chat.composer",
         "capdep.chat.input",
         "capdep.chat.send",
         "capdep.chat.cancel-turn",
@@ -25,6 +24,10 @@ def test_capdepmac_primary_chat_accessibility_hooks_are_stable() -> None:
         "capdep.chat.message.assistant",
     ):
         assert f'"{identifier}"' in source
+    # Container identifiers propagate over child identifiers in native SwiftUI.
+    # Label containers and keep identifiers on the actual interactive controls.
+    assert '.accessibilityLabel("CapDep chat workspace")' in source
+    assert '.accessibilityLabel("Message composer")' in source
 
 
 def test_capdepmac_no_focus_test_hook_is_opt_in() -> None:
@@ -42,6 +45,14 @@ def test_capdepmac_no_focus_test_hook_is_opt_in() -> None:
     assert 'open -g -n "$APP"' in launcher_source
 
 
+def test_menu_bar_host_keeps_onboarding_reachable_without_chat_window() -> None:
+    app_source = APP_ENTRY.read_text(encoding="utf-8")
+    menu_bar_source = app_source.split("struct ApprovalCardWindow", maxsplit=1)[0]
+
+    assert ".onChange(of: model.isOnboardingPresented)" in menu_bar_source
+    assert 'openWindow(id: "onboarding-wizard")' in menu_bar_source
+
+
 def test_capdepmac_gui_smoke_defaults_to_no_focus_driver() -> None:
     smoke_source = GUI_SMOKE.read_text(encoding="utf-8")
 
@@ -53,6 +64,17 @@ def test_capdepmac_gui_smoke_defaults_to_no_focus_driver() -> None:
     assert "write_failure_artifacts" in smoke_source
     assert "CAPDEP_GUI_TEST_COMMAND_FILE" in smoke_source
     assert "CAPDEP_GUI_BACKGROUND_OPEN" in smoke_source
+
+
+def test_capdepmac_gui_smoke_has_real_daemon_restart_acceptance_path() -> None:
+    smoke_source = GUI_SMOKE.read_text(encoding="utf-8")
+
+    assert "--daemon-restart-after-submit" in smoke_source
+    assert "turn_started" in smoke_source
+    assert "turn_lost_to_daemon_restart" in smoke_source
+    assert "reconnect follow-up" in smoke_source
+    assert 'run([str(LAUNCHD_DAEMON), "restart"]' in smoke_source
+    assert 'os.environ["CAPDEP_DAEMON_MODE"] = "launchd"' in smoke_source
 
 
 def test_capdepmac_gui_command_file_writes_jsonl(tmp_path: Path) -> None:

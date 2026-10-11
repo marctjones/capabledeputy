@@ -29,6 +29,35 @@ capdep daemon start
 To opt out, set `CAPDEP_LLM_MODEL` to something else such as
 `claude-haiku-4-5` or `ollama/phi4:latest`.
 
+## Daily local 8B baseline
+
+For the personal daily-driver on a 24-GB Apple-silicon laptop, use the
+operator-owned `models-daily-local-8b.yaml` profile. It maps every planner
+role and the quarantined extractor to `mlx-community/Qwen3-8B-4bit`, keeps
+generation serialized, disables model thinking for strict structured output,
+and refuses implicit downloads or cloud fallback:
+
+```sh
+sh scripts/with-daily-local-8b.sh .venv/bin/capdep daemon start
+```
+
+The model must be cached before this command is run. If its cached asset is not
+in Hugging Face's normal cache, point the wrapper at its absolute path:
+
+```sh
+CAPDEP_DAILY_MLX_MODEL=/absolute/path/to/Qwen3-8B-4bit-mlx \
+  sh scripts/with-daily-local-8b.sh .venv/bin/capdep daemon start
+```
+
+Record its exact revision and local asset path in the daily-use log before
+treating a run as acceptance evidence. Sharing weights does **not** weaken the extractor boundary: the
+extractor remains a tool-less, schema-bounded invocation and the policy engine
+remains the only authority for declassification and effects.
+
+This is the daily operating baseline, not a claim that 8B is universally best.
+Any promotion to a larger per-role model requires comparative real-workflow
+latency, memory, valid-tool-output, cancellation, and recovery evidence.
+
 ### Optional: enable model thinking mode
 
 By default the MLX adapter disables model-native thinking mode because
@@ -289,7 +318,9 @@ See [raw measurements](evidence/model-qwen25-05b-2026-09-05.jsonl).
 `scripts/guard-daemon-resources.py COMMAND ...` starts an owned process group,
 checks it every two seconds, and terminates the group if any of these occur:
 
-- 2,048 MiB aggregate resident memory;
+- 8,192 MiB aggregate resident memory by default (override with
+  `CAPDEP_DAEMON_RSS_LIMIT_MIB` for a deliberately smaller or larger local
+  model profile);
 - critical macOS memory pressure immediately, or warning pressure for 15 seconds;
 - at least 200% aggregate CPU (two cores) for 30 seconds;
 - failure to obtain monitoring telemetry.
@@ -302,7 +333,7 @@ Children that create independent process groups are outside its group accounting
 Global memory pressure still triggers a stop even if another app caused it.
 
 On Marc's Mac the existing LaunchAgent now runs this watchdog at nice priority 10
-around `with-smoke-model.sh` and the daemon. KeepAlive is false, so a safety stop
+around `with-daily-local-8b.sh` and the daemon. KeepAlive is false, so a safety stop
 will not trigger an immediate restart loop. Monitoring continues after the Codex
 turn ends. Logs: `~/.capdep/resource-guard.log`; original plist backup:
 `~/.capdep/backups/daemon-before-resource-guard-*.plist`.

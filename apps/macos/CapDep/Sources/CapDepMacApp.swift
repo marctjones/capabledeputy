@@ -1,11 +1,11 @@
 import SwiftUI
 import UserNotifications
 
-/// #332 — the menu-bar label is the one CapDep view that stays alive whenever
-/// the app is running (main/console windows can all be closed). Hosting the
-/// policy-prompt auto-open observers here — instead of only on ChatView, which
-/// dies with the main window — makes approval/grant/override cards reliably
-/// surface no matter which window (if any) is open.
+/// #332/#333 — the menu-bar label is the one CapDep view that stays alive
+/// whenever the app is running (main/console windows can all be closed).
+/// Hosting the policy-prompt and onboarding auto-open observers here — instead
+/// of only on ChatView, which dies with the main window — makes those native
+/// cards reliably surface no matter which window (if any) is open.
 struct MenuBarLabel: View {
     @EnvironmentObject private var model: CapDepAppModel
     @Environment(\.openWindow) private var openWindow
@@ -16,42 +16,27 @@ struct MenuBarLabel: View {
             systemImage: model.pendingApprovals.isEmpty ? "shield" : "shield.lefthalf.filled",
         )
         .onChange(of: model.approvalWindowID) { _, newValue in
+            guard !CapDepBackgroundGUIMode.enabled else { return }
             if newValue != nil {
-                openWindow(id: "approval-card")
+                openWindow(id: "main")
             }
         }
         .onChange(of: model.grantPromptPresented) { _, presented in
+            guard !CapDepBackgroundGUIMode.enabled else { return }
             if presented {
                 openWindow(id: "capability-grant-card")
             }
         }
         .onChange(of: model.overrideWindowID) { _, newValue in
+            guard !CapDepBackgroundGUIMode.enabled else { return }
             if newValue != nil {
                 openWindow(id: "override-card")
             }
         }
-    }
-}
-
-struct ApprovalCardWindow: View {
-    @EnvironmentObject private var model: CapDepAppModel
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        Group {
-            if let approval = model.pendingApprovals.first(where: { $0.id == model.approvalWindowID }) {
-                ApprovalDetailView(approval: approval)
-            } else {
-                ContentUnavailableView(
-                    "No Pending Approval",
-                    systemImage: "checkmark.shield",
-                    description: Text("The approval queue is empty or this item was already decided."),
-                )
-            }
-        }
-        .onChange(of: model.approvalWindowID) { _, newValue in
-            if newValue == nil {
-                dismiss()
+        .onChange(of: model.isOnboardingPresented) { _, presented in
+            guard !CapDepBackgroundGUIMode.enabled else { return }
+            if presented {
+                openWindow(id: "onboarding-wizard")
             }
         }
     }
@@ -60,7 +45,9 @@ struct ApprovalCardWindow: View {
 // No `@main` here: the SwiftPM launcher target and the Xcode app shell each
 // provide the entry point and call `CapDepMacApp.main()`.
 public struct CapDepMacApp: App {
-    private static let singleInstanceGuard = SingleInstanceGuard(name: "capdepmac")
+    private static let singleInstanceGuard = SingleInstanceGuard(
+        name: SingleInstanceGuard.lockName(socketPath: DaemonClient.defaultSocketPath())
+    )
     @StateObject private var model = CapDepAppModel()
     private let notificationDelegate = CapDepNotificationDelegate()
     @NSApplicationDelegateAdaptor(CapDepScriptingDelegate.self)
@@ -73,7 +60,7 @@ public struct CapDepMacApp: App {
     }
 
     public var body: some Scene {
-        WindowGroup("CapDep", id: "main") {
+        Window("CapDep", id: "main") {
             ChatView()
                 .environmentObject(model)
                 .task {
@@ -103,16 +90,6 @@ public struct CapDepMacApp: App {
             MenuBarLabel()
                 .environmentObject(model)
         }
-
-        Window("Approval", id: "approval-card") {
-            ApprovalCardWindow()
-                .environmentObject(model)
-                .frame(minWidth: 640, minHeight: 520)
-                .task {
-                    await model.start()
-                }
-        }
-        .windowResizability(.contentSize)
 
         Window("Allow Access", id: "capability-grant-card") {
             GrantCardWindow()
@@ -198,8 +175,8 @@ struct CapDepCommands: Commands {
             .keyboardShortcut("0", modifiers: [.command])
 
             Button("Open Approval Queue") {
-                model.selectedSection = .approvals
-                openWindow(id: "console")
+                model.presentApprovalQueue()
+                openWindow(id: "main")
             }
             .keyboardShortcut("a", modifiers: [.command, .shift])
         }
@@ -226,18 +203,18 @@ struct CapDepCommands: Commands {
 
         CommandMenu("Approvals") {
             Button("Show Pending Approvals") {
-                model.selectedSection = .approvals
-                openWindow(id: "console")
+                model.presentApprovalQueue()
+                openWindow(id: "main")
             }
             ForEach(model.pendingApprovals.prefix(5)) { approval in
-                Button("Review Approval #\(approval.id)") {
+                Button(approval.actionTitle) {
                     model.presentApproval(id: approval.id)
-                    openWindow(id: "approval-card")
+                    openWindow(id: "main")
                 }
             }
             Button("Deny Selected Approval") {
                 Task {
-                    if let approval = model.pendingApprovals.first {
+                    if let approval = model.pendingApprovals.first(where: { $0.id == model.focusedApprovalID }) {
                         await model.deny(approval)
                     }
                 }

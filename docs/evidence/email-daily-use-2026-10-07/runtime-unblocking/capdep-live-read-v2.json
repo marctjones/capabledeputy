@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-07T08:28:26.842665+00:00",
+  "expected_revision": "fd57c4f4ca9b0be12dbd46a63b187e5395a24182",
+  "live_requested": true,
+  "send_authority_granted": false,
+  "human_quality_review": null,
+  "observed_inbox_receipt": null,
+  "status": "failed",
+  "daemon_revision_matches": true,
+  "daemon_dirty": true,
+  "daemon_revision": "fd57c4f4ca9b0be12dbd46a63b187e5395a24182",
+  "expected_source_content_hash": "efd2cc484924862ff3208b9c687a7a7306c0a7ecc4c00ddc3f654499262db346",
+  "daemon_source_content_matches": true,
+  "daemon_source_content_hash": "efd2cc484924862ff3208b9c687a7a7306c0a7ecc4c00ddc3f654499262db346",
+  "required_modes": [
+    "dual_llm"
+  ],
+  "elapsed_seconds": 23.29,
+  "session_aborted": false,
+  "error_type": "DaemonError"
+}
