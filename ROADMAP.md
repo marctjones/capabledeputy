@@ -28,6 +28,8 @@ the required evidence before either is called ready. Microsoft 365 / Notion
 
 ### Current and upcoming milestones
 
+Milestones were renamed on 2026-10-10 to an outcome-first scheme (`01…05`, `Theme —`, `Later —`); the old `29 — v0.59.0`-style ladder names are retired and versions are assigned at release. Rationale: [docs/daily-driver-plan-2026-10.md](docs/daily-driver-plan-2026-10.md).
+
 | GitHub milestone | Status |
 |---|---|
 | **24 — v0.54.0 — Egress-complete chokepoint** | ✅ Complete |
@@ -35,11 +37,17 @@ the required evidence before either is called ready. Microsoft 365 / Notion
 | **26 — v0.56.0 — Posture profiles + conformance harness** (+ policy-authoring epic #377) | ✅ Complete |
 | **27 — v0.57.0 — Daemon reliability, supervision, data safety** | ✅ Complete (CLI/TUI reconnect shipped; Swift tail #319 → v0.59) |
 | **28 — v0.58.0 — Real assistant capabilities + safe default surface** | ✅ Complete (scoped): web.fetch, email SEND, tasks, image-safety, zero-config surface shipped; #329 marked not-supported-for-v1.0; #325 calendar/inbox + #328 GWS+GitHub deferred to v0.59 (credential-gated) |
-| **29 — v0.59.0 — CapDepMac production UX completeness** | ⏳ Open (#331–#334, + carried #319/#325/#328) |
-| **30 — v0.60.0 — In-session vision and multimodal** | ⏳ Open (#335–#337; spike #313) |
-| **31 — v0.61.0 — Model runtime quality and provisioning** | ⏳ Open (#338–#341; spike #311) |
-| **v0.62.0 — Flow-aware planning** | ⏳ Open (#363–#370) |
-| **33 — v0.63.0 — v1.0 hardening and daily-driver acceptance** | ⏳ Open (#346–#349) |
+| **01 Email — usable native review on a reproducible build** | ⏳ Active (#503/#504/#505/#508, #497–#500); CI green on `main` since 2026-10-11 |
+| **02 Email — reliable daily use (coverage, recovery, seven days)** | ⏳ Open (#506, #507, #479, seven-day protocol) |
+| **03 Email — everyday triage actions, reply-all and attachments** | ⏳ Open — new 2026-10 (archive/flag/move, reply-all, attachments, trusted recipients) |
+| **04 Documents — protected local output, then approved routing** | ⏳ Open (#465–#467, #487, #488) |
+| **05 Read-first — retrieval, briefings and calendar** | ⏳ Open (#448–#450, #490–#492, calendar write) |
+| **Evidence — bounded authority and information flow** | ⏳ Alongside 01–05 (#480–#486, #464; control-plane hardening) |
+| **Theme — CapDepMac production UX** | ⏳ Open (former v0.59; pulled into outcome milestones as needed) |
+| **Later — In-session vision and multimodal** | ⏳ Open (#335 absorbs #336/#337; spike #313) |
+| **Theme — Model runtime quality and provisioning** | ⏳ Open (#338–#341, #493–#496; hosted-planner spike #560 and label-gated routing #561) |
+| **Later — Flow-aware planning** | ⏳ Open (#363–#370) |
+| **v1.0 — Hardening and daily-driver acceptance** | ⏳ Open (#346–#349, #451, #452, backup/restore, onboarding, upgrade) |
 | **Distribution, packaging and updates** | ⛔ Deferred per owner decision 2026-07-12 (#310, #342–#345) |
 
 ## Product Ladder — v0.35 → v0.58
