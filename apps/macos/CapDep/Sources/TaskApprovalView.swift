@@ -148,8 +148,7 @@ struct TaskApprovalReviewView: View {
                                 }
                             }
                         } else {
-                            Text("This action needs its specialized review before it can be approved.")
-                            Text(item.approval.actionTitle).font(.headline)
+                            NonEmailApprovalReviewSection(review: NonEmailApprovalReview(approval: item.approval))
                         }
                         if reconciling {
                             VStack(alignment: .leading, spacing: 12) {
